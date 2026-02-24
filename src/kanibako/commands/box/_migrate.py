@@ -10,7 +10,10 @@ from pathlib import Path
 from kanibako.config import config_file_path, load_config
 from kanibako.paths import (
     ProjectMode,
+    _ensure_human_vault_symlink,
     _find_workset_for_path,
+    _remove_human_vault_symlink,
+    _remove_project_vault_symlink,
     xdg,
     detect_project_mode,
     load_std_paths,
@@ -103,12 +106,21 @@ def run_migrate(args: argparse.Namespace) -> int:
             print("Aborted.")
             return 2
 
+    # Remove old human-friendly symlink before rename.
+    human_vault_dir = std.data_path / config.paths_vault
+    _remove_human_vault_symlink(human_vault_dir, old_project_dir / "vault")
+
     # Rename project directory (includes home/ inside it).
     old_project_dir.rename(new_project_dir)
 
     # Update the breadcrumb.
     breadcrumb = new_project_dir / "project-path.txt"
     breadcrumb.write_text(str(new_path) + "\n")
+
+    # Create new human-friendly symlink (best-effort).
+    vault_parent = new_project_dir / "vault"
+    if vault_parent.is_dir():
+        _ensure_human_vault_symlink(human_vault_dir, new_path, vault_parent)
 
     print("Migrated project data:")
     print(f"  from: {old_path} ({short_hash(old_hash)})")
@@ -228,6 +240,11 @@ def _convert_ac_to_decentral(project_path, std, config, proj):
         if not vault_gitignore.exists():
             vault_gitignore.write_text("share-rw/\n")
 
+    # Remove vault symlinks before cleaning up old AC data.
+    human_vault_dir = std.data_path / config.paths_vault
+    _remove_human_vault_symlink(human_vault_dir, proj.metadata_path / "vault")
+    _remove_project_vault_symlink(project_path)
+
     # Clean up old AC data.
     shutil.rmtree(proj.metadata_path)
 
@@ -251,6 +268,12 @@ def _convert_decentral_to_ac(project_path, std, config, proj):
     if proj.shell_path.is_dir():
         dst_shell = dst_project / "shell"
         shutil.copytree(proj.shell_path, dst_shell)
+
+    # Create human-friendly vault symlink if robust layout.
+    vault_parent = dst_project / "vault"
+    if vault_parent.is_dir():
+        human_vault_dir = std.data_path / config.paths_vault
+        _ensure_human_vault_symlink(human_vault_dir, project_path, vault_parent)
 
     # Clean up old decentralized data.
     shutil.rmtree(proj.metadata_path)
@@ -360,6 +383,12 @@ def _convert_to_workset(args, std, config) -> int:
             ignore = shutil.ignore_patterns(".kanibako")
         shutil.copytree(project_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
+    # Remove vault symlinks before cleaning up old metadata.
+    if current_mode == ProjectMode.account_centric:
+        human_vault_dir = std.data_path / config.paths_vault
+        _remove_human_vault_symlink(human_vault_dir, src_proj.metadata_path / "vault")
+    _remove_project_vault_symlink(project_path)
+
     # Clean up old metadata.
     shutil.rmtree(src_proj.metadata_path)
     if src_proj.shell_path.is_dir():
@@ -455,6 +484,12 @@ def _convert_ws_to_ac(src_proj, dest_path, std, config):
     if src_proj.shell_path.is_dir():
         dst_home = dst_project / "shell"
         shutil.copytree(src_proj.shell_path, dst_home)
+
+    # Create human-friendly vault symlink if robust layout.
+    vault_parent = dst_project / "vault"
+    if vault_parent.is_dir():
+        human_vault_dir = std.data_path / config.paths_vault
+        _ensure_human_vault_symlink(human_vault_dir, dest_path, vault_parent)
 
 
 def _convert_ws_to_decentral(src_proj, dest_path):

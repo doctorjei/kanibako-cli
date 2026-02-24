@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 
 from kanibako.agents import agents_dir, load_agent_config
 from kanibako.config import config_file_path, load_config

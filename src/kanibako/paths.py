@@ -257,6 +257,21 @@ def resolve_project(
         # Convenience symlink when vault lives outside the workspace.
         if actual_vault_enabled:
             _ensure_vault_symlink(project_path, vault_ro_path)
+            # Human-friendly symlink for robust layout.
+            if actual_layout == ProjectLayout.robust:
+                human_vault_dir = std.data_path / config.paths_vault
+                _ensure_human_vault_symlink(
+                    human_vault_dir, project_path, vault_ro_path.parent,
+                )
+                if is_new:
+                    import sys
+                    print(
+                        f"\nNOTE: In robust layout, the account-centric vault "
+                        f"is linked from\n{human_vault_dir}. You can create a "
+                        f"symlink from your home directory with:\n"
+                        f"  ln -s {human_vault_dir} $HOME/kanibako_vault",
+                        file=sys.stderr,
+                    )
 
     return ProjectPaths(
         project_path=project_path,
@@ -406,6 +421,92 @@ def _ensure_vault_symlink(project_path: Path, vault_ro_path: Path) -> None:
         link.symlink_to(vault_parent)
     except OSError:
         pass  # Best-effort; non-fatal if we can't create the symlink.
+
+
+def _ensure_human_vault_symlink(
+    vault_dir: Path, project_path: Path, vault_parent: Path,
+) -> Path | None:
+    """Create a human-friendly symlink ``{vault_dir}/{basename}`` → *vault_parent*.
+
+    *vault_dir* is e.g. ``{data_path}/vault``.  *project_path* is the user's
+    workspace directory whose basename is used as the symlink name.
+    *vault_parent* is the hash-based vault directory (``…/boxes/{hash}/vault``).
+
+    Collision handling: if *basename* already points elsewhere, tries
+    ``{name}1``, ``{name}2``, … up to ``{name}99``.
+
+    Returns the created/existing symlink ``Path`` on success, ``None`` on
+    failure or if *vault_parent* does not exist.
+    """
+    if not vault_parent.is_dir():
+        return None
+
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    basename = project_path.name
+
+    # Try the plain name first, then name1..name99.
+    candidates = [basename] + [f"{basename}{i}" for i in range(1, 100)]
+    for name in candidates:
+        link = vault_dir / name
+        if link.is_symlink():
+            try:
+                if link.resolve() == vault_parent.resolve():
+                    return link  # Already correct — idempotent.
+            except OSError:
+                pass
+            continue  # Points elsewhere — try next candidate.
+        if link.exists():
+            continue  # Real file/dir — skip.
+        # Slot is free.
+        try:
+            link.symlink_to(vault_parent)
+            return link
+        except OSError:
+            return None  # Best-effort.
+    return None  # All 100 candidates exhausted.
+
+
+def _remove_human_vault_symlink(vault_dir: Path, vault_parent: Path) -> bool:
+    """Remove the human-friendly symlink that points to *vault_parent*.
+
+    Scans *vault_dir* for the first symlink whose target resolves to
+    *vault_parent* and removes it.  Removes *vault_dir* itself if empty
+    afterwards.
+
+    Returns True if a symlink was removed, False otherwise.
+    """
+    if not vault_dir.is_dir():
+        return False
+    try:
+        for entry in vault_dir.iterdir():
+            if entry.is_symlink():
+                try:
+                    if entry.resolve() == vault_parent.resolve():
+                        entry.unlink()
+                        # Clean up empty vault_dir.
+                        if not any(vault_dir.iterdir()):
+                            vault_dir.rmdir()
+                        return True
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return False
+
+
+def _remove_project_vault_symlink(project_path: Path) -> bool:
+    """Remove ``{project_path}/vault`` if it is a symlink (not a real dir).
+
+    Returns True if a symlink was removed, False otherwise.
+    """
+    link = project_path / "vault"
+    if link.is_symlink():
+        try:
+            link.unlink()
+            return True
+        except OSError:
+            pass
+    return False
 
 
 def _init_common(

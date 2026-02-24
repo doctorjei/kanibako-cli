@@ -8,7 +8,12 @@ import sys
 
 from kanibako.config import load_config
 from kanibako.errors import UserCancelled
-from kanibako.paths import load_std_paths, resolve_any_project
+from kanibako.paths import (
+    _remove_human_vault_symlink,
+    _remove_project_vault_symlink,
+    load_std_paths,
+    resolve_any_project,
+)
 from kanibako.utils import confirm_prompt, short_hash
 
 
@@ -68,6 +73,11 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             print("Aborted.")
             return 2
 
+    # Clean up vault symlinks before removing data.
+    vault_dir = std.data_path / config.paths_vault
+    _remove_human_vault_symlink(vault_dir, proj.metadata_path / "vault")
+    _remove_project_vault_symlink(proj.project_path)
+
     print("Removing session data... ", end="", flush=True)
     shutil.rmtree(proj.metadata_path)
     print("done.")
@@ -115,7 +125,12 @@ def _purge_all(std, config, *, force: bool) -> int:
     removed = 0
 
     # Account-centric projects.
+    vault_dir = std.data_path / config.paths_vault
     for metadata_path, project_path in projects:
+        # Clean up vault symlinks before removing data.
+        _remove_human_vault_symlink(vault_dir, metadata_path / "vault")
+        if project_path is not None:
+            _remove_project_vault_symlink(project_path)
         label = str(project_path) if project_path else short_hash(metadata_path.name)
         print(f"Removing {label}... ", end="", flush=True)
         shutil.rmtree(metadata_path)
