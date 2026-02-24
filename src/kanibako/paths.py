@@ -7,7 +7,7 @@ import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from kanibako.config import (
     KanibakoConfig,
@@ -30,6 +30,18 @@ class ProjectMode(Enum):
     account_centric = "account_centric"
     workset = "workset"
     decentralized = "decentralized"
+
+
+class DetectionResult(NamedTuple):
+    """Result of project mode detection.
+
+    *mode* is the detected project mode.  *project_root* is the ancestor
+    directory where the marker was found (may differ from the original
+    *project_dir* when the user is in a subdirectory).
+    """
+
+    mode: ProjectMode
+    project_root: Path
 
 
 class ProjectLayout(Enum):
@@ -489,45 +501,93 @@ def detect_project_mode(
     project_dir: Path,
     std: StandardPaths,
     config: KanibakoConfig,
-) -> ProjectMode:
+) -> DetectionResult:
     """Infer which project mode applies to *project_dir*.
 
-    Detection order:
-    1. Workset — *project_dir* lives inside a registered workset root's
-       ``workspaces/`` directory.
-    2. Account-centric — ``projects/{hash}/`` already exists under
+    Walks ancestor directories (up to ``$HOME`` or filesystem root) looking
+    for project markers.  Returns a ``DetectionResult`` with the detected
+    mode and the ancestor directory where the marker was found.
+
+    Detection order (at each ancestor level):
+    1. Workset — *project_dir* lives inside a registered workset root
+       (``workspaces/`` subdirectory first, then the root itself).
+    2. Account-centric — ``boxes/{hash}/`` already exists under
        *std.data_path*.
-    3. Decentralized — a ``kanibako`` **directory** exists inside
-       *project_dir*.
-    4. Default — ``account_centric`` (new project).
+    3. Decentralized — a ``.kanibako`` or ``kanibako`` **directory** exists
+       inside the ancestor.  ``.kanibako`` takes priority when both exist.
+    4. Default — ``account_centric`` at the original *project_dir*.
     """
-    # 1. Workset check: is project_dir inside a registered workset's
-    #    workspaces/ directory?
+    resolved = project_dir.resolve()
+    home = Path.home().resolve()
+
+    # 1. Workset check (no walk needed — relative_to handles subdirs).
+    ws_result = _check_workset(resolved, std)
+    if ws_result is not None:
+        return ws_result
+
+    # 2. Walk ancestors for AC + decentralized markers.
+    current = resolved
+    while True:
+        # AC check: hash current, check boxes/{hash}/ exists.
+        phash = project_hash(str(current))
+        settings_path = std.data_path / "boxes" / phash
+        if settings_path.is_dir():
+            return DetectionResult(ProjectMode.account_centric, current)
+
+        # Decentralized check: .kanibako/ or kanibako/ directory.
+        if (current / ".kanibako").is_dir():
+            return DetectionResult(ProjectMode.decentralized, current)
+        if (current / "kanibako").is_dir():
+            return DetectionResult(ProjectMode.decentralized, current)
+
+        # Stop conditions: reached $HOME or filesystem root.
+        if current == home:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    # 3. Default: account_centric at the original directory.
+    return DetectionResult(ProjectMode.account_centric, resolved)
+
+
+def _check_workset(
+    resolved_dir: Path,
+    std: StandardPaths,
+) -> DetectionResult | None:
+    """Check whether *resolved_dir* is inside a registered workset.
+
+    Returns a ``DetectionResult`` if found, ``None`` otherwise.
+    Checks ``workspaces/`` first (specific project), then the workset root
+    itself (inside workset but not necessarily a project workspace).
+    """
     worksets_toml = std.data_path / "worksets.toml"
-    if worksets_toml.is_file():
-        import tomllib as _tomllib
-        with open(worksets_toml, "rb") as _f:
-            _data = _tomllib.load(_f)
-        for _root_str in _data.get("worksets", {}).values():
-            _ws_workspaces = Path(_root_str) / "workspaces"
-            try:
-                project_dir.relative_to(_ws_workspaces)
-                return ProjectMode.workset
-            except ValueError:
-                continue
+    if not worksets_toml.is_file():
+        return None
 
-    # 2. Account-centric: settings/{hash}/ already exists
-    phash = project_hash(str(project_dir))
-    settings_path = std.data_path / "boxes" / phash
-    if settings_path.is_dir():
-        return ProjectMode.account_centric
+    import tomllib as _tomllib
 
-    # 3. Decentralized: .kanibako directory inside project
-    if (project_dir / ".kanibako").is_dir():
-        return ProjectMode.decentralized
+    with open(worksets_toml, "rb") as _f:
+        _data = _tomllib.load(_f)
 
-    # 4. Default for new projects
-    return ProjectMode.account_centric
+    for _root_str in _data.get("worksets", {}).values():
+        ws_root = Path(_root_str).resolve()
+        ws_workspaces = ws_root / "workspaces"
+        # Check workspaces/ first (more specific).
+        try:
+            resolved_dir.relative_to(ws_workspaces)
+            return DetectionResult(ProjectMode.workset, resolved_dir)
+        except ValueError:
+            pass
+        # Then check workset root itself.
+        try:
+            resolved_dir.relative_to(ws_root)
+            return DetectionResult(ProjectMode.workset, resolved_dir)
+        except ValueError:
+            continue
+
+    return None
 
 
 def resolve_workset_project(
@@ -732,25 +792,40 @@ def iter_workset_projects(
     return results
 
 
-def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[Workset, str]:
-    """Return ``(Workset, project_name)`` for a path inside a workset workspace.
+def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[Workset, str | None]:
+    """Return ``(Workset, project_name)`` for a path inside a workset.
 
-    *project_dir* may be the workspace root or a subdirectory within it.
+    *project_dir* may be the workspace root, a subdirectory within it,
+    or anywhere inside the workset root.  When *project_dir* is inside
+    ``workspaces/{name}/``, the project name is returned.  When inside
+    the workset root but not in a specific workspace, ``None`` is returned
+    as the project name.
+
     Raises ``WorksetError`` if *project_dir* does not belong to any
     registered workset.
     """
     from kanibako.workset import list_worksets, load_workset
 
     registry = list_worksets(std)
+    resolved = project_dir.resolve()
     for _name, root in registry.items():
-        ws_workspaces = root / "workspaces"
+        ws_root = root.resolve()
+        ws_workspaces = ws_root / "workspaces"
+        # Check workspaces/ first (specific project).
         try:
-            rel = project_dir.relative_to(ws_workspaces)
+            rel = resolved.relative_to(ws_workspaces)
+            project_name = rel.parts[0] if rel.parts else None
+            ws = load_workset(root)
+            return ws, project_name
+        except ValueError:
+            pass
+        # Then check workset root itself.
+        try:
+            resolved.relative_to(ws_root)
+            ws = load_workset(root)
+            return ws, None
         except ValueError:
             continue
-        project_name = rel.parts[0]
-        ws = load_workset(root)
-        return ws, project_name
     raise WorksetError(f"No workset found for path: {project_dir}")
 
 
@@ -761,16 +836,28 @@ def resolve_any_project(
     *,
     initialize: bool = False,
 ) -> ProjectPaths:
-    """Auto-detect project mode and resolve paths accordingly."""
+    """Auto-detect project mode and resolve paths accordingly.
+
+    Uses ``detect_project_mode`` to walk ancestor directories and find the
+    project root.  The resolved *project_root* (not the raw CWD) is passed
+    to the appropriate resolver.
+    """
     raw = project_dir or os.getcwd()
     raw_dir = Path(raw).resolve()
-    mode = detect_project_mode(raw_dir, std, config)
-    if mode == ProjectMode.workset:
+    detection = detect_project_mode(raw_dir, std, config)
+    root_str = str(detection.project_root)
+
+    if detection.mode == ProjectMode.workset:
         ws, proj_name = _find_workset_for_path(raw_dir, std)
+        if proj_name is None:
+            raise WorksetError(
+                f"Inside workset '{ws.name}' but not in a specific project workspace. "
+                f"Change to a project directory under {ws.workspaces_dir}/."
+            )
         return resolve_workset_project(ws, proj_name, std, config, initialize=initialize)
-    if mode == ProjectMode.decentralized:
-        return resolve_decentralized_project(std, config, project_dir, initialize=initialize)
-    return resolve_project(std, config, project_dir=project_dir, initialize=initialize)
+    if detection.mode == ProjectMode.decentralized:
+        return resolve_decentralized_project(std, config, root_str, initialize=initialize)
+    return resolve_project(std, config, project_dir=root_str, initialize=initialize)
 
 
 def resolve_decentralized_project(

@@ -137,7 +137,7 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
         return 1
 
     # Detect current mode.
-    current_mode = detect_project_mode(project_path, std, config)
+    current_mode = detect_project_mode(project_path, std, config).mode
 
     # Convert FROM workset: separate code path.
     if current_mode == ProjectMode.workset:
@@ -284,7 +284,7 @@ def _convert_to_workset(args, std, config) -> int:
         print(f"Error: project path does not exist: {project_path}", file=sys.stderr)
         return 1
 
-    current_mode = detect_project_mode(project_path, std, config)
+    current_mode = detect_project_mode(project_path, std, config).mode
     if current_mode == ProjectMode.workset:
         print("Error: project is already in workset mode.", file=sys.stderr)
         return 1

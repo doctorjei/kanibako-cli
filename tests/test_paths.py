@@ -9,6 +9,7 @@ import pytest
 from kanibako.config import load_config
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.paths import (
+    DetectionResult,
     ProjectLayout,
     ProjectMode,
     _bootstrap_shell,
@@ -220,6 +221,17 @@ class TestProjectMeta:
 
 
 class TestDetectProjectMode:
+    def test_returns_detection_result(self, config_file, tmp_home):
+        """detect_project_mode returns a DetectionResult namedtuple."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert isinstance(result, DetectionResult)
+        assert hasattr(result, "mode")
+        assert hasattr(result, "project_root")
+
     def test_account_centric_when_projects_dir_exists(self, config_file, tmp_home, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -227,8 +239,9 @@ class TestDetectProjectMode:
         # Initialize to create projects/{hash}/
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        mode = detect_project_mode(project_dir.resolve(), std, config)
-        assert mode is ProjectMode.account_centric
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
+        assert result.project_root == project_dir.resolve()
 
     def test_decentralized_when_kanibako_dir_exists(self, config_file, tmp_home):
         config = load_config(config_file)
@@ -236,16 +249,18 @@ class TestDetectProjectMode:
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
 
-        mode = detect_project_mode(project_dir.resolve(), std, config)
-        assert mode is ProjectMode.decentralized
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        assert result.project_root == project_dir.resolve()
 
     def test_default_account_centric_for_new_project(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         # No projects dir, no kanibako dir -> default
-        mode = detect_project_mode(project_dir.resolve(), std, config)
-        assert mode is ProjectMode.account_centric
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
+        assert result.project_root == project_dir.resolve()
 
     def test_account_centric_takes_priority_over_decentralized(
         self, config_file, tmp_home, credentials_dir
@@ -257,8 +272,8 @@ class TestDetectProjectMode:
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
         (project_dir / ".kanibako").mkdir(exist_ok=True)
 
-        mode = detect_project_mode(project_dir.resolve(), std, config)
-        assert mode is ProjectMode.account_centric
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
 
     def test_kanibako_file_not_dir_is_not_decentralized(self, config_file, tmp_home):
         """A .kanibako *file* (not directory) should not trigger decentralized mode."""
@@ -267,8 +282,8 @@ class TestDetectProjectMode:
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").write_text("not a directory")
 
-        mode = detect_project_mode(project_dir.resolve(), std, config)
-        assert mode is ProjectMode.account_centric
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
 
     def test_workset_when_inside_workspaces_dir(self, config_file, tmp_home):
         """Project inside a registered workset's workspaces/ -> workset mode."""
@@ -283,8 +298,8 @@ class TestDetectProjectMode:
         proj_dir = ws_root.resolve() / "workspaces" / "my-proj"
         proj_dir.mkdir(parents=True)
 
-        mode = detect_project_mode(proj_dir, std, config)
-        assert mode is ProjectMode.workset
+        result = detect_project_mode(proj_dir, std, config)
+        assert result.mode is ProjectMode.workset
 
     def test_workset_takes_priority_over_all(self, config_file, tmp_home, credentials_dir):
         """Workset detection (step 1) beats account-centric (step 2)."""
@@ -300,8 +315,162 @@ class TestDetectProjectMode:
         # Also create account-centric projects dir for the same path
         resolve_project(std, config, project_dir=str(proj_dir), initialize=True)
 
-        mode = detect_project_mode(proj_dir, std, config)
-        assert mode is ProjectMode.workset
+        result = detect_project_mode(proj_dir, std, config)
+        assert result.mode is ProjectMode.workset
+
+    # --- Ancestor walk tests ---
+
+    def test_ancestor_walk_finds_ac_marker_from_subdirectory(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """AC marker in parent is found when CWD is a subdirectory."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+
+        subdir = project_dir / "src" / "lib"
+        subdir.mkdir(parents=True)
+
+        result = detect_project_mode(subdir.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
+        assert result.project_root == project_dir.resolve()
+
+    def test_ancestor_walk_finds_decentralized_marker_from_subdirectory(
+        self, config_file, tmp_home
+    ):
+        """Decentralized marker in parent is found from a subdirectory."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / ".kanibako").mkdir()
+
+        subdir = project_dir / "src" / "deep" / "nested"
+        subdir.mkdir(parents=True)
+
+        result = detect_project_mode(subdir.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        assert result.project_root == project_dir.resolve()
+
+    def test_ancestor_walk_innermost_marker_wins(
+        self, config_file, tmp_home
+    ):
+        """When markers exist at multiple levels, the innermost (child) wins."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # Outer project has .kanibako marker
+        outer = tmp_home / "project"
+        (outer / ".kanibako").mkdir()
+
+        # Inner project also has .kanibako marker
+        inner = outer / "subproject"
+        inner.mkdir()
+        (inner / ".kanibako").mkdir()
+
+        # Detection from inner/ should find inner's marker
+        result = detect_project_mode(inner.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        assert result.project_root == inner.resolve()
+
+    # --- Dotless kanibako/ marker tests ---
+
+    def test_dotless_kanibako_dir_triggers_decentralized(self, config_file, tmp_home):
+        """A `kanibako/` directory (no dot) triggers decentralized mode."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / "kanibako").mkdir()
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        assert result.project_root == project_dir.resolve()
+
+    def test_dot_kanibako_preferred_over_dotless(self, config_file, tmp_home):
+        """.kanibako/ is preferred when both .kanibako/ and kanibako/ exist."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / ".kanibako").mkdir()
+        (project_dir / "kanibako").mkdir()
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        # Both trigger decentralized; the function returns on .kanibako first
+        assert result.project_root == project_dir.resolve()
+
+    def test_kanibako_file_not_dir_ignored_for_dotless(self, config_file, tmp_home):
+        """A `kanibako` *file* (not directory) should not trigger decentralized."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / "kanibako").write_text("not a directory")
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
+
+    def test_dotless_marker_found_from_subdirectory(self, config_file, tmp_home):
+        """Ancestor walk finds dotless kanibako/ in parent from subdirectory."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / "kanibako").mkdir()
+
+        subdir = project_dir / "src"
+        subdir.mkdir()
+
+        result = detect_project_mode(subdir.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        assert result.project_root == project_dir.resolve()
+
+    # --- Depth cap tests ---
+
+    def test_walk_stops_at_home(self, config_file, tmp_home):
+        """Walk does not ascend above $HOME — marker above home is ignored."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        home = tmp_home / "home"
+
+        # Place a marker ABOVE home (at tmp_home level)
+        (tmp_home / ".kanibako").mkdir(exist_ok=True)
+
+        # project_dir is under home
+        project_dir = home / "myproject"
+        project_dir.mkdir(parents=True)
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        # Should NOT find the marker above $HOME
+        assert result.mode is ProjectMode.account_centric
+        assert result.project_root == project_dir.resolve()
+
+    # --- Workset root detection tests ---
+
+    def test_workset_root_detected_from_root_itself(self, config_file, tmp_home):
+        """Detection from the workset root (not workspaces/) → workset mode."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import create_workset
+        ws_root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", ws_root, std)
+
+        result = detect_project_mode(ws_root.resolve(), std, config)
+        assert result.mode is ProjectMode.workset
+
+    def test_workset_detected_from_subdirectory_of_root(self, config_file, tmp_home):
+        """Detection from a subdirectory of workset root → workset mode."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import create_workset
+        ws_root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", ws_root, std)
+
+        subdir = ws_root / "some" / "subdir"
+        subdir.mkdir(parents=True)
+
+        result = detect_project_mode(subdir.resolve(), std, config)
+        assert result.mode is ProjectMode.workset
 
 
 class TestResolveAnyProject:
@@ -388,6 +557,46 @@ class TestResolveAnyProject:
         assert proj.mode is ProjectMode.workset
         assert proj.shell_path.is_dir()
 
+    def test_resolve_any_project_workset_no_project_raises(self, config_file, tmp_home):
+        """Inside workset root but not in a workspace → WorksetError."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import create_workset
+        ws_root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", ws_root, std)
+
+        with pytest.raises(WorksetError, match="not in a specific project"):
+            resolve_any_project(std, config, project_dir=str(ws_root), initialize=False)
+
+    def test_resolve_any_project_from_subdirectory_ac(self, config_file, tmp_home, credentials_dir):
+        """resolve_any_project from a subdirectory finds AC project root."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+
+        subdir = project_dir / "src" / "lib"
+        subdir.mkdir(parents=True)
+
+        proj = resolve_any_project(std, config, project_dir=str(subdir), initialize=False)
+        assert proj.mode is ProjectMode.account_centric
+        assert proj.project_path == project_dir.resolve()
+
+    def test_resolve_any_project_from_subdirectory_decentralized(self, config_file, tmp_home):
+        """resolve_any_project from a subdirectory finds decentralized project root."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / ".kanibako").mkdir()
+
+        subdir = project_dir / "src"
+        subdir.mkdir()
+
+        proj = resolve_any_project(std, config, project_dir=str(subdir), initialize=False)
+        assert proj.mode is ProjectMode.decentralized
+        assert proj.project_path == project_dir.resolve()
+
 
 class TestFindWorksetForPath:
     def test_find_workset_for_path_success(self, config_file, tmp_home):
@@ -413,6 +622,35 @@ class TestFindWorksetForPath:
 
         with pytest.raises(WorksetError, match="No workset found"):
             _find_workset_for_path(tmp_home / "random" / "dir", std)
+
+    def test_find_workset_for_path_root_returns_none_project(self, config_file, tmp_home):
+        """Path at workset root (not workspaces/) returns None project name."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import create_workset
+        ws_root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", ws_root, std)
+
+        found_ws, found_name = _find_workset_for_path(ws_root.resolve(), std)
+        assert found_ws.name == "my-set"
+        assert found_name is None
+
+    def test_find_workset_for_path_subdir_of_root_returns_none_project(self, config_file, tmp_home):
+        """Path in a non-workspaces subdirectory of workset root returns None."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import create_workset
+        ws_root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", ws_root, std)
+
+        subdir = ws_root / "vault" / "stuff"
+        subdir.mkdir(parents=True)
+
+        found_ws, found_name = _find_workset_for_path(subdir.resolve(), std)
+        assert found_ws.name == "my-set"
+        assert found_name is None
 
 
 class TestEnsureVaultSymlink:

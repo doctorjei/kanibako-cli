@@ -43,7 +43,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         return 1
 
     # Detect source mode and resolve.
-    source_mode = detect_project_mode(source_path, std, config)
+    source_mode = detect_project_mode(source_path, std, config).mode
 
     # Duplicate FROM workset: separate code path.
     if source_mode == ProjectMode.workset:
@@ -179,7 +179,7 @@ def _duplicate_to_workset(args, std, config) -> int:
         print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
         return 1
 
-    source_mode = detect_project_mode(source_path, std, config)
+    source_mode = detect_project_mode(source_path, std, config).mode
     if source_mode == ProjectMode.workset:
         print("Error: source is already a workset project.", file=sys.stderr)
         return 1
