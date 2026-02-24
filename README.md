@@ -95,6 +95,7 @@ Subsequent runs reuse the existing state.
 | `kanibako new --local <path>` | Create new decentralized project |
 | `kanibako vault [snapshot\|list\|restore\|prune]` | Vault snapshot management |
 | `kanibako env [list\|set\|get\|unset]` | Environment variable management |
+| `kanibako shared [init\|list]` | Shared cache management |
 | `kanibako setup` | Initial setup |
 | `kanibako upgrade [--check]` | Update from git |
 | `kanibako reauth` | Check auth and login if needed |
@@ -412,6 +413,15 @@ templates = "templates"
 pip = ".cache/pip"
 cargo = ".cargo/registry"
 npm = ".npm"
+```
+
+Shared caches are **lazy** — they are only mounted if the host directory exists.
+Use `kanibako shared init` to create them:
+
+```bash
+kanibako shared init pip              # create global cache
+kanibako shared init --agent claude plugins  # create agent-level cache
+kanibako shared list                  # show configured caches and status
 ```
 
 | Key | Default | Description |
