@@ -233,6 +233,8 @@ def resolve_project(
             vault_ro_path, vault_rw_path, project_path,
             vault_enabled=actual_vault_enabled,
         )
+        _global_shared = std.data_path / config.paths_shared / "global"
+        _local_shared = std.data_path / config.paths_shared
         write_project_meta(
             project_toml,
             mode="account_centric",
@@ -242,6 +244,10 @@ def resolve_project(
             vault_ro=str(vault_ro_path),
             vault_rw=str(vault_rw_path),
             vault_enabled=actual_vault_enabled,
+            metadata=str(metadata_path),
+            project_hash=phash,
+            global_shared=str(_global_shared),
+            local_shared=str(_local_shared),
         )
         is_new = True
 
@@ -273,6 +279,14 @@ def resolve_project(
                         file=sys.stderr,
                     )
 
+    # Resolve shared paths: prefer stored values (enables user overrides).
+    _computed_global_shared = std.data_path / config.paths_shared / "global"
+    _computed_local_shared = std.data_path / config.paths_shared
+    if meta and meta.get("global_shared"):
+        _computed_global_shared = Path(meta["global_shared"])
+    if meta and meta.get("local_shared"):
+        _computed_local_shared = Path(meta["local_shared"])
+
     return ProjectPaths(
         project_path=project_path,
         project_hash=phash,
@@ -284,8 +298,8 @@ def resolve_project(
         mode=ProjectMode.account_centric,
         layout=actual_layout,
         vault_enabled=actual_vault_enabled,
-        global_shared_path=std.data_path / config.paths_shared / "global",
-        local_shared_path=std.data_path / config.paths_shared,
+        global_shared_path=_computed_global_shared,
+        local_shared_path=_computed_local_shared,
     )
 
 
@@ -748,6 +762,8 @@ def resolve_workset_project(
     is_new = False
     if initialize and not shell_path.is_dir():
         _init_workset_project(std, metadata_path, shell_path)
+        _ws_global_shared = std.data_path / config.paths_shared / "global"
+        _ws_local_shared = Path(ws.root) / config.paths_shared
         write_project_meta(
             project_toml,
             mode="workset",
@@ -758,6 +774,10 @@ def resolve_workset_project(
             vault_rw=str(vault_rw_path),
             vault_enabled=actual_vault_enabled,
             auth=actual_auth,
+            metadata=str(metadata_path),
+            project_hash=phash,
+            global_shared=str(_ws_global_shared),
+            local_shared=str(_ws_local_shared),
         )
         is_new = True
 
@@ -769,6 +789,14 @@ def resolve_workset_project(
         # Convenience symlink when vault lives outside the workspace.
         if actual_vault_enabled:
             _ensure_vault_symlink(project_path, vault_ro_path)
+
+    # Resolve shared paths: prefer stored values (enables user overrides).
+    _ws_computed_global = std.data_path / config.paths_shared / "global"
+    _ws_computed_local = Path(ws.root) / config.paths_shared
+    if meta and meta.get("global_shared"):
+        _ws_computed_global = Path(meta["global_shared"])
+    if meta and meta.get("local_shared"):
+        _ws_computed_local = Path(meta["local_shared"])
 
     return ProjectPaths(
         project_path=project_path,
@@ -782,8 +810,8 @@ def resolve_workset_project(
         layout=actual_layout,
         vault_enabled=actual_vault_enabled,
         auth=actual_auth,
-        global_shared_path=std.data_path / config.paths_shared / "global",
-        local_shared_path=Path(ws.root) / config.paths_shared,
+        global_shared_path=_ws_computed_global,
+        local_shared_path=_ws_computed_local,
     )
 
 
@@ -1044,6 +1072,8 @@ def resolve_decentralized_project(
             vault_rw=str(vault_rw_path),
             vault_enabled=actual_vault_enabled,
             auth=actual_auth,
+            metadata=str(metadata_path),
+            project_hash=phash,
         )
         is_new = True
 

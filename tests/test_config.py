@@ -12,9 +12,12 @@ from kanibako.config import (
     load_merged_config,
     migrate_config,
     read_project_meta,
+    read_resource_overrides,
+    remove_resource_override,
     write_global_config,
     write_project_config,
     write_project_meta,
+    write_resource_override,
 )
 
 
@@ -207,6 +210,69 @@ class TestProjectMeta:
         assert meta["mode"] == "workset"
         assert meta["workspace"] == "/new"
 
+    def test_new_fields_round_trip(self, tmp_path):
+        """New fields (metadata, project_hash, global_shared, local_shared) round-trip."""
+        toml_path = tmp_path / "project.toml"
+        write_project_meta(
+            toml_path,
+            mode="account_centric",
+            layout="default",
+            workspace="/home/user/proj",
+            shell="/data/boxes/abc/shell",
+            vault_ro="/home/user/proj/vault/share-ro",
+            vault_rw="/home/user/proj/vault/share-rw",
+            metadata="/data/boxes/abc",
+            project_hash="abc123def456",
+            global_shared="/data/shared/global",
+            local_shared="/data/shared",
+        )
+
+        meta = read_project_meta(toml_path)
+        assert meta is not None
+        assert meta["metadata"] == "/data/boxes/abc"
+        assert meta["project_hash"] == "abc123def456"
+        assert meta["global_shared"] == "/data/shared/global"
+        assert meta["local_shared"] == "/data/shared"
+
+    def test_backward_compat_missing_new_fields(self, tmp_path):
+        """Old project.toml without new fields returns empty strings."""
+        toml_path = tmp_path / "project.toml"
+        # Write old-style TOML without new fields.
+        toml_path.write_text(
+            '[project]\nmode = "account_centric"\nlayout = "default"\n'
+            'vault_enabled = true\nauth = "shared"\n\n'
+            '[resolved]\nworkspace = "/old"\nshell = "/old/shell"\n'
+            'vault_ro = "/old/ro"\nvault_rw = "/old/rw"\n'
+        )
+
+        meta = read_project_meta(toml_path)
+        assert meta is not None
+        assert meta["metadata"] == ""
+        assert meta["project_hash"] == ""
+        assert meta["global_shared"] == ""
+        assert meta["local_shared"] == ""
+
+    def test_partial_new_fields(self, tmp_path):
+        """Only some new fields present — missing ones default to empty string."""
+        toml_path = tmp_path / "project.toml"
+        write_project_meta(
+            toml_path,
+            mode="workset",
+            layout="robust",
+            workspace="/ws/proj",
+            shell="/ws/proj/shell",
+            vault_ro="/ws/vault/proj/share-ro",
+            vault_rw="/ws/vault/proj/share-rw",
+            metadata="/ws/data/proj",
+            # project_hash, global_shared, local_shared not passed → default ""
+        )
+
+        meta = read_project_meta(toml_path)
+        assert meta["metadata"] == "/ws/data/proj"
+        assert meta["project_hash"] == ""
+        assert meta["global_shared"] == ""
+        assert meta["local_shared"] == ""
+
 
 class TestConfigFilePath:
     def test_returns_new_path_when_neither_exists(self, tmp_path):
@@ -343,3 +409,63 @@ class TestSharedCaches:
         merged = load_merged_config(global_path, project_path)
         assert merged.shared_caches == {"pip": ".cache/pip"}
         assert merged.container_image == "proj:v1"
+
+
+class TestResourceOverrides:
+    """Tests for resource scope override storage in project.toml."""
+
+    def _write_base_toml(self, path):
+        """Write a minimal project.toml for testing."""
+        write_project_meta(
+            path,
+            mode="account_centric", layout="default",
+            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
+        )
+
+    def test_round_trip(self, tmp_path):
+        """Write and read back resource overrides."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+        write_resource_override(p, "plugins/", "project")
+        write_resource_override(p, "settings.json", "shared")
+
+        overrides = read_resource_overrides(p)
+        assert overrides == {"plugins/": "project", "settings.json": "shared"}
+
+    def test_backward_compat_no_section(self, tmp_path):
+        """Old project.toml without [resource_overrides] returns empty dict."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+
+        overrides = read_resource_overrides(p)
+        assert overrides == {}
+
+    def test_remove_override(self, tmp_path):
+        """remove_resource_override removes a single override."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+        write_resource_override(p, "plugins/", "project")
+        write_resource_override(p, "cache/", "project")
+
+        assert remove_resource_override(p, "plugins/") is True
+        overrides = read_resource_overrides(p)
+        assert "plugins/" not in overrides
+        assert "cache/" in overrides
+
+    def test_remove_nonexistent(self, tmp_path):
+        """remove_resource_override returns False for missing key."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+
+        assert remove_resource_override(p, "nonexistent/") is False
+
+    def test_preserves_other_sections(self, tmp_path):
+        """Writing resource overrides doesn't clobber other sections."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+        write_resource_override(p, "plugins/", "project")
+
+        # Project metadata should still be intact.
+        meta = read_project_meta(p)
+        assert meta is not None
+        assert meta["mode"] == "account_centric"

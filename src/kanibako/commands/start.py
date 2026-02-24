@@ -349,6 +349,11 @@ def _run_container(
                         options="Z,U",
                     ))
 
+        # Resource scope mounts (SHARED / SEEDED from target.resource_mappings())
+        if target and proj.global_shared_path:
+            resource_mounts = _build_resource_mounts(proj, target, agent_id)
+            extra_mounts.extend(resource_mounts)
+
         # Read per-project and global environment variables.
         from kanibako.shellenv import merge_env
         global_env_path = std.data_path / "env"
@@ -383,3 +388,58 @@ def _run_container(
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
+
+
+def _build_resource_mounts(proj, target, agent_id: str):
+    """Build bind mounts from target resource_mappings() and per-project overrides.
+
+    - SHARED: mount shared dir over ``/home/agent/.claude/{path}`` (read-write).
+    - SEEDED: on first init, copy from shared to project-local; then no extra mount.
+    - PROJECT: no extra mount (already in shell_path).
+    """
+    import shutil
+
+    from kanibako.config import read_resource_overrides
+    from kanibako.targets.base import Mount, ResourceScope
+
+    mappings = target.resource_mappings()
+    if not mappings:
+        return []
+
+    shared_base = proj.global_shared_path
+    if not shared_base:
+        return []
+
+    project_toml = proj.metadata_path / "project.toml"
+    try:
+        overrides = read_resource_overrides(project_toml)
+    except Exception:
+        overrides = {}
+
+    mounts = []
+    for mapping in mappings:
+        # Apply per-project override if present.
+        scope_str = overrides.get(mapping.path)
+        scope = ResourceScope(scope_str) if scope_str else mapping.scope
+
+        if scope == ResourceScope.SHARED:
+            shared_dir = shared_base / agent_id / mapping.path
+            shared_dir.mkdir(parents=True, exist_ok=True)
+            mounts.append(Mount(
+                source=shared_dir,
+                destination=f"/home/agent/.claude/{mapping.path}",
+                options="Z,U",
+            ))
+        elif scope == ResourceScope.SEEDED:
+            local = proj.shell_path / ".claude" / mapping.path
+            if not local.exists():
+                src = shared_base / agent_id / mapping.path
+                if src.exists():
+                    if src.is_dir():
+                        shutil.copytree(str(src), str(local))
+                    else:
+                        local.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(src), str(local))
+        # PROJECT scope: no extra mount needed.
+
+    return mounts

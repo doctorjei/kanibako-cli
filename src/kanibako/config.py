@@ -207,6 +207,10 @@ def write_project_meta(
     vault_rw: str,
     vault_enabled: bool = True,
     auth: str = "shared",
+    metadata: str = "",
+    project_hash: str = "",
+    global_shared: str = "",
+    local_shared: str = "",
 ) -> None:
     """Write resolved project metadata to project.toml, preserving other sections."""
     existing: dict = {}
@@ -223,6 +227,10 @@ def write_project_meta(
     existing["resolved"]["shell"] = shell
     existing["resolved"]["vault_ro"] = vault_ro
     existing["resolved"]["vault_rw"] = vault_rw
+    existing["resolved"]["metadata"] = metadata
+    existing["resolved"]["project_hash"] = project_hash
+    existing["resolved"]["global_shared"] = global_shared
+    existing["resolved"]["local_shared"] = local_shared
 
     _write_toml(path, existing)
 
@@ -255,7 +263,18 @@ def read_project_meta(path: Path) -> dict | None:
         "shell": resolved_sec.get("shell", ""),
         "vault_ro": resolved_sec.get("vault_ro", ""),
         "vault_rw": resolved_sec.get("vault_rw", ""),
+        "metadata": resolved_sec.get("metadata", ""),
+        "project_hash": resolved_sec.get("project_hash", ""),
+        "global_shared": resolved_sec.get("global_shared", ""),
+        "local_shared": resolved_sec.get("local_shared", ""),
     }
+
+
+def _toml_key(k: str) -> str:
+    """Quote a TOML key if it contains characters outside [A-Za-z0-9_-]."""
+    if re.fullmatch(r"[A-Za-z0-9_-]+", k):
+        return k
+    return f'"{k}"'
 
 
 def _write_toml(path: Path, data: dict) -> None:
@@ -268,12 +287,13 @@ def _write_toml(path: Path, data: dict) -> None:
             lines.append("")
         lines.append(f"[{section_name}]")
         for k, v in section_data.items():
+            key = _toml_key(k)
             if isinstance(v, bool):
-                lines.append(f"{k} = {'true' if v else 'false'}")
+                lines.append(f"{key} = {'true' if v else 'false'}")
             elif isinstance(v, (int, float)):
-                lines.append(f"{k} = {v}")
+                lines.append(f"{key} = {v}")
             else:
-                lines.append(f'{k} = "{v}"')
+                lines.append(f'{key} = "{v}"')
     lines.append("")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines))
@@ -394,3 +414,54 @@ def load_project_overrides(path: Path) -> dict[str, str]:
         if val != getattr(defaults, fld.name):
             overrides[fld.name] = val
     return overrides
+
+
+# ---------------------------------------------------------------------------
+# Resource scope overrides (per-project)
+# ---------------------------------------------------------------------------
+
+def read_resource_overrides(path: Path) -> dict[str, str]:
+    """Read ``[resource_overrides]`` from a project.toml.
+
+    Returns a dict of resource_path → scope_string (e.g. ``"shared"``).
+    Returns an empty dict when the file or section is absent.
+    """
+    if not path.exists():
+        return {}
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
+    return {k: str(v) for k, v in data.get("resource_overrides", {}).items()}
+
+
+def write_resource_override(path: Path, resource_path: str, scope: str) -> None:
+    """Write a single resource scope override to ``[resource_overrides]`` in project.toml.
+
+    Preserves all other sections.
+    """
+    existing: dict = {}
+    if path.exists():
+        with open(path, "rb") as f:
+            existing = tomllib.load(f)
+    existing.setdefault("resource_overrides", {})
+    existing["resource_overrides"][resource_path] = scope
+    _write_toml(path, existing)
+
+
+def remove_resource_override(path: Path, resource_path: str) -> bool:
+    """Remove a single resource scope override from ``[resource_overrides]``.
+
+    Returns True if the override was found and removed, False otherwise.
+    """
+    if not path.exists():
+        return False
+    with open(path, "rb") as f:
+        existing = tomllib.load(f)
+    overrides = existing.get("resource_overrides", {})
+    if resource_path not in overrides:
+        return False
+    del overrides[resource_path]
+    if not overrides:
+        # Remove the empty section entirely.
+        existing.pop("resource_overrides", None)
+    _write_toml(path, existing)
+    return True

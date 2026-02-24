@@ -207,6 +207,7 @@ def start_mocks():
             proj.metadata_path.__truediv__ = MagicMock(return_value=MagicMock())
             proj.shell_path = MagicMock()
             proj.shell_path.__truediv__ = MagicMock(return_value=MagicMock())
+            proj.global_shared_path = None
             proj.local_shared_path = None
             m_resolve_any.return_value = proj
 

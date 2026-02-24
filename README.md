@@ -89,7 +89,7 @@ Subsequent runs reuse the existing state.
 | `kanibako status` | Show project status (mode, paths, lock, image) |
 | `kanibako config [key [value]]` | Get/set per-project configuration |
 | `kanibako image [list\|rebuild]` | Manage container images |
-| `kanibako box [list\|info\|orphan\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
+| `kanibako box [list\|info\|orphan\|get\|set\|resource\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
 | `kanibako workset [create\|list\|delete\|add\|remove\|info\|auth]` | Working set management |
 | `kanibako init --local [-p DIR]` | Initialize decentralized project |
 | `kanibako new --local <path>` | Create new decentralized project |
@@ -423,6 +423,40 @@ kanibako shared init pip              # create global cache
 kanibako shared init --agent claude plugins  # create agent-level cache
 kanibako shared list                  # show configured caches and status
 ```
+
+### Project settings
+
+Use `box get` / `box set` to inspect and override per-project paths and settings
+stored in `project.toml`:
+
+```bash
+kanibako box get shell                # print current shell path
+kanibako box get layout               # print layout (simple/default/robust)
+kanibako box set layout robust        # switch to robust layout
+kanibako box set auth distinct        # disable credential sharing
+kanibako box set shell /custom/shell  # override shell path (must be absolute)
+kanibako box set vault_enabled false  # disable vault
+```
+
+Settable keys: `shell`, `vault_ro`, `vault_rw`, `layout`, `vault_enabled`, `auth`.
+Readable keys include all settable keys plus: `mode`, `metadata`, `project_hash`,
+`global_shared`, `local_shared`.
+
+### Resource scoping
+
+Agent resources (plugins, settings, caches, session data) have a default sharing
+scope defined by the target plugin. Use `box resource` to view and override scopes
+per-project:
+
+```bash
+kanibako box resource list            # show all resources with default/effective scope
+kanibako box resource set plugins/ project  # make plugins project-local
+kanibako box resource set settings.json shared  # share settings across projects
+kanibako box resource unset plugins/  # remove override, revert to default
+```
+
+Scopes: `shared` (bind-mounted from global shared dir), `seeded` (copied from
+shared on first init, then project-local), `project` (no sharing).
 
 | Key | Default | Description |
 |-----|---------|-------------|

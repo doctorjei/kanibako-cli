@@ -1,13 +1,23 @@
-"""Parser setup, list, and info commands for kanibako box."""
+"""Parser setup, list, info, get, and set commands for kanibako box."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-from kanibako.config import config_file_path, load_config
+from kanibako.config import (
+    config_file_path,
+    load_config,
+    read_project_meta,
+    read_resource_overrides,
+    remove_resource_override,
+    write_project_meta,
+    write_resource_override,
+)
 from kanibako.errors import ProjectError
 from kanibako.paths import (
+    ProjectLayout,
     xdg,
     iter_projects,
     iter_workset_projects,
@@ -17,6 +27,16 @@ from kanibako.paths import (
 from kanibako.utils import short_hash
 
 _MODE_CHOICES = ["account-centric", "decentralized", "workset"]
+
+# Keys that box get can read.
+_GET_KEYS = [
+    "shell", "vault_ro", "vault_rw", "layout", "vault_enabled", "auth",
+    "metadata", "project_hash", "global_shared", "local_shared", "mode",
+]
+
+# Keys that box set can write (path keys, enum keys, bool keys).
+_SET_PATH_KEYS = {"shell", "vault_ro", "vault_rw"}
+_SET_KEYS = _SET_PATH_KEYS | {"layout", "vault_enabled", "auth"}
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -127,6 +147,58 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     info_p.add_argument("path", nargs="?", default=None, help="Project directory (default: cwd)")
     info_p.set_defaults(func=run_info)
+
+    # kanibako box get <key>
+    get_p = box_sub.add_parser(
+        "get",
+        help="Get a project setting value",
+        description="Print the current value of a project setting.",
+    )
+    get_p.add_argument("key", choices=_GET_KEYS, help="Setting key to read")
+    get_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    get_p.set_defaults(func=run_get)
+
+    # kanibako box set <key> <value>
+    set_p = box_sub.add_parser(
+        "set",
+        help="Override a project setting value",
+        description="Set or override a project setting in project.toml.",
+    )
+    set_p.add_argument("key", choices=sorted(_SET_KEYS), help="Setting key to write")
+    set_p.add_argument("value", help="New value for the setting")
+    set_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    set_p.set_defaults(func=run_set)
+
+    # kanibako box resource {list,set,unset}
+    resource_p = box_sub.add_parser(
+        "resource",
+        help="Manage per-project resource scope overrides",
+        description="View and override how agent resources are shared across projects.",
+    )
+    resource_sub = resource_p.add_subparsers(dest="resource_command", metavar="COMMAND")
+
+    res_list_p = resource_sub.add_parser(
+        "list", help="List resource scopes (default and effective)",
+    )
+    res_list_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    res_list_p.set_defaults(func=run_resource_list)
+
+    res_set_p = resource_sub.add_parser(
+        "set", help="Override a resource scope",
+    )
+    res_set_p.add_argument("path", help="Resource path (e.g. plugins/)")
+    res_set_p.add_argument("scope", choices=["shared", "project", "seeded"], help="Scope to set")
+    res_set_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    res_set_p.set_defaults(func=run_resource_set)
+
+    res_unset_p = resource_sub.add_parser(
+        "unset", help="Remove a resource scope override",
+    )
+    res_unset_p.add_argument("path", help="Resource path to unset")
+    res_unset_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    res_unset_p.set_defaults(func=run_resource_unset)
+
+    resource_p.set_defaults(func=run_resource_list)
 
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
@@ -254,6 +326,10 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"Shell:     {proj.shell_path}")
     print(f"Vault RO:  {proj.vault_ro_path}")
     print(f"Vault RW:  {proj.vault_rw_path}")
+    if proj.global_shared_path:
+        print(f"Shared:    {proj.global_shared_path}")
+    if proj.local_shared_path:
+        print(f"Local:     {proj.local_shared_path}")
 
     lock_file = proj.metadata_path / ".kanibako.lock"
     if lock_file.exists():
@@ -261,4 +337,221 @@ def run_info(args: argparse.Namespace) -> int:
     else:
         print("Lock:      none")
 
+    return 0
+
+
+def _validate_path_override(key: str, value: str) -> Path:
+    """Validate a path override value. Returns a resolved Path.
+
+    Rejects relative paths and paths whose parent directory doesn't exist.
+    """
+    p = Path(value)
+    if not p.is_absolute():
+        raise ValueError(f"{key}: path must be absolute, got '{value}'")
+    if not p.parent.exists():
+        raise ValueError(f"{key}: parent directory does not exist: {p.parent}")
+    return p
+
+
+def run_get(args: argparse.Namespace) -> int:
+    """Print the current value of a project setting."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    project_dir = getattr(args, "project", None)
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    project_toml = proj.metadata_path / "project.toml"
+    meta = read_project_meta(project_toml)
+    if meta is None:
+        print("Error: No project metadata found. Initialize the project first.", file=sys.stderr)
+        return 1
+
+    key = args.key
+    if key in meta:
+        value = meta[key]
+        # vault_enabled is a bool, print as lowercase string.
+        if isinstance(value, bool):
+            print(str(value).lower())
+        else:
+            print(value)
+    else:
+        print(f"Error: Unknown key '{key}'", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+def run_set(args: argparse.Namespace) -> int:
+    """Set or override a project setting in project.toml."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    project_dir = getattr(args, "project", None)
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    project_toml = proj.metadata_path / "project.toml"
+    meta = read_project_meta(project_toml)
+    if meta is None:
+        print("Error: No project metadata found. Initialize the project first.", file=sys.stderr)
+        return 1
+
+    key = args.key
+    value = args.value
+
+    # Validate based on key type.
+    try:
+        if key in _SET_PATH_KEYS:
+            _validate_path_override(key, value)
+        elif key == "layout":
+            try:
+                ProjectLayout(value)
+            except ValueError:
+                valid = ", ".join(e.value for e in ProjectLayout)
+                raise ValueError(f"layout: invalid value '{value}'. Valid: {valid}")
+        elif key == "vault_enabled":
+            if value.lower() in ("true", "1", "yes"):
+                value = True
+            elif value.lower() in ("false", "0", "no"):
+                value = False
+            else:
+                raise ValueError(f"vault_enabled: expected true/false, got '{value}'")
+        elif key == "auth":
+            if value not in ("shared", "distinct"):
+                raise ValueError(f"auth: expected shared/distinct, got '{value}'")
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    # Update the meta dict and write back.
+    meta[key] = value
+    write_project_meta(
+        project_toml,
+        mode=meta["mode"],
+        layout=meta["layout"],
+        workspace=meta["workspace"],
+        shell=meta["shell"],
+        vault_ro=meta["vault_ro"],
+        vault_rw=meta["vault_rw"],
+        vault_enabled=meta["vault_enabled"],
+        auth=meta["auth"],
+        metadata=meta.get("metadata", ""),
+        project_hash=meta.get("project_hash", ""),
+        global_shared=meta.get("global_shared", ""),
+        local_shared=meta.get("local_shared", ""),
+    )
+
+    print(f"{key} = {value}")
+    return 0
+
+
+def _resolve_target_for_project(proj):
+    """Resolve the target for a project (for resource_mappings)."""
+    from kanibako.targets import resolve_target
+    try:
+        return resolve_target(None)
+    except Exception:
+        return None
+
+
+def run_resource_list(args: argparse.Namespace) -> int:
+    """List resource scopes (default and effective) for a project."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    project_dir = getattr(args, "project", None)
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    target = _resolve_target_for_project(proj)
+    if target is None:
+        print("Error: No target detected. Cannot list resource mappings.", file=sys.stderr)
+        return 1
+
+    mappings = target.resource_mappings()
+    if not mappings:
+        print("No resource mappings defined for this target.")
+        return 0
+
+    project_toml = proj.metadata_path / "project.toml"
+    overrides = read_resource_overrides(project_toml)
+
+    print(f"{'PATH':<25} {'DEFAULT':<10} {'EFFECTIVE'}")
+    for m in mappings:
+        default_scope = m.scope.value
+        override = overrides.get(m.path)
+        effective = override if override else default_scope
+        marker = " *" if override else ""
+        print(f"{m.path:<25} {default_scope:<10} {effective}{marker}")
+
+    if overrides:
+        print("\n* = overridden")
+
+    return 0
+
+
+def run_resource_set(args: argparse.Namespace) -> int:
+    """Set a resource scope override."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    project_dir = getattr(args, "project", None)
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    target = _resolve_target_for_project(proj)
+    if target is None:
+        print("Error: No target detected.", file=sys.stderr)
+        return 1
+
+    # Validate path is in resource_mappings.
+    mappings = target.resource_mappings()
+    valid_paths = {m.path for m in mappings}
+    if args.path not in valid_paths:
+        print(f"Error: '{args.path}' is not a valid resource path.", file=sys.stderr)
+        print(f"Valid paths: {', '.join(sorted(valid_paths))}", file=sys.stderr)
+        return 1
+
+    project_toml = proj.metadata_path / "project.toml"
+    write_resource_override(project_toml, args.path, args.scope)
+    print(f"{args.path} = {args.scope}")
+    return 0
+
+
+def run_resource_unset(args: argparse.Namespace) -> int:
+    """Remove a resource scope override."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    project_dir = getattr(args, "project", None)
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    project_toml = proj.metadata_path / "project.toml"
+    if remove_resource_override(project_toml, args.path):
+        print(f"Removed override for {args.path}")
+    else:
+        print(f"No override found for {args.path}")
     return 0

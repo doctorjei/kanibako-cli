@@ -222,6 +222,61 @@ class TestProjectMeta:
         assert meta is not None
         assert meta["mode"] == "account_centric"
 
+    def test_stored_shared_paths_used(self, config_file, tmp_home, credentials_dir):
+        """Stored global_shared/local_shared in project.toml override computed values."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Override shared paths in project.toml.
+        custom_global = tmp_home / "custom_global_shared"
+        custom_local = tmp_home / "custom_local_shared"
+        from kanibako.config import read_project_meta, write_project_meta
+        project_toml = proj.metadata_path / "project.toml"
+        meta = read_project_meta(project_toml)
+        write_project_meta(
+            project_toml,
+            mode=meta["mode"], layout=meta["layout"],
+            workspace=meta["workspace"], shell=meta["shell"],
+            vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
+            vault_enabled=meta["vault_enabled"], auth=meta["auth"],
+            metadata=meta["metadata"], project_hash=meta["project_hash"],
+            global_shared=str(custom_global),
+            local_shared=str(custom_local),
+        )
+
+        proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
+        assert proj2.global_shared_path == custom_global
+        assert proj2.local_shared_path == custom_local
+
+    def test_shared_paths_fallback_when_missing(self, config_file, tmp_home, credentials_dir):
+        """When stored shared paths are empty, fall back to computed values."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+
+        # Initialize to create metadata, then clear stored shared paths.
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        project_toml = proj.metadata_path / "project.toml"
+        from kanibako.config import read_project_meta, write_project_meta
+        meta = read_project_meta(project_toml)
+        write_project_meta(
+            project_toml,
+            mode=meta["mode"], layout=meta["layout"],
+            workspace=meta["workspace"], shell=meta["shell"],
+            vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
+            vault_enabled=meta["vault_enabled"], auth=meta["auth"],
+            metadata=meta["metadata"], project_hash=meta["project_hash"],
+            global_shared="",
+            local_shared="",
+        )
+
+        proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
+        # Should use computed defaults (not None, not empty).
+        assert proj2.global_shared_path == std.data_path / config.paths_shared / "global"
+        assert proj2.local_shared_path == std.data_path / config.paths_shared
+
 
 class TestDetectProjectMode:
     def test_returns_detection_result(self, config_file, tmp_home):
