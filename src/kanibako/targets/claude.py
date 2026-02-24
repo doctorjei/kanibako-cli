@@ -112,7 +112,7 @@ class ClaudeTarget(Target):
         return _AgentConfig(
             name="Claude Code",
             shell="standard",
-            state={"access": "permissive"},
+            state={"model": "opus", "access": "permissive"},
             shared_caches={"plugins": ".claude/plugins"},
         )
 

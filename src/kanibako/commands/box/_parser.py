@@ -111,6 +111,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     duplicate_p.set_defaults(func=run_duplicate)
 
+    # kanibako box orphan
+    orphan_p = box_sub.add_parser(
+        "orphan",
+        help="List orphaned projects (metadata without a workspace)",
+        description="List projects whose workspace directory no longer exists.",
+    )
+    orphan_p.set_defaults(func=run_orphan)
+
     # kanibako box info
     info_p = box_sub.add_parser(
         "info",
@@ -176,6 +184,51 @@ def run_list(args: argparse.Namespace) -> int:
         else:
             print("  (no projects)")
 
+    return 0
+
+
+def run_orphan(args: argparse.Namespace) -> int:
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    projects = iter_projects(std, config)
+    ws_data = iter_workset_projects(std, config)
+
+    # Account-centric orphans: path missing or no breadcrumb.
+    ac_orphans = []
+    for metadata_path, project_path in projects:
+        if project_path is None or not project_path.is_dir():
+            ac_orphans.append((metadata_path, project_path))
+
+    # Workset orphans: workspace directory missing but project data exists.
+    ws_orphans: list[tuple[str, str]] = []
+    for ws_name, ws, project_list in ws_data:
+        for proj_name, status in project_list:
+            if status == "missing":
+                ws_orphans.append((ws_name, proj_name))
+
+    if not ac_orphans and not ws_orphans:
+        print("No orphaned projects found.")
+        return 0
+
+    if ac_orphans:
+        print(f"{'HASH':<10} {'PATH'}")
+        for metadata_path, project_path in ac_orphans:
+            h8 = short_hash(metadata_path.name)
+            label = str(project_path) if project_path else "(no breadcrumb)"
+            print(f"{h8:<10} {label}")
+
+    if ws_orphans:
+        if ac_orphans:
+            print()
+        print(f"{'WORKSET':<18} {'PROJECT'}")
+        for ws_name, proj_name in ws_orphans:
+            print(f"{ws_name:<18} {proj_name}")
+
+    total = len(ac_orphans) + len(ws_orphans)
+    print(f"\n{total} orphaned project(s).")
+    print("Use 'kanibako box migrate' to remap, or 'kanibako box purge' to remove.")
     return 0
 
 

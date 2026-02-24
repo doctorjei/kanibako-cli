@@ -107,7 +107,7 @@ class TestInstallAgentTomls:
         assert claude_toml.is_file()
         cfg = load_agent_config(claude_toml)
         assert cfg.name == "Claude Code"
-        assert cfg.state == {"access": "permissive"}
+        assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
 
     def test_does_not_overwrite_existing_agent_toml(self, tmp_home):

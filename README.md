@@ -89,7 +89,7 @@ Subsequent runs reuse the existing state.
 | `kanibako status` | Show project status (mode, paths, lock, image) |
 | `kanibako config [key [value]]` | Get/set per-project configuration |
 | `kanibako image [list\|rebuild]` | Manage container images |
-| `kanibako box [list\|info\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
+| `kanibako box [list\|info\|orphan\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
 | `kanibako workset [create\|list\|delete\|add\|remove\|info\|auth]` | Working set management |
 | `kanibako init --local [-p DIR]` | Initialize decentralized project |
 | `kanibako new --local <path>` | Create new decentralized project |
@@ -169,6 +169,17 @@ kanibako box migrate --to workset --workset myws  # any -> workset
 ```
 
 Or copy without modifying the source with `box duplicate --to ...`.
+
+### Orphan detection
+
+Find projects whose workspace directory no longer exists:
+
+```bash
+kanibako box orphan
+```
+
+Use `box migrate` to remap orphaned data to a new path, or `box purge` to
+remove it.
 
 ## Container Images
 
@@ -266,7 +277,8 @@ shell = "standard"          # template variant (see Shell Templates)
 default_args = []           # extra CLI args prepended on every launch
 
 [state]
-# model = "opus"            # target-specific knobs (e.g. --model for Claude)
+model = "opus"              # target-specific knobs (e.g. --model for Claude)
+access = "permissive"
 
 [env]
 # KEY = "value"             # raw env vars injected into the container

@@ -55,6 +55,109 @@ class TestBoxList:
         assert "missing" in out
 
 
+class TestBoxOrphan:
+    def test_orphan_no_projects(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_orphan
+
+        args = argparse.Namespace()
+        rc = run_orphan(args)
+        assert rc == 0
+        assert "No orphaned projects found" in capsys.readouterr().out
+
+    def test_orphan_no_orphans(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_orphan
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace()
+        rc = run_orphan(args)
+        assert rc == 0
+        assert "No orphaned projects found" in capsys.readouterr().out
+
+    def test_orphan_detects_missing_path(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_orphan
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        gone_dir = tmp_home / "gone_project"
+        gone_dir.mkdir()
+        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+        shutil.rmtree(gone_dir)
+
+        args = argparse.Namespace()
+        rc = run_orphan(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "gone_project" in out
+        assert "1 orphaned project(s)" in out
+
+    def test_orphan_skips_healthy_projects(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_orphan
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # One healthy, one orphaned.
+        ok_dir = tmp_home / "alive_proj"
+        ok_dir.mkdir()
+        resolve_project(std, config, project_dir=str(ok_dir), initialize=True)
+
+        gone_dir = tmp_home / "vanished_proj"
+        gone_dir.mkdir()
+        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+        shutil.rmtree(gone_dir)
+
+        args = argparse.Namespace()
+        rc = run_orphan(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "vanished_proj" in out
+        assert "alive_proj" not in out
+        assert "1 orphaned project(s)" in out
+
+    def test_orphan_detects_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_orphan
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        ws, _ = _make_workset(tmp_home, std, "orphan-ws")
+        source = tmp_home / "orphan_src"
+        source.mkdir()
+        add_project(ws, "orphan-proj", source)
+        # Remove the workspace dir.
+        shutil.rmtree(ws.workspaces_dir / "orphan-proj")
+
+        args = argparse.Namespace()
+        rc = run_orphan(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "orphan-ws" in out
+        assert "orphan-proj" in out
+        assert "1 orphaned project(s)" in out
+
+    def test_orphan_shows_hint(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_orphan
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        gone_dir = tmp_home / "hint_project"
+        gone_dir.mkdir()
+        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+        shutil.rmtree(gone_dir)
+
+        args = argparse.Namespace()
+        run_orphan(args)
+        out = capsys.readouterr().out
+        assert "migrate" in out
+        assert "purge" in out
+
+
 class TestBoxMigrate:
     def test_migrate_success(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate

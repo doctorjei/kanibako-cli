@@ -393,7 +393,7 @@ class TestGenerateAgentConfig:
         cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
         assert cfg.shell == "standard"
-        assert cfg.state == {"access": "permissive"}
+        assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
         assert cfg.default_args == []
         assert cfg.env == {}
