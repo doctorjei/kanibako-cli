@@ -30,6 +30,20 @@ class ResourceMapping:
 
 
 @dataclass(frozen=True)
+class TargetSetting:
+    """Declares a runtime setting that a target plugin supports.
+
+    Used by ``setting_descriptors()`` to advertise what settings exist,
+    their defaults, and (optionally) valid choices.
+    """
+
+    key: str                     # Setting key in agent state dict (e.g. "model")
+    description: str             # Human-readable description
+    default: str = ""            # Default value when not overridden
+    choices: tuple[str, ...] = ()  # Valid values; empty = freeform
+
+
+@dataclass(frozen=True)
 class Mount:
     """A volume mount for a container."""
 
@@ -119,6 +133,16 @@ class Target(ABC):
 
         Paths are relative to the agent's config directory within the
         project shell (e.g. ".claude/" for ClaudeTarget).
+        """
+        return []
+
+    def setting_descriptors(self) -> list[TargetSetting]:
+        """Declare what runtime settings this target supports.
+
+        Returns a list of TargetSetting entries describing the key name,
+        default value, valid choices, and human-readable description.
+
+        The default returns an empty list (no declared settings).
         """
         return []
 

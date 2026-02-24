@@ -11,9 +11,12 @@ from kanibako.config import (
     load_config,
     read_project_meta,
     read_resource_overrides,
+    read_target_settings,
     remove_resource_override,
+    remove_target_setting,
     write_project_meta,
     write_resource_override,
+    write_target_setting,
 )
 from kanibako.errors import ProjectError
 from kanibako.paths import (
@@ -199,6 +202,44 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     res_unset_p.set_defaults(func=run_resource_unset)
 
     resource_p.set_defaults(func=run_resource_list)
+
+    # kanibako box settings {list,get,set,unset}
+    settings_p = box_sub.add_parser(
+        "settings",
+        help="Manage per-project target setting overrides",
+        description="View and override target plugin settings (model, access, etc.).",
+    )
+    settings_sub = settings_p.add_subparsers(dest="settings_command", metavar="COMMAND")
+
+    set_list_p = settings_sub.add_parser(
+        "list", help="List target settings (default and effective)",
+    )
+    set_list_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    set_list_p.set_defaults(func=run_settings_list)
+
+    set_get_p = settings_sub.add_parser(
+        "get", help="Get a target setting value",
+    )
+    set_get_p.add_argument("key", help="Setting key (e.g. model)")
+    set_get_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    set_get_p.set_defaults(func=run_settings_get)
+
+    set_set_p = settings_sub.add_parser(
+        "set", help="Override a target setting",
+    )
+    set_set_p.add_argument("key", help="Setting key (e.g. model)")
+    set_set_p.add_argument("value", help="New value")
+    set_set_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    set_set_p.set_defaults(func=run_settings_set)
+
+    set_unset_p = settings_sub.add_parser(
+        "unset", help="Remove a target setting override",
+    )
+    set_unset_p.add_argument("key", help="Setting key to unset")
+    set_unset_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
+    set_unset_p.set_defaults(func=run_settings_unset)
+
+    settings_p.set_defaults(func=run_settings_list)
 
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
@@ -554,4 +595,160 @@ def run_resource_unset(args: argparse.Namespace) -> int:
         print(f"Removed override for {args.path}")
     else:
         print(f"No override found for {args.path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# box settings {list, get, set, unset}
+# ---------------------------------------------------------------------------
+
+def _resolve_project_and_target(args):
+    """Resolve project and target for settings commands.
+
+    Returns (proj, target, project_toml) or prints an error and returns None.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    project_dir = getattr(args, "project", None)
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+
+    target = _resolve_target_for_project(proj)
+    if target is None:
+        print("Error: No target detected.", file=sys.stderr)
+        return None
+
+    project_toml = proj.metadata_path / "project.toml"
+    return proj, target, project_toml
+
+
+def run_settings_list(args: argparse.Namespace) -> int:
+    """List target settings (default, effective, and source)."""
+    result = _resolve_project_and_target(args)
+    if result is None:
+        return 1
+    proj, target, project_toml = result
+
+    from kanibako.agents import load_agent_config
+    from kanibako.agents import agent_toml_path
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    agent_cfg_path = agent_toml_path(std.data_path, target.name, config.paths_agents)
+    agent_cfg = load_agent_config(agent_cfg_path)
+
+    descriptors = target.setting_descriptors()
+    if not descriptors:
+        print("No settings defined for this target.")
+        return 0
+
+    overrides = read_target_settings(project_toml)
+
+    print(f"{'KEY':<15} {'DEFAULT':<15} {'EFFECTIVE':<15} {'SOURCE'}")
+    for d in descriptors:
+        default = d.default
+        project_override = overrides.get(d.key)
+        agent_value = agent_cfg.state.get(d.key)
+
+        if project_override is not None:
+            effective = project_override
+            source = "project"
+        elif agent_value is not None:
+            effective = agent_value
+            source = "agent"
+        else:
+            effective = default
+            source = "default"
+
+        print(f"{d.key:<15} {default:<15} {effective:<15} {source}")
+
+    return 0
+
+
+def run_settings_get(args: argparse.Namespace) -> int:
+    """Get the effective value of a target setting."""
+    result = _resolve_project_and_target(args)
+    if result is None:
+        return 1
+    proj, target, project_toml = result
+
+    key = args.key
+    descriptors = {d.key: d for d in target.setting_descriptors()}
+    if key not in descriptors:
+        print(f"Error: Unknown setting '{key}'.", file=sys.stderr)
+        valid = ", ".join(sorted(descriptors))
+        if valid:
+            print(f"Valid settings: {valid}", file=sys.stderr)
+        return 1
+
+    from kanibako.agents import load_agent_config
+    from kanibako.agents import agent_toml_path
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    agent_cfg_path = agent_toml_path(std.data_path, target.name, config.paths_agents)
+    agent_cfg = load_agent_config(agent_cfg_path)
+
+    overrides = read_target_settings(project_toml)
+    d = descriptors[key]
+
+    project_override = overrides.get(key)
+    if project_override is not None:
+        print(project_override)
+    elif key in agent_cfg.state:
+        print(agent_cfg.state[key])
+    else:
+        print(d.default)
+
+    return 0
+
+
+def run_settings_set(args: argparse.Namespace) -> int:
+    """Set a per-project target setting override."""
+    result = _resolve_project_and_target(args)
+    if result is None:
+        return 1
+    proj, target, project_toml = result
+
+    key = args.key
+    value = args.value
+    descriptors = {d.key: d for d in target.setting_descriptors()}
+
+    if key not in descriptors:
+        print(f"Error: Unknown setting '{key}'.", file=sys.stderr)
+        valid = ", ".join(sorted(descriptors))
+        if valid:
+            print(f"Valid settings: {valid}", file=sys.stderr)
+        return 1
+
+    d = descriptors[key]
+    if d.choices and value not in d.choices:
+        print(
+            f"Error: Invalid value '{value}' for '{key}'. "
+            f"Valid: {', '.join(d.choices)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    write_target_setting(project_toml, key, value)
+    print(f"{key} = {value}")
+    return 0
+
+
+def run_settings_unset(args: argparse.Namespace) -> int:
+    """Remove a per-project target setting override."""
+    result = _resolve_project_and_target(args)
+    if result is None:
+        return 1
+    proj, target, project_toml = result
+
+    if remove_target_setting(project_toml, args.key):
+        print(f"Removed override for {args.key}")
+    else:
+        print(f"No override found for {args.key}")
     return 0

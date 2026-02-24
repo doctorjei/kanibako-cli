@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
-from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target
+from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
 
 if TYPE_CHECKING:
     from kanibako.agents import AgentConfig
@@ -228,6 +228,26 @@ class ClaudeTarget(Target):
             ResourceMapping("debug/", ResourceScope.PROJECT, "Debug logs"),
             ResourceMapping("paste-cache/", ResourceScope.PROJECT, "Clipboard state"),
             ResourceMapping("shell-snapshots/", ResourceScope.PROJECT, "Shell state snapshots"),
+        ]
+
+    def setting_descriptors(self) -> list[TargetSetting]:
+        """Declare Claude Code runtime settings.
+
+        - ``model``: freeform (Claude adds models regularly).
+        - ``access``: constrained to permissive/default.
+        """
+        return [
+            TargetSetting(
+                key="model",
+                description="Claude model to use",
+                default="opus",
+            ),
+            TargetSetting(
+                key="access",
+                description="Permission mode",
+                default="permissive",
+                choices=("permissive", "default"),
+            ),
         ]
 
     def refresh_credentials(self, home: Path) -> None:

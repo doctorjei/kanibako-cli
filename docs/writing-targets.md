@@ -41,6 +41,7 @@ class MyTarget(Target):
                        is_new_project, extra_args) -> list[str]: ...
     def generate_agent_config(self) -> AgentConfig: ...
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]: ...
+    def setting_descriptors(self) -> list[TargetSetting]: ...
 ```
 
 ### Supporting dataclasses
@@ -53,6 +54,13 @@ path string, and `options` is an optional mount option like `"ro"`.  Call
 **`AgentInstall(name, binary, install_dir)`** — Describes where the agent
 lives on the host.  `binary` is the host path to the executable (may be a
 symlink).  `install_dir` is the root of the installation tree.
+
+**`TargetSetting(key, description, default="", choices=())`** — Declares a
+runtime setting that the target supports.  `key` is the setting name (must
+match a key in the agent TOML `[state]` section).  `description` is
+human-readable.  `default` is the value used when neither the agent TOML
+nor a project override specifies one.  `choices` constrains allowed values;
+leave empty for freeform input.
 
 ## Method reference
 
@@ -324,6 +332,40 @@ def resource_mappings(self) -> list[ResourceMapping]:
         ResourceMapping("history/", ResourceScope.PROJECT, "Session history"),
     ]
 ```
+
+### `setting_descriptors() -> list[TargetSetting]`
+
+*Optional.* Declare what runtime settings this target supports, along with
+defaults and (optionally) valid choices.
+
+Users can override settings per-project via `kanibako box settings set`.
+The effective value follows a 3-tier resolution: project override > agent
+config state > target default.
+
+```python
+from kanibako.targets.base import TargetSetting
+
+def setting_descriptors(self) -> list[TargetSetting]:
+    return [
+        TargetSetting(
+            key="model",
+            description="AI model to use",
+            default="default-model",
+        ),
+        TargetSetting(
+            key="access",
+            description="Permission mode",
+            default="permissive",
+            choices=("permissive", "default"),  # constrained
+        ),
+    ]
+```
+
+Freeform settings (empty `choices`) accept any value.  Constrained settings
+reject values not in the `choices` tuple at the CLI level.
+
+The default returns an empty list (no declared settings).  When no
+descriptors exist, `apply_state()` receives the agent config state as-is.
 
 ## Discovery and registration
 

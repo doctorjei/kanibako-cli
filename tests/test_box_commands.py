@@ -1,4 +1,4 @@
-"""Tests for kanibako box get/set/resource commands."""
+"""Tests for kanibako box get/set/resource/settings commands."""
 
 from __future__ import annotations
 
@@ -11,11 +11,15 @@ from kanibako.commands.box._parser import (
     run_resource_set,
     run_resource_unset,
     run_set,
+    run_settings_get,
+    run_settings_list,
+    run_settings_set,
+    run_settings_unset,
     _validate_path_override,
 )
-from kanibako.config import load_config, read_project_meta, read_resource_overrides
+from kanibako.config import load_config, read_project_meta, read_resource_overrides, read_target_settings
 from kanibako.paths import load_std_paths, resolve_project
-from kanibako.targets.base import ResourceMapping, ResourceScope
+from kanibako.targets.base import ResourceMapping, ResourceScope, TargetSetting
 
 import pytest
 
@@ -266,5 +270,188 @@ class TestBoxResourceUnset:
 
         args = argparse.Namespace(path="nonexistent/", project=project_dir)
         rc = run_resource_unset(args)
+        assert rc == 0
+        assert "No override" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Settings helpers
+# ---------------------------------------------------------------------------
+
+def _mock_target_with_settings():
+    """Return a mock target with setting_descriptors."""
+    target = MagicMock()
+    target.name = "claude"
+    target.setting_descriptors.return_value = [
+        TargetSetting(key="model", description="Claude model", default="opus"),
+        TargetSetting(key="access", description="Permission mode", default="permissive",
+                      choices=("permissive", "default")),
+    ]
+    target.resource_mappings.return_value = []
+    return target
+
+
+class TestBoxSettingsList:
+    def test_lists_settings(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(project=project_dir)
+            rc = run_settings_list(args)
+
+        assert rc == 0
+        output = capsys.readouterr().out
+        assert "model" in output
+        assert "access" in output
+        assert "opus" in output
+        assert "permissive" in output
+
+
+class TestBoxSettingsGet:
+    def test_get_returns_effective_value(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="model", project=project_dir)
+            rc = run_settings_get(args)
+
+        assert rc == 0
+        # Default value when no agent config or project override
+        assert "opus" in capsys.readouterr().out
+
+    def test_get_rejects_unknown_key(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="nonexistent", project=project_dir)
+            rc = run_settings_get(args)
+
+        assert rc == 1
+        assert "Unknown setting" in capsys.readouterr().err
+
+
+class TestBoxSettingsSet:
+    def test_set_freeform_value(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="model", value="sonnet", project=project_dir)
+            rc = run_settings_set(args)
+
+        assert rc == 0
+        settings = read_target_settings(proj.metadata_path / "project.toml")
+        assert settings["model"] == "sonnet"
+
+    def test_set_constrained_value(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="access", value="default", project=project_dir)
+            rc = run_settings_set(args)
+
+        assert rc == 0
+        settings = read_target_settings(proj.metadata_path / "project.toml")
+        assert settings["access"] == "default"
+
+    def test_set_rejects_invalid_choice(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="access", value="banana", project=project_dir)
+            rc = run_settings_set(args)
+
+        assert rc == 1
+        assert "Invalid value" in capsys.readouterr().err
+
+    def test_set_rejects_unknown_key(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="nonexistent", value="foo", project=project_dir)
+            rc = run_settings_set(args)
+
+        assert rc == 1
+        assert "Unknown setting" in capsys.readouterr().err
+
+
+class TestBoxSettingsUnset:
+    def test_unset_existing(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Set first, then unset.
+        from kanibako.config import write_target_setting
+        project_toml = proj.metadata_path / "project.toml"
+        write_target_setting(project_toml, "model", "sonnet")
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="model", project=project_dir)
+            rc = run_settings_unset(args)
+
+        assert rc == 0
+        assert "Removed" in capsys.readouterr().out
+        settings = read_target_settings(project_toml)
+        assert "model" not in settings
+
+    def test_unset_nonexistent(self, config_file, tmp_home, credentials_dir, capsys):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        with patch(
+            "kanibako.commands.box._parser._resolve_target_for_project",
+            return_value=_mock_target_with_settings(),
+        ):
+            args = argparse.Namespace(key="nonexistent", project=project_dir)
+            rc = run_settings_unset(args)
+
         assert rc == 0
         assert "No override" in capsys.readouterr().out

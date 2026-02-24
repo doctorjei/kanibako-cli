@@ -26,7 +26,8 @@ small and toolchain-focused.
 - **Shell customization** — per-project environment variables (`kanibako env`)
   and drop-in init scripts (`shell.d/`)
 - **Agent configuration** — per-agent TOML config with template variant,
-  default args, state knobs, env vars, and shared caches
+  default args, state knobs, env vars, and shared caches; per-project setting
+  overrides via `box settings`
 - **Shell templates** — layered home directory templates applied on first
   project init, with agent-specific and general variants
 - **Shared caches** — global download caches (pip, cargo, npm, etc.) shared
@@ -89,7 +90,7 @@ Subsequent runs reuse the existing state.
 | `kanibako status` | Show project status (mode, paths, lock, image) |
 | `kanibako config [key [value]]` | Get/set per-project configuration |
 | `kanibako image [list\|rebuild]` | Manage container images |
-| `kanibako box [list\|info\|orphan\|get\|set\|resource\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
+| `kanibako box [list\|info\|orphan\|get\|set\|resource\|settings\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
 | `kanibako workset [create\|list\|delete\|add\|remove\|info\|auth]` | Working set management |
 | `kanibako init --local [-p DIR]` | Initialize decentralized project |
 | `kanibako new --local <path>` | Create new decentralized project |
@@ -458,6 +459,25 @@ kanibako box resource unset plugins/  # remove override, revert to default
 Scopes: `shared` (bind-mounted from global shared dir), `seeded` (copied from
 shared on first init, then project-local), `project` (no sharing).
 
+### Target settings
+
+Target plugins declare runtime settings (like model and permission mode) with
+defaults and optional constrained choices.  Use `box settings` to view effective
+values and override them per-project:
+
+```bash
+kanibako box settings list             # show settings with default/effective/source
+kanibako box settings get model        # print effective value
+kanibako box settings set model sonnet # per-project override
+kanibako box settings set access default  # constrained: permissive or default
+kanibako box settings unset model      # remove override, revert to agent/default
+```
+
+Effective value resolution (highest wins):
+1. Per-project override (`[target_settings]` in project.toml)
+2. Agent config state (`[state]` in agent TOML)
+3. Target plugin default (from `setting_descriptors()`)
+
 | Key | Default | Description |
 |-----|---------|-------------|
 | `container_image` | `ghcr.io/doctorjei/kanibako-base:latest` | Container image |
@@ -471,7 +491,7 @@ shared on first init, then project-local), `project` (no sharing).
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (845)
+pytest tests/ -v                    # unit tests (976)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-from kanibako.targets.base import AgentInstall, ResourceMapping, ResourceScope
+from kanibako.targets.base import AgentInstall, ResourceMapping, ResourceScope, TargetSetting
 from kanibako.targets.claude import ClaudeTarget
 
 
@@ -385,6 +385,28 @@ class TestResourceMappings:
         ]
         for path in project_paths:
             assert mappings[path] == ResourceScope.PROJECT, f"{path} should be PROJECT"
+
+
+class TestSettingDescriptors:
+    def test_returns_list_of_target_settings(self):
+        t = ClaudeTarget()
+        descriptors = t.setting_descriptors()
+        assert isinstance(descriptors, list)
+        assert all(isinstance(d, TargetSetting) for d in descriptors)
+
+    def test_model_setting(self):
+        t = ClaudeTarget()
+        descriptors = {d.key: d for d in t.setting_descriptors()}
+        assert "model" in descriptors
+        assert descriptors["model"].default == "opus"
+        assert descriptors["model"].choices == ()  # freeform
+
+    def test_access_setting(self):
+        t = ClaudeTarget()
+        descriptors = {d.key: d for d in t.setting_descriptors()}
+        assert "access" in descriptors
+        assert descriptors["access"].default == "permissive"
+        assert descriptors["access"].choices == ("permissive", "default")
 
 
 class TestGenerateAgentConfig:

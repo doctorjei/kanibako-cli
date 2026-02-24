@@ -306,7 +306,8 @@ def _run_container(
 
         # Build CLI args via target, merging agent default_args and state
         if target:
-            state_args, state_env = target.apply_state(agent_cfg.state)
+            effective_state = _build_effective_state(target, agent_cfg, project_toml)
+            state_args, state_env = target.apply_state(effective_state)
             all_extra = list(agent_cfg.default_args) + list(extra_args)
             cli_args = target.build_cli_args(
                 safe_mode=safe_mode,
@@ -388,6 +389,39 @@ def _run_container(
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
+
+
+def _build_effective_state(target, agent_cfg, project_toml) -> dict[str, str]:
+    """Merge target defaults, agent config state, and project overrides.
+
+    Resolution order (highest wins):
+      1. Project overrides (``[target_settings]`` in project.toml)
+      2. Agent config state (``[state]`` in agent TOML)
+      3. Target defaults (from ``setting_descriptors()``)
+
+    Undeclared keys in agent state are passed through unchanged.
+    """
+    from kanibako.config import read_target_settings
+
+    descriptors = target.setting_descriptors()
+    if not descriptors:
+        return dict(agent_cfg.state)
+
+    try:
+        project_overrides = read_target_settings(project_toml)
+    except Exception:
+        project_overrides = {}
+
+    # Start with target defaults.
+    effective: dict[str, str] = {d.key: d.default for d in descriptors}
+
+    # Layer agent config state (all keys, including undeclared).
+    effective.update(agent_cfg.state)
+
+    # Layer project overrides (only declared keys survive validation at CLI).
+    effective.update(project_overrides)
+
+    return effective
 
 
 def _build_resource_mounts(proj, target, agent_id: str):

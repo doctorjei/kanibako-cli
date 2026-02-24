@@ -13,11 +13,14 @@ from kanibako.config import (
     migrate_config,
     read_project_meta,
     read_resource_overrides,
+    read_target_settings,
     remove_resource_override,
+    remove_target_setting,
     write_global_config,
     write_project_config,
     write_project_meta,
     write_resource_override,
+    write_target_setting,
 )
 
 
@@ -464,6 +467,66 @@ class TestResourceOverrides:
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
+
+        # Project metadata should still be intact.
+        meta = read_project_meta(p)
+        assert meta is not None
+        assert meta["mode"] == "account_centric"
+
+
+class TestTargetSettings:
+    """Tests for target setting override storage in project.toml."""
+
+    def _write_base_toml(self, path):
+        """Write a minimal project.toml for testing."""
+        write_project_meta(
+            path,
+            mode="account_centric", layout="default",
+            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
+        )
+
+    def test_round_trip(self, tmp_path):
+        """Write and read back target settings."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+        write_target_setting(p, "model", "sonnet")
+        write_target_setting(p, "access", "default")
+
+        settings = read_target_settings(p)
+        assert settings == {"model": "sonnet", "access": "default"}
+
+    def test_backward_compat_no_section(self, tmp_path):
+        """Old project.toml without [target_settings] returns empty dict."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+
+        settings = read_target_settings(p)
+        assert settings == {}
+
+    def test_remove_setting(self, tmp_path):
+        """remove_target_setting removes a single setting."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+        write_target_setting(p, "model", "sonnet")
+        write_target_setting(p, "access", "default")
+
+        assert remove_target_setting(p, "model") is True
+        settings = read_target_settings(p)
+        assert "model" not in settings
+        assert "access" in settings
+
+    def test_remove_nonexistent(self, tmp_path):
+        """remove_target_setting returns False for missing key."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+
+        assert remove_target_setting(p, "nonexistent") is False
+
+    def test_preserves_other_sections(self, tmp_path):
+        """Writing target settings doesn't clobber other sections."""
+        p = tmp_path / "project.toml"
+        self._write_base_toml(p)
+        write_target_setting(p, "model", "haiku")
 
         # Project metadata should still be intact.
         meta = read_project_meta(p)

@@ -1,11 +1,12 @@
-"""Tests for resource scoping: _build_resource_mounts and resource overrides."""
+"""Tests for resource scoping: _build_resource_mounts, resource overrides, and effective state."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from kanibako.targets.base import ResourceMapping, ResourceScope
+from kanibako.agents import AgentConfig
+from kanibako.targets.base import ResourceMapping, ResourceScope, TargetSetting
 
 
 class TestBuildResourceMounts:
@@ -202,3 +203,96 @@ class TestResourceOverrideInMounts:
         write_resource_override(project_toml, "nonexistent/", "shared")
         overrides = read_resource_overrides(project_toml)
         assert overrides == {"nonexistent/": "shared"}
+
+
+class TestBuildEffectiveState:
+    """Tests for _build_effective_state() 3-tier merge in start.py."""
+
+    def _make_target(self, descriptors):
+        target = MagicMock()
+        target.setting_descriptors.return_value = descriptors
+        return target
+
+    def _make_project_toml(self, tmp_path, settings=None):
+        """Create a minimal project.toml, optionally with [target_settings]."""
+        from kanibako.config import write_project_meta, write_target_setting
+
+        project_toml = tmp_path / "project.toml"
+        write_project_meta(
+            project_toml,
+            mode="account_centric", layout="default",
+            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
+        )
+        if settings:
+            for k, v in settings.items():
+                write_target_setting(project_toml, k, v)
+        return project_toml
+
+    def test_target_defaults_only(self, tmp_path):
+        """When agent has no state and no project overrides, target defaults apply."""
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+            TargetSetting(key="access", description="Access", default="permissive"),
+        ]
+        target = self._make_target(descriptors)
+        agent_cfg = AgentConfig()  # empty state
+        project_toml = self._make_project_toml(tmp_path)
+
+        result = _build_effective_state(target, agent_cfg, project_toml)
+        assert result == {"model": "opus", "access": "permissive"}
+
+    def test_agent_overrides_default(self, tmp_path):
+        """Agent config state overrides target defaults."""
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        target = self._make_target(descriptors)
+        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        project_toml = self._make_project_toml(tmp_path)
+
+        result = _build_effective_state(target, agent_cfg, project_toml)
+        assert result["model"] == "sonnet"
+
+    def test_project_override_wins(self, tmp_path):
+        """Project overrides take highest precedence."""
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        target = self._make_target(descriptors)
+        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
+
+        result = _build_effective_state(target, agent_cfg, project_toml)
+        assert result["model"] == "haiku"
+
+    def test_agent_state_passthrough_for_undeclared_keys(self, tmp_path):
+        """Undeclared keys from agent state are passed through."""
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        target = self._make_target(descriptors)
+        agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
+        project_toml = self._make_project_toml(tmp_path)
+
+        result = _build_effective_state(target, agent_cfg, project_toml)
+        assert result["model"] == "sonnet"
+        assert result["custom_key"] == "custom_value"
+
+    def test_no_descriptors_returns_agent_state(self, tmp_path):
+        """When target has no setting_descriptors, return agent state as-is."""
+        from kanibako.commands.start import _build_effective_state
+
+        target = self._make_target([])  # no descriptors
+        agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
+        project_toml = self._make_project_toml(tmp_path)
+
+        result = _build_effective_state(target, agent_cfg, project_toml)
+        assert result == {"model": "opus", "access": "permissive"}

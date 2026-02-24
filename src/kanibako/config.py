@@ -417,6 +417,56 @@ def load_project_overrides(path: Path) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Target settings overrides (per-project)
+# ---------------------------------------------------------------------------
+
+def read_target_settings(path: Path) -> dict[str, str]:
+    """Read ``[target_settings]`` from a project.toml.
+
+    Returns a dict of setting_key → value (e.g. ``{"model": "sonnet"}``).
+    Returns an empty dict when the file or section is absent.
+    """
+    if not path.exists():
+        return {}
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
+    return {k: str(v) for k, v in data.get("target_settings", {}).items()}
+
+
+def write_target_setting(path: Path, key: str, value: str) -> None:
+    """Write a single target setting override to ``[target_settings]`` in project.toml.
+
+    Preserves all other sections.
+    """
+    existing: dict = {}
+    if path.exists():
+        with open(path, "rb") as f:
+            existing = tomllib.load(f)
+    existing.setdefault("target_settings", {})
+    existing["target_settings"][key] = value
+    _write_toml(path, existing)
+
+
+def remove_target_setting(path: Path, key: str) -> bool:
+    """Remove a single target setting override from ``[target_settings]``.
+
+    Returns True if the setting was found and removed, False otherwise.
+    """
+    if not path.exists():
+        return False
+    with open(path, "rb") as f:
+        existing = tomllib.load(f)
+    settings = existing.get("target_settings", {})
+    if key not in settings:
+        return False
+    del settings[key]
+    if not settings:
+        existing.pop("target_settings", None)
+    _write_toml(path, existing)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Resource scope overrides (per-project)
 # ---------------------------------------------------------------------------
 

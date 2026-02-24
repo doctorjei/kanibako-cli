@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from importlib.metadata import entry_points
 
-from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target
+from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
 from kanibako.targets.no_agent import NoAgentTarget
 
 __all__ = [
-    "AgentInstall", "Mount", "NoAgentTarget", "ResourceMapping", "ResourceScope", "Target",
+    "AgentInstall", "Mount", "NoAgentTarget", "ResourceMapping", "ResourceScope",
+    "Target", "TargetSetting",
     "discover_targets", "get_target", "resolve_target",
 ]
 
