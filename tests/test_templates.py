@@ -40,6 +40,14 @@ class TestResolveTemplate:
         result = resolve_template(tmp_path, "general")
         assert result == tmp_path / "general" / "standard"
 
+    def test_empty_sentinel_returns_none(self, tmp_path):
+        """Explicit 'empty' returns None even when a matching directory exists."""
+        (tmp_path / "general" / "empty").mkdir(parents=True)
+        (tmp_path / "claude" / "empty").mkdir(parents=True)
+
+        result = resolve_template(tmp_path, "claude", "empty")
+        assert result is None
+
 
 class TestApplyShellTemplate:
     def test_copies_base_then_overlay(self, tmp_path):
@@ -98,6 +106,24 @@ class TestApplyShellTemplate:
 
         assert (shell / "existing.txt").read_text() == "untouched"
         # No new files created
+        assert sorted(p.name for p in shell.iterdir()) == ["existing.txt"]
+
+    def test_empty_sentinel_is_noop(self, tmp_path):
+        """Explicit 'empty' template doesn't copy anything, even with dirs on disk."""
+        templates = tmp_path / "templates"
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        (shell / "existing.txt").write_text("untouched")
+
+        # Create base and empty dirs that would match
+        (templates / "general" / "base").mkdir(parents=True)
+        (templates / "general" / "base" / "base-file.txt").write_text("from base")
+        (templates / "general" / "empty").mkdir(parents=True)
+        (templates / "general" / "empty" / "tmpl-file.txt").write_text("from empty")
+
+        apply_shell_template(shell, templates, "claude", "empty")
+
+        assert (shell / "existing.txt").read_text() == "untouched"
         assert sorted(p.name for p in shell.iterdir()) == ["existing.txt"]
 
     def test_nested_directories(self, tmp_path):

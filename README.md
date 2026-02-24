@@ -294,6 +294,10 @@ once during project init.
 2. `templates/general/standard/` — general fallback
 3. None — no template files applied
 
+The special variant `"empty"` always resolves to None (no files applied),
+bypassing directory lookup entirely.  Use `shell = "empty"` in the agent
+TOML to skip template initialization.
+
 **Layering:**
 1. `templates/general/base/` is copied first (common skeleton)
 2. The resolved template overlays on top

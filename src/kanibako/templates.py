@@ -18,6 +18,9 @@ def resolve_template(
       2. {templates_base}/general/{template_name}/
       3. None (empty template — no files applied)
     """
+    if template_name == "empty":
+        return None
+
     agent_dir = templates_base / agent_name / template_name
     if agent_dir.is_dir():
         return agent_dir
@@ -41,7 +44,8 @@ def apply_shell_template(
       1. general/base/* is copied first (common skeleton)
       2. The resolved template overlays on top
 
-    No-op if the resolved template is None (empty — no template dirs exist).
+    No-op if the resolved template is None (the ``"empty"`` sentinel or no
+    template dirs exist on disk).
     """
     resolved = resolve_template(templates_base, agent_name, template_name)
     if resolved is None:
