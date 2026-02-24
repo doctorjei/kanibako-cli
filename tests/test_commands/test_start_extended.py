@@ -365,14 +365,16 @@ class TestAgentConfigFirstUse:
             call_args = mock_fn.call_args[0]
             assert call_args[3] == "minimal"  # template_name
 
-    def test_no_target_uses_general_agent_id(self, start_mocks):
-        """When no target found, agent_id defaults to 'general'."""
+    def test_no_agent_target_uses_no_agent_id(self, start_mocks):
+        """When auto-detect finds nothing, NoAgentTarget's name is used as agent_id."""
         with start_mocks() as m:
-            m.resolve_target.side_effect = KeyError("no target")
+            m.target.name = "no_agent"
+            m.target.has_binary = False
+            m.target.detect.return_value = None
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
             call_args = m.agent_toml_path.call_args[0]
-            assert call_args[1] == "general"
+            assert call_args[1] == "no_agent"

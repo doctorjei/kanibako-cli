@@ -339,6 +339,8 @@ kanibako new --local ~/p --no-vault
 Kanibako is agent-agnostic.  All agent-specific logic lives in **target
 plugins** — Python classes that implement the `Target` abstract base class.
 Claude Code is the built-in target; other agents can be added as pip packages.
+If no agent is detected, kanibako falls back to `no_agent` — a plain shell
+with no agent binary or credentials.
 
 A target handles:
 1. Detecting the agent binary on the host
@@ -399,7 +401,7 @@ npm = ".npm"
 | Key | Default | Description |
 |-----|---------|-------------|
 | `container_image` | `ghcr.io/doctorjei/kanibako-base:latest` | Container image |
-| `target_name` | `""` (auto-detect) | Agent target plugin |
+| `target_name` | `""` (auto-detect) | Agent target plugin (falls back to `no_agent` if none detected) |
 | `paths_data_path` | `""` (XDG default) | Override data directory root |
 
 ## Development

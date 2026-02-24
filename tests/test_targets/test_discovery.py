@@ -9,6 +9,7 @@ import pytest
 
 from kanibako.targets import discover_targets, get_target, resolve_target
 from kanibako.targets.base import AgentInstall, Target
+from kanibako.targets.no_agent import NoAgentTarget
 
 
 class _FakeTarget(Target):
@@ -126,8 +127,13 @@ class TestResolveTarget:
             t = resolve_target()
         assert isinstance(t, _DetectableTarget)
 
-    def test_auto_detect_none_found(self):
+    def test_auto_detect_none_found_returns_no_agent(self):
         ep = _mock_entry_point("fake", _FakeTarget)
         with patch("kanibako.targets.entry_points", return_value=[ep]):
-            with pytest.raises(KeyError, match="No agent detected"):
-                resolve_target()
+            t = resolve_target()
+        assert isinstance(t, NoAgentTarget)
+
+    def test_auto_detect_empty_returns_no_agent(self):
+        with patch("kanibako.targets.entry_points", return_value=[]):
+            t = resolve_target()
+        assert isinstance(t, NoAgentTarget)

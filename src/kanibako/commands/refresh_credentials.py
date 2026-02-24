@@ -34,8 +34,12 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         target = resolve_target(config.target_name or None)
-    except KeyError:
-        print("Error: No agent target found.", file=sys.stderr)
+    except KeyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not target.has_binary:
+        print("No agent target configured.", file=sys.stderr)
         return 1
 
     if proj.auth == "distinct":

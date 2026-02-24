@@ -223,26 +223,23 @@ def _run_container(
     if is_agent_mode:
         try:
             target = resolve_target(merged.target_name or None)
-            logger.debug("Resolved target: %s", target.display_name)
-            install = target.detect()
-            if install:
-                print(
-                    f"Using host {target.display_name}: {install.binary}",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"Warning: {target.display_name} binary not found on host. "
-                    f"Launching without agent.",
-                    file=sys.stderr,
-                )
-                logger.debug("target.detect() returned None for %s", target.name)
-        except KeyError:
+        except KeyError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        logger.debug("Resolved target: %s", target.display_name)
+        install = target.detect()
+        if install:
             print(
-                "Warning: No agent target found. Launching without agent.",
+                f"Using host {target.display_name}: {install.binary}",
                 file=sys.stderr,
             )
-            logger.debug("resolve_target() raised KeyError", exc_info=True)
+        elif target.has_binary:
+            print(
+                f"Warning: {target.display_name} binary not found on host. "
+                f"Launching without agent.",
+                file=sys.stderr,
+            )
+            logger.debug("target.detect() returned None for %s", target.name)
 
     # Load agent config
     agent_id = target.name if target else "general"

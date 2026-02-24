@@ -98,6 +98,11 @@ class Target(ABC):
         """
         ...
 
+    @property
+    def has_binary(self) -> bool:
+        """Whether this target requires a host-installed binary."""
+        return True
+
     def check_auth(self) -> bool:
         """Check if the agent is authenticated. Returns True if ok."""
         return True

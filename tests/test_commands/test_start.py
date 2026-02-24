@@ -26,10 +26,12 @@ class TestTargetWarnings:
         assert "Warning:" in captured.err
         assert "binary not found" in captured.err
 
-    def test_resolve_target_keyerror_warns(self, start_mocks, capsys):
-        """When resolve_target() raises KeyError, a warning should be printed."""
+    def test_no_agent_target_suppresses_warning(self, start_mocks, capsys):
+        """When target has_binary=False and detect() returns None, no warning is printed."""
         with start_mocks() as m:
-            m.resolve_target.side_effect = KeyError("no target")
+            m.target.detect.return_value = None
+            m.target.has_binary = False
+            m.target.name = "no_agent"
             _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -41,8 +43,7 @@ class TestTargetWarnings:
             )
 
         captured = capsys.readouterr()
-        assert "Warning:" in captured.err
-        assert "No agent target found" in captured.err
+        assert "Warning:" not in captured.err
 
     def test_detect_returns_none_still_launches(self, start_mocks):
         """Container should still launch even when detection fails."""
@@ -60,10 +61,12 @@ class TestTargetWarnings:
             assert rc == 0
             m.runtime.run.assert_called_once()
 
-    def test_keyerror_still_launches(self, start_mocks):
-        """Container should still launch even when resolve_target fails."""
+    def test_no_agent_target_still_launches(self, start_mocks):
+        """Container should still launch with no_agent target."""
         with start_mocks() as m:
-            m.resolve_target.side_effect = KeyError("no target")
+            m.target.detect.return_value = None
+            m.target.has_binary = False
+            m.target.name = "no_agent"
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,

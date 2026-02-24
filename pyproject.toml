@@ -14,6 +14,7 @@ kanibako = "kanibako.cli:main"
 
 [project.entry-points."kanibako.targets"]
 claude = "kanibako.targets.claude:ClaudeTarget"
+no_agent = "kanibako.targets.no_agent:NoAgentTarget"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov", "mypy", "ruff", "bump2version"]

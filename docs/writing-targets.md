@@ -343,7 +343,9 @@ points to the `Target` subclass.
 When a user runs `kanibako start`, kanibako calls `discover_targets()` which
 loads all registered entry points.  If no `--target` is specified, kanibako
 calls `detect()` on each target and uses the first one that returns an
-`AgentInstall`.
+`AgentInstall`.  If no target's `detect()` succeeds, kanibako falls back to
+`NoAgentTarget` — a built-in target that launches a plain shell without any
+agent binary or credentials.
 
 ## Packaging
 

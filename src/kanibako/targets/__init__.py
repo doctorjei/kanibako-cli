@@ -5,9 +5,10 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 
 from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target
+from kanibako.targets.no_agent import NoAgentTarget
 
 __all__ = [
-    "AgentInstall", "Mount", "ResourceMapping", "ResourceScope", "Target",
+    "AgentInstall", "Mount", "NoAgentTarget", "ResourceMapping", "ResourceScope", "Target",
     "discover_targets", "get_target", "resolve_target",
 ]
 
@@ -54,5 +55,4 @@ def resolve_target(name: str | None = None) -> Target:
         if instance.detect() is not None:
             return instance
 
-    available = ", ".join(sorted(targets)) or "(none)"
-    raise KeyError(f"No agent detected on this system. Available targets: {available}")
+    return NoAgentTarget()
