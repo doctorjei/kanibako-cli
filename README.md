@@ -446,5 +446,4 @@ See [LICENSE](LICENSE) for details.
 
 ## Credits
 
-Built with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
-
+LLMs were used as a tool in the development of this software.
