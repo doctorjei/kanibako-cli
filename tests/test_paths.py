@@ -434,15 +434,26 @@ class TestDetectProjectMode:
     # --- Dotless kanibako/ marker tests ---
 
     def test_dotless_kanibako_dir_triggers_decentralized(self, config_file, tmp_home):
-        """A `kanibako/` directory (no dot) triggers decentralized mode."""
+        """A `kanibako/` directory with project.toml triggers decentralized mode."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / "kanibako").mkdir()
+        (project_dir / "kanibako" / "project.toml").write_text("")
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.decentralized
+        assert result.project_root == project_dir.resolve()
+
+    def test_dotless_kanibako_dir_without_toml_ignored(self, config_file, tmp_home):
+        """A `kanibako/` directory without project.toml is NOT a marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
-        assert result.project_root == project_dir.resolve()
+        assert result.mode is ProjectMode.account_centric
 
     def test_dot_kanibako_preferred_over_dotless(self, config_file, tmp_home):
         """.kanibako/ is preferred when both .kanibako/ and kanibako/ exist."""
@@ -451,6 +462,7 @@ class TestDetectProjectMode:
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
         (project_dir / "kanibako").mkdir()
+        (project_dir / "kanibako" / "project.toml").write_text("")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is ProjectMode.decentralized
@@ -468,11 +480,12 @@ class TestDetectProjectMode:
         assert result.mode is ProjectMode.account_centric
 
     def test_dotless_marker_found_from_subdirectory(self, config_file, tmp_home):
-        """Ancestor walk finds dotless kanibako/ in parent from subdirectory."""
+        """Ancestor walk finds dotless kanibako/ with project.toml in parent."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").mkdir()
+        (project_dir / "kanibako" / "project.toml").write_text("")
 
         subdir = project_dir / "src"
         subdir.mkdir()

@@ -70,21 +70,37 @@ class TestDetect:
 
 
 class TestBinaryMounts:
-    def test_mounts(self):
+    def test_mounts(self, tmp_path):
         t = ClaudeTarget()
+        install_dir = tmp_path / "share" / "claude"
+        install_dir.mkdir(parents=True)
+        binary = tmp_path / "bin" / "claude"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"fake-binary")
         install = AgentInstall(
             name="claude",
-            binary=Path("/usr/local/bin/claude"),
-            install_dir=Path("/usr/local/share/claude"),
+            binary=binary,
+            install_dir=install_dir,
         )
         mounts = t.binary_mounts(install)
         assert len(mounts) == 2
-        assert mounts[0].source == Path("/usr/local/share/claude")
+        assert mounts[0].source == install_dir
         assert mounts[0].destination == "/home/agent/.local/share/claude"
         assert mounts[0].options == "ro"
-        assert mounts[1].source == Path("/usr/local/bin/claude")
+        assert mounts[1].source == binary
         assert mounts[1].destination == "/home/agent/.local/bin/claude"
         assert mounts[1].options == "ro"
+
+    def test_missing_source_skipped(self, tmp_path):
+        """Mounts with non-existent sources are not added."""
+        t = ClaudeTarget()
+        install = AgentInstall(
+            name="claude",
+            binary=tmp_path / "nonexistent" / "claude",
+            install_dir=tmp_path / "nonexistent" / "share",
+        )
+        mounts = t.binary_mounts(install)
+        assert len(mounts) == 0
 
 
 class TestInitHome:

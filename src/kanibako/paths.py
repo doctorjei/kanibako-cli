@@ -652,7 +652,10 @@ def detect_project_mode(
         # Decentralized check: .kanibako/ or kanibako/ directory.
         if (current / ".kanibako").is_dir():
             return DetectionResult(ProjectMode.decentralized, current)
-        if (current / "kanibako").is_dir():
+        # Dotless kanibako/ requires project.toml to avoid false positives
+        # on directories that happen to be named "kanibako".
+        _nodot = current / "kanibako"
+        if _nodot.is_dir() and (_nodot / "project.toml").is_file():
             return DetectionResult(ProjectMode.decentralized, current)
 
         # Stop conditions: reached $HOME or filesystem root.

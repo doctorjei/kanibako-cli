@@ -64,19 +64,25 @@ class ClaudeTarget(Target):
         return AgentInstall(name="claude", binary=binary, install_dir=install_dir)
 
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Return mounts for Claude install dir and binary."""
-        return [
-            Mount(
+        """Return mounts for Claude install dir and binary.
+
+        Validates that mount sources exist to avoid Podman creating
+        empty stubs at mount destinations.
+        """
+        mounts: list[Mount] = []
+        if install.install_dir.is_dir():
+            mounts.append(Mount(
                 source=install.install_dir,
                 destination="/home/agent/.local/share/claude",
                 options="ro",
-            ),
-            Mount(
+            ))
+        if install.binary.is_file():
+            mounts.append(Mount(
                 source=install.binary,
                 destination="/home/agent/.local/bin/claude",
                 options="ro",
-            ),
-        ]
+            ))
+        return mounts
 
     def init_home(self, home: Path, *, auth: str = "shared") -> None:
         """Initialize Claude-specific files in the project home.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import os
 import sys
 from pathlib import Path
 
@@ -383,7 +384,18 @@ def _run_container(
             from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
             from kanibako.targets.base import Mount as _HMount
 
-            socket_path = proj.metadata_path / "helper.sock"
+            # Socket must live in a short path to stay under the 108-byte
+            # AF_UNIX limit.  /run/user/$UID is the XDG runtime dir.
+            _uid = os.getuid()
+            _run_base = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{_uid}"))
+            _run_dir = _run_base / "kanibako"
+            try:
+                _run_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                # Fallback if /run/user/$UID is not writable
+                _run_dir = Path(f"/tmp/kanibako-{_uid}")
+                _run_dir.mkdir(parents=True, exist_ok=True)
+            socket_path = _run_dir / f"{short_hash(proj.project_hash)}.sock"
             log_path = proj.metadata_path / "helper-messages.jsonl"
 
             # Ensure helpers/ dir exists in shell_path
@@ -412,21 +424,23 @@ def _run_container(
             hub = HelperHub()
             hub.start(socket_path, helper_ctx, log=msg_log)
 
-            # Mount the socket into the container
+            # Mount the socket into the container (only if hub started)
             kanibako_dir = proj.shell_path / ".kanibako"
             kanibako_dir.mkdir(exist_ok=True)
-            extra_mounts.append(_HMount(
-                source=socket_path,
-                destination="/home/agent/.kanibako/helper.sock",
-                options="",
-            ))
+            if socket_path.exists():
+                extra_mounts.append(_HMount(
+                    source=socket_path,
+                    destination="/home/agent/.kanibako/helper.sock",
+                    options="",
+                ))
 
             # Mount helper-messages.jsonl for log command inside container
-            extra_mounts.append(_HMount(
-                source=log_path,
-                destination="/home/agent/.kanibako/helper-messages.jsonl",
-                options="ro",
-            ))
+            if log_path.exists():
+                extra_mounts.append(_HMount(
+                    source=log_path,
+                    destination="/home/agent/.kanibako/helper-messages.jsonl",
+                    options="ro",
+                ))
 
         try:
             # Run the container
