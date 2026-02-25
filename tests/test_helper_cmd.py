@@ -11,6 +11,7 @@ from kanibako.commands.helper_cmd import (
     _get_existing_helpers,
     _helpers_dir,
     _next_helper_number,
+    _read_state,
     run_list,
     run_spawn,
 )
@@ -159,6 +160,29 @@ class TestRunSpawn:
         assert "#!/usr/bin/env bash" in init.read_text()
 
 
+class TestHelperState:
+    def test_spawn_writes_state(self, helpers_env):
+        args = _make_args(depth=None, breadth=None, model="sonnet")
+        run_spawn(args)
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "spawned"
+        assert state["model"] == "sonnet"
+        assert state["depth"] == 3  # default 4, decremented to 3
+
+    def test_spawn_no_model(self, helpers_env):
+        args = _make_args(depth=None, breadth=None, model=None)
+        run_spawn(args)
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["model"] is None
+
+    def test_state_records_peers(self, helpers_env):
+        args = _make_args(depth=None, breadth=None, model=None)
+        run_spawn(args)
+        run_spawn(args)
+        state2 = _read_state(helpers_env / "helpers", 2)
+        assert state2["peers"] == [1]
+
+
 class TestRunList:
     def test_no_helpers(self, helpers_env, capsys):
         args = _make_args()
@@ -179,6 +203,27 @@ class TestRunList:
         assert "1" in out
         assert "2" in out
         assert "spawned" in out
+
+    def test_list_shows_model(self, helpers_env, capsys):
+        spawn_args = _make_args(depth=None, breadth=None, model="sonnet")
+        run_spawn(spawn_args)
+
+        capsys.readouterr()
+        args = _make_args()
+        run_list(args)
+        out = capsys.readouterr().out
+        assert "sonnet" in out
+
+    def test_list_shows_depth(self, helpers_env, capsys):
+        spawn_args = _make_args(depth=2, breadth=4, model=None)
+        run_spawn(spawn_args)
+
+        capsys.readouterr()
+        args = _make_args()
+        run_list(args)
+        out = capsys.readouterr().out
+        # Child depth is parent depth - 1 = 1
+        assert "1" in out
 
 
 def _make_args(**kwargs):

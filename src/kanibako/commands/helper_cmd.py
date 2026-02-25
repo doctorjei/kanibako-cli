@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -100,6 +101,29 @@ def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
     return helpers_dir / str(helper_num) / "spawn.toml"
 
 
+def _state_path(helpers_dir: Path, helper_num: int) -> Path:
+    """Return the path to a helper's state file."""
+    return helpers_dir / str(helper_num) / "state.json"
+
+
+def _read_state(helpers_dir: Path, helper_num: int) -> dict:
+    """Read a helper's state file.  Returns empty dict if absent."""
+    path = _state_path(helpers_dir, helper_num)
+    if not path.is_file():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def _write_state(helpers_dir: Path, helper_num: int, state: dict) -> None:
+    """Write a helper's state file."""
+    path = _state_path(helpers_dir, helper_num)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(state, f, indent=2)
+        f.write("\n")
+
+
 def _get_existing_helpers(helpers_dir: Path) -> list[int]:
     """Scan helpers/ for existing helper directories (numeric names)."""
     if not helpers_dir.is_dir():
@@ -176,12 +200,22 @@ def run_spawn(args: argparse.Namespace) -> int:
     if not dest_init.exists():
         shutil.copy2(init_script, dest_init)
 
+    # Write helper state
+    state = {
+        "status": "spawned",
+        "model": args.model,
+        "depth": child_cfg.depth,
+        "breadth": child_cfg.breadth,
+        "peers": existing,
+    }
+    _write_state(helpers_dir, helper_num, state)
+
     print(f"Spawned helper {helper_num}")
     if args.model:
         print(f"  model: {args.model}")
     print(f"  depth: {child_cfg.depth}, breadth: {child_cfg.breadth}")
     print(f"  peers: {existing}")
-    # TODO (phase 3B): launch container
+    # Container launch will be wired in a future phase
     return 0
 
 
@@ -194,17 +228,18 @@ def run_list(args: argparse.Namespace) -> int:
         print("No helpers.")
         return 0
 
-    print(f"{'NUM':<8} {'STATUS':<12} {'PEERS'}")
+    print(f"{'NUM':<6} {'STATUS':<10} {'MODEL':<10} {'DEPTH':<6} {'PEERS'}")
     for num in existing:
-        # Check if spawn config exists (indicates it was properly spawned)
-        ro_path = _ro_spawn_config_path(helpers_dir, num)
-        status = "spawned" if ro_path.is_file() else "partial"
+        state = _read_state(helpers_dir, num)
+        status = state.get("status", "unknown")
+        model = state.get("model") or "-"
+        depth = state.get("depth", "?")
         # Count peer symlinks
         peers_dir = helpers_dir / str(num) / "peers"
         peer_count = 0
         if peers_dir.is_dir():
             peer_count = sum(1 for p in peers_dir.iterdir() if p.is_symlink())
-        print(f"{num:<8} {status:<12} {peer_count} channels")
+        print(f"{num:<6} {status:<10} {model:<10} {depth!s:<6} {peer_count} ch")
     return 0
 
 
