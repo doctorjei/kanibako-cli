@@ -1,4 +1,4 @@
-"""Tests for helper spawning: numbering and spawn budget."""
+"""Tests for helper spawning: numbering, spawn budget, and directory structure."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from kanibako.helpers import (
     UNLIMITED_BREADTH,
     SpawnBudget,
     agent_depth,
+    bundled_init_script,
     check_spawn_allowed,
     child_budget,
     children_of,
@@ -22,6 +23,7 @@ from kanibako.helpers import (
     parent_of,
     read_spawn_config,
     remove_helper_dirs,
+    resolve_init_script,
     resolve_spawn_budget,
     sibling_index,
     write_spawn_config,
@@ -552,3 +554,43 @@ class TestRemoveHelperDirs:
         helpers = tmp_path / "helpers"
         helpers.mkdir()
         remove_helper_dirs(helpers, 99, [])
+
+
+# --- helper-init.sh template ---
+
+
+class TestBundledInitScript:
+    def test_bundled_exists(self):
+        path = bundled_init_script()
+        assert path.is_file()
+
+    def test_bundled_is_bash(self):
+        path = bundled_init_script()
+        content = path.read_text()
+        assert content.startswith("#!/usr/bin/env bash")
+
+    def test_bundled_contains_shebang(self):
+        path = bundled_init_script()
+        content = path.read_text()
+        assert "set -euo pipefail" in content
+
+
+class TestResolveInitScript:
+    def test_custom_takes_priority(self, tmp_path):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        custom = scripts / "helper-init.sh"
+        custom.write_text("#!/bin/bash\necho custom\n")
+        result = resolve_init_script(scripts)
+        assert result == custom
+
+    def test_falls_back_to_bundled(self, tmp_path):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        # No helper-init.sh in scripts dir
+        result = resolve_init_script(scripts)
+        assert result == bundled_init_script()
+
+    def test_none_scripts_dir(self):
+        result = resolve_init_script(None)
+        assert result == bundled_init_script()
