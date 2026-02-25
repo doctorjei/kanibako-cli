@@ -114,6 +114,20 @@ class TestBuildResourceMounts:
         mounts = _build_resource_mounts(proj, target, "claude")
         assert mounts == []
 
+    def test_shared_file_resource_creates_file_not_dir(self, tmp_path):
+        """A SHARED resource without trailing slash is created as a file, not a directory."""
+        from kanibako.commands.start import _build_resource_mounts
+
+        proj = self._make_proj(tmp_path)
+        mappings = [ResourceMapping("stats-cache.json", ResourceScope.SHARED, "Stats")]
+        target = self._make_target(mappings)
+
+        mounts = _build_resource_mounts(proj, target, "claude")
+        assert len(mounts) == 1
+        assert mounts[0].destination == "/home/agent/.claude/stats-cache.json"
+        source = mounts[0].source
+        assert source.is_file(), f"Expected file, got directory: {source}"
+
     def test_no_shared_base_returns_empty(self, tmp_path):
         from kanibako.commands.start import _build_resource_mounts
 

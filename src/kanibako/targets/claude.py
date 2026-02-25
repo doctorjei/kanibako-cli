@@ -209,10 +209,10 @@ class ClaudeTarget(Target):
         return [
             # Shared at workset/account level
             ResourceMapping("plugins/", ResourceScope.SHARED, "Plugin binaries and registry"),
-            ResourceMapping("cache/", ResourceScope.SHARED, "General cache"),
-            ResourceMapping("stats-cache.json", ResourceScope.SHARED, "Usage stats cache"),
-            ResourceMapping("statsig/", ResourceScope.SHARED, "Feature flags"),
-            ResourceMapping("telemetry/", ResourceScope.SHARED, "Telemetry data"),
+            ResourceMapping("cache/", ResourceScope.PROJECT, "General cache"),
+            ResourceMapping("stats-cache.json", ResourceScope.PROJECT, "Usage stats cache"),
+            ResourceMapping("statsig/", ResourceScope.PROJECT, "Feature flags"),
+            ResourceMapping("telemetry/", ResourceScope.PROJECT, "Telemetry data"),
             # Seeded from workset template at project creation
             ResourceMapping("settings.json", ResourceScope.SEEDED, "Permissions and enabled plugins"),
             ResourceMapping("CLAUDE.md", ResourceScope.SEEDED, "Agent instructions template"),

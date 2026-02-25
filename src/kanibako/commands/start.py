@@ -457,10 +457,16 @@ def _build_resource_mounts(proj, target, agent_id: str):
         scope = ResourceScope(scope_str) if scope_str else mapping.scope
 
         if scope == ResourceScope.SHARED:
-            shared_dir = shared_base / agent_id / mapping.path
-            shared_dir.mkdir(parents=True, exist_ok=True)
+            shared_path = shared_base / agent_id / mapping.path
+            if mapping.path.endswith("/"):
+                shared_path.mkdir(parents=True, exist_ok=True)
+            else:
+                # File resource: create parent dir and touch the file.
+                shared_path.parent.mkdir(parents=True, exist_ok=True)
+                if not shared_path.exists():
+                    shared_path.touch()
             mounts.append(Mount(
-                source=shared_dir,
+                source=shared_path,
                 destination=f"/home/agent/.claude/{mapping.path}",
                 options="Z,U",
             ))

@@ -358,14 +358,12 @@ class TestResourceMappings:
             assert isinstance(m, ResourceMapping)
 
     def test_shared_resources(self):
-        """Plugin binaries, cache, stats, statsig, telemetry are shared."""
+        """Only plugin binaries are shared."""
         t = ClaudeTarget()
         mappings = {m.path: m.scope for m in t.resource_mappings()}
         assert mappings["plugins/"] == ResourceScope.SHARED
-        assert mappings["cache/"] == ResourceScope.SHARED
-        assert mappings["stats-cache.json"] == ResourceScope.SHARED
-        assert mappings["statsig/"] == ResourceScope.SHARED
-        assert mappings["telemetry/"] == ResourceScope.SHARED
+        shared = [p for p, s in mappings.items() if s == ResourceScope.SHARED]
+        assert shared == ["plugins/"]
 
     def test_seeded_resources(self):
         """settings.json and CLAUDE.md are seeded from workset."""
