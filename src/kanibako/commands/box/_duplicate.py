@@ -259,6 +259,9 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     to_mode_str = args.to_mode
 
     ws, proj_name = _find_workset_for_path(source_path, std)
+    if proj_name is None:
+        print("Error: not inside a specific project workspace.", file=sys.stderr)
+        return 1
     src_proj = resolve_workset_project(ws, proj_name, std, config, initialize=False)
 
     if not src_proj.metadata_path.is_dir():

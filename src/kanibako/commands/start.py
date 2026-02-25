@@ -372,10 +372,9 @@ def _run_container(
         from kanibako.shellenv import merge_env
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
-        container_env = merge_env(global_env_path, project_env_path) or {}
+        container_env: dict[str, str] = merge_env(global_env_path, project_env_path) or {}
         container_env.update(agent_cfg.env)
         container_env.update(state_env)
-        container_env = container_env or None
 
         # Helper hub: start listener before director, mount socket
         hub = None
@@ -396,6 +395,7 @@ def _run_container(
                 _run_dir = Path(f"/tmp/kanibako-{_uid}")
                 _run_dir.mkdir(parents=True, exist_ok=True)
             socket_path = _run_dir / f"{short_hash(proj.project_hash)}.sock"
+            validate_socket_path(socket_path)
             log_path = proj.metadata_path / "helper-messages.jsonl"
 
             # Ensure helpers/ dir exists in shell_path
@@ -441,6 +441,9 @@ def _run_container(
                     destination="/home/agent/.kanibako/helper-messages.jsonl",
                     options="ro",
                 ))
+
+        # Pre-launch validation: warn about missing mount sources.
+        _validate_mounts(extra_mounts, logger)
 
         try:
             # Run the container
@@ -589,3 +592,33 @@ def _build_resource_mounts(proj, target, agent_id: str):
         # PROJECT scope: no extra mount needed.
 
     return mounts
+
+
+# AF_UNIX sun_path limit (108 on Linux, 104 on macOS).
+_UNIX_SOCKET_PATH_LIMIT = 104
+
+
+def _validate_mounts(mounts: list, logger) -> None:
+    """Warn about mount sources that don't exist on the host.
+
+    Called before ``runtime.run()`` to catch issues early with a clear
+    message instead of a cryptic Podman error.
+    """
+    for mount in mounts:
+        src = mount.source
+        if not src.exists():
+            logger.warning("Mount source missing: %s → %s", src, mount.destination)
+            print(
+                f"Warning: mount source does not exist: {src}",
+                file=sys.stderr,
+            )
+
+
+def validate_socket_path(socket_path: Path) -> None:
+    """Raise ValueError if *socket_path* exceeds the AF_UNIX length limit."""
+    path_len = len(str(socket_path))
+    if path_len >= _UNIX_SOCKET_PATH_LIMIT:
+        raise ValueError(
+            f"Socket path too long ({path_len} >= {_UNIX_SOCKET_PATH_LIMIT}): "
+            f"{socket_path}"
+        )

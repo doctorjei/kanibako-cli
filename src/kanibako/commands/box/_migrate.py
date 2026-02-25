@@ -404,6 +404,9 @@ def _convert_from_workset(args, project_path, std, config) -> int:
     to_mode_str = args.to_mode
 
     ws, proj_name = _find_workset_for_path(project_path, std)
+    if proj_name is None:
+        print("Error: not inside a specific project workspace.", file=sys.stderr)
+        return 1
     src_proj = resolve_workset_project(ws, proj_name, std, config, initialize=False)
 
     target_mode = ProjectMode.decentralized if to_mode_str == "decentralized" else ProjectMode.account_centric
