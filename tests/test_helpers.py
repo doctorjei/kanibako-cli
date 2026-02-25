@@ -1,17 +1,25 @@
-"""Tests for helper spawning: B-ary tree numbering."""
+"""Tests for helper spawning: numbering and spawn budget."""
 
 from __future__ import annotations
 
 import pytest
 
 from kanibako.helpers import (
+    DEFAULT_BREADTH,
+    DEFAULT_DEPTH,
     UNLIMITED_BREADTH,
+    SpawnBudget,
     agent_depth,
+    check_spawn_allowed,
+    child_budget,
     children_of,
     effective_breadth,
     nth_child,
     parent_of,
+    read_spawn_config,
+    resolve_spawn_budget,
     sibling_index,
+    write_spawn_config,
 )
 
 
@@ -209,3 +217,141 @@ class TestSiblingIndex:
                 for n in range(b):
                     child = nth_child(agent, n, b)
                     assert sibling_index(child, b) == n
+
+
+# --- SpawnBudget ---
+
+
+class TestSpawnBudget:
+    def test_defaults(self):
+        b = SpawnBudget()
+        assert b.depth == DEFAULT_DEPTH
+        assert b.breadth == DEFAULT_BREADTH
+
+    def test_frozen(self):
+        b = SpawnBudget()
+        with pytest.raises(AttributeError):
+            b.depth = 10  # type: ignore[misc]
+
+
+# --- check_spawn_allowed ---
+
+
+class TestCheckSpawnAllowed:
+    def test_allowed(self):
+        assert check_spawn_allowed(SpawnBudget(depth=2, breadth=4), 0) is None
+
+    def test_depth_zero_refused(self):
+        result = check_spawn_allowed(SpawnBudget(depth=0, breadth=4), 0)
+        assert result is not None
+        assert "depth" in result
+
+    def test_breadth_exhausted(self):
+        result = check_spawn_allowed(SpawnBudget(depth=2, breadth=3), 3)
+        assert result is not None
+        assert "breadth" in result
+
+    def test_breadth_not_yet_exhausted(self):
+        assert check_spawn_allowed(SpawnBudget(depth=2, breadth=3), 2) is None
+
+    def test_unlimited_depth(self):
+        assert check_spawn_allowed(SpawnBudget(depth=-1, breadth=4), 0) is None
+
+    def test_unlimited_breadth(self):
+        assert check_spawn_allowed(SpawnBudget(depth=2, breadth=-1), 999) is None
+
+
+# --- child_budget ---
+
+
+class TestChildBudget:
+    def test_decrements_depth(self):
+        parent = SpawnBudget(depth=3, breadth=4)
+        child = child_budget(parent)
+        assert child.depth == 2
+        assert child.breadth == 4
+
+    def test_depth_one_to_zero(self):
+        child = child_budget(SpawnBudget(depth=1, breadth=2))
+        assert child.depth == 0
+
+    def test_unlimited_depth_stays_unlimited(self):
+        child = child_budget(SpawnBudget(depth=-1, breadth=3))
+        assert child.depth == -1
+
+    def test_breadth_inherited(self):
+        child = child_budget(SpawnBudget(depth=4, breadth=7))
+        assert child.breadth == 7
+
+
+# --- resolve_spawn_budget ---
+
+
+class TestResolveSpawnBudget:
+    def test_ro_config_wins(self):
+        ro = SpawnBudget(depth=1, breadth=1)
+        host = SpawnBudget(depth=4, breadth=4)
+        result = resolve_spawn_budget(ro, host, cli_depth=10, cli_breadth=10)
+        assert result == ro
+
+    def test_host_config_without_ro(self):
+        host = SpawnBudget(depth=3, breadth=5)
+        result = resolve_spawn_budget(None, host, cli_depth=10, cli_breadth=10)
+        assert result == host
+
+    def test_cli_flags_without_config(self):
+        result = resolve_spawn_budget(None, None, cli_depth=2, cli_breadth=6)
+        assert result == SpawnBudget(depth=2, breadth=6)
+
+    def test_partial_cli_flags(self):
+        result = resolve_spawn_budget(None, None, cli_depth=2, cli_breadth=None)
+        assert result.depth == 2
+        assert result.breadth == DEFAULT_BREADTH
+
+    def test_defaults_when_nothing_set(self):
+        result = resolve_spawn_budget(None, None, None, None)
+        assert result == SpawnBudget()
+
+
+# --- Spawn config I/O ---
+
+
+class TestSpawnConfigIO:
+    def test_write_and_read(self, tmp_path):
+        path = tmp_path / "spawn.toml"
+        budget = SpawnBudget(depth=3, breadth=5)
+        write_spawn_config(path, budget)
+        result = read_spawn_config(path)
+        assert result == budget
+
+    def test_read_missing_file(self, tmp_path):
+        assert read_spawn_config(tmp_path / "nope.toml") is None
+
+    def test_read_no_spawn_section(self, tmp_path):
+        path = tmp_path / "empty.toml"
+        path.write_text("[other]\nfoo = 1\n")
+        assert read_spawn_config(path) is None
+
+    def test_preserves_other_sections(self, tmp_path):
+        path = tmp_path / "config.toml"
+        path.write_text("[other]\nfoo = 1\n")
+        write_spawn_config(path, SpawnBudget(depth=2, breadth=3))
+        result = read_spawn_config(path)
+        assert result == SpawnBudget(depth=2, breadth=3)
+        # Other section preserved
+        import tomllib as tl
+        with open(path, "rb") as f:
+            data = tl.load(f)
+        assert data["other"]["foo"] == 1
+
+    def test_unlimited_values(self, tmp_path):
+        path = tmp_path / "unlimited.toml"
+        budget = SpawnBudget(depth=-1, breadth=-1)
+        write_spawn_config(path, budget)
+        result = read_spawn_config(path)
+        assert result == budget
+
+    def test_creates_parent_dirs(self, tmp_path):
+        path = tmp_path / "sub" / "dir" / "spawn.toml"
+        write_spawn_config(path, SpawnBudget())
+        assert path.exists()
