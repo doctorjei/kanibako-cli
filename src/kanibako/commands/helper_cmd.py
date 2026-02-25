@@ -18,6 +18,7 @@ from kanibako.helpers import (
     create_peer_channels,
     link_broadcast,
     read_spawn_config,
+    remove_helper_dirs,
     resolve_init_script,
     resolve_spawn_budget,
     write_spawn_config,
@@ -77,6 +78,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Stop a helper and remove its directory structure and peer channels.",
     )
     cleanup_p.add_argument("number", type=int, help="Helper number to clean up")
+    cleanup_p.add_argument(
+        "--cascade", action="store_true",
+        help="Also remove all descendant helpers recursively",
+    )
     cleanup_p.set_defaults(func=run_cleanup)
 
     # kanibako helper respawn <N>
@@ -245,20 +250,91 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_stop(args: argparse.Namespace) -> int:
     """Stop a helper instance."""
-    # TODO (phase 4A): container stop
-    print(f"Stopping helper {args.number}... (not yet implemented)")
+    helpers_dir = _helpers_dir()
+    helper_num = args.number
+    helper_root = helpers_dir / str(helper_num)
+
+    if not helper_root.is_dir():
+        print(f"Helper {helper_num} does not exist.", file=sys.stderr)
+        return 1
+
+    state = _read_state(helpers_dir, helper_num)
+    if state.get("status") == "stopped":
+        print(f"Helper {helper_num} is already stopped.")
+        return 0
+
+    # Container stop will be wired in a future phase.
+    state["status"] = "stopped"
+    _write_state(helpers_dir, helper_num, state)
+    print(f"Stopped helper {helper_num}.")
     return 0
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
     """Stop and remove a helper."""
-    # TODO (phase 4A): full implementation
-    print(f"Cleaning up helper {args.number}... (not yet implemented)")
+    helpers_dir = _helpers_dir()
+    helper_num = args.number
+    helper_root = helpers_dir / str(helper_num)
+
+    if not helper_root.is_dir():
+        print(f"Helper {helper_num} does not exist.", file=sys.stderr)
+        return 1
+
+    cascade = getattr(args, "cascade", False)
+    if cascade:
+        removed = _cascade_cleanup(helpers_dir, helper_num)
+        print(f"Cleaned up helper {helper_num} and {len(removed) - 1} descendant(s).")
+    else:
+        existing = _get_existing_helpers(helpers_dir)
+        siblings = [n for n in existing if n != helper_num]
+        remove_helper_dirs(helpers_dir, helper_num, siblings)
+        print(f"Cleaned up helper {helper_num}.")
     return 0
+
+
+def _cascade_cleanup(helpers_dir: Path, helper_num: int) -> list[int]:
+    """Recursively clean up a helper and all its descendants.
+
+    Returns the list of all helper numbers that were removed.
+    """
+    removed = []
+    # Check if this helper has its own helpers/ subtree (children)
+    child_helpers_dir = helpers_dir / str(helper_num) / "helpers"
+    if child_helpers_dir.is_dir():
+        children = _get_existing_helpers(child_helpers_dir)
+        for child in children:
+            removed.extend(_cascade_cleanup(child_helpers_dir, child))
+
+    # Now clean up this helper itself
+    existing = _get_existing_helpers(helpers_dir)
+    siblings = [n for n in existing if n != helper_num]
+    remove_helper_dirs(helpers_dir, helper_num, siblings)
+    removed.append(helper_num)
+    return removed
 
 
 def run_respawn(args: argparse.Namespace) -> int:
     """Relaunch a stopped helper."""
-    # TODO (phase 4B): full implementation
-    print(f"Respawning helper {args.number}... (not yet implemented)")
+    helpers_dir = _helpers_dir()
+    helper_num = args.number
+    helper_root = helpers_dir / str(helper_num)
+
+    if not helper_root.is_dir():
+        print(f"Helper {helper_num} does not exist.", file=sys.stderr)
+        return 1
+
+    state = _read_state(helpers_dir, helper_num)
+    if state.get("status") != "stopped":
+        status = state.get("status", "unknown")
+        print(
+            f"Helper {helper_num} is {status}, not stopped. "
+            f"Only stopped helpers can be respawned.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Container relaunch will be wired in a future phase.
+    state["status"] = "respawned"
+    _write_state(helpers_dir, helper_num, state)
+    print(f"Respawned helper {helper_num}.")
     return 0

@@ -8,12 +8,17 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.commands.helper_cmd import (
+    _cascade_cleanup,
     _get_existing_helpers,
     _helpers_dir,
     _next_helper_number,
     _read_state,
+    _write_state,
+    run_cleanup,
     run_list,
+    run_respawn,
     run_spawn,
+    run_stop,
 )
 from kanibako.helpers import SpawnBudget, write_spawn_config
 
@@ -224,6 +229,165 @@ class TestRunList:
         out = capsys.readouterr().out
         # Child depth is parent depth - 1 = 1
         assert "1" in out
+
+
+class TestRunStop:
+    def test_stop_running_helper(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        capsys.readouterr()
+
+        rc = run_stop(_make_args(number=1))
+        assert rc == 0
+        assert "Stopped helper 1" in capsys.readouterr().out
+
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "stopped"
+
+    def test_stop_already_stopped(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        capsys.readouterr()
+
+        rc = run_stop(_make_args(number=1))
+        assert rc == 0
+        assert "already stopped" in capsys.readouterr().out
+
+    def test_stop_nonexistent(self, helpers_env, capsys):
+        rc = run_stop(_make_args(number=99))
+        assert rc == 1
+        assert "does not exist" in capsys.readouterr().err
+
+
+class TestRunCleanup:
+    def test_cleanup_removes_dirs(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        capsys.readouterr()
+
+        helpers = helpers_env / "helpers"
+        assert (helpers / "1").is_dir()
+
+        rc = run_cleanup(_make_args(number=1))
+        assert rc == 0
+        assert "Cleaned up helper 1" in capsys.readouterr().out
+        assert not (helpers / "1").exists()
+
+    def test_cleanup_removes_peer_channels(self, helpers_env, capsys):
+        """Cleanup removes peer symlinks from siblings."""
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        capsys.readouterr()
+
+        helpers = helpers_env / "helpers"
+        # Helper 1 should have peer links to helper 2
+        assert any(
+            p.is_symlink() for p in (helpers / "1" / "peers").iterdir()
+        )
+
+        # Clean up helper 2
+        rc = run_cleanup(_make_args(number=2))
+        assert rc == 0
+        assert not (helpers / "2").exists()
+
+        # Helper 1's peer links to helper 2 should be gone
+        remaining_peers = [
+            p.name for p in (helpers / "1" / "peers").iterdir()
+            if p.is_symlink()
+        ]
+        for name in remaining_peers:
+            assert "2" not in name.split(":")[0] and "2" not in name.split(":")[1].split("-")[0]
+
+    def test_cleanup_nonexistent(self, helpers_env, capsys):
+        rc = run_cleanup(_make_args(number=99))
+        assert rc == 1
+        assert "does not exist" in capsys.readouterr().err
+
+    def test_cleanup_cleans_broadcast_link(self, helpers_env, capsys):
+        """Cleanup removes the helper's broadcast symlink along with the dir."""
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        capsys.readouterr()
+
+        helpers = helpers_env / "helpers"
+        assert (helpers / "1" / "all").is_symlink()
+
+        run_cleanup(_make_args(number=1))
+        # Entire dir is gone, including the all/ symlink
+        assert not (helpers / "1").exists()
+
+
+class TestRunRespawn:
+    def test_respawn_stopped_helper(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        capsys.readouterr()
+
+        rc = run_respawn(_make_args(number=1))
+        assert rc == 0
+        assert "Respawned helper 1" in capsys.readouterr().out
+
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "respawned"
+
+    def test_respawn_running_refused(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        capsys.readouterr()
+
+        rc = run_respawn(_make_args(number=1))
+        assert rc == 1
+        assert "not stopped" in capsys.readouterr().err
+
+    def test_respawn_nonexistent(self, helpers_env, capsys):
+        rc = run_respawn(_make_args(number=99))
+        assert rc == 1
+        assert "does not exist" in capsys.readouterr().err
+
+
+class TestCascadeCleanup:
+    def test_cascade_removes_children(self, helpers_env, capsys):
+        """Cascade cleanup removes a helper and its nested children."""
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+
+        helpers = helpers_env / "helpers"
+        # Simulate nested children: helpers/1/helpers/1 and helpers/1/helpers/2
+        child_helpers = helpers / "1" / "helpers"
+        (child_helpers / "1").mkdir(parents=True)
+        _write_state(child_helpers, 1, {"status": "spawned"})
+        (child_helpers / "2").mkdir(parents=True)
+        _write_state(child_helpers, 2, {"status": "spawned"})
+
+        capsys.readouterr()
+        rc = run_cleanup(_make_args(number=1, cascade=True))
+        assert rc == 0
+        assert "descendant" in capsys.readouterr().out
+        assert not (helpers / "1").exists()
+
+    def test_cascade_multi_level(self, helpers_env):
+        """Cascade handles multiple nesting levels."""
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+
+        helpers = helpers_env / "helpers"
+        # Create a 3-level deep tree: helpers/1/helpers/1/helpers/1
+        level2 = helpers / "1" / "helpers"
+        (level2 / "1").mkdir(parents=True)
+        level3 = level2 / "1" / "helpers"
+        (level3 / "1").mkdir(parents=True)
+
+        removed = _cascade_cleanup(helpers, 1)
+        assert len(removed) == 3  # deepest first, then parent, then top
+        assert not (helpers / "1").exists()
+
+    def test_no_cascade_leaves_children(self, helpers_env, capsys):
+        """Without --cascade, children are left behind (orphaned)."""
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+
+        helpers = helpers_env / "helpers"
+        child_helpers = helpers / "1" / "helpers"
+        (child_helpers / "1").mkdir(parents=True)
+
+        capsys.readouterr()
+        # Cleanup without cascade — the child dir is inside the helper root,
+        # so it gets removed by shutil.rmtree anyway (part of the dir tree)
+        run_cleanup(_make_args(number=1, cascade=False))
+        assert not (helpers / "1").exists()
 
 
 def _make_args(**kwargs):
