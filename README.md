@@ -97,6 +97,7 @@ Subsequent runs reuse the existing state.
 | `kanibako vault [snapshot\|list\|restore\|prune]` | Vault snapshot management |
 | `kanibako env [list\|set\|get\|unset]` | Environment variable management |
 | `kanibako shared [init\|list]` | Shared cache management |
+| `kanibako helper [spawn\|list\|stop\|cleanup\|respawn]` | Child kanibako spawning |
 | `kanibako setup` | Initial setup |
 | `kanibako upgrade [--check]` | Update from git |
 | `kanibako reauth` | Check auth and login if needed |
@@ -484,6 +485,48 @@ Effective value resolution (highest wins):
 | `target_name` | `""` (auto-detect) | Agent target plugin (falls back to `no_agent` if none detected) |
 | `paths_data_path` | `""` (XDG default) | Override data directory root |
 
+## Helper spawning
+
+Kanibako containers can spawn child instances for parallel workloads.
+Each child gets its own directory tree, peer communication channels,
+and spawn budget.
+
+```bash
+kanibako helper spawn                 # spawn a child with default budget
+kanibako helper spawn --model sonnet  # child uses a different model
+kanibako helper spawn --depth 2 --breadth 3  # custom spawn limits
+kanibako helper list                  # show all helpers with status
+kanibako helper stop 1                # stop helper 1
+kanibako helper respawn 1             # relaunch a stopped helper
+kanibako helper cleanup 1             # stop and remove helper 1
+kanibako helper cleanup 1 --cascade   # also remove all descendants
+```
+
+**Spawn budget:** Each helper gets a depth/breadth budget controlling
+how many levels deep it can spawn and how many siblings are allowed.
+Depth decrements with each level. The budget is written as a read-only
+config (`spawn.toml`) inside the child, enforced at spawn time.
+
+**Peer channels:** Helpers communicate through shared directories.
+Each pair of siblings gets three channels (A-reads, B-reads, shared-rw).
+A broadcast channel (`all/`) is available to all helpers.
+
+**Directory layout** (inside a container):
+```
+~/helpers/
+  1/                    # helper 1 root
+    workspace/          # helper's working directory
+    vault/share-ro/     # read-only vault share
+    vault/share-rw/     # read-write vault share
+    peers/              # symlinks to peer channels
+    all -> ../all/      # broadcast channel
+    spawn.toml          # RO spawn budget
+    state.json          # status, model, depth, peers
+  all/ro/               # broadcast read-only
+  all/rw/               # broadcast read-write
+  channels/             # raw peer channel directories
+```
+
 ## Development
 
 ```bash
@@ -491,7 +534,7 @@ Effective value resolution (highest wins):
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (976)
+pytest tests/ -v                    # unit tests (1091)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint

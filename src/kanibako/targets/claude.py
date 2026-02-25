@@ -202,9 +202,9 @@ class ClaudeTarget(Target):
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare Claude Code resource sharing scopes.
 
-        Shared: plugin binaries, caches, telemetry (identical across projects).
+        Shared: plugin binaries only (identical across projects).
         Seeded: settings.json, CLAUDE.md (copied from workset template at creation).
-        Project: conversation history, session data, tasks (per-project state).
+        Project: everything else (caches, stats, telemetry, session data, tasks).
         """
         return [
             # Shared at workset/account level
