@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import sys
+from pathlib import Path
 
 from kanibako.agents import agent_toml_path, load_agent_config, write_agent_config
 from kanibako.config import config_file_path, load_config, load_merged_config
@@ -333,6 +334,10 @@ def _run_container(
         if target and install:
             extra_mounts.extend(target.binary_mounts(install))
 
+        # kanibako CLI bind-mount (package + entry script)
+        kanibako_mnts = _kanibako_mounts()
+        extra_mounts.extend(kanibako_mnts)
+
         # Shared cache mounts (global, lazy — only mount if dir exists)
         if proj.global_shared_path:
             from kanibako.targets.base import Mount
@@ -386,9 +391,9 @@ def _run_container(
             helpers_dir.mkdir(exist_ok=True)
 
             # Build context for helper container launches
-            binary_mounts = []
+            binary_mounts = list(kanibako_mnts)
             if target and install:
-                binary_mounts = list(target.binary_mounts(install))
+                binary_mounts.extend(target.binary_mounts(install))
 
             helper_ctx = HelperContext(
                 runtime=runtime,
@@ -486,6 +491,29 @@ def _build_effective_state(target, agent_cfg, project_toml) -> dict[str, str]:
     effective.update(project_overrides)
 
     return effective
+
+
+def _kanibako_mounts():
+    """Build bind mounts for the kanibako CLI inside containers.
+
+    Returns two mounts:
+      1. Package dir → /opt/kanibako/kanibako/ (ro)
+      2. Entry script → /home/agent/.local/bin/kanibako (ro)
+    """
+    import importlib.resources
+
+    import kanibako
+    from kanibako.targets.base import Mount
+
+    pkg_dir = Path(kanibako.__file__).parent
+
+    entry_ref = importlib.resources.files("kanibako.scripts").joinpath("kanibako-entry")
+    entry_path = Path(str(entry_ref))
+
+    return [
+        Mount(pkg_dir, "/opt/kanibako/kanibako", "ro"),
+        Mount(entry_path, "/home/agent/.local/bin/kanibako", "ro"),
+    ]
 
 
 def _build_resource_mounts(proj, target, agent_id: str):

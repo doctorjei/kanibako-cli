@@ -18,6 +18,7 @@ from kanibako.commands.helper_cmd import (
     run_cleanup,
     run_list,
     run_log,
+    run_register,
     run_respawn,
     run_send,
     run_spawn,
@@ -440,6 +441,36 @@ class TestRunBroadcast:
             rc = run_broadcast(_make_args(message="all hands"))
         assert rc == 0
         assert "broadcast" in capsys.readouterr().out.lower()
+
+
+class TestRunRegister:
+    def test_register_no_socket(self, helpers_env):
+        rc = run_register(_make_args(number=1))
+        assert rc == 1
+
+    def test_register_success(self, helpers_env):
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "ok"}
+            rc = run_register(_make_args(number=1))
+        assert rc == 0
+        m.assert_called_once()
+        req = m.call_args[0][1]
+        assert req["action"] == "register"
+        assert req["helper_num"] == 1
+
+    def test_register_failure(self, helpers_env):
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "error", "message": "bad"}
+            rc = run_register(_make_args(number=1))
+        assert rc == 1
 
 
 class TestRunLog:

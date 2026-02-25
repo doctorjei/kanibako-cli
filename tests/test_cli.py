@@ -347,6 +347,32 @@ class TestParser:
         assert args.project_name == "proj"
 
 
+class TestConfigCheckExemptions:
+    """Commands that skip the kanibako.toml existence check."""
+
+    def test_helper_skips_config_check(self, tmp_path, monkeypatch):
+        """'helper' command should not require kanibako.toml."""
+        # Point XDG_CONFIG_HOME to an empty dir (no kanibako.toml)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setattr(
+            "kanibako.commands.helper_cmd._helpers_dir",
+            lambda: tmp_path / "helpers",
+        )
+
+        from kanibako.cli import main
+        # 'helper list' should not crash with "not set up yet"
+        with pytest.raises(SystemExit) as exc_info:
+            main(["helper", "list"])
+        assert exc_info.value.code == 0
+
+    def test_setup_skips_config_check(self):
+        """'setup' command should not require kanibako.toml (pre-existing)."""
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["setup"])
+        assert args.command == "setup"
+
+
 class TestVerboseFlag:
     def test_verbose_short_sets_debug(self):
         from kanibako.cli import main

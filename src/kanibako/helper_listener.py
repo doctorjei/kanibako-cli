@@ -277,6 +277,15 @@ class HelperHub:
 
         mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
 
+        # Use helper-init.sh as entrypoint wrapper — it registers with the
+        # hub, sources broadcast scripts, then execs the agent command.
+        init_script = "/home/agent/playbook/scripts/helper-init.sh"
+        agent_cmd = ctx.entrypoint or "claude"
+        cli_args = [str(helper_num), agent_cmd]
+        model = request.get("model")
+        if model:
+            cli_args.extend(["--model", model])
+
         try:
             rc = ctx.runtime.run(
                 ctx.image,
@@ -288,7 +297,8 @@ class HelperHub:
                 vault_enabled=True,
                 env=ctx.env,
                 name=container_name,
-                entrypoint=ctx.entrypoint,
+                entrypoint=init_script,
+                cli_args=cli_args,
                 detach=True,
             )
         except Exception as e:

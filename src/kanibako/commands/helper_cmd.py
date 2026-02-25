@@ -132,6 +132,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     log_p.set_defaults(func=run_log)
 
+    # kanibako helper register <N>  (used by helper-init.sh, hidden from help)
+    register_p = ss.add_parser(
+        "register",
+        help=argparse.SUPPRESS,
+        description="Register this helper with the hub (used by helper-init.sh).",
+    )
+    register_p.add_argument("number", type=int, help="Helper number to register")
+    register_p.set_defaults(func=run_register)
+
     p.set_defaults(func=run_list)
 
 
@@ -512,6 +521,24 @@ def run_broadcast(args: argparse.Namespace) -> int:
         return 1
 
     print("Message broadcast to all helpers.")
+    return 0
+
+
+def run_register(args: argparse.Namespace) -> int:
+    """Register this helper with the hub (one-shot)."""
+    if not _check_helpers_enabled():
+        return 1
+
+    from kanibako.helper_client import send_request
+    try:
+        resp = send_request(_socket_path(), {
+            "action": "register",
+            "helper_num": args.number,
+        })
+        if resp.get("status") != "ok":
+            return 1
+    except Exception:
+        return 1
     return 0
 
 

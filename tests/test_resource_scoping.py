@@ -219,6 +219,50 @@ class TestResourceOverrideInMounts:
         assert overrides == {"nonexistent/": "shared"}
 
 
+class TestKanibakoMounts:
+    """Tests for _kanibako_mounts() in start.py."""
+
+    def test_returns_two_mounts(self):
+        from kanibako.commands.start import _kanibako_mounts
+
+        mounts = _kanibako_mounts()
+        assert len(mounts) == 2
+
+    def test_package_mount_destination(self):
+        from kanibako.commands.start import _kanibako_mounts
+
+        mounts = _kanibako_mounts()
+        pkg_mount = mounts[0]
+        assert pkg_mount.destination == "/opt/kanibako/kanibako"
+        assert pkg_mount.options == "ro"
+
+    def test_entry_script_mount_destination(self):
+        from kanibako.commands.start import _kanibako_mounts
+
+        mounts = _kanibako_mounts()
+        entry_mount = mounts[1]
+        assert entry_mount.destination == "/home/agent/.local/bin/kanibako"
+        assert entry_mount.options == "ro"
+
+    def test_package_source_is_kanibako_dir(self):
+        from kanibako.commands.start import _kanibako_mounts
+
+        mounts = _kanibako_mounts()
+        pkg_mount = mounts[0]
+        # Source should be the kanibako package directory
+        assert pkg_mount.source.is_dir()
+        assert (pkg_mount.source / "__init__.py").is_file()
+
+    def test_entry_script_source_exists(self):
+        from kanibako.commands.start import _kanibako_mounts
+
+        mounts = _kanibako_mounts()
+        entry_mount = mounts[1]
+        assert entry_mount.source.is_file()
+        content = entry_mount.source.read_text()
+        assert "kanibako.cli" in content
+
+
 class TestBuildEffectiveState:
     """Tests for _build_effective_state() 3-tier merge in start.py."""
 

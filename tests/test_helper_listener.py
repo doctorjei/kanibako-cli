@@ -264,6 +264,9 @@ class TestHubSpawn:
         ctx.runtime.run.assert_called_once()
         call_kwargs = ctx.runtime.run.call_args[1]
         assert call_kwargs["detach"] is True
+        # Verify helper-init.sh is used as entrypoint with correct cli_args
+        assert call_kwargs["entrypoint"] == "/home/agent/playbook/scripts/helper-init.sh"
+        assert call_kwargs["cli_args"] == ["1", "claude"]
 
     def test_spawn_runtime_failure(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
@@ -280,6 +283,66 @@ class TestHubSpawn:
             "helper_num": 1,
         })
         assert resp["status"] == "error"
+
+    def test_spawn_with_custom_entrypoint(self, hub_and_sock):
+        """When ctx.entrypoint is set, it's passed as the agent command."""
+        hub, sock_path, ctx = hub_and_sock
+        ctx.entrypoint = "/usr/bin/custom-agent"
+
+        helper_root = ctx.helpers_dir / "1"
+        helper_root.mkdir(parents=True)
+        (helper_root / "workspace").mkdir()
+        (helper_root / "vault" / "share-ro").mkdir(parents=True)
+        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+
+        resp = _connect_and_send(sock_path, {
+            "action": "spawn",
+            "helper_num": 1,
+        })
+        assert resp["status"] == "ok"
+
+        call_kwargs = ctx.runtime.run.call_args[1]
+        assert call_kwargs["entrypoint"] == "/home/agent/playbook/scripts/helper-init.sh"
+        assert call_kwargs["cli_args"] == ["1", "/usr/bin/custom-agent"]
+
+    def test_spawn_with_model(self, hub_and_sock):
+        """Model variant is passed through to cli_args."""
+        hub, sock_path, ctx = hub_and_sock
+
+        helper_root = ctx.helpers_dir / "1"
+        helper_root.mkdir(parents=True)
+        (helper_root / "workspace").mkdir()
+        (helper_root / "vault" / "share-ro").mkdir(parents=True)
+        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+
+        resp = _connect_and_send(sock_path, {
+            "action": "spawn",
+            "helper_num": 1,
+            "model": "sonnet",
+        })
+        assert resp["status"] == "ok"
+
+        call_kwargs = ctx.runtime.run.call_args[1]
+        assert call_kwargs["cli_args"] == ["1", "claude", "--model", "sonnet"]
+
+    def test_spawn_without_model(self, hub_and_sock):
+        """No model → no --model flag in cli_args."""
+        hub, sock_path, ctx = hub_and_sock
+
+        helper_root = ctx.helpers_dir / "1"
+        helper_root.mkdir(parents=True)
+        (helper_root / "workspace").mkdir()
+        (helper_root / "vault" / "share-ro").mkdir(parents=True)
+        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+
+        resp = _connect_and_send(sock_path, {
+            "action": "spawn",
+            "helper_num": 1,
+        })
+        assert resp["status"] == "ok"
+
+        call_kwargs = ctx.runtime.run.call_args[1]
+        assert call_kwargs["cli_args"] == ["1", "claude"]
 
     def test_spawn_invalid_helper_num(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock

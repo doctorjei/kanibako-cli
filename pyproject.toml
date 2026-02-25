@@ -24,6 +24,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "kanibako.containers" = ["Containerfile.*"]
+"kanibako.scripts" = ["*.sh", "kanibako-entry"]
 
 [tool.ruff]
 target-version = "py311"

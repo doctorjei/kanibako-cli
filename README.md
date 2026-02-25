@@ -518,7 +518,13 @@ kanibako helper log --last 10         # show last 10 entries
 kanibako start --no-helpers           # launch without helper support
 ```
 
-**Architecture:** Two communication layers work together:
+**Architecture:** The kanibako CLI is bind-mounted into every container
+(director and helpers), so `kanibako helper spawn/send/broadcast/log`
+works inside containers. Each helper launches with `helper-init.sh` as
+its entrypoint — the script registers with the hub, sources broadcast
+startup scripts, then execs the agent command.
+
+Two communication layers work together:
 - **Directories** — file sharing (workspace, vault, peers, broadcast).
   Persistent, async. Good for sharing code, configs, results.
 - **Socket** — control plane (spawn/stop) + real-time messaging
@@ -550,6 +556,7 @@ A broadcast channel (`all/`) is available to all helpers.
     workspace/          # helper's working directory
     vault/share-ro/     # read-only vault share
     vault/share-rw/     # read-write vault share
+    playbook/scripts/   # helper-init.sh (entrypoint wrapper)
     peers/              # symlinks to peer channels
     all -> ../all/      # broadcast channel
     spawn.toml          # RO spawn budget
@@ -560,6 +567,7 @@ A broadcast channel (`all/`) is available to all helpers.
 ~/.kanibako/
   helper.sock           # hub socket (mounted from host)
   helper-messages.jsonl # message log (mounted read-only)
+~/.local/bin/kanibako   # kanibako CLI (bind-mounted from host, ro)
 ```
 
 ## Development
@@ -569,7 +577,7 @@ A broadcast channel (`all/`) is available to all helpers.
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1149)
+pytest tests/ -v                    # unit tests (1164)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
@@ -597,10 +605,12 @@ git push && git push --tags
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
 | `targets/` | Agent plugin system (Target ABC + ClaudeTarget) |
+| `helpers.py` | B-ary numbering, spawn budget, directory/channel creation |
 | `helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `helper_client.py` | Container-side socket client for hub communication |
 | `commands/` | CLI subcommand implementations |
 | `containers/` | Bundled Containerfiles |
+| `scripts/` | Bundled scripts: `helper-init.sh` (entrypoint wrapper), `kanibako-entry` (container CLI) |
 
 ## License
 

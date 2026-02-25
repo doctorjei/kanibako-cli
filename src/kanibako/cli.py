@@ -87,8 +87,11 @@ _SUBCOMMANDS = {
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
 
-    import argcomplete
-    argcomplete.autocomplete(parser)
+    try:
+        import argcomplete
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
 
     effective = list(argv if argv is not None else sys.argv[1:])
 
@@ -113,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
             effective = ["start"] + effective
         args = parser.parse_args(effective)
 
-        if args.command != "setup":
+        if args.command not in ("setup", "helper"):
             from kanibako.paths import xdg
             from kanibako.config import config_file_path
             _cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
