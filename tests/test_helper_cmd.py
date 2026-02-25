@@ -9,14 +9,17 @@ import pytest
 
 from kanibako.commands.helper_cmd import (
     _cascade_cleanup,
+    _format_log_entry,
     _get_existing_helpers,
-    _helpers_dir,
     _next_helper_number,
     _read_state,
     _write_state,
+    run_broadcast,
     run_cleanup,
     run_list,
+    run_log,
     run_respawn,
+    run_send,
     run_spawn,
     run_stop,
 )
@@ -388,6 +391,227 @@ class TestCascadeCleanup:
         # so it gets removed by shutil.rmtree anyway (part of the dir tree)
         run_cleanup(_make_args(number=1, cascade=False))
         assert not (helpers / "1").exists()
+
+
+class TestRunSend:
+    def test_send_no_socket(self, helpers_env, capsys):
+        """Send fails gracefully when helpers not enabled."""
+        rc = run_send(_make_args(number=1, message="hello"))
+        assert rc == 1
+        assert "not enabled" in capsys.readouterr().err
+
+    def test_send_with_socket(self, helpers_env, capsys):
+        """Send succeeds when socket exists and mock returns ok."""
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "ok"}
+            rc = run_send(_make_args(number=1, message="hello"))
+        assert rc == 0
+        assert "sent" in capsys.readouterr().out
+
+    def test_send_failure(self, helpers_env, capsys):
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "error", "message": "no route"}
+            rc = run_send(_make_args(number=1, message="hello"))
+        assert rc == 1
+        assert "failed" in capsys.readouterr().err.lower()
+
+
+class TestRunBroadcast:
+    def test_broadcast_no_socket(self, helpers_env, capsys):
+        rc = run_broadcast(_make_args(message="all hands"))
+        assert rc == 1
+        assert "not enabled" in capsys.readouterr().err
+
+    def test_broadcast_success(self, helpers_env, capsys):
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "ok"}
+            rc = run_broadcast(_make_args(message="all hands"))
+        assert rc == 0
+        assert "broadcast" in capsys.readouterr().out.lower()
+
+
+class TestRunLog:
+    def test_log_no_file(self, helpers_env, capsys):
+        rc = run_log(_make_args(follow=False, from_helper=None, last=None))
+        assert rc == 1
+        assert "No helper message log" in capsys.readouterr().err
+
+    def test_log_displays_entries(self, helpers_env, capsys):
+        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file.parent.mkdir(parents=True)
+        import json
+        entries = [
+            {"ts": "2026-02-25T12:35:10Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "Analyze auth."}},
+            {"ts": "2026-02-25T12:36:45Z", "type": "message", "from": 1, "to": 0, "payload": {"text": "Found 3 issues."}},
+        ]
+        log_file.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+        rc = run_log(_make_args(follow=False, from_helper=None, last=None))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[0 → 1]" in out
+        assert "Analyze auth." in out
+        assert "[1 → 0]" in out
+        assert "Found 3 issues." in out
+
+    def test_log_filter_by_helper(self, helpers_env, capsys):
+        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file.parent.mkdir(parents=True)
+        import json
+        entries = [
+            {"ts": "T12:00:00Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "a"}},
+            {"ts": "T12:01:00Z", "type": "message", "from": 1, "to": 0, "payload": {"text": "b"}},
+            {"ts": "T12:02:00Z", "type": "message", "from": 2, "to": 0, "payload": {"text": "c"}},
+        ]
+        log_file.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+        rc = run_log(_make_args(follow=False, from_helper=1, last=None))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "b" in out
+        assert "c" not in out
+
+    def test_log_last_n(self, helpers_env, capsys):
+        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file.parent.mkdir(parents=True)
+        import json
+        entries = [
+            {"ts": "T12:00:00Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "first"}},
+            {"ts": "T12:01:00Z", "type": "message", "from": 1, "to": 0, "payload": {"text": "second"}},
+            {"ts": "T12:02:00Z", "type": "message", "from": 2, "to": 0, "payload": {"text": "third"}},
+        ]
+        log_file.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+        rc = run_log(_make_args(follow=False, from_helper=None, last=1))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "third" in out
+        assert "first" not in out
+
+    def test_log_control_entries(self, helpers_env, capsys):
+        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file.parent.mkdir(parents=True)
+        import json
+        entries = [
+            {"ts": "T12:00:00Z", "type": "control", "event": "spawn", "helper": 1, "model": "sonnet"},
+            {"ts": "T12:01:00Z", "type": "control", "event": "register", "helper": 1},
+        ]
+        log_file.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+        rc = run_log(_make_args(follow=False, from_helper=None, last=None))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[spawn]" in out
+        assert "model=sonnet" in out
+        assert "[register]" in out
+
+
+class TestFormatLogEntry:
+    def test_message_entry(self):
+        entry = {"ts": "2026-02-25T12:35:10Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "hello"}}
+        result = _format_log_entry(entry)
+        assert "12:35:10" in result
+        assert "[0 → 1]" in result
+        assert "hello" in result
+
+    def test_broadcast_entry(self):
+        entry = {"ts": "2026-02-25T12:37:00Z", "type": "message", "from": 0, "to": "all", "payload": {"text": "start"}}
+        result = _format_log_entry(entry)
+        assert "[0 → *]" in result
+
+    def test_control_entry(self):
+        entry = {"ts": "2026-02-25T12:34:56Z", "type": "control", "event": "spawn", "helper": 1, "model": "sonnet"}
+        result = _format_log_entry(entry)
+        assert "[spawn]" in result
+        assert "helper 1" in result
+
+
+class TestSocketWiring:
+    def test_spawn_with_socket(self, helpers_env, capsys):
+        """Spawn calls socket client when socket exists."""
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "kanibako-helper-1-abc"}
+            args = _make_args(depth=None, breadth=None, model=None)
+            rc = run_spawn(args)
+
+        assert rc == 0
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "running"
+        assert state["container_name"] == "kanibako-helper-1-abc"
+
+    def test_spawn_socket_failure(self, helpers_env, capsys):
+        """Spawn records 'failed' when socket returns error."""
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "error", "message": "image not found"}
+            args = _make_args(depth=None, breadth=None, model=None)
+            rc = run_spawn(args)
+
+        assert rc == 0  # spawn itself succeeds (dirs created)
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "failed"
+
+    def test_stop_with_socket(self, helpers_env, capsys):
+        """Stop calls socket client for container stop."""
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        # Spawn first (without socket active for dir creation)
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        # Manually set container_name in state
+        state = _read_state(helpers_env / "helpers", 1)
+        state["container_name"] = "kanibako-helper-1-abc"
+        state["status"] = "running"
+        _write_state(helpers_env / "helpers", 1, state)
+        capsys.readouterr()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "ok"}
+            rc = run_stop(_make_args(number=1))
+
+        assert rc == 0
+        m.assert_called_once()
+        call_req = m.call_args[0][1]
+        assert call_req["action"] == "stop"
+        assert call_req["container_name"] == "kanibako-helper-1-abc"
+
+    def test_respawn_with_socket(self, helpers_env, capsys):
+        """Respawn calls socket client for container relaunch."""
+        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        capsys.readouterr()
+
+        with patch("kanibako.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "kanibako-helper-1-new"}
+            rc = run_respawn(_make_args(number=1))
+
+        assert rc == 0
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "running"
 
 
 def _make_args(**kwargs):

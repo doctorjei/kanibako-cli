@@ -150,10 +150,19 @@ class ContainerRuntime:
         name: str | None = None,
         entrypoint: str | None = None,
         cli_args: list[str] | None = None,
+        detach: bool = False,
     ) -> int:
-        """Run a container and return the exit code."""
+        """Run a container and return the exit code.
+
+        When *detach* is True the container runs in the background (``-d``
+        instead of ``-it``, no ``--rm``).  Returns 0 on success.
+        """
+        if detach:
+            run_flags = ["-d", "--userns=keep-id"]
+        else:
+            run_flags = ["-it", "--rm", "--userns=keep-id"]
         cmd: list[str] = [
-            self.cmd, "run", "-it", "--rm", "--userns=keep-id",
+            self.cmd, "run", *run_flags,
             # Persistent agent home
             "-v", f"{shell_path}:/home/agent:Z,U",
             # Project workspace
@@ -196,6 +205,23 @@ class ContainerRuntime:
             capture_output=True,
         )
         return result.returncode == 0
+
+    def rm(self, name: str) -> bool:
+        """Remove a stopped container by name. Returns True if removed."""
+        result = subprocess.run(
+            [self.cmd, "rm", name],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def is_running(self, name: str) -> bool:
+        """Check if a named container is currently running."""
+        result = subprocess.run(
+            [self.cmd, "inspect", "--format", "{{.State.Running}}", name],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "true"
 
     def list_running(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
         """Return running containers matching *prefix* as (name, image, status) tuples."""

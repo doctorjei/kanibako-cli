@@ -133,3 +133,86 @@ class TestRunEnvFlags:
             )
             cmd = m.call_args[0][0]
             assert "-e" not in cmd
+
+
+class TestDetachMode:
+    """Test detach=True uses -d instead of -it and omits --rm."""
+
+    def test_detach_uses_dash_d(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.run(
+                "test:latest",
+                shell_path=Path("/tmp/shell"),
+                project_path=Path("/tmp/project"),
+                vault_ro_path=Path("/tmp/vault-ro"),
+                vault_rw_path=Path("/tmp/vault-rw"),
+                vault_enabled=False,
+                detach=True,
+            )
+            cmd = m.call_args[0][0]
+            assert "-d" in cmd
+            assert "-it" not in cmd
+            assert "--rm" not in cmd
+
+    def test_interactive_uses_it_and_rm(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.run(
+                "test:latest",
+                shell_path=Path("/tmp/shell"),
+                project_path=Path("/tmp/project"),
+                vault_ro_path=Path("/tmp/vault-ro"),
+                vault_rw_path=Path("/tmp/vault-rw"),
+                vault_enabled=False,
+                detach=False,
+            )
+            cmd = m.call_args[0][0]
+            assert "-it" in cmd
+            assert "--rm" in cmd
+            assert "-d" not in cmd
+
+
+class TestRmAndIsRunning:
+    """Test rm() and is_running() methods."""
+
+    def test_rm_success(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.rm("mycontainer") is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "rm", "mycontainer"]
+
+    def test_rm_failure(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.rm("nonexistent") is False
+
+    def test_is_running_true(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="true\n")
+            assert rt.is_running("mycontainer") is True
+
+    def test_is_running_false_stopped(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="false\n")
+            assert rt.is_running("mycontainer") is False
+
+    def test_is_running_false_not_found(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stdout="")
+            assert rt.is_running("nonexistent") is False

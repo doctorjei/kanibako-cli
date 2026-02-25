@@ -8,7 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from kanibako.config import config_file_path, load_config
+from kanibako.config import config_file_path
 from kanibako.helpers import (
     SpawnBudget,
     check_spawn_allowed,
@@ -23,7 +23,7 @@ from kanibako.helpers import (
     resolve_spawn_budget,
     write_spawn_config,
 )
-from kanibako.paths import xdg, load_std_paths
+from kanibako.paths import xdg
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -93,12 +93,61 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     respawn_p.add_argument("number", type=int, help="Helper number to respawn")
     respawn_p.set_defaults(func=run_respawn)
 
+    # kanibako helper send <N> <message>
+    send_p = ss.add_parser(
+        "send",
+        help="Send a message to a helper",
+        description="Send a message to a specific helper by number.",
+    )
+    send_p.add_argument("number", type=int, help="Helper number to send to")
+    send_p.add_argument("message", help="Message text to send")
+    send_p.set_defaults(func=run_send)
+
+    # kanibako helper broadcast <message>
+    bcast_p = ss.add_parser(
+        "broadcast",
+        help="Broadcast a message to all helpers",
+        description="Send a message to all connected helpers.",
+    )
+    bcast_p.add_argument("message", help="Message text to broadcast")
+    bcast_p.set_defaults(func=run_broadcast)
+
+    # kanibako helper log
+    log_p = ss.add_parser(
+        "log",
+        help="View inter-agent message log",
+        description="Display the JSONL message log in human-readable format.",
+    )
+    log_p.add_argument(
+        "--follow", "-f", action="store_true",
+        help="Follow log output (like tail -f)",
+    )
+    log_p.add_argument(
+        "--from", type=int, default=None, dest="from_helper",
+        help="Filter messages from a specific helper number",
+    )
+    log_p.add_argument(
+        "--last", type=int, default=None,
+        help="Show only the last N entries",
+    )
+    log_p.set_defaults(func=run_log)
+
     p.set_defaults(func=run_list)
 
 
 def _helpers_dir() -> Path:
     """Return the helpers directory for the current session."""
     return Path.home() / "helpers"
+
+
+def _socket_path() -> Path:
+    """Return the path to the helper hub socket."""
+    return Path.home() / ".kanibako" / "helper.sock"
+
+
+def _check_helpers_enabled() -> bool:
+    """Check if the helper socket exists (helpers are enabled)."""
+    return _socket_path().exists()
 
 
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
@@ -215,12 +264,44 @@ def run_spawn(args: argparse.Namespace) -> int:
     }
     _write_state(helpers_dir, helper_num, state)
 
+    # Launch container via socket if helpers are enabled
+    container_name = None
+    if _check_helpers_enabled():
+        from kanibako.helper_client import send_request
+        try:
+            resp = send_request(_socket_path(), {
+                "action": "spawn",
+                "helper_num": helper_num,
+                "model": args.model,
+                "helpers_dir": str(helpers_dir),
+            })
+            if resp.get("status") == "ok":
+                container_name = resp.get("container_name")
+                state["status"] = "running"
+                state["container_name"] = container_name
+            else:
+                state["status"] = "failed"
+                state["error"] = resp.get("message", "unknown error")
+                print(
+                    f"Warning: container launch failed: {resp.get('message')}",
+                    file=sys.stderr,
+                )
+        except Exception as e:
+            state["status"] = "failed"
+            state["error"] = str(e)
+            print(f"Warning: container launch failed: {e}", file=sys.stderr)
+    else:
+        state["status"] = "spawned"
+
+    _write_state(helpers_dir, helper_num, state)
+
     print(f"Spawned helper {helper_num}")
     if args.model:
         print(f"  model: {args.model}")
     print(f"  depth: {child_cfg.depth}, breadth: {child_cfg.breadth}")
     print(f"  peers: {existing}")
-    # Container launch will be wired in a future phase
+    if container_name:
+        print(f"  container: {container_name}")
     return 0
 
 
@@ -263,7 +344,18 @@ def run_stop(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} is already stopped.")
         return 0
 
-    # Container stop will be wired in a future phase.
+    # Stop container via socket if running
+    container_name = state.get("container_name")
+    if container_name and _check_helpers_enabled():
+        from kanibako.helper_client import send_request
+        try:
+            send_request(_socket_path(), {
+                "action": "stop",
+                "container_name": container_name,
+            })
+        except Exception:
+            pass  # Best-effort stop
+
     state["status"] = "stopped"
     _write_state(helpers_dir, helper_num, state)
     print(f"Stopped helper {helper_num}.")
@@ -279,6 +371,19 @@ def run_cleanup(args: argparse.Namespace) -> int:
     if not helper_root.is_dir():
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
+
+    # Stop container if running
+    state = _read_state(helpers_dir, helper_num)
+    container_name = state.get("container_name")
+    if container_name and _check_helpers_enabled():
+        from kanibako.helper_client import send_request
+        try:
+            send_request(_socket_path(), {
+                "action": "stop",
+                "container_name": container_name,
+            })
+        except Exception:
+            pass
 
     cascade = getattr(args, "cascade", False)
     if cascade:
@@ -333,8 +438,201 @@ def run_respawn(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # Container relaunch will be wired in a future phase.
-    state["status"] = "respawned"
+    # Relaunch container via socket if helpers are enabled
+    if _check_helpers_enabled():
+        from kanibako.helper_client import send_request
+        try:
+            resp = send_request(_socket_path(), {
+                "action": "spawn",
+                "helper_num": helper_num,
+                "model": state.get("model"),
+                "helpers_dir": str(helpers_dir),
+            })
+            if resp.get("status") == "ok":
+                state["status"] = "running"
+                state["container_name"] = resp.get("container_name")
+            else:
+                state["status"] = "failed"
+                print(
+                    f"Warning: container relaunch failed: {resp.get('message')}",
+                    file=sys.stderr,
+                )
+        except Exception as e:
+            state["status"] = "failed"
+            print(f"Warning: container relaunch failed: {e}", file=sys.stderr)
+    else:
+        state["status"] = "respawned"
+
     _write_state(helpers_dir, helper_num, state)
     print(f"Respawned helper {helper_num}.")
+    return 0
+
+
+def run_send(args: argparse.Namespace) -> int:
+    """Send a message to a specific helper."""
+    if not _check_helpers_enabled():
+        print("Helpers not enabled (no socket found).", file=sys.stderr)
+        return 1
+
+    from kanibako.helper_client import send_request
+    try:
+        resp = send_request(_socket_path(), {
+            "action": "send",
+            "to": args.number,
+            "payload": {"text": args.message},
+        })
+        if resp.get("status") != "ok":
+            print(f"Send failed: {resp.get('message')}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        print(f"Send failed: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Message sent to helper {args.number}.")
+    return 0
+
+
+def run_broadcast(args: argparse.Namespace) -> int:
+    """Broadcast a message to all helpers."""
+    if not _check_helpers_enabled():
+        print("Helpers not enabled (no socket found).", file=sys.stderr)
+        return 1
+
+    from kanibako.helper_client import send_request
+    try:
+        resp = send_request(_socket_path(), {
+            "action": "broadcast",
+            "payload": {"text": args.message},
+        })
+        if resp.get("status") != "ok":
+            print(f"Broadcast failed: {resp.get('message')}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        print(f"Broadcast failed: {e}", file=sys.stderr)
+        return 1
+
+    print("Message broadcast to all helpers.")
+    return 0
+
+
+def _log_path() -> Path:
+    """Return the path to the helper message log file."""
+    return Path.home() / ".kanibako" / "helper-messages.jsonl"
+
+
+def run_log(args: argparse.Namespace) -> int:
+    """Display the inter-agent message log."""
+    log_file = _log_path()
+
+    if not log_file.is_file():
+        print("No helper message log found.", file=sys.stderr)
+        return 1
+
+    follow = getattr(args, "follow", False)
+    from_helper = getattr(args, "from_helper", None)
+    last_n = getattr(args, "last", None)
+
+    if follow:
+        return _follow_log(log_file, from_helper)
+
+    entries = _read_log_entries(log_file)
+
+    # Filter by helper
+    if from_helper is not None:
+        entries = [
+            e for e in entries
+            if e.get("from") == from_helper or e.get("helper") == from_helper
+        ]
+
+    # Last N entries
+    if last_n is not None and last_n > 0:
+        entries = entries[-last_n:]
+
+    if not entries:
+        print("No log entries.")
+        return 0
+
+    for entry in entries:
+        print(_format_log_entry(entry))
+    return 0
+
+
+def _read_log_entries(log_file: Path) -> list[dict]:
+    """Read all JSONL entries from the log file."""
+    entries = []
+    with open(log_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    return entries
+
+
+def _format_log_entry(entry: dict) -> str:
+    """Format a single log entry for display."""
+    ts = entry.get("ts", "")
+    # Extract time portion (HH:MM:SS)
+    if "T" in ts:
+        time_part = ts.split("T")[1].split(".")[0].split("+")[0]
+    else:
+        time_part = ts[:8] if len(ts) >= 8 else ts
+
+    entry_type = entry.get("type", "")
+
+    if entry_type == "message":
+        sender = entry.get("from", "?")
+        recipient = entry.get("to", "?")
+        to_str = "*" if recipient == "all" else str(recipient)
+        text = entry.get("payload", {}).get("text", "")
+        return f"{time_part}  [{sender} → {to_str}]  {text}"
+    elif entry_type == "control":
+        event = entry.get("event", "?")
+        helper = entry.get("helper", "")
+        extra = ""
+        if "model" in entry and entry["model"]:
+            extra = f" (model={entry['model']})"
+        return f"{time_part}  [{event}] helper {helper}{extra}"
+    else:
+        return f"{time_part}  {json.dumps(entry)}"
+
+
+def _follow_log(log_file: Path, from_helper: int | None) -> int:
+    """Follow the log file, printing new entries as they appear."""
+    import time
+
+    # Print existing entries first
+    entries = _read_log_entries(log_file)
+    if from_helper is not None:
+        entries = [
+            e for e in entries
+            if e.get("from") == from_helper or e.get("helper") == from_helper
+        ]
+    for entry in entries:
+        print(_format_log_entry(entry))
+
+    # Then tail the file
+    with open(log_file) as f:
+        f.seek(0, 2)  # seek to end
+        try:
+            while True:
+                line = f.readline()
+                if not line:
+                    time.sleep(0.2)
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if from_helper is not None:
+                    if entry.get("from") != from_helper and entry.get("helper") != from_helper:
+                        continue
+                print(_format_log_entry(entry))
+        except KeyboardInterrupt:
+            pass
     return 0

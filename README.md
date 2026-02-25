@@ -97,7 +97,7 @@ Subsequent runs reuse the existing state.
 | `kanibako vault [snapshot\|list\|restore\|prune]` | Vault snapshot management |
 | `kanibako env [list\|set\|get\|unset]` | Environment variable management |
 | `kanibako shared [init\|list]` | Shared cache management |
-| `kanibako helper [spawn\|list\|stop\|cleanup\|respawn]` | Child kanibako spawning |
+| `kanibako helper [spawn\|list\|stop\|cleanup\|respawn\|send\|broadcast\|log]` | Child kanibako spawning and messaging |
 | `kanibako setup` | Initial setup |
 | `kanibako upgrade [--check]` | Update from git |
 | `kanibako reauth` | Check auth and login if needed |
@@ -489,9 +489,12 @@ Effective value resolution (highest wins):
 
 Kanibako containers can spawn child instances for parallel workloads.
 Each child gets its own directory tree, peer communication channels,
-and spawn budget.
+and spawn budget. Helpers are enabled by default — the host runs a
+Unix socket hub alongside the director container, and helpers connect
+to it for orchestration and messaging.
 
 ```bash
+# Spawning and lifecycle
 kanibako helper spawn                 # spawn a child with default budget
 kanibako helper spawn --model sonnet  # child uses a different model
 kanibako helper spawn --depth 2 --breadth 3  # custom spawn limits
@@ -500,6 +503,35 @@ kanibako helper stop 1                # stop helper 1
 kanibako helper respawn 1             # relaunch a stopped helper
 kanibako helper cleanup 1             # stop and remove helper 1
 kanibako helper cleanup 1 --cascade   # also remove all descendants
+
+# Messaging
+kanibako helper send 1 "Analyze the auth module"   # send to helper 1
+kanibako helper broadcast "Starting tests"          # send to all helpers
+
+# Conversation log
+kanibako helper log                   # display full message log
+kanibako helper log --follow          # tail log in real-time
+kanibako helper log --from 1          # filter by helper number
+kanibako helper log --last 10         # show last 10 entries
+
+# Opt out
+kanibako start --no-helpers           # launch without helper support
+```
+
+**Architecture:** Two communication layers work together:
+- **Directories** — file sharing (workspace, vault, peers, broadcast).
+  Persistent, async. Good for sharing code, configs, results.
+- **Socket** — control plane (spawn/stop) + real-time messaging
+  (peer-to-peer, parent-child, broadcast). The host listener acts as
+  a central message router.
+
+**Logging:** All inter-agent messages are logged to a JSONL file on the
+host. Each entry records sender, recipient(s), timestamp, and message
+content. View the conversation in real-time with `kanibako helper log --follow`:
+```
+12:35:10  [0 → 1]  Analyze the auth module and report back.
+12:36:45  [1 → 0]  Found 3 issues in the token refresh flow.
+12:37:00  [0 → *]  Starting integration tests.
 ```
 
 **Spawn budget:** Each helper gets a depth/breadth budget controlling
@@ -525,6 +557,9 @@ A broadcast channel (`all/`) is available to all helpers.
   all/ro/               # broadcast read-only
   all/rw/               # broadcast read-write
   channels/             # raw peer channel directories
+~/.kanibako/
+  helper.sock           # hub socket (mounted from host)
+  helper-messages.jsonl # message log (mounted read-only)
 ```
 
 ## Development
@@ -534,7 +569,7 @@ A broadcast channel (`all/`) is available to all helpers.
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1091)
+pytest tests/ -v                    # unit tests (1149)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
@@ -553,7 +588,7 @@ git push && git push --tags
 | `log.py` | Logging setup (`-v` enables debug output) |
 | `config.py` | TOML config loading, merge logic |
 | `paths.py` | XDG resolution, mode detection, project init |
-| `container.py` | Container runtime (detect, pull, build, run, stop) |
+| `container.py` | Container runtime (detect, pull, build, run, stop, detach) |
 | `shellenv.py` | Environment variable file handling |
 | `snapshots.py` | Vault snapshot engine |
 | `workset.py` | Working set data model and persistence |
@@ -562,6 +597,8 @@ git push && git push --tags
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
 | `targets/` | Agent plugin system (Target ABC + ClaudeTarget) |
+| `helper_listener.py` | Host-side hub: socket server, message routing, logging |
+| `helper_client.py` | Container-side socket client for hub communication |
 | `commands/` | CLI subcommand implementations |
 | `containers/` | Bundled Containerfiles |
 

@@ -42,6 +42,10 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Run without --dangerously-skip-permissions",
     )
     p.add_argument(
+        "--no-helpers", action="store_true",
+        help="Disable helper spawning (no hub socket mounted)",
+    )
+    p.add_argument(
         "agent_args", nargs=argparse.REMAINDER,
         help="Arguments passed directly to the agent",
     )
@@ -95,6 +99,7 @@ def run_start(args: argparse.Namespace) -> int:
     image_override = getattr(args, "image", None)
     new_session = getattr(args, "new", False)
     safe_mode = getattr(args, "safe", False)
+    no_helpers = getattr(args, "no_helpers", False)
     agent_args = getattr(args, "agent_args", [])
     # Strip leading '--' from REMAINDER
     if agent_args and agent_args[0] == "--":
@@ -108,6 +113,7 @@ def run_start(args: argparse.Namespace) -> int:
         safe_mode=safe_mode,
         resume_mode=False,
         extra_args=agent_args,
+        no_helpers=no_helpers,
     )
 
 
@@ -146,6 +152,7 @@ def _run_container(
     safe_mode: bool,
     resume_mode: bool,
     extra_args: list[str],
+    no_helpers: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -364,21 +371,80 @@ def _run_container(
         container_env.update(state_env)
         container_env = container_env or None
 
-        # Run the container
-        rc = runtime.run(
-            image,
-            shell_path=proj.shell_path,
-            project_path=proj.project_path,
-            vault_ro_path=proj.vault_ro_path,
-            vault_rw_path=proj.vault_rw_path,
-            extra_mounts=extra_mounts or None,
-            vault_tmpfs=(proj.mode == ProjectMode.account_centric),
-            vault_enabled=proj.vault_enabled,
-            env=container_env,
-            name=container_name,
-            entrypoint=entrypoint,
-            cli_args=cli_args or None,
+        # Helper hub: start listener before director, mount socket
+        hub = None
+        helpers_enabled = (
+            not no_helpers
+            and not getattr(merged, "helpers_disabled", False)
         )
+        if helpers_enabled:
+            from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
+            from kanibako.targets.base import Mount as _HMount
+
+            socket_path = proj.metadata_path / "helper.sock"
+            log_path = proj.metadata_path / "helper-messages.jsonl"
+
+            # Ensure helpers/ dir exists in shell_path
+            helpers_dir = proj.shell_path / "helpers"
+            helpers_dir.mkdir(exist_ok=True)
+
+            # Build context for helper container launches
+            binary_mounts = []
+            if target and install:
+                binary_mounts = list(target.binary_mounts(install))
+
+            helper_ctx = HelperContext(
+                runtime=runtime,
+                image=image,
+                container_name_prefix="kanibako-helper",
+                project_hash=proj.project_hash,
+                shell_path=proj.shell_path,
+                helpers_dir=helpers_dir,
+                binary_mounts=binary_mounts,
+                env=container_env,
+                entrypoint=entrypoint,
+            )
+
+            msg_log = MessageLog(log_path)
+            hub = HelperHub()
+            hub.start(socket_path, helper_ctx, log=msg_log)
+
+            # Mount the socket into the container
+            kanibako_dir = proj.shell_path / ".kanibako"
+            kanibako_dir.mkdir(exist_ok=True)
+            extra_mounts.append(_HMount(
+                source=socket_path,
+                destination="/home/agent/.kanibako/helper.sock",
+                options="",
+            ))
+
+            # Mount helper-messages.jsonl for log command inside container
+            extra_mounts.append(_HMount(
+                source=log_path,
+                destination="/home/agent/.kanibako/helper-messages.jsonl",
+                options="ro",
+            ))
+
+        try:
+            # Run the container
+            rc = runtime.run(
+                image,
+                shell_path=proj.shell_path,
+                project_path=proj.project_path,
+                vault_ro_path=proj.vault_ro_path,
+                vault_rw_path=proj.vault_rw_path,
+                extra_mounts=extra_mounts or None,
+                vault_tmpfs=(proj.mode == ProjectMode.account_centric),
+                vault_enabled=proj.vault_enabled,
+                env=container_env,
+                name=container_name,
+                entrypoint=entrypoint,
+                cli_args=cli_args or None,
+            )
+        finally:
+            # Stop helper hub after director exits
+            if hub is not None:
+                hub.stop()
 
         # Write back refreshed credentials via target (skip for distinct auth)
         if target and proj.auth != "distinct":
