@@ -31,6 +31,7 @@ def mock_ctx(tmp_path):
     runtime.stop.return_value = True
     runtime.rm.return_value = True
 
+    socket_path = tmp_path / "helper.sock"
     return HelperContext(
         runtime=runtime,
         image="test:latest",
@@ -38,6 +39,7 @@ def mock_ctx(tmp_path):
         project_hash="abc12345deadbeef",
         shell_path=tmp_path / "shell",
         helpers_dir=helpers_dir,
+        socket_path=socket_path,
         binary_mounts=[],
         env=None,
         entrypoint=None,
@@ -104,6 +106,8 @@ class TestBuildHelperMounts:
         spawn_toml = helper_root / "spawn.toml"
         spawn_toml.write_text("[spawn]\ndepth = 3\n")
 
+        sock = tmp_path / "helper.sock"
+        sock.touch()
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
@@ -111,6 +115,7 @@ class TestBuildHelperMounts:
             project_hash="abc",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
+            socket_path=sock,
             binary_mounts=[],
         )
 
@@ -132,6 +137,7 @@ class TestBuildHelperMounts:
             project_hash="abc",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
+            socket_path=tmp_path / "helper.sock",
             binary_mounts=[binary_mount],
         )
 
@@ -155,11 +161,52 @@ class TestBuildHelperMounts:
             project_hash="abc",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
+            socket_path=tmp_path / "helper.sock",
             binary_mounts=[],
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
         assert any(m.destination == "/home/agent/all" for m in mounts)
+
+    def test_socket_mount(self, tmp_path):
+        """Socket is mounted when it exists on the host."""
+        helpers_dir = tmp_path / "helpers"
+        (helpers_dir / "1").mkdir(parents=True)
+        sock = tmp_path / "helper.sock"
+        sock.touch()
+
+        ctx = HelperContext(
+            runtime=MagicMock(),
+            image="test:latest",
+            container_name_prefix="kanibako-helper",
+            project_hash="abc",
+            shell_path=tmp_path,
+            helpers_dir=helpers_dir,
+            socket_path=sock,
+            binary_mounts=[],
+        )
+
+        mounts = _build_helper_mounts(ctx, 1, helpers_dir)
+        assert any(m.destination == "/home/agent/.kanibako/helper.sock" for m in mounts)
+
+    def test_no_socket_mount_when_missing(self, tmp_path):
+        """Socket is not mounted when it doesn't exist."""
+        helpers_dir = tmp_path / "helpers"
+        (helpers_dir / "1").mkdir(parents=True)
+
+        ctx = HelperContext(
+            runtime=MagicMock(),
+            image="test:latest",
+            container_name_prefix="kanibako-helper",
+            project_hash="abc",
+            shell_path=tmp_path,
+            helpers_dir=helpers_dir,
+            socket_path=tmp_path / "nonexistent.sock",
+            binary_mounts=[],
+        )
+
+        mounts = _build_helper_mounts(ctx, 1, helpers_dir)
+        assert not any(m.destination == "/home/agent/.kanibako/helper.sock" for m in mounts)
 
 
 class TestHubSocketProtocol:

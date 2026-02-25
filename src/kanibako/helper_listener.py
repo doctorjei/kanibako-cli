@@ -27,6 +27,7 @@ class HelperContext:
     project_hash: str
     shell_path: Path      # director's shell_path (parent of helpers/)
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
+    socket_path: Path     # host path to helper.sock
     binary_mounts: list[Mount] = field(default_factory=list)
     env: dict[str, str] | None = None
     entrypoint: str | None = None
@@ -399,19 +400,10 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
         mounts.append(Mount(spawn_toml, "/home/agent/spawn.toml", "ro"))
 
     # Helper socket — mount the hub socket into the helper
-    sock_path = helpers_dir.parent / ".kanibako" / "helper.sock"
-    if not sock_path.exists():
-        # Try alternate location (metadata_path)
-        for candidate in [
-            helpers_dir.parent.parent / "helper.sock",
-        ]:
-            if candidate.exists():
-                sock_path = candidate
-                break
-    if sock_path.exists():
+    if ctx.socket_path.exists():
         kanibako_dir = helper_root / ".kanibako"
         kanibako_dir.mkdir(parents=True, exist_ok=True)
-        mounts.append(Mount(sock_path, "/home/agent/.kanibako/helper.sock", ""))
+        mounts.append(Mount(ctx.socket_path, "/home/agent/.kanibako/helper.sock", ""))
 
     # Target binary mounts (same agent binary as the director)
     mounts.extend(ctx.binary_mounts)

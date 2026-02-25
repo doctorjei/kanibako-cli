@@ -54,19 +54,23 @@ class KanibakoConfig:
     paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
     container_image: str = _DEFAULTS["container_image"]
     target_name: str = _DEFAULTS["target_name"]
+    helpers_disabled: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
 
 
-def _flatten_toml(data: dict, prefix: str = "") -> dict[str, str]:
+def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
     """Flatten nested TOML dict into underscore-joined keys.
 
     ``{"paths": {"boxes": "x"}}`` → ``{"paths_boxes": "x"}``
+    Booleans are preserved; other scalars are stringified.
     """
-    out: dict[str, str] = {}
+    out: dict[str, object] = {}
     for k, v in data.items():
         key = f"{prefix}_{k}" if prefix else k
         if isinstance(v, dict):
             out.update(_flatten_toml(v, key))
+        elif isinstance(v, bool):
+            out[key] = v
         else:
             out[key] = str(v)
     return out
