@@ -13,10 +13,15 @@ from kanibako.helpers import (
     check_spawn_allowed,
     child_budget,
     children_of,
+    create_broadcast_dirs,
+    create_helper_dirs,
+    create_peer_channels,
     effective_breadth,
+    link_broadcast,
     nth_child,
     parent_of,
     read_spawn_config,
+    remove_helper_dirs,
     resolve_spawn_budget,
     sibling_index,
     write_spawn_config,
@@ -355,3 +360,195 @@ class TestSpawnConfigIO:
         path = tmp_path / "sub" / "dir" / "spawn.toml"
         write_spawn_config(path, SpawnBudget())
         assert path.exists()
+
+
+# --- Directory structure ---
+
+
+class TestCreateHelperDirs:
+    def test_creates_standard_layout(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        root = create_helper_dirs(helpers, 1)
+        assert root == helpers / "1"
+        assert (root / "vault" / "share-ro").is_dir()
+        assert (root / "vault" / "share-rw").is_dir()
+        assert (root / "workspace").is_dir()
+        assert (root / "playbook" / "scripts").is_dir()
+        assert (root / "peers").is_dir()
+
+    def test_idempotent(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        # Place a file to check it isn't removed
+        (helpers / "1" / "workspace" / "test.txt").write_text("hello")
+        create_helper_dirs(helpers, 1)
+        assert (helpers / "1" / "workspace" / "test.txt").read_text() == "hello"
+
+    def test_creates_helpers_dir_parents(self, tmp_path):
+        helpers = tmp_path / "deep" / "helpers"
+        root = create_helper_dirs(helpers, 0)
+        assert root.is_dir()
+
+
+class TestCreateBroadcastDirs:
+    def test_creates_all_rw_ro(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        all_dir = create_broadcast_dirs(helpers)
+        assert all_dir == helpers / "all"
+        assert (all_dir / "rw").is_dir()
+        assert (all_dir / "ro").is_dir()
+
+    def test_idempotent(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_broadcast_dirs(helpers)
+        (helpers / "all" / "rw" / "test.txt").write_text("data")
+        create_broadcast_dirs(helpers)
+        assert (helpers / "all" / "rw" / "test.txt").read_text() == "data"
+
+
+class TestCreatePeerChannels:
+    def test_single_pair(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_helper_dirs(helpers, 2)
+        create_peer_channels(helpers, 2, [1])
+
+        # Channel directories exist
+        channels = helpers / "channels"
+        assert (channels / "1:2-ro").is_dir()
+        assert (channels / "2:1-ro").is_dir()
+        assert (channels / "1:2-rw").is_dir()
+
+        # Symlinks in helper 1's peers/
+        peers1 = helpers / "1" / "peers"
+        assert (peers1 / "1:2-ro").is_symlink()
+        assert (peers1 / "2:1-ro").is_symlink()
+        assert (peers1 / "1:2-rw").is_symlink()
+
+        # Symlinks in helper 2's peers/
+        peers2 = helpers / "2" / "peers"
+        assert (peers2 / "1:2-ro").is_symlink()
+        assert (peers2 / "2:1-ro").is_symlink()
+        assert (peers2 / "1:2-rw").is_symlink()
+
+    def test_three_helpers_peer_count(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_helper_dirs(helpers, 2)
+        create_peer_channels(helpers, 2, [1])
+        create_helper_dirs(helpers, 3)
+        create_peer_channels(helpers, 3, [1, 2])
+
+        # Helper 1 should have channels to 2 and 3 (6 symlinks)
+        peers1 = helpers / "1" / "peers"
+        symlinks = [p for p in peers1.iterdir() if p.is_symlink()]
+        assert len(symlinks) == 6
+
+        # Helper 3 should also have 6 symlinks (to 1 and 2)
+        peers3 = helpers / "3" / "peers"
+        symlinks3 = [p for p in peers3.iterdir() if p.is_symlink()]
+        assert len(symlinks3) == 6
+
+    def test_channel_dirs_are_writable(self, tmp_path):
+        """Channels resolve to real directories that can hold files."""
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_helper_dirs(helpers, 2)
+        create_peer_channels(helpers, 2, [1])
+
+        # Write via helper 1's symlink, read via helper 2's
+        (helpers / "1" / "peers" / "1:2-ro" / "msg.txt").write_text("hello")
+        content = (helpers / "2" / "peers" / "1:2-ro" / "msg.txt").read_text()
+        assert content == "hello"
+
+    def test_no_existing_helpers(self, tmp_path):
+        """No crash when spawning first helper with no siblings."""
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_peer_channels(helpers, 1, [])
+        # No peer symlinks created
+        peers = list((helpers / "1" / "peers").iterdir())
+        assert peers == []
+
+
+class TestLinkBroadcast:
+    def test_creates_symlink(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_broadcast_dirs(helpers)
+        link_broadcast(helpers, 1)
+        link_path = helpers / "1" / "all"
+        assert link_path.is_symlink()
+        assert (link_path / "rw").is_dir()
+        assert (link_path / "ro").is_dir()
+
+    def test_idempotent(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_broadcast_dirs(helpers)
+        link_broadcast(helpers, 1)
+        link_broadcast(helpers, 1)  # no error
+        assert (helpers / "1" / "all").is_symlink()
+
+
+class TestRemoveHelperDirs:
+    def test_removes_helper_root(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        remove_helper_dirs(helpers, 1, [])
+        assert not (helpers / "1").exists()
+
+    def test_removes_peer_channels(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_helper_dirs(helpers, 2)
+        create_peer_channels(helpers, 2, [1])
+
+        remove_helper_dirs(helpers, 2, [1])
+
+        # Helper 2's root is gone
+        assert not (helpers / "2").exists()
+        # Channel dirs are removed
+        assert not (helpers / "channels" / "1:2-ro").exists()
+        assert not (helpers / "channels" / "2:1-ro").exists()
+        assert not (helpers / "channels" / "1:2-rw").exists()
+        # Symlinks removed from helper 1
+        assert not (helpers / "1" / "peers" / "1:2-ro").exists()
+        assert not (helpers / "1" / "peers" / "2:1-ro").exists()
+        assert not (helpers / "1" / "peers" / "1:2-rw").exists()
+
+    def test_preserves_other_siblings(self, tmp_path):
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        create_helper_dirs(helpers, 1)
+        create_helper_dirs(helpers, 2)
+        create_helper_dirs(helpers, 3)
+        create_peer_channels(helpers, 2, [1])
+        create_peer_channels(helpers, 3, [1, 2])
+
+        remove_helper_dirs(helpers, 2, [1, 3])
+
+        # Helper 1 still has channels to 3
+        assert (helpers / "1" / "peers" / "1:3-ro").is_symlink()
+        assert (helpers / "1" / "peers" / "3:1-ro").is_symlink()
+        assert (helpers / "1" / "peers" / "1:3-rw").is_symlink()
+        # But not to 2
+        assert not (helpers / "1" / "peers" / "1:2-ro").exists()
+
+    def test_nonexistent_helper(self, tmp_path):
+        """No crash when removing a helper that doesn't exist."""
+        helpers = tmp_path / "helpers"
+        helpers.mkdir()
+        remove_helper_dirs(helpers, 99, [])
