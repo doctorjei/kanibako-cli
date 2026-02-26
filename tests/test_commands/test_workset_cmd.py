@@ -339,6 +339,7 @@ class TestWorksetAuth:
 
     def test_switch_to_distinct(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_auth, run_create
+        from unittest.mock import MagicMock, patch
         import json
 
         ws_root = tmp_home / "distinctws"
@@ -357,9 +358,25 @@ class TestWorksetAuth:
         (claude_dir / ".credentials.json").write_text(json.dumps({"token": "t"}))
         (shell / ".claude.json").write_text(json.dumps({"k": "v"}))
 
+        # Mock target so invalidate_credentials works regardless of
+        # whether the Claude plugin is installed.
+        mock_target = MagicMock()
+        def _invalidate(home):
+            creds = home / ".claude" / ".credentials.json"
+            if creds.exists():
+                creds.unlink()
+            settings = home / ".claude.json"
+            if settings.exists():
+                settings.unlink()
+        mock_target.invalidate_credentials.side_effect = _invalidate
+
         # Switch to distinct.
         args = argparse.Namespace(name="distinctws", auth_mode="distinct")
-        rc = run_auth(args)
+        with patch(
+            "kanibako.targets.resolve_target",
+            return_value=mock_target,
+        ):
+            rc = run_auth(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "distinct" in out
