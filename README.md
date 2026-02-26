@@ -36,6 +36,8 @@ small and toolchain-focused.
   other agents can be added via `pip install`
 - **Image freshness checks** — non-blocking digest comparison against GHCR on
   startup (24h cache)
+- **Persistent sessions** — `kanibako connect` runs agents in tmux-backed
+  containers that survive SSH disconnects; reattach seamlessly
 - **Concurrency lock** — prevents two sessions from running in the same
   project simultaneously
 
@@ -86,6 +88,7 @@ Subsequent runs reuse the existing state.
 | `kanibako [start]` | Launch a Claude session in a container |
 | `kanibako shell` | Open a bash shell in the container |
 | `kanibako resume` | Resume with Claude's conversation picker |
+| `kanibako connect <project> [-N\|-S\|-i]` | Connect to a persistent session (remote access) |
 | `kanibako stop [path\|--all]` | Stop running container(s) |
 | `kanibako status` | Show project status (mode, paths, lock, image) |
 | `kanibako config [key [value]]` | Get/set per-project configuration |
@@ -570,6 +573,83 @@ A broadcast channel (`all/`) is available to all helpers.
 ~/.local/bin/kanibako   # kanibako CLI (bind-mounted from host, ro)
 ```
 
+## Persistent Sessions & Remote Access
+
+`kanibako connect` creates a persistent container session that survives
+SSH disconnects. The container runs tmux as PID 1 — detaching or losing
+the connection leaves the agent running. Reconnecting reattaches to the
+same tmux session.
+
+```bash
+# Connect by project name (no cd required)
+kanibako connect myproject
+
+# Connect to a workset project
+kanibako connect client/webapp
+
+# Start a new conversation in a persistent session
+kanibako connect myproject -N
+
+# List available projects and their status
+kanibako connect --list
+
+# Stop a persistent session
+kanibako stop -p /path/to/project
+```
+
+**Lifecycle:**
+- First `connect` → creates a detached container with tmux, then attaches
+- Subsequent `connect` → reattaches to the running container
+- SSH disconnect → container keeps running; reconnect with `connect`
+- `kanibako stop` → stops and removes the persistent container
+- Agent exits → tmux session ends → container stops
+
+**Interactive guard:** If a persistent container exists for a project,
+`kanibako start` refuses to launch (to prevent conflicts). Use
+`kanibako connect` to reattach or `kanibako stop` to end it.
+
+### SSH integration
+
+Set up SSH forced commands to map SSH keys directly to projects.
+Each key connects to a specific project — no shell access needed.
+
+**Per-key routing** in `~/.ssh/authorized_keys`:
+
+```
+command="kanibako connect myproject" ssh-ed25519 AAAA... user@laptop-myproject
+command="kanibako connect client/webapp" ssh-ed25519 AAAA... user@laptop-webapp
+```
+
+**Dedicated SSH config** on the client:
+
+```
+Host myproject
+    HostName remote-server.example.com
+    User kanibako
+    IdentityFile ~/.ssh/id_myproject
+```
+
+Then just `ssh myproject` to connect directly to the Claude session.
+
+**With a jump host / bastion:**
+
+```
+Host myproject
+    HostName internal-server
+    User kanibako
+    IdentityFile ~/.ssh/id_myproject
+    ProxyJump bastion.example.com
+```
+
+**Tips:**
+- Use one SSH key per project for clean routing
+- Set `PermitTTY yes` and `PermitOpen none` in `sshd_config` for the
+  kanibako user to restrict access to terminal-only
+- The kanibako user only needs access to `kanibako connect` — no shell
+  required (`ForceCommand` handles routing)
+- Credentials are refreshed on every reattach; if tokens expire, the
+  agent prompts for re-auth via URL
+
 ## Development
 
 ```bash
@@ -577,7 +657,7 @@ A broadcast channel (`all/`) is available to all helpers.
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1164)
+pytest tests/ -v                    # unit tests (1306)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
@@ -602,6 +682,7 @@ git push && git push --tags
 | `workset.py` | Working set data model and persistence |
 | `credentials.py` | Credential sync between host and container |
 | `freshness.py` | Non-blocking image digest comparison |
+| `names.py` | Project name registry (names.toml): register, resolve, assign |
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
 | `targets/` | Agent plugin system (Target ABC + ClaudeTarget) |
