@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from kanibako.commands.connect import (
     _list_projects,
     _resolve_project_arg,
@@ -107,7 +105,7 @@ class TestResolveProjectArg:
         with self._patch_infra() as m:
             from kanibako.errors import ProjectError
             m.resolve_name.side_effect = ProjectError("unknown")
-            result = _resolve_project_arg(f"./{tmp_path.name}")
+            _resolve_project_arg(f"./{tmp_path.name}")
         # May or may not resolve — the point is qualified was skipped
         m.resolve_qualified_name.assert_not_called()
 
@@ -276,7 +274,7 @@ class TestListProjects:
             rc = _list_projects()
         assert rc == 0
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if "myapp" in l and "NAME" not in l]
+        lines = [ln for ln in out.strip().split("\n") if "myapp" in ln and "NAME" not in ln]
         assert len(lines) == 1
         # Status column should be empty (no "running" text)
         assert "running" not in lines[0]
