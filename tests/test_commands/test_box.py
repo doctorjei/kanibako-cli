@@ -195,8 +195,11 @@ class TestBoxMigrate:
         assert new_project.is_dir()
         assert (new_project / "marker.txt").read_text() == "hello"
 
-        # Breadcrumb should be updated.
-        assert (new_project / "project-path.txt").read_text().strip() == str(new_dir.resolve())
+        # Workspace path stored in project.toml (no more project-path.txt).
+        from kanibako.config import read_project_meta
+        meta = read_project_meta(new_project / "project.toml")
+        assert meta is not None
+        assert meta["workspace"] == str(new_dir.resolve())
 
     def test_migrate_same_path_error(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
@@ -350,11 +353,10 @@ class TestBoxDuplicate:
         # Workspace copied.
         assert (dst_dir / "code.py").read_text() == "print('hello')"
 
-        # Metadata copied with updated breadcrumb.
+        # Metadata copied.
         projects_base = std.data_path / "boxes"
         new_project = projects_base / "dst_project"
         assert (new_project / "marker.txt").read_text() == "session-data"
-        assert (new_project / "project-path.txt").read_text().strip() == str(dst_dir.resolve())
 
         # Source is intact.
         assert (src_dir / "code.py").read_text() == "print('hello')"
@@ -780,10 +782,10 @@ class TestBoxConvert:
         rc = run_migrate(args)
         assert rc == 0
 
-        # Decentralized should NOT have a breadcrumb.
+        # Decentralized should NOT have project-path.txt.
         assert not (project_dir / ".kanibako" / "project-path.txt").exists()
 
-    def test_convert_writes_breadcrumb_for_ac(self, config_file, tmp_home, credentials_dir):
+    def test_convert_stores_workspace_in_toml_for_ac(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -799,10 +801,13 @@ class TestBoxConvert:
         rc = run_migrate(args)
         assert rc == 0
 
+        # Workspace should be stored in project.toml, not project-path.txt.
+        from kanibako.config import read_project_meta
         projects_base = std.data_path / "boxes"
-        breadcrumb = projects_base / "conv_bc_ac" / "project-path.txt"
-        assert breadcrumb.exists()
-        assert breadcrumb.read_text().strip() == str(project_dir.resolve())
+        ac_dir = projects_base / "conv_bc_ac"
+        assert not (ac_dir / "project-path.txt").exists()
+        meta = read_project_meta(ac_dir / "project.toml")
+        assert meta is not None
 
     def test_convert_excludes_lock_file(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
@@ -977,7 +982,7 @@ class TestBoxDuplicateCrossMode:
         ac_project = projects_base / "dup_dec_dst"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "dec-data"
-        assert (ac_project / "project-path.txt").read_text().strip() == str(dst_dir.resolve())
+        assert not (ac_project / "project-path.txt").exists()
         assert (dst_dir / "code.py").read_text() == "print('dec')"
 
     def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
@@ -1414,8 +1419,8 @@ class TestBoxConvertFromWorkset:
         ac_project = projects_base / "ws-proj_src"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-marker"
-        # Breadcrumb written
-        assert (ac_project / "project-path.txt").exists()
+        # No breadcrumb file (workspace stored in project.toml).
+        assert not (ac_project / "project-path.txt").exists()
 
     def test_convert_workset_to_decentralized(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate

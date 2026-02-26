@@ -118,11 +118,6 @@ def _duplicate_to_decentral(src_proj, new_path, force):
         ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
     )
 
-    # Remove breadcrumb if present (decentralized doesn't use it).
-    breadcrumb = dst_metadata / "project-path.txt"
-    if breadcrumb.exists():
-        breadcrumb.unlink()
-
     if src_proj.shell_path.is_dir():
         if force and dst_shell.is_dir():
             shutil.rmtree(dst_shell)
@@ -151,9 +146,6 @@ def _duplicate_to_ac(src_proj, new_path, std, config, force):
         src_proj.metadata_path, dst_project,
         ignore=shutil.ignore_patterns(".kanibako.lock"),
     )
-
-    # Write breadcrumb.
-    (dst_project / "project-path.txt").write_text(str(new_path) + "\n")
 
     # Ensure home is inside the project dir.
     if src_proj.shell_path.is_dir():
@@ -234,7 +226,7 @@ def _duplicate_to_workset(args, std, config) -> int:
     dst_project = ws.projects_dir / proj_name
     shutil.copytree(
         src_proj.metadata_path, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "project-path.txt", "shell"),
+        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
         dirs_exist_ok=True,
     )
 
@@ -411,10 +403,6 @@ def run_duplicate(args: argparse.Namespace) -> int:
         source_project_dir, new_project_dir,
         ignore=shutil.ignore_patterns(".kanibako.lock"),
     )
-
-    # Update breadcrumb.
-    breadcrumb = new_project_dir / "project-path.txt"
-    breadcrumb.write_text(str(new_path) + "\n")
 
     print("Duplicated project:")
     print(f"  from: {source_path} ({source_name or source_hash[:8]})")

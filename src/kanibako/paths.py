@@ -290,10 +290,27 @@ def resolve_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Backfill project-path.txt for pre-existing projects.
-        breadcrumb = metadata_path / "project-path.txt"
-        if metadata_path.is_dir() and not breadcrumb.exists():
-            breadcrumb.write_text(str(project_path) + "\n")
+        # Backfill project.toml for old-format projects (pre-v0.8).
+        if metadata_path.is_dir() and read_project_meta(metadata_path / "project.toml") is None:
+            _global_shared_bf = std.data_path / config.paths_shared / "global"
+            _local_shared_bf = std.data_path / config.paths_shared
+            # Use directory name as project name (name-based dirs).
+            _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
+            write_project_meta(
+                metadata_path / "project.toml",
+                mode="account_centric",
+                layout=actual_layout.value,
+                workspace=str(project_path),
+                shell=str(shell_path),
+                vault_ro=str(vault_ro_path),
+                vault_rw=str(vault_rw_path),
+                vault_enabled=actual_vault_enabled,
+                metadata=str(metadata_path),
+                project_hash=phash,
+                global_shared=str(_global_shared_bf),
+                local_shared=str(_local_shared_bf),
+                name=_bf_name,
+            )
         # Convenience symlink when vault lives outside the workspace.
         if actual_vault_enabled:
             _ensure_vault_symlink(project_path, vault_ro_path)
@@ -741,8 +758,6 @@ def _init_project(
         vault_ro_path, vault_rw_path, project_path,
         vault_enabled=vault_enabled,
     )
-    # Record the original project path for reverse lookup.
-    (metadata_path / "project-path.txt").write_text(str(project_path) + "\n")
 
 
 def _copy_credentials_from_host(shell_path: Path) -> None:
@@ -988,10 +1003,8 @@ def _init_workset_project(
 ) -> None:
     """First-time workset project setup: bootstrap shell directory.
 
-    Unlike ``_init_project``, this does not write a ``project-path.txt``
-    breadcrumb (workset.toml already records source_path) and does not create
-    vault ``.gitignore`` files (vault lives under the workset root, not inside
-    a user git repo).
+    Does not create vault ``.gitignore`` files (vault lives under the workset
+    root, not inside a user git repo).
 
     Credential copy is handled separately by ``target.init_home()`` in
     ``start.py``, after template application.
@@ -1016,8 +1029,8 @@ def _init_workset_project(
 def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project.
 
-    *project_path* is read from the ``project-path.txt`` breadcrumb when
-    available; otherwise it is ``None``.
+    *project_path* is read from ``project.toml`` (``workspace`` field) when
+    available, falling back to ``project-path.txt`` for backward compat.
     """
     projects_dir = std.data_path / "boxes"
     if not projects_dir.is_dir():
@@ -1026,12 +1039,18 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     for entry in sorted(projects_dir.iterdir()):
         if not entry.is_dir():
             continue
-        breadcrumb = entry / "project-path.txt"
-        project_path = None
-        if breadcrumb.is_file():
-            text = breadcrumb.read_text().strip()
-            if text:
-                project_path = Path(text)
+        project_path: Path | None = None
+        # Prefer project.toml workspace field.
+        meta = read_project_meta(entry / "project.toml")
+        if meta and meta.get("workspace"):
+            project_path = Path(meta["workspace"])
+        else:
+            # Backward compat: fall back to breadcrumb file.
+            breadcrumb = entry / "project-path.txt"
+            if breadcrumb.is_file():
+                text = breadcrumb.read_text().strip()
+                if text:
+                    project_path = Path(text)
         results.append((entry, project_path))
     return results
 
@@ -1277,10 +1296,8 @@ def _init_decentralized_project(
 ) -> None:
     """First-time decentralized project setup: all state inside project dir.
 
-    Unlike ``_init_project``, this does not write a ``project-path.txt``
-    breadcrumb (the project is self-contained).  Unlike workset init, this
-    *does* create vault directories and a ``.gitignore`` (vault lives inside
-    the user's project, likely a git repo).
+    Unlike workset init, this *does* create vault directories and a
+    ``.gitignore`` (vault lives inside the user's project, likely a git repo).
 
     Credential copy is handled separately by ``target.init_home()`` in
     ``start.py``, after template application.

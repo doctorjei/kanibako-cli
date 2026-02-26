@@ -478,7 +478,6 @@ class TestMigrateHashToName:
         # Create hash-based directory (simulates pre-naming project).
         hash_dir = std.data_path / "boxes" / phash
         hash_dir.mkdir(parents=True)
-        (hash_dir / "project-path.txt").write_text(project_dir + "\n")
         shell_dir = hash_dir / "shell"
         shell_dir.mkdir()
 
@@ -606,7 +605,6 @@ class TestMigrateHashToName:
         # Create hash-based dir with a name already in project.toml.
         hash_dir = std.data_path / "boxes" / phash
         hash_dir.mkdir(parents=True)
-        (hash_dir / "project-path.txt").write_text(project_dir + "\n")
         shell_dir = hash_dir / "shell"
         shell_dir.mkdir()
         write_project_meta(

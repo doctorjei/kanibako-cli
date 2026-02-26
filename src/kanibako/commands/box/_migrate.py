@@ -127,9 +127,27 @@ def run_migrate(args: argparse.Namespace) -> int:
     # Rename project directory (includes home/ inside it).
     old_project_dir.rename(new_project_dir)
 
-    # Update the breadcrumb.
-    breadcrumb = new_project_dir / "project-path.txt"
-    breadcrumb.write_text(str(new_path) + "\n")
+    # Update workspace path in project.toml.
+    from kanibako.config import read_project_meta, write_project_meta
+    project_toml = new_project_dir / "project.toml"
+    meta = read_project_meta(project_toml)
+    if meta:
+        write_project_meta(
+            project_toml,
+            mode=meta["mode"],
+            layout=meta["layout"],
+            workspace=str(new_path),
+            shell=str(new_project_dir / "shell"),
+            vault_ro=meta.get("vault_ro", ""),
+            vault_rw=meta.get("vault_rw", ""),
+            vault_enabled=meta.get("vault_enabled", True),
+            auth=meta.get("auth", "shared"),
+            metadata=str(new_project_dir),
+            project_hash=new_hash,
+            global_shared=meta.get("global_shared", ""),
+            local_shared=meta.get("local_shared", ""),
+            name=new_name,
+        )
 
     # Create new human-friendly symlink (best-effort).
     vault_parent = new_project_dir / "vault"
@@ -235,11 +253,6 @@ def _convert_ac_to_decentral(project_path, std, config, proj):
         ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
     )
 
-    # Remove breadcrumb (decentralized doesn't use it).
-    breadcrumb = dst_metadata / "project-path.txt"
-    if breadcrumb.exists():
-        breadcrumb.unlink()
-
     # Copy shell.
     if proj.shell_path.is_dir():
         shutil.copytree(proj.shell_path, dst_shell)
@@ -279,9 +292,6 @@ def _convert_decentral_to_ac(project_path, std, config, proj):
         proj.metadata_path, dst_project,
         ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
     )
-
-    # Write breadcrumb.
-    (dst_project / "project-path.txt").write_text(str(project_path) + "\n")
 
     # Copy shell into the settings dir.
     if proj.shell_path.is_dir():
@@ -384,7 +394,7 @@ def _convert_to_workset(args, std, config) -> int:
     dst_project = ws.projects_dir / proj_name
     shutil.copytree(
         src_proj.metadata_path, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "project-path.txt", "shell"),
+        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
         dirs_exist_ok=True,
     )
 
@@ -502,9 +512,6 @@ def _convert_ws_to_ac(src_proj, dest_path, std, config):
         src_proj.metadata_path, dst_project,
         ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
     )
-
-    # Write breadcrumb.
-    (dst_project / "project-path.txt").write_text(str(dest_path) + "\n")
 
     # Copy home.
     if src_proj.shell_path.is_dir():
