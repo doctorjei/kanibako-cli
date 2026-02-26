@@ -1,18 +1,22 @@
 # Kanibako
 
-Run AI coding agents in rootless containers with per-project isolation,
-credential forwarding, and session continuity.
+Run AI coding agents in isolated, per-project sandboxes.  No Docker or
+Podman experience required — kanibako handles all container operations
+behind the scenes.
 
-Kanibako wraps Podman or Docker to give each project its own sandboxed
-environment.  The container is ephemeral — your shell config, agent state, and
-credentials persist across sessions via bind mounts.  The agent binary is
-mounted from the host, so the container images stay small and toolchain-focused.
+Just `cd` into a project and run `kanibako`.  Each project gets its own
+environment with its own shell config, credentials, and agent state that
+persist across sessions.  Kanibako uses Podman or Docker under the hood,
+but you never need to touch container commands yourself — setup, image
+pulls, credential syncing, and teardown are all automatic.
+
 Claude Code is supported via the built-in plugin; other agents can be added
 via `pip install`.
 
 ## Features
 
-- **Rootless containers** — Podman (preferred) or Docker, no root required
+- **Automatic sandboxing** — no Docker or Podman experience required;
+  kanibako manages all container operations for you, no root needed
 - **Per-project isolation** — each project gets its own shell, config, and
   credentials, keyed by directory hash
 - **Three project modes** — account-centric (default), working set (grouped),
@@ -44,7 +48,8 @@ via `pip install`.
 ## Prerequisites
 
 - Python 3.11+
-- [Podman](https://podman.io/) (recommended) or Docker
+- [Podman](https://podman.io/) (recommended) or Docker — just needs to be
+  installed; kanibako manages all container operations automatically
 - An AI coding agent installed on the host (e.g.
   [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
 
@@ -85,9 +90,79 @@ kanibako shell
 kanibako resume
 ```
 
-On first run in a new directory, kanibako initializes project state (shell
-skeleton, credential copy, vault directories) and pulls the container image.
-Subsequent runs reuse the existing state.
+That's it — no `docker run`, no volume flags, no Containerfile.  On first run,
+kanibako automatically pulls the container image, sets up the project
+environment, and syncs your credentials.  Subsequent runs pick up where you
+left off.
+
+## Example: Python Project (base image)
+
+The default `kanibako-base` image includes Python, git, gh, nano, jq, ripgrep,
+and common archive tools.  This is enough for most Python, JavaScript, and
+general scripting work.
+
+```bash
+# 1. Install kanibako and run first-time setup
+pip install kanibako
+kanibako setup
+
+# 2. Create or clone a project
+mkdir ~/my-flask-app && cd ~/my-flask-app
+git init
+# (or: git clone https://github.com/you/my-flask-app.git && cd my-flask-app)
+
+# 3. Launch — that's it
+kanibako
+```
+
+On the first launch, kanibako will:
+- Pull the base container image (once, cached afterwards)
+- Create an isolated environment for this project
+- Copy your agent credentials into the sandbox
+- Drop you into an agent session inside the container
+
+The agent sees your project files in `~/workspace/` and has full access to
+Python, git, and the other base tools.  When you exit, your project files
+and agent state are preserved — next time you run `kanibako` in the same
+directory, it picks up where you left off.
+
+```bash
+# Later: come back to the same project
+cd ~/my-flask-app
+kanibako              # resumes your previous session
+kanibako -N           # or start a fresh conversation
+```
+
+## Example: C/Rust Project (systems image)
+
+For projects that need compiled languages, pick a more complete image.
+The `systems` image adds C/C++ compilers, Rust, assemblers, QEMU, and
+debuggers on top of everything in `base`.
+
+```bash
+# 1. Point kanibako at your project
+cd ~/my-rust-project
+
+# 2. Launch with the systems image
+kanibako -i systems
+```
+
+The `-i systems` flag is a shorthand — kanibako expands it to the full
+image name automatically.  The first run pulls the systems image (larger
+than base, but only downloaded once).  After that, kanibako remembers the
+image choice for this project, so you can just run `kanibako` next time.
+
+Other images work the same way:
+
+```bash
+kanibako -i jvm           # Java, Kotlin, Maven
+kanibako -i android       # + Gradle, Android SDK
+kanibako -i ndk           # + Android NDK, native toolchains
+kanibako -i dotnet        # .NET SDK 8.0
+kanibako -i behemoth      # everything combined
+```
+
+See [Container Images](#container-images) for the full list.
 
 ## Commands
 
