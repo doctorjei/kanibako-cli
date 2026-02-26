@@ -80,6 +80,13 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
 
     print("Removing session data... ", end="", flush=True)
     shutil.rmtree(proj.metadata_path)
+
+    # Remove helper log directory if it exists.
+    _log_id = proj.name if proj.name else proj.metadata_path.name
+    log_dir = std.data_path / "logs" / _log_id
+    if log_dir.is_dir():
+        shutil.rmtree(log_dir)
+
     print("done.")
     print(f"Session data removed for {proj.project_path}")
     return 0
@@ -133,6 +140,12 @@ def _purge_all(std, config, *, force: bool) -> int:
         label = str(project_path) if project_path else metadata_path.name
         print(f"Removing {label}... ", end="", flush=True)
         shutil.rmtree(metadata_path)
+
+        # Remove helper log directory if it exists.
+        log_dir = std.data_path / "logs" / metadata_path.name
+        if log_dir.is_dir():
+            shutil.rmtree(log_dir)
+
         print("done.")
         removed += 1
 

@@ -425,7 +425,10 @@ def _run_container(
             _sock_id = proj.name if proj.name else short_hash(proj.project_hash)
             socket_path = _run_dir / f"{_sock_id}.sock"
             validate_socket_path(socket_path)
-            log_path = proj.metadata_path / "helper-messages.jsonl"
+            _log_id = proj.name if proj.name else short_hash(proj.project_hash)
+            log_dir = std.data_path / "logs" / _log_id
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "helper-messages.jsonl"
 
             # Ensure helpers/ dir exists in shell_path
             helpers_dir = proj.shell_path / "helpers"
