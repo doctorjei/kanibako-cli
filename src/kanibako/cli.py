@@ -53,10 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.env_cmd import add_parser as add_env_parser
     from kanibako.commands.shared_cmd import add_parser as add_shared_parser
     from kanibako.commands.helper_cmd import add_parser as add_helper_parser
+    from kanibako.commands.connect import add_parser as add_connect_parser
 
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
     add_resume_parser(subparsers)
+    add_connect_parser(subparsers)
     add_stop_parser(subparsers)
     add_config_parser(subparsers)
     add_image_parser(subparsers)
@@ -78,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 _SUBCOMMANDS = {
-    "start", "shell", "resume", "stop", "config", "image",
+    "start", "shell", "resume", "connect", "stop", "config", "image",
     "box", "workset", "setup", "remove", "upgrade", "reauth",
     "status", "init", "new", "vault", "env", "shared", "helper",
 }
