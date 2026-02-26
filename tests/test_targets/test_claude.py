@@ -21,6 +21,17 @@ class TestClaudeTargetProperties:
         assert t.display_name == "Claude Code"
 
 
+class TestCredentialCheckPath:
+    def test_returns_credentials_json_path(self, tmp_path):
+        t = ClaudeTarget()
+        result = t.credential_check_path(tmp_path)
+        assert result == tmp_path / ".claude" / ".credentials.json"
+
+    def test_config_dir_name(self):
+        t = ClaudeTarget()
+        assert t.config_dir_name == ".claude"
+
+
 class TestDetect:
     def test_found(self, tmp_path):
         """Detect returns AgentInstall when claude binary exists."""

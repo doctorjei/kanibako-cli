@@ -320,10 +320,17 @@ class TestRunStatus:
         creds_dir.mkdir(parents=True, exist_ok=True)
         creds = creds_dir / ".credentials.json"
         creds.write_text('{"claudeAiOauth": {"token": "test"}}')
+        # Mock target so credential_check_path returns the Claude path
+        # regardless of whether the Claude plugin is installed.
+        mock_target = MagicMock()
+        mock_target.credential_check_path.return_value = creds
         args = argparse.Namespace(project=initialized_project.project_dir)
         with patch(
             "kanibako.commands.status._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
+        ), patch(
+            "kanibako.commands.status.resolve_target",
+            return_value=mock_target,
         ):
             rc = run_status(args)
         assert rc == 0
@@ -333,14 +340,17 @@ class TestRunStatus:
 
     def test_no_credentials_shows_na(self, initialized_project, capsys):
         """Status shows n/a when no credentials file exists."""
-        # Remove credentials if they were copied during init.
         creds = initialized_project.proj.shell_path / ".claude" / ".credentials.json"
-        if creds.exists():
-            creds.unlink()
+        # Mock target so credential_check_path returns a path that doesn't exist.
+        mock_target = MagicMock()
+        mock_target.credential_check_path.return_value = creds
         args = argparse.Namespace(project=initialized_project.project_dir)
         with patch(
             "kanibako.commands.status._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
+        ), patch(
+            "kanibako.commands.status.resolve_target",
+            return_value=mock_target,
         ):
             rc = run_status(args)
         assert rc == 0
