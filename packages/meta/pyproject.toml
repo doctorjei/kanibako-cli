@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kanibako"
-version = "0.8.1"
+version = "0.9.0"
 description = "Run AI coding agents in rootless containers (meta-package: base + Claude plugin)"
 requires-python = ">=3.11"
 dependencies = [
