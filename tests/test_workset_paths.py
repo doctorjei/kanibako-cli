@@ -190,7 +190,7 @@ class TestWorksetProjectCredentialFlow:
         ws, name = workset_env
         proj = resolve_workset_project(ws, name, std, config, initialize=True)
 
-        from kanibako.credentials import refresh_host_to_project
+        from kanibako_plugin_claude.credentials import refresh_host_to_project
 
         home = tmp_home / "home"
         host_creds = home / ".claude" / ".credentials.json"

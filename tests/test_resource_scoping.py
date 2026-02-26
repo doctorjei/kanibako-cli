@@ -39,6 +39,7 @@ class TestBuildResourceMounts:
     def _make_target(self, mappings):
         target = MagicMock()
         target.resource_mappings.return_value = mappings
+        target.config_dir_name = ".claude"
         return target
 
     def test_shared_resource_creates_mount(self, tmp_path):
@@ -174,6 +175,7 @@ class TestResourceOverrideInMounts:
         mappings = [ResourceMapping("plugins/", ResourceScope.SHARED, "Plugins")]
         target = MagicMock()
         target.resource_mappings.return_value = mappings
+        target.config_dir_name = ".claude"
 
         mounts = _build_resource_mounts(proj, target, "claude")
         assert len(mounts) == 0
@@ -195,6 +197,7 @@ class TestResourceOverrideInMounts:
         mappings = [ResourceMapping("projects/", ResourceScope.PROJECT, "Session data")]
         target = MagicMock()
         target.resource_mappings.return_value = mappings
+        target.config_dir_name = ".claude"
 
         mounts = _build_resource_mounts(proj, target, "claude")
         assert len(mounts) == 1

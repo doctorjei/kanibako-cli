@@ -1,14 +1,14 @@
 # Kanibako
 
-Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in rootless
-containers with per-project isolation, credential forwarding, and session
-continuity.
+Run AI coding agents in rootless containers with per-project isolation,
+credential forwarding, and session continuity.
 
 Kanibako wraps Podman or Docker to give each project its own sandboxed
 environment.  The container is ephemeral — your shell config, agent state, and
-credentials persist across sessions via bind mounts.  Claude Code (or any
-supported AI agent) is mounted from the host, so the container images stay
-small and toolchain-focused.
+credentials persist across sessions via bind mounts.  The agent binary is
+mounted from the host, so the container images stay small and toolchain-focused.
+Claude Code is supported via the built-in plugin; other agents can be added
+via `pip install`.
 
 ## Features
 
@@ -19,8 +19,8 @@ small and toolchain-focused.
   and decentralized (self-contained)
 - **Session continuity** — `kanibako start` defaults to `--continue`, picking
   up where you left off
-- **Credential forwarding** — host `~/.claude/` credentials are synced into
-  the container shell and written back after each session
+- **Credential forwarding** — host credentials are synced into the container
+  shell and written back after each session (path depends on agent plugin)
 - **Vault** — per-project read-only and read-write shared directories, with
   automatic tar.xz snapshots before each launch
 - **Shell customization** — per-project environment variables (`kanibako env`)
@@ -32,8 +32,8 @@ small and toolchain-focused.
   project init, with agent-specific and general variants
 - **Shared caches** — global download caches (pip, cargo, npm, etc.) shared
   across projects; agent-level caches via agent TOML
-- **Target plugin system** — agent-agnostic; Claude Code is a built-in target,
-  other agents can be added via `pip install`
+- **Target plugin system** — agent-agnostic core (`kanibako-base`); Claude Code
+  plugin (`kanibako-plugin-claude`) is installed by default
 - **Image freshness checks** — non-blocking digest comparison against GHCR on
   startup (24h cache)
 - **Persistent sessions** — `kanibako connect` runs agents in tmux-backed
@@ -45,16 +45,24 @@ small and toolchain-focused.
 
 - Python 3.11+
 - [Podman](https://podman.io/) (recommended) or Docker
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed on
-  the host
+- An AI coding agent installed on the host (e.g.
+  [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
 
 ## Installation
 
 ```bash
-# Clone and install in development mode
+# Standard install (base + Claude plugin)
+uv tool install kanibako
+# — or —
+pip install kanibako
+
+# Base only (no agent plugins — agent-agnostic shell mode)
+pip install kanibako-base
+
+# Development install
 git clone https://github.com/doctorjei/kanibako.git
 cd kanibako
-pip install -e ".[dev]"
+pip install -e '.[dev]' -e packages/plugin-claude/
 
 # First-time setup (creates config + pulls image)
 kanibako setup
@@ -63,7 +71,7 @@ kanibako setup
 ## Quick Start
 
 ```bash
-# Start a Claude session in the current directory
+# Start an agent session in the current directory
 cd ~/my-project
 kanibako
 
@@ -85,9 +93,9 @@ Subsequent runs reuse the existing state.
 
 | Command | Description |
 |---------|-------------|
-| `kanibako [start]` | Launch a Claude session in a container |
+| `kanibako [start]` | Launch an agent session in a container |
 | `kanibako shell` | Open a bash shell in the container |
-| `kanibako resume` | Resume with Claude's conversation picker |
+| `kanibako resume` | Resume with the agent's conversation picker |
 | `kanibako connect <project> [-N\|-S\|-i]` | Connect to a persistent session (remote access) |
 | `kanibako stop [path\|--all]` | Stop running container(s) |
 | `kanibako status` | Show project status (mode, paths, lock, image) |
@@ -360,7 +368,9 @@ kanibako new --local ~/p --no-vault
 
 Kanibako is agent-agnostic.  All agent-specific logic lives in **target
 plugins** — Python classes that implement the `Target` abstract base class.
-Claude Code is the built-in target; other agents can be added as pip packages.
+Claude Code is supported via `kanibako-plugin-claude` (installed by the
+`kanibako` meta-package); other agents can be added as pip packages.
+Install `kanibako-base` for agent-agnostic operation.
 If no agent is detected, kanibako falls back to `no_agent` — a plain shell
 with no agent binary or credentials.
 
@@ -685,7 +695,7 @@ git push && git push --tags
 | `names.py` | Project name registry (names.toml): register, resolve, assign |
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
-| `targets/` | Agent plugin system (Target ABC + ClaudeTarget) |
+| `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-plugin-claude`) |
 | `helpers.py` | B-ary numbering, spawn budget, directory/channel creation |
 | `helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `helper_client.py` | Container-side socket client for hub communication |

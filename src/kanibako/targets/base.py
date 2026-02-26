@@ -164,6 +164,23 @@ class Target(ABC):
         """
         return [], {}
 
+    @property
+    def default_entrypoint(self) -> str | None:
+        """Binary name for container entrypoint. None = use bash."""
+        return None
+
+    @property
+    def config_dir_name(self) -> str:
+        """Agent config dir relative to home (e.g. '.claude'). Default: '.{name}'."""
+        return f".{self.name}"
+
+    def credential_check_path(self, home: Path) -> Path | None:
+        """Path to check for credential existence, or None."""
+        return None
+
+    def invalidate_credentials(self, home: Path) -> None:
+        """Remove credential files when switching to distinct auth. Default: no-op."""
+
     @abstractmethod
     def refresh_credentials(self, home: Path) -> None:
         """Refresh agent credentials from host into the project home."""

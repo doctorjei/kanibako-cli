@@ -1,9 +1,10 @@
-"""Credential copy, JSON merge (replaces jq), and mtime-based freshness."""
+"""Claude credential copy, JSON merge, and mtime-based freshness."""
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,7 +23,6 @@ def refresh_host_to_project(host_creds: Path, project_creds: Path) -> bool:
     # If project creds don't exist, just copy host wholesale
     if not project_creds.is_file():
         project_creds.parent.mkdir(parents=True, exist_ok=True)
-        import shutil
         shutil.copy2(str(host_creds), str(project_creds))
         return True
 
@@ -61,18 +61,6 @@ def writeback_project_to_host(project_creds: Path) -> None:
         return
     host_creds = Path.home() / ".claude" / ".credentials.json"
     cp_if_newer(project_creds, host_creds)
-
-
-def invalidate_credentials(shell_path: Path) -> None:
-    """Remove credential files from a shell directory.
-
-    Used when switching to distinct auth mode — forces fresh login on next launch.
-    """
-    creds = shell_path / ".claude" / ".credentials.json"
-    settings = shell_path / ".claude.json"
-    for f in (creds, settings):
-        if f.is_file():
-            f.unlink()
 
 
 def filter_settings(src: Path, dst: Path) -> None:

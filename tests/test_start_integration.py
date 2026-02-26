@@ -129,7 +129,7 @@ class TestCredentialFlow:
     ):
         """Full credential pipeline: host → project, real files."""
         from kanibako.config import load_config
-        from kanibako.credentials import refresh_host_to_project
+        from kanibako_plugin_claude.credentials import refresh_host_to_project
         from kanibako.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
@@ -156,7 +156,7 @@ class TestCredentialFlow:
     ):
         """A newer project credential is not overwritten by an older host one."""
         from kanibako.config import load_config
-        from kanibako.credentials import refresh_host_to_project
+        from kanibako_plugin_claude.credentials import refresh_host_to_project
         from kanibako.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)

@@ -44,16 +44,15 @@ RUN existing_user=$(getent passwd 1000 | cut -d: -f1); \
 USER agent
 WORKDIR /home/agent
 
-# Claude Code is bind-mounted from the host at runtime.
+# Agent binaries are bind-mounted from the host at runtime.
 # Set up PATH and create required directories.
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 RUN mkdir -p /home/agent/workspace /home/agent/.kanibako \
-    /home/agent/.claude /home/agent/.local/bin /home/agent/.local/share/claude \
+    /home/agent/.local/bin \
     /home/agent/share-ro /home/agent/share-rw
 
 WORKDIR /home/agent/workspace
 
-# Entrypoint is just claude — no flags baked in.
-# kanibako passes --dangerously-skip-permissions at runtime.
-ENTRYPOINT ["claude"]
+# Default entrypoint is bash; agent targets override via --entrypoint at runtime.
+ENTRYPOINT ["/bin/bash"]

@@ -29,6 +29,7 @@ class HelperContext:
     binary_mounts: list[Mount] = field(default_factory=list)
     env: dict[str, str] | None = None
     entrypoint: str | None = None
+    default_entrypoint: str | None = None  # from target.default_entrypoint
 
 
 class HelperHub:
@@ -275,7 +276,7 @@ class HelperHub:
         # Use helper-init.sh as entrypoint wrapper — it registers with the
         # hub, sources broadcast scripts, then execs the agent command.
         init_script = "/home/agent/playbook/scripts/helper-init.sh"
-        agent_cmd = ctx.entrypoint or "claude"
+        agent_cmd = ctx.entrypoint or ctx.default_entrypoint or "/bin/bash"
         cli_args = [str(helper_num), agent_cmd]
         model = request.get("model")
         if model:

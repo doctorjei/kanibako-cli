@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kanibako-plugin-claude"
+version = "0.8.1"
+description = "Claude Code target plugin for kanibako"
+requires-python = ">=3.11"
+dependencies = ["kanibako-base"]
+
+[project.entry-points."kanibako.targets"]
+claude = "kanibako_plugin_claude:ClaudeTarget"
+
+[tool.setuptools.packages.find]
+where = ["src"]

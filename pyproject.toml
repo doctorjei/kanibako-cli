@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kanibako"
+name = "kanibako-base"
 version = "0.8.1"
-description = "Run Claude Code in rootless containers with per-project isolation"
+description = "Run AI coding agents in rootless containers with per-project isolation"
 requires-python = ">=3.11"
 dependencies = ["argcomplete>=3.0"]
 
@@ -13,7 +13,6 @@ dependencies = ["argcomplete>=3.0"]
 kanibako = "kanibako.cli:main"
 
 [project.entry-points."kanibako.targets"]
-claude = "kanibako.targets.claude:ClaudeTarget"
 no_agent = "kanibako.targets.no_agent:NoAgentTarget"
 
 [project.optional-dependencies]

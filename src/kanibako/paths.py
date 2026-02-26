@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -759,27 +758,6 @@ def _init_project(
         vault_enabled=vault_enabled,
     )
 
-
-def _copy_credentials_from_host(shell_path: Path) -> None:
-    """Copy credentials directly from host ~/.claude/ into the shell directory.
-
-    Copies ``~/.claude/.credentials.json`` → ``shell/.claude/.credentials.json``
-    and filters ``~/.claude.json`` → ``shell/.claude.json``.
-    """
-    from kanibako.credentials import filter_settings
-
-    claude_dir = shell_path / ".claude"
-    claude_dir.mkdir(parents=True, exist_ok=True)
-
-    host_creds = Path.home() / ".claude" / ".credentials.json"
-    if host_creds.is_file():
-        shutil.copy2(str(host_creds), str(claude_dir / ".credentials.json"))
-
-    host_settings = Path.home() / ".claude.json"
-    if host_settings.is_file():
-        filter_settings(host_settings, shell_path / ".claude.json")
-    else:
-        (shell_path / ".claude.json").touch()
 
 
 def detect_project_mode(

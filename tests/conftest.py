@@ -238,6 +238,8 @@ def start_mocks():
             target = MagicMock()
             target.display_name = "Claude Code"
             target.name = "claude"
+            target.default_entrypoint = "claude"
+            target.config_dir_name = ".claude"
             target.detect.return_value = MagicMock()  # install object
             target.binary_mounts.return_value = []
             target.build_cli_args.side_effect = lambda *, safe_mode, resume_mode, new_session, is_new_project, extra_args: (

@@ -44,8 +44,8 @@ def run(args: argparse.Namespace) -> int:
 
     if proj.auth == "distinct":
         # Check project's own credentials instead of host.
-        creds = proj.shell_path / ".claude" / ".credentials.json"
-        if creds.is_file():
+        creds_path = target.credential_check_path(proj.shell_path)
+        if creds_path and creds_path.is_file():
             print(f"{target.display_name}: distinct auth (project credentials exist).", file=sys.stderr)
             return 0
         else:

@@ -42,6 +42,7 @@ def mock_ctx(tmp_path):
         binary_mounts=[],
         env=None,
         entrypoint=None,
+        default_entrypoint="claude",
     )
 
 

@@ -1,4 +1,4 @@
-"""Tests for kanibako.credentials."""
+"""Tests for Claude credential functions (kanibako_plugin_claude.credentials)."""
 
 from __future__ import annotations
 
@@ -6,10 +6,9 @@ import json
 import os
 import time
 
-
-from kanibako.credentials import (
+from kanibako_plugin_claude import ClaudeTarget
+from kanibako_plugin_claude.credentials import (
     filter_settings,
-    invalidate_credentials,
     refresh_host_to_project,
     writeback_project_to_host,
 )
@@ -261,7 +260,7 @@ class TestInvalidateCredentials:
         settings = shell / ".claude.json"
         settings.write_text('{"oauthAccount": "a"}')
 
-        invalidate_credentials(shell)
+        ClaudeTarget().invalidate_credentials(shell)
         assert not creds.exists()
         assert not settings.exists()
 
@@ -269,7 +268,7 @@ class TestInvalidateCredentials:
         shell = tmp_path / "shell"
         shell.mkdir()
         # Should not raise
-        invalidate_credentials(shell)
+        ClaudeTarget().invalidate_credentials(shell)
 
     def test_partial_files(self, tmp_path):
         shell = tmp_path / "shell"
@@ -277,5 +276,5 @@ class TestInvalidateCredentials:
         settings = shell / ".claude.json"
         settings.write_text('{"oauthAccount": "a"}')
 
-        invalidate_credentials(shell)
+        ClaudeTarget().invalidate_credentials(shell)
         assert not settings.exists()

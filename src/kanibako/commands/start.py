@@ -27,8 +27,8 @@ from kanibako.utils import container_name_for, short_hash
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "start",
-        help="Start or continue a Claude session (default)",
-        description="Start or continue a Claude session in a container.",
+        help="Start or continue an agent session (default)",
+        description="Start or continue an agent session in a container.",
     )
     _add_common_args(p)
     p.add_argument(
@@ -58,7 +58,7 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "shell",
         help="Open a bash shell in the container",
-        description="Open a bash shell in the container (no Claude agent).",
+        description="Open a bash shell in the container (no agent).",
     )
     _add_common_args(p)
     p.set_defaults(func=run_shell)
@@ -68,7 +68,7 @@ def add_resume_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "resume",
         help="Resume with conversation picker",
-        description="Resume a previous conversation using Claude's conversation picker.",
+        description="Resume a previous conversation using the agent's conversation picker.",
     )
     p.add_argument(
         "-p", "--project", default=None,
@@ -449,6 +449,7 @@ def _run_container(
                 binary_mounts=binary_mounts,
                 env=container_env,
                 entrypoint=entrypoint,
+                default_entrypoint=target.default_entrypoint if target else None,
             )
 
             msg_log = MessageLog(log_path)
@@ -478,7 +479,7 @@ def _run_container(
 
         # Persistent mode: wrap command with tmux
         if persistent:
-            inner_cmd = entrypoint or "claude"
+            inner_cmd = entrypoint or (target.default_entrypoint if target else None) or "/bin/bash"
             tmux_args = ["new-session", "-s", "kanibako", "--", inner_cmd]
             if cli_args:
                 tmux_args.extend(cli_args)
@@ -592,7 +593,7 @@ def _kanibako_mounts():
 def _build_resource_mounts(proj, target, agent_id: str):
     """Build bind mounts from target resource_mappings() and per-project overrides.
 
-    - SHARED: mount shared dir over ``/home/agent/.claude/{path}`` (read-write).
+    - SHARED: mount shared dir over ``/home/agent/{config_dir}/{path}`` (read-write).
     - SEEDED: on first init, copy from shared to project-local; then no extra mount.
     - PROJECT: no extra mount (already in shell_path).
     """
@@ -608,6 +609,8 @@ def _build_resource_mounts(proj, target, agent_id: str):
     shared_base = proj.global_shared_path
     if not shared_base:
         return []
+
+    config_dir = target.config_dir_name
 
     project_toml = proj.metadata_path / "project.toml"
     try:
@@ -632,11 +635,11 @@ def _build_resource_mounts(proj, target, agent_id: str):
                     shared_path.touch()
             mounts.append(Mount(
                 source=shared_path,
-                destination=f"/home/agent/.claude/{mapping.path}",
+                destination=f"/home/agent/{config_dir}/{mapping.path}",
                 options="Z,U",
             ))
         elif scope == ResourceScope.SEEDED:
-            local = proj.shell_path / ".claude" / mapping.path
+            local = proj.shell_path / config_dir / mapping.path
             if not local.exists():
                 src = shared_base / agent_id / mapping.path
                 if src.exists():

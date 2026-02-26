@@ -17,6 +17,7 @@ from kanibako.paths import (
     load_std_paths,
     resolve_any_project,
 )
+from kanibako.targets import resolve_target
 from kanibako.utils import container_name_for, short_hash
 
 
@@ -129,8 +130,13 @@ def run_status(args: argparse.Namespace) -> int:
 
     container_running, container_detail = _check_container_running(proj)
 
-    creds_file = proj.shell_path / ".claude" / ".credentials.json"
-    cred_age = _format_credential_age(creds_file)
+    # Resolve target for credential check path
+    try:
+        target = resolve_target(merged.target_name or None)
+        creds_file = target.credential_check_path(proj.shell_path)
+    except (KeyError, Exception):
+        creds_file = None
+    cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
 
     # Display mode name with dashes for readability.
     mode_display = proj.mode.value.replace("_", "-")

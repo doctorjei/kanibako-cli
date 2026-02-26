@@ -52,7 +52,7 @@ class TestInstallFilesystem:
         self, integration_home, integration_config
     ):
         """Only safe keys survive the settings filter."""
-        from kanibako.credentials import filter_settings
+        from kanibako_plugin_claude.credentials import filter_settings
 
         src = integration_home / "host_settings.json"
         dst = integration_home / "filtered_settings.json"

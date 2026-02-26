@@ -12,7 +12,7 @@ from kanibako.errors import KanibakoError, UserCancelled
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kanibako",
-        description="Run Claude Code in rootless containers with per-project isolation.",
+        description="Run AI coding agents in rootless containers with per-project isolation.",
         epilog=(
             "common switches (for default 'start' command):\n"
             "  -p, --project DIR   use DIR as the project directory (default: cwd)\n"

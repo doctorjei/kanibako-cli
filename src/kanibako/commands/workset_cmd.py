@@ -288,11 +288,16 @@ def run_auth(args: argparse.Namespace) -> int:
 
     if args.auth_mode == "distinct" and old_auth != "distinct":
         # Invalidate credentials in all project shells.
-        from kanibako.credentials import invalidate_credentials
-        for proj in ws.projects:
-            shell_path = ws.projects_dir / proj.name / "shell"
-            if shell_path.is_dir():
-                invalidate_credentials(shell_path)
+        from kanibako.targets import resolve_target
+        try:
+            target = resolve_target(None)
+        except KeyError:
+            target = None
+        if target:
+            for proj in ws.projects:
+                shell_path = ws.projects_dir / proj.name / "shell"
+                if shell_path.is_dir():
+                    target.invalidate_credentials(shell_path)
         print(
             f"Set auth mode to 'distinct' for '{ws.name}'. "
             f"Credentials cleared in {len(ws.projects)} project(s).",

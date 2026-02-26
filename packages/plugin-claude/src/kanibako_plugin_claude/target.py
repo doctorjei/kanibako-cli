@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING
 from kanibako.log import get_logger
 from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
 
+from kanibako_plugin_claude.credentials import (
+    filter_settings,
+    refresh_host_to_project,
+    writeback_project_to_host,
+)
+
 if TYPE_CHECKING:
     from kanibako.agents import AgentConfig
 
@@ -28,6 +34,25 @@ class ClaudeTarget(Target):
     @property
     def display_name(self) -> str:
         return "Claude Code"
+
+    @property
+    def default_entrypoint(self) -> str | None:
+        return "claude"
+
+    @property
+    def config_dir_name(self) -> str:
+        return ".claude"
+
+    def credential_check_path(self, home: Path) -> Path | None:
+        return home / ".claude" / ".credentials.json"
+
+    def invalidate_credentials(self, home: Path) -> None:
+        """Remove credential files from a shell directory."""
+        creds = home / ".claude" / ".credentials.json"
+        settings = home / ".claude.json"
+        for f in (creds, settings):
+            if f.is_file():
+                f.unlink()
 
     def detect(self) -> AgentInstall | None:
         """Detect Claude Code installation on the host.
@@ -103,7 +128,6 @@ class ClaudeTarget(Target):
             # Copy filtered .claude.json from host
             host_settings = Path.home() / ".claude.json"
             if host_settings.is_file():
-                from kanibako.credentials import filter_settings
                 filter_settings(host_settings, home / ".claude.json")
             else:
                 (home / ".claude.json").touch()
@@ -262,8 +286,6 @@ class ClaudeTarget(Target):
         Syncs host ``~/.claude/.credentials.json`` into ``home/.claude/.credentials.json``
         using mtime-based freshness.
         """
-        from kanibako.credentials import refresh_host_to_project
-
         host_creds = Path.home() / ".claude" / ".credentials.json"
         project_creds = home / ".claude" / ".credentials.json"
 
@@ -271,8 +293,6 @@ class ClaudeTarget(Target):
 
     def writeback_credentials(self, home: Path) -> None:
         """Write back refreshed credentials from project home to host."""
-        from kanibako.credentials import writeback_project_to_host
-
         project_creds = home / ".claude" / ".credentials.json"
 
         writeback_project_to_host(project_creds)
