@@ -514,6 +514,14 @@ def _run_container(
             if target and proj.auth != "distinct":
                 target.writeback_credentials(proj.shell_path)
 
+            # Hint when agent exits non-zero and --continue/--resume was used
+            if rc != 0 and is_agent_mode and not new_session:
+                print(
+                    "hint: if the agent exited because there was no conversation "
+                    "to continue, use 'kanibako start -N' to start fresh.",
+                    file=sys.stderr,
+                )
+
         return rc
 
     finally:

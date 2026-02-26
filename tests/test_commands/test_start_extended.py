@@ -511,6 +511,58 @@ class TestPersistentMode:
             assert rc == 7
 
 
+class TestNoConversationHint:
+    """Hint when agent exits non-zero with --continue/--resume."""
+
+    def test_hint_on_nonzero_exit_with_continue(self, start_mocks, capsys):
+        """Non-zero exit in continue mode shows -N hint."""
+        with start_mocks() as m:
+            m.runtime.run.return_value = 1
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        captured = capsys.readouterr()
+        assert "start -N" in captured.err
+
+    def test_no_hint_on_zero_exit(self, start_mocks, capsys):
+        """Successful exit does not show the hint."""
+        with start_mocks() as m:
+            m.runtime.run.return_value = 0
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        captured = capsys.readouterr()
+        assert "start -N" not in captured.err
+
+    def test_no_hint_with_new_session(self, start_mocks, capsys):
+        """No hint when -N was already used."""
+        with start_mocks() as m:
+            m.runtime.run.return_value = 1
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=True, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        captured = capsys.readouterr()
+        assert "start -N" not in captured.err
+
+    def test_no_hint_in_shell_mode(self, start_mocks, capsys):
+        """No hint in shell mode (entrypoint set)."""
+        with start_mocks() as m:
+            m.runtime.run.return_value = 1
+            _run_container(
+                project_dir=None, entrypoint="/bin/bash", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        captured = capsys.readouterr()
+        assert "start -N" not in captured.err
+
+
 class TestInteractivePersistentGuard:
     """Interactive mode rejects launch when a container already exists."""
 
