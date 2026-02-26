@@ -1,0 +1,35 @@
+#cloud-config
+# Cloud-init user-data template for kanibako VM provisioning.
+#
+# Shell-variable placeholders are substituted by the VM creation scripts
+# via envsubst before being passed to the VM.
+#
+# Required variables:
+#   SSH_PUBLIC_KEY    — public SSH key for the agent user
+#
+# Optional variables:
+#   KANIBAKO_REPO     — git URL (default: upstream GitHub)
+#   KANIBAKO_BRANCH   — branch or tag (default: main)
+#   INSTALL_CLAUDE    — "true" to install claude plugin (default: "false")
+
+users:
+  - name: agent
+    uid: "1000"
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - "${SSH_PUBLIC_KEY}"
+
+package_update: true
+packages:
+  - ansible-core
+  - git
+
+runcmd:
+  - >-
+    ansible-pull
+    -U "${KANIBAKO_REPO:-https://github.com/doctorjei/kanibako.git}"
+    -C "${KANIBAKO_BRANCH:-main}"
+    -e "install_claude_plugin=${INSTALL_CLAUDE:-false}"
+    host-definitions/ansible/playbook.yml

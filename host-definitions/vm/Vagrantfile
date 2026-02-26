@@ -1,0 +1,29 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Vagrantfile for kanibako VM provisioning via VirtualBox + Ansible.
+#
+# Usage:
+#   cd host-definitions/vm
+#   vagrant up                              # base kanibako
+#   KANIBAKO_CLAUDE=true vagrant up         # with Claude plugin
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/noble64"
+  config.vm.hostname = "kanibako"
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 4096
+    vb.cpus = 2
+    vb.name = "kanibako"
+  end
+
+  config.vm.synced_folder "../ansible", "/tmp/kanibako-ansible"
+
+  config.vm.provision "ansible_local" do |ansible|
+    ansible.playbook = "/tmp/kanibako-ansible/playbook.yml"
+    ansible.extra_vars = {
+      install_claude_plugin: ENV.fetch("KANIBAKO_CLAUDE", "false")
+    }
+  end
+end

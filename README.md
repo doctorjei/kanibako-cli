@@ -363,6 +363,83 @@ podman build -f host-definitions/Containerfile.host-claude \
     -t kanibako-host-claude .
 ```
 
+## VM Variant
+
+For bare-metal or VM deployments (Proxmox, KVM/libvirt, VirtualBox), kanibako
+ships an Ansible playbook and per-provider creation scripts.  The playbook
+mirrors `Containerfile.host` — same packages, same user setup, same rootless
+podman configuration.
+
+### Ansible playbook (standalone)
+
+Run directly against any Ubuntu host:
+
+```bash
+ansible-playbook host-definitions/ansible/playbook.yml \
+    -i 'myhost,' -u root
+
+# With Claude plugin
+ansible-playbook host-definitions/ansible/playbook.yml \
+    -i 'myhost,' -u root -e install_claude_plugin=true
+```
+
+### Proxmox
+
+```bash
+host-definitions/vm/create-proxmox-vm.sh \
+    --ssh-key ~/.ssh/id_ed25519.pub --start
+
+# With Claude plugin, custom resources
+host-definitions/vm/create-proxmox-vm.sh \
+    --ssh-key ~/.ssh/id.pub --claude \
+    --memory 8192 --cores 4 --disk-size 64G --start
+```
+
+Key flags: `--vmid`, `--name`, `--memory`, `--cores`, `--disk-size`,
+`--storage`, `--bridge`, `--ssh-key`, `--claude`, `--repo`, `--branch`,
+`--start`.
+
+### KVM / libvirt
+
+Prerequisites: `virt-install`, `qemu-img`, `cloud-localds`
+(`sudo apt install virtinst qemu-utils cloud-image-utils`).
+
+```bash
+host-definitions/vm/create-libvirt-vm.sh \
+    --ssh-key ~/.ssh/id_ed25519.pub
+
+# With Claude plugin
+host-definitions/vm/create-libvirt-vm.sh \
+    --ssh-key ~/.ssh/id.pub --claude --name my-kanibako
+```
+
+Key flags: `--name`, `--memory`, `--vcpus`, `--disk-size`, `--network`,
+`--ssh-key`, `--claude`, `--repo`, `--branch`.
+
+### Vagrant (VirtualBox)
+
+No host-side Ansible needed — uses `ansible_local` provisioner inside the VM.
+
+```bash
+cd host-definitions/vm
+vagrant up
+
+# With Claude plugin
+KANIBAKO_CLAUDE=true vagrant up
+```
+
+### After provisioning
+
+All methods produce the same result: an Ubuntu VM with an `agent` user
+(UID 1000), rootless podman, and kanibako installed.  SSH in and use kanibako
+normally:
+
+```bash
+ssh agent@<vm-ip>
+kanibako setup
+cd ~/my-project && kanibako
+```
+
 ## Container Layout
 
 Inside the container, the agent sees:

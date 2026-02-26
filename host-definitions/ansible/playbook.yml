@@ -1,0 +1,154 @@
+---
+# Ansible playbook that mirrors host-definitions/Containerfile.host.
+# Provisions an Ubuntu host (VM or bare metal) with rootless Podman and kanibako.
+#
+# Usage:
+#   ansible-playbook playbook.yml -i 'hostname,' -u root
+#   ansible-pull -U https://github.com/doctorjei/kanibako.git \
+#       -C main host-definitions/ansible/playbook.yml
+#
+# Variables:
+#   kanibako_repo    — git URL to clone (default: upstream GitHub)
+#   kanibako_branch  — branch or tag to install from (default: main)
+#   install_claude_plugin — also install kanibako-plugin-claude (default: false)
+
+- name: Provision kanibako host
+  hosts: all
+  become: true
+
+  vars:
+    kanibako_repo: "https://github.com/doctorjei/kanibako.git"
+    kanibako_branch: "main"
+    install_claude_plugin: false
+
+  tasks:
+    # ── System packages ─────────────────────────────────────────────
+    - name: Install system packages
+      ansible.builtin.apt:
+        name:
+          - podman
+          - fuse-overlayfs
+          - slirp4netns
+          - uidmap
+          - python3
+          - python3-pip
+          - python3-venv
+          - ca-certificates
+          - curl
+          - git
+          - openssh-server
+          - sudo
+          - tmux
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    # ── Agent user ──────────────────────────────────────────────────
+    - name: Remove existing UID 1000 user (if any)
+      ansible.builtin.shell: |
+        existing_user=$(getent passwd 1000 | cut -d: -f1)
+        if [ -n "$existing_user" ]; then userdel -r "$existing_user"; fi
+      args:
+        executable: /bin/bash
+      register: uid_user_removal
+      changed_when: uid_user_removal.stdout | length > 0
+
+    - name: Remove existing GID 1000 group (if any)
+      ansible.builtin.shell: |
+        existing_group=$(getent group 1000 | cut -d: -f1)
+        if [ -n "$existing_group" ]; then groupdel "$existing_group"; fi
+      args:
+        executable: /bin/bash
+      register: gid_group_removal
+      changed_when: gid_group_removal.stdout | length > 0
+
+    - name: Create agent group
+      ansible.builtin.group:
+        name: agent
+        gid: 1000
+        state: present
+
+    - name: Create agent user
+      ansible.builtin.user:
+        name: agent
+        uid: 1000
+        group: agent
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Grant agent passwordless sudo
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/agent
+        content: "agent ALL=(ALL) NOPASSWD:ALL\n"
+        mode: "0440"
+        owner: root
+        group: root
+
+    # ── Rootless podman UID mapping ─────────────────────────────────
+    - name: Configure subuid for agent
+      ansible.builtin.lineinfile:
+        path: /etc/subuid
+        line: "agent:100000:65536"
+        create: true
+        mode: "0644"
+
+    - name: Configure subgid for agent
+      ansible.builtin.lineinfile:
+        path: /etc/subgid
+        line: "agent:100000:65536"
+        create: true
+        mode: "0644"
+
+    # ── Install kanibako from git ───────────────────────────────────
+    - name: Clone kanibako repository
+      ansible.builtin.git:
+        repo: "{{ kanibako_repo }}"
+        dest: /tmp/kanibako-src
+        version: "{{ kanibako_branch }}"
+        depth: 1
+
+    - name: Install kanibako-base
+      ansible.builtin.pip:
+        name: /tmp/kanibako-src
+        extra_args: --break-system-packages
+
+    - name: Install kanibako-plugin-claude
+      ansible.builtin.pip:
+        name: /tmp/kanibako-src/packages/plugin-claude
+        extra_args: --break-system-packages
+      when: install_claude_plugin | bool
+
+    - name: Remove kanibako source
+      ansible.builtin.file:
+        path: /tmp/kanibako-src
+        state: absent
+
+    # ── Rootless podman storage config (as agent) ───────────────────
+    - name: Create containers config directory
+      ansible.builtin.file:
+        path: /home/agent/.config/containers
+        state: directory
+        owner: agent
+        group: agent
+        mode: "0755"
+
+    - name: Write podman storage config
+      ansible.builtin.copy:
+        dest: /home/agent/.config/containers/storage.conf
+        content: |
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "/usr/bin/fuse-overlayfs"
+        owner: agent
+        group: agent
+        mode: "0644"
+
+    # ── Enable sshd ─────────────────────────────────────────────────
+    - name: Enable and start sshd
+      ansible.builtin.systemd:
+        name: ssh
+        enabled: true
+        state: started
