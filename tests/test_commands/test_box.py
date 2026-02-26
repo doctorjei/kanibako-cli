@@ -8,7 +8,6 @@ import shutil
 
 from kanibako.config import load_config
 from kanibako.paths import load_std_paths, resolve_decentralized_project, resolve_project, resolve_workset_project
-from kanibako.utils import project_hash
 from kanibako.workset import add_project, create_workset, load_workset
 
 
@@ -190,10 +189,9 @@ class TestBoxMigrate:
         # Old settings should be gone.
         assert not proj.metadata_path.exists()
 
-        # New settings should exist with preserved data.
-        new_hash = project_hash(str(new_dir.resolve()))
+        # New settings should exist with preserved data (name-based directory).
         projects_base = std.data_path / "boxes"
-        new_project = projects_base / new_hash
+        new_project = projects_base / "new_project"
         assert new_project.is_dir()
         assert (new_project / "marker.txt").read_text() == "hello"
 
@@ -283,8 +281,6 @@ class TestBoxMigrate:
         resolve_project(std, config, project_dir=str(old_dir), initialize=True)
 
         # CWD is tmp_home/project (set by tmp_home fixture).
-        cwd = tmp_home / "project"
-
         args = argparse.Namespace(
             old_path=str(old_dir),
             new_path=None,
@@ -294,10 +290,9 @@ class TestBoxMigrate:
         rc = run_migrate(args)
         assert rc == 0
 
-        # Verify data landed under CWD's hash.
-        new_hash = project_hash(str(cwd.resolve()))
+        # Verify data landed under CWD's name-based directory.
         projects_base = std.data_path / "boxes"
-        new_project = projects_base / new_hash
+        new_project = projects_base / "project"
         assert new_project.is_dir()
 
     def test_migrate_warns_on_lock_file(self, config_file, tmp_home, credentials_dir):
@@ -356,9 +351,8 @@ class TestBoxDuplicate:
         assert (dst_dir / "code.py").read_text() == "print('hello')"
 
         # Metadata copied with updated breadcrumb.
-        new_hash = project_hash(str(dst_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        new_project = projects_base / new_hash
+        new_project = projects_base / "dst_project"
         assert (new_project / "marker.txt").read_text() == "session-data"
         assert (new_project / "project-path.txt").read_text().strip() == str(dst_dir.resolve())
 
@@ -385,9 +379,8 @@ class TestBoxDuplicate:
         assert not dst_dir.exists()
 
         # Metadata exists.
-        new_hash = project_hash(str(dst_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        assert (projects_base / new_hash).is_dir()
+        assert (projects_base / "bare_dst").is_dir()
 
     def test_duplicate_source_not_dir_error(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -489,9 +482,8 @@ class TestBoxDuplicate:
         rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
         assert rc == 0
 
-        new_hash = project_hash(str(dst_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        new_project = projects_base / new_hash
+        new_project = projects_base / "excl_dst"
         assert not (new_project / ".kanibako.lock").exists()
 
     def test_duplicate_force_overwrites_metadata(self, config_file, tmp_home, credentials_dir):
@@ -513,9 +505,10 @@ class TestBoxDuplicate:
         rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
         assert rc == 0
 
-        new_hash = project_hash(str(dst_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        new_project = projects_base / new_hash
+        # Force duplicate re-registers and gets a deduplicated name since
+        # "fw_dst" is already taken by the pre-existing project.
+        new_project = projects_base / "fw_dst2"
 
         # Fresh data present, stale data gone.
         assert (new_project / "fresh.txt").read_text() == "new"
@@ -627,9 +620,8 @@ class TestBoxMigrateShell:
         # Old home should be gone (parent metadata_path is renamed).
         assert not proj.shell_path.exists()
 
-        # New home should exist with marker (inside projects/{hash}/home/).
-        new_hash = project_hash(str(new_dir.resolve()))
-        new_home = std.data_path / "boxes" / new_hash / "shell"
+        # New home should exist with marker (inside projects/{name}/home/).
+        new_home = std.data_path / "boxes" / "shell_new" / "shell"
         assert new_home.is_dir()
         assert (new_home / "shell_marker.txt").read_text() == "shell-data"
 
@@ -693,9 +685,8 @@ class TestBoxConvert:
         assert rc == 0
 
         # AC layout should exist.
-        phash = project_hash(str(project_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        ac_project = projects_base / phash
+        ac_project = projects_base / "conv_dec"
         ac_home = ac_project / "shell"
 
         assert ac_project.is_dir()
@@ -808,9 +799,8 @@ class TestBoxConvert:
         rc = run_migrate(args)
         assert rc == 0
 
-        phash = project_hash(str(project_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        breadcrumb = projects_base / phash / "project-path.txt"
+        breadcrumb = projects_base / "conv_bc_ac" / "project-path.txt"
         assert breadcrumb.exists()
         assert breadcrumb.read_text().strip() == str(project_dir.resolve())
 
@@ -983,9 +973,8 @@ class TestBoxDuplicateCrossMode:
         assert rc == 0
 
         # Destination should have AC layout.
-        phash = project_hash(str(dst_dir.resolve()))
         projects_base = std.data_path / "boxes"
-        ac_project = projects_base / phash
+        ac_project = projects_base / "dup_dec_dst"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "dec-data"
         assert (ac_project / "project-path.txt").read_text().strip() == str(dst_dir.resolve())
@@ -1149,7 +1138,7 @@ class TestBoxListWorkset:
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "HASH" in out  # AC table header
+        assert "NAME" in out  # AC table header
         assert str(ac_dir) in out
         assert "mixed-ws" in out
         assert "ws-proj" in out
@@ -1420,12 +1409,9 @@ class TestBoxConvertFromWorkset:
         rc = run_migrate(args)
         assert rc == 0
 
-        # AC layout at dest_path
-        dest_path = tmp_home / "ws-proj_src"
-        # The source_path recorded in the workset project is used as dest
-        phash = project_hash(str(dest_path))
+        # AC layout at the source_path recorded in the workset project
         projects_base = std.data_path / "boxes"
-        ac_project = projects_base / phash
+        ac_project = projects_base / "ws-proj_src"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-marker"
         # Breadcrumb written
@@ -1612,9 +1598,8 @@ class TestBoxDuplicateFromWorkset:
         assert rc == 0
 
         # AC layout at destination
-        phash = project_hash(str(dest.resolve()))
         projects_base = std.data_path / "boxes"
-        ac_project = projects_base / phash
+        ac_project = projects_base / "dup_ws_ac_dst"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-dup-marker"
         assert (dest / "code.py").read_text() == "print('ws-dup')"

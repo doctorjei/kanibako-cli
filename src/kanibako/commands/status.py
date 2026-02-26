@@ -17,7 +17,7 @@ from kanibako.paths import (
     load_std_paths,
     resolve_any_project,
 )
-from kanibako.utils import short_hash
+from kanibako.utils import container_name_for, short_hash
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -56,12 +56,13 @@ def _format_credential_age(creds_path: Path) -> str:
     return f"{age} ({dt.strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
-def _check_container_running(project_hash: str) -> tuple[bool, str]:
+def _check_container_running(proj) -> tuple[bool, str]:
     """Check if a kanibako container is running for this project.
 
+    Accepts a ``ProjectPaths`` (or duck-typed equivalent).
     Returns ``(is_running, detail_string)``.
     """
-    container_name = f"kanibako-{short_hash(project_hash)}"
+    container_name = container_name_for(proj)
     try:
         runtime = ContainerRuntime()
     except ContainerError:
@@ -123,7 +124,7 @@ def run_status(args: argparse.Namespace) -> int:
     lock_file = proj.metadata_path / ".kanibako.lock"
     lock_held = lock_file.exists()
 
-    container_running, container_detail = _check_container_running(proj.project_hash)
+    container_running, container_detail = _check_container_running(proj)
 
     creds_file = proj.shell_path / ".claude" / ".credentials.json"
     cred_age = _format_credential_age(creds_file)
@@ -133,6 +134,7 @@ def run_status(args: argparse.Namespace) -> int:
 
     # Format output.
     rows = [
+        ("Name", proj.name or "(unnamed)"),
         ("Mode", mode_display),
         ("Project", str(proj.project_path)),
         ("Hash", short_hash(proj.project_hash)),

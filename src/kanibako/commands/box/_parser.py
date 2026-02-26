@@ -19,6 +19,7 @@ from kanibako.config import (
     write_target_setting,
 )
 from kanibako.errors import ProjectError
+from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import (
     ProjectLayout,
     xdg,
@@ -33,13 +34,13 @@ _MODE_CHOICES = ["account-centric", "decentralized", "workset"]
 
 # Keys that box get can read.
 _GET_KEYS = [
-    "shell", "vault_ro", "vault_rw", "layout", "vault_enabled", "auth",
+    "name", "shell", "vault_ro", "vault_rw", "layout", "vault_enabled", "auth",
     "metadata", "project_hash", "global_shared", "local_shared", "mode",
 ]
 
 # Keys that box set can write (path keys, enum keys, bool keys).
 _SET_PATH_KEYS = {"shell", "vault_ro", "vault_rw"}
-_SET_KEYS = _SET_PATH_KEYS | {"layout", "vault_enabled", "auth"}
+_SET_KEYS = _SET_PATH_KEYS | {"layout", "vault_enabled", "auth", "name"}
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -267,9 +268,15 @@ def run_list(args: argparse.Namespace) -> int:
         return 0
 
     if projects:
-        print(f"{'HASH':<10} {'STATUS':<10} {'PATH'}")
+        # Build a reverse lookup from path → name using names.toml.
+        names_data = read_names(std.data_path)
+        path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
+
+        print(f"{'NAME':<18} {'STATUS':<10} {'PATH'}")
         for settings_path, project_path in projects:
-            h8 = short_hash(settings_path.name)
+            # Directory name is now the project name (or hash for legacy).
+            dir_name = settings_path.name
+            proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
             if project_path is None:
                 status = "unknown"
                 label = "(no breadcrumb)"
@@ -279,7 +286,7 @@ def run_list(args: argparse.Namespace) -> int:
             else:
                 status = "missing"
                 label = str(project_path)
-            print(f"{h8:<10} {status:<10} {label}")
+            print(f"{proj_name:<18} {status:<10} {label}")
 
     for ws_name, ws, project_list in ws_data:
         print()
@@ -326,11 +333,11 @@ def run_orphan(args: argparse.Namespace) -> int:
         return 0
 
     if ac_orphans:
-        print(f"{'HASH':<10} {'PATH'}")
+        print(f"{'NAME':<18} {'PATH'}")
         for metadata_path, project_path in ac_orphans:
-            h8 = short_hash(metadata_path.name)
+            dir_name = metadata_path.name
             label = str(project_path) if project_path else "(no breadcrumb)"
-            print(f"{h8:<10} {label}")
+            print(f"{dir_name:<18} {label}")
 
     if ws_orphans:
         if ac_orphans:
@@ -360,6 +367,8 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: No project data found for {proj.project_path}", file=sys.stderr)
         return 1
 
+    if proj.name:
+        print(f"Name:      {proj.name}")
     print(f"Mode:      {proj.mode.value}")
     print(f"Project:   {proj.project_path}")
     print(f"Hash:      {short_hash(proj.project_hash)}")
@@ -392,6 +401,50 @@ def _validate_path_override(key: str, value: str) -> Path:
     if not p.parent.exists():
         raise ValueError(f"{key}: parent directory does not exist: {p.parent}")
     return p
+
+
+def _set_name(std, proj, meta, project_toml, new_name: str) -> int:
+    """Handle ``box set name <new-name>``: validate, update names.toml + project.toml."""
+    old_name = meta.get("name", "")
+
+    if new_name == old_name:
+        print(f"name = {new_name} (unchanged)")
+        return 0
+
+    # Check uniqueness across both sections.
+    names = read_names(std.data_path)
+    all_names = set(names["projects"]) | set(names["worksets"])
+    if new_name in all_names:
+        print(f"Error: Name '{new_name}' is already in use.", file=sys.stderr)
+        return 1
+
+    # Update names.toml: unregister old, register new.
+    if old_name:
+        unregister_name(std.data_path, old_name)
+    workspace = meta.get("workspace", str(proj.project_path))
+    register_name(std.data_path, new_name, workspace)
+
+    # Update project.toml.
+    meta["name"] = new_name
+    write_project_meta(
+        project_toml,
+        mode=meta["mode"],
+        layout=meta["layout"],
+        workspace=meta["workspace"],
+        shell=meta["shell"],
+        vault_ro=meta["vault_ro"],
+        vault_rw=meta["vault_rw"],
+        vault_enabled=meta["vault_enabled"],
+        auth=meta["auth"],
+        metadata=meta.get("metadata", ""),
+        project_hash=meta.get("project_hash", ""),
+        global_shared=meta.get("global_shared", ""),
+        local_shared=meta.get("local_shared", ""),
+        name=new_name,
+    )
+
+    print(f"name = {new_name}")
+    return 0
 
 
 def run_get(args: argparse.Namespace) -> int:
@@ -452,7 +505,9 @@ def run_set(args: argparse.Namespace) -> int:
 
     # Validate based on key type.
     try:
-        if key in _SET_PATH_KEYS:
+        if key == "name":
+            return _set_name(std, proj, meta, project_toml, value)
+        elif key in _SET_PATH_KEYS:
             _validate_path_override(key, value)
         elif key == "layout":
             try:
@@ -490,6 +545,7 @@ def run_set(args: argparse.Namespace) -> int:
         project_hash=meta.get("project_hash", ""),
         global_shared=meta.get("global_shared", ""),
         local_shared=meta.get("local_shared", ""),
+        name=meta.get("name", ""),
     )
 
     print(f"{key} = {value}")

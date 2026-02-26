@@ -21,7 +21,7 @@ from kanibako.paths import (
     resolve_any_project,
 )
 from kanibako.targets import resolve_target
-from kanibako.utils import short_hash
+from kanibako.utils import container_name_for, short_hash
 
 
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -261,7 +261,7 @@ def _run_container(
         agent_cfg = load_agent_config(agent_cfg_path)
 
     # Deterministic container name for stop/cleanup
-    container_name = f"kanibako-{short_hash(proj.project_hash)}"
+    container_name = container_name_for(proj)
 
     logger.debug("Project: %s (mode=%s)", proj.project_path, proj.mode)
     logger.debug("Image: %s", image)
@@ -394,7 +394,8 @@ def _run_container(
                 # Fallback if /run/user/$UID is not writable
                 _run_dir = Path(f"/tmp/kanibako-{_uid}")
                 _run_dir.mkdir(parents=True, exist_ok=True)
-            socket_path = _run_dir / f"{short_hash(proj.project_hash)}.sock"
+            _sock_id = proj.name if proj.name else short_hash(proj.project_hash)
+            socket_path = _run_dir / f"{_sock_id}.sock"
             validate_socket_path(socket_path)
             log_path = proj.metadata_path / "helper-messages.jsonl"
 
@@ -410,8 +411,7 @@ def _run_container(
             helper_ctx = HelperContext(
                 runtime=runtime,
                 image=image,
-                container_name_prefix="kanibako-helper",
-                project_hash=proj.project_hash,
+                container_name_prefix=container_name,
                 shell_path=proj.shell_path,
                 helpers_dir=helpers_dir,
                 socket_path=socket_path,

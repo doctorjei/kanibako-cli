@@ -8,12 +8,14 @@ import sys
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
+from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
     ProjectMode,
     _ensure_human_vault_symlink,
     _find_workset_for_path,
     _remove_human_vault_symlink,
     _remove_project_vault_symlink,
+    _resolve_ac_dir,
     xdg,
     detect_project_mode,
     load_std_paths,
@@ -21,7 +23,7 @@ from kanibako.paths import (
     resolve_project,
     resolve_workset_project,
 )
-from kanibako.utils import confirm_prompt, project_hash, short_hash
+from kanibako.utils import confirm_prompt, project_hash
 
 
 def run_migrate(args: argparse.Namespace) -> int:
@@ -58,9 +60,10 @@ def run_migrate(args: argparse.Namespace) -> int:
     old_hash = project_hash(str(old_path))
     new_hash = project_hash(str(new_path))
 
-    projects_base = std.data_path / "boxes"
-    old_project_dir = projects_base / old_hash
-    new_project_dir = projects_base / new_hash
+    # Find old project directory (name-based or hash-based).
+    old_name, old_project_dir = _resolve_ac_dir(
+        std.data_path, str(old_path), old_hash,
+    )
 
     # Validate: old project data must exist.
     if not old_project_dir.is_dir():
@@ -70,6 +73,11 @@ def run_migrate(args: argparse.Namespace) -> int:
         )
         print(f"  (expected: {old_project_dir})", file=sys.stderr)
         return 1
+
+    # Find or assign new project directory.
+    new_name, new_project_dir = _resolve_ac_dir(
+        std.data_path, str(new_path), new_hash,
+    )
 
     # Validate: new project data must NOT already exist.
     if new_project_dir.is_dir():
@@ -110,6 +118,12 @@ def run_migrate(args: argparse.Namespace) -> int:
     human_vault_dir = std.data_path / config.paths_vault
     _remove_human_vault_symlink(human_vault_dir, old_project_dir / "vault")
 
+    # Update names.toml: unregister old name, assign new name.
+    if old_name:
+        unregister_name(std.data_path, old_name)
+    new_name = assign_name(std.data_path, str(new_path))
+    new_project_dir = std.data_path / "boxes" / new_name
+
     # Rename project directory (includes home/ inside it).
     old_project_dir.rename(new_project_dir)
 
@@ -123,8 +137,8 @@ def run_migrate(args: argparse.Namespace) -> int:
         _ensure_human_vault_symlink(human_vault_dir, new_path, vault_parent)
 
     print("Migrated project data:")
-    print(f"  from: {old_path} ({short_hash(old_hash)})")
-    print(f"    to: {new_path} ({short_hash(new_hash)})")
+    print(f"  from: {old_path} ({old_name or old_hash[:8]})")
+    print(f"    to: {new_path} ({new_name})")
     return 0
 
 
@@ -245,15 +259,20 @@ def _convert_ac_to_decentral(project_path, std, config, proj):
     _remove_human_vault_symlink(human_vault_dir, proj.metadata_path / "vault")
     _remove_project_vault_symlink(project_path)
 
+    # Unregister the AC project name.
+    if proj.name:
+        unregister_name(std.data_path, proj.name)
+
     # Clean up old AC data.
     shutil.rmtree(proj.metadata_path)
 
 
 def _convert_decentral_to_ac(project_path, std, config, proj):
     """Convert a decentralized project to account-centric layout."""
-    phash = project_hash(str(project_path))
+    # Assign a name for the new AC project.
+    project_name = assign_name(std.data_path, str(project_path))
     settings_base = std.data_path / "boxes"
-    dst_project = settings_base / phash
+    dst_project = settings_base / project_name
 
     # Copy metadata (excluding lock file and shell/).
     shutil.copytree(
@@ -387,6 +406,9 @@ def _convert_to_workset(args, std, config) -> int:
     if current_mode == ProjectMode.account_centric:
         human_vault_dir = std.data_path / config.paths_vault
         _remove_human_vault_symlink(human_vault_dir, src_proj.metadata_path / "vault")
+        # Unregister old AC name.
+        if src_proj.name:
+            unregister_name(std.data_path, src_proj.name)
     _remove_project_vault_symlink(project_path)
 
     # Clean up old metadata.
@@ -470,9 +492,10 @@ def _convert_from_workset(args, project_path, std, config) -> int:
 
 def _convert_ws_to_ac(src_proj, dest_path, std, config):
     """Copy workset project metadata into account-centric layout."""
-    phash = project_hash(str(dest_path))
+    # Assign a name for the new AC project.
+    project_name = assign_name(std.data_path, str(dest_path))
     projects_base = std.data_path / "boxes"
-    dst_project = projects_base / phash
+    dst_project = projects_base / project_name
 
     # Copy metadata (excluding lock and home/).
     shutil.copytree(

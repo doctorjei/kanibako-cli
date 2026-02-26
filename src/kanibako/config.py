@@ -215,6 +215,7 @@ def write_project_meta(
     project_hash: str = "",
     global_shared: str = "",
     local_shared: str = "",
+    name: str = "",
 ) -> None:
     """Write resolved project metadata to project.toml, preserving other sections."""
     existing: dict = {}
@@ -222,10 +223,13 @@ def write_project_meta(
         with open(path, "rb") as f:
             existing = tomllib.load(f)
 
-    existing["project"] = {
+    project_sec: dict = {
         "mode": mode, "layout": layout,
         "vault_enabled": vault_enabled, "auth": auth,
     }
+    if name:
+        project_sec["name"] = name
+    existing["project"] = project_sec
     existing.setdefault("resolved", {})
     existing["resolved"]["workspace"] = workspace
     existing["resolved"]["shell"] = shell
@@ -263,6 +267,7 @@ def read_project_meta(path: Path) -> dict | None:
         "layout": "robust" if project_sec.get("layout") == "tree" else project_sec.get("layout", ""),
         "vault_enabled": project_sec.get("vault_enabled", True),
         "auth": project_sec.get("auth", "shared"),
+        "name": project_sec.get("name", ""),
         "workspace": resolved_sec.get("workspace", ""),
         "shell": resolved_sec.get("shell", ""),
         "vault_ro": resolved_sec.get("vault_ro", ""),

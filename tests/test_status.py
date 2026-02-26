@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -120,13 +121,25 @@ class TestFormatCredentialAge:
 # _check_container_running tests
 # ---------------------------------------------------------------------------
 
+def _mock_proj(*, name="", project_hash="a" * 64, mode="account_centric",
+               project_path="/home/user/proj"):
+    """Duck-typed ProjectPaths for _check_container_running tests."""
+    return SimpleNamespace(
+        name=name,
+        project_hash=project_hash,
+        mode=SimpleNamespace(value=mode),
+        project_path=Path(project_path),
+    )
+
+
 class TestCheckContainerRunning:
     def test_no_runtime(self):
         with patch(
             "kanibako.commands.status.ContainerRuntime",
             side_effect=ContainerError("no runtime"),
         ):
-            running, detail = _check_container_running("abc123")
+            proj = _mock_proj()
+            running, detail = _check_container_running(proj)
             assert running is False
             assert "no container runtime" in detail
 
@@ -137,37 +150,53 @@ class TestCheckContainerRunning:
             "kanibako.commands.status.ContainerRuntime",
             return_value=mock_rt,
         ):
-            running, detail = _check_container_running("a" * 64)
+            proj = _mock_proj()
+            running, detail = _check_container_running(proj)
             assert running is False
             assert "not running" in detail
 
-    def test_container_found(self):
-        container_name = "kanibako-aaaaaaaa"
+    def test_container_found_by_name(self):
+        container_name = "kanibako-myapp"
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = [
             (container_name, "test:latest", "Up 5 minutes"),
         ]
-        phash = "a" * 64
         with patch(
             "kanibako.commands.status.ContainerRuntime",
             return_value=mock_rt,
         ):
-            running, detail = _check_container_running(phash)
+            proj = _mock_proj(name="myapp")
+            running, detail = _check_container_running(proj)
             assert running is True
             assert "running" in detail
             assert container_name in detail
+
+    def test_container_found_by_hash_fallback(self):
+        """Unnamed project falls back to hash-based container name."""
+        mock_rt = MagicMock()
+        mock_rt.list_running.return_value = [
+            ("kanibako-aaaaaaaa", "test:latest", "Up 5 minutes"),
+        ]
+        with patch(
+            "kanibako.commands.status.ContainerRuntime",
+            return_value=mock_rt,
+        ):
+            proj = _mock_proj(name="")
+            running, detail = _check_container_running(proj)
+            assert running is True
+            assert "running" in detail
 
     def test_different_container(self):
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = [
             ("kanibako-bbbbbbbb", "test:latest", "Up 5 minutes"),
         ]
-        phash = "a" * 64
         with patch(
             "kanibako.commands.status.ContainerRuntime",
             return_value=mock_rt,
         ):
-            running, detail = _check_container_running(phash)
+            proj = _mock_proj(name="myapp")
+            running, detail = _check_container_running(proj)
             assert running is False
             assert "not running" in detail
 
@@ -199,6 +228,7 @@ class TestRunStatus:
             rc = run_status(args)
         assert rc == 0
         out = capsys.readouterr().out
+        assert "Name:" in out
         assert "account-centric" in out
         assert "Hash:" in out
         assert "Metadata:" in out

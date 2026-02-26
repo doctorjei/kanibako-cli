@@ -12,7 +12,6 @@ from typing import Any
 from kanibako.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.targets.base import Mount
-from kanibako.utils import short_hash
 
 logger = get_logger("helper_listener")
 
@@ -23,8 +22,7 @@ class HelperContext:
 
     runtime: ContainerRuntime
     image: str
-    container_name_prefix: str  # e.g. "kanibako-helper"
-    project_hash: str
+    container_name_prefix: str  # e.g. "kanibako-myapp" (project container name)
     shell_path: Path      # director's shell_path (parent of helpers/)
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
     socket_path: Path     # host path to helper.sock
@@ -270,10 +268,7 @@ class HelperHub:
         else:
             helpers_dir_host = ctx.helpers_dir
 
-        container_name = (
-            f"kanibako-helper-{helper_num}-"
-            f"{short_hash(ctx.project_hash)}"
-        )
+        container_name = f"{ctx.container_name_prefix}-helper-{helper_num}"
 
         mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
 
@@ -422,12 +417,18 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
 
 
 def _parse_helper_num(container_name: str) -> int | None:
-    """Extract helper number from a container name like 'kanibako-helper-3-abc123'."""
+    """Extract helper number from a container name.
+
+    Handles both formats:
+    - New: ``kanibako-{name}-helper-{N}``
+    - Legacy: ``kanibako-helper-{N}-{hash}``
+    """
     parts = container_name.split("-")
-    # Expected format: kanibako-helper-{N}-{hash}
-    if len(parts) >= 3 and parts[0] == "kanibako" and parts[1] == "helper":
-        try:
-            return int(parts[2])
-        except ValueError:
-            pass
+    # Walk backwards looking for "helper" followed by a numeric part.
+    for i in range(len(parts) - 1, 0, -1):
+        if parts[i - 1] == "helper":
+            try:
+                return int(parts[i])
+            except ValueError:
+                pass
     return None

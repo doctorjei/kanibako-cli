@@ -67,6 +67,11 @@ class TestSocketPathBoundary:
         socket_path = Path(f"/run/user/1000/kanibako/{shash}.sock")
         assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
+    def test_name_based_socket_under_limit(self):
+        """Socket with project name stays under limit for typical names."""
+        socket_path = Path("/run/user/1000/kanibako/my-long-project-name.sock")
+        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+
     def test_metadata_path_socket_exceeds_limit(self):
         """Socket in metadata_path (old location) would exceed the limit."""
         long_hash = hashlib.sha256(b"/home/user/project").hexdigest()

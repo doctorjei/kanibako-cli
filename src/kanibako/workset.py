@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.errors import WorksetError
+from kanibako.names import register_name, unregister_name
 from kanibako.paths import StandardPaths
 
 
@@ -182,6 +183,10 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
     # Register globally.
     registry[name] = root
     _write_registry(std, registry)
+
+    # Register in the name index for name-based lookups.
+    register_name(std.data_path, name, str(root), section="worksets")
+
     return ws
 
 
@@ -219,6 +224,9 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         raise WorksetError(f"Workset '{name}' is not registered.")
     root = registry.pop(name)
     _write_registry(std, registry)
+
+    # Unregister from the name index.
+    unregister_name(std.data_path, name, section="worksets")
 
     if remove_files and root.is_dir():
         import shutil

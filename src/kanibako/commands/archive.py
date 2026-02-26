@@ -12,7 +12,6 @@ from kanibako.config import config_file_path, load_config
 from kanibako.errors import GitError
 from kanibako.git import check_uncommitted, check_unpushed, get_metadata, is_git_repo
 from kanibako.paths import xdg, load_std_paths, resolve_any_project
-from kanibako.utils import short_hash
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -60,10 +59,9 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
     # Generate default archive filename
     archive_file = output_file
     if not archive_file:
-        basename = proj.project_path.name
-        h8 = short_hash(proj.project_hash)
+        label = proj.name or proj.project_path.name
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        archive_file = f"kanibako-{basename}-{h8}-{timestamp}.txz"
+        archive_file = f"kanibako-{label}-{timestamp}.txz"
 
     # Prepare metadata
     info_file = proj.metadata_path / "kanibako-archive-info.txt"
@@ -147,8 +145,7 @@ def _archive_all(std, config, args) -> int:
 
     print(f"Found {total} project(s) to archive:")
     for metadata_path, project_path in projects:
-        h8 = short_hash(metadata_path.name)
-        label = str(project_path) if project_path else f"(unknown) {h8}"
+        label = str(project_path) if project_path else f"(unknown) {metadata_path.name[:8]}"
         print(f"  {label}")
     for ws_name, ws, project_list in ws_data:
         for proj_name, status in project_list:
@@ -161,18 +158,15 @@ def _archive_all(std, config, args) -> int:
 
     # Account-centric projects.
     for metadata_path, project_path in projects:
-        phash = metadata_path.name
-        h8 = short_hash(phash)
-
         if project_path:
             try:
                 proj = resolve_project(
                     std, config, project_dir=str(project_path), initialize=False
                 )
             except Exception:
-                proj = _stub_project(metadata_path, phash, project_path, config)
+                proj = _stub_project(metadata_path, project_path, config)
         else:
-            proj = _stub_project(metadata_path, phash, None, config)
+            proj = _stub_project(metadata_path, None, config)
 
         rc = _archive_one(std, config, proj, output_file=None, args=args)
         if rc == 0:
@@ -203,11 +197,17 @@ def _archive_all(std, config, args) -> int:
     return 1 if failed else 0
 
 
-def _stub_project(metadata_path, phash, project_path, config):
+def _stub_project(metadata_path, project_path, config):
     """Create a minimal ProjectPaths stand-in for projects whose path is gone."""
+    from kanibako.config import read_project_meta
     from kanibako.paths import ProjectPaths
 
-    effective_path = project_path or Path(f"(unknown-{short_hash(phash)})")
+    # Read hash and name from project.toml when available.
+    meta = read_project_meta(metadata_path / "project.toml")
+    phash = (meta.get("project_hash") or metadata_path.name) if meta else metadata_path.name
+    name = (meta.get("name") or "") if meta else ""
+
+    effective_path = project_path or Path(f"(unknown-{name or metadata_path.name})")
     return ProjectPaths(
         project_path=effective_path,
         project_hash=phash,
@@ -216,4 +216,5 @@ def _stub_project(metadata_path, phash, project_path, config):
         vault_ro_path=effective_path / "vault" / "share-ro",
         vault_rw_path=effective_path / "vault" / "share-rw",
         is_new=False,
+        name=name,
     )

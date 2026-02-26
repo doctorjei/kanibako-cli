@@ -9,7 +9,7 @@ from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths, resolve_any_project
-from kanibako.utils import short_hash
+from kanibako.utils import container_name_for
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -49,7 +49,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     std = load_std_paths(config)
 
     proj = resolve_any_project(std, config, project_dir, initialize=False)
-    container_name = f"kanibako-{short_hash(proj.project_hash)}"
+    container_name = container_name_for(proj)
 
     lock_file = proj.metadata_path / ".kanibako.lock"
 

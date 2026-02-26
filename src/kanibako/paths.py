@@ -18,6 +18,7 @@ from kanibako.config import (
     write_project_meta,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
+from kanibako.names import assign_name, read_names
 from kanibako.utils import project_hash
 
 if TYPE_CHECKING:
@@ -94,6 +95,7 @@ class ProjectPaths:
     layout: ProjectLayout = field(default=ProjectLayout.default)
     vault_enabled: bool = field(default=True)
     auth: str = field(default="shared")
+    name: str = field(default="")
     global_shared_path: Path | None = field(default=None)
     local_shared_path: Path | None = field(default=None)
 
@@ -207,7 +209,23 @@ def resolve_project(
         raise ProjectError(f"Project path '{project_path}' does not exist.")
 
     phash = project_hash(str(project_path))
-    project_dir_path = std.data_path / "boxes" / phash
+    project_path_str = str(project_path)
+
+    # Determine the project directory: name-based (boxes/{name}/) or
+    # hash-based (boxes/{hash}/) for old un-named projects.
+    project_name, project_dir_path = _resolve_ac_dir(
+        std.data_path, project_path_str, phash,
+    )
+
+    # Auto-migrate hash-based directory to name-based on access.
+    if project_dir_path.is_dir() and project_dir_path.name == phash:
+        if not project_name:
+            project_name = assign_name(std.data_path, project_path_str)
+        project_name, project_dir_path = _migrate_hash_to_name(
+            std.data_path, config, project_dir_path, project_path,
+            phash, project_name,
+        )
+
     metadata_path = project_dir_path
 
     # Check for stored paths in project.toml (enables user overrides).
@@ -219,6 +237,9 @@ def resolve_project(
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
         actual_vault_enabled = meta.get("vault_enabled", True) if vault_enabled is None else vault_enabled
+        # Prefer name from meta if found via hash fallback.
+        if meta.get("name"):
+            project_name = meta["name"]
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.account_centric]
         shell_path, vault_ro_path, vault_rw_path = _compute_ac_paths(
@@ -228,6 +249,16 @@ def resolve_project(
 
     is_new = False
     if initialize and not project_dir_path.is_dir():
+        # New project: assign a name first, then create boxes/{name}/.
+        project_name = assign_name(std.data_path, project_path_str)
+        project_dir_path = std.data_path / "boxes" / project_name
+        metadata_path = project_dir_path
+        # Recompute paths with the name-based directory.
+        shell_path, vault_ro_path, vault_rw_path = _compute_ac_paths(
+            actual_layout, metadata_path, project_path,
+        )
+        project_toml = metadata_path / "project.toml"
+
         _init_project(
             std, metadata_path, shell_path,
             vault_ro_path, vault_rw_path, project_path,
@@ -248,7 +279,10 @@ def resolve_project(
             project_hash=phash,
             global_shared=str(_global_shared),
             local_shared=str(_local_shared),
+            name=project_name,
         )
+        import sys
+        print(f"Project name: {project_name}", file=sys.stderr)
         is_new = True
 
     if initialize:
@@ -298,9 +332,130 @@ def resolve_project(
         mode=ProjectMode.account_centric,
         layout=actual_layout,
         vault_enabled=actual_vault_enabled,
+        name=project_name,
         global_shared_path=_computed_global_shared,
         local_shared_path=_computed_local_shared,
     )
+
+
+def _resolve_ac_dir(
+    data_path: Path,
+    project_path_str: str,
+    phash: str,
+) -> tuple[str, Path]:
+    """Find the boxes directory for an AC project.
+
+    Tries name-based (``boxes/{name}/``) first via names.toml reverse
+    lookup, then falls back to hash-based (``boxes/{hash}/``) for old
+    un-named projects.
+
+    Returns ``(project_name, directory_path)``.  When neither directory
+    exists yet, returns the hash-based path (which ``resolve_project``
+    will replace with a name-based path on initialization).
+
+    When a name is registered but the name-based directory does not exist,
+    checks for a hash-based directory (needs migration).  Returns
+    ``(name, hash_dir)`` so the caller can migrate.
+    """
+    names = read_names(data_path)
+    # Reverse lookup: path → name.
+    for name, path in names["projects"].items():
+        if path == project_path_str:
+            name_dir = data_path / "boxes" / name
+            if name_dir.is_dir():
+                return name, name_dir
+            # Name registered but name dir doesn't exist.
+            # Check if hash dir still exists (needs migration).
+            hash_dir = data_path / "boxes" / phash
+            if hash_dir.is_dir():
+                return name, hash_dir
+            # Neither exists — return name_dir (will be created during init).
+            return name, name_dir
+
+    # Fallback: old hash-based directory.
+    hash_dir = data_path / "boxes" / phash
+    return "", hash_dir
+
+
+def _migrate_hash_to_name(
+    data_path: Path,
+    config: KanibakoConfig,
+    hash_dir: Path,
+    project_path: Path,
+    phash: str,
+    name: str,
+) -> tuple[str, Path]:
+    """Rename ``boxes/{hash}/`` to ``boxes/{name}/``.
+
+    Migrates an old hash-based project directory to the new name-based
+    layout.  Updates stored paths in ``project.toml`` and fixes vault
+    symlinks for robust layout.
+
+    Returns ``(name, new_dir_path)``.
+    """
+    import sys
+
+    new_dir = data_path / "boxes" / name
+    if new_dir.exists():
+        raise ProjectError(
+            f"Cannot migrate: {new_dir} already exists."
+        )
+
+    # Read existing meta to fix stored paths and vault symlinks.
+    project_toml = hash_dir / "project.toml"
+    meta = read_project_meta(project_toml)
+
+    # Remove old vault symlinks before rename (robust layout only).
+    if meta and meta.get("layout") == "robust" and meta.get("vault_enabled", True):
+        vault_parent = hash_dir / "vault"
+        vault_dir = data_path / config.paths_vault
+        _remove_human_vault_symlink(vault_dir, vault_parent)
+        _remove_project_vault_symlink(project_path)
+
+    # Atomic rename.
+    hash_dir.rename(new_dir)
+
+    # Update project.toml: fix stored paths that referenced the old hash dir.
+    if meta:
+        old_prefix = str(hash_dir)
+        new_prefix = str(new_dir)
+
+        def _fix(val: str) -> str:
+            if val and val.startswith(old_prefix):
+                return new_prefix + val[len(old_prefix):]
+            return val
+
+        write_project_meta(
+            new_dir / "project.toml",
+            mode=meta["mode"],
+            layout=meta.get("layout", "default"),
+            workspace=meta.get("workspace", str(project_path)),
+            shell=_fix(meta.get("shell", "")),
+            vault_ro=_fix(meta.get("vault_ro", "")),
+            vault_rw=_fix(meta.get("vault_rw", "")),
+            vault_enabled=meta.get("vault_enabled", True),
+            auth=meta.get("auth", "shared"),
+            metadata=_fix(meta.get("metadata", "")),
+            project_hash=meta.get("project_hash", phash),
+            global_shared=meta.get("global_shared", ""),
+            local_shared=meta.get("local_shared", ""),
+            name=name,
+        )
+
+    # Create new vault symlinks (robust layout only).
+    if meta and meta.get("layout") == "robust" and meta.get("vault_enabled", True):
+        new_vault_parent = new_dir / "vault"
+        if new_vault_parent.is_dir():
+            vault_dir = data_path / config.paths_vault
+            _ensure_human_vault_symlink(vault_dir, project_path, new_vault_parent)
+            _ensure_vault_symlink(project_path, new_vault_parent / "share-ro")
+
+    print(
+        f"Migrated: boxes/{phash[:12]}… → boxes/{name}/",
+        file=sys.stderr,
+    )
+
+    return name, new_dir
 
 
 def _compute_ac_paths(
@@ -641,9 +796,16 @@ def detect_project_mode(
         return ws_result
 
     # 2. Walk ancestors for AC + decentralized markers.
+    names = read_names(std.data_path)
+    # Build reverse lookup: path → name.
+    _path_to_name = {v: k for k, v in names["projects"].items()}
+
     current = resolved
     while True:
-        # AC check: hash current, check boxes/{hash}/ exists.
+        # AC check: name-based first, then hash fallback.
+        _name = _path_to_name.get(str(current))
+        if _name and (std.data_path / "boxes" / _name).is_dir():
+            return DetectionResult(ProjectMode.account_centric, current)
         phash = project_hash(str(current))
         settings_path = std.data_path / "boxes" / phash
         if settings_path.is_dir():
@@ -813,6 +975,7 @@ def resolve_workset_project(
         layout=actual_layout,
         vault_enabled=actual_vault_enabled,
         auth=actual_auth,
+        name=project_name,
         global_shared_path=_ws_computed_global,
         local_shared_path=_ws_computed_local,
     )

@@ -35,8 +35,7 @@ def mock_ctx(tmp_path):
     return HelperContext(
         runtime=runtime,
         image="test:latest",
-        container_name_prefix="kanibako-helper",
-        project_hash="abc12345deadbeef",
+        container_name_prefix="kanibako-testproj",
         shell_path=tmp_path / "shell",
         helpers_dir=helpers_dir,
         socket_path=socket_path,
@@ -73,11 +72,19 @@ def _connect_and_send(sock_path: Path, request: dict) -> dict:
 
 
 class TestParseHelperNum:
-    def test_valid_name(self):
+    def test_new_format(self):
+        assert _parse_helper_num("kanibako-myapp-helper-3") == 3
+
+    def test_new_format_double_digit(self):
+        assert _parse_helper_num("kanibako-myapp-helper-42") == 42
+
+    def test_legacy_format(self):
+        """Old kanibako-helper-N-hash format still works."""
         assert _parse_helper_num("kanibako-helper-3-abc12345") == 3
 
-    def test_valid_name_double_digit(self):
-        assert _parse_helper_num("kanibako-helper-42-deadbeef") == 42
+    def test_name_with_dashes(self):
+        """Project names containing dashes don't confuse parsing."""
+        assert _parse_helper_num("kanibako-my-app-helper-7") == 7
 
     def test_invalid_format(self):
         assert _parse_helper_num("some-other-name") is None
@@ -111,8 +118,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-helper",
-            project_hash="abc",
+            container_name_prefix="kanibako-testproj",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=sock,
@@ -133,8 +139,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-helper",
-            project_hash="abc",
+            container_name_prefix="kanibako-testproj",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",
@@ -157,8 +162,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-helper",
-            project_hash="abc",
+            container_name_prefix="kanibako-testproj",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",
@@ -178,8 +182,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-helper",
-            project_hash="abc",
+            container_name_prefix="kanibako-testproj",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=sock,
@@ -197,8 +200,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-helper",
-            project_hash="abc",
+            container_name_prefix="kanibako-testproj",
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "nonexistent.sock",
@@ -258,7 +260,7 @@ class TestHubSpawn:
         })
         assert resp["status"] == "ok"
         assert "container_name" in resp
-        assert "kanibako-helper-1-" in resp["container_name"]
+        assert resp["container_name"] == "kanibako-testproj-helper-1"
 
         # Verify runtime.run was called with detach=True
         ctx.runtime.run.assert_called_once()
@@ -358,11 +360,11 @@ class TestHubStop:
         hub, sock_path, ctx = hub_and_sock
         resp = _connect_and_send(sock_path, {
             "action": "stop",
-            "container_name": "kanibako-helper-1-abc12345",
+            "container_name": "kanibako-testproj-helper-1",
         })
         assert resp["status"] == "ok"
-        ctx.runtime.stop.assert_called_with("kanibako-helper-1-abc12345")
-        ctx.runtime.rm.assert_called_with("kanibako-helper-1-abc12345")
+        ctx.runtime.stop.assert_called_with("kanibako-testproj-helper-1")
+        ctx.runtime.rm.assert_called_with("kanibako-testproj-helper-1")
 
     def test_stop_missing_name(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock

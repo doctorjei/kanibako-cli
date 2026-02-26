@@ -8,9 +8,11 @@ import sys
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
+from kanibako.names import assign_name
 from kanibako.paths import (
     ProjectMode,
     _find_workset_for_path,
+    _resolve_ac_dir,
     xdg,
     detect_project_mode,
     load_std_paths,
@@ -18,7 +20,7 @@ from kanibako.paths import (
     resolve_project,
     resolve_workset_project,
 )
-from kanibako.utils import confirm_prompt, project_hash, short_hash
+from kanibako.utils import confirm_prompt, project_hash
 
 
 # -- Cross-mode duplicate helpers --
@@ -138,9 +140,10 @@ def _duplicate_to_decentral(src_proj, new_path, force):
 
 def _duplicate_to_ac(src_proj, new_path, std, config, force):
     """Copy metadata into account-centric layout for new_path."""
-    phash = project_hash(str(new_path))
+    # Assign a new name for the duplicate.
+    project_name = assign_name(std.data_path, str(new_path))
     projects_base = std.data_path / "boxes"
-    dst_project = projects_base / phash
+    dst_project = projects_base / project_name
 
     if force and dst_project.is_dir():
         shutil.rmtree(dst_project)
@@ -335,8 +338,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 3. Source must have kanibako metadata.
     source_hash = project_hash(str(source_path))
-    projects_base = std.data_path / "boxes"
-    source_project_dir = projects_base / source_hash
+    source_name, source_project_dir = _resolve_ac_dir(
+        std.data_path, str(source_path), source_hash,
+    )
 
     if not source_project_dir.is_dir():
         print(
@@ -356,7 +360,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 5. Destination metadata must not already exist (unless --force).
     new_hash = project_hash(str(new_path))
-    new_project_dir = projects_base / new_hash
+    new_name, new_project_dir = _resolve_ac_dir(
+        std.data_path, str(new_path), new_hash,
+    )
 
     if new_project_dir.is_dir() and not args.force:
         print(
@@ -394,6 +400,10 @@ def run_duplicate(args: argparse.Namespace) -> int:
     if not args.bare:
         shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
 
+    # Assign a new name for the duplicate.
+    dup_name = assign_name(std.data_path, str(new_path))
+    new_project_dir = std.data_path / "boxes" / dup_name
+
     # Copy metadata (entire project dir including home/).
     if args.force and new_project_dir.is_dir():
         shutil.rmtree(new_project_dir)
@@ -407,6 +417,6 @@ def run_duplicate(args: argparse.Namespace) -> int:
     breadcrumb.write_text(str(new_path) + "\n")
 
     print("Duplicated project:")
-    print(f"  from: {source_path} ({short_hash(source_hash)})")
-    print(f"    to: {new_path} ({short_hash(new_hash)})")
+    print(f"  from: {source_path} ({source_name or source_hash[:8]})")
+    print(f"    to: {new_path} ({dup_name})")
     return 0

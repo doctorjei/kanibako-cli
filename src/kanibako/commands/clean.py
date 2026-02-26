@@ -14,7 +14,7 @@ from kanibako.paths import (
     load_std_paths,
     resolve_any_project,
 )
-from kanibako.utils import confirm_prompt, short_hash
+from kanibako.utils import confirm_prompt
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -60,9 +60,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         return 0
 
     if not force:
-        h8 = short_hash(proj.project_hash)
         print(f"Project: {proj.project_path}")
-        print(f"Hash: {h8}")
+        if proj.name:
+            print(f"Name: {proj.name}")
         print()
         try:
             confirm_prompt(
@@ -102,8 +102,7 @@ def _purge_all(std, config, *, force: bool) -> int:
 
     print(f"Found {total} project(s):")
     for metadata_path, project_path in projects:
-        h8 = short_hash(metadata_path.name)
-        label = str(project_path) if project_path else f"(unknown) {h8}"
+        label = str(project_path) if project_path else f"(unknown) {metadata_path.name}"
         print(f"  {label}")
     for ws_name, ws, project_list in ws_data:
         for proj_name, status in project_list:
@@ -131,7 +130,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         _remove_human_vault_symlink(vault_dir, metadata_path / "vault")
         if project_path is not None:
             _remove_project_vault_symlink(project_path)
-        label = str(project_path) if project_path else short_hash(metadata_path.name)
+        label = str(project_path) if project_path else metadata_path.name
         print(f"Removing {label}... ", end="", flush=True)
         shutil.rmtree(metadata_path)
         print("done.")
