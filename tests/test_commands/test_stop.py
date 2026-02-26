@@ -14,6 +14,8 @@ def mock_runtime():
     rt = MagicMock()
     rt.stop.return_value = True
     rt.list_running.return_value = []
+    rt.container_exists.return_value = False
+    rt.rm.return_value = True
     return rt
 
 
@@ -36,6 +38,7 @@ class TestStopOne:
 
     def test_no_running_container(self, mock_runtime, capsys):
         mock_runtime.stop.return_value = False
+        mock_runtime.container_exists.return_value = False
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
@@ -55,6 +58,41 @@ class TestStopOne:
             assert "No running container" in out
             assert "rm " in out
             assert ".kanibako.lock" in out
+
+    def test_stop_removes_persistent_container(self, mock_runtime, capsys):
+        """After stopping a running container, rm is called to clean up."""
+        mock_runtime.container_exists.return_value = True  # exists after stop
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+        ):
+            proj = MagicMock()
+            proj.project_hash = "abcdef1234567890" * 4
+            m_resolve.return_value = proj
+
+            rc = _stop_one(mock_runtime, project_dir=None)
+            assert rc == 0
+            mock_runtime.rm.assert_called_once()
+
+    def test_stop_cleans_stale_persistent_container(self, mock_runtime, capsys):
+        """A stopped persistent container (not running) is removed."""
+        mock_runtime.stop.return_value = False  # not running
+        mock_runtime.container_exists.return_value = True  # but exists (stopped)
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+        ):
+            proj = MagicMock()
+            proj.project_hash = "abcdef1234567890" * 4
+            m_resolve.return_value = proj
+
+            rc = _stop_one(mock_runtime, project_dir=None)
+            assert rc == 0
+            mock_runtime.rm.assert_called_once()
+            out = capsys.readouterr().out
+            assert "Removed stopped container" in out
 
     def test_stop_with_project_dir(self, mock_runtime):
         with (

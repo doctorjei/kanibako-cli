@@ -155,6 +155,7 @@ def _run_container(
     resume_mode: bool,
     extra_args: list[str],
     no_helpers: bool = False,
+    persistent: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -267,23 +268,50 @@ def _run_container(
     logger.debug("Image: %s", image)
     logger.debug("Container: %s", container_name)
 
-    # Concurrency lock (known issue #3)
-    lock_file = proj.metadata_path / ".kanibako.lock"
-    lock_file.parent.mkdir(parents=True, exist_ok=True)
-    lock_fd = open(lock_file, "w")
-    try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        print(
-            "Error: Another kanibako instance is running for this project.",
-            file=sys.stderr,
-        )
-        lock_fd.close()
-        return 1
+    # Persistent mode: reattach if already running, clean up stale containers
+    if persistent:
+        if runtime.is_running(container_name):
+            # Refresh credentials before reattaching
+            if target and proj.auth != "distinct":
+                target.refresh_credentials(proj.shell_path)
+            return runtime.exec(
+                container_name, ["tmux", "attach", "-t", "kanibako"]
+            )
+        # Stale stopped container: remove before recreating
+        if runtime.container_exists(container_name):
+            runtime.rm(container_name)
+        # Persistent mode forces no helpers
+        no_helpers = True
+    else:
+        # Interactive mode: guard against existing persistent container
+        if runtime.container_exists(container_name):
+            print(
+                "Error: A container already exists for this project.\n"
+                "If a persistent session is running, use 'kanibako connect' to\n"
+                "reattach, or 'kanibako stop' to end it.",
+                file=sys.stderr,
+            )
+            return 1
 
-    # Record container name so `kanibako stop` can find it
-    lock_fd.write(container_name + "\n")
-    lock_fd.flush()
+    # Concurrency lock (skip for persistent — container existence is the lock)
+    lock_fd = None
+    if not persistent:
+        lock_file = proj.metadata_path / ".kanibako.lock"
+        lock_file.parent.mkdir(parents=True, exist_ok=True)
+        lock_fd = open(lock_file, "w")
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print(
+                "Error: Another kanibako instance is running for this project.",
+                file=sys.stderr,
+            )
+            lock_fd.close()
+            return 1
+
+        # Record container name so `kanibako stop` can find it
+        lock_fd.write(container_name + "\n")
+        lock_fd.flush()
 
     try:
         # Auto-snapshot vault share-rw before launch.
@@ -445,6 +473,15 @@ def _run_container(
         # Pre-launch validation: warn about missing mount sources.
         _validate_mounts(extra_mounts, logger)
 
+        # Persistent mode: wrap command with tmux
+        if persistent:
+            inner_cmd = entrypoint or "claude"
+            tmux_args = ["new-session", "-s", "kanibako", "--", inner_cmd]
+            if cli_args:
+                tmux_args.extend(cli_args)
+            entrypoint = "tmux"
+            cli_args = tmux_args
+
         try:
             # Run the container
             rc = runtime.run(
@@ -460,21 +497,29 @@ def _run_container(
                 name=container_name,
                 entrypoint=entrypoint,
                 cli_args=cli_args or None,
+                detach=persistent,
             )
         finally:
             # Stop helper hub after director exits
             if hub is not None:
                 hub.stop()
 
-        # Write back refreshed credentials via target (skip for distinct auth)
-        if target and proj.auth != "distinct":
-            target.writeback_credentials(proj.shell_path)
+        if persistent:
+            # Attach to the new tmux session
+            rc = runtime.exec(
+                container_name, ["tmux", "attach", "-t", "kanibako"]
+            )
+        else:
+            # Write back refreshed credentials via target (skip for distinct auth)
+            if target and proj.auth != "distinct":
+                target.writeback_credentials(proj.shell_path)
 
         return rc
 
     finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
+        if lock_fd is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
 
 
 def _build_effective_state(target, agent_cfg, project_toml) -> dict[str, str]:

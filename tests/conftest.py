@@ -207,6 +207,7 @@ def start_mocks():
             proj.metadata_path.__truediv__ = MagicMock(return_value=MagicMock())
             proj.shell_path = MagicMock()
             proj.shell_path.__truediv__ = MagicMock(return_value=MagicMock())
+            proj.name = "testproject"
             proj.global_shared_path = None
             proj.local_shared_path = None
             m_resolve_any.return_value = proj
@@ -219,6 +220,10 @@ def start_mocks():
 
             runtime = MagicMock()
             runtime.run.return_value = 0
+            runtime.is_running.return_value = False
+            runtime.container_exists.return_value = False
+            runtime.exec.return_value = 0
+            runtime.rm.return_value = True
             m_rt_cls.return_value = runtime
 
             # Agent config mock: empty defaults (no default_args, no state, no env)

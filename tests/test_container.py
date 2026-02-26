@@ -216,3 +216,61 @@ class TestRmAndIsRunning:
         with patch("kanibako.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.is_running("nonexistent") is False
+
+
+class TestExec:
+    """Test exec() method."""
+
+    def test_exec_basic_command(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rc = rt.exec("mycontainer", ["tmux", "attach", "-t", "kanibako"])
+            assert rc == 0
+            cmd = m.call_args[0][0]
+            assert cmd == [
+                "/usr/bin/podman", "exec", "-it",
+                "mycontainer", "tmux", "attach", "-t", "kanibako",
+            ]
+
+    def test_exec_returns_exit_code(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=42)
+            rc = rt.exec("mycontainer", ["false"])
+            assert rc == 42
+
+    def test_exec_with_env(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.exec("mycontainer", ["bash"], env={"FOO": "bar"})
+            cmd = m.call_args[0][0]
+            assert cmd == [
+                "/usr/bin/podman", "exec", "-it",
+                "-e", "FOO=bar",
+                "mycontainer", "bash",
+            ]
+
+
+class TestContainerExists:
+    """Test container_exists() method."""
+
+    def test_exists_running(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.container_exists("mycontainer") is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "inspect", "mycontainer"]
+
+    def test_not_exists(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.container_exists("nonexistent") is False

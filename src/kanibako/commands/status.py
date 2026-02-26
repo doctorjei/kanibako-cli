@@ -71,6 +71,9 @@ def _check_container_running(proj) -> tuple[bool, str]:
     for name, image, status in containers:
         if name == container_name:
             return True, f"running ({container_name}: {image})"
+    # Check for stopped persistent container
+    if runtime.container_exists(container_name):
+        return False, f"stopped persistent ({container_name})"
     return False, f"not running ({container_name})"
 
 

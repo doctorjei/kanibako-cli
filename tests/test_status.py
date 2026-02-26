@@ -146,6 +146,7 @@ class TestCheckContainerRunning:
     def test_no_containers(self):
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = []
+        mock_rt.container_exists.return_value = False
         with patch(
             "kanibako.commands.status.ContainerRuntime",
             return_value=mock_rt,
@@ -191,6 +192,7 @@ class TestCheckContainerRunning:
         mock_rt.list_running.return_value = [
             ("kanibako-bbbbbbbb", "test:latest", "Up 5 minutes"),
         ]
+        mock_rt.container_exists.return_value = False
         with patch(
             "kanibako.commands.status.ContainerRuntime",
             return_value=mock_rt,
@@ -199,6 +201,20 @@ class TestCheckContainerRunning:
             running, detail = _check_container_running(proj)
             assert running is False
             assert "not running" in detail
+
+    def test_stopped_persistent_container(self):
+        """Stopped persistent container is detected and reported."""
+        mock_rt = MagicMock()
+        mock_rt.list_running.return_value = []
+        mock_rt.container_exists.return_value = True  # stopped but exists
+        with patch(
+            "kanibako.commands.status.ContainerRuntime",
+            return_value=mock_rt,
+        ):
+            proj = _mock_proj(name="myapp")
+            running, detail = _check_container_running(proj)
+            assert running is False
+            assert "stopped persistent" in detail
 
 
 # ---------------------------------------------------------------------------

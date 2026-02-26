@@ -55,10 +55,18 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
 
     if runtime.stop(container_name):
         print(f"Stopped {container_name}")
+        # Clean up stopped container (persistent containers lack --rm)
+        if runtime.container_exists(container_name):
+            runtime.rm(container_name)
     else:
         print(f"No running container found for this project ({container_name})")
-        print("\nIf a stale lock file is blocking a new session, remove it manually:")
-        print(f"  rm {lock_file}")
+        # Clean up stopped persistent container if it exists
+        if runtime.container_exists(container_name):
+            runtime.rm(container_name)
+            print(f"Removed stopped container: {container_name}")
+        else:
+            print("\nIf a stale lock file is blocking a new session, remove it manually:")
+            print(f"  rm {lock_file}")
 
     return 0
 
@@ -74,6 +82,9 @@ def _stop_all(runtime: ContainerRuntime) -> int:
     for name, image, status in containers:
         if runtime.stop(name):
             print(f"Stopped {name}")
+            # Clean up stopped container (persistent containers lack --rm)
+            if runtime.container_exists(name):
+                runtime.rm(name)
             stopped += 1
         else:
             print(f"Failed to stop {name}", file=sys.stderr)

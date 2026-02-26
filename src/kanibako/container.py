@@ -198,6 +198,36 @@ class ContainerRuntime:
         result = subprocess.run(cmd)
         return result.returncode
 
+    def exec(
+        self,
+        name: str,
+        command: list[str],
+        *,
+        env: dict[str, str] | None = None,
+    ) -> int:
+        """Run a command inside a running container. Interactive (inherits stdio).
+
+        Returns the exit code of the exec'd process.
+        """
+        cmd: list[str] = [self.cmd, "exec", "-it"]
+        if env:
+            for k, v in sorted(env.items()):
+                cmd += ["-e", f"{k}={v}"]
+        cmd.append(name)
+        cmd.extend(command)
+
+        logger.debug("Container exec: %s", cmd)
+        result = subprocess.run(cmd)
+        return result.returncode
+
+    def container_exists(self, name: str) -> bool:
+        """Check if a container exists (running or stopped)."""
+        result = subprocess.run(
+            [self.cmd, "inspect", name],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
     def stop(self, name: str) -> bool:
         """Stop a running container by name. Returns True if stopped."""
         result = subprocess.run(

@@ -378,3 +378,165 @@ class TestAgentConfigFirstUse:
             )
             call_args = m.agent_toml_path.call_args[0]
             assert call_args[1] == "no_agent"
+
+
+# ---------------------------------------------------------------------------
+# Persistent mode (#24)
+# ---------------------------------------------------------------------------
+
+class TestPersistentMode:
+    """Verify persistent mode (tmux wrapping, reattach, lifecycle)."""
+
+    def test_persistent_launches_detached_with_tmux(self, start_mocks):
+        """Persistent mode: container runs detached with tmux entrypoint."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            run_kwargs = m.runtime.run.call_args.kwargs
+            assert run_kwargs["detach"] is True
+            assert run_kwargs["entrypoint"] == "tmux"
+            cli_args = run_kwargs.get("cli_args") or []
+            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+            assert "claude" in cli_args
+
+    def test_persistent_attaches_after_launch(self, start_mocks):
+        """After detached launch, exec attaches to the tmux session."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            m.runtime.exec.assert_called_once()
+            exec_args = m.runtime.exec.call_args[0]
+            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+
+    def test_persistent_reattach_when_running(self, start_mocks):
+        """If container is already running, reattach without launching."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            m.runtime.run.assert_not_called()
+            m.runtime.exec.assert_called_once()
+
+    def test_persistent_reattach_refreshes_credentials(self, start_mocks):
+        """Reattach refreshes credentials before exec."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            m.target.refresh_credentials.assert_called_once_with(m.proj.shell_path)
+
+    def test_persistent_removes_stale_container(self, start_mocks):
+        """Stopped container is removed before recreating."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = False
+            m.runtime.container_exists.return_value = True
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            m.runtime.rm.assert_called_once()
+            m.runtime.run.assert_called_once()
+
+    def test_persistent_skips_flock(self, start_mocks):
+        """Persistent mode does not acquire file lock."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            m.fcntl.flock.assert_not_called()
+
+    def test_persistent_skips_writeback(self, start_mocks):
+        """Persistent mode does not write back credentials (session still running)."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            m.target.writeback_credentials.assert_not_called()
+
+    def test_persistent_forces_no_helpers(self, start_mocks):
+        """Persistent mode disables helper hub even if not requested."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, no_helpers=False,
+            )
+            # HelperHub should never be imported/started
+            run_kwargs = m.runtime.run.call_args.kwargs
+            # The container should have launched (detached), hub not started
+            assert run_kwargs["detach"] is True
+
+    def test_persistent_custom_entrypoint(self, start_mocks):
+        """Custom entrypoint is wrapped inside tmux."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint="/bin/bash", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            run_kwargs = m.runtime.run.call_args.kwargs
+            assert run_kwargs["entrypoint"] == "tmux"
+            cli_args = run_kwargs.get("cli_args") or []
+            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+            assert "/bin/bash" in cli_args
+
+    def test_persistent_returns_exec_exit_code(self, start_mocks):
+        """Return code comes from exec, not from detached run."""
+        with start_mocks() as m:
+            m.runtime.run.return_value = 0  # detach always returns 0
+            m.runtime.exec.return_value = 7
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 7
+
+
+class TestInteractivePersistentGuard:
+    """Interactive mode rejects launch when a container already exists."""
+
+    def test_existing_container_blocks_interactive(self, start_mocks, capsys):
+        """If a container exists, interactive start returns 1 with a message."""
+        with start_mocks() as m:
+            m.runtime.container_exists.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        captured = capsys.readouterr()
+        assert "container already exists" in captured.err.lower()
+        assert "kanibako connect" in captured.err
+
+    def test_no_container_proceeds_normally(self, start_mocks):
+        """When no container exists, interactive mode proceeds."""
+        with start_mocks() as m:
+            m.runtime.container_exists.return_value = False
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m.runtime.run.assert_called_once()
