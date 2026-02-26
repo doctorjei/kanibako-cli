@@ -218,6 +218,76 @@ kanibako image rebuild                # rebuild current project's image
 kanibako image rebuild --all          # rebuild all known images
 ```
 
+## Host Container
+
+The **host container** runs kanibako itself (with rootless podman inside) so
+you can deploy it on a server without a host-side pip install. Agent containers
+are spawned nested inside.
+
+Two variants are available:
+
+| Image | Contents |
+|-------|----------|
+| `kanibako-host` | `kanibako-base` + rootless podman (agent-agnostic) |
+| `kanibako-host-claude` | + `kanibako-plugin-claude` |
+
+### Pull and run
+
+```bash
+# Pull the image
+podman pull ghcr.io/doctorjei/kanibako-host:latest
+# — or the Claude variant —
+podman pull ghcr.io/doctorjei/kanibako-host-claude:latest
+
+# Run with nested podman support
+podman run --privileged -it \
+    -v kanibako-data:/home/agent/.local/share/kanibako \
+    -v kanibako-config:/home/agent/.config \
+    ghcr.io/doctorjei/kanibako-host-claude:latest
+```
+
+The `--privileged` flag is required for rootless podman to work inside the
+container. Alternatively, use `--cap-add=SYS_ADMIN --security-opt seccomp=unconfined`
+for a narrower permission set.
+
+### Persistent state
+
+Mount named volumes or host directories to preserve state across restarts:
+
+| Mount target | Purpose |
+|------|---------|
+| `/home/agent/.local/share/kanibako` | Project state, agent configs, names |
+| `/home/agent/.config` | kanibako.toml, podman storage config |
+| `/home/agent/workspace` | Optional: bind a host project directory |
+
+### SSH access
+
+To enable remote access, start sshd inside the container:
+
+```bash
+podman run --privileged -d -p 2222:22 \
+    -v kanibako-data:/home/agent/.local/share/kanibako \
+    -v kanibako-config:/home/agent/.config \
+    ghcr.io/doctorjei/kanibako-host-claude:latest \
+    -c 'sudo mkdir -p /run/sshd && sudo /usr/sbin/sshd -D'
+```
+
+Then SSH in: `ssh -p 2222 agent@hostname`. The agent user has passwordless
+sudo. Add your public keys to `/home/agent/.ssh/authorized_keys` (mount a
+volume or copy them in).
+
+### Building locally
+
+```bash
+# Build host image from repo root
+podman build -f host-definitions/Containerfile.host -t kanibako-host .
+
+# Build claude variant on top
+podman build -f host-definitions/Containerfile.host-claude \
+    --build-arg BASE_IMAGE=kanibako-host \
+    -t kanibako-host-claude .
+```
+
 ## Container Layout
 
 Inside the container, the agent sees:
@@ -705,7 +775,7 @@ git push && git push --tags
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+See [LICENSE](LICENSE.md) for details.
 
 ## Credits
 

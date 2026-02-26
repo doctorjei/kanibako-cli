@@ -25,6 +25,8 @@ _VARIANT_DESCRIPTIONS = {
     "ndk": "Android + systems toolchain",
     "dotnet": ".NET SDK 8.0",
     "behemoth": "All toolchains combined",
+    "host": "Kanibako host environment with rootless podman",
+    "host-claude": "Host environment + Claude Code plugin",
 }
 
 

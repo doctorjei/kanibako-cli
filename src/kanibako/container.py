@@ -25,6 +25,8 @@ _IMAGE_CONTAINERFILE_MAP = {
     "kanibako-ndk": "ndk",
     "kanibako-dotnet": "dotnet",
     "kanibako-behemoth": "behemoth",
+    "kanibako-host": "host",
+    "kanibako-host-claude": "host-claude",
 }
 
 

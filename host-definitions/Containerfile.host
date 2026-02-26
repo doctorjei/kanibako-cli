@@ -1,0 +1,47 @@
+FROM ubuntu:devel
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System packages: container runtime + common dev tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    podman \
+    fuse-overlayfs \
+    slirp4netns \
+    uidmap \
+    python3 \
+    python3-pip \
+    ca-certificates \
+    curl \
+    git \
+    openssh-server \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Agent user (same UID 1000 pattern as inner images)
+RUN existing_user=$(getent passwd 1000 | cut -d: -f1); \
+    if [ -n "$existing_user" ]; then userdel -r "$existing_user"; fi \
+    && existing_group=$(getent group 1000 | cut -d: -f1); \
+    if [ -n "$existing_group" ]; then groupdel "$existing_group"; fi \
+    && groupadd -g 1000 agent \
+    && useradd -m -u 1000 -g 1000 -s /bin/bash agent \
+    && echo "agent ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/agent \
+    && chmod 0440 /etc/sudoers.d/agent
+
+# Rootless podman: UID mapping for the agent user
+RUN echo "agent:100000:65536" >> /etc/subuid \
+    && echo "agent:100000:65536" >> /etc/subgid
+
+# Install kanibako from source
+COPY . /tmp/kanibako-src
+RUN pip install --break-system-packages /tmp/kanibako-src \
+    && rm -rf /tmp/kanibako-src
+
+USER agent
+WORKDIR /home/agent
+
+# Rootless podman storage config
+RUN mkdir -p /home/agent/.config/containers \
+    && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' \
+       > /home/agent/.config/containers/storage.conf
+
+ENTRYPOINT ["/bin/bash"]
