@@ -15,6 +15,7 @@ from kanibako.paths import (
     _bootstrap_shell,
     _ensure_human_vault_symlink,
     _ensure_vault_symlink,
+    _find_ac_ancestor,
     _find_workset_for_path,
     _remove_human_vault_symlink,
     _remove_project_vault_symlink,
@@ -24,6 +25,7 @@ from kanibako.paths import (
     resolve_any_project,
     resolve_project,
 )
+from kanibako.names import register_name
 from kanibako.utils import project_hash
 
 
@@ -542,6 +544,136 @@ class TestDetectProjectMode:
 
         result = detect_project_mode(subdir.resolve(), std, config)
         assert result.mode is ProjectMode.workset
+
+
+class TestFindAcAncestor:
+    """Tests for _find_ac_ancestor() one-pass name scan."""
+
+    def test_name_scan_finds_deepest_ac_match(self, config_file, tmp_home, credentials_dir):
+        """Two nested registered projects — deeper one wins."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        outer = tmp_home / "projects" / "outer"
+        outer.mkdir(parents=True)
+        inner = outer / "inner"
+        inner.mkdir()
+
+        # Register both and create their boxes dirs.
+        register_name(std.data_path, "outer", str(outer))
+        (std.data_path / "boxes" / "outer").mkdir(parents=True)
+        register_name(std.data_path, "inner", str(inner))
+        (std.data_path / "boxes" / "inner").mkdir(parents=True)
+
+        # From a subdirectory of inner, the deeper match should win.
+        target = inner / "src"
+        target.mkdir()
+        result = _find_ac_ancestor(target.resolve(), std.data_path)
+        assert result == inner.resolve()
+
+    def test_name_scan_ignores_stale_entry_without_boxes_dir(
+        self, config_file, tmp_home,
+    ):
+        """Name points to a path but no boxes/{name}/ dir exists → ignored."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        project = tmp_home / "myproject"
+        project.mkdir()
+        register_name(std.data_path, "myproject", str(project))
+        # Intentionally do NOT create boxes/myproject/
+
+        result = _find_ac_ancestor(project.resolve(), std.data_path)
+        assert result is None
+
+    def test_name_scan_exact_match(self, config_file, tmp_home, credentials_dir):
+        """CWD equals registered path exactly → matches."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        project = tmp_home / "exact"
+        project.mkdir()
+        register_name(std.data_path, "exact", str(project))
+        (std.data_path / "boxes" / "exact").mkdir(parents=True)
+
+        result = _find_ac_ancestor(project.resolve(), std.data_path)
+        assert result == project.resolve()
+
+
+class TestDetectProjectModeHashFallback:
+    """Hash-based fallback still works in the walk loop."""
+
+    def test_hash_fallback_still_works_in_walk(
+        self, config_file, tmp_home,
+    ):
+        """Hash-based dir with no name entry → detection finds it via walk."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        project = tmp_home / "legacy-project"
+        project.mkdir()
+        phash = project_hash(str(project.resolve()))
+        (std.data_path / "boxes" / phash).mkdir(parents=True)
+
+        result = detect_project_mode(project.resolve(), std, config)
+        assert result.mode is ProjectMode.account_centric
+        assert result.project_root == project.resolve()
+
+
+class TestResolveProjectHomeGuard:
+    """$HOME guard in resolve_project() blocks implicit creation."""
+
+    def test_home_guard_blocks_implicit_creation(self, config_file, tmp_home):
+        """resolve_project(initialize=True) at $HOME with no existing dir → ProjectError."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        home = tmp_home / "home"  # This is set as $HOME by the fixture
+
+        with pytest.raises(ProjectError, match="Refusing to create a project rooted at .HOME"):
+            resolve_project(std, config, project_dir=str(home), initialize=True)
+
+    def test_home_guard_allows_existing_project(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Pre-created project at $HOME → no error (project_dir_path.is_dir() is True)."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        home = tmp_home / "home"
+
+        # Pre-create the project via name registration + boxes dir.
+        register_name(std.data_path, "home", str(home.resolve()))
+        boxes_dir = std.data_path / "boxes" / "home"
+        boxes_dir.mkdir(parents=True)
+        (boxes_dir / "shell").mkdir()
+        # Write a minimal project.toml so resolve_project reads stored paths.
+        from kanibako.config import write_project_meta
+        write_project_meta(
+            boxes_dir / "project.toml",
+            mode="account_centric",
+            layout="default",
+            workspace=str(home.resolve()),
+            shell=str(boxes_dir / "shell"),
+            vault_ro=str(home / "vault" / "share-ro"),
+            vault_rw=str(home / "vault" / "share-rw"),
+            vault_enabled=True,
+            metadata=str(boxes_dir),
+            project_hash=project_hash(str(home.resolve())),
+            name="home",
+        )
+
+        # Should not raise — project already exists.
+        proj = resolve_project(std, config, project_dir=str(home), initialize=True)
+        assert proj.project_path == home.resolve()
+
+    def test_home_guard_allows_non_init(self, config_file, tmp_home):
+        """resolve_project(initialize=False) at $HOME → no error."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        home = tmp_home / "home"
+
+        # initialize=False just computes paths, no guard needed.
+        proj = resolve_project(std, config, project_dir=str(home), initialize=False)
+        assert proj.project_path == home.resolve()
 
 
 class TestResolveAnyProject:

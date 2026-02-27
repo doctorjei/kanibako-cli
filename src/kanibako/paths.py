@@ -248,6 +248,14 @@ def resolve_project(
 
     is_new = False
     if initialize and not project_dir_path.is_dir():
+        # Guard: refuse to implicitly create a project rooted at $HOME.
+        if project_path == Path.home().resolve():
+            raise ProjectError(
+                "Refusing to create a project rooted at $HOME — this would "
+                "mount your entire home directory as the workspace.\n"
+                "If you really want a project here, use:\n"
+                "  kanibako init --local -p ~"
+            )
         # New project: assign a name first, then create boxes/{name}/.
         project_name = assign_name(std.data_path, project_path_str)
         project_dir_path = std.data_path / "boxes" / project_name
@@ -760,6 +768,33 @@ def _init_project(
 
 
 
+def _find_ac_ancestor(target: Path, data_path: Path) -> Path | None:
+    """Find the deepest registered AC project that is an ancestor of *target*.
+
+    Reads ``names.toml`` and, for each entry whose registered path is a
+    prefix of *target*, checks that ``boxes/{name}/`` actually exists on
+    disk.  Among all valid matches, the deepest (most path components)
+    wins.  Returns the matched path or ``None``.
+    """
+    names = read_names(data_path)
+    best: Path | None = None
+    best_depth = -1
+    for name, path_str in names["projects"].items():
+        registered = Path(path_str)
+        try:
+            target.relative_to(registered)
+        except ValueError:
+            continue
+        # Only accept if boxes/{name}/ exists on disk.
+        if not (data_path / "boxes" / name).is_dir():
+            continue
+        depth = len(registered.parts)
+        if depth > best_depth:
+            best = registered
+            best_depth = depth
+    return best
+
+
 def detect_project_mode(
     project_dir: Path,
     std: StandardPaths,
@@ -771,13 +806,16 @@ def detect_project_mode(
     for project markers.  Returns a ``DetectionResult`` with the detected
     mode and the ancestor directory where the marker was found.
 
-    Detection order (at each ancestor level):
+    Detection order:
     1. Workset — *project_dir* lives inside a registered workset root
        (``workspaces/`` subdirectory first, then the root itself).
-    2. Account-centric — ``boxes/{hash}/`` already exists under
-       *std.data_path*.
-    3. Decentralized — a ``.kanibako`` or ``kanibako`` **directory** exists
-       inside the ancestor.  ``.kanibako`` takes priority when both exist.
+    2. Account-centric (name-based) — one-pass scan of ``names.toml``;
+       deepest registered path that is an ancestor of *project_dir* wins.
+       Requires ``boxes/{name}/`` to exist on disk.
+    3. Walk ancestors for:
+       a. Account-centric (hash fallback) — ``boxes/{hash}/`` exists.
+       b. Decentralized — a ``.kanibako`` or ``kanibako`` **directory**
+          exists inside the ancestor.  ``.kanibako`` takes priority.
     4. Default — ``account_centric`` at the original *project_dir*.
     """
     resolved = project_dir.resolve()
@@ -788,17 +826,15 @@ def detect_project_mode(
     if ws_result is not None:
         return ws_result
 
-    # 2. Walk ancestors for AC + decentralized markers.
-    names = read_names(std.data_path)
-    # Build reverse lookup: path → name.
-    _path_to_name = {v: k for k, v in names["projects"].items()}
+    # 2. Name-based AC check (one-pass scan, deepest match wins).
+    ac_ancestor = _find_ac_ancestor(resolved, std.data_path)
+    if ac_ancestor is not None:
+        return DetectionResult(ProjectMode.account_centric, ac_ancestor)
 
+    # 3. Walk ancestors for hash-based AC fallback + decentralized markers.
     current = resolved
     while True:
-        # AC check: name-based first, then hash fallback.
-        _name = _path_to_name.get(str(current))
-        if _name and (std.data_path / "boxes" / _name).is_dir():
-            return DetectionResult(ProjectMode.account_centric, current)
+        # Hash-based AC fallback (for legacy un-named projects).
         phash = project_hash(str(current))
         settings_path = std.data_path / "boxes" / phash
         if settings_path.is_dir():
@@ -821,7 +857,7 @@ def detect_project_mode(
             break
         current = parent
 
-    # 3. Default: account_centric at the original directory.
+    # 4. Default: account_centric at the original directory.
     return DetectionResult(ProjectMode.account_centric, resolved)
 
 

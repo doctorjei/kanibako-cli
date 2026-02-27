@@ -74,6 +74,16 @@ def run(args: argparse.Namespace) -> int:
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
 
+    # Seed default global environment variables (don't overwrite existing).
+    from kanibako.shellenv import read_env_file, write_env_file
+
+    global_env_path = data_path / "env"
+    global_env = read_env_file(global_env_path)
+    _DEFAULT_ENV = {"COLORTERM": "truecolor"}
+    for key, value in _DEFAULT_ENV.items():
+        global_env.setdefault(key, value)
+    write_env_file(global_env_path, global_env)
+
     # ------------------------------------------------------------------
     # 3. Pull or build base container image
     # ------------------------------------------------------------------

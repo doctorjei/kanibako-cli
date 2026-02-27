@@ -184,6 +184,32 @@ class TestDetectionFalsePositives:
         assert result.mode is ProjectMode.decentralized
 
 
+# ── Stale names.toml safety ────────────────────────────────────────────
+
+class TestStaleNameSafety:
+    """Stale names.toml entries pointing at $HOME must not trigger AC detection."""
+
+    def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
+        """Stale entry at $HOME (no boxes dir) → detection falls through to default."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        home = tmp_home / "home"  # $HOME set by fixture
+
+        # Register a stale entry pointing at $HOME.
+        from kanibako.names import register_name
+        register_name(std.data_path, "jjb", str(home.resolve()))
+        # Intentionally do NOT create boxes/jjb/
+
+        # Run detection from a subdirectory of $HOME.
+        project_dir = home / "myproject"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        result = detect_project_mode(project_dir.resolve(), std, config)
+
+        # Should fall through to default AC at project_dir, NOT match $HOME.
+        assert result.project_root == project_dir.resolve()
+        assert result.mode is ProjectMode.account_centric
+
+
 # ── Contract tests: mount source validation ───────────────────────────
 
 class TestMountValidation:
