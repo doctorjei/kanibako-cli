@@ -54,7 +54,9 @@ def _save(data_path: Path, names: dict[str, dict[str, str]]) -> None:
             lines.append("")
         lines.append(f"[{section}]")
         for name in sorted(entries):
-            lines.append(f'{name} = "{entries[name]}"')
+            # Quote keys that contain dots or other TOML special characters
+            key = f'"{name}"' if "." in name or "/" in name else name
+            lines.append(f'{key} = "{entries[name]}"')
     lines.append("")
     path.write_text("\n".join(lines))
 

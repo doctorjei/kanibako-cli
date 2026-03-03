@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import socket
 import threading
 from dataclasses import dataclass, field
@@ -30,6 +31,8 @@ class HelperContext:
     env: dict[str, str] | None = None
     entrypoint: str | None = None
     default_entrypoint: str | None = None  # from target.default_entrypoint
+    project_path: Path | None = None   # host-side workspace directory
+    data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
 
 
 class HelperHub:
@@ -198,6 +201,10 @@ class HelperHub:
             resp = self._handle_stop(request)
             return resp, current_helper
 
+        if action == "fork":
+            resp = self._handle_fork(request)
+            return resp, current_helper
+
         if action == "send":
             to = request.get("to")
             payload = request.get("payload", {})
@@ -337,6 +344,87 @@ class HelperHub:
             self._log.log_control("stop", helper_num)
 
         return {"status": "ok"}
+
+    def _handle_fork(self, request: dict) -> dict:
+        """Fork the current project into a sibling directory."""
+        ctx = self._ctx
+        if ctx is None:
+            return {"status": "error", "message": "no context"}
+        if ctx.project_path is None or ctx.data_path is None:
+            return {"status": "error", "message": "fork requires project_path and data_path"}
+
+        name = request.get("name", "")
+        if not name:
+            return {"status": "error", "message": "missing fork name"}
+
+        # Validate name: no path separators, no dots, not empty after strip
+        name = name.strip()
+        if not name or "/" in name or "\\" in name or "." in name:
+            return {"status": "error", "message": "invalid fork name (no slashes or dots)"}
+
+        # Compute destination
+        new_path = ctx.project_path.parent / f"{ctx.project_path.name}.{name}"
+        if new_path.exists():
+            return {"status": "error", "message": f"destination already exists: {new_path}"}
+
+        # Copy workspace
+        try:
+            shutil.copytree(ctx.project_path, new_path)
+        except Exception as e:
+            return {"status": "error", "message": f"workspace copy failed: {e}"}
+
+        # Resolve source metadata dir via names.toml reverse lookup
+        from kanibako.names import assign_name, read_names
+        from kanibako.utils import project_hash as _project_hash
+
+        source_meta_dir: Path | None = None
+        names = read_names(ctx.data_path)
+        for rname, rpath in names["projects"].items():
+            if rpath == str(ctx.project_path):
+                candidate = ctx.data_path / "boxes" / rname
+                if candidate.is_dir():
+                    source_meta_dir = candidate
+                break
+
+        # Fallback: hash-based dir
+        if source_meta_dir is None:
+            phash = _project_hash(str(ctx.project_path))
+            candidate = ctx.data_path / "boxes" / phash
+            if candidate.is_dir():
+                source_meta_dir = candidate
+
+        # Fallback: derive from shell_path (shell_path is typically boxes/{name}/shell/)
+        if source_meta_dir is None and ctx.shell_path.parent.name != "boxes":
+            # shell_path = .../boxes/{name}/shell → parent.parent = boxes
+            candidate = ctx.shell_path.parent
+            if candidate.is_dir() and candidate.parent.name == "boxes":
+                source_meta_dir = candidate
+
+        # Assign a new name for the fork
+        try:
+            new_name = assign_name(ctx.data_path, str(new_path))
+        except Exception as e:
+            return {"status": "error", "message": f"name assignment failed: {e}"}
+
+        # Copy metadata if we found the source
+        if source_meta_dir is not None:
+            new_meta_dir = ctx.data_path / "boxes" / new_name
+            try:
+                if not new_meta_dir.exists():
+                    shutil.copytree(
+                        source_meta_dir, new_meta_dir,
+                        ignore=shutil.ignore_patterns(
+                            ".kanibako.lock", "helpers",
+                        ),
+                    )
+            except Exception as e:
+                logger.warning("metadata copy failed: %s", e)
+
+        if self._log:
+            self._log.log_control("fork", name=name, path=str(new_path),
+                                  new_name=new_name)
+
+        return {"status": "ok", "path": str(new_path), "name": new_name}
 
 
 class MessageLog:
