@@ -354,10 +354,16 @@ volume or copy them in).
 ### Building locally
 
 ```bash
-# Build host image from repo root
-podman build -f host-definitions/Containerfile.host -t kanibako-host .
+# Build base image first
+podman build -f src/kanibako/containers/Containerfile.base -t kanibako-base \
+    src/kanibako/containers/
 
-# Build claude variant on top
+# Build host image on top of base
+podman build -f host-definitions/Containerfile.host \
+    --build-arg BASE_IMAGE=kanibako-base \
+    -t kanibako-host .
+
+# Build claude variant on top of host
 podman build -f host-definitions/Containerfile.host-claude \
     --build-arg BASE_IMAGE=kanibako-host \
     -t kanibako-host-claude .
@@ -367,8 +373,8 @@ podman build -f host-definitions/Containerfile.host-claude \
 
 For bare-metal or VM deployments (Proxmox, KVM/libvirt, VirtualBox), kanibako
 ships an Ansible playbook and per-provider creation scripts.  The playbook
-mirrors `Containerfile.host` — same packages, same user setup, same rootless
-podman configuration.
+mirrors the base + host Containerfiles — same packages, same user setup, same
+rootless podman configuration.
 
 ### Ansible playbook (standalone)
 
@@ -549,6 +555,27 @@ TOML to skip template initialization.
 **Layering:**
 1. `templates/general/base/` is copied first (common skeleton)
 2. The resolved template overlays on top
+
+**Example directory layout** (for agent `claude`, variant `standard`):
+
+```
+templates/
+├── general/
+│   ├── base/              ← layer 1: always copied (common skeleton)
+│   │   ├── .bashrc
+│   │   └── .profile
+│   └── standard/          ← layer 2 fallback (if no agent-specific dir)
+└── claude/
+    └── standard/          ← layer 2 preferred (agent-specific)
+        ├── .claude/
+        │   └── settings.json
+        └── playbook/
+            └── ONBOARD.md
+```
+
+**Important:** files go inside `claude/standard/`, not directly in `claude/`.
+Placing files in `templates/claude/` (without the variant subdirectory) will
+have no effect — the resolver looks for `templates/{agent}/{variant}/`.
 
 The template variant is controlled by the `shell` field in the agent TOML
 (defaults to `"standard"`).  To customize, create a directory under
