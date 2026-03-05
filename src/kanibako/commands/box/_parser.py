@@ -143,6 +143,29 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     orphan_p.set_defaults(func=run_orphan)
 
+    # kanibako box forget
+    forget_p = box_sub.add_parser(
+        "forget",
+        help="Unregister a project (optionally purge its metadata)",
+        description=(
+            "Remove a project from names.toml without touching the workspace.\n"
+            "With --purge, also delete kanibako metadata (shell config, project.toml, vault symlinks, logs)."
+        ),
+    )
+    forget_p.add_argument(
+        "target",
+        help="Project name or workspace path to forget",
+    )
+    forget_p.add_argument(
+        "--purge", action="store_true",
+        help="Also delete kanibako metadata for this project",
+    )
+    forget_p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompt (only relevant with --purge)",
+    )
+    forget_p.set_defaults(func=run_forget)
+
     # kanibako box info
     info_p = box_sub.add_parser(
         "info",
@@ -349,6 +372,90 @@ def run_orphan(args: argparse.Namespace) -> int:
     total = len(ac_orphans) + len(ws_orphans)
     print(f"\n{total} orphaned project(s).")
     print("Use 'kanibako box migrate' to remap, or 'kanibako box purge' to remove.")
+    return 0
+
+
+def run_forget(args: argparse.Namespace) -> int:
+    """Unregister a project from names.toml, optionally purging metadata."""
+    import shutil
+
+    from kanibako.names import lookup_by_path
+    from kanibako.paths import (
+        _remove_human_vault_symlink,
+        _remove_project_vault_symlink,
+    )
+    from kanibako.utils import confirm_prompt
+
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    target = args.target
+    names = read_names(std.data_path)
+
+    # Resolve target: try as a registered name first, then as a path.
+    name: str | None = None
+    section: str | None = None
+    path: str | None = None
+
+    for sec in ("projects", "worksets"):
+        if target in names[sec]:
+            name = target
+            section = sec
+            path = names[sec][target]
+            break
+
+    if name is None:
+        # Try as a path (reverse lookup).
+        result = lookup_by_path(std.data_path, target)
+        if result is not None:
+            name, section = result
+            path = names[section][name]
+
+    if name is None or section is None:
+        print(f"Error: '{target}' is not a registered project or workset.", file=sys.stderr)
+        return 1
+
+    kind = "workset" if section == "worksets" else "project"
+    print(f"Forgetting {kind}: {name} ({path})")
+
+    # Unregister from names.toml.
+    unregister_name(std.data_path, name, section=section)
+    print(f"Removed '{name}' from names.toml")
+
+    if args.purge:
+        metadata_dir = std.data_path / "boxes" / name
+
+        if metadata_dir.is_dir():
+            if not args.force:
+                from kanibako.errors import UserCancelled
+                print()
+                try:
+                    confirm_prompt(
+                        f"Delete metadata at {metadata_dir}? This cannot be undone.\n"
+                        "Type 'yes' to confirm: "
+                    )
+                except UserCancelled:
+                    print("Aborted (name was already unregistered).")
+                    return 2
+
+            # Clean up vault symlinks before removing metadata.
+            vault_dir = std.data_path / config.paths_vault
+            _remove_human_vault_symlink(vault_dir, metadata_dir / "vault")
+            if path:
+                _remove_project_vault_symlink(Path(path))
+
+            shutil.rmtree(metadata_dir)
+            print(f"Removed metadata: {metadata_dir}")
+
+            # Remove helper log directory if present.
+            log_dir = std.data_path / "logs" / name
+            if log_dir.is_dir():
+                shutil.rmtree(log_dir)
+                print(f"Removed logs: {log_dir}")
+        else:
+            print(f"No metadata directory found at {metadata_dir}")
+
     return 0
 
 

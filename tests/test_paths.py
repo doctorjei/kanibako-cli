@@ -640,8 +640,12 @@ class TestResolveProjectHomeGuard:
         std = load_std_paths(config)
         home = tmp_home / "home"
 
-        # Pre-create the project via name registration + boxes dir.
-        register_name(std.data_path, "home", str(home.resolve()))
+        # Pre-create the project via direct names.toml write (simulates
+        # a project registered before the $HOME guard existed).
+        names_path = std.data_path / "names.toml"
+        names_path.write_text(
+            f'[projects]\nhome = "{home.resolve()}"\n\n[worksets]\n'
+        )
         boxes_dir = std.data_path / "boxes" / "home"
         boxes_dir.mkdir(parents=True)
         (boxes_dir / "shell").mkdir()

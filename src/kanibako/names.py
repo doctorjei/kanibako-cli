@@ -81,8 +81,15 @@ def register_name(
 ) -> None:
     """Register a name → path mapping.
 
-    Raises ``ProjectError`` if *name* is already registered in either section.
+    Raises ``ProjectError`` if *name* is already registered in either section,
+    or if *path* resolves to ``$HOME``.
     """
+    # Guard: never register $HOME as a project path.
+    if Path(path).resolve() == Path.home().resolve():
+        raise ProjectError(
+            "Refusing to register $HOME as a project path — this would "
+            "mount your entire home directory as the workspace."
+        )
     names = _load(data_path)
     # Check for duplicates across both sections.
     for sec in ("projects", "worksets"):
@@ -110,6 +117,23 @@ def unregister_name(
     del names[section][name]
     _save(data_path, names)
     return True
+
+
+def lookup_by_path(
+    data_path: Path,
+    path: str,
+) -> tuple[str, str] | None:
+    """Find a registered name by its path value.
+
+    Returns ``(name, section)`` if found, ``None`` otherwise.
+    """
+    resolved = str(Path(path).resolve())
+    names = _load(data_path)
+    for section in ("projects", "worksets"):
+        for name, registered_path in names[section].items():
+            if str(Path(registered_path).resolve()) == resolved:
+                return name, section
+    return None
 
 
 def resolve_name(

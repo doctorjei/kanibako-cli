@@ -10,6 +10,7 @@ from pathlib import Path
 from kanibako.errors import ProjectError
 from kanibako.names import (
     assign_name,
+    lookup_by_path,
     read_names,
     register_name,
     resolve_name,
@@ -666,3 +667,199 @@ class TestMigrateHashToName:
         # Project vault symlink should point to new location.
         assert proj_vault_link.is_symlink()
         assert proj_vault_link.resolve() == (name_dir / "vault").resolve()
+
+
+# ---------------------------------------------------------------------------
+# $HOME guard in register_name
+# ---------------------------------------------------------------------------
+
+class TestRegisterNameHomeGuard:
+    def test_refuses_home_as_project_path(self, data_path: Path, monkeypatch) -> None:
+        home = data_path.parent / "fakehome"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
+            register_name(data_path, "bad", str(home))
+
+    def test_refuses_home_resolved(self, data_path: Path, monkeypatch) -> None:
+        """Symlinks to $HOME are also caught."""
+        home = data_path.parent / "realhome"
+        home.mkdir()
+        link = data_path.parent / "linkhome"
+        link.symlink_to(home)
+        monkeypatch.setenv("HOME", str(home))
+        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
+            register_name(data_path, "bad", str(link))
+
+    def test_allows_subdirectory_of_home(self, data_path: Path, monkeypatch) -> None:
+        home = data_path.parent / "fakehome"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        subdir = home / "projects" / "myapp"
+        subdir.mkdir(parents=True)
+        register_name(data_path, "myapp", str(subdir))
+        assert read_names(data_path)["projects"]["myapp"] == str(subdir)
+
+    def test_assign_name_inherits_guard(self, data_path: Path, monkeypatch) -> None:
+        """assign_name delegates to register_name, so the guard applies."""
+        home = data_path.parent / "fakehome"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
+            assign_name(data_path, str(home))
+
+
+# ---------------------------------------------------------------------------
+# lookup_by_path
+# ---------------------------------------------------------------------------
+
+class TestLookupByPath:
+    def test_finds_project_by_path(self, data_path: Path) -> None:
+        register_name(data_path, "myapp", "/home/user/myapp")
+        result = lookup_by_path(data_path, "/home/user/myapp")
+        assert result == ("myapp", "projects")
+
+    def test_finds_workset_by_path(self, data_path: Path) -> None:
+        register_name(data_path, "ws1", "/home/user/ws", section="worksets")
+        result = lookup_by_path(data_path, "/home/user/ws")
+        assert result == ("ws1", "worksets")
+
+    def test_returns_none_for_unknown(self, data_path: Path) -> None:
+        assert lookup_by_path(data_path, "/nope") is None
+
+    def test_resolves_symlinks(self, data_path: Path, tmp_path: Path) -> None:
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        register_name(data_path, "proj", str(real))
+        result = lookup_by_path(data_path, str(link))
+        assert result == ("proj", "projects")
+
+
+# ---------------------------------------------------------------------------
+# box forget
+# ---------------------------------------------------------------------------
+
+class TestBoxForget:
+    def test_forget_by_name(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_forget
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(target="project", purge=False, force=False)
+        rc = run_forget(args)
+        assert rc == 0
+
+        names = read_names(std.data_path)
+        assert "project" not in names["projects"]
+
+        out = capsys.readouterr().out
+        assert "Removed 'project' from names.toml" in out
+
+    def test_forget_by_path(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_forget
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(target=project_dir, purge=False, force=False)
+        rc = run_forget(args)
+        assert rc == 0
+
+        names = read_names(std.data_path)
+        assert "project" not in names["projects"]
+
+    def test_forget_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_forget
+
+        args = argparse.Namespace(target="nonexistent", purge=False, force=False)
+        rc = run_forget(args)
+        assert rc == 1
+        assert "not a registered" in capsys.readouterr().err
+
+    def test_forget_purge_deletes_metadata(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_forget
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        metadata_dir = proj.metadata_path
+        assert metadata_dir.is_dir()
+
+        args = argparse.Namespace(target="project", purge=True, force=True)
+        rc = run_forget(args)
+        assert rc == 0
+
+        assert not metadata_dir.is_dir()
+        assert "Removed metadata" in capsys.readouterr().out
+
+    def test_forget_purge_removes_logs(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_forget
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Create a fake log directory.
+        log_dir = std.data_path / "logs" / "project"
+        log_dir.mkdir(parents=True)
+        (log_dir / "helper.jsonl").write_text("test")
+
+        args = argparse.Namespace(target="project", purge=True, force=True)
+        rc = run_forget(args)
+        assert rc == 0
+        assert not log_dir.is_dir()
+
+    def test_forget_preserves_workspace(self, config_file, tmp_home, credentials_dir):
+        from kanibako.commands.box._parser import run_forget
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+
+        # Create a file in the workspace to verify it survives.
+        (project_dir / "important.txt").write_text("keep me")
+
+        args = argparse.Namespace(target="project", purge=True, force=True)
+        run_forget(args)
+
+        assert project_dir.is_dir()
+        assert (project_dir / "important.txt").read_text() == "keep me"
+
+    def test_forget_workset(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_forget
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+        from kanibako.workset import create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        ws_root = tmp_home / "ws_root"
+        create_workset("myws", ws_root, std)
+        assert "myws" in read_names(std.data_path)["worksets"]
+
+        args = argparse.Namespace(target="myws", purge=False, force=False)
+        rc = run_forget(args)
+        assert rc == 0
+        assert "myws" not in read_names(std.data_path)["worksets"]
