@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Any
 
 from kanibako import __version__
 from kanibako.errors import KanibakoError, UserCancelled
@@ -12,8 +13,8 @@ from kanibako.errors import KanibakoError, UserCancelled
 class _Formatter(argparse.RawDescriptionHelpFormatter):
     """Wider action column so subcommand help text stays on one line."""
 
-    def __init__(self, prog: str, **kwargs: object) -> None:
-        kwargs.setdefault("max_help_position", 30)  # type: ignore[arg-type]
+    def __init__(self, prog: str, **kwargs: Any) -> None:
+        kwargs.setdefault("max_help_position", 30)
         super().__init__(prog, **kwargs)
 
 

@@ -328,6 +328,8 @@ def _run_container(
         if proj.is_new and target:
             from kanibako.templates import apply_shell_template
             templates_base = std.data_path / merged.paths_templates
+            # Ensure the agent-specific template variant directory exists.
+            (templates_base / target.name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
             apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
             target.init_home(proj.shell_path, auth=proj.auth)
 
