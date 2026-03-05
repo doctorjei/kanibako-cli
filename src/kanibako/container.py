@@ -180,6 +180,13 @@ class ContainerRuntime:
             # AC vault hiding: read-only tmpfs over workspace/vault
             if vault_tmpfs:
                 cmd += ["--mount", "type=tmpfs,dst=/home/agent/workspace/vault,ro"]
+                # Mount a .gitignore on top of the tmpfs so the stub
+                # directories created by the OCI runtime are ignored.
+                import importlib.resources
+                gi_ref = importlib.resources.files("kanibako.scripts").joinpath("vault-gitignore")
+                gi_path = Path(str(gi_ref))
+                if gi_path.is_file():
+                    cmd += ["-v", f"{gi_path}:/home/agent/workspace/vault/.gitignore:ro"]
         # Extra mounts (target binary mounts, etc.)
         if extra_mounts:
             for mount in extra_mounts:
