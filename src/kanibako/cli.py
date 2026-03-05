@@ -9,6 +9,14 @@ from kanibako import __version__
 from kanibako.errors import KanibakoError, UserCancelled
 
 
+class _Formatter(argparse.RawDescriptionHelpFormatter):
+    """Wider action column so subcommand help text stays on one line."""
+
+    def __init__(self, prog: str, **kwargs: object) -> None:
+        kwargs.setdefault("max_help_position", 30)  # type: ignore[arg-type]
+        super().__init__(prog, **kwargs)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kanibako",
@@ -24,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "run 'kanibako COMMAND --help' for subcommand-specific options"
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=_Formatter,
         add_help=False,
     )
 
