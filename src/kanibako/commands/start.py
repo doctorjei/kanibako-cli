@@ -398,6 +398,22 @@ def _run_container(
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
             extra_mounts.extend(resource_mounts)
 
+        # Peer communication: mount shared comms directory.
+        from kanibako.targets.base import Mount as _CMount
+        comms_path = Path(merged.paths_comms)
+        if not comms_path.is_absolute():
+            comms_path = std.data_path / comms_path
+        comms_path.mkdir(parents=True, exist_ok=True)
+        if proj.name:
+            mailbox = comms_path / "mailbox" / proj.name
+            mailbox.mkdir(parents=True, exist_ok=True)
+        broadcast = comms_path / "broadcast.log"
+        if not broadcast.exists():
+            broadcast.touch()
+        extra_mounts.append(
+            _CMount(comms_path, "/home/agent/comms", "Z,U"),
+        )
+
         # Read per-project and global environment variables.
         from kanibako.shellenv import merge_env
         global_env_path = std.data_path / "env"
@@ -405,6 +421,10 @@ def _run_container(
         container_env: dict[str, str] = merge_env(global_env_path, project_env_path) or {}
         container_env.update(agent_cfg.env)
         container_env.update(state_env)
+
+        # Inject instance identity for peer communication.
+        if proj.name:
+            container_env["KANIBAKO_NAME"] = proj.name
 
         # Helper hub: start listener before director, mount socket
         hub = None

@@ -56,6 +56,11 @@ def run(args: argparse.Namespace) -> int:
     (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
     (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
 
+    # Create peer communication directory.
+    comms_dir = data_path / (config.paths_comms or "comms")
+    (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
+    (comms_dir / "broadcast.log").touch(exist_ok=True)
+
     # Create agents directory and generate default agent TOMLs.
     from kanibako.agents import AgentConfig, write_agent_config
     from kanibako.targets import discover_targets
