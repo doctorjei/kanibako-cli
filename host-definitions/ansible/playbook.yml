@@ -1,6 +1,7 @@
 ---
-# Ansible playbook that mirrors host-definitions/Containerfile.host.
-# Provisions an Ubuntu host (VM or bare metal) with rootless Podman and kanibako.
+# Ansible playbook that provisions an Ubuntu host (VM or bare metal) with
+# the same packages as the kanibako-base + kanibako-host container images,
+# plus rootless Podman and kanibako itself.
 #
 # Usage:
 #   ansible-playbook playbook.yml -i 'hostname,' -u root
@@ -22,25 +23,62 @@
     install_claude_plugin: false
 
   tasks:
-    # ── System packages ─────────────────────────────────────────────
-    - name: Install system packages
+    # ── System packages (base image equivalent) ─────────────────────
+    - name: Install base packages
       ansible.builtin.apt:
         name:
-          - podman
-          - fuse-overlayfs
-          - slirp4netns
-          - uidmap
-          - python3
-          - python3-pip
-          - python3-venv
+          - bash
           - ca-certificates
           - curl
           - git
-          - openssh-server
+          - jq
+          - nano
+          - openssh-client
+          - ripgrep
+          - smbclient
           - sudo
           - tmux
+          - python3
+          - unzip
+          - xz-utils
+          - zip
+          - zstd
         state: present
         update_cache: true
+        install_recommends: false
+
+    # ── GitHub CLI (not in Ubuntu's default repos) ──────────────────
+    - name: Add GitHub CLI GPG key
+      ansible.builtin.get_url:
+        url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+        dest: /usr/share/keyrings/githubcli-archive-keyring.gpg
+        mode: "0644"
+
+    - name: Add GitHub CLI apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture | regex_replace('x86_64', 'amd64') | regex_replace('aarch64', 'arm64') }} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+        filename: github-cli
+        state: present
+
+    - name: Install GitHub CLI
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    # ── Host-specific packages (container runtime + rootless infra) ─
+    - name: Install host packages
+      ansible.builtin.apt:
+        name:
+          - fuse-overlayfs
+          - openssh-server
+          - podman
+          - python3-pip
+          - python3-venv
+          - slirp4netns
+          - uidmap
+        state: present
         install_recommends: false
 
     # ── Agent user ──────────────────────────────────────────────────

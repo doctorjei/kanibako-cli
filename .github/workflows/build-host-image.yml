@@ -34,6 +34,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build and push base image
+        uses: docker/build-push-action@v6
+        with:
+          context: src/kanibako/containers/
+          file: src/kanibako/containers/Containerfile.base
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
+
       - name: Build and push host image
         uses: docker/build-push-action@v6
         with:
@@ -41,6 +51,8 @@ jobs:
           file: host-definitions/Containerfile.host
           push: true
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-host:latest
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
           cache-from: type=gha,scope=host
           cache-to: type=gha,mode=max,scope=host
 

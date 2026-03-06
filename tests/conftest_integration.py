@@ -8,8 +8,10 @@ container runtimes, real git repos, and real filesystem operations.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -179,3 +181,47 @@ def real_git_repo(integration_home):
         check=True,
     )
     return project
+
+
+# ---------------------------------------------------------------------------
+# Subprocess-based CLI fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cli_env(tmp_path):
+    """Isolated env dict for subprocess calls to the kanibako CLI.
+
+    Points HOME / XDG dirs to temp dirs so ``kanibako setup`` and other
+    commands don't touch the real system.  Returns a dict with ``env``
+    (the full environ), plus paths for direct inspection.
+    """
+    home = tmp_path / "cli_home"
+    config_home = tmp_path / "cli_config"
+    data_home = tmp_path / "cli_data"
+    state_home = tmp_path / "cli_state"
+    cache_home = tmp_path / "cli_cache"
+    project = tmp_path / "cli_project"
+    for d in (home, config_home, data_home, state_home, cache_home, project):
+        d.mkdir()
+
+    env = os.environ.copy()
+    # Ensure kanibako from the *running* Python environment takes precedence
+    # over any other script on PATH (e.g. a container-side entry point).
+    python_bin = os.path.dirname(sys.executable)
+    env["PATH"] = python_bin + os.pathsep + env.get("PATH", "")
+    env["HOME"] = str(home)
+    env["XDG_CONFIG_HOME"] = str(config_home)
+    env["XDG_DATA_HOME"] = str(data_home)
+    env["XDG_STATE_HOME"] = str(state_home)
+    env["XDG_CACHE_HOME"] = str(cache_home)
+
+    return {
+        "env": env,
+        "home": home,
+        "config_home": config_home,
+        "data_home": data_home,
+        "state_home": state_home,
+        "cache_home": cache_home,
+        "project": project,
+    }

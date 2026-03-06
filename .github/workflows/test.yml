@@ -17,3 +17,13 @@ jobs:
       - run: ruff check src/ tests/ packages/
       - run: mypy src/kanibako/
       - run: pytest tests/ -v
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e '.[dev]' -e packages/plugin-claude/
+      - run: pytest -m integration tests/ -v
