@@ -17,6 +17,18 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        include:
+          - variant: min
+            base: ghcr.io/doctorjei/droste-seed:latest
+          - variant: oci
+            base: ghcr.io/doctorjei/droste-fiber:latest
+          - variant: lxc
+            base: ghcr.io/doctorjei/droste-thread:latest
+          - variant: vm
+            base: ghcr.io/doctorjei/droste-hair:latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,84 +43,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push base image
+      - name: Build and push ${{ matrix.variant }} image
         uses: docker/build-push-action@v6
         with:
           context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.base
+          file: src/kanibako/containers/Containerfile.${{ matrix.variant }}
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
-
-      - name: Build and push systems image
-        uses: docker/build-push-action@v6
-        with:
-          context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.systems
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-systems:latest
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
           build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
-          cache-from: type=gha,scope=systems
-          cache-to: type=gha,mode=max,scope=systems
-
-      - name: Build and push jvm image
-        uses: docker/build-push-action@v6
-        with:
-          context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.jvm
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-jvm:latest
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
-          cache-from: type=gha,scope=jvm
-          cache-to: type=gha,mode=max,scope=jvm
-
-      - name: Build and push android image
-        uses: docker/build-push-action@v6
-        with:
-          context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.android
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-android:latest
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-jvm:latest
-          cache-from: type=gha,scope=android
-          cache-to: type=gha,mode=max,scope=android
-
-      - name: Build and push ndk image
-        uses: docker/build-push-action@v6
-        with:
-          context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.ndk
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-ndk:latest
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-android:latest
-          cache-from: type=gha,scope=ndk
-          cache-to: type=gha,mode=max,scope=ndk
-
-      - name: Build and push dotnet image
-        uses: docker/build-push-action@v6
-        with:
-          context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.dotnet
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-dotnet:latest
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
-          cache-from: type=gha,scope=dotnet
-          cache-to: type=gha,mode=max,scope=dotnet
-
-      - name: Build and push behemoth image
-        uses: docker/build-push-action@v6
-        with:
-          context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.behemoth
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-behemoth:latest
-          build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-base:latest
-          cache-from: type=gha,scope=behemoth
-          cache-to: type=gha,mode=max,scope=behemoth
+            BASE_IMAGE=${{ matrix.base }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}

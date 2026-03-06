@@ -36,14 +36,14 @@ class TestEnsureImage:
         rt = ContainerRuntime(command="echo")
         containers_dir = tmp_path / "containers"
         containers_dir.mkdir()
-        (containers_dir / "Containerfile.base").write_text("FROM ubuntu\n")
+        (containers_dir / "Containerfile.oci").write_text("FROM ubuntu\n")
 
         with (
             patch.object(rt, "image_exists", return_value=False),
             patch.object(rt, "pull", return_value=False),
             patch.object(rt, "build") as m_build,
         ):
-            rt.ensure_image("kanibako-base:latest", containers_dir)
+            rt.ensure_image("kanibako-oci:latest", containers_dir)
             m_build.assert_called_once()
 
     def test_no_containerfile_raises(self, tmp_path):
@@ -59,20 +59,20 @@ class TestEnsureImage:
         rt = ContainerRuntime(command="echo")
         containers_dir = tmp_path / "containers"
         containers_dir.mkdir()
-        # No matching Containerfile for kanibako-base (mock bundled to return None too)
+        # No matching Containerfile for kanibako-oci (mock bundled to return None too)
         with (
             patch.object(rt, "image_exists", return_value=False),
             patch.object(rt, "pull", return_value=False),
             patch("kanibako.container.get_containerfile", return_value=None),
         ):
             with pytest.raises(ContainerError, match="no local Containerfile"):
-                rt.ensure_image("kanibako-base:latest", containers_dir)
+                rt.ensure_image("kanibako-oci:latest", containers_dir)
 
     def test_build_fails_raises(self, tmp_path):
         rt = ContainerRuntime(command="echo")
         containers_dir = tmp_path / "containers"
         containers_dir.mkdir()
-        (containers_dir / "Containerfile.base").write_text("FROM ubuntu\n")
+        (containers_dir / "Containerfile.oci").write_text("FROM ubuntu\n")
 
         with (
             patch.object(rt, "image_exists", return_value=False),
@@ -80,7 +80,7 @@ class TestEnsureImage:
             patch.object(rt, "build", side_effect=ContainerError("build failed")),
         ):
             with pytest.raises(ContainerError, match="build failed"):
-                rt.ensure_image("kanibako-base:latest", containers_dir)
+                rt.ensure_image("kanibako-oci:latest", containers_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -283,16 +283,16 @@ class TestListLocalImages:
     def test_filters_kanibako(self):
         rt = ContainerRuntime(command="echo")
         output = (
-            "ghcr.io/owner/kanibako-base:latest\t500MB\n"
+            "ghcr.io/owner/kanibako-oci:latest\t500MB\n"
             "docker.io/library/ubuntu:latest\t100MB\n"
-            "ghcr.io/owner/kanibako-jvm:latest\t800MB\n"
+            "ghcr.io/owner/kanibako-lxc:latest\t800MB\n"
         )
         with patch("kanibako.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0, stdout=output)
             images = rt.list_local_images()
             assert len(images) == 2
-            assert images[0][0] == "ghcr.io/owner/kanibako-base:latest"
-            assert images[1][0] == "ghcr.io/owner/kanibako-jvm:latest"
+            assert images[0][0] == "ghcr.io/owner/kanibako-oci:latest"
+            assert images[1][0] == "ghcr.io/owner/kanibako-lxc:latest"
 
     def test_empty_output(self):
         rt = ContainerRuntime(command="echo")

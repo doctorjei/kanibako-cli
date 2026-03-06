@@ -298,7 +298,7 @@ class TestRunStatus:
         assert rc == 0
         out = capsys.readouterr().out
         # Default image from KanibakoConfig
-        assert "ghcr.io/doctorjei/kanibako-base:latest" in out
+        assert "ghcr.io/doctorjei/kanibako-oci:latest" in out
 
     def test_shows_project_image_override(self, initialized_project, capsys):
         """Status shows project-specific image when project.toml is set."""

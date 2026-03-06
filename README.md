@@ -36,8 +36,8 @@ via `pip install`.
   project init, with agent-specific and general variants
 - **Shared caches** — global download caches (pip, cargo, npm, etc.) shared
   across projects; agent-level caches via agent TOML
-- **Target plugin system** — agent-agnostic core (`kanibako-base`); Claude Code
-  plugin (`kanibako-plugin-claude`) is installed by default
+- **Target plugin system** — agent-agnostic core (`kanibako-base` Python
+  package); Claude Code plugin (`kanibako-plugin-claude`) is installed by default
 - **Image freshness checks** — non-blocking digest comparison against GHCR on
   startup (24h cache)
 - **Persistent sessions** — `kanibako connect` runs agents in tmux-backed
@@ -81,7 +81,7 @@ cd ~/my-project
 kanibako
 
 # Start with a specific image
-kanibako -i kanibako-systems:latest
+kanibako -i kanibako-min:latest
 
 # Open a plain bash shell (no agent)
 kanibako shell
@@ -95,11 +95,11 @@ kanibako automatically pulls the container image, sets up the project
 environment, and syncs your credentials.  Subsequent runs pick up where you
 left off.
 
-## Example: Python Project (base image)
+## Example: Python Project
 
-The default `kanibako-base` image includes Python, git, gh, nano, jq, ripgrep,
-and common archive tools.  This is enough for most Python, JavaScript, and
-general scripting work.
+The default `kanibako-oci` image (based on droste-fiber) includes Python, git,
+gh, nano, jq, ripgrep, tmux, podman, and common dev tools.  This is enough for
+most Python, JavaScript, and general scripting work.
 
 ```bash
 # 1. Install kanibako and run first-time setup
@@ -133,36 +133,27 @@ kanibako              # resumes your previous session
 kanibako -N           # or start a fresh conversation
 ```
 
-## Example: C/Rust Project (systems image)
+## Example: C/Rust Project (template)
 
-For projects that need compiled languages, pick a more complete image.
-The `systems` image adds C/C++ compilers, Rust, assemblers, QEMU, and
-debuggers on top of everything in `base`.
+For projects that need compiled languages, create a template with the
+toolchains you need:
 
 ```bash
-# 1. Point kanibako at your project
+# 1. Create a template with C/C++ and Rust
+kanibako template create systems
+# (inside: sudo apt install build-essential cmake gdb && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh)
+# exit when done
+
+# 2. Use it for your project
 cd ~/my-rust-project
-
-# 2. Launch with the systems image
-kanibako -i systems
+kanibako -i kanibako-template-systems
 ```
 
-The `-i systems` flag is a shorthand — kanibako expands it to the full
-image name automatically.  The first run pulls the systems image (larger
-than base, but only downloaded once).  After that, kanibako remembers the
-image choice for this project, so you can just run `kanibako` next time.
+After the first run, kanibako remembers the image choice for this project,
+so you can just run `kanibako` next time.
 
-Other images work the same way:
-
-```bash
-kanibako -i jvm           # Java, Kotlin, Maven
-kanibako -i android       # + Gradle, Android SDK
-kanibako -i ndk           # + Android NDK, native toolchains
-kanibako -i dotnet        # .NET SDK 8.0
-kanibako -i behemoth      # everything combined
-```
-
-See [Container Images](#container-images) for the full list.
+See [Container Images](#container-images) for the base images and template
+system.
 
 ## Commands
 
@@ -184,6 +175,7 @@ See [Container Images](#container-images) for the full list.
 | `kanibako env [list\|set\|get\|unset]` | Environment variable management |
 | `kanibako shared [init\|list]` | Shared cache management |
 | `kanibako helper [spawn\|list\|stop\|cleanup\|respawn\|send\|broadcast\|log]` | Child kanibako spawning and messaging |
+| `kanibako template [create\|list\|delete]` | User template image management |
 | `kanibako setup` | Initial setup |
 | `kanibako upgrade [--check]` | Update from git |
 | `kanibako reauth` | Check auth and login if needed |
@@ -272,17 +264,20 @@ remove it.
 
 ## Container Images
 
-All images are toolchain-only — the AI agent binary is mounted from the host.
+All images are built on [droste](https://github.com/doctorjei/droste) tiers
+(Debian 13) with a thin kanibako layer on top (agent user, gh, ripgrep,
+directory scaffolding).  The AI agent binary is mounted from the host.
 
-| Image | Contents |
-|-------|----------|
-| `kanibako-base` | Python, nano, git, jq, ssh, gh, archives |
-| `kanibako-systems` | + C/C++, Rust, assemblers, QEMU, debuggers |
-| `kanibako-jvm` | + Java, Kotlin, Maven |
-| `kanibako-android` | + Gradle, Android SDK (`sdkmanager` available) |
-| `kanibako-ndk` | + Android NDK, systems toolchain |
-| `kanibako-dotnet` | + .NET SDK 8.0 |
-| `kanibako-behemoth` | All toolchains combined |
+| Image | Droste Base | Role |
+|-------|-------------|------|
+| `kanibako-min` | droste-seed | Minimal agent container |
+| `kanibako-oci` | droste-fiber | Agent container + nested OCI host |
+| `kanibako-lxc` | droste-thread | LXC system container host (via kento) |
+| `kanibako-vm` | droste-hair | VM host (via kento + tenkei) |
+
+`kanibako-oci` is the default.  It includes podman and rootless container
+infrastructure, so it can both run agents directly and host nested kanibako
+containers.
 
 Images are pulled automatically from GHCR on first use.  If the pull fails,
 kanibako falls back to a local build from the bundled Containerfiles.
@@ -293,37 +288,56 @@ kanibako image rebuild                # rebuild current project's image
 kanibako image rebuild --all          # rebuild all known images
 ```
 
-## Host Container
+### Templates
 
-The **host container** runs kanibako itself (with rootless podman inside) so
-you can deploy it on a server without a host-side pip install. Agent containers
-are spawned nested inside.
-
-Two variants are available:
-
-| Image | Contents |
-|-------|----------|
-| `kanibako-host` | `kanibako-base` + rootless podman (agent-agnostic) |
-| `kanibako-host-claude` | + `kanibako-plugin-claude` |
-
-### Pull and run
+Instead of pre-built toolchain variants, create custom templates by
+installing tools interactively and committing the result:
 
 ```bash
-# Pull the image
-podman pull ghcr.io/doctorjei/kanibako-host:latest
-# — or the Claude variant —
-podman pull ghcr.io/doctorjei/kanibako-host-claude:latest
+kanibako template create jvm          # start from kanibako-oci, install tools
+# (inside container: apt install openjdk-21-jdk maven, etc.)
+# exit when done
+
+kanibako template list                # show local templates
+kanibako init --template jvm          # use the template for a new project
+kanibako template delete jvm          # remove a template
+```
+
+Templates are standard OCI images — push them to any registry for sharing:
+
+```bash
+podman push kanibako-template-jvm ghcr.io/myorg/kanibako-template-jvm
+```
+
+## Host Container
+
+`kanibako-oci` serves double duty as a host container — it includes rootless
+podman, so you can run kanibako itself inside it and spawn nested agent
+containers.  For system container or VM deployments, use `kanibako-lxc` or
+`kanibako-vm` with [kento](https://github.com/doctorjei/kento).
+
+### Pull and run (OCI nested host)
+
+```bash
+podman pull ghcr.io/doctorjei/kanibako-oci:latest
 
 # Run with nested podman support
 podman run --privileged -it \
     -v kanibako-data:/home/agent/.local/share/kanibako \
     -v kanibako-config:/home/agent/.config \
-    ghcr.io/doctorjei/kanibako-host-claude:latest
+    ghcr.io/doctorjei/kanibako-oci:latest
 ```
 
 The `--privileged` flag is required for rootless podman to work inside the
 container. Alternatively, use `--cap-add=SYS_ADMIN --security-opt seccomp=unconfined`
 for a narrower permission set.
+
+Install kanibako and plugins inside the host container:
+
+```bash
+pip install kanibako    # installs kanibako-base + kanibako-plugin-claude
+kanibako setup
+```
 
 ### Persistent state
 
@@ -335,38 +349,11 @@ Mount named volumes or host directories to preserve state across restarts:
 | `/home/agent/.config` | kanibako.toml, podman storage config |
 | `/home/agent/workspace` | Optional: bind a host project directory |
 
-### SSH access
-
-To enable remote access, start sshd inside the container:
-
-```bash
-podman run --privileged -d -p 2222:22 \
-    -v kanibako-data:/home/agent/.local/share/kanibako \
-    -v kanibako-config:/home/agent/.config \
-    ghcr.io/doctorjei/kanibako-host-claude:latest \
-    -c 'sudo mkdir -p /run/sshd && sudo /usr/sbin/sshd -D'
-```
-
-Then SSH in: `ssh -p 2222 agent@hostname`. The agent user has passwordless
-sudo. Add your public keys to `/home/agent/.ssh/authorized_keys` (mount a
-volume or copy them in).
-
 ### Building locally
 
 ```bash
-# Build base image first
-podman build -f src/kanibako/containers/Containerfile.base -t kanibako-base \
-    src/kanibako/containers/
-
-# Build host image on top of base
-podman build -f host-definitions/Containerfile.host \
-    --build-arg BASE_IMAGE=kanibako-base \
-    -t kanibako-host .
-
-# Build claude variant on top of host
-podman build -f host-definitions/Containerfile.host-claude \
-    --build-arg BASE_IMAGE=kanibako-host \
-    -t kanibako-host-claude .
+podman build -f src/kanibako/containers/Containerfile.oci \
+    -t kanibako-oci src/kanibako/containers/
 ```
 
 ## VM Variant
@@ -743,7 +730,7 @@ Effective value resolution (highest wins):
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `container_image` | `ghcr.io/doctorjei/kanibako-base:latest` | Container image |
+| `container_image` | `ghcr.io/doctorjei/kanibako-oci:latest` | Container image |
 | `target_name` | `""` (auto-detect) | Agent target plugin (falls back to `no_agent` if none detected) |
 | `paths_data_path` | `""` (XDG default) | Override data directory root |
 

@@ -24,7 +24,7 @@ class TestInstall:
         assert rc == 0
         assert config_file.exists()
         cfg = load_config(config_file)
-        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-base:latest"
+        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
 
 class TestInstallExtended:

@@ -27,7 +27,7 @@ from kanibako.config import (
 class TestLoadConfig:
     def test_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.toml")
-        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-base:latest"
+        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
         assert cfg.paths_boxes == "boxes"
 
     def test_round_trip(self, tmp_path):

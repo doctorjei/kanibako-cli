@@ -42,7 +42,7 @@ class TestImageRebuild:
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
-                image="ghcr.io/foo/kanibako-base:latest",
+                image="ghcr.io/foo/kanibako-oci:latest",
                 all_images=False, local_build=False,
             )
             rc = run_rebuild(args)
@@ -61,16 +61,16 @@ class TestImageRebuild:
         std = load_std_paths(config)
         containers_dir = std.data_path / "containers"
         containers_dir.mkdir(parents=True, exist_ok=True)
-        (containers_dir / "Containerfile.base").write_text("FROM ubuntu\n")
+        (containers_dir / "Containerfile.oci").write_text("FROM ubuntu\n")
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
-            runtime.guess_containerfile.return_value = "base"
+            runtime.guess_containerfile.return_value = "oci"
             runtime.rebuild.return_value = 0
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
-                image="kanibako-base:latest",
+                image="kanibako-oci:latest",
                 all_images=False, local_build=True,
             )
             rc = run_rebuild(args)
@@ -111,8 +111,8 @@ class TestImageRebuild:
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
             runtime.list_local_images.return_value = [
-                ("ghcr.io/foo/kanibako-base:latest", "1GB"),
-                ("ghcr.io/foo/kanibako-jvm:latest", "2GB"),
+                ("ghcr.io/foo/kanibako-oci:latest", "1GB"),
+                ("ghcr.io/foo/kanibako-lxc:latest", "2GB"),
             ]
             runtime.pull.return_value = True
             MockRT.return_value = runtime
@@ -129,7 +129,7 @@ class TestExtractGhcrOwner:
     def test_valid_ghcr_url(self):
         from kanibako.commands.image import _extract_ghcr_owner
 
-        assert _extract_ghcr_owner("ghcr.io/doctorjei/kanibako-base:latest") == "doctorjei"
+        assert _extract_ghcr_owner("ghcr.io/doctorjei/kanibako-oci:latest") == "doctorjei"
 
     def test_non_ghcr_url(self):
         from kanibako.commands.image import _extract_ghcr_owner
@@ -141,52 +141,52 @@ class TestResolveImageName:
     def test_suffix_expansion(self):
         from kanibako.commands.image import resolve_image_name
 
-        result = resolve_image_name("base", "ghcr.io/doctorjei/kanibako-base:latest")
-        assert result == "ghcr.io/doctorjei/kanibako-base:latest"
+        result = resolve_image_name("oci", "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-oci:latest"
 
-    def test_suffix_systems(self):
+    def test_suffix_min(self):
         from kanibako.commands.image import resolve_image_name
 
-        result = resolve_image_name("systems", "ghcr.io/doctorjei/kanibako-base:latest")
-        assert result == "ghcr.io/doctorjei/kanibako-systems:latest"
+        result = resolve_image_name("min", "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-min:latest"
 
     def test_kanibako_prefix_expansion(self):
         from kanibako.commands.image import resolve_image_name
 
-        result = resolve_image_name("kanibako-custom", "ghcr.io/doctorjei/kanibako-base:latest")
+        result = resolve_image_name("kanibako-custom", "ghcr.io/doctorjei/kanibako-oci:latest")
         assert result == "ghcr.io/doctorjei/kanibako-custom:latest"
 
     def test_full_path_passthrough(self):
         from kanibako.commands.image import resolve_image_name
 
-        full = "ghcr.io/other/kanibako-base:v2"
-        result = resolve_image_name(full, "ghcr.io/doctorjei/kanibako-base:latest")
+        full = "ghcr.io/other/kanibako-oci:v2"
+        result = resolve_image_name(full, "ghcr.io/doctorjei/kanibako-oci:latest")
         assert result == full
 
     def test_unknown_name_passthrough(self):
         from kanibako.commands.image import resolve_image_name
 
-        result = resolve_image_name("ubuntu", "ghcr.io/doctorjei/kanibako-base:latest")
+        result = resolve_image_name("ubuntu", "ghcr.io/doctorjei/kanibako-oci:latest")
         assert result == "ubuntu"
 
     def test_prefix_derived_from_configured(self):
         from kanibako.commands.image import resolve_image_name
 
-        result = resolve_image_name("jvm", "ghcr.io/myowner/kanibako-base:latest")
-        assert result == "ghcr.io/myowner/kanibako-jvm:latest"
+        result = resolve_image_name("lxc", "ghcr.io/myowner/kanibako-oci:latest")
+        assert result == "ghcr.io/myowner/kanibako-lxc:latest"
 
     def test_no_prefix_extractable(self):
         from kanibako.commands.image import resolve_image_name
 
-        result = resolve_image_name("base", "localimage:latest")
-        assert result == "base"
+        result = resolve_image_name("oci", "localimage:latest")
+        assert result == "oci"
 
 
 class TestExtractRegistryPrefix:
     def test_ghcr(self):
         from kanibako.commands.image import _extract_registry_prefix
 
-        assert _extract_registry_prefix("ghcr.io/doctorjei/kanibako-base:latest") == "ghcr.io/doctorjei"
+        assert _extract_registry_prefix("ghcr.io/doctorjei/kanibako-oci:latest") == "ghcr.io/doctorjei"
 
     def test_two_parts_returns_none(self):
         from kanibako.commands.image import _extract_registry_prefix
@@ -211,14 +211,14 @@ class TestRebuildWithShorthand:
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
-                image="systems",
+                image="min",
                 all_images=False, local_build=False,
             )
             rc = run_rebuild(args)
             assert rc == 0
-            # Should have resolved "systems" to the full image path
+            # Should have resolved "min" to the full image path
             call_args = runtime.pull.call_args[0]
-            assert "kanibako-systems" in call_args[0]
+            assert "kanibako-min" in call_args[0]
             assert call_args[0].startswith("ghcr.io/")
 
 
@@ -229,8 +229,8 @@ class TestRebuildWithShorthand:
 class TestListRemotePackages:
     def test_successful_api_response(self, capsys):
         response_data = [
-            {"name": "kanibako-base"},
-            {"name": "kanibako-jvm"},
+            {"name": "kanibako-oci"},
+            {"name": "kanibako-lxc"},
             {"name": "unrelated-pkg"},
         ]
         mock_resp = MagicMock()
@@ -242,8 +242,8 @@ class TestListRemotePackages:
             _list_remote_packages("myowner")
 
         out = capsys.readouterr().out
-        assert "ghcr.io/myowner/kanibako-base" in out
-        assert "ghcr.io/myowner/kanibako-jvm" in out
+        assert "ghcr.io/myowner/kanibako-oci" in out
+        assert "ghcr.io/myowner/kanibako-lxc" in out
         assert "unrelated-pkg" not in out
 
     def test_api_timeout(self, capsys):

@@ -261,7 +261,7 @@ class TestListProjects:
         """Running containers show 'running' status."""
         with self._patch_list(
             projects={"myapp": "/home/user/myapp"},
-            running=[("kanibako-myapp", "kanibako-base:latest", "running")],
+            running=[("kanibako-myapp", "kanibako-oci:latest", "running")],
         ):
             rc = _list_projects()
         assert rc == 0

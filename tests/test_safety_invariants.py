@@ -44,7 +44,7 @@ def config_file(tmp_path, monkeypatch):
     cfg_dir = tmp_path / ".config" / "kanibako"
     cfg_dir.mkdir(parents=True)
     cfg_file = cfg_dir / "kanibako.toml"
-    cfg_file.write_text('[kanibako]\ncontainer_image = "kanibako-base"\n')
+    cfg_file.write_text('[kanibako]\ncontainer_image = "kanibako-oci"\n')
     return cfg_file
 
 

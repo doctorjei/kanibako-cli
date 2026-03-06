@@ -201,8 +201,8 @@ class TestParser:
 
     def test_image_rebuild_specific(self):
         parser = build_parser()
-        args = parser.parse_args(["image", "rebuild", "kanibako-base:latest"])
-        assert args.image == "kanibako-base:latest"
+        args = parser.parse_args(["image", "rebuild", "kanibako-oci:latest"])
+        assert args.image == "kanibako-oci:latest"
 
     def test_image_rebuild_all(self):
         parser = build_parser()

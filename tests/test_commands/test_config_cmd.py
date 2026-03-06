@@ -38,7 +38,7 @@ class TestConfigGet:
         rc = run(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "ghcr.io/doctorjei/kanibako-base:latest" in captured.out
+        assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
 
     def test_get_image_via_full_key(self, config_file, tmp_home, credentials_dir, capsys):
         """``kanibako config container_image`` should work the same as ``config image``."""
@@ -57,7 +57,7 @@ class TestConfigGet:
         rc = run(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "ghcr.io/doctorjei/kanibako-base:latest" in captured.out
+        assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
 
     def test_get_paths_boxes(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.config_cmd import run
@@ -504,7 +504,7 @@ class TestConfigUnset:
         rc = run(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "ghcr.io/doctorjei/kanibako-base:latest" in captured.out
+        assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -573,7 +573,7 @@ class TestUnsetProjectConfigKey:
         assert unset_project_config_key(p, "container_image") is True
         loaded = load_config(p)
         # Should revert to default
-        assert loaded.container_image == "ghcr.io/doctorjei/kanibako-base:latest"
+        assert loaded.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
@@ -597,7 +597,7 @@ class TestUnsetProjectConfigKey:
         assert unset_project_config_key(p, "container_image") is True
         loaded = load_config(p)
         assert loaded.paths_boxes == "my_boxes"
-        assert loaded.container_image == "ghcr.io/doctorjei/kanibako-base:latest"
+        assert loaded.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
 
 class TestLoadProjectOverrides:

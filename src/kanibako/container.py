@@ -17,16 +17,10 @@ logger = get_logger("container")
 
 # Map image name patterns to Containerfile suffixes.
 _IMAGE_CONTAINERFILE_MAP = {
-    "kanibako-base": "base",
-    "kanibako:latest": "base",
-    "kanibako-systems": "systems",
-    "kanibako-jvm": "jvm",
-    "kanibako-android": "android",
-    "kanibako-ndk": "ndk",
-    "kanibako-dotnet": "dotnet",
-    "kanibako-behemoth": "behemoth",
-    "kanibako-host": "host",
-    "kanibako-host-claude": "host-claude",
+    "kanibako-min": "min",
+    "kanibako-oci": "oci",
+    "kanibako-lxc": "lxc",
+    "kanibako-vm": "vm",
 }
 
 
@@ -71,6 +65,16 @@ class ContainerRuntime:
         )
         return result.returncode == 0
 
+    def remove_image(self, image: str) -> None:
+        """Remove a local image. Raises ContainerError on failure."""
+        result = subprocess.run(
+            [self.cmd, "rmi", image],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise ContainerError(f"Failed to remove image {image}:\n{result.stderr}")
+
     def build(self, image: str, containerfile: Path, context: Path) -> None:
         """Build *image* from *containerfile*. Raises ContainerError on failure."""
         result = subprocess.run(
@@ -92,6 +96,25 @@ class ContainerRuntime:
             ],
         )
         return result.returncode
+
+    def run_interactive(self, image: str, *, container_name: str | None = None) -> int:
+        """Run an interactive container. Returns exit code."""
+        cmd = [self.cmd, "run", "-it"]
+        if container_name:
+            cmd.extend(["--name", container_name])
+        cmd.append(image)
+        result = subprocess.run(cmd)
+        return result.returncode
+
+    def commit(self, container: str, image: str) -> None:
+        """Commit a container to a new image. Raises ContainerError on failure."""
+        result = subprocess.run(
+            [self.cmd, "commit", container, image],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise ContainerError(f"Failed to commit container: {result.stderr}")
 
     def guess_containerfile(self, image: str) -> str | None:
         """Return the Containerfile suffix for a known image pattern, or None."""

@@ -27,7 +27,7 @@ _DEFAULTS = {
     "paths_workspaces": "workspaces",
     "paths_comms": "comms",
     "paths_ws_hints": "working_sets.toml",
-    "container_image": "ghcr.io/doctorjei/kanibako-base:latest",
+    "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "target_name": "",
 }
 

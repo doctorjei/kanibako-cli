@@ -17,9 +17,9 @@ from kanibako.registry import (
 
 class TestParseImageRef:
     def test_standard(self):
-        reg, repo, tag = _parse_image_ref("ghcr.io/doctorjei/kanibako-base:latest")
+        reg, repo, tag = _parse_image_ref("ghcr.io/doctorjei/kanibako-oci:latest")
         assert reg == "ghcr.io"
-        assert repo == "doctorjei/kanibako-base"
+        assert repo == "doctorjei/kanibako-oci"
         assert tag == "latest"
 
     def test_no_tag(self):
@@ -63,9 +63,9 @@ class TestGetAnonymousToken:
         mock_resp.__exit__ = MagicMock(return_value=False)
 
         with patch("kanibako.registry.urllib.request.urlopen", return_value=mock_resp) as m:
-            _get_anonymous_token("ghcr.io", "doctorjei/kanibako-base")
+            _get_anonymous_token("ghcr.io", "doctorjei/kanibako-oci")
             req = m.call_args[0][0]
-            assert "scope=repository:doctorjei/kanibako-base:pull" in req.full_url
+            assert "scope=repository:doctorjei/kanibako-oci:pull" in req.full_url
 
 
 class TestFetchManifestDigest:

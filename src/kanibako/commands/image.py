@@ -18,15 +18,10 @@ from kanibako.paths import xdg, load_std_paths, resolve_project
 
 # Descriptions for known Containerfile variants.
 _VARIANT_DESCRIPTIONS = {
-    "base": "Python, nano, git, jq, ssh, gh, archives",
-    "systems": "C/C++, Rust, assemblers, QEMU, debuggers",
-    "jvm": "Java, Kotlin, Maven",
-    "android": "JVM + Gradle, Android SDK",
-    "ndk": "Android + systems toolchain",
-    "dotnet": ".NET SDK 8.0",
-    "behemoth": "All toolchains combined",
-    "host": "Kanibako host environment with rootless podman",
-    "host-claude": "Host environment + Claude Code plugin",
+    "min": "Minimal agent container (droste-seed)",
+    "oci": "Agent container + nested OCI host (droste-fiber)",
+    "lxc": "LXC system container host (droste-thread)",
+    "vm": "VM host (droste-hair)",
 }
 
 
@@ -163,7 +158,7 @@ def _list_remote_packages(owner: str) -> None:
 def _extract_registry_prefix(image: str) -> str | None:
     """Extract ``registry/owner`` prefix from a fully qualified image name.
 
-    >>> _extract_registry_prefix("ghcr.io/doctorjei/kanibako-base:latest")
+    >>> _extract_registry_prefix("ghcr.io/doctorjei/kanibako-oci:latest")
     'ghcr.io/doctorjei'
     """
     # Expect at least registry/owner/name
@@ -174,15 +169,15 @@ def _extract_registry_prefix(image: str) -> str | None:
 
 
 # Known shorthand suffixes that map to kanibako-<suffix> images.
-_KNOWN_SUFFIXES = {"base", "systems", "jvm", "android", "ndk", "dotnet", "behemoth"}
+_KNOWN_SUFFIXES = {"min", "oci", "lxc", "vm"}
 
 
 def resolve_image_name(name: str, configured_image: str) -> str:
     """Expand a shorthand image name to a fully qualified image reference.
 
     - If *name* contains ``/``, it is already qualified — returned as-is.
-    - If *name* is a known suffix (``base``, ``systems``, …), expand to
-      ``{prefix}/kanibako-{name}:latest``.
+    - If *name* is a known suffix (``min``, ``oci``, ``lxc``, ``vm``), expand
+      to ``{prefix}/kanibako-{name}:latest``.
     - If *name* starts with ``kanibako-``, expand to ``{prefix}/{name}:latest``.
     - Otherwise return *name* unchanged.
     """
@@ -259,9 +254,8 @@ def _build_one(runtime: ContainerRuntime, image: str, containers_dir: Path) -> i
             f"{p} -> Containerfile.{s}"
             for p, s in sorted(set(
                 (p, runtime.guess_containerfile(p))
-                for p in ["kanibako-base", "kanibako-systems", "kanibako-jvm",
-                          "kanibako-android", "kanibako-ndk", "kanibako-dotnet",
-                          "kanibako-behemoth"]
+                for p in ["kanibako-min", "kanibako-oci", "kanibako-lxc",
+                          "kanibako-vm"]
             ))
         ), file=sys.stderr)
         return 1

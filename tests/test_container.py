@@ -28,9 +28,9 @@ class TestContainerRuntime:
         assert rt.cmd == "/usr/bin/podman"
 
     def test_guess_containerfile(self):
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-base:latest") == "base"
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-systems:v1") == "systems"
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-jvm:latest") == "jvm"
+        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-oci:latest") == "oci"
+        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-min:v1") == "min"
+        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-lxc:latest") == "lxc"
         assert ContainerRuntime._guess_containerfile("totally-unrelated:latest") is None
 
 
@@ -40,12 +40,12 @@ class TestGetLocalDigest:
         import json
         rt = ContainerRuntime(command="echo")
         inspect_output = json.dumps([{
-            "RepoDigests": ["ghcr.io/x/kanibako-base@sha256:abc123"]
+            "RepoDigests": ["ghcr.io/x/kanibako-oci@sha256:abc123"]
         }])
         from unittest.mock import MagicMock
         with patch("kanibako.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
-            result = rt.get_local_digest("ghcr.io/x/kanibako-base:latest")
+            result = rt.get_local_digest("ghcr.io/x/kanibako-oci:latest")
         assert result == "sha256:abc123"
 
     def test_failure_returns_none(self):
