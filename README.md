@@ -351,7 +351,8 @@ Mount named volumes or host directories to preserve state across restarts:
 ### Building locally
 
 ```bash
-podman build -f src/kanibako/containers/Containerfile.oci \
+podman build -f src/kanibako/containers/Containerfile.kanibako \
+    --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:latest \
     -t kanibako-oci src/kanibako/containers/
 ```
 
@@ -431,6 +432,37 @@ ssh agent@<vm-ip>
 kanibako setup
 cd ~/my-project && kanibako
 ```
+
+## Smoke Tests
+
+A portable smoke test suite validates that a deployed kanibako host
+(container, LXC, or VM) is correctly configured.  The tests run on the
+host itself — no external dependencies required.
+
+```bash
+# Run all tests
+host-definitions/smoke-tests/smoke-test.sh
+
+# Run specific tests
+host-definitions/smoke-tests/smoke-test.sh 01 02
+
+# List available tests
+host-definitions/smoke-tests/smoke-test.sh --list
+```
+
+| Test | What it checks |
+|------|---------------|
+| `01-environment` | agent user, subuid/subgid, packages (rg, gh, tmux, git, curl, python3) |
+| `02-podman` | rootless podman, storage driver, pull/run |
+| `03-kanibako-cli` | kanibako installed, --version, --help, image list |
+| `04-container-launch` | init, start, shell exec, stop lifecycle |
+| `05-persistent-state` | files persist across stop/start cycles |
+| `06-credentials` | agent plugin detection, credential path |
+| `07-helpers` | helper system, comms directory |
+| `08-networking` | DNS resolution, internet access from container |
+
+Tests use TAP-style output with color (respects `NO_COLOR`).  Exit code
+is 0 if all tests pass, 1 if any fail.
 
 ## Container Layout
 
@@ -902,7 +934,7 @@ Host myproject
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1306)
+pytest tests/ -v                    # unit tests (1395)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
