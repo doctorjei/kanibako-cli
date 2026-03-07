@@ -18,10 +18,9 @@ from kanibako.paths import xdg, load_std_paths, resolve_project
 
 # Descriptions for known Containerfile variants.
 _VARIANT_DESCRIPTIONS = {
-    "min": "Minimal agent container (droste-seed)",
-    "oci": "Agent container + nested OCI host (droste-fiber)",
-    "lxc": "LXC system container host (droste-thread)",
-    "vm": "VM host (droste-hair)",
+    "kanibako": "Base agent container (droste tier selected at build time)",
+    "jvm": "JVM template (Java, Kotlin, Maven)",
+    "systems": "Systems template (C/C++, Rust, cross-compilation)",
 }
 
 

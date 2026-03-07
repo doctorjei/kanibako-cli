@@ -1,0 +1,15 @@
+# JVM development template: Java, Kotlin, Maven.
+# Built on top of any kanibako base image.
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jdk \
+    kotlin \
+    maven \
+    && rm -rf /var/lib/apt/lists/*
+
+USER agent
+WORKDIR /home/agent/workspace

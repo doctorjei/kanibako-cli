@@ -1,0 +1,33 @@
+# Systems development template: C/C++, Rust, cross-compilation tools.
+# Built on top of any kanibako base image.
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
+
+USER root
+
+# Additional archive tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    p7zip-full \
+    unrar-free \
+    && rm -rf /var/lib/apt/lists/*
+
+# C/C++ toolchain
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ clang llvm \
+    cmake make ninja-build meson \
+    gdb lldb \
+    nasm yasm \
+    && rm -rf /var/lib/apt/lists/*
+
+# QEMU user-mode emulation for cross-compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    qemu-user-static \
+    binfmt-support \
+    && rm -rf /var/lib/apt/lists/*
+
+# Rust (installed as agent so ~/.cargo has correct ownership)
+USER agent
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/home/agent/.cargo/bin:${PATH}"
+
+WORKDIR /home/agent/workspace
