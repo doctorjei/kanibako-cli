@@ -61,6 +61,10 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Open a bash shell in the container (no agent).",
     )
     _add_common_args(p)
+    p.add_argument(
+        "shell_args", nargs=argparse.REMAINDER,
+        help="Command to run (after --): kanibako shell -- echo hello",
+    )
     p.set_defaults(func=run_shell)
 
 
@@ -120,7 +124,16 @@ def run_start(args: argparse.Namespace) -> int:
 
 
 def run_shell(args: argparse.Namespace) -> int:
-    entrypoint = getattr(args, "entrypoint", None) or "/bin/bash"
+    shell_args = getattr(args, "shell_args", [])
+    # Strip leading '--' from REMAINDER
+    if shell_args and shell_args[0] == "--":
+        shell_args = shell_args[1:]
+    entrypoint = getattr(args, "entrypoint", None)
+    if not entrypoint:
+        entrypoint = "/bin/sh" if shell_args else "/bin/bash"
+    # Wrap shell_args as -c "cmd" so /bin/sh executes them as a command
+    if shell_args and not getattr(args, "entrypoint", None):
+        shell_args = ["-c", " ".join(shell_args)]
     return _run_container(
         project_dir=args.project,
         entrypoint=entrypoint,
@@ -128,7 +141,7 @@ def run_shell(args: argparse.Namespace) -> int:
         new_session=False,
         safe_mode=False,
         resume_mode=False,
-        extra_args=[],
+        extra_args=shell_args,
     )
 
 
