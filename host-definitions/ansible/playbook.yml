@@ -1,6 +1,6 @@
 ---
 # Ansible playbook that provisions an Ubuntu host (VM or bare metal) with
-# the same packages as the kanibako-base + kanibako-host container images,
+# the same packages as the kanibako container images (Containerfile.kanibako),
 # plus rootless Podman and kanibako itself.
 #
 # Usage:
