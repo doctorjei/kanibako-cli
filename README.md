@@ -169,8 +169,7 @@ system.
 | `kanibako image [list\|rebuild]` | Manage container images |
 | `kanibako box [list\|info\|orphan\|get\|set\|resource\|settings\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
 | `kanibako workset [create\|list\|delete\|add\|remove\|info\|auth]` | Working set management |
-| `kanibako init --local [-p DIR]` | Initialize decentralized project |
-| `kanibako new --local <path>` | Create new decentralized project |
+| `kanibako init [path] [--local] [-i IMAGE]` | Initialize a kanibako project |
 | `kanibako vault [snapshot\|list\|restore\|prune]` | Vault snapshot management |
 | `kanibako env [list\|set\|get\|unset]` | Environment variable management |
 | `kanibako shared [init\|list]` | Shared cache management |
@@ -230,8 +229,8 @@ kanibako
 All state lives inside the project directory itself.  Fully portable.
 
 ```bash
-kanibako init --local         # in an existing directory
-kanibako new --local ~/myproj # create a new one
+kanibako init --local              # in the current directory
+kanibako init --local ~/myproj     # create and initialize a new directory
 ```
 
 ```
@@ -596,8 +595,8 @@ kanibako vault prune --keep 5    # keep only 5 most recent
 ### Disabling vault
 
 ```bash
-kanibako init --local --no-vault   # decentralized project without vault
-kanibako new --local ~/p --no-vault
+kanibako init --local --no-vault         # decentralized project without vault
+kanibako init --local ~/p --no-vault     # new directory, no vault
 ```
 
 ## Target Plugin System
