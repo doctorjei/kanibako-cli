@@ -29,10 +29,12 @@
         name:
           - bash
           - ca-certificates
+          - cifs-utils
           - curl
           - git
           - jq
           - nano
+          - nfs-common
           - openssh-client
           - ripgrep
           - smbclient

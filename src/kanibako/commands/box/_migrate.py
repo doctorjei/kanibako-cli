@@ -56,13 +56,11 @@ def run_migrate(args: argparse.Namespace) -> int:
         print(f"Error: new path does not exist as a directory: {new_path}", file=sys.stderr)
         return 1
 
-    # Compute hashes.
-    old_hash = project_hash(str(old_path))
     new_hash = project_hash(str(new_path))
 
-    # Find old project directory (name-based or hash-based).
+    # Find old project directory.
     old_name, old_project_dir = _resolve_ac_dir(
-        std.data_path, str(old_path), old_hash,
+        std.data_path, str(old_path),
     )
 
     # Validate: old project data must exist.
@@ -76,7 +74,7 @@ def run_migrate(args: argparse.Namespace) -> int:
 
     # Find or assign new project directory.
     new_name, new_project_dir = _resolve_ac_dir(
-        std.data_path, str(new_path), new_hash,
+        std.data_path, str(new_path),
     )
 
     # Validate: new project data must NOT already exist.
@@ -155,7 +153,7 @@ def run_migrate(args: argparse.Namespace) -> int:
         _ensure_human_vault_symlink(human_vault_dir, new_path, vault_parent)
 
     print("Migrated project data:")
-    print(f"  from: {old_path} ({old_name or old_hash[:8]})")
+    print(f"  from: {old_path} ({old_name})")
     print(f"    to: {new_path} ({new_name})")
     return 0
 

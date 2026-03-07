@@ -167,7 +167,7 @@ system.
 | `kanibako status` | Show project status (mode, paths, lock, image) |
 | `kanibako config [key [value]]` | Get/set per-project configuration |
 | `kanibako image [list\|rebuild]` | Manage container images |
-| `kanibako box [list\|info\|orphan\|get\|set\|resource\|settings\|archive\|restore\|purge\|migrate\|duplicate]` | Project management |
+| `kanibako box [list\|info\|orphan\|get\|set\|resource\|settings\|archive\|restore\|purge\|migrate\|duplicate\|forget]` | Project management |
 | `kanibako workset [create\|list\|delete\|add\|remove\|info\|auth]` | Working set management |
 | `kanibako init [path] [--local] [-i IMAGE]` | Initialize a kanibako project |
 | `kanibako vault [snapshot\|list\|restore\|prune]` | Vault snapshot management |

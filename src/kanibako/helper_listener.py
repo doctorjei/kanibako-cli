@@ -375,7 +375,6 @@ class HelperHub:
 
         # Resolve source metadata dir via names.toml reverse lookup
         from kanibako.names import assign_name, read_names
-        from kanibako.utils import project_hash as _project_hash
 
         source_meta_dir: Path | None = None
         names = read_names(ctx.data_path)
@@ -386,16 +385,8 @@ class HelperHub:
                     source_meta_dir = candidate
                 break
 
-        # Fallback: hash-based dir
-        if source_meta_dir is None:
-            phash = _project_hash(str(ctx.project_path))
-            candidate = ctx.data_path / "boxes" / phash
-            if candidate.is_dir():
-                source_meta_dir = candidate
-
         # Fallback: derive from shell_path (shell_path is typically boxes/{name}/shell/)
-        if source_meta_dir is None and ctx.shell_path.parent.name != "boxes":
-            # shell_path = .../boxes/{name}/shell → parent.parent = boxes
+        if source_meta_dir is None:
             candidate = ctx.shell_path.parent
             if candidate.is_dir() and candidate.parent.name == "boxes":
                 source_meta_dir = candidate
@@ -427,8 +418,11 @@ class HelperHub:
         return {"status": "ok", "path": str(new_path), "name": new_name}
 
 
+_LOG_MAX_BYTES = 1_048_576  # 1 MiB
+
+
 class MessageLog:
-    """Append-only JSONL log for inter-agent communication."""
+    """Append-only JSONL log with size-based rotation."""
 
     def __init__(self, log_path: Path) -> None:
         self._path = log_path
@@ -461,6 +455,23 @@ class MessageLog:
         with self._lock:
             self._file.write(json.dumps(entry) + "\n")
             self._file.flush()
+            self._rotate_if_needed()
+
+    def _rotate_if_needed(self) -> None:
+        """Rotate log file when it exceeds the size threshold.
+
+        Caller must hold ``self._lock``.
+        """
+        try:
+            pos = self._file.tell()
+        except OSError:
+            return
+        if pos < _LOG_MAX_BYTES:
+            return
+        self._file.close()
+        backup = self._path.with_suffix(self._path.suffix + ".1")
+        self._path.rename(backup)
+        self._file = open(self._path, "a")
 
     def close(self) -> None:
         with self._lock:

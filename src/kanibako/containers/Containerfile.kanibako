@@ -18,6 +18,8 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1); \
     && chmod 0440 /etc/sudoers.d/$AGENT_USER
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    cifs-utils \
+    nfs-common \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
 

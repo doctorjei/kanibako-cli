@@ -20,7 +20,7 @@ from kanibako.paths import (
     resolve_project,
     resolve_workset_project,
 )
-from kanibako.utils import confirm_prompt, project_hash
+from kanibako.utils import confirm_prompt
 
 
 # -- Cross-mode duplicate helpers --
@@ -329,9 +329,8 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
 
     # 3. Source must have kanibako metadata.
-    source_hash = project_hash(str(source_path))
     source_name, source_project_dir = _resolve_ac_dir(
-        std.data_path, str(source_path), source_hash,
+        std.data_path, str(source_path),
     )
 
     if not source_project_dir.is_dir():
@@ -351,9 +350,8 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
 
     # 5. Destination metadata must not already exist (unless --force).
-    new_hash = project_hash(str(new_path))
     new_name, new_project_dir = _resolve_ac_dir(
-        std.data_path, str(new_path), new_hash,
+        std.data_path, str(new_path),
     )
 
     if new_project_dir.is_dir() and not args.force:
@@ -405,6 +403,6 @@ def run_duplicate(args: argparse.Namespace) -> int:
     )
 
     print("Duplicated project:")
-    print(f"  from: {source_path} ({source_name or source_hash[:8]})")
+    print(f"  from: {source_path} ({source_name})")
     print(f"    to: {new_path} ({dup_name})")
     return 0

@@ -102,3 +102,70 @@ class TestCommsOnStart:
             broadcast.touch()
 
         assert broadcast.read_text() == "existing message\n"
+
+
+class TestLogRotation:
+    """Tests for size-based log rotation."""
+
+    def test_broadcast_rotation(self, tmp_path):
+        """broadcast.log is rotated when it exceeds 1 MiB."""
+        from kanibako.commands.start import _rotate_file
+
+        log = tmp_path / "broadcast.log"
+        log.write_text("x" * (1_048_576 + 1))
+
+        _rotate_file(log)
+
+        assert log.exists()
+        assert log.stat().st_size == 0
+        backup = tmp_path / "broadcast.log.1"
+        assert backup.exists()
+        assert backup.stat().st_size > 1_048_576
+
+    def test_no_rotation_under_threshold(self, tmp_path):
+        """Files under 1 MiB are not rotated."""
+        from kanibako.commands.start import _rotate_file
+
+        log = tmp_path / "broadcast.log"
+        log.write_text("small content")
+
+        _rotate_file(log)
+
+        assert log.read_text() == "small content"
+        assert not (tmp_path / "broadcast.log.1").exists()
+
+    def test_rotation_missing_file(self, tmp_path):
+        """Rotation handles missing files gracefully."""
+        from kanibako.commands.start import _rotate_file
+
+        _rotate_file(tmp_path / "nonexistent.log")  # should not raise
+
+    def test_message_log_rotation(self, tmp_path):
+        """MessageLog rotates when file exceeds threshold."""
+        from kanibako.helper_listener import MessageLog, _LOG_MAX_BYTES
+
+        log_path = tmp_path / "messages.jsonl"
+        # Pre-fill with data just under the threshold.
+        log_path.write_text("x" * (_LOG_MAX_BYTES - 10))
+
+        log = MessageLog(log_path)
+        # Write enough to push over the threshold.
+        log.log_control("test-event")
+        log.close()
+
+        backup = tmp_path / "messages.jsonl.1"
+        assert backup.exists()
+        # New file should be small (just the last entry).
+        assert log_path.stat().st_size < 1000
+
+    def test_message_log_no_rotation_under_threshold(self, tmp_path):
+        """MessageLog does not rotate small files."""
+        from kanibako.helper_listener import MessageLog
+
+        log_path = tmp_path / "messages.jsonl"
+        log = MessageLog(log_path)
+        log.log_control("test-event")
+        log.close()
+
+        assert not (tmp_path / "messages.jsonl.1").exists()
+        assert log_path.stat().st_size > 0

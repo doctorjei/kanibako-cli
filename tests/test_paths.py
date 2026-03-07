@@ -600,25 +600,6 @@ class TestFindAcAncestor:
         assert result == project.resolve()
 
 
-class TestDetectProjectModeHashFallback:
-    """Hash-based fallback still works in the walk loop."""
-
-    def test_hash_fallback_still_works_in_walk(
-        self, config_file, tmp_home,
-    ):
-        """Hash-based dir with no name entry → detection finds it via walk."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        project = tmp_home / "legacy-project"
-        project.mkdir()
-        phash = project_hash(str(project.resolve()))
-        (std.data_path / "boxes" / phash).mkdir(parents=True)
-
-        result = detect_project_mode(project.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
-        assert result.project_root == project.resolve()
-
 
 class TestResolveProjectHomeGuard:
     """$HOME guard in resolve_project() blocks implicit creation."""

@@ -410,6 +410,7 @@ def _run_container(
         broadcast = comms_path / "broadcast.log"
         if not broadcast.exists():
             broadcast.touch()
+        _rotate_file(broadcast)
         extra_mounts.append(
             _CMount(comms_path, "/home/agent/comms", "Z,U"),
         )
@@ -695,6 +696,22 @@ def _validate_mounts(mounts: list, logger) -> None:
                 f"Warning: mount source does not exist: {src}",
                 file=sys.stderr,
             )
+
+
+_ROTATE_MAX_BYTES = 1_048_576  # 1 MiB
+
+
+def _rotate_file(path: Path) -> None:
+    """Rotate *path* if it exceeds the size threshold."""
+    try:
+        size = path.stat().st_size
+        if not isinstance(size, int) or size < _ROTATE_MAX_BYTES:
+            return
+    except (OSError, TypeError):
+        return
+    backup = path.with_suffix(path.suffix + ".1")
+    path.rename(backup)
+    path.touch()
 
 
 def validate_socket_path(socket_path: Path) -> None:
