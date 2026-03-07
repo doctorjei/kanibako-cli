@@ -25,12 +25,21 @@ else
     skip "subgid mapping exists for agent" "no agent user"
 fi
 
-# Required packages
-for cmd in rg gh tmux git curl python3; do
+# Required packages (hard requirements)
+for cmd in tmux git curl python3; do
     if command -v "$cmd" &>/dev/null; then
         ok "$cmd is installed"
     else
         fail "$cmd is installed"
+    fi
+done
+
+# Optional packages (provided by Ansible playbook / Containerfile)
+for cmd in rg gh; do
+    if command -v "$cmd" &>/dev/null; then
+        ok "$cmd is installed"
+    else
+        skip "$cmd is installed" "not provisioned (install via Ansible playbook)"
     fi
 done
 

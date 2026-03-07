@@ -12,4 +12,9 @@ fi
 ok "kanibako is installed"
 check_output "kanibako --version outputs version" "kanibako" kanibako --version
 check "kanibako --help exits 0" kanibako --help
-check "kanibako image list exits 0" kanibako image list
+# image list requires setup; skip if not configured
+if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/kanibako.toml" ]]; then
+    check "kanibako image list exits 0" kanibako image list
+else
+    skip "kanibako image list exits 0" "kanibako not set up (run kanibako setup)"
+fi
