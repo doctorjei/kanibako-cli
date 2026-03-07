@@ -86,6 +86,9 @@ kanibako -i kanibako-min:latest
 # Open a plain bash shell (no agent)
 kanibako shell
 
+# Run a one-shot command in the container
+kanibako shell -- echo hello
+
 # Resume a previous conversation
 kanibako resume
 ```
@@ -160,7 +163,7 @@ system.
 | Command | Description |
 |---------|-------------|
 | `kanibako [start]` | Launch an agent session in a container |
-| `kanibako shell` | Open a bash shell in the container |
+| `kanibako shell [-- cmd ...]` | Open a bash shell, or run a one-shot command |
 | `kanibako resume` | Resume with the agent's conversation picker |
 | `kanibako connect <project> [-N\|-S\|-i]` | Connect to a persistent session (remote access) |
 | `kanibako stop [path\|--all]` | Stop running container(s) |
@@ -452,13 +455,13 @@ host-definitions/smoke-tests/smoke-test.sh --list
 
 | Test | What it checks |
 |------|---------------|
-| `01-environment` | agent user, subuid/subgid, packages (rg, gh, tmux, git, curl, python3) |
+| `01-environment` | agent user, subuid/subgid, required packages (tmux, git, curl, python3), optional packages (rg, gh) |
 | `02-podman` | rootless podman, storage driver, pull/run |
 | `03-kanibako-cli` | kanibako installed, --version, --help, image list |
-| `04-container-launch` | init, start, shell exec, stop lifecycle |
-| `05-persistent-state` | files persist across stop/start cycles |
+| `04-container-launch` | init, one-shot shell exec, stop/cleanup |
+| `05-persistent-state` | files persist across container runs |
 | `06-credentials` | agent plugin detection, credential path |
-| `07-helpers` | helper system, comms directory |
+| `07-helpers` | comms directory mounted inside container |
 | `08-networking` | DNS resolution, internet access from container |
 
 Tests use TAP-style output with color (respects `NO_COLOR`).  Exit code
