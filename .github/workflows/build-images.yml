@@ -47,7 +47,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: src/kanibako/containers/
-          file: src/kanibako/containers/Containerfile.${{ matrix.variant }}
+          file: src/kanibako/containers/Containerfile.kanibako
           push: true
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
           build-args: |

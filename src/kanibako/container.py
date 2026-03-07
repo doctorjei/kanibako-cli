@@ -17,10 +17,18 @@ logger = get_logger("container")
 
 # Map image name patterns to Containerfile suffixes.
 _IMAGE_CONTAINERFILE_MAP = {
-    "kanibako-min": "min",
-    "kanibako-oci": "oci",
-    "kanibako-lxc": "lxc",
-    "kanibako-vm": "vm",
+    "kanibako-min": "kanibako",
+    "kanibako-oci": "kanibako",
+    "kanibako-lxc": "kanibako",
+    "kanibako-vm": "kanibako",
+}
+
+# Map image variants to their droste base image for local builds.
+_IMAGE_BASE_MAP = {
+    "kanibako-min": "ghcr.io/doctorjei/droste-seed:latest",
+    "kanibako-oci": "ghcr.io/doctorjei/droste-fiber:latest",
+    "kanibako-lxc": "ghcr.io/doctorjei/droste-thread:latest",
+    "kanibako-vm": "ghcr.io/doctorjei/droste-hair:latest",
 }
 
 
@@ -87,15 +95,29 @@ class ContainerRuntime:
                 f"Failed to build image {image}:\n{result.stderr}"
             )
 
-    def rebuild(self, image: str, containerfile: Path, context: Path) -> int:
+    def rebuild(
+        self,
+        image: str,
+        containerfile: Path,
+        context: Path,
+        build_args: dict[str, str] | None = None,
+    ) -> int:
         """Rebuild *image* with --no-cache, streaming output. Returns exit code."""
-        result = subprocess.run(
-            [
-                self.cmd, "build", "--no-cache",
-                "-t", image, "-f", str(containerfile), str(context),
-            ],
-        )
+        cmd = [self.cmd, "build", "--no-cache", "-t", image, "-f", str(containerfile)]
+        if build_args:
+            for key, val in build_args.items():
+                cmd.extend(["--build-arg", f"{key}={val}"])
+        cmd.append(str(context))
+        result = subprocess.run(cmd)
         return result.returncode
+
+    @staticmethod
+    def get_base_image(image: str) -> str | None:
+        """Return the droste base image for a kanibako variant, or None."""
+        for pattern, base in _IMAGE_BASE_MAP.items():
+            if pattern in image:
+                return base
+        return None
 
     def run_interactive(self, image: str, *, container_name: str | None = None) -> int:
         """Run an interactive container. Returns exit code."""

@@ -265,9 +265,14 @@ def _build_one(runtime: ContainerRuntime, image: str, containers_dir: Path) -> i
         print(f"Error: Containerfile not found for variant: {suffix}", file=sys.stderr)
         return 1
 
+    build_args: dict[str, str] = {}
+    base = runtime.get_base_image(image)
+    if base:
+        build_args["BASE_IMAGE"] = base
+
     print(f"Building {image} from Containerfile.{suffix}...")
     print()
-    rc = runtime.rebuild(image, containerfile, containerfile.parent)
+    rc = runtime.rebuild(image, containerfile, containerfile.parent, build_args=build_args)
     if rc == 0:
         print()
         print(f"Successfully built {image}")

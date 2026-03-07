@@ -1,4 +1,7 @@
-ARG BASE_IMAGE=ghcr.io/doctorjei/droste-seed:latest
+# Shared Containerfile for all kanibako image variants.
+# The droste base tier is selected via --build-arg BASE_IMAGE=...
+# (seed → min, fiber → oci, thread → lxc, hair → vm).
+ARG BASE_IMAGE
 FROM $BASE_IMAGE
 
 ARG AGENT_USER=agent
@@ -14,7 +17,6 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1); \
     && echo "$AGENT_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$AGENT_USER \
     && chmod 0440 /etc/sudoers.d/$AGENT_USER
 
-# Packages not in droste seed
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
@@ -36,4 +38,5 @@ RUN mkdir -p workspace .kanibako .local/bin share-ro share-rw
 
 WORKDIR /home/$AGENT_USER/workspace
 
+# Override any base image CMD (e.g. /sbin/init in droste-thread/hair)
 ENTRYPOINT ["/bin/bash"]

@@ -61,11 +61,12 @@ class TestImageRebuild:
         std = load_std_paths(config)
         containers_dir = std.data_path / "containers"
         containers_dir.mkdir(parents=True, exist_ok=True)
-        (containers_dir / "Containerfile.oci").write_text("FROM ubuntu\n")
+        (containers_dir / "Containerfile.kanibako").write_text("FROM ubuntu\n")
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
-            runtime.guess_containerfile.return_value = "oci"
+            runtime.guess_containerfile.return_value = "kanibako"
+            runtime.get_base_image.return_value = "ghcr.io/doctorjei/droste-fiber:latest"
             runtime.rebuild.return_value = 0
             MockRT.return_value = runtime
 
@@ -76,6 +77,9 @@ class TestImageRebuild:
             rc = run_rebuild(args)
             assert rc == 0
             runtime.rebuild.assert_called_once()
+            # Verify build_args passed
+            call_kwargs = runtime.rebuild.call_args
+            assert call_kwargs[1]["build_args"] == {"BASE_IMAGE": "ghcr.io/doctorjei/droste-fiber:latest"}
 
     def test_local_build_unknown_image(self, tmp_home, config_file, credentials_dir, capsys):
         """--local with unknown image pattern errors."""

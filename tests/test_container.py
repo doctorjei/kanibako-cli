@@ -28,9 +28,9 @@ class TestContainerRuntime:
         assert rt.cmd == "/usr/bin/podman"
 
     def test_guess_containerfile(self):
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-oci:latest") == "oci"
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-min:v1") == "min"
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-lxc:latest") == "lxc"
+        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-oci:latest") == "kanibako"
+        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-min:v1") == "kanibako"
+        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-lxc:latest") == "kanibako"
         assert ContainerRuntime._guess_containerfile("totally-unrelated:latest") is None
 
 
@@ -274,3 +274,106 @@ class TestContainerExists:
         with patch("kanibako.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.container_exists("nonexistent") is False
+
+
+class TestRunInteractive:
+    """Test run_interactive() command construction."""
+
+    def test_basic_command(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rc = rt.run_interactive("img:latest")
+            assert rc == 0
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "run", "-it", "img:latest"]
+
+    def test_with_container_name(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.run_interactive("img:latest", container_name="test-build")
+            cmd = m.call_args[0][0]
+            assert cmd == [
+                "/usr/bin/podman", "run", "-it",
+                "--name", "test-build", "img:latest",
+            ]
+
+    def test_returns_exit_code(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=42)
+            assert rt.run_interactive("img:latest") == 42
+
+
+class TestCommit:
+    """Test commit() command construction."""
+
+    def test_success(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stderr="")
+            rt.commit("mycontainer", "myimage:latest")
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "commit", "mycontainer", "myimage:latest"]
+
+    def test_failure_raises(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stderr="no such container")
+            with pytest.raises(ContainerError, match="Failed to commit"):
+                rt.commit("bad", "img")
+
+
+class TestGetBaseImage:
+    """Test get_base_image() variant-to-droste mapping."""
+
+    def test_known_variants(self):
+        assert ContainerRuntime.get_base_image("kanibako-min") == "ghcr.io/doctorjei/droste-seed:latest"
+        assert ContainerRuntime.get_base_image("kanibako-oci") == "ghcr.io/doctorjei/droste-fiber:latest"
+        assert ContainerRuntime.get_base_image("kanibako-lxc") == "ghcr.io/doctorjei/droste-thread:latest"
+        assert ContainerRuntime.get_base_image("kanibako-vm") == "ghcr.io/doctorjei/droste-hair:latest"
+
+    def test_qualified_image_name(self):
+        assert ContainerRuntime.get_base_image("ghcr.io/x/kanibako-oci:latest") == "ghcr.io/doctorjei/droste-fiber:latest"
+
+    def test_unknown_returns_none(self):
+        assert ContainerRuntime.get_base_image("totally-unrelated:latest") is None
+
+
+class TestRebuildBuildArgs:
+    """Test rebuild() passes --build-arg flags."""
+
+    def test_with_build_args(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.rebuild(
+                "kanibako-oci:latest",
+                Path("/tmp/Containerfile"),
+                Path("/tmp/context"),
+                build_args={"BASE_IMAGE": "droste-fiber:latest"},
+            )
+            cmd = m.call_args[0][0]
+            assert "--build-arg" in cmd
+            idx = cmd.index("--build-arg")
+            assert cmd[idx + 1] == "BASE_IMAGE=droste-fiber:latest"
+
+    def test_without_build_args(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.rebuild(
+                "custom:latest",
+                Path("/tmp/Containerfile"),
+                Path("/tmp/context"),
+            )
+            cmd = m.call_args[0][0]
+            assert "--build-arg" not in cmd

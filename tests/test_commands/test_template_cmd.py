@@ -28,6 +28,12 @@ class TestTemplateRegistration:
         assert args.command == "template"
         assert args.name == "jvm"
 
+    def test_create_flags_are_mutually_exclusive(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["template", "create", "jvm", "--always-commit", "--no-commit-on-error"])
+
 
 class TestTemplateList:
     def test_list_empty(self, capsys):
@@ -66,18 +72,49 @@ class TestTemplateList:
 
 
 class TestTemplateDelete:
-    def test_delete_success(self, capsys):
+    def test_delete_with_force(self, capsys):
         from kanibako.commands.template_cmd import run_delete
 
         with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
             runtime = MagicMock()
             MockRT.return_value = runtime
 
-            args = argparse.Namespace(name="jvm")
+            args = argparse.Namespace(name="jvm", force=True)
             rc = run_delete(args)
             assert rc == 0
 
             runtime.remove_image.assert_called_once_with("kanibako-template-jvm")
+
+    def test_delete_confirmed(self, capsys, monkeypatch):
+        from kanibako.commands.template_cmd import run_delete
+
+        monkeypatch.setattr("builtins.input", lambda _: "y")
+
+        with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(name="jvm", force=False)
+            rc = run_delete(args)
+            assert rc == 0
+            runtime.remove_image.assert_called_once()
+
+    def test_delete_cancelled(self, capsys, monkeypatch):
+        from kanibako.commands.template_cmd import run_delete
+
+        monkeypatch.setattr("builtins.input", lambda _: "n")
+
+        with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(name="jvm", force=False)
+            rc = run_delete(args)
+            assert rc == 0
+            runtime.remove_image.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "Cancelled" in captured.out
 
     def test_delete_failure(self, capsys):
         from kanibako.commands.template_cmd import run_delete
@@ -88,12 +125,19 @@ class TestTemplateDelete:
             runtime.remove_image.side_effect = ContainerError("no such image")
             MockRT.return_value = runtime
 
-            args = argparse.Namespace(name="nonexistent")
+            args = argparse.Namespace(name="nonexistent", force=True)
             rc = run_delete(args)
             assert rc == 1
 
 
 class TestTemplateCreate:
+    def _make_args(self, name="jvm", base="kanibako-oci",
+                   always_commit=False, no_commit_on_error=False):
+        return argparse.Namespace(
+            name=name, base=base,
+            always_commit=always_commit, no_commit_on_error=no_commit_on_error,
+        )
+
     def test_create_runs_container_and_commits(self, capsys):
         from kanibako.commands.template_cmd import run_create
 
@@ -102,8 +146,7 @@ class TestTemplateCreate:
             runtime.run_interactive.return_value = 0
             MockRT.return_value = runtime
 
-            args = argparse.Namespace(name="jvm", base="kanibako-oci")
-            rc = run_create(args)
+            rc = run_create(self._make_args())
             assert rc == 0
 
             runtime.run_interactive.assert_called_once_with(
@@ -117,18 +160,78 @@ class TestTemplateCreate:
             # Build container should be cleaned up
             runtime.rm.assert_called_once_with("kanibako-template-build-jvm")
 
-    def test_create_commits_even_on_nonzero_exit(self, capsys):
+    def test_create_always_commit_on_nonzero_exit(self, capsys):
         from kanibako.commands.template_cmd import run_create
 
         with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
             runtime = MagicMock()
-            runtime.run_interactive.return_value = 1  # nonzero exit
+            runtime.run_interactive.return_value = 1
             MockRT.return_value = runtime
 
-            args = argparse.Namespace(name="tools", base="kanibako-min")
-            rc = run_create(args)
-            assert rc == 0  # still succeeds
+            rc = run_create(self._make_args(name="tools", base="kanibako-min",
+                                            always_commit=True))
+            assert rc == 0
+            runtime.commit.assert_called_once()
 
+    def test_create_no_commit_on_error(self, capsys):
+        from kanibako.commands.template_cmd import run_create
+
+        with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.run_interactive.return_value = 1
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args(no_commit_on_error=True))
+            assert rc == 1
+            runtime.commit.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "Skipping commit" in captured.err
+
+    def test_create_prompt_confirm_yes(self, capsys, monkeypatch):
+        """Default behavior: prompt on error, user says yes."""
+        from kanibako.commands.template_cmd import run_create
+
+        monkeypatch.setattr("builtins.input", lambda _: "y")
+
+        with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.run_interactive.return_value = 1
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args())
+            assert rc == 0
+            runtime.commit.assert_called_once()
+
+    def test_create_prompt_confirm_no(self, capsys, monkeypatch):
+        """Default behavior: prompt on error, user says no."""
+        from kanibako.commands.template_cmd import run_create
+
+        monkeypatch.setattr("builtins.input", lambda _: "n")
+
+        with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.run_interactive.return_value = 1
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args())
+            assert rc == 1
+            runtime.commit.assert_not_called()
+
+    def test_create_no_prompt_on_zero_exit(self, capsys, monkeypatch):
+        """No prompt when container exits cleanly."""
+        from kanibako.commands.template_cmd import run_create
+
+        # input() should never be called
+        monkeypatch.setattr("builtins.input", lambda _: (_ for _ in ()).throw(AssertionError("should not prompt")))
+
+        with patch("kanibako.commands.template_cmd.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.run_interactive.return_value = 0
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args())
+            assert rc == 0
             runtime.commit.assert_called_once()
 
     def test_create_rejects_invalid_name(self, capsys):
@@ -138,8 +241,7 @@ class TestTemplateCreate:
             runtime = MagicMock()
             MockRT.return_value = runtime
 
-            args = argparse.Namespace(name="../evil", base="kanibako-oci")
-            rc = run_create(args)
+            rc = run_create(self._make_args(name="../evil"))
             assert rc == 1
             runtime.run_interactive.assert_not_called()
 
@@ -156,6 +258,5 @@ class TestTemplateCreate:
             runtime.commit.side_effect = ContainerError("commit failed")
             MockRT.return_value = runtime
 
-            args = argparse.Namespace(name="bad", base="kanibako-oci")
-            rc = run_create(args)
+            rc = run_create(self._make_args(name="bad"))
             assert rc == 1
