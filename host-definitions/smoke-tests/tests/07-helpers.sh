@@ -15,7 +15,7 @@ _HELPER_DIR=$(mktemp -d /tmp/kanibako-helper-XXXXXX)
 
 _cleanup_helper() {
     rm -rf "$_HELPER_DIR"
-    kanibako box forget "$_HELPER_DIR" --force 2>/dev/null || true
+    kanibako box forget "$_HELPER_DIR" --force >/dev/null 2>&1 || true
 }
 trap '_cleanup_helper' EXIT
 

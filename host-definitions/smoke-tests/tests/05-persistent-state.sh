@@ -17,7 +17,7 @@ _PERSIST_DIR=$(mktemp -d /tmp/kanibako-persist-XXXXXX)
 
 _cleanup_persist() {
     rm -rf "$_PERSIST_DIR"
-    kanibako box forget "$_PERSIST_DIR" --force 2>/dev/null || true
+    kanibako box forget "$_PERSIST_DIR" --force >/dev/null 2>&1 || true
 }
 trap '_cleanup_persist' EXIT
 

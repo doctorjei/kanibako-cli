@@ -17,7 +17,7 @@ _NET_DIR=$(mktemp -d /tmp/kanibako-net-XXXXXX)
 
 _cleanup_net() {
     rm -rf "$_NET_DIR"
-    kanibako box forget "$_NET_DIR" --force 2>/dev/null || true
+    kanibako box forget "$_NET_DIR" --force >/dev/null 2>&1 || true
 }
 trap '_cleanup_net' EXIT
 

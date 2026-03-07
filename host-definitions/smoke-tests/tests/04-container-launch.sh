@@ -18,9 +18,9 @@ fi
 _SMOKE_DIR=$(mktemp -d /tmp/kanibako-smoke-XXXXXX)
 
 _cleanup_launch() {
-    kanibako stop "$_SMOKE_DIR" 2>/dev/null || true
+    kanibako stop "$_SMOKE_DIR" >/dev/null 2>&1 || true
     rm -rf "$_SMOKE_DIR"
-    kanibako box forget "$_SMOKE_DIR" --force 2>/dev/null || true
+    kanibako box forget "$_SMOKE_DIR" --force >/dev/null 2>&1 || true
 }
 trap '_cleanup_launch' EXIT
 
@@ -42,7 +42,7 @@ else
 fi
 
 # Stop (container already exited, but stop should not error)
-if kanibako stop "$_SMOKE_DIR" 2>/dev/null; then
+if kanibako stop "$_SMOKE_DIR" >/dev/null 2>&1; then
     ok "kanibako stop"
 else
     # Container may already be gone after one-shot; that's fine
