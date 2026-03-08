@@ -105,10 +105,10 @@ class TestKanibakoImageOps:
 
     @requires_runtime
     def test_image_build_base(self, cli_env):
-        """kanibako image rebuild base --local builds from bundled Containerfile."""
+        """kanibako image rebuild oci builds from bundled Containerfile."""
         _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
         result = _run_kanibako(
-            "image", "rebuild", "base", "--local",
+            "image", "rebuild", "oci",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
             timeout=600,
@@ -233,7 +233,16 @@ class TestKanibakoLifecycle:
                 if any("kanibako" in name for name in ps.stdout.splitlines()):
                     container_up = True
                     break
-            assert container_up, "Container did not start within 30 s"
+            if not container_up:
+                # Capture subprocess output for debugging CI failures.
+                stdout = proc.stdout.read() if proc.poll() is not None else b""
+                stderr = proc.stderr.read() if proc.poll() is not None else b""
+                assert False, (
+                    f"Container did not start within 30 s.\n"
+                    f"Process exited: {proc.poll()}\n"
+                    f"stdout: {stdout.decode(errors='replace')}\n"
+                    f"stderr: {stderr.decode(errors='replace')}"
+                )
 
             # Stop via kanibako CLI.
             stop_result = _run_kanibako(

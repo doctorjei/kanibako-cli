@@ -225,8 +225,9 @@ class TestRestoreGitIntegration:
         std = load_std_paths(config)
         proj = resolve_project(std, config, project_dir=str(real_git_repo), initialize=True)
 
-        # Write session data
+        # Write session data (create .claude dir; init_home() isn't called here)
         session_file = proj.shell_path / ".claude" / "session.json"
+        session_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.write_text('{"test": "data"}')
 
         args = argparse.Namespace(
@@ -379,9 +380,10 @@ class TestArchiveRestoreRoundTrip:
         std = load_std_paths(config)
         proj = resolve_project(std, config, project_dir=str(real_git_repo), initialize=True)
 
-        # Write session data
+        # Write session data (create .claude dir; init_home() isn't called here)
         session_data = '{"conversations": [{"id": "abc123"}], "count": 42}'
         session_file = proj.shell_path / ".claude" / "session-data.json"
+        session_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.write_text(session_data)
 
         args = argparse.Namespace(
@@ -428,6 +430,7 @@ class TestArchiveRestoreRoundTrip:
 
         binary_data = bytes(range(256))
         binary_file = proj.shell_path / ".claude" / "binary_blob.bin"
+        binary_file.parent.mkdir(parents=True, exist_ok=True)
         binary_file.write_bytes(binary_data)
 
         args = argparse.Namespace(
@@ -468,9 +471,10 @@ class TestArchiveRestoreRoundTrip:
         std = load_std_paths(config)
         proj_a = resolve_project(std, config, project_dir=str(real_git_repo), initialize=True)
 
-        # Write data in project A
+        # Write data in project A (create .claude dir; init_home() isn't called here)
         session_data = "project A session data"
         session_file_a = proj_a.shell_path / ".claude" / "session.txt"
+        session_file_a.parent.mkdir(parents=True, exist_ok=True)
         session_file_a.write_text(session_data)
 
         args = argparse.Namespace(
