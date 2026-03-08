@@ -89,7 +89,7 @@ old tests for that command are updated in the same commit.
 
 ## Phase 2: Config Interface Engine
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Build a reusable config interface module that all management commands
 (box/workset/agent/system) will share. This is the foundation for unified
