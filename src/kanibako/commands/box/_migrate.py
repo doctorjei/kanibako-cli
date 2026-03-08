@@ -240,7 +240,7 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
 
 def _convert_local_to_standalone(project_path, std, config, proj):
     """Convert a local project to standalone layout."""
-    from kanibako.commands.init import _write_project_gitignore
+    from kanibako.utils import write_project_gitignore
 
     dst_metadata = project_path / ".kanibako"
     dst_shell = dst_metadata / "shell"
@@ -256,7 +256,7 @@ def _convert_local_to_standalone(project_path, std, config, proj):
         shutil.copytree(proj.shell_path, dst_shell)
 
     # Write .gitignore entries for .kanibako/.
-    _write_project_gitignore(project_path)
+    write_project_gitignore(project_path)
 
     # Write vault .gitignore if vault exists but gitignore doesn't.
     vault_dir = project_path / "vault"
@@ -525,7 +525,7 @@ def _convert_ws_to_local(src_proj, dest_path, std, config):
 
 def _convert_ws_to_standalone(src_proj, dest_path):
     """Copy workset project metadata into standalone layout."""
-    from kanibako.commands.init import _write_project_gitignore
+    from kanibako.utils import write_project_gitignore
 
     dest_path.mkdir(parents=True, exist_ok=True)
     dst_metadata = dest_path / ".kanibako"
@@ -541,7 +541,7 @@ def _convert_ws_to_standalone(src_proj, dest_path):
     if src_proj.shell_path.is_dir():
         shutil.copytree(src_proj.shell_path, dst_shell)
 
-    _write_project_gitignore(dest_path)
+    write_project_gitignore(dest_path)
 
     # Write vault .gitignore if vault exists.
     vault_dir = dest_path / "vault"

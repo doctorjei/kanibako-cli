@@ -103,7 +103,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
 def _duplicate_to_standalone(src_proj, new_path, force):
     """Copy metadata into standalone layout at new_path."""
-    from kanibako.commands.init import _write_project_gitignore
+    from kanibako.utils import write_project_gitignore
 
     dst_metadata = new_path / ".kanibako"
     dst_shell = dst_metadata / "shell"
@@ -123,7 +123,7 @@ def _duplicate_to_standalone(src_proj, new_path, force):
             shutil.rmtree(dst_shell)
         shutil.copytree(src_proj.shell_path, dst_shell)
 
-    _write_project_gitignore(new_path)
+    write_project_gitignore(new_path)
 
     # Write vault .gitignore if vault exists.
     vault_dir = new_path / "vault"

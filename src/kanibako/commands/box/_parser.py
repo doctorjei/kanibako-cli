@@ -14,6 +14,7 @@ from kanibako.config import (
     read_target_settings,
     remove_resource_override,
     remove_target_setting,
+    write_project_config,
     write_project_meta,
     write_resource_override,
     write_target_setting,
@@ -27,8 +28,10 @@ from kanibako.paths import (
     iter_workset_projects,
     load_std_paths,
     resolve_any_project,
+    resolve_project,
+    resolve_standalone_project,
 )
-from kanibako.utils import short_hash
+from kanibako.utils import short_hash, write_project_gitignore
 
 _MODE_CHOICES = ["local", "standalone", "workset"]
 
@@ -49,10 +52,43 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     p = subparsers.add_parser(
         "box",
-        help="Project lifecycle commands (list, migrate, duplicate, archive, purge, restore)",
-        description="Manage per-project session data: list, migrate, duplicate, archive, purge, restore.",
+        help="Project lifecycle commands (create, list, migrate, duplicate, archive, purge, restore)",
+        description="Manage per-project session data: create, list, migrate, duplicate, archive, purge, restore.",
     )
     box_sub = p.add_subparsers(dest="box_command", metavar="COMMAND")
+
+    # kanibako box create [path] [--name NAME] [--standalone] [--image IMAGE]
+    #                     [--no-vault] [--distinct-auth]
+    create_p = box_sub.add_parser(
+        "create",
+        help="Create a new kanibako project",
+        description="Create a new kanibako project in the current or given directory.",
+    )
+    create_p.add_argument(
+        "path", nargs="?", default=None,
+        help="Project directory (default: cwd). Created if it doesn't exist.",
+    )
+    create_p.add_argument(
+        "--name", default=None,
+        help="Project name override (default: auto-assigned from directory name)",
+    )
+    create_p.add_argument(
+        "--standalone", action="store_true",
+        help="Use standalone mode (all state inside the project directory)",
+    )
+    create_p.add_argument(
+        "-i", "--image", default=None,
+        help="Container image to use for this project",
+    )
+    create_p.add_argument(
+        "--no-vault", action="store_true",
+        help="Disable vault directories (shared read-only and read-write mounts)",
+    )
+    create_p.add_argument(
+        "--distinct-auth", action="store_true",
+        help="Use distinct credentials (no sync from host)",
+    )
+    create_p.set_defaults(func=run_create)
 
     # kanibako box list (default behavior)
     list_p = box_sub.add_parser(
@@ -276,6 +312,54 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # Default to list if no subcommand given.
     p.set_defaults(func=run_list)
+
+
+def run_create(args: argparse.Namespace) -> int:
+    """Create a new kanibako project (replaces ``kanibako init``)."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    vault_enabled = not getattr(args, "no_vault", False)
+    auth = "distinct" if getattr(args, "distinct_auth", False) else None
+    project_dir = args.path
+
+    # Create directory if it doesn't exist.
+    if project_dir is not None:
+        target = Path(project_dir)
+        if not target.exists():
+            target.mkdir(parents=True)
+
+    if args.standalone:
+        proj = resolve_standalone_project(
+            std, config, project_dir, initialize=True,
+            vault_enabled=vault_enabled, auth=auth,
+        )
+    else:
+        proj = resolve_project(
+            std, config, project_dir=project_dir, initialize=True,
+            vault_enabled=vault_enabled if not vault_enabled else None,
+        )
+
+    if not proj.is_new:
+        print(
+            f"Error: project already initialized in {proj.project_path}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Persist image setting.
+    image = args.image or config.container_image
+    project_toml = proj.metadata_path / "project.toml"
+    write_project_config(project_toml, image)
+
+    # Write .gitignore for standalone projects only.
+    if args.standalone:
+        write_project_gitignore(proj.project_path)
+
+    mode = "standalone" if args.standalone else "local"
+    print(f"Created {mode} project in {proj.project_path}")
+    return 0
 
 
 def run_list(args: argparse.Namespace) -> int:

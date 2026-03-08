@@ -145,7 +145,7 @@ existing tests still pass.
 
 ## Phase 3: `box create` (Replaces `init`)
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Add `box create` subcommand, remove top-level `init` command.
 

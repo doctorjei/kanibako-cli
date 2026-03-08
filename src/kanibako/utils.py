@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.errors import UserCancelled
@@ -104,3 +105,32 @@ def unescape_path(encoded: str) -> str:
     result = result.replace("-", "/")
     result = result.replace(sentinel, "-")
     return "/" + result
+
+
+# ---------------------------------------------------------------------------
+# Project .gitignore helper
+# ---------------------------------------------------------------------------
+
+_GITIGNORE_ENTRIES = [".kanibako/"]
+
+
+def write_project_gitignore(project_path: Path) -> None:
+    """Append .kanibako/ to the project's root .gitignore."""
+    gitignore = project_path / ".gitignore"
+    existing = ""
+    if gitignore.is_file():
+        existing = gitignore.read_text()
+
+    lines_to_add = [
+        entry for entry in _GITIGNORE_ENTRIES
+        if entry not in existing.splitlines()
+    ]
+
+    if not lines_to_add:
+        return
+
+    with open(gitignore, "a") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        for line in lines_to_add:
+            f.write(line + "\n")

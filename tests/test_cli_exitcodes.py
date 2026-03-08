@@ -160,7 +160,7 @@ class TestStandaloneLaunch:
         return proj
 
     def test_start_detects_standalone_project(self, start_mocks, tmp_path):
-        """start from an init --local dir uses resolve_any_project which returns standalone."""
+        """start from a standalone project dir uses resolve_any_project."""
         from kanibako.commands.start import _run_container
 
         project = tmp_path / "myproject"
