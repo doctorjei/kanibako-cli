@@ -60,7 +60,6 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.helper_cmd import add_parser as add_helper_parser
     from kanibako.commands.fork_cmd import add_parser as add_fork_parser
-    from kanibako.commands.template_cmd import add_parser as add_template_parser
 
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
@@ -74,7 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_reauth_parser(subparsers)
     add_helper_parser(subparsers)
     add_fork_parser(subparsers)
-    add_template_parser(subparsers)
 
     return parser
 
@@ -83,7 +81,6 @@ _SUBCOMMANDS = {
     "start", "shell", "stop", "image",
     "box", "workset", "setup", "remove", "upgrade", "reauth",
     "helper", "fork",
-    "template",
 }
 
 
@@ -119,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
             effective = ["start"] + effective
         args = parser.parse_args(effective)
 
-        if args.command not in ("setup", "helper", "fork", "template"):
+        if args.command not in ("setup", "helper", "fork"):
             from kanibako.paths import xdg
             from kanibako.config import config_file_path
             _cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))

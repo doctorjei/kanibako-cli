@@ -65,6 +65,20 @@ class ContainerRuntime:
         )
         return result.returncode == 0
 
+    def image_inspect(self, image: str) -> dict | None:
+        """Return image metadata as a dict, or None if not found."""
+        result = subprocess.run(
+            [self.cmd, "image", "inspect", image, "--format", "json"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return None
+        import json
+        data = json.loads(result.stdout)
+        if isinstance(data, list) and data:
+            return data[0]
+        return data if isinstance(data, dict) else None
+
     def pull(self, image: str, *, quiet: bool = True) -> bool:
         """Pull *image* from registry. Returns True on success."""
         result = subprocess.run(
