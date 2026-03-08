@@ -45,7 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
         add_shell_parser,
         add_start_parser,
     )
-    from kanibako.commands.config_cmd import add_parser as add_config_parser
     from kanibako.commands.image import add_parser as add_image_parser
     from kanibako.commands.box import add_parser as add_box_parser
     from kanibako.commands.install import add_parser as add_setup_parser
@@ -57,8 +56,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.vault_cmd import add_parser as add_vault_parser
-    from kanibako.commands.env_cmd import add_parser as add_env_parser
-    from kanibako.commands.shared_cmd import add_parser as add_shared_parser
     from kanibako.commands.helper_cmd import add_parser as add_helper_parser
     from kanibako.commands.fork_cmd import add_parser as add_fork_parser
     from kanibako.commands.connect import add_parser as add_connect_parser
@@ -69,7 +66,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_resume_parser(subparsers)
     add_connect_parser(subparsers)
     add_stop_parser(subparsers)
-    add_config_parser(subparsers)
     add_image_parser(subparsers)
     add_box_parser(subparsers)
     add_workset_parser(subparsers)
@@ -78,8 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_upgrade_parser(subparsers)
     add_reauth_parser(subparsers)
     add_vault_parser(subparsers)
-    add_env_parser(subparsers)
-    add_shared_parser(subparsers)
     add_helper_parser(subparsers)
     add_fork_parser(subparsers)
     add_template_parser(subparsers)
@@ -88,9 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 _SUBCOMMANDS = {
-    "start", "shell", "resume", "connect", "stop", "config", "image",
+    "start", "shell", "resume", "connect", "stop", "image",
     "box", "workset", "setup", "remove", "upgrade", "reauth",
-    "vault", "env", "shared", "helper", "fork",
+    "vault", "helper", "fork",
     "template",
 }
 

@@ -1,4 +1,4 @@
-"""Parser setup, list, info, get, and set commands for kanibako box."""
+"""Parser setup, list, info, config, and lifecycle commands for kanibako box."""
 
 from __future__ import annotations
 
@@ -12,21 +12,12 @@ from kanibako.config import (
     config_file_path,
     load_config,
     load_merged_config,
-    read_project_meta,
-    read_resource_overrides,
-    read_target_settings,
-    remove_resource_override,
-    remove_target_setting,
     write_project_config,
-    write_project_meta,
-    write_resource_override,
-    write_target_setting,
 )
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError, ProjectError
-from kanibako.names import read_names, register_name, unregister_name
+from kanibako.names import read_names, unregister_name
 from kanibako.paths import (
-    ProjectLayout,
     ProjectMode,
     xdg,
     iter_projects,
@@ -40,16 +31,6 @@ from kanibako.targets import resolve_target
 from kanibako.utils import container_name_for, short_hash, write_project_gitignore
 
 _MODE_CHOICES = ["local", "standalone", "workset"]
-
-# Keys that box get can read.
-_GET_KEYS = [
-    "name", "shell", "vault_ro", "vault_rw", "layout", "vault_enabled", "auth",
-    "metadata", "project_hash", "global_shared", "local_shared", "mode",
-]
-
-# Keys that box set can write (path keys, enum keys, bool keys).
-_SET_PATH_KEYS = {"shell", "vault_ro", "vault_rw"}
-_SET_KEYS = _SET_PATH_KEYS | {"layout", "vault_enabled", "auth", "name"}
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -227,95 +208,50 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     info_p.add_argument("path", nargs="?", default=None, help="Project directory (default: cwd)")
     info_p.set_defaults(func=run_info)
 
-    # kanibako box get <key>
-    get_p = box_sub.add_parser(
-        "get",
-        help="Get a project setting value",
-        description="Print the current value of a project setting.",
+    # kanibako box config [project] [key[=value]] [--effective] [--reset KEY]
+    #                     [--all] [--force] [--local]
+    config_p = box_sub.add_parser(
+        "config",
+        help="View or modify project configuration",
+        description=(
+            "Unified config interface for project settings.\n\n"
+            "  box config                       show overrides for cwd project\n"
+            "  box config myproj                show overrides for named project\n"
+            "  box config --effective           show resolved values\n"
+            "  box config model                 get the value of 'model'\n"
+            "  box config model=sonnet          set 'model' to 'sonnet'\n"
+            "  box config env.MY_VAR=hello      set env var\n"
+            "  box config resource.plugins=/p   set resource path\n"
+            "  box config --reset model         reset one key\n"
+            "  box config --reset --all         reset all overrides\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    get_p.add_argument("key", choices=_GET_KEYS, help="Setting key to read")
-    get_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    get_p.set_defaults(func=run_get)
-
-    # kanibako box set <key> <value>
-    set_p = box_sub.add_parser(
-        "set",
-        help="Override a project setting value",
-        description="Set or override a project setting in project.toml.",
+    config_p.add_argument(
+        "args", nargs="*", default=[],
+        help="[project] [key[=value]]",
     )
-    set_p.add_argument("key", choices=sorted(_SET_KEYS), help="Setting key to write")
-    set_p.add_argument("value", help="New value for the setting")
-    set_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    set_p.set_defaults(func=run_set)
-
-    # kanibako box resource {list,set,unset}
-    resource_p = box_sub.add_parser(
-        "resource",
-        help="Manage per-project resource scope overrides",
-        description="View and override how agent resources are shared across projects.",
+    config_p.add_argument(
+        "--effective", action="store_true",
+        help="Show resolved values including inherited defaults",
     )
-    resource_sub = resource_p.add_subparsers(dest="resource_command", metavar="COMMAND")
-
-    res_list_p = resource_sub.add_parser(
-        "list", help="List resource scopes (default and effective)",
+    config_p.add_argument(
+        "--reset", metavar="KEY", nargs="?", const="__ALL__", default=None,
+        help="Remove override for KEY (or all overrides with --all)",
     )
-    res_list_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    res_list_p.set_defaults(func=run_resource_list)
-
-    res_set_p = resource_sub.add_parser(
-        "set", help="Override a resource scope",
+    config_p.add_argument(
+        "--all", action="store_true", dest="reset_all",
+        help="Reset all overrides (only valid with --reset)",
     )
-    res_set_p.add_argument("path", help="Resource path (e.g. plugins/)")
-    res_set_p.add_argument("scope", choices=["shared", "project", "seeded"], help="Scope to set")
-    res_set_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    res_set_p.set_defaults(func=run_resource_set)
-
-    res_unset_p = resource_sub.add_parser(
-        "unset", help="Remove a resource scope override",
+    config_p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompts",
     )
-    res_unset_p.add_argument("path", help="Resource path to unset")
-    res_unset_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    res_unset_p.set_defaults(func=run_resource_unset)
-
-    resource_p.set_defaults(func=run_resource_list)
-
-    # kanibako box settings {list,get,set,unset}
-    settings_p = box_sub.add_parser(
-        "settings",
-        help="Manage per-project target setting overrides",
-        description="View and override target plugin settings (model, access, etc.).",
+    config_p.add_argument(
+        "--local", action="store_true",
+        help="Set resource to project-isolated (resource keys only)",
     )
-    settings_sub = settings_p.add_subparsers(dest="settings_command", metavar="COMMAND")
-
-    set_list_p = settings_sub.add_parser(
-        "list", help="List target settings (default and effective)",
-    )
-    set_list_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    set_list_p.set_defaults(func=run_settings_list)
-
-    set_get_p = settings_sub.add_parser(
-        "get", help="Get a target setting value",
-    )
-    set_get_p.add_argument("key", help="Setting key (e.g. model)")
-    set_get_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    set_get_p.set_defaults(func=run_settings_get)
-
-    set_set_p = settings_sub.add_parser(
-        "set", help="Override a target setting",
-    )
-    set_set_p.add_argument("key", help="Setting key (e.g. model)")
-    set_set_p.add_argument("value", help="New value")
-    set_set_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    set_set_p.set_defaults(func=run_settings_set)
-
-    set_unset_p = settings_sub.add_parser(
-        "unset", help="Remove a target setting override",
-    )
-    set_unset_p.add_argument("key", help="Setting key to unset")
-    set_unset_p.add_argument("-p", "--project", default=None, help="Project directory (default: cwd)")
-    set_unset_p.set_defaults(func=run_settings_unset)
-
-    settings_p.set_defaults(func=run_settings_list)
+    config_p.set_defaults(func=run_config)
 
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
@@ -742,421 +678,142 @@ def run_info(args: argparse.Namespace) -> int:
     return 0
 
 
-def _validate_path_override(key: str, value: str) -> Path:
-    """Validate a path override value. Returns a resolved Path.
+def run_config(args: argparse.Namespace) -> int:
+    """Unified config interface for project settings.
 
-    Rejects relative paths and paths whose parent directory doesn't exist.
+    Handles get, set, show, reset operations via the config_interface engine.
+    Uses the known-key heuristic to disambiguate project names from config keys.
     """
-    p = Path(value)
-    if not p.is_absolute():
-        raise ValueError(f"{key}: path must be absolute, got '{value}'")
-    if not p.parent.exists():
-        raise ValueError(f"{key}: parent directory does not exist: {p.parent}")
-    return p
-
-
-def _set_name(std, proj, meta, project_toml, new_name: str) -> int:
-    """Handle ``box set name <new-name>``: validate, update names.toml + project.toml."""
-    old_name = meta.get("name", "")
-
-    if new_name == old_name:
-        print(f"name = {new_name} (unchanged)")
-        return 0
-
-    # Check uniqueness across both sections.
-    names = read_names(std.data_path)
-    all_names = set(names["projects"]) | set(names["worksets"])
-    if new_name in all_names:
-        print(f"Error: Name '{new_name}' is already in use.", file=sys.stderr)
-        return 1
-
-    # Update names.toml: unregister old, register new.
-    if old_name:
-        unregister_name(std.data_path, old_name)
-    workspace = meta.get("workspace", str(proj.project_path))
-    register_name(std.data_path, new_name, workspace)
-
-    # Update project.toml.
-    meta["name"] = new_name
-    write_project_meta(
-        project_toml,
-        mode=meta["mode"],
-        layout=meta["layout"],
-        workspace=meta["workspace"],
-        shell=meta["shell"],
-        vault_ro=meta["vault_ro"],
-        vault_rw=meta["vault_rw"],
-        vault_enabled=meta["vault_enabled"],
-        auth=meta["auth"],
-        metadata=meta.get("metadata", ""),
-        project_hash=meta.get("project_hash", ""),
-        global_shared=meta.get("global_shared", ""),
-        local_shared=meta.get("local_shared", ""),
-        name=new_name,
+    from kanibako.config_interface import (
+        ConfigAction,
+        get_config_value,
+        is_known_key,
+        parse_config_arg,
+        reset_all,
+        reset_config_value,
+        set_config_value,
+        show_config,
     )
 
-    print(f"name = {new_name}")
-    return 0
-
-
-def run_get(args: argparse.Namespace) -> int:
-    """Print the current value of a project setting."""
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    project_dir = getattr(args, "project", None)
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except ProjectError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    # Parse the positional args list: [project] [key[=value]]
+    positional = args.args  # list of 0-2 items
+    project_dir: str | None = None
+    key_value_arg: str | None = None
 
-    project_toml = proj.metadata_path / "project.toml"
-    meta = read_project_meta(project_toml)
-    if meta is None:
-        print("Error: No project metadata found. Initialize the project first.", file=sys.stderr)
-        return 1
-
-    key = args.key
-    if key in meta:
-        value = meta[key]
-        # vault_enabled is a bool, print as lowercase string.
-        if isinstance(value, bool):
-            print(str(value).lower())
+    if len(positional) == 0:
+        pass  # show mode
+    elif len(positional) == 1:
+        # Is it a known key (or key=value), or a project name?
+        arg = positional[0]
+        if "=" in arg or is_known_key(arg):
+            key_value_arg = arg
         else:
-            print(value)
+            project_dir = arg
+    elif len(positional) == 2:
+        project_dir = positional[0]
+        key_value_arg = positional[1]
     else:
-        print(f"Error: Unknown key '{key}'", file=sys.stderr)
+        print("Error: too many arguments (expected [project] [key[=value]])", file=sys.stderr)
         return 1
 
-    return 0
-
-
-def run_set(args: argparse.Namespace) -> int:
-    """Set or override a project setting in project.toml."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    project_dir = getattr(args, "project", None)
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except ProjectError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    project_toml = proj.metadata_path / "project.toml"
-    meta = read_project_meta(project_toml)
-    if meta is None:
-        print("Error: No project metadata found. Initialize the project first.", file=sys.stderr)
-        return 1
-
-    key = args.key
-    value = args.value
-
-    # Validate based on key type.
-    try:
-        if key == "name":
-            return _set_name(std, proj, meta, project_toml, value)
-        elif key in _SET_PATH_KEYS:
-            _validate_path_override(key, value)
-        elif key == "layout":
+    # Handle --reset mode
+    if args.reset is not None:
+        # --reset with --all: reset everything
+        if args.reset_all or args.reset == "__ALL__":
             try:
-                ProjectLayout(value)
-            except ValueError:
-                valid = ", ".join(e.value for e in ProjectLayout)
-                raise ValueError(f"layout: invalid value '{value}'. Valid: {valid}")
-        elif key == "vault_enabled":
-            if value.lower() in ("true", "1", "yes"):
-                value = True
-            elif value.lower() in ("false", "0", "no"):
-                value = False
-            else:
-                raise ValueError(f"vault_enabled: expected true/false, got '{value}'")
-        elif key == "auth":
-            if value not in ("shared", "distinct"):
-                raise ValueError(f"auth: expected shared/distinct, got '{value}'")
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+                proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+            except ProjectError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+            project_toml = proj.metadata_path / "project.toml"
+            env_path = proj.metadata_path / "env"
+            msg = reset_all(
+                config_path=project_toml,
+                env_path=env_path,
+                force=args.force,
+            )
+            print(msg)
+            return 0
 
-    # Update the meta dict and write back.
-    meta[key] = value
-    write_project_meta(
-        project_toml,
-        mode=meta["mode"],
-        layout=meta["layout"],
-        workspace=meta["workspace"],
-        shell=meta["shell"],
-        vault_ro=meta["vault_ro"],
-        vault_rw=meta["vault_rw"],
-        vault_enabled=meta["vault_enabled"],
-        auth=meta["auth"],
-        metadata=meta.get("metadata", ""),
-        project_hash=meta.get("project_hash", ""),
-        global_shared=meta.get("global_shared", ""),
-        local_shared=meta.get("local_shared", ""),
-        name=meta.get("name", ""),
-    )
-
-    print(f"{key} = {value}")
-    return 0
-
-
-def _resolve_target_for_project(proj):
-    """Resolve the target for a project (for resource_mappings)."""
-    from kanibako.targets import resolve_target
-    try:
-        return resolve_target(None)
-    except Exception:
-        return None
-
-
-def run_resource_list(args: argparse.Namespace) -> int:
-    """List resource scopes (default and effective) for a project."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    project_dir = getattr(args, "project", None)
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except ProjectError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    target = _resolve_target_for_project(proj)
-    if target is None:
-        print("Error: No target detected. Cannot list resource mappings.", file=sys.stderr)
-        return 1
-
-    mappings = target.resource_mappings()
-    if not mappings:
-        print("No resource mappings defined for this target.")
-        return 0
-
-    project_toml = proj.metadata_path / "project.toml"
-    overrides = read_resource_overrides(project_toml)
-
-    print(f"{'PATH':<25} {'DEFAULT':<10} {'EFFECTIVE'}")
-    for m in mappings:
-        default_scope = m.scope.value
-        override = overrides.get(m.path)
-        effective = override if override else default_scope
-        marker = " *" if override else ""
-        print(f"{m.path:<25} {default_scope:<10} {effective}{marker}")
-
-    if overrides:
-        print("\n* = overridden")
-
-    return 0
-
-
-def run_resource_set(args: argparse.Namespace) -> int:
-    """Set a resource scope override."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    project_dir = getattr(args, "project", None)
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except ProjectError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    target = _resolve_target_for_project(proj)
-    if target is None:
-        print("Error: No target detected.", file=sys.stderr)
-        return 1
-
-    # Validate path is in resource_mappings.
-    mappings = target.resource_mappings()
-    valid_paths = {m.path for m in mappings}
-    if args.path not in valid_paths:
-        print(f"Error: '{args.path}' is not a valid resource path.", file=sys.stderr)
-        print(f"Valid paths: {', '.join(sorted(valid_paths))}", file=sys.stderr)
-        return 1
-
-    project_toml = proj.metadata_path / "project.toml"
-    write_resource_override(project_toml, args.path, args.scope)
-    print(f"{args.path} = {args.scope}")
-    return 0
-
-
-def run_resource_unset(args: argparse.Namespace) -> int:
-    """Remove a resource scope override."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    project_dir = getattr(args, "project", None)
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except ProjectError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    project_toml = proj.metadata_path / "project.toml"
-    if remove_resource_override(project_toml, args.path):
-        print(f"Removed override for {args.path}")
-    else:
-        print(f"No override found for {args.path}")
-    return 0
-
-
-# ---------------------------------------------------------------------------
-# box settings {list, get, set, unset}
-# ---------------------------------------------------------------------------
-
-def _resolve_project_and_target(args):
-    """Resolve project and target for settings commands.
-
-    Returns (proj, target, project_toml) or prints an error and returns None.
-    """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    project_dir = getattr(args, "project", None)
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except ProjectError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return None
-
-    target = _resolve_target_for_project(proj)
-    if target is None:
-        print("Error: No target detected.", file=sys.stderr)
-        return None
-
-    project_toml = proj.metadata_path / "project.toml"
-    return proj, target, project_toml
-
-
-def run_settings_list(args: argparse.Namespace) -> int:
-    """List target settings (default, effective, and source)."""
-    result = _resolve_project_and_target(args)
-    if result is None:
-        return 1
-    proj, target, project_toml = result
-
-    from kanibako.agents import load_agent_config
-    from kanibako.agents import agent_toml_path
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    agent_cfg_path = agent_toml_path(std.data_path, target.name, config.paths_agents)
-    agent_cfg = load_agent_config(agent_cfg_path)
-
-    descriptors = target.setting_descriptors()
-    if not descriptors:
-        print("No settings defined for this target.")
-        return 0
-
-    overrides = read_target_settings(project_toml)
-
-    print(f"{'KEY':<15} {'DEFAULT':<15} {'EFFECTIVE':<15} {'SOURCE'}")
-    for d in descriptors:
-        default = d.default
-        project_override = overrides.get(d.key)
-        agent_value = agent_cfg.state.get(d.key)
-
-        if project_override is not None:
-            effective = project_override
-            source = "project"
-        elif agent_value is not None:
-            effective = agent_value
-            source = "agent"
-        else:
-            effective = default
-            source = "default"
-
-        print(f"{d.key:<15} {default:<15} {effective:<15} {source}")
-
-    return 0
-
-
-def run_settings_get(args: argparse.Namespace) -> int:
-    """Get the effective value of a target setting."""
-    result = _resolve_project_and_target(args)
-    if result is None:
-        return 1
-    proj, target, project_toml = result
-
-    key = args.key
-    descriptors = {d.key: d for d in target.setting_descriptors()}
-    if key not in descriptors:
-        print(f"Error: Unknown setting '{key}'.", file=sys.stderr)
-        valid = ", ".join(sorted(descriptors))
-        if valid:
-            print(f"Valid settings: {valid}", file=sys.stderr)
-        return 1
-
-    from kanibako.agents import load_agent_config
-    from kanibako.agents import agent_toml_path
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    agent_cfg_path = agent_toml_path(std.data_path, target.name, config.paths_agents)
-    agent_cfg = load_agent_config(agent_cfg_path)
-
-    overrides = read_target_settings(project_toml)
-    d = descriptors[key]
-
-    project_override = overrides.get(key)
-    if project_override is not None:
-        print(project_override)
-    elif key in agent_cfg.state:
-        print(agent_cfg.state[key])
-    else:
-        print(d.default)
-
-    return 0
-
-
-def run_settings_set(args: argparse.Namespace) -> int:
-    """Set a per-project target setting override."""
-    result = _resolve_project_and_target(args)
-    if result is None:
-        return 1
-    proj, target, project_toml = result
-
-    key = args.key
-    value = args.value
-    descriptors = {d.key: d for d in target.setting_descriptors()}
-
-    if key not in descriptors:
-        print(f"Error: Unknown setting '{key}'.", file=sys.stderr)
-        valid = ", ".join(sorted(descriptors))
-        if valid:
-            print(f"Valid settings: {valid}", file=sys.stderr)
-        return 1
-
-    d = descriptors[key]
-    if d.choices and value not in d.choices:
-        print(
-            f"Error: Invalid value '{value}' for '{key}'. "
-            f"Valid: {', '.join(d.choices)}",
-            file=sys.stderr,
+        # --reset KEY: reset a specific key
+        reset_key = args.reset
+        try:
+            proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        project_toml = proj.metadata_path / "project.toml"
+        env_path = proj.metadata_path / "env"
+        msg = reset_config_value(
+            reset_key,
+            config_path=project_toml,
+            env_path=env_path,
         )
+        print(msg)
+        return 0
+
+    # Parse the key/value argument
+    action, key, value = parse_config_arg(key_value_arg)
+
+    # --local flag forces a set operation (sets resource to project-isolated)
+    if args.local and action == ConfigAction.get:
+        action = ConfigAction.set
+
+    # Resolve the project
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    write_target_setting(project_toml, key, value)
-    print(f"{key} = {value}")
-    return 0
+    project_toml = proj.metadata_path / "project.toml"
+    env_global = std.data_path / "env"
+    env_project = proj.metadata_path / "env"
 
+    if action == ConfigAction.show:
+        return show_config(
+            global_config_path=config_file,
+            config_path=project_toml,
+            env_global=env_global,
+            env_project=env_project,
+            effective=args.effective,
+        )
 
-def run_settings_unset(args: argparse.Namespace) -> int:
-    """Remove a per-project target setting override."""
-    result = _resolve_project_and_target(args)
-    if result is None:
-        return 1
-    proj, target, project_toml = result
+    if action == ConfigAction.get:
+        val = get_config_value(
+            key,
+            global_config_path=config_file,
+            project_toml=project_toml,
+            env_global=env_global,
+            env_project=env_project,
+        )
+        if val is not None:
+            print(val)
+        else:
+            print("(not set)", file=sys.stderr)
+        return 0
 
-    if remove_target_setting(project_toml, args.key):
-        print(f"Removed override for {args.key}")
-    else:
-        print(f"No override found for {args.key}")
+    if action == ConfigAction.set:
+        # Handle --local for resource keys
+        if args.local:
+            from kanibako.config_interface import _is_resource_key, _resolve_key
+            canonical = _resolve_key(key)
+            if not _is_resource_key(canonical):
+                print("Error: --local only applies to resource.* keys", file=sys.stderr)
+                return 1
+            # --local means project-isolated (set scope to "project")
+            value = "project"
+
+        msg = set_config_value(
+            key, value,
+            config_path=project_toml,
+            env_path=env_project,
+        )
+        print(msg)
+        return 0
+
     return 0

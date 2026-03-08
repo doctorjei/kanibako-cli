@@ -1,4 +1,4 @@
-"""Tests for kanibako.commands.config_cmd."""
+"""Tests for kanibako box config subcommand and config.py utility functions."""
 
 from __future__ import annotations
 
@@ -6,24 +6,22 @@ import argparse
 
 import pytest
 
-from unittest.mock import patch
-
 from kanibako.config import (
     KanibakoConfig,
     load_config,
+    load_project_overrides,
     write_project_config,
     write_project_config_key,
-    load_project_overrides,
 )
 
 
 # ---------------------------------------------------------------------------
-# Existing tests (updated with unset= attribute)
+# box config command tests
 # ---------------------------------------------------------------------------
 
-class TestConfigGet:
-    def test_get_image(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
+class TestBoxConfigShow:
+    def test_show_no_overrides(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
 
         config = load_config(config_file)
         from kanibako.paths import load_std_paths, resolve_project
@@ -32,35 +30,16 @@ class TestConfigGet:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            key="image", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
+            args=[project_dir], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
         )
-        rc = run(args)
+        rc = run_config(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
+        assert "no overrides" in captured.out
 
-    def test_get_image_via_full_key(self, config_file, tmp_home, credentials_dir, capsys):
-        """``kanibako config container_image`` should work the same as ``config image``."""
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="container_image", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
-
-    def test_get_paths_boxes(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
+    def test_show_effective(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
 
         config = load_config(config_file)
         from kanibako.paths import load_std_paths, resolve_project
@@ -69,232 +48,16 @@ class TestConfigGet:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            key="paths_boxes", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
+            args=[project_dir], effective=True, reset=None,
+            reset_all=False, force=False, local=False,
         )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "boxes" in captured.out
-
-    def test_get_paths_shell(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="paths_shell", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "shell" in captured.out
-
-    def test_get_target_name(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="target_name", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        # Default is empty string
-        assert captured.out.strip() == ""
-
-    def test_get_all_config_keys(self, config_file, tmp_home, credentials_dir, capsys):
-        """Every field in KanibakoConfig should be gettable."""
-        from kanibako.commands.config_cmd import run
-        from dataclasses import fields
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        for fld in fields(KanibakoConfig):
-            args = argparse.Namespace(
-                key=fld.name, value=None, show=False, clear=False, unset=None,
-                project=project_dir,
-            )
-            rc = run(args)
-            assert rc == 0
-            captured = capsys.readouterr()
-            expected = getattr(KanibakoConfig(), fld.name)
-            assert str(expected) in captured.out
-
-
-class TestConfigSet:
-    def test_set_image(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="image", value="new-image:v1", show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-
-        # Verify the project.toml was written
-        project_toml = proj.metadata_path / "project.toml"
-        assert project_toml.exists()
-        loaded = load_config(project_toml)
-        assert loaded.container_image == "new-image:v1"
-
-    def test_set_paths_boxes(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="paths_boxes", value="custom_boxes", show=False, clear=False,
-            unset=None, project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-
-        project_toml = proj.metadata_path / "project.toml"
-        assert project_toml.exists()
-        loaded = load_config(project_toml)
-        assert loaded.paths_boxes == "custom_boxes"
-
-    def test_set_via_full_key(self, config_file, tmp_home, credentials_dir, capsys):
-        """``kanibako config container_image myimg`` should work."""
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="container_image", value="full-key-image:v1", show=False,
-            clear=False, unset=None, project=project_dir,
-        )
-        rc = run(args)
+        rc = run_config(args)
         assert rc == 0
         captured = capsys.readouterr()
         assert "container_image" in captured.out
-        assert "full-key-image:v1" in captured.out
 
-        project_toml = proj.metadata_path / "project.toml"
-        loaded = load_config(project_toml)
-        assert loaded.container_image == "full-key-image:v1"
-
-    def test_set_multiple_keys(self, config_file, tmp_home, credentials_dir, capsys):
-        """Setting multiple keys should accumulate in project.toml."""
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        # Set image
-        args = argparse.Namespace(
-            key="container_image", value="multi:v1", show=False, clear=False,
-            unset=None, project=project_dir,
-        )
-        run(args)
-
-        # Set paths_boxes
-        args = argparse.Namespace(
-            key="paths_boxes", value="multi_boxes", show=False, clear=False,
-            unset=None, project=project_dir,
-        )
-        run(args)
-
-        project_toml = proj.metadata_path / "project.toml"
-        loaded = load_config(project_toml)
-        assert loaded.container_image == "multi:v1"
-        assert loaded.paths_boxes == "multi_boxes"
-
-
-class TestConfigUnknownKey:
-    def test_unknown_key(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="nonexistent", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 1
-
-    def test_unknown_key_shows_valid_keys(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key="bogus_key", value=None, show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "Valid keys" in captured.err
-        assert "container_image" in captured.err
-
-
-class TestConfigShow:
-    def test_show_all(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key=None, value=None, show=True, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "container_image" in captured.out
-        assert "paths_boxes" in captured.out
-        assert "target_name" in captured.out
-
-    def test_show_marks_project_overrides(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
+    def test_show_with_override(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
 
         config = load_config(config_file)
         from kanibako.paths import load_std_paths, resolve_project
@@ -307,46 +70,18 @@ class TestConfigShow:
         write_project_config(project_toml, "custom:v1")
 
         args = argparse.Namespace(
-            key=None, value=None, show=True, clear=False, unset=None,
-            project=project_dir,
+            args=[project_dir], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
         )
-        rc = run(args)
+        rc = run_config(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "(project)" in captured.out
         assert "custom:v1" in captured.out
 
 
-class TestConfigClear:
-    def test_clear_removes_project_toml(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        # Write a project override first
-        project_toml = proj.metadata_path / "project.toml"
-        write_project_config(project_toml, "custom:v1")
-        assert project_toml.exists()
-
-        with patch("kanibako.commands.config_cmd.confirm_prompt"):
-            args = argparse.Namespace(
-                key=None, value=None, show=False, clear=True, unset=None,
-                project=project_dir,
-            )
-            rc = run(args)
-        assert rc == 0
-        # project.toml still exists (has metadata), but no config overrides remain
-        from kanibako.config import load_project_overrides
-        assert load_project_overrides(project_toml) == {}
-        captured = capsys.readouterr()
-        assert "Cleared" in captured.out
-
-    def test_clear_no_project_config(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
+class TestBoxConfigGet:
+    def test_get_image(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
 
         config = load_config(config_file)
         from kanibako.paths import load_std_paths, resolve_project
@@ -355,160 +90,309 @@ class TestConfigClear:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            key=None, value=None, show=False, clear=True, unset=None,
-            project=project_dir,
+            args=[project_dir, "image"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
         )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "No project config" in captured.out
-
-
-class TestConfigNoArgs:
-    def test_no_args_shows_config(self, config_file, tmp_home, credentials_dir, capsys):
-        """With no arguments, 'kanibako config' now lists all config values."""
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key=None, value=None, show=False, clear=False, unset=None,
-            project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        # Should show all config values (same as --show)
-        assert "container_image" in captured.out
-        assert "paths_boxes" in captured.out
-        assert "target_name" in captured.out
-
-
-# ---------------------------------------------------------------------------
-# New: --unset tests
-# ---------------------------------------------------------------------------
-
-class TestConfigUnset:
-    def test_unset_existing_key(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        # First set a value
-        project_toml = proj.metadata_path / "project.toml"
-        write_project_config(project_toml, "override:v1")
-        loaded = load_config(project_toml)
-        assert loaded.container_image == "override:v1"
-
-        # Now unset it
-        args = argparse.Namespace(
-            key=None, value=None, show=False, clear=False,
-            unset="container_image", project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Unset container_image" in captured.out
-        assert "reverts to default" in captured.out
-
-    def test_unset_alias(self, config_file, tmp_home, credentials_dir, capsys):
-        """``--unset image`` should work as alias for ``--unset container_image``."""
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        project_toml = proj.metadata_path / "project.toml"
-        write_project_config(project_toml, "alias-test:v1")
-
-        args = argparse.Namespace(
-            key=None, value=None, show=False, clear=False,
-            unset="image", project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Unset" in captured.out
-
-    def test_unset_nonexistent_key(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key=None, value=None, show=False, clear=False,
-            unset="container_image", project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "No project-level override" in captured.out
-
-    def test_unset_unknown_key(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            key=None, value=None, show=False, clear=False,
-            unset="totally_bogus", project=project_dir,
-        )
-        rc = run(args)
-        assert rc == 1
-
-    def test_unset_then_get_shows_default(self, config_file, tmp_home, credentials_dir, capsys):
-        """After unsetting, the default value should be returned by get."""
-        from kanibako.commands.config_cmd import run
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        # Set, then unset
-        project_toml = proj.metadata_path / "project.toml"
-        write_project_config(project_toml, "to-be-unset:v1")
-
-        args = argparse.Namespace(
-            key=None, value=None, show=False, clear=False,
-            unset="container_image", project=project_dir,
-        )
-        run(args)
-        capsys.readouterr()  # consume output
-
-        # Now get should show default
-        args = argparse.Namespace(
-            key="container_image", value=None, show=False, clear=False,
-            unset=None, project=project_dir,
-        )
-        rc = run(args)
+        rc = run_config(args)
         assert rc == 0
         captured = capsys.readouterr()
         assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
 
+    def test_get_known_key_without_project(self, config_file, tmp_home, credentials_dir, capsys):
+        """``box config image`` (no project arg) should use cwd."""
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # known key as first arg => get operation (project defaults to cwd)
+        # In tests the project_dir fixture is not cwd, so use 2-arg form.
+        args2 = argparse.Namespace(
+            args=[project_dir, "image"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args2)
+        assert rc == 0
+
+    def test_get_env_key(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Write an env var
+        env_path = proj.metadata_path / "env"
+        env_path.write_text("MY_VAR=hello\n")
+
+        args = argparse.Namespace(
+            args=[project_dir, "env.MY_VAR"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "hello" in captured.out
+
+
+class TestBoxConfigSet:
+    def test_set_image(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "image=new-image:v1"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Set" in captured.out
+        assert "new-image:v1" in captured.out
+
+    def test_set_env_var(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "env.EDITOR=vim"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Set EDITOR=vim" in captured.out
+
+    def test_set_model(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "model=sonnet"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Set model=sonnet" in captured.out
+
+    def test_set_resource(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "resource.plugins=/my/plugins"], effective=False,
+            reset=None, reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Set resource.plugins=/my/plugins" in captured.out
+
+
+class TestBoxConfigReset:
+    def test_reset_key(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Set first
+        project_toml = proj.metadata_path / "project.toml"
+        write_project_config(project_toml, "to-reset:v1")
+
+        # Reset
+        args = argparse.Namespace(
+            args=[project_dir], effective=False, reset="container_image",
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Reset" in captured.out
+
+    def test_reset_all(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Set a value first
+        project_toml = proj.metadata_path / "project.toml"
+        write_project_config(project_toml, "override:v1")
+
+        # Reset all with --force (skip confirmation)
+        args = argparse.Namespace(
+            args=[project_dir], effective=False, reset="__ALL__",
+            reset_all=True, force=True, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Reset" in captured.out
+
+    def test_reset_nonexistent(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir], effective=False, reset="container_image",
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "No override" in captured.out
+
+
+class TestBoxConfigLocal:
+    def test_local_flag_on_resource_key(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "resource.plugins"], effective=False, reset=None,
+            reset_all=False, force=False, local=True,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Set resource.plugins=project" in captured.out
+
+    def test_local_flag_on_non_resource_key_rejected(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "image"], effective=False, reset=None,
+            reset_all=False, force=False, local=True,
+        )
+        rc = run_config(args)
+        assert rc == 1
+        assert "--local only applies" in capsys.readouterr().err
+
+
+class TestBoxConfigArgParsing:
+    """Test the known-key heuristic arg parsing."""
+
+    def test_parser_config_no_args(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config"])
+        assert args.command == "box"
+        assert args.box_command == "config"
+        assert args.args == []
+
+    def test_parser_config_key(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "image"])
+        assert args.args == ["image"]
+
+    def test_parser_config_key_equals_value(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "image=myimg:v1"])
+        assert args.args == ["image=myimg:v1"]
+
+    def test_parser_config_project_and_key(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "myproject", "image"])
+        assert args.args == ["myproject", "image"]
+
+    def test_parser_config_effective(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "--effective"])
+        assert args.effective is True
+
+    def test_parser_config_reset_key(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "--reset", "model"])
+        assert args.reset == "model"
+
+    def test_parser_config_reset_all(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "--reset", "--all"])
+        assert args.reset_all is True
+
+    def test_parser_config_force(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "--force"])
+        assert args.force is True
+
+    def test_parser_config_local(self):
+        from kanibako.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["box", "config", "--local"])
+        assert args.local is True
+
+
+class TestBoxConfigTooManyArgs:
+    def test_three_args_returns_error(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_config
+
+        args = argparse.Namespace(
+            args=["a", "b", "c"], effective=False, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 1
+        assert "too many arguments" in capsys.readouterr().err
+
 
 # ---------------------------------------------------------------------------
-# New: config.py utility function tests
+# config.py utility function tests (carried forward from old test file)
 # ---------------------------------------------------------------------------
 
 class TestWriteProjectConfigKey:
@@ -653,38 +537,3 @@ class TestConfigKeys:
         assert "paths_shell" in keys
         assert "paths_data_path" in keys
         assert "target_name" in keys
-
-
-# ---------------------------------------------------------------------------
-# CLI argument parsing integration
-# ---------------------------------------------------------------------------
-
-class TestConfigArgParsing:
-    def test_parser_accepts_unset(self):
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["config", "--unset", "container_image"])
-        assert args.unset == "container_image"
-        assert args.key is None
-
-    def test_parser_key_value(self):
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["config", "paths_boxes", "new_value"])
-        assert args.key == "paths_boxes"
-        assert args.value == "new_value"
-
-    def test_parser_key_only(self):
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["config", "container_image"])
-        assert args.key == "container_image"
-        assert args.value is None
-
-    def test_parser_no_args(self):
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["config"])
-        assert args.key is None
-        assert args.value is None
-        assert args.unset is None

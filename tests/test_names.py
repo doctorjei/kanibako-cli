@@ -353,36 +353,26 @@ class TestWorksetNameRegistration:
         assert "myworkset" not in read_names(std.data_path)["worksets"]
 
 
-class TestBoxSetName:
-    """box set name validates uniqueness and updates names.toml + project.toml."""
+class TestNameRegistration:
+    """Name uniqueness and update operations on names.toml."""
 
-    def test_set_name(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_set
-        from kanibako.config import load_config, read_project_meta
+    def test_register_and_read_name(self, config_file, tmp_home, credentials_dir):
+        from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(key="name", value="myapp", project=project_dir)
-        rc = run_set(args)
-        assert rc == 0
-
-        # Verify names.toml updated
+        # Project should be auto-registered under its directory name
         names = read_names(std.data_path)
-        assert "myapp" in names["projects"]
-        assert "project" not in names["projects"]  # old name removed
+        assert "project" in names["projects"]
 
-        # Verify project.toml updated
-        meta = read_project_meta(proj.metadata_path / "project.toml")
-        assert meta["name"] == "myapp"
-
-    def test_set_name_duplicate_rejected(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_set
+    def test_duplicate_name_rejected(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.names import register_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -392,18 +382,12 @@ class TestBoxSetName:
         dir1.mkdir()
         resolve_project(std, config, project_dir=str(dir1), initialize=True)
 
-        dir2 = tmp_home / "proj2"
-        dir2.mkdir()
-        resolve_project(std, config, project_dir=str(dir2), initialize=True)
+        # Trying to register a duplicate name should raise
+        import pytest
+        with pytest.raises(Exception):
+            register_name(std.data_path, "proj1", str(tmp_home / "other"))
 
-        # Try to rename proj2 to proj1's name
-        args = argparse.Namespace(key="name", value="proj1", project=str(dir2))
-        rc = run_set(args)
-        assert rc == 1
-        assert "already in use" in capsys.readouterr().err
-
-    def test_set_same_name_noop(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_set
+    def test_unregister_name(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -412,29 +396,22 @@ class TestBoxSetName:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(key="name", value="project", project=project_dir)
-        rc = run_set(args)
-        assert rc == 0
-        assert "unchanged" in capsys.readouterr().out
+        assert "project" in read_names(std.data_path)["projects"]
+        unregister_name(std.data_path, "project")
+        assert "project" not in read_names(std.data_path)["projects"]
 
-
-class TestBoxGetName:
-    """box get name returns the current project name."""
-
-    def test_get_name(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_get
-        from kanibako.config import load_config
+    def test_read_name_after_creation(self, config_file, tmp_home, credentials_dir):
+        """Project name is readable from project.toml metadata after creation."""
+        from kanibako.config import load_config, read_project_meta
         from kanibako.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(key="name", project=project_dir)
-        rc = run_get(args)
-        assert rc == 0
-        assert capsys.readouterr().out.strip() == "project"
+        meta = read_project_meta(proj.metadata_path / "project.toml")
+        assert meta["name"] == "project"
 
 
 class TestBoxListName:

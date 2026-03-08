@@ -43,38 +43,6 @@ class TestParser:
         assert args.command == "resume"
         assert args.safe is True
 
-    def test_config_get(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "image"])
-        assert args.command == "config"
-        assert args.key == "image"
-        assert args.value is None
-
-    def test_config_set(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "image", "new-image:v2"])
-        assert args.key == "image"
-        assert args.value == "new-image:v2"
-
-    def test_config_show(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "--show"])
-        assert args.command == "config"
-        assert args.show is True
-        assert args.key is None
-
-    def test_config_show_short(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "-s"])
-        assert args.show is True
-
-    def test_config_clear(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "--clear"])
-        assert args.command == "config"
-        assert args.clear is True
-        assert args.key is None
-
     def test_box_command(self):
         parser = build_parser()
         args = parser.parse_args(["box"])

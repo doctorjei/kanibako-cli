@@ -239,7 +239,7 @@ kanibako box rm <project> [--purge] [--force]       # aliases: delete
 
 ## Phase 5: `box config`
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Unified `box config` subcommand replacing box get/set, box settings,
 box resource, top-level config, and top-level env commands.
