@@ -528,12 +528,12 @@ class TestLookupByPath:
 
 
 # ---------------------------------------------------------------------------
-# box forget
+# box rm (was: box forget)
 # ---------------------------------------------------------------------------
 
-class TestBoxForget:
-    def test_forget_by_name(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_forget
+class TestBoxRm:
+    def test_rm_by_name(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -543,7 +543,7 @@ class TestBoxForget:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(target="project", purge=False, force=False)
-        rc = run_forget(args)
+        rc = run_rm(args)
         assert rc == 0
 
         names = read_names(std.data_path)
@@ -552,8 +552,28 @@ class TestBoxForget:
         out = capsys.readouterr().out
         assert "Removed 'project' from names.toml" in out
 
-    def test_forget_by_path(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_forget
+    def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
+        """Without --purge, rm shows a hint about metadata still present."""
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(target="project", purge=False, force=False)
+        rc = run_rm(args)
+        assert rc == 0
+
+        out = capsys.readouterr().out
+        assert "Metadata still present" in out
+        assert "box rm" in out
+        assert "--purge" in out
+
+    def test_rm_by_path(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -563,22 +583,22 @@ class TestBoxForget:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(target=project_dir, purge=False, force=False)
-        rc = run_forget(args)
+        rc = run_rm(args)
         assert rc == 0
 
         names = read_names(std.data_path)
         assert "project" not in names["projects"]
 
-    def test_forget_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_forget
+    def test_rm_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_rm
 
         args = argparse.Namespace(target="nonexistent", purge=False, force=False)
-        rc = run_forget(args)
+        rc = run_rm(args)
         assert rc == 1
         assert "not a registered" in capsys.readouterr().err
 
-    def test_forget_purge_deletes_metadata(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_forget
+    def test_rm_purge_deletes_metadata(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -591,14 +611,14 @@ class TestBoxForget:
         assert metadata_dir.is_dir()
 
         args = argparse.Namespace(target="project", purge=True, force=True)
-        rc = run_forget(args)
+        rc = run_rm(args)
         assert rc == 0
 
         assert not metadata_dir.is_dir()
         assert "Removed metadata" in capsys.readouterr().out
 
-    def test_forget_purge_removes_logs(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_forget
+    def test_rm_purge_removes_logs(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -613,12 +633,12 @@ class TestBoxForget:
         (log_dir / "helper.jsonl").write_text("test")
 
         args = argparse.Namespace(target="project", purge=True, force=True)
-        rc = run_forget(args)
+        rc = run_rm(args)
         assert rc == 0
         assert not log_dir.is_dir()
 
-    def test_forget_preserves_workspace(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box._parser import run_forget
+    def test_rm_preserves_workspace(self, config_file, tmp_home, credentials_dir):
+        from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -631,13 +651,13 @@ class TestBoxForget:
         (project_dir / "important.txt").write_text("keep me")
 
         args = argparse.Namespace(target="project", purge=True, force=True)
-        run_forget(args)
+        run_rm(args)
 
         assert project_dir.is_dir()
         assert (project_dir / "important.txt").read_text() == "keep me"
 
-    def test_forget_workset(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_forget
+    def test_rm_workset(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths
         from kanibako.workset import create_workset
@@ -650,6 +670,6 @@ class TestBoxForget:
         assert "myws" in read_names(std.data_path)["worksets"]
 
         args = argparse.Namespace(target="myws", purge=False, force=False)
-        rc = run_forget(args)
+        rc = run_rm(args)
         assert rc == 0
         assert "myws" not in read_names(std.data_path)["worksets"]

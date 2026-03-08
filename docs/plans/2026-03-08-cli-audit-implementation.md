@@ -187,7 +187,7 @@ tests pass.
 
 ## Phase 4: `box list` + `box info` + `box rm`
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Restructure box lifecycle commands: unified `list`, merged `info`, merged `rm`.
 

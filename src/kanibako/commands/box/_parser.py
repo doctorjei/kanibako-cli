@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.config import (
     config_file_path,
     load_config,
+    load_merged_config,
     read_project_meta,
     read_resource_overrides,
     read_target_settings,
@@ -19,10 +22,12 @@ from kanibako.config import (
     write_resource_override,
     write_target_setting,
 )
-from kanibako.errors import ProjectError
+from kanibako.container import ContainerRuntime
+from kanibako.errors import ContainerError, ProjectError
 from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import (
     ProjectLayout,
+    ProjectMode,
     xdg,
     iter_projects,
     iter_workset_projects,
@@ -31,7 +36,8 @@ from kanibako.paths import (
     resolve_project,
     resolve_standalone_project,
 )
-from kanibako.utils import short_hash, write_project_gitignore
+from kanibako.targets import resolve_target
+from kanibako.utils import container_name_for, short_hash, write_project_gitignore
 
 _MODE_CHOICES = ["local", "standalone", "workset"]
 
@@ -93,8 +99,21 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     # kanibako box list (default behavior)
     list_p = box_sub.add_parser(
         "list",
+        aliases=["ls"],
         help="List known projects and their status (default)",
         description="List all known kanibako projects with their hash, status, and path.",
+    )
+    list_p.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
+        help="Include orphaned projects in the listing",
+    )
+    list_p.add_argument(
+        "--orphan", action="store_true",
+        help="Show only orphaned projects (missing workspace)",
+    )
+    list_p.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output project names only, one per line",
     )
     list_p.set_defaults(func=run_list)
 
@@ -171,42 +190,39 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     duplicate_p.set_defaults(func=run_duplicate)
 
-    # kanibako box orphan
-    orphan_p = box_sub.add_parser(
-        "orphan",
-        help="List orphaned projects (metadata without a workspace)",
-        description="List projects whose workspace directory no longer exists.",
-    )
-    orphan_p.set_defaults(func=run_orphan)
-
-    # kanibako box forget
-    forget_p = box_sub.add_parser(
-        "forget",
+    # kanibako box rm (was: forget)
+    rm_p = box_sub.add_parser(
+        "rm",
+        aliases=["delete"],
         help="Unregister a project (optionally purge its metadata)",
         description=(
             "Remove a project from names.toml without touching the workspace.\n"
             "With --purge, also delete kanibako metadata (shell config, project.toml, vault symlinks, logs)."
         ),
     )
-    forget_p.add_argument(
+    rm_p.add_argument(
         "target",
-        help="Project name or workspace path to forget",
+        help="Project name or workspace path to remove",
     )
-    forget_p.add_argument(
+    rm_p.add_argument(
         "--purge", action="store_true",
         help="Also delete kanibako metadata for this project",
     )
-    forget_p.add_argument(
+    rm_p.add_argument(
         "--force", action="store_true",
         help="Skip confirmation prompt (only relevant with --purge)",
     )
-    forget_p.set_defaults(func=run_forget)
+    rm_p.set_defaults(func=run_rm)
 
-    # kanibako box info
+    # kanibako box info / inspect
     info_p = box_sub.add_parser(
         "info",
-        help="Show project details",
-        description="Show project mode, paths, and status for a kanibako project.",
+        aliases=["inspect"],
+        help="Show project details, status, and configuration",
+        description=(
+            "Show per-project status: mode, paths, container state, image, and credentials.\n"
+            "Replaces the top-level 'status' command."
+        ),
     )
     info_p.add_argument("path", nargs="?", default=None, help="Project directory (default: cwd)")
     info_p.set_defaults(func=run_info)
@@ -363,6 +379,10 @@ def run_create(args: argparse.Namespace) -> int:
 
 
 def run_list(args: argparse.Namespace) -> int:
+    show_all = getattr(args, "show_all", False)
+    orphan_only = getattr(args, "orphan", False)
+    quiet = getattr(args, "quiet", False)
+
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -370,8 +390,12 @@ def run_list(args: argparse.Namespace) -> int:
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)
 
+    if orphan_only:
+        return _list_orphans(projects, ws_data, std, quiet)
+
     if not projects and not ws_data:
-        print("No known projects.")
+        if not quiet:
+            print("No known projects.")
         return 0
 
     if projects:
@@ -379,7 +403,8 @@ def run_list(args: argparse.Namespace) -> int:
         names_data = read_names(std.data_path)
         path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
-        print(f"{'NAME':<18} {'STATUS':<10} {'PATH'}")
+        if not quiet:
+            print(f"{'NAME':<18} {'STATUS':<10} {'PATH'}")
         for settings_path, project_path in projects:
             # Directory name is now the project name (or hash for legacy).
             dir_name = settings_path.name
@@ -393,35 +418,50 @@ def run_list(args: argparse.Namespace) -> int:
             else:
                 status = "missing"
                 label = str(project_path)
-            print(f"{proj_name:<18} {status:<10} {label}")
+
+            # Skip orphans unless --all is given.
+            if status in ("missing", "unknown") and not show_all:
+                continue
+
+            if quiet:
+                print(proj_name)
+            else:
+                print(f"{proj_name:<18} {status:<10} {label}")
 
     for ws_name, ws, project_list in ws_data:
-        print()
-        print(f"Working set: {ws_name} ({ws.root})")
-        if project_list:
-            print(f"  {'NAME':<18} {'STATUS':<10} {'SOURCE'}")
+        if quiet:
             for proj_name, status in project_list:
-                # Look up source_path from workset projects.
-                source = ""
-                for p in ws.projects:
-                    if p.name == proj_name:
-                        source = str(p.source_path)
-                        break
-                print(f"  {proj_name:<18} {status:<10} {source}")
+                if status == "missing" and not show_all:
+                    continue
+                print(proj_name)
         else:
-            print("  (no projects)")
+            print()
+            print(f"Workset: {ws_name} ({ws.root})")
+            if project_list:
+                print(f"  {'NAME':<18} {'STATUS':<10} {'SOURCE'}")
+                for proj_name, status in project_list:
+                    if status == "missing" and not show_all:
+                        continue
+                    # Look up source_path from workset projects.
+                    source = ""
+                    for p in ws.projects:
+                        if p.name == proj_name:
+                            source = str(p.source_path)
+                            break
+                    print(f"  {proj_name:<18} {status:<10} {source}")
+            else:
+                print("  (no projects)")
 
     return 0
 
 
-def run_orphan(args: argparse.Namespace) -> int:
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    projects = iter_projects(std, config)
-    ws_data = iter_workset_projects(std, config)
-
+def _list_orphans(
+    projects: list,
+    ws_data: list,
+    std,
+    quiet: bool,
+) -> int:
+    """List only orphaned projects (--orphan flag handler)."""
     # Local mode orphans: path missing or no breadcrumb.
     ac_orphans = []
     for metadata_path, project_path in projects:
@@ -436,30 +476,44 @@ def run_orphan(args: argparse.Namespace) -> int:
                 ws_orphans.append((ws_name, proj_name))
 
     if not ac_orphans and not ws_orphans:
-        print("No orphaned projects found.")
+        if not quiet:
+            print("No orphaned projects found.")
         return 0
 
+    names_data = read_names(std.data_path)
+    path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
+
     if ac_orphans:
-        print(f"{'NAME':<18} {'PATH'}")
+        if not quiet:
+            print(f"{'NAME':<18} {'PATH'}")
         for metadata_path, project_path in ac_orphans:
             dir_name = metadata_path.name
-            label = str(project_path) if project_path else "(no breadcrumb)"
-            print(f"{dir_name:<18} {label}")
+            proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
+            if quiet:
+                print(proj_name)
+            else:
+                label = str(project_path) if project_path else "(no breadcrumb)"
+                print(f"{proj_name:<18} {label}")
 
     if ws_orphans:
-        if ac_orphans:
-            print()
-        print(f"{'WORKSET':<18} {'PROJECT'}")
+        if not quiet:
+            if ac_orphans:
+                print()
+            print(f"{'WORKSET':<18} {'PROJECT'}")
         for ws_name, proj_name in ws_orphans:
-            print(f"{ws_name:<18} {proj_name}")
+            if quiet:
+                print(proj_name)
+            else:
+                print(f"{ws_name:<18} {proj_name}")
 
-    total = len(ac_orphans) + len(ws_orphans)
-    print(f"\n{total} orphaned project(s).")
-    print("Use 'kanibako box migrate' to remap, or 'kanibako box purge' to remove.")
+    if not quiet:
+        total = len(ac_orphans) + len(ws_orphans)
+        print(f"\n{total} orphaned project(s).")
+        print("Use 'kanibako box migrate' to remap, or 'kanibako box rm' to remove.")
     return 0
 
 
-def run_forget(args: argparse.Namespace) -> int:
+def run_rm(args: argparse.Namespace) -> int:
     """Unregister a project from names.toml, optionally purging metadata."""
     import shutil
 
@@ -501,7 +555,7 @@ def run_forget(args: argparse.Namespace) -> int:
         return 1
 
     kind = "workset" if section == "worksets" else "project"
-    print(f"Forgetting {kind}: {name} ({path})")
+    print(f"Removing {kind}: {name} ({path})")
 
     # Unregister from names.toml.
     unregister_name(std.data_path, name, section=section)
@@ -539,44 +593,151 @@ def run_forget(args: argparse.Namespace) -> int:
                 print(f"Removed logs: {log_dir}")
         else:
             print(f"No metadata directory found at {metadata_dir}")
+    else:
+        # Hint about --purge when metadata still exists.
+        metadata_dir = std.data_path / "boxes" / name
+        if metadata_dir.is_dir():
+            print(
+                f"Metadata still present at {metadata_dir}. "
+                f"Run 'kanibako box rm {name} --purge' to delete."
+            )
 
     return 0
+
+
+def _format_credential_age(creds_path: Path) -> str:
+    """Return a human-readable age string for a credentials file, or 'n/a'."""
+    if not creds_path.is_file():
+        return "n/a (no credentials file)"
+    try:
+        mtime = creds_path.stat().st_mtime
+    except OSError:
+        return "n/a (unreadable)"
+    dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    now = datetime.now(tz=timezone.utc)
+    delta = now - dt
+    total_seconds = int(delta.total_seconds())
+    if total_seconds < 60:
+        age = f"{total_seconds}s ago"
+    elif total_seconds < 3600:
+        age = f"{total_seconds // 60}m ago"
+    elif total_seconds < 86400:
+        age = f"{total_seconds // 3600}h ago"
+    else:
+        age = f"{total_seconds // 86400}d ago"
+    return f"{age} ({dt.strftime('%Y-%m-%d %H:%M:%S UTC')})"
+
+
+def _check_container_running(proj) -> tuple[bool, str]:
+    """Check if a kanibako container is running for this project.
+
+    Accepts a ``ProjectPaths`` (or duck-typed equivalent).
+    Returns ``(is_running, detail_string)``.
+    """
+    container_name = container_name_for(proj)
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError:
+        return False, "unknown (no container runtime)"
+    containers = runtime.list_running()
+    for name, image, status in containers:
+        if name == container_name:
+            return True, f"running ({container_name}: {image})"
+    # Check for stopped persistent container
+    if runtime.container_exists(container_name):
+        return False, f"stopped persistent ({container_name})"
+    return False, f"not running ({container_name})"
 
 
 def run_info(args: argparse.Namespace) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
-    std = load_std_paths(config)
 
     try:
-        proj = resolve_any_project(std, config, project_dir=args.path, initialize=False)
+        std = load_std_paths(config)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    project_dir = getattr(args, "path", None)
+    raw = project_dir or os.getcwd()
+    raw_dir = Path(raw).resolve()
+
+    if not raw_dir.is_dir():
+        print(f"Error: directory does not exist: {raw_dir}", file=sys.stderr)
+        return 1
+
+    # Detect mode and resolve project paths (without initializing).
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    if not proj.metadata_path.is_dir():
-        print(f"Error: No project data found for {proj.project_path}", file=sys.stderr)
+    # Check if the project has been initialized (has metadata on disk).
+    has_data = proj.metadata_path.is_dir()
+
+    if not has_data:
+        print(f"No project data found for: {proj.project_path}")
+        print()
+        if proj.mode == ProjectMode.local:
+            print("This directory has not been used with kanibako yet.")
+            print("Start a session with 'kanibako start', or create with:")
+            print("  kanibako box create")
+        else:
+            print("This directory has not been initialized.")
         return 1
 
-    if proj.name:
-        print(f"Name:      {proj.name}")
-    print(f"Mode:      {proj.mode.value}")
-    print(f"Project:   {proj.project_path}")
-    print(f"Hash:      {short_hash(proj.project_hash)}")
-    print(f"Metadata:  {proj.metadata_path}")
-    print(f"Shell:     {proj.shell_path}")
-    print(f"Vault RO:  {proj.vault_ro_path}")
-    print(f"Vault RW:  {proj.vault_rw_path}")
-    if proj.global_shared_path:
-        print(f"Shared:    {proj.global_shared_path}")
-    if proj.local_shared_path:
-        print(f"Local:     {proj.local_shared_path}")
+    # Load merged config for image info.
+    project_toml = proj.metadata_path / "project.toml"
+    merged = load_merged_config(
+        config_file,
+        project_toml if project_toml.exists() else None,
+    )
 
+    # Gather status info.
     lock_file = proj.metadata_path / ".kanibako.lock"
-    if lock_file.exists():
-        print(f"Lock:      ACTIVE ({lock_file})")
-    else:
-        print("Lock:      none")
+    lock_held = lock_file.exists()
+
+    container_running, container_detail = _check_container_running(proj)
+
+    # Resolve target for credential check path
+    try:
+        target = resolve_target(merged.target_name or None)
+        creds_file = target.credential_check_path(proj.shell_path)
+    except (KeyError, Exception):
+        creds_file = None
+    cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
+
+    # Display mode name with dashes for readability.
+    mode_display = proj.mode.value.replace("_", "-")
+
+    # Format output.
+    rows: list[tuple[str, str]] = [
+        ("Name", proj.name or "(unnamed)"),
+        ("Mode", mode_display),
+        ("Project", str(proj.project_path)),
+        ("Hash", short_hash(proj.project_hash)),
+        ("Metadata", str(proj.metadata_path)),
+        ("Shell", str(proj.shell_path)),
+        ("Vault RO", str(proj.vault_ro_path)),
+        ("Vault RW", str(proj.vault_rw_path)),
+    ]
+    if proj.global_shared_path:
+        rows.append(("Shared", str(proj.global_shared_path)))
+    if proj.local_shared_path:
+        rows.append(("Local", str(proj.local_shared_path)))
+    rows.extend([
+        ("Image", merged.container_image),
+        ("Lock", "ACTIVE" if lock_held else "none"),
+        ("Container", container_detail),
+        ("Credentials", cred_age),
+    ])
+
+    # Compute alignment width from longest label.
+    label_width = max(len(label) for label, _ in rows) + 1  # +1 for colon
+    for label, value in rows:
+        print(f"  {label + ':':<{label_width}}  {value}")
 
     return 0
 
