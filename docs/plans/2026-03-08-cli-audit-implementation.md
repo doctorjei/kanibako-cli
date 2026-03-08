@@ -509,7 +509,7 @@ Top-level `vault` removed. All tests pass.
 
 ## Phase 10: `image` Restructure
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Restructure image command: absorb template, add create/info/rm.
 
@@ -559,7 +559,7 @@ kanibako image rebuild [image] [--all]
 
 ## Phase 11: `workset` Restructure
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Restructure workset command with docker-aligned naming and config support.
 
@@ -611,7 +611,7 @@ kanibako workset disconnect <workset> <project> [--force]
 
 ## Phase 12: `agent` Command (New)
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Create new `agent` management command. Move reauth, helper, fork under it.
 
@@ -673,7 +673,7 @@ kanibako agent fork <name>
 
 ## Phase 13: `system` Command + Lazy Init
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Create new `system` management command. Replace `setup`/`remove` with
 lazy init and `system config --reset`.
@@ -732,7 +732,7 @@ kanibako system upgrade [--check]
 
 ## Phase 14: Top-Level Aliases + Final Cleanup + Docs
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Wire top-level aliases, clean up cli.py, update documentation.
 

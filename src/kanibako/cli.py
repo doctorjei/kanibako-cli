@@ -23,16 +23,28 @@ def build_parser() -> argparse.ArgumentParser:
         prog="kanibako",
         description="Run AI coding agents in rootless containers with per-project isolation.",
         epilog=(
-            "common switches (for default 'start' command):\n"
-            "  [project]           project directory or name (default: cwd)\n"
+            "top-level aliases (delegate to 'box' subcommands):\n"
+            "  start [project]     start a container session (default command)\n"
+            "  stop [project]      stop a running container\n"
+            "  shell [project]     open a shell in a container\n"
+            "  ps                  list running containers\n"
+            "  create [path]       create a new project\n"
+            "  rm <project>        remove a project\n"
+            "\n"
+            "management commands:\n"
+            "  box                 project lifecycle (create, list, start, stop, ...)\n"
+            "  image               container image management\n"
+            "  workset             project grouping\n"
+            "  agent               agent operations (reauth, helper, fork)\n"
+            "  system              global config + self-update\n"
+            "\n"
+            "common switches (for 'start' command):\n"
             "  -N, --new           start a new conversation\n"
             "  -C, --continue      continue the most recent conversation (default)\n"
             "  -R, --resume        resume with conversation picker\n"
             "  -A, --autonomous    run with full permissions (default)\n"
             "  -S, --secure        run without --dangerously-skip-permissions\n"
             "  -M, --model MODEL   override the agent model for this run\n"
-            "  --image IMAGE       use IMAGE as the container image\n"
-            "  --entrypoint CMD    use CMD as the container entrypoint\n"
             "  -v, --verbose       show debug output (target detection, container cmd)\n"
             "\n"
             "run 'kanibako COMMAND --help' for subcommand-specific options"
@@ -50,14 +62,71 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from kanibako.commands.image import add_parser as add_image_parser
     from kanibako.commands.box import add_parser as add_box_parser
+    from kanibako.commands.box._parser import run_create, run_ps, run_rm
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.agent_cmd import add_parser as add_agent_parser
     from kanibako.commands.system_cmd import add_parser as add_system_parser
 
+    # Top-level aliases (start, shell, stop already have their own parsers).
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
     add_stop_parser(subparsers)
+
+    # ps — top-level alias for box ps
+    ps_p = subparsers.add_parser("ps", help="List running containers")
+    ps_p.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
+        help="Include stopped containers",
+    )
+    ps_p.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output container names only, one per line",
+    )
+    ps_p.set_defaults(func=run_ps)
+
+    # create — top-level alias for box create
+    create_p = subparsers.add_parser("create", help="Create a new project")
+    create_p.add_argument(
+        "path", nargs="?", default=None,
+        help="Project directory (default: cwd). Created if it doesn't exist.",
+    )
+    create_p.add_argument(
+        "--standalone", action="store_true",
+        help="Use standalone mode (all state inside the project directory)",
+    )
+    create_p.add_argument(
+        "--name", default=None,
+        help="Project name override (default: auto-assigned from directory name)",
+    )
+    create_p.add_argument(
+        "-i", "--image", default=None,
+        help="Container image to use for this project",
+    )
+    create_p.add_argument(
+        "--no-vault", action="store_true",
+        help="Disable vault directories",
+    )
+    create_p.add_argument(
+        "--distinct-auth", action="store_true",
+        help="Use distinct credentials (no sync from host)",
+    )
+    create_p.set_defaults(func=run_create)
+
+    # rm — top-level alias for box rm
+    rm_p = subparsers.add_parser("rm", help="Remove a project")
+    rm_p.add_argument("target", help="Project name or workspace path to remove")
+    rm_p.add_argument(
+        "--purge", action="store_true",
+        help="Also delete kanibako metadata for this project",
+    )
+    rm_p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompt (only relevant with --purge)",
+    )
+    rm_p.set_defaults(func=run_rm)
+
+    # Management commands.
     add_image_parser(subparsers)
     add_box_parser(subparsers)
     add_workset_parser(subparsers)
@@ -68,8 +137,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 _SUBCOMMANDS = {
-    "start", "shell", "stop", "image",
-    "box", "workset", "agent", "system",
+    # Top-level aliases (delegate to box subcommands).
+    "start", "stop", "shell", "ps", "create", "rm",
+    # Management commands.
+    "box", "image", "workset", "agent", "system",
 }
 
 

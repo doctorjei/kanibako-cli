@@ -589,6 +589,81 @@ class TestParser:
         assert args.workset == "myws"
         assert args.project_name == "proj"
 
+    # -- Top-level alias tests --
+
+    def test_ps_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["ps"])
+        assert args.command == "ps"
+        assert hasattr(args, "func")
+
+    def test_ps_top_level_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["ps", "--all"])
+        assert args.command == "ps"
+        assert args.show_all is True
+
+    def test_ps_top_level_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["ps", "-q"])
+        assert args.command == "ps"
+        assert args.quiet is True
+
+    def test_create_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "/tmp/proj"])
+        assert args.command == "create"
+        assert args.path == "/tmp/proj"
+        assert hasattr(args, "func")
+
+    def test_create_top_level_standalone(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "/tmp/proj", "--standalone"])
+        assert args.command == "create"
+        assert args.standalone is True
+
+    def test_create_top_level_with_image(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "-i", "myimage:v1"])
+        assert args.command == "create"
+        assert args.image == "myimage:v1"
+
+    def test_create_top_level_no_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["create"])
+        assert args.command == "create"
+        assert args.path is None
+
+    def test_rm_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["rm", "myproj"])
+        assert args.command == "rm"
+        assert args.target == "myproj"
+        assert hasattr(args, "func")
+
+    def test_rm_top_level_purge(self):
+        parser = build_parser()
+        args = parser.parse_args(["rm", "myproj", "--purge"])
+        assert args.command == "rm"
+        assert args.purge is True
+
+    def test_rm_top_level_force(self):
+        parser = build_parser()
+        args = parser.parse_args(["rm", "myproj", "--purge", "--force"])
+        assert args.command == "rm"
+        assert args.purge is True
+        assert args.force is True
+
+    def test_subcommands_set(self):
+        from kanibako.cli import _SUBCOMMANDS
+        expected = {
+            # Top-level aliases
+            "start", "stop", "shell", "ps", "create", "rm",
+            # Management commands
+            "box", "image", "workset", "agent", "system",
+        }
+        assert _SUBCOMMANDS == expected
+
 
 class TestLazyInitExemptions:
     """Commands that skip lazy initialization."""
