@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import shutil
+from unittest.mock import patch
 
 
 from kanibako.config import load_config
-from kanibako.paths import load_std_paths, resolve_decentralized_project, resolve_project, resolve_workset_project
+from kanibako.paths import load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset, load_workset
 
 
@@ -15,7 +16,7 @@ class TestBoxList:
     def test_list_empty(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_list
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         assert "No known projects" in capsys.readouterr().out
@@ -28,56 +29,110 @@ class TestBoxList:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "ok" in out
         assert str(tmp_home / "project") in out
 
-    def test_list_shows_missing_status(self, config_file, tmp_home, credentials_dir, capsys):
+    def test_list_hides_orphans_by_default(self, config_file, tmp_home, credentials_dir, capsys):
+        """By default, orphaned (missing) projects are not shown."""
         from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create a project, then remove the directory.
+        # One healthy, one orphaned.
+        ok_dir = tmp_home / "alive_proj"
+        ok_dir.mkdir()
+        resolve_project(std, config, project_dir=str(ok_dir), initialize=True)
+
         gone_dir = tmp_home / "gone_project"
         gone_dir.mkdir()
         resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
         shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "alive_proj" in out
+        assert "missing" not in out
+
+    def test_list_all_includes_orphans(self, config_file, tmp_home, credentials_dir, capsys):
+        """--all flag includes orphaned projects in the listing."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        gone_dir = tmp_home / "gone_project"
+        gone_dir.mkdir()
+        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+        shutil.rmtree(gone_dir)
+
+        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "missing" in out
 
-
-class TestBoxOrphan:
-    def test_orphan_no_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_orphan
-
-        args = argparse.Namespace()
-        rc = run_orphan(args)
-        assert rc == 0
-        assert "No orphaned projects found" in capsys.readouterr().out
-
-    def test_orphan_no_orphans(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_orphan
+    def test_list_quiet_names_only(self, config_file, tmp_home, credentials_dir, capsys):
+        """-q flag outputs names only, one per line."""
+        from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace()
-        rc = run_orphan(args)
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        # Quiet mode: just the name, no header, no status columns.
+        lines = out.strip().split("\n")
+        assert len(lines) == 1
+        assert "NAME" not in out
+        assert "STATUS" not in out
+
+    def test_list_quiet_empty(self, config_file, tmp_home, credentials_dir, capsys):
+        """Quiet mode on empty list produces no output."""
+        from kanibako.commands.box import run_list
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        assert capsys.readouterr().out == ""
+
+
+class TestBoxListOrphan:
+    """Tests for box list --orphan (replaces old box orphan subcommand)."""
+
+    def test_orphan_no_projects(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_list
+
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        assert "No orphaned projects found" in capsys.readouterr().out
+
+    def test_orphan_no_orphans(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+        rc = run_list(args)
         assert rc == 0
         assert "No orphaned projects found" in capsys.readouterr().out
 
     def test_orphan_detects_missing_path(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_orphan
+        from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -87,15 +142,15 @@ class TestBoxOrphan:
         resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
         shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace()
-        rc = run_orphan(args)
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+        rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "gone_project" in out
         assert "1 orphaned project(s)" in out
 
     def test_orphan_skips_healthy_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_orphan
+        from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -110,8 +165,8 @@ class TestBoxOrphan:
         resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
         shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace()
-        rc = run_orphan(args)
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+        rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "vanished_proj" in out
@@ -119,7 +174,7 @@ class TestBoxOrphan:
         assert "1 orphaned project(s)" in out
 
     def test_orphan_detects_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_orphan
+        from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -131,8 +186,8 @@ class TestBoxOrphan:
         # Remove the workspace dir.
         shutil.rmtree(ws.workspaces_dir / "orphan-proj")
 
-        args = argparse.Namespace()
-        rc = run_orphan(args)
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+        rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "orphan-ws" in out
@@ -140,7 +195,7 @@ class TestBoxOrphan:
         assert "1 orphaned project(s)" in out
 
     def test_orphan_shows_hint(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_orphan
+        from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -150,11 +205,32 @@ class TestBoxOrphan:
         resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
         shutil.rmtree(gone_dir)
 
-        args = argparse.Namespace()
-        run_orphan(args)
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
+        run_list(args)
         out = capsys.readouterr().out
         assert "migrate" in out
-        assert "purge" in out
+        assert "box rm" in out
+
+    def test_orphan_quiet(self, config_file, tmp_home, credentials_dir, capsys):
+        """--orphan -q outputs orphan names only."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        gone_dir = tmp_home / "quiet_orphan"
+        gone_dir.mkdir()
+        resolve_project(std, config, project_dir=str(gone_dir), initialize=True)
+        shutil.rmtree(gone_dir)
+
+        args = argparse.Namespace(show_all=False, orphan=True, quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        lines = out.strip().split("\n")
+        assert len(lines) == 1
+        assert "NAME" not in out
+        assert "orphaned project" not in out
 
 
 class TestBoxMigrate:
@@ -541,7 +617,7 @@ class TestBoxDuplicate:
 
 
 class TestBoxInfo:
-    def test_info_account_centric(self, config_file, tmp_home, credentials_dir, capsys):
+    def test_info_local(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_info
 
         config = load_config(config_file)
@@ -550,32 +626,49 @@ class TestBoxInfo:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(path=project_dir)
-        rc = run_info(args)
+        with patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "account_centric" in out
+        assert "local" in out
         assert str(tmp_home / "project") in out
+        assert "Image:" in out
+        assert "Container:" in out
 
-    def test_info_decentralized(self, config_file, tmp_home, capsys):
+    def test_info_standalone(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_info
 
-        project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
 
-        args = argparse.Namespace(path=str(project_dir))
-        rc = run_info(args)
+        resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(path=project_dir)
+        with patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "decentralized" in out
+        assert "standalone" in out
 
     def test_info_no_data(self, config_file, tmp_home, capsys):
         from kanibako.commands.box import run_info
 
         args = argparse.Namespace(path=str(tmp_home / "project"))
-        rc = run_info(args)
+        with patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            rc = run_info(args)
         assert rc == 1
-        err = capsys.readouterr().err
-        assert "No project data found" in err
+        out = capsys.readouterr().out
+        assert "No project data found" in out
 
     def test_info_lock_status(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_info
@@ -587,7 +680,11 @@ class TestBoxInfo:
         (proj.metadata_path / ".kanibako.lock").touch()
 
         args = argparse.Namespace(path=project_dir)
-        rc = run_info(args)
+        with patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "ACTIVE" in out
@@ -631,7 +728,7 @@ class TestBoxMigrateShell:
 class TestBoxConvert:
     """Tests for cross-mode conversion (kanibako box migrate --to)."""
 
-    def _convert_args(self, project_path=None, to_mode="decentralized", force=True,
+    def _convert_args(self, project_path=None, to_mode="standalone", force=True,
                        workset=None, project_name=None, in_place=False):
         return argparse.Namespace(
             old_path=str(project_path) if project_path else None,
@@ -643,7 +740,7 @@ class TestBoxConvert:
             in_place=in_place,
         )
 
-    def test_convert_ac_to_decentralized(self, config_file, tmp_home, credentials_dir):
+    def test_convert_local_to_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -655,7 +752,7 @@ class TestBoxConvert:
         (proj.metadata_path / "marker.txt").write_text("settings-data")
         (proj.shell_path / "custom.sh").write_text("echo hello")
 
-        args = self._convert_args(project_dir, "decentralized")
+        args = self._convert_args(project_dir, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -665,10 +762,10 @@ class TestBoxConvert:
         assert (project_dir / ".kanibako" / "marker.txt").read_text() == "settings-data"
         assert (project_dir / ".kanibako" / "shell" / "custom.sh").read_text() == "echo hello"
 
-        # Old AC data should be gone.
+        # Old local data should be gone.
         assert not proj.metadata_path.exists()
 
-    def test_convert_decentralized_to_ac(self, config_file, tmp_home, credentials_dir):
+    def test_convert_standalone_to_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -676,17 +773,17 @@ class TestBoxConvert:
 
         project_dir = tmp_home / "conv_dec"
         project_dir.mkdir()
-        proj = resolve_decentralized_project(
+        proj = resolve_standalone_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
         (proj.metadata_path / "marker.txt").write_text("dec-settings")
         (proj.shell_path / "custom.sh").write_text("echo dec")
 
-        args = self._convert_args(project_dir, "account-centric")
+        args = self._convert_args(project_dir, "local")
         rc = run_migrate(args)
         assert rc == 0
 
-        # AC layout should exist.
+        # Local layout should exist.
         projects_base = std.data_path / "boxes"
         ac_project = projects_base / "conv_dec"
         ac_home = ac_project / "shell"
@@ -696,7 +793,7 @@ class TestBoxConvert:
         assert ac_home.is_dir()
         assert (ac_home / "custom.sh").read_text() == "echo dec"
 
-        # Old decentralized data should be gone.
+        # Old standalone data should be gone.
         assert not (project_dir / ".kanibako").exists()
         assert not (project_dir / ".kanibako" / "shell").exists()
 
@@ -710,7 +807,7 @@ class TestBoxConvert:
         project_dir.mkdir()
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        args = self._convert_args(project_dir, "account-centric")
+        args = self._convert_args(project_dir, "local")
         rc = run_migrate(args)
         assert rc == 1
 
@@ -742,7 +839,7 @@ class TestBoxConvert:
         creds_file.write_text(json.dumps({"claudeAiOauth": {"token": "test-token"}}))
         original_creds = creds_file.read_text()
 
-        args = self._convert_args(project_dir, "decentralized")
+        args = self._convert_args(project_dir, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -762,13 +859,13 @@ class TestBoxConvert:
         proj = resolve_project(std, config, project_dir=str(project_dir), initialize=True)
         (proj.shell_path / "custom_tool").write_text("#!/bin/bash\necho tool")
 
-        args = self._convert_args(project_dir, "decentralized")
+        args = self._convert_args(project_dir, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
         assert (project_dir / ".kanibako" / "shell" / "custom_tool").read_text() == "#!/bin/bash\necho tool"
 
-    def test_convert_removes_breadcrumb_for_decentralized(self, config_file, tmp_home, credentials_dir):
+    def test_convert_removes_breadcrumb_for_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -778,14 +875,14 @@ class TestBoxConvert:
         project_dir.mkdir()
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        args = self._convert_args(project_dir, "decentralized")
+        args = self._convert_args(project_dir, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
         # Decentralized should NOT have project-path.txt.
         assert not (project_dir / ".kanibako" / "project-path.txt").exists()
 
-    def test_convert_stores_workspace_in_toml_for_ac(self, config_file, tmp_home, credentials_dir):
+    def test_convert_stores_workspace_in_toml_for_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -793,11 +890,11 @@ class TestBoxConvert:
 
         project_dir = tmp_home / "conv_bc_ac"
         project_dir.mkdir()
-        resolve_decentralized_project(
+        resolve_standalone_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
 
-        args = self._convert_args(project_dir, "account-centric")
+        args = self._convert_args(project_dir, "local")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -820,7 +917,7 @@ class TestBoxConvert:
         proj = resolve_project(std, config, project_dir=str(project_dir), initialize=True)
         (proj.metadata_path / ".kanibako.lock").touch()
 
-        args = self._convert_args(project_dir, "decentralized", force=True)
+        args = self._convert_args(project_dir, "standalone", force=True)
         rc = run_migrate(args)
         assert rc == 0
 
@@ -839,7 +936,7 @@ class TestBoxConvert:
         (proj.metadata_path / ".kanibako.lock").touch()
 
         # Without --force, should abort on lock file.
-        args = self._convert_args(project_dir, "decentralized", force=False)
+        args = self._convert_args(project_dir, "standalone", force=False)
         rc = run_migrate(args)
         assert rc == 2
 
@@ -854,7 +951,7 @@ class TestBoxConvert:
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
         # With --force, should succeed without prompting.
-        args = self._convert_args(project_dir, "decentralized", force=True)
+        args = self._convert_args(project_dir, "standalone", force=True)
         rc = run_migrate(args)
         assert rc == 0
         assert (project_dir / ".kanibako").is_dir()
@@ -869,12 +966,12 @@ class TestBoxConvert:
         project_dir.mkdir()
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        # vault/ should already exist from AC init. Remove the gitignore to test creation.
+        # vault/ should already exist from local init. Remove the gitignore to test creation.
         vault_gitignore = project_dir / "vault" / ".gitignore"
         if vault_gitignore.exists():
             vault_gitignore.unlink()
 
-        args = self._convert_args(project_dir, "decentralized")
+        args = self._convert_args(project_dir, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -891,7 +988,7 @@ class TestBoxConvert:
         project_dir.mkdir()
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        args = self._convert_args(project_dir, "decentralized")
+        args = self._convert_args(project_dir, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -913,7 +1010,7 @@ class TestBoxConvert:
         # No project path argument → should use cwd.
         args = argparse.Namespace(
             old_path=None, new_path=None,
-            to_mode="decentralized", force=True,
+            to_mode="standalone", force=True,
         )
         rc = run_migrate(args)
         assert rc == 0
@@ -932,7 +1029,7 @@ class TestBoxDuplicateCrossMode:
             workset=workset, project_name=project_name,
         )
 
-    def test_duplicate_ac_to_decentralized(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_local_to_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -946,18 +1043,18 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "dup_ac_dst"
 
-        args = self._make_args(src_dir, dst_dir, "decentralized")
+        args = self._make_args(src_dir, dst_dir, "standalone")
         rc = run_duplicate(args)
         assert rc == 0
 
-        # Destination should have decentralized layout.
+        # Destination should have standalone layout.
         assert (dst_dir / ".kanibako").is_dir()
         assert (dst_dir / ".kanibako" / "marker.txt").read_text() == "ac-data"
         assert (dst_dir / "code.py").read_text() == "print('hello')"
-        # No breadcrumb in decentralized.
+        # No breadcrumb in standalone.
         assert not (dst_dir / ".kanibako" / "project-path.txt").exists()
 
-    def test_duplicate_decentralized_to_ac(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_standalone_to_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -966,18 +1063,18 @@ class TestBoxDuplicateCrossMode:
         src_dir = tmp_home / "dup_dec_src"
         src_dir.mkdir()
         (src_dir / "code.py").write_text("print('dec')")
-        proj = resolve_decentralized_project(
+        proj = resolve_standalone_project(
             std, config, project_dir=str(src_dir), initialize=True,
         )
         (proj.metadata_path / "marker.txt").write_text("dec-data")
 
         dst_dir = tmp_home / "dup_dec_dst"
 
-        args = self._make_args(src_dir, dst_dir, "account-centric")
+        args = self._make_args(src_dir, dst_dir, "local")
         rc = run_duplicate(args)
         assert rc == 0
 
-        # Destination should have AC layout.
+        # Destination should have local layout.
         projects_base = std.data_path / "boxes"
         ac_project = projects_base / "dup_dec_dst"
         assert ac_project.is_dir()
@@ -998,7 +1095,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "dup_bare_dst"
 
-        args = self._make_args(src_dir, dst_dir, "decentralized", bare=True)
+        args = self._make_args(src_dir, dst_dir, "standalone", bare=True)
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1019,7 +1116,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "dup_preserve_dst"
 
-        args = self._make_args(src_dir, dst_dir, "decentralized")
+        args = self._make_args(src_dir, dst_dir, "standalone")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1040,7 +1137,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "dup_lock_dst"
 
-        args = self._make_args(src_dir, dst_dir, "decentralized", force=True)
+        args = self._make_args(src_dir, dst_dir, "standalone", force=True)
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1075,8 +1172,8 @@ def _make_workset(tmp_home, std, ws_name="testws"):
     return ws, ws_root
 
 
-def _make_ac_project(tmp_home, std, config, name="myproj"):
-    """Create an AC project with a marker file, return (proj, project_dir)."""
+def _make_local_project(tmp_home, std, config, name="myproj"):
+    """Create a local project with a marker file, return (proj, project_dir)."""
     project_dir = tmp_home / name
     project_dir.mkdir()
     (project_dir / "code.py").write_text("print('hello')")
@@ -1086,12 +1183,12 @@ def _make_ac_project(tmp_home, std, config, name="myproj"):
     return proj, project_dir
 
 
-def _make_decentral_project(tmp_home, std, config, name="myproj"):
-    """Create a decentralized project with a marker file, return (proj, project_dir)."""
+def _make_standalone_project(tmp_home, std, config, name="myproj"):
+    """Create a standalone project with a marker file, return (proj, project_dir)."""
     project_dir = tmp_home / name
     project_dir.mkdir()
     (project_dir / "code.py").write_text("print('dec')")
-    proj = resolve_decentralized_project(
+    proj = resolve_standalone_project(
         std, config, project_dir=str(project_dir), initialize=True,
     )
     (proj.metadata_path / "marker.txt").write_text("dec-marker")
@@ -1115,20 +1212,20 @@ class TestBoxListWorkset:
         source.mkdir()
         add_project(ws, "cool-app", source)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "myws" in out
         assert "cool-app" in out
 
-    def test_list_mixed_ac_and_workset(self, config_file, tmp_home, credentials_dir, capsys):
+    def test_list_mixed_local_and_workset(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # AC project
+        # Local project
         ac_dir = tmp_home / "ac_proj"
         ac_dir.mkdir()
         resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
@@ -1139,16 +1236,17 @@ class TestBoxListWorkset:
         source.mkdir()
         add_project(ws, "ws-proj", source)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "NAME" in out  # AC table header
+        assert "NAME" in out  # local table header
         assert str(ac_dir) in out
         assert "mixed-ws" in out
         assert "ws-proj" in out
 
     def test_list_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
+        """Workset missing workspace is hidden by default (orphan)."""
         from kanibako.commands.box import run_list
 
         config = load_config(config_file)
@@ -1161,7 +1259,7 @@ class TestBoxListWorkset:
         # Remove the workspace dir
         shutil.rmtree(ws.workspaces_dir / "miss-proj")
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
@@ -1180,7 +1278,7 @@ class TestBoxListWorkset:
         # Remove the projects dir
         shutil.rmtree(ws.projects_dir / "nodata-proj")
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
@@ -1196,7 +1294,7 @@ class TestBoxListWorkset:
         # Remove the workset root entirely
         shutil.rmtree(ws_root)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         err = capsys.readouterr().err
@@ -1220,12 +1318,12 @@ class TestBoxConvertToWorkset:
             in_place=in_place,
         )
 
-    def test_convert_ac_to_workset(self, config_file, tmp_home, credentials_dir):
+    def test_convert_local_to_workset(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "conv_ac_ws")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "conv_ac_ws")
         ws, _ = _make_workset(tmp_home, std, "target-ws")
 
         args = self._convert_args(project_dir, workset="target-ws")
@@ -1238,15 +1336,15 @@ class TestBoxConvertToWorkset:
         assert (ws.projects_dir / "conv_ac_ws" / "shell" / "custom.sh").read_text() == "echo hello"
         # Workspace moved
         assert (ws.workspaces_dir / "conv_ac_ws" / "code.py").read_text() == "print('hello')"
-        # Old AC data gone
+        # Old local data gone
         assert not proj.metadata_path.exists()
 
-    def test_convert_decentralized_to_workset(self, config_file, tmp_home, credentials_dir):
+    def test_convert_standalone_to_workset(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_decentral_project(tmp_home, std, config, "conv_dec_ws")
+        proj, project_dir = _make_standalone_project(tmp_home, std, config, "conv_dec_ws")
         ws, _ = _make_workset(tmp_home, std, "dec-ws")
 
         args = self._convert_args(project_dir, workset="dec-ws")
@@ -1257,7 +1355,7 @@ class TestBoxConvertToWorkset:
         assert (ws.projects_dir / "conv_dec_ws" / "marker.txt").read_text() == "dec-marker"
         # Home in workset
         assert (ws.projects_dir / "conv_dec_ws" / "shell" / "custom.sh").read_text() == "echo dec"
-        # Old decentralized data gone
+        # Old standalone data gone
         assert not (project_dir / ".kanibako").exists()
         assert not (project_dir / ".kanibako" / "shell").exists()
 
@@ -1266,7 +1364,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "conv_ip")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "conv_ip")
         ws, _ = _make_workset(tmp_home, std, "ip-ws")
 
         args = self._convert_args(project_dir, workset="ip-ws", in_place=True)
@@ -1294,7 +1392,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        _, project_dir = _make_ac_project(tmp_home, std, config, "conv_noexist")
+        _, project_dir = _make_local_project(tmp_home, std, config, "conv_noexist")
 
         args = self._convert_args(project_dir, workset="nonexistent")
         rc = run_migrate(args)
@@ -1305,7 +1403,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        _, project_dir = _make_ac_project(tmp_home, std, config, "conv_collision")
+        _, project_dir = _make_local_project(tmp_home, std, config, "conv_collision")
         ws, _ = _make_workset(tmp_home, std, "coll-ws")
         # Pre-register a project with the same name
         source = tmp_home / "coll_src"
@@ -1321,7 +1419,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "conv_custom")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "conv_custom")
         ws, _ = _make_workset(tmp_home, std, "custom-ws")
 
         args = self._convert_args(project_dir, workset="custom-ws", project_name="my-fancy-name")
@@ -1337,7 +1435,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "conv_pres")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "conv_pres")
         ws, _ = _make_workset(tmp_home, std, "pres-ws")
 
         args = self._convert_args(project_dir, workset="pres-ws")
@@ -1350,7 +1448,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        _, project_dir = _make_ac_project(tmp_home, std, config, "conv_ws_files")
+        _, project_dir = _make_local_project(tmp_home, std, config, "conv_ws_files")
         ws, _ = _make_workset(tmp_home, std, "wfiles-ws")
 
         args = self._convert_args(project_dir, workset="wfiles-ws")
@@ -1363,7 +1461,7 @@ class TestBoxConvertToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "conv_lock")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "conv_lock")
         (proj.metadata_path / ".kanibako.lock").touch()
         ws, _ = _make_workset(tmp_home, std, "lock-ws")
 
@@ -1402,7 +1500,7 @@ class TestBoxConvertFromWorkset:
             in_place=in_place,
         )
 
-    def test_convert_workset_to_ac(self, config_file, tmp_home, credentials_dir):
+    def test_convert_workset_to_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -1410,11 +1508,11 @@ class TestBoxConvertFromWorkset:
         ws, proj = self._make_workset_proj(tmp_home, std, config)
         workspace_path = ws.workspaces_dir / "ws-proj"
 
-        args = self._convert_args(workspace_path, "account-centric")
+        args = self._convert_args(workspace_path, "local")
         rc = run_migrate(args)
         assert rc == 0
 
-        # AC layout at the source_path recorded in the workset project
+        # Local layout at the source_path recorded in the workset project
         projects_base = std.data_path / "boxes"
         ac_project = projects_base / "ws-proj_src"
         assert ac_project.is_dir()
@@ -1422,7 +1520,7 @@ class TestBoxConvertFromWorkset:
         # No breadcrumb file (workspace stored in project.toml).
         assert not (ac_project / "project-path.txt").exists()
 
-    def test_convert_workset_to_decentralized(self, config_file, tmp_home, credentials_dir):
+    def test_convert_workset_to_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
 
         config = load_config(config_file)
@@ -1431,7 +1529,7 @@ class TestBoxConvertFromWorkset:
         workspace_path = ws.workspaces_dir / "dec-proj"
         source = tmp_home / "dec-proj_src"
 
-        args = self._convert_args(workspace_path, "decentralized")
+        args = self._convert_args(workspace_path, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1448,7 +1546,7 @@ class TestBoxConvertFromWorkset:
         ws, proj = self._make_workset_proj(tmp_home, std, config, "pres-ws2", "pres-proj")
         workspace_path = ws.workspaces_dir / "pres-proj"
 
-        args = self._convert_args(workspace_path, "decentralized")
+        args = self._convert_args(workspace_path, "standalone")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1464,7 +1562,7 @@ class TestBoxConvertFromWorkset:
         (proj.metadata_path / ".kanibako.lock").touch()
         workspace_path = ws.workspaces_dir / "lock-proj"
 
-        args = self._convert_args(workspace_path, "decentralized", force=True)
+        args = self._convert_args(workspace_path, "standalone", force=True)
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1479,7 +1577,7 @@ class TestBoxConvertFromWorkset:
         ws, proj = self._make_workset_proj(tmp_home, std, config, "unreg-ws", "unreg-proj")
         workspace_path = ws.workspaces_dir / "unreg-proj"
 
-        args = self._convert_args(workspace_path, "account-centric")
+        args = self._convert_args(workspace_path, "local")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1501,12 +1599,12 @@ class TestBoxDuplicateToWorkset:
             workset=workset, project_name=project_name,
         )
 
-    def test_duplicate_ac_to_workset(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_local_to_workset(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "dup_ac_src")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "dup_ac_src")
         ws, _ = _make_workset(tmp_home, std, "dup-ws")
 
         args = self._make_args(project_dir, tmp_home / "unused", workset="dup-ws")
@@ -1525,7 +1623,7 @@ class TestBoxDuplicateToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "dup_bare_src")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "dup_bare_src")
         ws, _ = _make_workset(tmp_home, std, "bare-ws")
 
         args = self._make_args(project_dir, tmp_home / "unused", workset="bare-ws", bare=True)
@@ -1542,7 +1640,7 @@ class TestBoxDuplicateToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        _, project_dir = _make_ac_project(tmp_home, std, config, "dup_noflag_src")
+        _, project_dir = _make_local_project(tmp_home, std, config, "dup_noflag_src")
 
         args = self._make_args(project_dir, tmp_home / "unused")
         rc = run_duplicate(args)
@@ -1553,7 +1651,7 @@ class TestBoxDuplicateToWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj, project_dir = _make_ac_project(tmp_home, std, config, "dup_pres_src")
+        proj, project_dir = _make_local_project(tmp_home, std, config, "dup_pres_src")
         ws, _ = _make_workset(tmp_home, std, "pres-dup-ws")
 
         args = self._make_args(project_dir, tmp_home / "unused", workset="pres-dup-ws")
@@ -1589,7 +1687,7 @@ class TestBoxDuplicateFromWorkset:
             workset=None, project_name=None,
         )
 
-    def test_duplicate_workset_to_ac(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_workset_to_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -1598,18 +1696,18 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "ws-proj"
         dest = tmp_home / "dup_ws_ac_dst"
 
-        args = self._make_args(workspace_path, dest, "account-centric")
+        args = self._make_args(workspace_path, dest, "local")
         rc = run_duplicate(args)
         assert rc == 0
 
-        # AC layout at destination
+        # Local layout at destination
         projects_base = std.data_path / "boxes"
         ac_project = projects_base / "dup_ws_ac_dst"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-dup-marker"
         assert (dest / "code.py").read_text() == "print('ws-dup')"
 
-    def test_duplicate_workset_to_decentralized(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_workset_to_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -1618,7 +1716,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "dec-proj"
         dest = tmp_home / "dup_ws_dec_dst"
 
-        args = self._make_args(workspace_path, dest, "decentralized")
+        args = self._make_args(workspace_path, dest, "standalone")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1635,7 +1733,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "bare-proj"
         dest = tmp_home / "dup_ws_bare_dst"
 
-        args = self._make_args(workspace_path, dest, "decentralized", bare=True)
+        args = self._make_args(workspace_path, dest, "standalone", bare=True)
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1652,7 +1750,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "pres-proj"
         dest = tmp_home / "dup_ws_pres_dst"
 
-        args = self._make_args(workspace_path, dest, "account-centric")
+        args = self._make_args(workspace_path, dest, "local")
         rc = run_duplicate(args)
         assert rc == 0
 

@@ -15,11 +15,11 @@ from kanibako.paths import (
     _find_workset_for_path,
     _remove_human_vault_symlink,
     _remove_project_vault_symlink,
-    _resolve_ac_dir,
+    _resolve_local_dir,
     xdg,
     detect_project_mode,
     load_std_paths,
-    resolve_decentralized_project,
+    resolve_standalone_project,
     resolve_project,
     resolve_workset_project,
 )
@@ -59,7 +59,7 @@ def run_migrate(args: argparse.Namespace) -> int:
     new_hash = project_hash(str(new_path))
 
     # Find old project directory.
-    old_name, old_project_dir = _resolve_ac_dir(
+    old_name, old_project_dir = _resolve_local_dir(
         std.data_path, str(old_path),
     )
 
@@ -73,7 +73,7 @@ def run_migrate(args: argparse.Namespace) -> int:
         return 1
 
     # Find or assign new project directory.
-    new_name, new_project_dir = _resolve_ac_dir(
+    new_name, new_project_dir = _resolve_local_dir(
         std.data_path, str(new_path),
     )
 
@@ -186,17 +186,17 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
         return _convert_from_workset(args, project_path, std, config)
 
     # Parse target mode.
-    target_mode = ProjectMode.decentralized if to_mode_str == "decentralized" else ProjectMode.account_centric
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
 
     if current_mode == target_mode:
         print(f"Error: project is already in {current_mode.value} mode.", file=sys.stderr)
         return 1
 
     # Resolve current project paths.
-    if current_mode == ProjectMode.account_centric:
+    if current_mode == ProjectMode.local:
         proj = resolve_project(std, config, project_dir=str(project_path), initialize=False)
     else:
-        proj = resolve_decentralized_project(std, config, project_dir=str(project_path), initialize=False)
+        proj = resolve_standalone_project(std, config, project_dir=str(project_path), initialize=False)
 
     # Check that project data exists.
     if not proj.metadata_path.is_dir():
@@ -228,19 +228,19 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Dispatch.
-    if target_mode == ProjectMode.decentralized:
-        _convert_ac_to_decentral(project_path, std, config, proj)
+    if target_mode == ProjectMode.standalone:
+        _convert_local_to_standalone(project_path, std, config, proj)
     else:
-        _convert_decentral_to_ac(project_path, std, config, proj)
+        _convert_standalone_to_local(project_path, std, config, proj)
 
     print(f"Converted project to {target_mode.value} mode:")
     print(f"  project: {project_path}")
     return 0
 
 
-def _convert_ac_to_decentral(project_path, std, config, proj):
-    """Convert an account-centric project to decentralized layout."""
-    from kanibako.commands.init import _write_project_gitignore
+def _convert_local_to_standalone(project_path, std, config, proj):
+    """Convert a local project to standalone layout."""
+    from kanibako.utils import write_project_gitignore
 
     dst_metadata = project_path / ".kanibako"
     dst_shell = dst_metadata / "shell"
@@ -256,7 +256,7 @@ def _convert_ac_to_decentral(project_path, std, config, proj):
         shutil.copytree(proj.shell_path, dst_shell)
 
     # Write .gitignore entries for .kanibako/.
-    _write_project_gitignore(project_path)
+    write_project_gitignore(project_path)
 
     # Write vault .gitignore if vault exists but gitignore doesn't.
     vault_dir = project_path / "vault"
@@ -265,22 +265,22 @@ def _convert_ac_to_decentral(project_path, std, config, proj):
         if not vault_gitignore.exists():
             vault_gitignore.write_text("share-rw/\n")
 
-    # Remove vault symlinks before cleaning up old AC data.
+    # Remove vault symlinks before cleaning up old local data.
     human_vault_dir = std.data_path / config.paths_vault
     _remove_human_vault_symlink(human_vault_dir, proj.metadata_path / "vault")
     _remove_project_vault_symlink(project_path)
 
-    # Unregister the AC project name.
+    # Unregister the local project name.
     if proj.name:
         unregister_name(std.data_path, proj.name)
 
-    # Clean up old AC data.
+    # Clean up old local data.
     shutil.rmtree(proj.metadata_path)
 
 
-def _convert_decentral_to_ac(project_path, std, config, proj):
-    """Convert a decentralized project to account-centric layout."""
-    # Assign a name for the new AC project.
+def _convert_standalone_to_local(project_path, std, config, proj):
+    """Convert a standalone project to local layout."""
+    # Assign a name for the new local project.
     project_name = assign_name(std.data_path, str(project_path))
     settings_base = std.data_path / "boxes"
     dst_project = settings_base / project_name
@@ -302,14 +302,14 @@ def _convert_decentral_to_ac(project_path, std, config, proj):
         human_vault_dir = std.data_path / config.paths_vault
         _ensure_human_vault_symlink(human_vault_dir, project_path, vault_parent)
 
-    # Clean up old decentralized data.
+    # Clean up old standalone data.
     shutil.rmtree(proj.metadata_path)
 
 
 # -- Workset conversion helpers --
 
 def _convert_to_workset(args, std, config) -> int:
-    """Convert an AC or decentralized project into a workset."""
+    """Convert a local or standalone project into a workset."""
     import os
 
     from kanibako.workset import add_project, list_worksets, load_workset
@@ -349,10 +349,10 @@ def _convert_to_workset(args, std, config) -> int:
             return 1
 
     # Resolve source paths.
-    if current_mode == ProjectMode.account_centric:
+    if current_mode == ProjectMode.local:
         src_proj = resolve_project(std, config, project_dir=str(project_path), initialize=False)
     else:
-        src_proj = resolve_decentralized_project(std, config, project_dir=str(project_path), initialize=False)
+        src_proj = resolve_standalone_project(std, config, project_dir=str(project_path), initialize=False)
 
     if not src_proj.metadata_path.is_dir():
         print(f"Error: no project data found for {project_path}", file=sys.stderr)
@@ -404,17 +404,17 @@ def _convert_to_workset(args, std, config) -> int:
     # Move workspace unless --in-place.
     if not in_place:
         dst_workspace = ws.workspaces_dir / proj_name
-        # Copy workspace content (exclude decentralized metadata).
+        # Copy workspace content (exclude standalone metadata).
         ignore = None
-        if current_mode == ProjectMode.decentralized:
+        if current_mode == ProjectMode.standalone:
             ignore = shutil.ignore_patterns(".kanibako")
         shutil.copytree(project_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
     # Remove vault symlinks before cleaning up old metadata.
-    if current_mode == ProjectMode.account_centric:
+    if current_mode == ProjectMode.local:
         human_vault_dir = std.data_path / config.paths_vault
         _remove_human_vault_symlink(human_vault_dir, src_proj.metadata_path / "vault")
-        # Unregister old AC name.
+        # Unregister old local name.
         if src_proj.name:
             unregister_name(std.data_path, src_proj.name)
     _remove_project_vault_symlink(project_path)
@@ -430,7 +430,7 @@ def _convert_to_workset(args, std, config) -> int:
 
 
 def _convert_from_workset(args, project_path, std, config) -> int:
-    """Convert a workset project to AC or decentralized mode."""
+    """Convert a workset project to local or standalone mode."""
     to_mode_str = args.to_mode
 
     ws, proj_name = _find_workset_for_path(project_path, std)
@@ -439,7 +439,7 @@ def _convert_from_workset(args, project_path, std, config) -> int:
         return 1
     src_proj = resolve_workset_project(ws, proj_name, std, config, initialize=False)
 
-    target_mode = ProjectMode.decentralized if to_mode_str == "decentralized" else ProjectMode.account_centric
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
 
     if not src_proj.metadata_path.is_dir():
         print(f"Error: no project data found for {project_path}", file=sys.stderr)
@@ -476,10 +476,10 @@ def _convert_from_workset(args, project_path, std, config) -> int:
             print("Aborted.")
             return 2
 
-    if target_mode == ProjectMode.account_centric:
-        _convert_ws_to_ac(src_proj, dest_path, std, config)
+    if target_mode == ProjectMode.local:
+        _convert_ws_to_local(src_proj, dest_path, std, config)
     else:
-        _convert_ws_to_decentral(src_proj, dest_path)
+        _convert_ws_to_standalone(src_proj, dest_path)
 
     # Move workspace from workset to destination if it exists and differs.
     ws_workspace = ws.workspaces_dir / proj_name
@@ -498,9 +498,9 @@ def _convert_from_workset(args, project_path, std, config) -> int:
     return 0
 
 
-def _convert_ws_to_ac(src_proj, dest_path, std, config):
-    """Copy workset project metadata into account-centric layout."""
-    # Assign a name for the new AC project.
+def _convert_ws_to_local(src_proj, dest_path, std, config):
+    """Copy workset project metadata into local layout."""
+    # Assign a name for the new local project.
     project_name = assign_name(std.data_path, str(dest_path))
     projects_base = std.data_path / "boxes"
     dst_project = projects_base / project_name
@@ -523,9 +523,9 @@ def _convert_ws_to_ac(src_proj, dest_path, std, config):
         _ensure_human_vault_symlink(human_vault_dir, dest_path, vault_parent)
 
 
-def _convert_ws_to_decentral(src_proj, dest_path):
-    """Copy workset project metadata into decentralized layout."""
-    from kanibako.commands.init import _write_project_gitignore
+def _convert_ws_to_standalone(src_proj, dest_path):
+    """Copy workset project metadata into standalone layout."""
+    from kanibako.utils import write_project_gitignore
 
     dest_path.mkdir(parents=True, exist_ok=True)
     dst_metadata = dest_path / ".kanibako"
@@ -541,7 +541,7 @@ def _convert_ws_to_decentral(src_proj, dest_path):
     if src_proj.shell_path.is_dir():
         shutil.copytree(src_proj.shell_path, dst_shell)
 
-    _write_project_gitignore(dest_path)
+    write_project_gitignore(dest_path)
 
     # Write vault .gitignore if vault exists.
     vault_dir = dest_path / "vault"

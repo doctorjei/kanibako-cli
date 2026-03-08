@@ -1,59 +1,63 @@
-"""Tests for kanibako init command."""
+"""Tests for kanibako box create command (replaces init)."""
 
 from __future__ import annotations
 
 
 from kanibako.cli import _SUBCOMMANDS, build_parser
-from kanibako.commands.init import run_init
+from kanibako.commands.box._parser import run_create
 
 
 # ---------------------------------------------------------------------------
 # Parser tests
 # ---------------------------------------------------------------------------
 
-class TestInitParser:
-    def test_init_parser_local(self):
+class TestBoxCreateParser:
+    def test_create_parser_standalone(self):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local"])
-        assert args.command == "init"
-        assert args.local is True
+        args = parser.parse_args(["box", "create", "--standalone"])
+        assert args.command == "box"
+        assert args.box_command == "create"
+        assert args.standalone is True
         assert args.path is None
         assert args.image is None
 
-    def test_init_parser_with_path(self):
+    def test_create_parser_with_path(self):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", "/tmp/mydir"])
-        assert args.command == "init"
+        args = parser.parse_args(["box", "create", "--standalone", "/tmp/mydir"])
+        assert args.command == "box"
         assert args.path == "/tmp/mydir"
 
-    def test_init_parser_with_image(self):
+    def test_create_parser_with_image(self):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", "--image", "kanibako-template-jvm-oci"])
+        args = parser.parse_args(["box", "create", "--standalone", "--image", "kanibako-template-jvm-oci"])
         assert args.image == "kanibako-template-jvm-oci"
 
-    def test_init_parser_short_image_flag(self):
+    def test_create_parser_short_image_flag(self):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", "-i", "kanibako-oci"])
+        args = parser.parse_args(["box", "create", "--standalone", "-i", "kanibako-oci"])
         assert args.image == "kanibako-oci"
 
-    def test_init_in_subcommands(self):
-        assert "init" in _SUBCOMMANDS
+    def test_init_not_in_subcommands(self):
+        assert "init" not in _SUBCOMMANDS
+
+    def test_box_in_subcommands(self):
+        assert "box" in _SUBCOMMANDS
 
     def test_new_removed_from_subcommands(self):
         assert "new" not in _SUBCOMMANDS
 
 
 # ---------------------------------------------------------------------------
-# TestRunInit
+# TestRunCreate
 # ---------------------------------------------------------------------------
 
-class TestRunInit:
-    def test_init_local_creates_project(
+class TestRunCreate:
+    def test_create_standalone_creates_project(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project_dir)])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        rc = run_create(args)
 
         assert rc == 0
         resolved = project_dir.resolve()
@@ -62,133 +66,133 @@ class TestRunInit:
         assert (resolved / "vault" / "share-ro").is_dir()
         assert (resolved / "vault" / "share-rw").is_dir()
 
-    def test_init_local_cwd(
+    def test_create_standalone_cwd(
         self, config_file, credentials_dir, project_dir, monkeypatch, capsys,
     ):
-        """init --local with no path uses cwd."""
+        """box create --standalone with no path uses cwd."""
         monkeypatch.chdir(project_dir)
         parser = build_parser()
-        args = parser.parse_args(["init", "--local"])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone"])
+        rc = run_create(args)
 
         assert rc == 0
         resolved = project_dir.resolve()
         assert (resolved / ".kanibako").is_dir()
 
-    def test_init_creates_nonexistent_path(
+    def test_create_creates_nonexistent_path(
         self, config_file, credentials_dir, tmp_home, capsys,
     ):
         target = tmp_home / "brand-new-project"
         assert not target.exists()
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(target)])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(target)])
+        rc = run_create(args)
 
         assert rc == 0
         assert target.is_dir()
         assert (target / ".kanibako").is_dir()
 
-    def test_init_already_exists_fails(
+    def test_create_already_exists_fails(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project_dir)])
-        run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        run_create(args)
 
         capsys.readouterr()
-        rc = run_init(args)
+        rc = run_create(args)
         assert rc == 1
         captured = capsys.readouterr()
         assert "already initialized" in captured.err
 
-    def test_init_ac_mode(
+    def test_create_local_mode(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        """init without --local creates an AC project."""
+        """box create without --standalone creates a local project."""
         parser = build_parser()
-        args = parser.parse_args(["init", str(project_dir)])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", str(project_dir)])
+        rc = run_create(args)
 
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Initialized" in captured.out
+        assert "Created" in captured.out
 
-    def test_init_writes_gitignore_for_local(
+    def test_create_writes_gitignore_for_standalone(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project_dir)])
-        run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        run_create(args)
 
         gitignore = project_dir.resolve() / ".gitignore"
         assert gitignore.is_file()
         assert ".kanibako/" in gitignore.read_text()
 
-    def test_init_no_gitignore_for_ac(
+    def test_create_no_gitignore_for_local(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        """AC mode should not write .gitignore (state is external)."""
+        """Local mode should not write .gitignore (state is external)."""
         parser = build_parser()
-        args = parser.parse_args(["init", str(project_dir)])
-        run_init(args)
+        args = parser.parse_args(["box", "create", str(project_dir)])
+        run_create(args)
 
         gitignore = project_dir.resolve() / ".gitignore"
         assert not gitignore.is_file()
 
 
-class TestInitNoVault:
-    """Tests for --no-vault flag on init."""
+class TestCreateNoVault:
+    """Tests for --no-vault flag on box create."""
 
-    def test_init_no_vault_skips_vault_dirs(
+    def test_create_no_vault_skips_vault_dirs(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         project = tmp_home / "novault-project"
         project.mkdir()
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project), "--no-vault"])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project), "--no-vault"])
+        rc = run_create(args)
 
         assert rc == 0
         assert (project / ".kanibako").is_dir()
         assert not (project / "vault").exists()
 
-    def test_init_no_vault_new_dir(
+    def test_create_no_vault_new_dir(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         target = tmp_home / "novault-new"
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(target), "--no-vault"])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(target), "--no-vault"])
+        rc = run_create(args)
 
         assert rc == 0
         assert (target / ".kanibako").is_dir()
         assert not (target / "vault").exists()
 
-    def test_init_with_vault_creates_vault_dirs(
+    def test_create_with_vault_creates_vault_dirs(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         project = tmp_home / "vault-project"
         project.mkdir()
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project)])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project)])
+        rc = run_create(args)
 
         assert rc == 0
         assert (project / "vault" / "share-ro").is_dir()
         assert (project / "vault" / "share-rw").is_dir()
 
 
-class TestInitDistinctAuth:
-    """Tests for --distinct-auth flag on init."""
+class TestCreateDistinctAuth:
+    """Tests for --distinct-auth flag on box create."""
 
-    def test_init_distinct_auth_skips_creds(
+    def test_create_distinct_auth_skips_creds(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         project = tmp_home / "distinct-project"
         project.mkdir()
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project), "--distinct-auth"])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
+        rc = run_create(args)
 
         assert rc == 0
         shell = project / ".kanibako" / "shell"
@@ -196,15 +200,15 @@ class TestInitDistinctAuth:
         # Credentials should NOT have been copied from host.
         assert not (shell / ".claude" / ".credentials.json").exists()
 
-    def test_init_distinct_auth_sets_meta(
+    def test_create_distinct_auth_sets_meta(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         from kanibako.config import read_project_meta
         project = tmp_home / "distinct-meta"
         project.mkdir()
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project), "--distinct-auth"])
-        run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
+        run_create(args)
 
         meta = read_project_meta(project / ".kanibako" / "project.toml")
         assert meta is not None
@@ -212,16 +216,16 @@ class TestInitDistinctAuth:
 
     def test_parser_accepts_distinct_auth(self):
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", "--distinct-auth"])
+        args = parser.parse_args(["box", "create", "--standalone", "--distinct-auth"])
         assert args.distinct_auth is True
 
-    def test_init_distinct_auth_new_dir(
+    def test_create_distinct_auth_new_dir(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         target = tmp_home / "distinct-new"
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(target), "--distinct-auth"])
-        rc = run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(target), "--distinct-auth"])
+        rc = run_create(args)
 
         assert rc == 0
         shell = target / ".kanibako" / "shell"
@@ -229,31 +233,31 @@ class TestInitDistinctAuth:
         assert not (shell / ".claude" / ".credentials.json").exists()
 
 
-class TestInitImage:
+class TestCreateImage:
     """Tests for --image flag persistence."""
 
-    def test_init_persists_image(
+    def test_create_persists_image(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
         from kanibako.config import load_merged_config
         parser = build_parser()
         args = parser.parse_args([
-            "init", "--local", str(project_dir),
+            "box", "create", "--standalone", str(project_dir),
             "--image", "kanibako-template-jvm-oci",
         ])
-        run_init(args)
+        run_create(args)
 
         project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
         merged = load_merged_config(config_file, project_toml)
         assert merged.container_image == "kanibako-template-jvm-oci"
 
-    def test_init_default_image_persisted(
+    def test_create_default_image_persisted(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
         from kanibako.config import load_merged_config
         parser = build_parser()
-        args = parser.parse_args(["init", "--local", str(project_dir)])
-        run_init(args)
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        run_create(args)
 
         project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
         merged = load_merged_config(config_file, project_toml)

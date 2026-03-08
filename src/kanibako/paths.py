@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 class ProjectMode(Enum):
     """How a project's persistent state is organized on disk."""
 
-    account_centric = "account_centric"
+    local = "local"
     workset = "workset"
-    decentralized = "decentralized"
+    standalone = "standalone"
 
 
 class DetectionResult(NamedTuple):
@@ -59,9 +59,9 @@ class ProjectLayout(Enum):
 
 # Default layout per mode.
 _DEFAULT_LAYOUT = {
-    ProjectMode.account_centric: ProjectLayout.default,
+    ProjectMode.local: ProjectLayout.default,
     ProjectMode.workset: ProjectLayout.robust,
-    ProjectMode.decentralized: ProjectLayout.simple,
+    ProjectMode.standalone: ProjectLayout.simple,
 }
 
 
@@ -90,7 +90,7 @@ class ProjectPaths:
     vault_ro_path: Path      # {project}/vault/share-ro (→ /home/agent/share-ro)
     vault_rw_path: Path      # {project}/vault/share-rw (→ /home/agent/share-rw)
     is_new: bool = field(default=False)
-    mode: ProjectMode = field(default=ProjectMode.account_centric)
+    mode: ProjectMode = field(default=ProjectMode.local)
     layout: ProjectLayout = field(default=ProjectLayout.default)
     vault_enabled: bool = field(default=True)
     auth: str = field(default="shared")
@@ -211,7 +211,7 @@ def resolve_project(
     project_path_str = str(project_path)
 
     # Determine the project directory: name-based (boxes/{name}/).
-    project_name, project_dir_path = _resolve_ac_dir(
+    project_name, project_dir_path = _resolve_local_dir(
         std.data_path, project_path_str,
     )
 
@@ -221,13 +221,13 @@ def resolve_project(
     project_toml = metadata_path / "project.toml"
     meta = read_project_meta(project_toml)
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.account_centric]
+        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.local]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
         actual_vault_enabled = meta.get("vault_enabled", True) if vault_enabled is None else vault_enabled
     else:
-        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.account_centric]
+        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.local]
         shell_path, vault_ro_path, vault_rw_path = _compute_ac_paths(
             actual_layout, metadata_path, project_path,
         )
@@ -262,7 +262,7 @@ def resolve_project(
         _local_shared = std.data_path / config.paths_shared
         write_project_meta(
             project_toml,
-            mode="account_centric",
+            mode="local",
             layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
@@ -292,7 +292,7 @@ def resolve_project(
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
                 metadata_path / "project.toml",
-                mode="account_centric",
+                mode="local",
                 layout=actual_layout.value,
                 workspace=str(project_path),
                 shell=str(shell_path),
@@ -317,7 +317,7 @@ def resolve_project(
                 if is_new:
                     import sys
                     print(
-                        f"\nNOTE: In robust layout, the account-centric vault "
+                        f"\nNOTE: In robust layout, the local-mode vault "
                         f"is linked from\n{human_vault_dir}. You can create a "
                         f"symlink from your home directory with:\n"
                         f"  ln -s {human_vault_dir} $HOME/kanibako_vault",
@@ -340,7 +340,7 @@ def resolve_project(
         vault_ro_path=vault_ro_path,
         vault_rw_path=vault_rw_path,
         is_new=is_new,
-        mode=ProjectMode.account_centric,
+        mode=ProjectMode.local,
         layout=actual_layout,
         vault_enabled=actual_vault_enabled,
         name=project_name,
@@ -349,11 +349,11 @@ def resolve_project(
     )
 
 
-def _resolve_ac_dir(
+def _resolve_local_dir(
     data_path: Path,
     project_path_str: str,
 ) -> tuple[str, Path]:
-    """Find the boxes directory for an AC project.
+    """Find the boxes directory for a local project.
 
     Looks up the project name via names.toml reverse lookup and returns
     ``(project_name, boxes/{name}/)`` path.
@@ -374,7 +374,7 @@ def _resolve_ac_dir(
 def _compute_ac_paths(
     layout: ProjectLayout, metadata_path: Path, project_path: Path,
 ) -> tuple[Path, Path, Path]:
-    """Compute (shell, vault_ro, vault_rw) for account-centric mode."""
+    """Compute (shell, vault_ro, vault_rw) for local mode."""
     if layout == ProjectLayout.simple:
         shell = project_path / ".shell"
         vault_ro = project_path / "vault" / "share-ro"
@@ -406,15 +406,15 @@ def _compute_ws_paths(
     return shell, vault_ro, vault_rw
 
 
-def _compute_decentral_paths(
+def _compute_standalone_paths(
     layout: ProjectLayout, metadata_path: Path, project_path: Path,
 ) -> tuple[Path, Path, Path]:
-    """Compute (shell, vault_ro, vault_rw) for decentralized mode."""
+    """Compute (shell, vault_ro, vault_rw) for standalone mode."""
     if layout == ProjectLayout.robust:
         shell = project_path / "shell"
         vault_ro = project_path / "vault" / "share-ro"
         vault_rw = project_path / "vault" / "share-rw"
-    else:  # simple (default for decentralized)
+    else:  # simple (default for standalone)
         shell = metadata_path / "shell"
         vault_ro = project_path / "vault" / "share-ro"
         vault_rw = project_path / "vault" / "share-rw"
@@ -475,7 +475,7 @@ def _upgrade_shell(shell_path: Path) -> None:
 def _ensure_vault_symlink(project_path: Path, vault_ro_path: Path) -> None:
     """Create a convenience symlink from project_path/vault when vault lives elsewhere.
 
-    In AC tree and WS default/tree layouts, vault dirs are stored outside the
+    In local tree and WS default/tree layouts, vault dirs are stored outside the
     project workspace.  The symlink lets the user discover vault via their
     project directory.  No-op when vault is already under project_path or the
     symlink target already matches.
@@ -603,8 +603,8 @@ def _init_common(
 ) -> None:
     """Shared first-time project setup: create directories, bootstrap shell.
 
-    This helper is called by both ``_init_project`` (account-centric) and
-    ``_init_decentralized_project``.  It performs every step common to both
+    This helper is called by both ``_init_project`` (local) and
+    ``_init_standalone_project``.  It performs every step common to both
     modes: print message, create metadata and shell dirs, bootstrap the
     shell, and set up vault directories when enabled.
 
@@ -657,8 +657,8 @@ def _init_project(
 
 
 
-def _find_ac_ancestor(target: Path, data_path: Path) -> Path | None:
-    """Find the deepest registered AC project that is an ancestor of *target*.
+def _find_local_ancestor(target: Path, data_path: Path) -> Path | None:
+    """Find the deepest registered local project that is an ancestor of *target*.
 
     Reads ``names.toml`` and, for each entry whose registered path is a
     prefix of *target*, checks that ``boxes/{name}/`` actually exists on
@@ -698,13 +698,13 @@ def detect_project_mode(
     Detection order:
     1. Workset — *project_dir* lives inside a registered workset root
        (``workspaces/`` subdirectory first, then the root itself).
-    2. Account-centric (name-based) — one-pass scan of ``names.toml``;
+    2. Local (name-based) — one-pass scan of ``names.toml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
-    3. Walk ancestors for decentralized markers — a ``.kanibako`` or
+    3. Walk ancestors for standalone markers — a ``.kanibako`` or
        ``kanibako`` **directory** exists inside the ancestor.
        ``.kanibako`` takes priority.
-    4. Default — ``account_centric`` at the original *project_dir*.
+    4. Default — ``local`` at the original *project_dir*.
     """
     resolved = project_dir.resolve()
     home = Path.home().resolve()
@@ -714,22 +714,22 @@ def detect_project_mode(
     if ws_result is not None:
         return ws_result
 
-    # 2. Name-based AC check (one-pass scan, deepest match wins).
-    ac_ancestor = _find_ac_ancestor(resolved, std.data_path)
+    # 2. Name-based local check (one-pass scan, deepest match wins).
+    ac_ancestor = _find_local_ancestor(resolved, std.data_path)
     if ac_ancestor is not None:
-        return DetectionResult(ProjectMode.account_centric, ac_ancestor)
+        return DetectionResult(ProjectMode.local, ac_ancestor)
 
-    # 3. Walk ancestors for decentralized markers.
+    # 3. Walk ancestors for standalone markers.
     current = resolved
     while True:
-        # Decentralized check: .kanibako/ or kanibako/ directory.
+        # Standalone check: .kanibako/ or kanibako/ directory.
         if (current / ".kanibako").is_dir():
-            return DetectionResult(ProjectMode.decentralized, current)
+            return DetectionResult(ProjectMode.standalone, current)
         # Dotless kanibako/ requires project.toml to avoid false positives
         # on directories that happen to be named "kanibako".
         _nodot = current / "kanibako"
         if _nodot.is_dir() and (_nodot / "project.toml").is_file():
-            return DetectionResult(ProjectMode.decentralized, current)
+            return DetectionResult(ProjectMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
         if current == home:
@@ -739,8 +739,8 @@ def detect_project_mode(
             break
         current = parent
 
-    # 4. Default: account_centric at the original directory.
-    return DetectionResult(ProjectMode.account_centric, resolved)
+    # 4. Default: local at the original directory.
+    return DetectionResult(ProjectMode.local, resolved)
 
 
 def _check_workset(
@@ -1065,12 +1065,12 @@ def resolve_any_project(
                 f"Change to a project directory under {ws.workspaces_dir}/."
             )
         return resolve_workset_project(ws, proj_name, std, config, initialize=initialize)
-    if detection.mode == ProjectMode.decentralized:
-        return resolve_decentralized_project(std, config, root_str, initialize=initialize)
+    if detection.mode == ProjectMode.standalone:
+        return resolve_standalone_project(std, config, root_str, initialize=initialize)
     return resolve_project(std, config, project_dir=root_str, initialize=initialize)
 
 
-def resolve_decentralized_project(
+def resolve_standalone_project(
     std: StandardPaths,
     config: KanibakoConfig,
     project_dir: str | None = None,
@@ -1080,7 +1080,7 @@ def resolve_decentralized_project(
     vault_enabled: bool | None = None,
     auth: str | None = None,
 ) -> ProjectPaths:
-    """Resolve (and optionally initialize) per-project paths for decentralized mode.
+    """Resolve (and optionally initialize) per-project paths for standalone mode.
 
     All project state lives inside *project_dir* itself.
     No data is written to ``$XDG_DATA_HOME``.
@@ -1093,7 +1093,7 @@ def resolve_decentralized_project(
 
     phash = project_hash(str(project_path))
 
-    # Determine metadata_path (depends on layout for decentralized).
+    # Determine metadata_path (depends on layout for standalone).
     # For tree layout: {project}/kanibako (no dot)
     # For simple (default): {project}/.kanibako (dot prefix)
     # Check both locations for existing projects.
@@ -1111,41 +1111,41 @@ def resolve_decentralized_project(
         metadata_path = nodot_meta
     else:
         # New project — determine layout and metadata_path.
-        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.decentralized]
+        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.standalone]
         if actual_layout == ProjectLayout.robust:
             metadata_path = nodot_meta
         else:
             metadata_path = dot_meta
 
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.decentralized]
+        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.standalone]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
         actual_vault_enabled = meta.get("vault_enabled", True) if vault_enabled is None else vault_enabled
     else:
         if actual_layout is None:
-            actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.decentralized]
-        shell_path, vault_ro_path, vault_rw_path = _compute_decentral_paths(
+            actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.standalone]
+        shell_path, vault_ro_path, vault_rw_path = _compute_standalone_paths(
             actual_layout, metadata_path, project_path,
         )
         actual_vault_enabled = vault_enabled if vault_enabled is not None else True
 
     project_toml = metadata_path / "project.toml"
 
-    # Auth mode for decentralized: explicit param > meta > default.
+    # Auth mode for standalone: explicit param > meta > default.
     actual_auth = auth or (meta.get("auth", "shared") if meta else "shared")
 
     is_new = False
     if initialize and not metadata_path.is_dir():
-        _init_decentralized_project(
+        _init_standalone_project(
             std, metadata_path, shell_path,
             vault_ro_path, vault_rw_path, project_path,
             vault_enabled=actual_vault_enabled,
         )
         write_project_meta(
             project_toml,
-            mode="decentralized",
+            mode="standalone",
             layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
@@ -1172,7 +1172,7 @@ def resolve_decentralized_project(
         vault_ro_path=vault_ro_path,
         vault_rw_path=vault_rw_path,
         is_new=is_new,
-        mode=ProjectMode.decentralized,
+        mode=ProjectMode.standalone,
         layout=actual_layout,
         vault_enabled=actual_vault_enabled,
         auth=actual_auth,
@@ -1180,7 +1180,7 @@ def resolve_decentralized_project(
     )
 
 
-def _init_decentralized_project(
+def _init_standalone_project(
     std: StandardPaths,
     metadata_path: Path,
     shell_path: Path,
@@ -1190,7 +1190,7 @@ def _init_decentralized_project(
     *,
     vault_enabled: bool = True,
 ) -> None:
-    """First-time decentralized project setup: all state inside project dir.
+    """First-time standalone project setup: all state inside project dir.
 
     Unlike workset init, this *does* create vault directories and a
     ``.gitignore`` (vault lives inside the user's project, likely a git repo).

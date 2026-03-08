@@ -179,7 +179,7 @@ class TestEscapePath:
 # container_name_for
 # ---------------------------------------------------------------------------
 
-def _mock_proj(*, mode="account_centric", name="", project_path="/home/user/proj",
+def _mock_proj(*, mode="local", name="", project_path="/home/user/proj",
                project_hash="abcdef1234567890abcdef1234567890"):
     """Create a duck-typed ProjectPaths-like object for testing."""
     mode_ns = SimpleNamespace(value=mode)
@@ -192,11 +192,11 @@ def _mock_proj(*, mode="account_centric", name="", project_path="/home/user/proj
 
 
 class TestContainerNameFor:
-    def test_ac_with_name(self):
+    def test_local_with_name(self):
         proj = _mock_proj(name="myapp")
         assert container_name_for(proj) == "kanibako-myapp"
 
-    def test_ac_without_name_fallback(self):
+    def test_local_without_name_fallback(self):
         proj = _mock_proj(name="")
         assert container_name_for(proj) == f"kanibako-{short_hash(proj.project_hash)}"
 
@@ -204,21 +204,21 @@ class TestContainerNameFor:
         proj = _mock_proj(mode="workset", name="")
         assert container_name_for(proj) == f"kanibako-{short_hash(proj.project_hash)}"
 
-    def test_decentralized_uses_escaped_path(self):
-        proj = _mock_proj(mode="decentralized", project_path="/home/user/my-project")
+    def test_standalone_uses_escaped_path(self):
+        proj = _mock_proj(mode="standalone", project_path="/home/user/my-project")
         result = container_name_for(proj)
         assert result == f"kanibako-ronin-{escape_path('/home/user/my-project')}"
         assert result == "kanibako-ronin-home-user-my-.project"
 
-    def test_decentralized_ignores_name(self):
-        """Even if a decentralized project has a name, use escaped path."""
-        proj = _mock_proj(mode="decentralized", name="myapp",
+    def test_standalone_ignores_name(self):
+        """Even if a standalone project has a name, use escaped path."""
+        proj = _mock_proj(mode="standalone", name="myapp",
                           project_path="/home/user/proj")
         result = container_name_for(proj)
         assert result.startswith("kanibako-ronin-")
         assert "myapp" not in result
 
-    def test_ac_name_with_number_suffix(self):
+    def test_local_name_with_number_suffix(self):
         """Collision-numbered names work correctly."""
         proj = _mock_proj(name="myapp2")
         assert container_name_for(proj) == "kanibako-myapp2"

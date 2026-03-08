@@ -139,7 +139,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.toml"
         write_project_meta(
             toml_path,
-            mode="account_centric",
+            mode="local",
             layout="default",
             workspace="/home/user/myproject",
             shell="/data/kanibako/settings/abc/shell",
@@ -150,7 +150,7 @@ class TestProjectMeta:
 
         meta = read_project_meta(toml_path)
         assert meta is not None
-        assert meta["mode"] == "account_centric"
+        assert meta["mode"] == "local"
         assert meta["workspace"] == "/home/user/myproject"
         assert meta["shell"] == "/data/kanibako/settings/abc/shell"
         assert meta["vault_ro"] == "/home/user/myproject/vault/share-ro"
@@ -172,7 +172,7 @@ class TestProjectMeta:
 
         write_project_meta(
             toml_path,
-            mode="decentralized",
+            mode="standalone",
             layout="default",
             workspace="/tmp/proj",
             shell="/tmp/proj/.kanibako/shell",
@@ -186,13 +186,13 @@ class TestProjectMeta:
 
         # Metadata also present
         meta = read_project_meta(toml_path)
-        assert meta["mode"] == "decentralized"
+        assert meta["mode"] == "standalone"
 
     def test_overwrite_existing_meta(self, tmp_path):
         toml_path = tmp_path / "project.toml"
         write_project_meta(
             toml_path,
-            mode="account_centric",
+            mode="local",
             layout="default",
             workspace="/old",
             shell="/old/shell",
@@ -218,7 +218,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.toml"
         write_project_meta(
             toml_path,
-            mode="account_centric",
+            mode="local",
             layout="default",
             workspace="/home/user/proj",
             shell="/data/boxes/abc/shell",
@@ -242,7 +242,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.toml"
         # Write old-style TOML without new fields.
         toml_path.write_text(
-            '[project]\nmode = "account_centric"\nlayout = "default"\n'
+            '[project]\nmode = "local"\nlayout = "default"\n'
             'vault_enabled = true\nauth = "shared"\n\n'
             '[resolved]\nworkspace = "/old"\nshell = "/old/shell"\n'
             'vault_ro = "/old/ro"\nvault_rw = "/old/rw"\n'
@@ -421,7 +421,7 @@ class TestResourceOverrides:
         """Write a minimal project.toml for testing."""
         write_project_meta(
             path,
-            mode="account_centric", layout="default",
+            mode="local", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
 
@@ -471,7 +471,7 @@ class TestResourceOverrides:
         # Project metadata should still be intact.
         meta = read_project_meta(p)
         assert meta is not None
-        assert meta["mode"] == "account_centric"
+        assert meta["mode"] == "local"
 
 
 class TestTargetSettings:
@@ -481,7 +481,7 @@ class TestTargetSettings:
         """Write a minimal project.toml for testing."""
         write_project_meta(
             path,
-            mode="account_centric", layout="default",
+            mode="local", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
 
@@ -531,4 +531,4 @@ class TestTargetSettings:
         # Project metadata should still be intact.
         meta = read_project_meta(p)
         assert meta is not None
-        assert meta["mode"] == "account_centric"
+        assert meta["mode"] == "local"

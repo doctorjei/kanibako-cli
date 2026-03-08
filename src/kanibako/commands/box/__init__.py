@@ -1,26 +1,22 @@
-"""kanibako box: project lifecycle management (list, migrate, duplicate, archive, purge, restore)."""
+"""kanibako box: project lifecycle management (create, list, config, migrate, duplicate, move, archive, extract, purge, vault)."""
 
 from kanibako.commands.box._duplicate import run_duplicate
 from kanibako.commands.box._migrate import run_migrate
 from kanibako.commands.box._parser import (
+    _check_container_running,
+    _format_credential_age,
     add_parser,
-    run_get,
+    run_config,
+    run_create,
     run_info,
     run_list,
-    run_orphan,
-    run_resource_list,
-    run_resource_set,
-    run_resource_unset,
-    run_set,
-    run_settings_get,
-    run_settings_list,
-    run_settings_set,
-    run_settings_unset,
+    run_move,
+    run_ps,
+    run_rm,
 )
 
 __all__ = [
-    "add_parser", "run_duplicate", "run_get", "run_info",
-    "run_list", "run_migrate", "run_orphan",
-    "run_resource_list", "run_resource_set", "run_resource_unset", "run_set",
-    "run_settings_get", "run_settings_list", "run_settings_set", "run_settings_unset",
+    "_check_container_running", "_format_credential_age",
+    "add_parser", "run_config", "run_create", "run_duplicate",
+    "run_info", "run_list", "run_migrate", "run_move", "run_ps", "run_rm",
 ]

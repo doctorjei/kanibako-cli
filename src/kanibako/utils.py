@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.errors import UserCancelled
@@ -53,12 +54,12 @@ def short_hash(full_hash: str, length: int = 8) -> str:
 def container_name_for(proj: ProjectPaths) -> str:
     """Deterministic container name for a project.
 
-    - AC with name: ``kanibako-{name}``
-    - AC without name (legacy): ``kanibako-{short_hash}``
+    - Local with name: ``kanibako-{name}``
+    - Local without name (legacy): ``kanibako-{short_hash}``
     - Workset: ``kanibako-{short_hash}`` (name-based pending workset naming)
-    - Decentralized: ``kanibako-ronin-{escape_path(project_path)}``
+    - Standalone: ``kanibako-ronin-{escape_path(project_path)}``
     """
-    if proj.mode.value == "decentralized":
+    if proj.mode.value == "standalone":
         return f"kanibako-ronin-{escape_path(str(proj.project_path))}"
     if proj.name:
         return f"kanibako-{proj.name}"
@@ -71,7 +72,7 @@ def project_hash(project_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Decentralized path encoding (for container names)
+# Standalone path encoding (for container names)
 # ---------------------------------------------------------------------------
 
 _DASH_ESCAPE = "-."
@@ -104,3 +105,32 @@ def unescape_path(encoded: str) -> str:
     result = result.replace("-", "/")
     result = result.replace(sentinel, "-")
     return "/" + result
+
+
+# ---------------------------------------------------------------------------
+# Project .gitignore helper
+# ---------------------------------------------------------------------------
+
+_GITIGNORE_ENTRIES = [".kanibako/"]
+
+
+def write_project_gitignore(project_path: Path) -> None:
+    """Append .kanibako/ to the project's root .gitignore."""
+    gitignore = project_path / ".gitignore"
+    existing = ""
+    if gitignore.is_file():
+        existing = gitignore.read_text()
+
+    lines_to_add = [
+        entry for entry in _GITIGNORE_ENTRIES
+        if entry not in existing.splitlines()
+    ]
+
+    if not lines_to_add:
+        return
+
+    with open(gitignore, "a") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        for line in lines_to_add:
+            f.write(line + "\n")

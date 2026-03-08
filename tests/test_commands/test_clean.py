@@ -96,8 +96,8 @@ class TestClean:
 
 
 class TestCleanExtended:
-    def test_purge_decentralized_project(self, config_file, tmp_home):
-        """Purge removes .kanibako/ for decentralized projects."""
+    def test_purge_standalone_project(self, config_file, tmp_home):
+        """Purge removes .kanibako/ for standalone projects."""
         from kanibako.commands.clean import run
 
         project_dir = tmp_home / "project"
@@ -112,19 +112,19 @@ class TestCleanExtended:
         assert rc == 0
         assert not kanibako_dir.exists()
 
-    def test_purge_all_skips_decentralized(self, config_file, tmp_home, credentials_dir, capsys):
-        """--all only covers account-centric projects, not decentralized."""
+    def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
+        """--all only covers local projects, not standalone."""
         from kanibako.commands.clean import run
 
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create an account-centric project
+        # Create a local project
         ac_dir = tmp_home / "ac_project"
         ac_dir.mkdir()
         proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
-        # Create a decentralized project
+        # Create a standalone project
         dec_dir = tmp_home / "dec_project"
         dec_dir.mkdir()
         (dec_dir / ".kanibako").mkdir()
@@ -134,9 +134,9 @@ class TestCleanExtended:
         rc = run(args)
         assert rc == 0
 
-        # Account-centric settings should be gone
+        # Local settings should be gone
         assert not proj.metadata_path.exists()
-        # Decentralized .kanibako/ should still exist (not covered by --all)
+        # Standalone .kanibako/ should still exist (not covered by --all)
         assert (dec_dir / ".kanibako" / "data.txt").exists()
 
 
@@ -147,7 +147,7 @@ class TestCleanWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create an AC project
+        # Create a local project
         ac_dir = tmp_home / "ac_purge"
         ac_dir.mkdir()
         ac_proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
@@ -165,7 +165,7 @@ class TestCleanWorkset:
         rc = run(args)
         assert rc == 0
 
-        # AC settings should be gone
+        # Local settings should be gone
         assert not ac_proj.metadata_path.exists()
         # Workset settings should be gone
         assert not (ws.projects_dir / "purge-proj" / "data.txt").exists()

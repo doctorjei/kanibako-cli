@@ -123,10 +123,10 @@ class TestDetectionFalsePositives:
     ]
 
     @pytest.mark.parametrize("dirname", COMMON_NAMES)
-    def test_subdirectory_name_does_not_trigger_decentralized(
+    def test_subdirectory_name_does_not_trigger_standalone(
         self, config_file, tmp_home, dirname,
     ):
-        """A subdirectory named '{dirname}' should not trigger decentralized mode."""
+        """A subdirectory named '{dirname}' should not trigger standalone mode."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
@@ -134,17 +134,17 @@ class TestDetectionFalsePositives:
         (project_dir / dirname).mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        # Should fall through to account_centric (default), NOT decentralized.
+        # Should fall through to local (default), NOT standalone.
         # Exception: .kanibako is a legitimate marker.
         if dirname == ".kanibako":
-            assert result.mode is ProjectMode.decentralized
+            assert result.mode is ProjectMode.standalone
         else:
-            assert result.mode is not ProjectMode.decentralized
+            assert result.mode is not ProjectMode.standalone
 
     def test_ancestor_named_kanibako_no_false_positive(
         self, config_file, tmp_home,
     ):
-        """A project inside a directory named 'kanibako' should not detect as decentralized."""
+        """A project inside a directory named 'kanibako' should not detect as standalone."""
         config = load_config(config_file)
         std = load_std_paths(config)
         # Simulate: ~/workspaces/kanibako/src/ — running from src/
@@ -154,12 +154,12 @@ class TestDetectionFalsePositives:
         src_dir.mkdir(parents=True)
 
         result = detect_project_mode(src_dir.resolve(), std, config)
-        assert result.mode is not ProjectMode.decentralized
+        assert result.mode is not ProjectMode.standalone
 
     def test_dotless_kanibako_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """A kanibako/ dir WITH project.toml IS a valid decentralized marker."""
+        """A kanibako/ dir WITH project.toml IS a valid standalone marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
@@ -168,7 +168,7 @@ class TestDetectionFalsePositives:
         (project_dir / "kanibako" / "project.toml").write_text("")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
 
     def test_dot_kanibako_marker_without_toml_is_valid(
         self, config_file, tmp_home,
@@ -181,13 +181,13 @@ class TestDetectionFalsePositives:
         (project_dir / ".kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
 
 
 # ── Stale names.toml safety ────────────────────────────────────────────
 
 class TestStaleNameSafety:
-    """Stale names.toml entries pointing at $HOME must not trigger AC detection."""
+    """Stale names.toml entries pointing at $HOME must not trigger local detection."""
 
     def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
         """Stale entry at $HOME (no boxes dir) → detection falls through to default."""
@@ -205,9 +205,9 @@ class TestStaleNameSafety:
         project_dir.mkdir(parents=True, exist_ok=True)
         result = detect_project_mode(project_dir.resolve(), std, config)
 
-        # Should fall through to default AC at project_dir, NOT match $HOME.
+        # Should fall through to default local at project_dir, NOT match $HOME.
         assert result.project_root == project_dir.resolve()
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
 
 
 # ── Contract tests: mount source validation ───────────────────────────

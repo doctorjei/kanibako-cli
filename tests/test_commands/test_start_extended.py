@@ -140,8 +140,11 @@ class TestFlagCombinations:
 
         with start_mocks() as m:
             args = argparse.Namespace(
-                project=None, entrypoint=None, image=None,
-                new=False, safe=False,
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=False, secure=False,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
                 agent_args=["--", "--my-flag"],
             )
             run_start(args)
@@ -579,7 +582,7 @@ class TestInteractivePersistentGuard:
             m.runtime.run.assert_not_called()
         captured = capsys.readouterr()
         assert "container already exists" in captured.err.lower()
-        assert "kanibako connect" in captured.err
+        assert "kanibako start" in captured.err
 
     def test_no_container_proceeds_normally(self, start_mocks):
         """When no container exists, interactive mode proceeds."""
@@ -592,3 +595,195 @@ class TestInteractivePersistentGuard:
             )
             assert rc == 0
             m.runtime.run.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# New Phase 6 features: model override, CLI env, project extraction
+# ---------------------------------------------------------------------------
+
+class TestModelOverride:
+    """Verify -M/--model override is applied to effective state."""
+
+    def test_model_override_applied(self, start_mocks):
+        """Model override is passed to effective state before apply_state."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], model_override="opus",
+            )
+            # apply_state should be called with model in effective state
+            call_args = m.target.apply_state.call_args[0]
+            assert call_args[0].get("model") == "opus"
+
+    def test_no_model_override(self, start_mocks):
+        """Without model override, effective state is unmodified."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], model_override=None,
+            )
+            call_args = m.target.apply_state.call_args[0]
+            assert "model" not in call_args[0]
+
+
+class TestCliEnv:
+    """Verify -e/--env KEY=VALUE vars are merged into container env."""
+
+    def test_cli_env_merged(self, start_mocks):
+        """Per-run env vars from -e are included in container env."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], cli_env=["MY_KEY=my_val", "OTHER=123"],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("MY_KEY") == "my_val"
+            assert env.get("OTHER") == "123"
+
+    def test_cli_env_overrides_agent_env(self, start_mocks):
+        """Per-run env vars have highest priority over agent env."""
+        with start_mocks() as m:
+            m.agent_cfg.env = {"MY_KEY": "agent_val"}
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], cli_env=["MY_KEY=cli_val"],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("MY_KEY") == "cli_val"
+
+    def test_no_cli_env(self, start_mocks):
+        """No error when cli_env is None."""
+        with start_mocks():
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], cli_env=None,
+            )
+            assert rc == 0
+
+
+class TestProjectExtraction:
+    """Verify [project] positional extraction from REMAINDER args."""
+
+    def test_project_extracted_from_agent_args(self, start_mocks):
+        """First non-flag arg is extracted as project_dir."""
+        from kanibako.commands.start import run_start
+        import argparse
+
+        with start_mocks() as m:
+            args = argparse.Namespace(
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=False, secure=False,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
+                agent_args=["/tmp/myproject"],
+            )
+            run_start(args)
+            m.resolve_any_project.assert_called_once()
+            call_args = m.resolve_any_project.call_args
+            assert call_args[0][2] == "/tmp/myproject"
+
+    def test_project_not_extracted_from_flags(self, start_mocks):
+        """Args starting with - are not treated as project."""
+        from kanibako.commands.start import run_start
+        import argparse
+
+        with start_mocks() as m:
+            args = argparse.Namespace(
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=False, secure=False,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
+                agent_args=["--my-flag"],
+            )
+            run_start(args)
+            m.resolve_any_project.assert_called_once()
+            call_args = m.resolve_any_project.call_args
+            # project_dir should be None (--my-flag is not a path)
+            assert call_args[0][2] is None
+
+    def test_project_not_extracted_after_separator(self, start_mocks):
+        """After --, args are not treated as project."""
+        from kanibako.commands.start import run_start
+        import argparse
+
+        with start_mocks() as m:
+            args = argparse.Namespace(
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=False, secure=False,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
+                agent_args=["--", "/tmp/myproject"],
+            )
+            run_start(args)
+            m.resolve_any_project.assert_called_once()
+            call_args = m.resolve_any_project.call_args
+            # project_dir should be None (path is after --)
+            assert call_args[0][2] is None
+
+
+class TestSecureAutonomousFlags:
+    """Verify -A/--autonomous and -S/--secure flag mapping."""
+
+    def test_secure_maps_to_safe_mode(self, start_mocks):
+        """-S/--secure should enable safe_mode (no --dangerously-skip-permissions)."""
+        from kanibako.commands.start import run_start
+        import argparse
+
+        with start_mocks() as m:
+            m.proj.is_new = True
+            args = argparse.Namespace(
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=False, secure=True,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
+                agent_args=[],
+            )
+            run_start(args)
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" not in cli_args
+
+    def test_autonomous_maps_to_unsafe_mode(self, start_mocks):
+        """-A/--autonomous should disable safe_mode (adds --dangerously-skip-permissions)."""
+        from kanibako.commands.start import run_start
+        import argparse
+
+        with start_mocks() as m:
+            args = argparse.Namespace(
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=True, secure=False,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
+                agent_args=[],
+            )
+            run_start(args)
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" in cli_args
+
+    def test_default_is_autonomous(self, start_mocks):
+        """Without -A or -S, default behavior is autonomous."""
+        from kanibako.commands.start import run_start
+        import argparse
+
+        with start_mocks() as m:
+            args = argparse.Namespace(
+                entrypoint=None, image=None,
+                new_session=False, continue_session=False,
+                resume_session=False, autonomous=False, secure=False,
+                model=None, env=None, persistent=False, ephemeral=False,
+                no_helpers=False,
+                agent_args=[],
+            )
+            run_start(args)
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" in cli_args

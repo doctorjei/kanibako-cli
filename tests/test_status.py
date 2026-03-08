@@ -1,4 +1,4 @@
-"""Tests for kanibako status command."""
+"""Tests for kanibako box info command (replaces top-level status)."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.cli import _SUBCOMMANDS, build_parser
-from kanibako.commands.status import (
+from kanibako.commands.box._parser import (
     _check_container_running,
     _format_credential_age,
-    run_status,
+    run_info,
 )
 from kanibako.config import load_config
 from kanibako.errors import ContainerError
@@ -27,7 +27,7 @@ from kanibako.paths import load_std_paths, resolve_project
 
 @pytest.fixture
 def initialized_project(config_file, credentials_dir, tmp_home):
-    """Create a fully initialized account-centric project."""
+    """Create a fully initialized local project."""
     config = load_config(config_file)
     std = load_std_paths(config)
     project_dir = str(tmp_home / "project")
@@ -42,32 +42,36 @@ def initialized_project(config_file, credentials_dir, tmp_home):
 # Parser tests
 # ---------------------------------------------------------------------------
 
-class TestStatusParser:
-    def test_status_in_subcommands(self):
-        assert "status" in _SUBCOMMANDS
+class TestBoxInfoParser:
+    def test_status_not_in_subcommands(self):
+        """Top-level 'status' command has been removed."""
+        assert "status" not in _SUBCOMMANDS
 
-    def test_status_parser_default(self):
+    def test_box_info_parser_default(self):
         parser = build_parser()
-        args = parser.parse_args(["status"])
-        assert args.command == "status"
-        assert args.project is None
+        args = parser.parse_args(["box", "info"])
+        assert args.command == "box"
+        assert args.box_command == "info"
+        assert args.path is None
 
-    def test_status_parser_with_project(self):
+    def test_box_info_parser_with_path(self):
         parser = build_parser()
-        args = parser.parse_args(["status", "-p", "/tmp/mydir"])
-        assert args.command == "status"
-        assert args.project == "/tmp/mydir"
+        args = parser.parse_args(["box", "info", "/tmp/mydir"])
+        assert args.command == "box"
+        assert args.path == "/tmp/mydir"
 
-    def test_status_parser_long_flag(self):
+    def test_box_inspect_alias(self):
         parser = build_parser()
-        args = parser.parse_args(["status", "--project", "/tmp/foo"])
-        assert args.project == "/tmp/foo"
-
-    def test_status_has_func(self):
-        parser = build_parser()
-        args = parser.parse_args(["status"])
+        args = parser.parse_args(["box", "inspect"])
+        assert args.command == "box"
         assert hasattr(args, "func")
-        assert args.func is run_status
+        assert args.func is run_info
+
+    def test_box_info_has_func(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "info"])
+        assert hasattr(args, "func")
+        assert args.func is run_info
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +125,7 @@ class TestFormatCredentialAge:
 # _check_container_running tests
 # ---------------------------------------------------------------------------
 
-def _mock_proj(*, name="", project_hash="a" * 64, mode="account_centric",
+def _mock_proj(*, name="", project_hash="a" * 64, mode="local",
                project_path="/home/user/proj"):
     """Duck-typed ProjectPaths for _check_container_running tests."""
     return SimpleNamespace(
@@ -135,7 +139,7 @@ def _mock_proj(*, name="", project_hash="a" * 64, mode="account_centric",
 class TestCheckContainerRunning:
     def test_no_runtime(self):
         with patch(
-            "kanibako.commands.status.ContainerRuntime",
+            "kanibako.commands.box._parser.ContainerRuntime",
             side_effect=ContainerError("no runtime"),
         ):
             proj = _mock_proj()
@@ -148,7 +152,7 @@ class TestCheckContainerRunning:
         mock_rt.list_running.return_value = []
         mock_rt.container_exists.return_value = False
         with patch(
-            "kanibako.commands.status.ContainerRuntime",
+            "kanibako.commands.box._parser.ContainerRuntime",
             return_value=mock_rt,
         ):
             proj = _mock_proj()
@@ -163,7 +167,7 @@ class TestCheckContainerRunning:
             (container_name, "test:latest", "Up 5 minutes"),
         ]
         with patch(
-            "kanibako.commands.status.ContainerRuntime",
+            "kanibako.commands.box._parser.ContainerRuntime",
             return_value=mock_rt,
         ):
             proj = _mock_proj(name="myapp")
@@ -179,7 +183,7 @@ class TestCheckContainerRunning:
             ("kanibako-aaaaaaaa", "test:latest", "Up 5 minutes"),
         ]
         with patch(
-            "kanibako.commands.status.ContainerRuntime",
+            "kanibako.commands.box._parser.ContainerRuntime",
             return_value=mock_rt,
         ):
             proj = _mock_proj(name="")
@@ -194,7 +198,7 @@ class TestCheckContainerRunning:
         ]
         mock_rt.container_exists.return_value = False
         with patch(
-            "kanibako.commands.status.ContainerRuntime",
+            "kanibako.commands.box._parser.ContainerRuntime",
             return_value=mock_rt,
         ):
             proj = _mock_proj(name="myapp")
@@ -208,7 +212,7 @@ class TestCheckContainerRunning:
         mock_rt.list_running.return_value = []
         mock_rt.container_exists.return_value = True  # stopped but exists
         with patch(
-            "kanibako.commands.status.ContainerRuntime",
+            "kanibako.commands.box._parser.ContainerRuntime",
             return_value=mock_rt,
         ):
             proj = _mock_proj(name="myapp")
@@ -218,34 +222,34 @@ class TestCheckContainerRunning:
 
 
 # ---------------------------------------------------------------------------
-# run_status integration tests (with real filesystem, mocked container)
+# run_info integration tests (with real filesystem, mocked container)
 # ---------------------------------------------------------------------------
 
-class TestRunStatus:
+class TestRunInfo:
     def test_no_project_data(self, config_file, tmp_home, capsys):
-        """Status for a directory with no kanibako data."""
-        args = argparse.Namespace(project=None)
+        """Info for a directory with no kanibako data."""
+        args = argparse.Namespace(path=None)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 1
         out = capsys.readouterr().out
         assert "No project data found" in out
 
     def test_initialized_project(self, initialized_project, capsys):
-        """Status for an initialized account-centric project."""
-        args = argparse.Namespace(project=initialized_project.project_dir)
+        """Info for an initialized local project."""
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Name:" in out
-        assert "account-centric" in out
+        assert "local" in out
         assert "Hash:" in out
         assert "Metadata:" in out
         assert "Shell:" in out
@@ -256,66 +260,66 @@ class TestRunStatus:
         assert "Credentials:" in out
 
     def test_lock_active(self, initialized_project, capsys):
-        """Status shows ACTIVE lock when lock file exists."""
+        """Info shows ACTIVE lock when lock file exists."""
         lock_file = initialized_project.proj.metadata_path / ".kanibako.lock"
         lock_file.write_text("kanibako-test\n")
-        args = argparse.Namespace(project=initialized_project.project_dir)
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-test)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "ACTIVE" in out
 
-    def test_with_project_flag(self, initialized_project, capsys):
-        """Status with -p flag pointing to a different directory."""
-        args = argparse.Namespace(project=initialized_project.project_dir)
+    def test_with_path_arg(self, initialized_project, capsys):
+        """Info with path argument pointing to a project directory."""
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
 
     def test_nonexistent_directory(self, config_file, tmp_home, capsys):
-        """Status for a directory that doesn't exist."""
-        args = argparse.Namespace(project="/nonexistent/path")
-        rc = run_status(args)
+        """Info for a directory that doesn't exist."""
+        args = argparse.Namespace(path="/nonexistent/path")
+        rc = run_info(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "does not exist" in err
 
     def test_shows_image(self, initialized_project, capsys):
-        """Status shows the configured container image."""
-        args = argparse.Namespace(project=initialized_project.project_dir)
+        """Info shows the configured container image."""
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         # Default image from KanibakoConfig
         assert "ghcr.io/doctorjei/kanibako-oci:latest" in out
 
     def test_shows_project_image_override(self, initialized_project, capsys):
-        """Status shows project-specific image when project.toml is set."""
+        """Info shows project-specific image when project.toml is set."""
         project_toml = initialized_project.proj.metadata_path / "project.toml"
         project_toml.write_text('[container]\nimage = "custom:v2"\n')
-        args = argparse.Namespace(project=initialized_project.project_dir)
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "custom:v2" in out
 
     def test_credential_age_displayed(self, initialized_project, capsys):
-        """Status shows credential file age when credentials exist."""
+        """Info shows credential file age when credentials exist."""
         creds_dir = initialized_project.proj.shell_path / ".claude"
         creds_dir.mkdir(parents=True, exist_ok=True)
         creds = creds_dir / ".credentials.json"
@@ -324,59 +328,59 @@ class TestRunStatus:
         # regardless of whether the Claude plugin is installed.
         mock_target = MagicMock()
         mock_target.credential_check_path.return_value = creds
-        args = argparse.Namespace(project=initialized_project.project_dir)
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ), patch(
-            "kanibako.commands.status.resolve_target",
+            "kanibako.commands.box._parser.resolve_target",
             return_value=mock_target,
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         # Should show "ago" for a recently-created file.
         assert "ago" in out
 
     def test_no_credentials_shows_na(self, initialized_project, capsys):
-        """Status shows n/a when no credentials file exists."""
+        """Info shows n/a when no credentials file exists."""
         creds = initialized_project.proj.shell_path / ".claude" / ".credentials.json"
         # Mock target so credential_check_path returns a path that doesn't exist.
         mock_target = MagicMock()
         mock_target.credential_check_path.return_value = creds
-        args = argparse.Namespace(project=initialized_project.project_dir)
+        args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ), patch(
-            "kanibako.commands.status.resolve_target",
+            "kanibako.commands.box._parser.resolve_target",
             return_value=mock_target,
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "n/a" in out
 
 
-class TestRunStatusDecentralized:
-    def test_decentralized_project(self, config_file, tmp_home, credentials_dir, capsys):
-        """Status for a decentralized project."""
-        from kanibako.paths import resolve_decentralized_project
+class TestRunInfoStandalone:
+    def test_standalone_project(self, config_file, tmp_home, credentials_dir, capsys):
+        """Info for a standalone project."""
+        from kanibako.paths import resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
 
-        resolve_decentralized_project(
+        resolve_standalone_project(
             std, config, project_dir=project_dir, initialize=True,
         )
-        args = argparse.Namespace(project=project_dir)
+        args = argparse.Namespace(path=project_dir)
         with patch(
-            "kanibako.commands.status._check_container_running",
+            "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ):
-            rc = run_status(args)
+            rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "decentralized" in out
+        assert "standalone" in out
         assert "kanibako" in out

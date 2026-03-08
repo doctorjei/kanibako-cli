@@ -19,12 +19,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Stop a running kanibako container for a project.",
     )
     p.add_argument(
-        "path", nargs="?", default=None,
-        help="Path to the project directory (default: cwd)",
+        "project", nargs="?", default=None,
+        help="Project name or path (default: cwd)",
     )
     p.add_argument(
         "--all", action="store_true", dest="all_containers",
         help="Stop all running kanibako containers",
+    )
+    p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompt (only relevant with --all)",
     )
     p.set_defaults(func=run)
 
@@ -37,9 +41,9 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     if args.all_containers:
-        return _stop_all(runtime)
+        return _stop_all(runtime, force=getattr(args, "force", False))
 
-    return _stop_one(runtime, project_dir=args.path)
+    return _stop_one(runtime, project_dir=getattr(args, "project", None))
 
 
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
@@ -71,12 +75,27 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     return 0
 
 
-def _stop_all(runtime: ContainerRuntime) -> int:
+def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
     """Stop all running kanibako containers."""
     containers = runtime.list_running()
     if not containers:
         print("No running kanibako containers found.")
         return 0
+
+    # Confirmation prompt unless --force
+    if not force:
+        names = [name for name, _, _ in containers]
+        print(f"This will stop {len(containers)} running container(s):")
+        for n in names:
+            print(f"  {n}")
+        print()
+        try:
+            answer = input("Continue? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in ("y", "yes"):
+            print("Aborted.")
+            return 2
 
     stopped = 0
     for name, image, status in containers:

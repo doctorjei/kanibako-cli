@@ -40,9 +40,9 @@ def _run_kanibako(
 
 
 def _setup_with_image(cli_env: dict, image: str) -> None:
-    """Run kanibako setup and override the configured container image."""
-    result = _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
-    assert result.returncode == 0, f"setup failed: {result.stderr}"
+    """Trigger lazy init via system info and override the configured container image."""
+    result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
+    assert result.returncode == 0, f"lazy init failed: {result.stderr}"
 
     # Patch the config to use the requested image.
     config_file = cli_env["config_home"] / "kanibako.toml"
@@ -59,13 +59,13 @@ def _setup_with_image(cli_env: dict, image: str) -> None:
 
 
 @pytest.mark.integration
-class TestKanibakoSetup:
-    """Verify kanibako setup creates expected files and dirs."""
+class TestKanibakoLazyInit:
+    """Verify lazy init creates expected files and dirs on first command."""
 
-    def test_setup_creates_config_and_dirs(self, cli_env):
-        """kanibako setup creates config file, agents dir, and env file."""
-        result = _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
-        assert result.returncode == 0, f"setup failed: {result.stderr}"
+    def test_lazy_init_creates_config_and_dirs(self, cli_env):
+        """Any kanibako command triggers lazy init (config file, agents, env)."""
+        result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
+        assert result.returncode == 0, f"lazy init failed: {result.stderr}"
 
         config_file = cli_env["config_home"] / "kanibako.toml"
         assert config_file.is_file(), "kanibako.toml not created"
@@ -77,12 +77,12 @@ class TestKanibakoSetup:
         env_file = data_path / "env"
         assert env_file.is_file(), "env file not created"
 
-    def test_setup_idempotent(self, cli_env):
-        """Running setup twice succeeds without errors."""
-        r1 = _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
+    def test_lazy_init_idempotent(self, cli_env):
+        """Running commands twice succeeds without errors (lazy init is idempotent)."""
+        r1 = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert r1.returncode == 0
 
-        r2 = _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
+        r2 = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert r2.returncode == 0
 
 
@@ -96,8 +96,7 @@ class TestKanibakoImageOps:
     """Verify kanibako image commands."""
 
     def test_image_list_runs(self, cli_env):
-        """kanibako image list exits 0 after setup."""
-        _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
+        """kanibako image list exits 0 (lazy init triggers automatically)."""
         result = _run_kanibako(
             "image", "list", env=cli_env["env"], cwd=str(cli_env["project"])
         )
@@ -106,7 +105,6 @@ class TestKanibakoImageOps:
     @requires_runtime
     def test_image_build_base(self, cli_env):
         """kanibako image rebuild oci builds from bundled Containerfile."""
-        _run_kanibako("setup", env=cli_env["env"], cwd=str(cli_env["project"]))
         result = _run_kanibako(
             "image", "rebuild", "oci",
             env=cli_env["env"],
@@ -125,14 +123,14 @@ class TestKanibakoImageOps:
 class TestKanibakoShell:
     """Verify kanibako can run commands inside containers.
 
-    Uses ``busybox:latest`` as a lightweight image.  The ``start -c``
+    Uses ``busybox:latest`` as a lightweight image.  The ``start --entrypoint``
     flag overrides the entrypoint so the container runs a single command
     and exits.
     """
 
     @requires_runtime
     def test_shell_runs_command(self, cli_env, container_runtime_cmd):
-        """kanibako start -c runs a command and captures output."""
+        """kanibako start --entrypoint runs a command and captures output."""
         _setup_with_image(cli_env, "busybox:latest")
         subprocess.run(
             [container_runtime_cmd, "pull", "busybox:latest"],
@@ -140,7 +138,7 @@ class TestKanibakoShell:
         )
 
         result = _run_kanibako(
-            "start", "-c", "/bin/sh", "--", "-c", "echo hello-from-container",
+            "start", "--entrypoint", "/bin/sh", "--", "-c", "echo hello-from-container",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
@@ -161,7 +159,7 @@ class TestKanibakoShell:
         marker.write_text("workspace-ok\n")
 
         result = _run_kanibako(
-            "start", "-c", "/bin/cat",
+            "start", "--entrypoint", "/bin/cat",
             "--", "/home/agent/workspace/marker.txt",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
@@ -183,7 +181,7 @@ class TestKanibakoShell:
         env_file.write_text("MY_TEST_VAR=lifecycle-check\n")
 
         result = _run_kanibako(
-            "start", "-c", "/bin/sh", "--", "-c", "echo $MY_TEST_VAR",
+            "start", "--entrypoint", "/bin/sh", "--", "-c", "echo $MY_TEST_VAR",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
@@ -212,7 +210,7 @@ class TestKanibakoLifecycle:
         # Launch kanibako in the background — the container runs `sleep`.
         proc = subprocess.Popen(
             [
-                "kanibako", "start", "-c", "/bin/sleep", "--", "300",
+                "kanibako", "start", "--entrypoint", "/bin/sleep", "--", "300",
             ],
             env=cli_env["env"],
             cwd=str(cli_env["project"]),

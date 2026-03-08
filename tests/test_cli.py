@@ -27,53 +27,60 @@ class TestParser:
 
     def test_start_with_flags(self):
         parser = build_parser()
-        args = parser.parse_args(["start", "-N", "-S", "-i", "my-image:v1"])
-        assert args.new is True
-        assert args.safe is True
+        args = parser.parse_args(["start", "-N", "-S", "--image", "my-image:v1"])
+        assert args.new_session is True
+        assert args.secure is True
         assert args.image == "my-image:v1"
+
+    def test_start_resume_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-R"])
+        assert args.resume_session is True
+
+    def test_start_model_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-M", "opus"])
+        assert args.model == "opus"
+
+    def test_start_autonomous_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-A"])
+        assert args.autonomous is True
+
+    def test_start_env_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-e", "FOO=bar", "-e", "BAZ=qux"])
+        assert args.env == ["FOO=bar", "BAZ=qux"]
+
+    def test_start_persistent_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "--persistent"])
+        assert args.persistent is True
+
+    def test_start_ephemeral_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "--ephemeral"])
+        assert args.ephemeral is True
+
+    def test_start_entrypoint_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "--entrypoint", "/bin/zsh"])
+        assert args.entrypoint == "/bin/zsh"
+
+    def test_start_project_positional(self):
+        """Project positional is extracted from agent_args in run_start."""
+        # Verify that when parsing 'start /tmp/myproject', the path
+        # ends up in agent_args (since argparse REMAINDER catches it),
+        # and run_start extracts it as the project directory.
+        parser = build_parser()
+        args = parser.parse_args(["start", "/tmp/myproject"])
+        # REMAINDER captures the project path
+        assert args.agent_args == ["/tmp/myproject"]
 
     def test_shell_command(self):
         parser = build_parser()
         args = parser.parse_args(["shell"])
         assert args.command == "shell"
-
-    def test_resume_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["resume", "-S"])
-        assert args.command == "resume"
-        assert args.safe is True
-
-    def test_config_get(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "image"])
-        assert args.command == "config"
-        assert args.key == "image"
-        assert args.value is None
-
-    def test_config_set(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "image", "new-image:v2"])
-        assert args.key == "image"
-        assert args.value == "new-image:v2"
-
-    def test_config_show(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "--show"])
-        assert args.command == "config"
-        assert args.show is True
-        assert args.key is None
-
-    def test_config_show_short(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "-s"])
-        assert args.show is True
-
-    def test_config_clear(self):
-        parser = build_parser()
-        args = parser.parse_args(["config", "--clear"])
-        assert args.command == "config"
-        assert args.clear is True
-        assert args.key is None
 
     def test_box_command(self):
         parser = build_parser()
@@ -121,19 +128,65 @@ class TestParser:
         assert args.all_projects is True
         assert args.path is None
 
-    def test_box_restore_command(self):
+    def test_box_extract_command(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "restore", "/tmp/project", "archive.txz"])
+        args = parser.parse_args(["box", "extract", "archive.txz", "/tmp/project"])
         assert args.command == "box"
-        assert args.box_command == "restore"
-        assert args.path == "/tmp/project"
+        assert args.box_command == "extract"
         assert args.file == "archive.txz"
+        assert args.path == "/tmp/project"
 
-    def test_box_restore_all(self):
+    def test_box_extract_all(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "restore", "--all"])
+        args = parser.parse_args(["box", "extract", "--all"])
         assert args.all_archives is True
-        assert args.path is None
+        assert args.file is None
+
+    def test_box_move_command(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/src", "/dest"])
+        assert args.command == "box"
+        assert args.box_command == "move"
+        assert args.args == ["/src", "/dest"]
+
+    def test_box_move_single_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/dest"])
+        assert args.args == ["/dest"]
+
+    def test_box_move_force(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/dest", "--force"])
+        assert args.force is True
+
+    def test_box_vault_list(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list"])
+        assert args.command == "box"
+        assert args.vault_command == "list"
+
+    def test_box_vault_snapshot(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "snapshot", "/myproj"])
+        assert args.vault_command == "snapshot"
+        assert args.project == "/myproj"
+
+    def test_box_vault_restore(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz"])
+        assert args.vault_command == "restore"
+        assert args.name == "snap.tar.xz"
+
+    def test_box_vault_prune(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
+        assert args.vault_command == "prune"
+        assert args.keep == 3
+
+    def test_box_vault_list_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list", "-q"])
+        assert args.quiet is True
 
     def test_box_migrate_command(self):
         parser = build_parser()
@@ -209,45 +262,182 @@ class TestParser:
         args = parser.parse_args(["image", "rebuild", "--all"])
         assert args.all_images is True
 
-    def test_setup_command(self):
+    def test_system_command(self):
         parser = build_parser()
-        args = parser.parse_args(["setup"])
-        assert args.command == "setup"
+        args = parser.parse_args(["system"])
+        assert args.command == "system"
 
-    def test_remove_command(self):
+    def test_system_info(self):
         parser = build_parser()
-        args = parser.parse_args(["remove"])
-        assert args.command == "remove"
+        args = parser.parse_args(["system", "info"])
+        assert args.command == "system"
+        assert args.system_command == "info"
 
-    def test_reauth_command(self):
+    def test_system_info_alias_inspect(self):
         parser = build_parser()
-        args = parser.parse_args(["reauth"])
-        assert args.command == "reauth"
+        args = parser.parse_args(["system", "inspect"])
+        assert args.command == "system"
+        assert hasattr(args, "func")
 
-    def test_upgrade_command(self):
+    def test_system_config(self):
         parser = build_parser()
-        args = parser.parse_args(["upgrade"])
-        assert args.command == "upgrade"
+        args = parser.parse_args(["system", "config"])
+        assert args.command == "system"
+        assert args.system_command == "config"
+
+    def test_system_config_set(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "image=custom:v1"])
+        assert args.key_value == "image=custom:v1"
+
+    def test_system_config_get(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "image"])
+        assert args.key_value == "image"
+
+    def test_system_config_reset(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "--reset", "image"])
+        assert args.reset is True
+        assert args.key_value == "image"
+
+    def test_system_config_reset_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "--reset", "--all"])
+        assert args.reset is True
+        assert args.all_keys is True
+
+    def test_system_config_effective(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "--effective"])
+        assert args.effective is True
+
+    def test_system_upgrade(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "upgrade"])
+        assert args.command == "system"
+        assert args.system_command == "upgrade"
         assert args.check is False
 
-    def test_upgrade_check(self):
+    def test_system_upgrade_check(self):
         parser = build_parser()
-        args = parser.parse_args(["upgrade", "--check"])
-        assert args.command == "upgrade"
+        args = parser.parse_args(["system", "upgrade", "--check"])
+        assert args.command == "system"
         assert args.check is True
+
+    def test_agent_command(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent"])
+        assert args.command == "agent"
+
+    def test_agent_list(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "list"])
+        assert args.command == "agent"
+        assert args.agent_command == "list"
+
+    def test_agent_list_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "list", "-q"])
+        assert args.quiet is True
+
+    def test_agent_list_alias_ls(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "ls"])
+        assert args.command == "agent"
+        assert hasattr(args, "func")
+
+    def test_agent_info(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "info", "myagent"])
+        assert args.command == "agent"
+        assert args.agent_command == "info"
+        assert args.agent_id == "myagent"
+
+    def test_agent_info_alias_inspect(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "inspect", "myagent"])
+        assert args.command == "agent"
+        assert args.agent_id == "myagent"
+
+    def test_agent_config_show(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent"])
+        assert args.command == "agent"
+        assert args.agent_command == "config"
+        assert args.agent_id == "myagent"
+        assert args.key_value is None
+
+    def test_agent_config_set(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "model=sonnet"])
+        assert args.agent_id == "myagent"
+        assert args.key_value == "model=sonnet"
+
+    def test_agent_config_get(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "model"])
+        assert args.key_value == "model"
+
+    def test_agent_config_reset(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "--reset", "model"])
+        assert args.reset is True
+        assert args.key_value == "model"
+
+    def test_agent_config_reset_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "--reset", "--all"])
+        assert args.reset is True
+        assert args.all_keys is True
+
+    def test_agent_reauth(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "reauth"])
+        assert args.command == "agent"
+        assert args.agent_command == "reauth"
+        assert args.project is None
+
+    def test_agent_reauth_with_project(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "reauth", "/tmp/myproj"])
+        assert args.agent_command == "reauth"
+        assert args.project == "/tmp/myproj"
+
+    def test_agent_helper_spawn(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "helper", "spawn", "--depth", "3"])
+        assert args.command == "agent"
+        assert args.agent_command == "helper"
+        assert args.helper_command == "spawn"
+        assert args.depth == 3
+
+    def test_agent_helper_list(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "helper", "list"])
+        assert args.command == "agent"
+        assert args.helper_command == "list"
+
+    def test_agent_fork(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "fork", "feature1"])
+        assert args.command == "agent"
+        assert args.agent_command == "fork"
+        assert args.name == "feature1"
 
     def test_stop_command(self):
         parser = build_parser()
         args = parser.parse_args(["stop"])
         assert args.command == "stop"
-        assert args.path is None
+        assert args.project is None
         assert args.all_containers is False
+        assert args.force is False
 
     def test_stop_with_path(self):
         parser = build_parser()
         args = parser.parse_args(["stop", "/tmp/myproject"])
         assert args.command == "stop"
-        assert args.path == "/tmp/myproject"
+        assert args.project == "/tmp/myproject"
 
     def test_stop_all(self):
         parser = build_parser()
@@ -259,6 +449,19 @@ class TestParser:
         parser = build_parser()
         args = parser.parse_args(["start", "--", "--some-flag", "arg"])
         assert args.agent_args == ["--", "--some-flag", "arg"]
+
+    def test_box_start(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "start"])
+        assert args.command == "box"
+        assert args.box_command == "start"
+
+    def test_box_start_with_flags(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "start", "-N", "-A", "-M", "opus"])
+        assert args.new_session is True
+        assert args.autonomous is True
+        assert args.model == "opus"
 
     def test_box_info(self):
         parser = build_parser()
@@ -280,11 +483,19 @@ class TestParser:
 
     def test_workset_create(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "create", "myws", "/tmp/ws"])
+        args = parser.parse_args(["workset", "create", "/tmp/ws", "--name", "myws"])
         assert args.command == "workset"
         assert args.workset_command == "create"
         assert args.name == "myws"
         assert args.path == "/tmp/ws"
+
+    def test_workset_create_path_only(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "create", "/tmp/ws"])
+        assert args.command == "workset"
+        assert args.workset_command == "create"
+        assert args.path == "/tmp/ws"
+        assert args.name is None
 
     def test_workset_list(self):
         parser = build_parser()
@@ -292,29 +503,47 @@ class TestParser:
         assert args.command == "workset"
         assert args.workset_command == "list"
 
-    def test_workset_delete(self):
+    def test_workset_list_quiet(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "delete", "myws", "--remove-files", "--force"])
+        args = parser.parse_args(["workset", "list", "-q"])
+        assert args.quiet is True
+
+    def test_workset_list_alias_ls(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "ls"])
         assert args.command == "workset"
-        assert args.workset_command == "delete"
+        assert hasattr(args, "func")
+
+    def test_workset_rm(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "rm", "myws", "--purge", "--force"])
+        assert args.command == "workset"
+        assert args.workset_command in ("rm", "delete")
         assert args.name == "myws"
-        assert args.remove_files is True
+        assert args.purge is True
         assert args.force is True
 
-    def test_workset_add(self):
+    def test_workset_rm_alias_delete(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "add", "myws", "/tmp/src", "--name", "proj"])
+        args = parser.parse_args(["workset", "delete", "myws", "--force"])
         assert args.command == "workset"
-        assert args.workset_command == "add"
+        assert args.name == "myws"
+        assert args.force is True
+
+    def test_workset_connect(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "connect", "myws", "/tmp/src", "--name", "proj"])
+        assert args.command == "workset"
+        assert args.workset_command == "connect"
         assert args.workset == "myws"
         assert args.source == "/tmp/src"
         assert args.project_name == "proj"
 
-    def test_workset_remove(self):
+    def test_workset_disconnect(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "remove", "myws", "proj", "--remove-files", "--force"])
+        args = parser.parse_args(["workset", "disconnect", "myws", "proj", "--remove-files", "--force"])
         assert args.command == "workset"
-        assert args.workset_command == "remove"
+        assert args.workset_command == "disconnect"
         assert args.workset == "myws"
         assert args.project == "proj"
         assert args.remove_files is True
@@ -324,8 +553,22 @@ class TestParser:
         parser = build_parser()
         args = parser.parse_args(["workset", "info", "myws"])
         assert args.command == "workset"
-        assert args.workset_command == "info"
+        assert args.workset_command in ("info", "inspect")
         assert args.name == "myws"
+
+    def test_workset_info_alias_inspect(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "inspect", "myws"])
+        assert args.command == "workset"
+        assert args.name == "myws"
+
+    def test_workset_config(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "config", "myws", "model=sonnet"])
+        assert args.command == "workset"
+        assert args.workset_command == "config"
+        assert args.workset == "myws"
+        assert args.key_value == "model=sonnet"
 
     def test_box_migrate_workset_flag(self):
         parser = build_parser()
@@ -346,12 +589,87 @@ class TestParser:
         assert args.workset == "myws"
         assert args.project_name == "proj"
 
+    # -- Top-level alias tests --
 
-class TestConfigCheckExemptions:
-    """Commands that skip the kanibako.toml existence check."""
+    def test_ps_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["ps"])
+        assert args.command == "ps"
+        assert hasattr(args, "func")
 
-    def test_helper_skips_config_check(self, tmp_path, monkeypatch):
-        """'helper' command should not require kanibako.toml."""
+    def test_ps_top_level_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["ps", "--all"])
+        assert args.command == "ps"
+        assert args.show_all is True
+
+    def test_ps_top_level_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["ps", "-q"])
+        assert args.command == "ps"
+        assert args.quiet is True
+
+    def test_create_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "/tmp/proj"])
+        assert args.command == "create"
+        assert args.path == "/tmp/proj"
+        assert hasattr(args, "func")
+
+    def test_create_top_level_standalone(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "/tmp/proj", "--standalone"])
+        assert args.command == "create"
+        assert args.standalone is True
+
+    def test_create_top_level_with_image(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "-i", "myimage:v1"])
+        assert args.command == "create"
+        assert args.image == "myimage:v1"
+
+    def test_create_top_level_no_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["create"])
+        assert args.command == "create"
+        assert args.path is None
+
+    def test_rm_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["rm", "myproj"])
+        assert args.command == "rm"
+        assert args.target == "myproj"
+        assert hasattr(args, "func")
+
+    def test_rm_top_level_purge(self):
+        parser = build_parser()
+        args = parser.parse_args(["rm", "myproj", "--purge"])
+        assert args.command == "rm"
+        assert args.purge is True
+
+    def test_rm_top_level_force(self):
+        parser = build_parser()
+        args = parser.parse_args(["rm", "myproj", "--purge", "--force"])
+        assert args.command == "rm"
+        assert args.purge is True
+        assert args.force is True
+
+    def test_subcommands_set(self):
+        from kanibako.cli import _SUBCOMMANDS
+        expected = {
+            # Top-level aliases
+            "start", "stop", "shell", "ps", "create", "rm",
+            # Management commands
+            "box", "image", "workset", "agent", "system",
+        }
+        assert _SUBCOMMANDS == expected
+
+
+class TestLazyInitExemptions:
+    """Commands that skip lazy initialization."""
+
+    def test_agent_helper_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'agent helper' command should not trigger lazy init."""
         # Point XDG_CONFIG_HOME to an empty dir (no kanibako.toml)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
@@ -360,17 +678,34 @@ class TestConfigCheckExemptions:
         )
 
         from kanibako.cli import main
-        # 'helper list' should not crash with "not set up yet"
+        # 'agent helper list' should not crash with "not set up yet"
         with pytest.raises(SystemExit) as exc_info:
-            main(["helper", "list"])
+            main(["agent", "helper", "list"])
         assert exc_info.value.code == 0
 
-    def test_setup_skips_config_check(self):
-        """'setup' command should not require kanibako.toml (pre-existing)."""
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["setup"])
-        assert args.command == "setup"
+    def test_agent_fork_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'agent fork' command should not trigger lazy init."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        # fork will fail with "no socket" but should NOT fail with lazy init
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["agent", "fork", "test"])
+        # Should exit with 1 (no socket), not a lazy init error
+        assert exc_info.value.code == 1
+
+    def test_system_triggers_lazy_init(self, tmp_path, monkeypatch):
+        """'system' command triggers lazy init (creates config)."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["system", "info"])
+        assert exc_info.value.code == 0
+        # Config should have been created by lazy init
+        assert (tmp_path / "config" / "kanibako.toml").exists()
 
 
 class TestVerboseFlag:

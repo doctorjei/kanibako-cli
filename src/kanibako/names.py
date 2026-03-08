@@ -1,8 +1,8 @@
 """Project name registry (names.toml).
 
 Central index at ``{data_path}/names.toml`` mapping human-readable names to
-project paths (for account-centric projects) and workset roots (for worksets).
-Decentralized projects are intentionally excluded — they have no central
+project paths (for local projects) and workset roots (for worksets).
+Standalone projects are intentionally excluded — they have no central
 registration.
 
 The file has two sections::
@@ -102,6 +102,30 @@ def register_name(
     _save(data_path, names)
 
 
+def update_name_path(
+    data_path: Path,
+    name: str,
+    new_path: str,
+    section: str = "projects",
+) -> bool:
+    """Update the path for an existing registered name.
+
+    Returns True if the name was found and updated, False otherwise.
+    Raises ``ProjectError`` if *new_path* resolves to ``$HOME``.
+    """
+    if Path(new_path).resolve() == Path.home().resolve():
+        raise ProjectError(
+            "Refusing to register $HOME as a project path — this would "
+            "mount your entire home directory as the workspace."
+        )
+    names = _load(data_path)
+    if name not in names.get(section, {}):
+        return False
+    names[section][name] = new_path
+    _save(data_path, names)
+    return True
+
+
 def unregister_name(
     data_path: Path,
     name: str,
@@ -146,7 +170,7 @@ def resolve_name(
     Resolution order:
 
     1. If *cwd* is inside a workset → check that workset's projects first
-    2. ``[projects]`` section (AC projects)
+    2. ``[projects]`` section (local projects)
     3. ``[worksets]`` section (workset names)
 
     *kind* is ``"project"`` or ``"workset"``.
@@ -167,7 +191,7 @@ def resolve_name(
                 if candidate.is_dir():
                     return str(candidate), "project"
 
-    # 2. AC projects.
+    # 2. Local projects.
     if name in names["projects"]:
         return names["projects"][name], "project"
 

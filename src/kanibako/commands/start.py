@@ -1,17 +1,19 @@
-"""kanibako start / shell / resume: container launch with credential flow."""
+"""kanibako start / shell: container launch with credential flow."""
 
 from __future__ import annotations
 
 import argparse
 import fcntl
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from kanibako.agents import agent_toml_path, load_agent_config, write_agent_config
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
-from kanibako.errors import ConfigError, ContainerError
+from kanibako.errors import ContainerError
 from kanibako.log import get_logger
 from kanibako.paths import (
     ProjectMode,
@@ -30,26 +32,68 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Start or continue an agent session (default)",
         description="Start or continue an agent session in a container.",
     )
-    _add_common_args(p)
+
+    # Start mode: -N/-C/-R mutually exclusive
+    mode_group = p.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "-N", "--new", action="store_true", dest="new_session",
+        help="Start a new conversation (skip default --continue)",
+    )
+    mode_group.add_argument(
+        "-C", "--continue", action="store_true", dest="continue_session",
+        help="Continue the most recent conversation (default for existing projects)",
+    )
+    mode_group.add_argument(
+        "-R", "--resume", action="store_true", dest="resume_session",
+        help="Resume with conversation picker",
+    )
+
+    # Agent mode: -A/-S mutually exclusive
+    agent_group = p.add_mutually_exclusive_group()
+    agent_group.add_argument(
+        "-A", "--autonomous", action="store_true",
+        help="Run with full permissions (--dangerously-skip-permissions)",
+    )
+    agent_group.add_argument(
+        "-S", "--secure", action="store_true",
+        help="Run without --dangerously-skip-permissions",
+    )
+
     p.add_argument(
-        "-i", "--image", default=None,
+        "-M", "--model", default=None,
+        help="Override the agent model for this run",
+    )
+    p.add_argument(
+        "-e", "--env", action="append", default=None, metavar="KEY=VALUE",
+        help="Set per-run environment variable (repeatable)",
+    )
+    p.add_argument(
+        "--image", default=None,
         help="Use IMAGE as the container image for this run",
     )
     p.add_argument(
-        "-N", "--new", action="store_true",
-        help="Start a new conversation (skip default --continue)",
+        "--entrypoint", default=None,
+        help="Use CMD as the container entrypoint",
     )
-    p.add_argument(
-        "-S", "--safe", action="store_true",
-        help="Run without --dangerously-skip-permissions",
+
+    # Session persistence mode
+    persist_group = p.add_mutually_exclusive_group()
+    persist_group.add_argument(
+        "--persistent", action="store_true",
+        help="Run in a persistent tmux session (reattach on subsequent start)",
     )
+    persist_group.add_argument(
+        "--ephemeral", action="store_true",
+        help="Run in foreground without tmux (single-use session)",
+    )
+
     p.add_argument(
         "--no-helpers", action="store_true",
         help="Disable helper spawning (no hub socket mounted)",
     )
     p.add_argument(
         "agent_args", nargs=argparse.REMAINDER,
-        help="Arguments passed directly to the agent",
+        help="Arguments passed directly to the agent (after --)",
     )
     p.set_defaults(func=run_start)
 
@@ -60,7 +104,34 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Open a bash shell in the container",
         description="Open a bash shell in the container (no agent).",
     )
-    _add_common_args(p)
+    p.add_argument(
+        "-e", "--env", action="append", default=None, metavar="KEY=VALUE",
+        help="Set per-run environment variable (repeatable)",
+    )
+    p.add_argument(
+        "--image", default=None,
+        help="Use IMAGE as the container image for this run",
+    )
+    p.add_argument(
+        "--entrypoint", default=None,
+        help="Use CMD as the container entrypoint",
+    )
+
+    # Session persistence mode
+    persist_group = p.add_mutually_exclusive_group()
+    persist_group.add_argument(
+        "--persistent", action="store_true",
+        help="Run in a persistent tmux session (reattach on subsequent start)",
+    )
+    persist_group.add_argument(
+        "--ephemeral", action="store_true",
+        help="Run in foreground without tmux (single-use session)",
+    )
+
+    p.add_argument(
+        "--no-helpers", action="store_true",
+        help="Disable helper spawning (no hub socket mounted)",
+    )
     p.add_argument(
         "shell_args", nargs=argparse.REMAINDER,
         help="Command to run (after --): kanibako shell -- echo hello",
@@ -68,63 +139,66 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=run_shell)
 
 
-def add_resume_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser(
-        "resume",
-        help="Resume with conversation picker",
-        description="Resume a previous conversation using the agent's conversation picker.",
-    )
-    p.add_argument(
-        "-p", "--project", default=None,
-        help="Use DIR as the project directory (default: cwd)",
-    )
-    p.add_argument(
-        "-S", "--safe", action="store_true",
-        help="Run without --dangerously-skip-permissions",
-    )
-    p.set_defaults(func=run_resume)
-
-
-def _add_common_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "-c", "--command", dest="entrypoint", default=None,
-        help="Use CMD as the container entrypoint",
-    )
-    parser.add_argument(
-        "-E", "--entrypoint", dest="entrypoint", default=None,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "-p", "--project", default=None,
-        help="Use DIR as the project directory (default: cwd)",
-    )
-
-
 def run_start(args: argparse.Namespace) -> int:
     entrypoint = getattr(args, "entrypoint", None)
     image_override = getattr(args, "image", None)
-    new_session = getattr(args, "new", False)
-    safe_mode = getattr(args, "safe", False)
+    new_session = getattr(args, "new_session", False)
+    resume_session = getattr(args, "resume_session", False)
+    secure = getattr(args, "secure", False)
+    model_override = getattr(args, "model", None)
     no_helpers = getattr(args, "no_helpers", False)
+    explicit_persistent = getattr(args, "persistent", False)
+    explicit_ephemeral = getattr(args, "ephemeral", False)
+    if explicit_persistent:
+        persistent = True
+    elif explicit_ephemeral:
+        persistent = False
+    else:
+        # Default: persistent when tmux is available
+        persistent = _tmux_available()
+    env_vars = getattr(args, "env", None) or []
     agent_args = getattr(args, "agent_args", [])
+
+    # Extract [project] positional from agent_args: if the first arg is not
+    # "--" and doesn't start with "-", treat it as the project directory.
+    project_dir = getattr(args, "project", None)
+    if project_dir is None and agent_args and agent_args[0] != "--" and not agent_args[0].startswith("-"):
+        project_dir = agent_args[0]
+        agent_args = agent_args[1:]
+
     # Strip leading '--' from REMAINDER
     if agent_args and agent_args[0] == "--":
         agent_args = agent_args[1:]
 
+    # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
+    # -S means secure (safe_mode=True). Neither means autonomous (default).
+    safe_mode = secure
+
     return _run_container(
-        project_dir=args.project,
+        project_dir=project_dir,
         entrypoint=entrypoint,
         image_override=image_override,
         new_session=new_session,
         safe_mode=safe_mode,
-        resume_mode=False,
+        resume_mode=resume_session,
         extra_args=agent_args,
         no_helpers=no_helpers,
+        persistent=persistent,
+        model_override=model_override,
+        cli_env=env_vars,
     )
 
 
 def run_shell(args: argparse.Namespace) -> int:
     shell_args = getattr(args, "shell_args", [])
+
+    # Extract [project] positional from shell_args: if the first arg is not
+    # "--" and doesn't start with "-", treat it as the project directory.
+    project_dir = getattr(args, "project", None)
+    if project_dir is None and shell_args and shell_args[0] != "--" and not shell_args[0].startswith("-"):
+        project_dir = shell_args[0]
+        shell_args = shell_args[1:]
+
     # Strip leading '--' from REMAINDER
     if shell_args and shell_args[0] == "--":
         shell_args = shell_args[1:]
@@ -134,28 +208,50 @@ def run_shell(args: argparse.Namespace) -> int:
     # Wrap shell_args as -c "cmd" so /bin/sh executes them as a command
     if shell_args and not getattr(args, "entrypoint", None):
         shell_args = ["-c", " ".join(shell_args)]
+
+    image_override = getattr(args, "image", None)
+    no_helpers = getattr(args, "no_helpers", False)
+    env_vars = getattr(args, "env", None) or []
+
+    explicit_persistent = getattr(args, "persistent", False)
+    explicit_ephemeral = getattr(args, "ephemeral", False)
+    if explicit_persistent:
+        persistent = True
+    elif explicit_ephemeral:
+        persistent = False
+    else:
+        persistent = False  # shell defaults to ephemeral
+
     return _run_container(
-        project_dir=args.project,
+        project_dir=project_dir,
         entrypoint=entrypoint,
-        image_override=None,
+        image_override=image_override,
         new_session=False,
         safe_mode=False,
         resume_mode=False,
         extra_args=shell_args,
+        no_helpers=no_helpers,
+        persistent=persistent,
+        cli_env=env_vars,
     )
 
 
-def run_resume(args: argparse.Namespace) -> int:
-    safe_mode = getattr(args, "safe", False)
-    return _run_container(
-        project_dir=args.project,
-        entrypoint=None,
-        image_override=None,
-        new_session=False,
-        safe_mode=safe_mode,
-        resume_mode=True,
-        extra_args=[],
-    )
+def _tmux_available() -> bool:
+    """Check if tmux is installed."""
+    return shutil.which("tmux") is not None
+
+
+def _tmux_session_name(project_name: str) -> str:
+    """Generate a deterministic tmux session name for host-side reattach."""
+    return f"kanibako-{project_name}"
+
+
+def _tmux_has_session(session_name: str) -> bool:
+    """Check if a tmux session exists on the host."""
+    return subprocess.run(
+        ["tmux", "has-session", "-t", session_name],
+        capture_output=True,
+    ).returncode == 0
 
 
 def _run_container(
@@ -169,32 +265,18 @@ def _run_container(
     extra_args: list[str],
     no_helpers: bool = False,
     persistent: bool = False,
+    model_override: str | None = None,
+    cli_env: list[str] | None = None,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
 
-    try:
-        std = load_std_paths(config)
-    except ConfigError:
-        print("kanibako hasn't been set up yet. Run setup now? [y/N] ", end="", flush=True)
-        try:
-            answer = input().strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            answer = ""
-        if answer in ("y", "yes"):
-            import argparse as _argparse
-            from kanibako.commands.install import run as setup_run
-            setup_run(_argparse.Namespace())
-            # Retry after setup
-            std = load_std_paths(config)
-        else:
-            print("Run 'kanibako setup' when you're ready.")
-            return 1
+    std = load_std_paths(config)
 
     proj = resolve_any_project(std, config, project_dir, initialize=True)
 
     # Hint about orphaned project data when initializing a new project
-    if proj.is_new and proj.mode == ProjectMode.account_centric:
+    if proj.is_new and proj.mode == ProjectMode.local:
         from kanibako.paths import iter_projects
         for _settings, _ppath in iter_projects(std, config):
             if _ppath is not None and not _ppath.is_dir():
@@ -300,7 +382,7 @@ def _run_container(
         if runtime.container_exists(container_name):
             print(
                 "Error: A container already exists for this project.\n"
-                "If a persistent session is running, use 'kanibako connect' to\n"
+                "If a persistent session is running, use 'kanibako start' to\n"
                 "reattach, or 'kanibako stop' to end it.",
                 file=sys.stderr,
             )
@@ -359,6 +441,9 @@ def _run_container(
         # Build CLI args via target, merging agent default_args and state
         if target:
             effective_state = _build_effective_state(target, agent_cfg, project_toml)
+            # Apply model override from -M/--model flag
+            if model_override:
+                effective_state["model"] = model_override
             state_args, state_env = target.apply_state(effective_state)
             all_extra = list(agent_cfg.default_args) + list(extra_args)
             cli_args = target.build_cli_args(
@@ -435,6 +520,13 @@ def _run_container(
         container_env: dict[str, str] = merge_env(global_env_path, project_env_path) or {}
         container_env.update(agent_cfg.env)
         container_env.update(state_env)
+
+        # Merge per-run -e/--env KEY=VALUE vars (highest priority).
+        if cli_env:
+            for item in cli_env:
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    container_env[k] = v
 
         # Inject instance identity for peer communication.
         if proj.name:
@@ -533,7 +625,7 @@ def _run_container(
                 vault_ro_path=proj.vault_ro_path,
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
-                vault_tmpfs=(proj.mode == ProjectMode.account_centric),
+                vault_tmpfs=(proj.mode == ProjectMode.local),
                 vault_enabled=proj.vault_enabled,
                 env=container_env,
                 name=container_name,

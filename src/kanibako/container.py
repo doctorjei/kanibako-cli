@@ -65,6 +65,20 @@ class ContainerRuntime:
         )
         return result.returncode == 0
 
+    def image_inspect(self, image: str) -> dict | None:
+        """Return image metadata as a dict, or None if not found."""
+        result = subprocess.run(
+            [self.cmd, "image", "inspect", image, "--format", "json"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return None
+        import json
+        data = json.loads(result.stdout)
+        if isinstance(data, list) and data:
+            return data[0]
+        return data if isinstance(data, dict) else None
+
     def pull(self, image: str, *, quiet: bool = True) -> bool:
         """Pull *image* from registry. Returns True on success."""
         result = subprocess.run(
@@ -222,7 +236,7 @@ class ContainerRuntime:
                 cmd += ["-v", f"{vault_ro_path}:/home/agent/share-ro:ro"]
             if vault_rw_path.is_dir():
                 cmd += ["-v", f"{vault_rw_path}:/home/agent/share-rw:Z,U"]
-            # AC vault hiding: read-only tmpfs over workspace/vault
+            # Local vault hiding: read-only tmpfs over workspace/vault
             if vault_tmpfs:
                 cmd += ["--mount", "type=tmpfs,dst=/home/agent/workspace/vault,ro"]
                 # Mount a .gitignore on top of the tmpfs so the stub
@@ -312,6 +326,27 @@ class ContainerRuntime:
         result = subprocess.run(
             [
                 self.cmd, "ps",
+                "--filter", f"name={prefix}",
+                "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        containers: list[tuple[str, str, str]] = []
+        for line in result.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) == 3:
+                containers.append((parts[0], parts[1], parts[2]))
+        return containers
+
+    def list_all(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
+        """Return all containers (running + stopped) matching *prefix*.
+
+        Returns (name, image, status) tuples.
+        """
+        result = subprocess.run(
+            [
+                self.cmd, "ps", "-a",
                 "--filter", f"name={prefix}",
                 "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
             ],
