@@ -270,7 +270,8 @@ class TestRunCommandAssembly:
             cmd = m_run.call_args[0][0]
             assert cmd[0] == "/usr/bin/podman"
             assert "run" in cmd
-            assert "-it" in cmd
+            # -it when TTY available, -i when not (e.g. CI)
+            assert "-it" in cmd or "-i" in cmd
             assert "--rm" in cmd
             assert "--userns=keep-id" in cmd
 

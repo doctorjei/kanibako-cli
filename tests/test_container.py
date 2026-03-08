@@ -172,7 +172,8 @@ class TestDetachMode:
                 detach=False,
             )
             cmd = m.call_args[0][0]
-            assert "-it" in cmd
+            # -it when TTY available, -i when not (e.g. CI)
+            assert "-it" in cmd or "-i" in cmd
             assert "--rm" in cmd
             assert "-d" not in cmd
 

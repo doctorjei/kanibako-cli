@@ -221,7 +221,8 @@ class ContainerRuntime:
         if detach:
             run_flags = ["-d", "--userns=keep-id"]
         else:
-            run_flags = ["-it", "--rm", "--userns=keep-id"]
+            tty_flag = "-it" if sys.stdin.isatty() else "-i"
+            run_flags = [tty_flag, "--rm", "--userns=keep-id"]
         cmd: list[str] = [
             self.cmd, "run", *run_flags,
             # Persistent agent home
