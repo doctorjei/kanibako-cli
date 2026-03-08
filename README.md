@@ -1,8 +1,9 @@
 # Kanibako
 
-Run AI coding agents in isolated, per-project sandboxes.  No Docker or
-Podman experience required — kanibako handles all container operations
-behind the scenes.
+Run AI coding agents in isolated, per-project sandboxes.  Kanibako gives
+agents a safe place to work with real tools, real files, and real network
+access — without risking your host system.  No Docker or Podman experience
+required; kanibako handles all container operations behind the scenes.
 
 Just `cd` into a project and run `kanibako`.  Each project gets its own
 environment with its own shell config, credentials, and agent state that
