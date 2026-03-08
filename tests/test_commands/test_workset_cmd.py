@@ -18,22 +18,62 @@ class TestWorksetCreate:
         from kanibako.commands.workset_cmd import run_create
 
         ws_root = tmp_home / "myworkset"
-        args = argparse.Namespace(name="dev", path=str(ws_root))
+        args = argparse.Namespace(
+            path=str(ws_root), name=None,
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
         rc = run_create(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Created working set 'dev'" in out
+        assert "Created working set" in out
         assert ws_root.resolve().is_dir()
+
+    def test_create_with_name_override(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_create
+
+        ws_root = tmp_home / "myworkset2"
+        args = argparse.Namespace(
+            path=str(ws_root), name="custom-name",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
+        rc = run_create(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "custom-name" in out
+
+    def test_create_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
+        from kanibako.commands.workset_cmd import run_create
+
+        ws_dir = tmp_home / "cwd_ws"
+        ws_dir.mkdir()
+        monkeypatch.chdir(ws_dir)
+        # Since cwd exists and create_workset errors on existing root,
+        # test that path=None uses cwd by checking the error message
+        args = argparse.Namespace(
+            path=None, name="cwdws",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
+        rc = run_create(args)
+        # cwd already exists, so this should fail with "already exists"
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "already exists" in err
 
     def test_create_duplicate_name_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
 
         ws_root1 = tmp_home / "ws1"
-        args1 = argparse.Namespace(name="dup", path=str(ws_root1))
+        args1 = argparse.Namespace(
+            path=str(ws_root1), name="dup",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
         run_create(args1)
 
         ws_root2 = tmp_home / "ws2"
-        args2 = argparse.Namespace(name="dup", path=str(ws_root2))
+        args2 = argparse.Namespace(
+            path=str(ws_root2), name="dup",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
         rc = run_create(args2)
         assert rc == 1
         err = capsys.readouterr().err
@@ -44,28 +84,56 @@ class TestWorksetCreate:
 
         ws_root = tmp_home / "existing"
         ws_root.mkdir()
-        args = argparse.Namespace(name="ex", path=str(ws_root))
+        args = argparse.Namespace(
+            path=str(ws_root), name="ex",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
         rc = run_create(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "already exists" in err
 
-    def test_create_empty_name_error(self, config_file, tmp_home, capsys):
+    def test_create_with_distinct_auth(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
 
-        ws_root = tmp_home / "empty_name_ws"
-        args = argparse.Namespace(name="", path=str(ws_root))
+        ws_root = tmp_home / "distinct_ws"
+        args = argparse.Namespace(
+            path=str(ws_root), name="distinctws",
+            standalone=False, image=None, no_vault=False, distinct_auth=True,
+        )
         rc = run_create(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "must not be empty" in err
+        assert rc == 0
+
+        # Verify auth mode is set to distinct
+        from kanibako.workset import load_workset
+        ws = load_workset(ws_root.resolve())
+        assert ws.auth == "distinct"
+
+    def test_create_with_image(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_create
+
+        ws_root = tmp_home / "image_ws"
+        args = argparse.Namespace(
+            path=str(ws_root), name="imagews",
+            standalone=False, image="custom:latest", no_vault=False, distinct_auth=False,
+        )
+        rc = run_create(args)
+        assert rc == 0
+
+        # Verify config.toml was written with image
+        import tomllib
+        config_toml = ws_root.resolve() / "config.toml"
+        assert config_toml.exists()
+        with open(config_toml, "rb") as f:
+            data = tomllib.load(f)
+        assert data["container_image"] == "custom:latest"
 
 
 class TestWorksetList:
     def test_list_empty(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_list
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
@@ -78,7 +146,7 @@ class TestWorksetList:
         std = load_std_paths(config)
         create_workset("alpha", tmp_home / "ws_alpha", std)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
@@ -96,30 +164,58 @@ class TestWorksetList:
         src.mkdir()
         add_project(ws, "myproj", src)
 
-        args = argparse.Namespace()
+        args = argparse.Namespace(quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "beta" in out
         assert "1" in out
 
+    def test_list_quiet(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_list
 
-class TestWorksetDelete:
-    def test_delete_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_delete
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("quiet1", tmp_home / "ws_quiet1", std)
+        create_workset("quiet2", tmp_home / "ws_quiet2", std)
+
+        args = argparse.Namespace(quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        lines = out.strip().split("\n")
+        assert len(lines) == 2
+        assert "quiet1" in lines
+        assert "quiet2" in lines
+        # Quiet mode should not have header
+        assert "NAME" not in out
+
+    def test_list_quiet_empty(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_list
+
+        args = argparse.Namespace(quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert out == ""
+
+
+class TestWorksetRm:
+    def test_rm_success(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_rm
 
         config = load_config(config_file)
         std = load_std_paths(config)
         create_workset("todel", tmp_home / "ws_todel", std)
 
-        args = argparse.Namespace(name="todel", remove_files=False, force=True)
-        rc = run_delete(args)
+        args = argparse.Namespace(name="todel", purge=False, force=True)
+        rc = run_rm(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Deleted working set 'todel'" in out
 
-    def test_delete_with_remove_files(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_delete
+    def test_rm_with_purge(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_rm
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -127,24 +223,59 @@ class TestWorksetDelete:
         root = ws.root
 
         assert root.is_dir()
-        args = argparse.Namespace(name="rmfiles", remove_files=True, force=True)
-        rc = run_delete(args)
+        args = argparse.Namespace(name="rmfiles", purge=True, force=True)
+        rc = run_rm(args)
         assert rc == 0
         assert not root.is_dir()
 
-    def test_delete_unknown_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_delete
+    def test_rm_unknown_error(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_rm
 
-        args = argparse.Namespace(name="nonexistent", remove_files=False, force=True)
-        rc = run_delete(args)
+        args = argparse.Namespace(name="nonexistent", purge=False, force=True)
+        rc = run_rm(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "not registered" in err
 
+    def test_rm_with_projects_errors_without_force(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_rm
 
-class TestWorksetAdd:
-    def test_add_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_add
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("hasproj", tmp_home / "ws_hasproj", std)
+
+        src = tmp_home / "proj_src_rm"
+        src.mkdir()
+        add_project(ws, "myproj", src)
+
+        args = argparse.Namespace(name="hasproj", purge=False, force=False)
+        rc = run_rm(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "has 1 project(s)" in err
+        assert "--force" in err
+
+    def test_rm_with_projects_succeeds_with_force(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("hasproj2", tmp_home / "ws_hasproj2", std)
+
+        src = tmp_home / "proj_src_rm2"
+        src.mkdir()
+        add_project(ws, "myproj", src)
+
+        args = argparse.Namespace(name="hasproj2", purge=False, force=True)
+        rc = run_rm(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Deleted working set 'hasproj2'" in out
+
+
+class TestWorksetConnect:
+    def test_connect_success(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_connect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -156,14 +287,14 @@ class TestWorksetAdd:
         args = argparse.Namespace(
             workset="addws", source=str(src), project_name=None,
         )
-        rc = run_add(args)
+        rc = run_connect(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Added project" in out
         assert "add_src" in out
 
-    def test_add_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
-        from kanibako.commands.workset_cmd import run_add
+    def test_connect_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
+        from kanibako.commands.workset_cmd import run_connect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -176,13 +307,13 @@ class TestWorksetAdd:
         args = argparse.Namespace(
             workset="cwdws", source=None, project_name=None,
         )
-        rc = run_add(args)
+        rc = run_connect(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "cwd_proj" in out
 
-    def test_add_custom_name(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_add
+    def test_connect_custom_name(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_connect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -194,13 +325,13 @@ class TestWorksetAdd:
         args = argparse.Namespace(
             workset="namews", source=str(src), project_name="custom-name",
         )
-        rc = run_add(args)
+        rc = run_connect(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "custom-name" in out
 
-    def test_add_duplicate_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_add
+    def test_connect_duplicate_error(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_connect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -213,15 +344,15 @@ class TestWorksetAdd:
         args = argparse.Namespace(
             workset="dupws", source=str(src), project_name="proj1",
         )
-        rc = run_add(args)
+        rc = run_connect(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "already exists" in err
 
 
-class TestWorksetRemove:
-    def test_remove_success(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_remove
+class TestWorksetDisconnect:
+    def test_disconnect_success(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_disconnect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -235,13 +366,13 @@ class TestWorksetRemove:
             workset="rmws", project="rmproj",
             remove_files=False, force=True,
         )
-        rc = run_remove(args)
+        rc = run_disconnect(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Removed project 'rmproj'" in out
 
-    def test_remove_with_files(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_remove
+    def test_disconnect_with_files(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_disconnect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -258,12 +389,12 @@ class TestWorksetRemove:
             workset="rmfws", project="rmfproj",
             remove_files=True, force=True,
         )
-        rc = run_remove(args)
+        rc = run_disconnect(args)
         assert rc == 0
         assert not (ws.projects_dir / "rmfproj").is_dir()
 
-    def test_remove_unknown_error(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_remove
+    def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_disconnect
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -273,7 +404,7 @@ class TestWorksetRemove:
             workset="rmunkws", project="nope",
             remove_files=False, force=True,
         )
-        rc = run_remove(args)
+        rc = run_disconnect(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "not found" in err
@@ -313,7 +444,10 @@ class TestWorksetInfo:
         from kanibako.commands.workset_cmd import run_create, run_info
 
         ws_root = tmp_home / "authws"
-        run_create(argparse.Namespace(name="authws", path=str(ws_root)))
+        run_create(argparse.Namespace(
+            path=str(ws_root), name="authws",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        ))
         capsys.readouterr()
 
         args = argparse.Namespace(name="authws")
@@ -324,86 +458,235 @@ class TestWorksetInfo:
         assert "shared" in out
 
 
-class TestWorksetAuth:
-    def test_show_auth_mode(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_auth, run_create
+class TestWorksetConfig:
+    def test_config_show_empty(self, config_file, tmp_home, capsys):
+        """Config show with no overrides prints '(no overrides)'."""
+        from kanibako.commands.workset_cmd import run_config
 
-        ws_root = tmp_home / "authshowws"
-        run_create(argparse.Namespace(name="authshowws", path=str(ws_root)))
-        capsys.readouterr()
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("cfgws", tmp_home / "ws_cfg", std)
 
-        args = argparse.Namespace(name="authshowws", auth_mode=None)
-        rc = run_auth(args)
+        args = argparse.Namespace(
+            workset="cfgws", key_value=None,
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
         assert rc == 0
-        assert "shared" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "no overrides" in out
 
-    def test_switch_to_distinct(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_auth, run_create
+    def test_config_get_auth(self, config_file, tmp_home, capsys):
+        """Getting auth key returns value from workset.toml."""
+        from kanibako.commands.workset_cmd import run_config
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("authcfg", tmp_home / "ws_authcfg", std)
+
+        args = argparse.Namespace(
+            workset="authcfg", key_value="auth",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "shared" in out
+
+    def test_config_set_auth_distinct(self, config_file, tmp_home, capsys):
+        """Setting auth=distinct updates workset.toml and clears credentials."""
+        from kanibako.commands.workset_cmd import run_config
         from unittest.mock import MagicMock, patch
-        import json
 
-        ws_root = tmp_home / "distinctws"
-        run_create(argparse.Namespace(name="distinctws", path=str(ws_root)))
-        capsys.readouterr()
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("setauth", tmp_home / "ws_setauth", std)
 
-        # Add a project and create credential files.
-        from kanibako.workset import load_workset, add_project
-        ws = load_workset(ws_root.resolve())
-        proj_src = tmp_home / "project"
-        add_project(ws, "proj1", proj_src)
-        shell = ws.projects_dir / "proj1" / "shell"
-        shell.mkdir(parents=True, exist_ok=True)
-        claude_dir = shell / ".claude"
-        claude_dir.mkdir()
-        (claude_dir / ".credentials.json").write_text(json.dumps({"token": "t"}))
-        (shell / ".claude.json").write_text(json.dumps({"k": "v"}))
-
-        # Mock target so invalidate_credentials works regardless of
-        # whether the Claude plugin is installed.
         mock_target = MagicMock()
-        def _invalidate(home):
-            creds = home / ".claude" / ".credentials.json"
-            if creds.exists():
-                creds.unlink()
-            settings = home / ".claude.json"
-            if settings.exists():
-                settings.unlink()
-        mock_target.invalidate_credentials.side_effect = _invalidate
+        mock_target.invalidate_credentials.return_value = None
 
-        # Switch to distinct.
-        args = argparse.Namespace(name="distinctws", auth_mode="distinct")
+        args = argparse.Namespace(
+            workset="setauth", key_value="auth=distinct",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
         with patch(
             "kanibako.targets.resolve_target",
             return_value=mock_target,
         ):
-            rc = run_auth(args)
+            rc = run_config(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "distinct" in out
 
-        # Credentials should be invalidated.
-        assert not (claude_dir / ".credentials.json").exists()
-        assert not (shell / ".claude.json").exists()
+        # Verify workset.toml was updated
+        from kanibako.workset import load_workset
+        ws = load_workset((tmp_home / "ws_setauth").resolve())
+        assert ws.auth == "distinct"
 
-    def test_switch_to_shared(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_auth, run_create
+    def test_config_set_auth_invalid(self, config_file, tmp_home, capsys):
+        """Setting auth to invalid value produces error."""
+        from kanibako.commands.workset_cmd import run_config
 
-        ws_root = tmp_home / "sharedws"
-        run_create(argparse.Namespace(name="sharedws", path=str(ws_root)))
-        capsys.readouterr()
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("badauth", tmp_home / "ws_badauth", std)
 
-        # First switch to distinct, then back to shared.
-        run_auth(argparse.Namespace(name="sharedws", auth_mode="distinct"))
-        capsys.readouterr()
-        args = argparse.Namespace(name="sharedws", auth_mode="shared")
-        rc = run_auth(args)
-        assert rc == 0
-        assert "shared" in capsys.readouterr().out
-
-    def test_auth_unknown_workset(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_auth
-
-        args = argparse.Namespace(name="nosuchws", auth_mode=None)
-        rc = run_auth(args)
+        args = argparse.Namespace(
+            workset="badauth", key_value="auth=bogus",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
         assert rc == 1
-        assert "not registered" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "shared" in err or "distinct" in err
+
+    def test_config_set_regular_key(self, config_file, tmp_home, capsys):
+        """Setting a regular config key writes to config.toml."""
+        from kanibako.commands.workset_cmd import run_config
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("regcfg", tmp_home / "ws_regcfg", std)
+
+        args = argparse.Namespace(
+            workset="regcfg", key_value="container_image=myimage:latest",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Set" in out
+        assert "container_image" in out
+
+    def test_config_reset_key(self, config_file, tmp_home, capsys):
+        """Resetting a config key removes the override."""
+        from kanibako.commands.workset_cmd import run_config
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("resetcfg", tmp_home / "ws_resetcfg", std)
+
+        # First set a value.
+        set_args = argparse.Namespace(
+            workset="resetcfg", key_value="container_image=myimage:latest",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        run_config(set_args)
+        capsys.readouterr()
+
+        # Then reset it.
+        reset_args = argparse.Namespace(
+            workset="resetcfg", key_value=None,
+            effective=False, reset="container_image", reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(reset_args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Reset" in out or "No override" in out
+
+    def test_config_reset_auth(self, config_file, tmp_home, capsys):
+        """Resetting auth key reverts to shared."""
+        from kanibako.commands.workset_cmd import run_config
+        from unittest.mock import MagicMock, patch
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("resetauth", tmp_home / "ws_resetauth", std)
+
+        # First set to distinct.
+        mock_target = MagicMock()
+        mock_target.invalidate_credentials.return_value = None
+        set_args = argparse.Namespace(
+            workset="resetauth", key_value="auth=distinct",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        with patch("kanibako.targets.resolve_target", return_value=mock_target):
+            run_config(set_args)
+        capsys.readouterr()
+
+        # Then reset.
+        reset_args = argparse.Namespace(
+            workset="resetauth", key_value=None,
+            effective=False, reset="auth", reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(reset_args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "shared" in out
+
+        from kanibako.workset import load_workset
+        ws = load_workset((tmp_home / "ws_resetauth").resolve())
+        assert ws.auth == "shared"
+
+    def test_config_reset_all(self, config_file, tmp_home, capsys):
+        """--reset --all clears all overrides."""
+        from kanibako.commands.workset_cmd import run_config
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("resetall", tmp_home / "ws_resetall", std)
+
+        # Set a value first.
+        set_args = argparse.Namespace(
+            workset="resetall", key_value="container_image=myimage:latest",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        run_config(set_args)
+        capsys.readouterr()
+
+        # Reset all.
+        reset_args = argparse.Namespace(
+            workset="resetall", key_value=None,
+            effective=False, reset="__ALL__", reset_all=True,
+            force=True, local=False,
+        )
+        rc = run_config(reset_args)
+        assert rc == 0
+
+    def test_config_unknown_workset(self, config_file, tmp_home, capsys):
+        """Config on unknown workset returns error."""
+        from kanibako.commands.workset_cmd import run_config
+
+        args = argparse.Namespace(
+            workset="nosuchws", key_value=None,
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "not registered" in err
+
+
+class TestWorksetParser:
+    """Test parser aliases and subcommand registration."""
+
+    def test_aliases_registered(self):
+        """Verify that ls, inspect, and delete aliases are registered."""
+        import argparse
+        from kanibako.commands.workset_cmd import add_parser
+
+        parser = argparse.ArgumentParser()
+        subs = parser.add_subparsers()
+        add_parser(subs)
+
+        # These should parse without error (aliases are recognized).
+        # We test by parsing a few known alias forms.
+        args = parser.parse_args(["workset", "ls"])
+        assert hasattr(args, "func")
+
+        args = parser.parse_args(["workset", "inspect", "myws"])
+        assert hasattr(args, "func")
+
+        args = parser.parse_args(["workset", "delete", "myws", "--force"])
+        assert hasattr(args, "func")

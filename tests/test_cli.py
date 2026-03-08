@@ -347,11 +347,19 @@ class TestParser:
 
     def test_workset_create(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "create", "myws", "/tmp/ws"])
+        args = parser.parse_args(["workset", "create", "/tmp/ws", "--name", "myws"])
         assert args.command == "workset"
         assert args.workset_command == "create"
         assert args.name == "myws"
         assert args.path == "/tmp/ws"
+
+    def test_workset_create_path_only(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "create", "/tmp/ws"])
+        assert args.command == "workset"
+        assert args.workset_command == "create"
+        assert args.path == "/tmp/ws"
+        assert args.name is None
 
     def test_workset_list(self):
         parser = build_parser()
@@ -359,29 +367,47 @@ class TestParser:
         assert args.command == "workset"
         assert args.workset_command == "list"
 
-    def test_workset_delete(self):
+    def test_workset_list_quiet(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "delete", "myws", "--remove-files", "--force"])
+        args = parser.parse_args(["workset", "list", "-q"])
+        assert args.quiet is True
+
+    def test_workset_list_alias_ls(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "ls"])
         assert args.command == "workset"
-        assert args.workset_command == "delete"
+        assert hasattr(args, "func")
+
+    def test_workset_rm(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "rm", "myws", "--purge", "--force"])
+        assert args.command == "workset"
+        assert args.workset_command in ("rm", "delete")
         assert args.name == "myws"
-        assert args.remove_files is True
+        assert args.purge is True
         assert args.force is True
 
-    def test_workset_add(self):
+    def test_workset_rm_alias_delete(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "add", "myws", "/tmp/src", "--name", "proj"])
+        args = parser.parse_args(["workset", "delete", "myws", "--force"])
         assert args.command == "workset"
-        assert args.workset_command == "add"
+        assert args.name == "myws"
+        assert args.force is True
+
+    def test_workset_connect(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "connect", "myws", "/tmp/src", "--name", "proj"])
+        assert args.command == "workset"
+        assert args.workset_command == "connect"
         assert args.workset == "myws"
         assert args.source == "/tmp/src"
         assert args.project_name == "proj"
 
-    def test_workset_remove(self):
+    def test_workset_disconnect(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "remove", "myws", "proj", "--remove-files", "--force"])
+        args = parser.parse_args(["workset", "disconnect", "myws", "proj", "--remove-files", "--force"])
         assert args.command == "workset"
-        assert args.workset_command == "remove"
+        assert args.workset_command == "disconnect"
         assert args.workset == "myws"
         assert args.project == "proj"
         assert args.remove_files is True
@@ -391,8 +417,22 @@ class TestParser:
         parser = build_parser()
         args = parser.parse_args(["workset", "info", "myws"])
         assert args.command == "workset"
-        assert args.workset_command == "info"
+        assert args.workset_command in ("info", "inspect")
         assert args.name == "myws"
+
+    def test_workset_info_alias_inspect(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "inspect", "myws"])
+        assert args.command == "workset"
+        assert args.name == "myws"
+
+    def test_workset_config(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "config", "myws", "model=sonnet"])
+        assert args.command == "workset"
+        assert args.workset_command == "config"
+        assert args.workset == "myws"
+        assert args.key_value == "model=sonnet"
 
     def test_box_migrate_workset_flag(self):
         parser = build_parser()
