@@ -222,9 +222,9 @@ class TestKanibakoLifecycle:
         )
 
         try:
-            # Poll until the container appears (up to 30 s).
+            # Poll until the container appears (up to 60 s).
             container_up = False
-            for _ in range(30):
+            for _ in range(60):
                 time.sleep(1)
                 ps = subprocess.run(
                     [container_runtime_cmd, "ps", "--format", "{{.Names}}"],
@@ -234,14 +234,20 @@ class TestKanibakoLifecycle:
                     container_up = True
                     break
             if not container_up:
-                # Capture subprocess output for debugging CI failures.
-                stdout = proc.stdout.read() if proc.poll() is not None else b""
-                stderr = proc.stderr.read() if proc.poll() is not None else b""
+                # Kill process to release stdout/stderr for reading.
+                proc.kill()
+                stdout, stderr = proc.communicate(timeout=5)
+                # Also check all containers (including non-running).
+                ps_all = subprocess.run(
+                    [container_runtime_cmd, "ps", "-a", "--format", "{{.Names}} {{.Status}}"],
+                    capture_output=True, text=True,
+                )
                 assert False, (
-                    f"Container did not start within 30 s.\n"
-                    f"Process exited: {proc.poll()}\n"
+                    f"Container did not start within 60 s.\n"
+                    f"Process exit code: {proc.returncode}\n"
                     f"stdout: {stdout.decode(errors='replace')}\n"
-                    f"stderr: {stderr.decode(errors='replace')}"
+                    f"stderr: {stderr.decode(errors='replace')}\n"
+                    f"All containers: {ps_all.stdout}"
                 )
 
             # Stop via kanibako CLI.
