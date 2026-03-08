@@ -1,4 +1,4 @@
-"""Tests for kanibako vault CLI commands."""
+"""Tests for kanibako vault CLI commands (nested under box vault)."""
 
 from __future__ import annotations
 
@@ -33,34 +33,52 @@ def _init_project_with_vault(config_file, tmp_home, credentials_dir):
 
 
 # ---------------------------------------------------------------------------
-# Parser tests
+# Parser tests — vault is now a box subcommand
 # ---------------------------------------------------------------------------
 
 
 class TestVaultParser:
     def test_vault_subcommand_recognized(self):
         parser = build_parser()
-        args = parser.parse_args(["vault", "list"])
-        assert args.command == "vault"
+        args = parser.parse_args(["box", "vault", "list"])
+        assert args.command == "box"
         assert args.vault_command == "list"
 
     def test_vault_snapshot_parser(self):
         parser = build_parser()
-        args = parser.parse_args(["vault", "snapshot", "-p", "/foo"])
+        args = parser.parse_args(["box", "vault", "snapshot", "/foo"])
         assert args.vault_command == "snapshot"
         assert args.project == "/foo"
 
     def test_vault_restore_parser(self):
         parser = build_parser()
-        args = parser.parse_args(["vault", "restore", "my-snap.tar.xz"])
+        args = parser.parse_args(["box", "vault", "restore", "my-snap.tar.xz"])
         assert args.vault_command == "restore"
         assert args.name == "my-snap.tar.xz"
 
     def test_vault_prune_parser(self):
         parser = build_parser()
-        args = parser.parse_args(["vault", "prune", "--keep", "3"])
+        args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
         assert args.vault_command == "prune"
         assert args.keep == 3
+
+    def test_vault_list_quiet_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list", "-q"])
+        assert args.vault_command == "list"
+        assert args.quiet is True
+
+    def test_vault_restore_force_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz", "--force"])
+        assert args.vault_command == "restore"
+        assert args.force is True
+
+    def test_vault_prune_force_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "prune", "--force"])
+        assert args.vault_command == "prune"
+        assert args.force is True
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +92,7 @@ class TestVaultSnapshot:
     ):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
         parser = build_parser()
-        args = parser.parse_args(["vault", "snapshot", "-p", str(proj.project_path)])
+        args = parser.parse_args(["box", "vault", "snapshot", str(proj.project_path)])
         rc = run_snapshot(args)
 
         assert rc == 0
@@ -90,7 +108,7 @@ class TestVaultSnapshot:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         parser = build_parser()
-        args = parser.parse_args(["vault", "snapshot", "-p", str(proj.project_path)])
+        args = parser.parse_args(["box", "vault", "snapshot", str(proj.project_path)])
         rc = run_snapshot(args)
 
         assert rc == 0
@@ -113,7 +131,7 @@ class TestVaultList:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         parser = build_parser()
-        args = parser.parse_args(["vault", "list", "-p", str(tmp_home / "project")])
+        args = parser.parse_args(["box", "vault", "list", str(tmp_home / "project")])
         rc = run_list(args)
 
         assert rc == 0
@@ -129,13 +147,31 @@ class TestVaultList:
         create_snapshot(proj.vault_rw_path)
 
         parser = build_parser()
-        args = parser.parse_args(["vault", "list", "-p", str(proj.project_path)])
+        args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
         rc = run_list(args)
 
         assert rc == 0
         captured = capsys.readouterr()
         assert ".tar.xz" in captured.out
         assert "UTC" in captured.out
+
+    def test_list_quiet(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+        from kanibako.snapshots import create_snapshot
+        snap = create_snapshot(proj.vault_rw_path)
+
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list", "-q", str(proj.project_path)])
+        rc = run_list(args)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        # Quiet mode: just snapshot names, no timestamps or sizes
+        assert snap.name in captured.out
+        assert "UTC" not in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +193,7 @@ class TestVaultRestore:
 
         parser = build_parser()
         args = parser.parse_args([
-            "vault", "restore", snap.name, "-p", str(proj.project_path),
+            "box", "vault", "restore", snap.name, str(proj.project_path),
         ])
         rc = run_restore(args)
 
@@ -171,7 +207,7 @@ class TestVaultRestore:
 
         parser = build_parser()
         args = parser.parse_args([
-            "vault", "restore", "nonexistent.tar.xz", "-p", str(proj.project_path),
+            "box", "vault", "restore", "nonexistent.tar.xz", str(proj.project_path),
         ])
         rc = run_restore(args)
 
@@ -192,7 +228,7 @@ class TestVaultPrune:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         parser = build_parser()
-        args = parser.parse_args(["vault", "prune", "-p", str(proj.project_path)])
+        args = parser.parse_args(["box", "vault", "prune", str(proj.project_path)])
         rc = run_prune(args)
 
         assert rc == 0
@@ -215,7 +251,7 @@ class TestVaultPrune:
 
         parser = build_parser()
         args = parser.parse_args([
-            "vault", "prune", "--keep", "2", "-p", str(proj.project_path),
+            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
         ])
         rc = run_prune(args)
 
@@ -242,7 +278,7 @@ class TestVaultDisabled:
         )
 
         parser = build_parser()
-        args = parser.parse_args(["vault", "list", "-p", str(tmp_home / "project")])
+        args = parser.parse_args(["box", "vault", "list", str(tmp_home / "project")])
         rc = run_list(args)
 
         assert rc == 1

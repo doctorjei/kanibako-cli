@@ -58,7 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
         add_parser as add_reauth_parser,
     )
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
-    from kanibako.commands.vault_cmd import add_parser as add_vault_parser
     from kanibako.commands.helper_cmd import add_parser as add_helper_parser
     from kanibako.commands.fork_cmd import add_parser as add_fork_parser
     from kanibako.commands.template_cmd import add_parser as add_template_parser
@@ -73,7 +72,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_remove_parser(subparsers)
     add_upgrade_parser(subparsers)
     add_reauth_parser(subparsers)
-    add_vault_parser(subparsers)
     add_helper_parser(subparsers)
     add_fork_parser(subparsers)
     add_template_parser(subparsers)
@@ -84,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
 _SUBCOMMANDS = {
     "start", "shell", "stop", "image",
     "box", "workset", "setup", "remove", "upgrade", "reauth",
-    "vault", "helper", "fork",
+    "helper", "fork",
     "template",
 }
 

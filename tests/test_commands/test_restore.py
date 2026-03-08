@@ -1,4 +1,4 @@
-"""Tests for kanibako.commands.restore."""
+"""Tests for kanibako.commands.restore (extract command)."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ from kanibako.errors import UserCancelled
 from kanibako.paths import load_std_paths, resolve_any_project, resolve_project
 
 
-class TestRestore:
+class TestExtract:
     def test_round_trip(self, config_file, tmp_home, credentials_dir):
-        """Archive then restore; verify data preserved."""
+        """Archive then extract; verify data preserved."""
         from kanibako.commands.archive import run as archive_run
-        from kanibako.commands.restore import run as restore_run
+        from kanibako.commands.restore import run as extract_run
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -43,14 +43,15 @@ class TestRestore:
         shutil.rmtree(proj.metadata_path)
         assert not proj.metadata_path.exists()
 
-        # Restore
+        # Extract
         args = argparse.Namespace(
-            path=project_dir,
             file=archive_path,
+            path=project_dir,
+            name=None,
             all_archives=False,
             force=True,
         )
-        assert restore_run(args) == 0
+        assert extract_run(args) == 0
         assert proj.metadata_path.is_dir()
         assert (proj.metadata_path / "mydata.txt").read_text() == "important"
         # Info file should be cleaned up
@@ -60,15 +61,29 @@ class TestRestore:
         from kanibako.commands.restore import run
 
         args = argparse.Namespace(
-            path=str(tmp_home / "project"),
             file="/nonexistent/archive.txz",
+            path=str(tmp_home / "project"),
+            name=None,
+            all_archives=False,
+            force=True,
+        )
+        assert run(args) == 1
+
+    def test_no_archive_arg(self, config_file, tmp_home, credentials_dir):
+        """Extract without archive file argument prints error."""
+        from kanibako.commands.restore import run
+
+        args = argparse.Namespace(
+            file=None,
+            path=None,
+            name=None,
             all_archives=False,
             force=True,
         )
         assert run(args) == 1
 
 
-class TestRestoreExtended:
+class TestExtractExtended:
     def _create_archive(self, config_file, tmp_home, credentials_dir, archive_name="test.txz"):
         """Helper: create a valid archive from project."""
         from kanibako.commands.archive import run as archive_run
@@ -99,7 +114,8 @@ class TestRestoreExtended:
 
         with patch("kanibako.commands.restore.confirm_prompt") as m_prompt:
             args = argparse.Namespace(
-                path=str(other), file=archive_path, all_archives=False, force=False,
+                file=archive_path, path=str(other), name=None,
+                all_archives=False, force=False,
             )
             run(args)
             # confirm_prompt should have been called due to hash mismatch
@@ -115,7 +131,8 @@ class TestRestoreExtended:
 
         with patch("kanibako.commands.restore.confirm_prompt", side_effect=UserCancelled("no")):
             args = argparse.Namespace(
-                path=str(other), file=archive_path, all_archives=False, force=False,
+                file=archive_path, path=str(other), name=None,
+                all_archives=False, force=False,
             )
             rc = run(args)
             assert rc == 2
@@ -130,7 +147,8 @@ class TestRestoreExtended:
 
         with patch("kanibako.commands.restore.confirm_prompt") as m_prompt:
             args = argparse.Namespace(
-                path=str(other), file=archive_path, all_archives=False, force=True,
+                file=archive_path, path=str(other), name=None,
+                all_archives=False, force=True,
             )
             rc = run(args)
             assert rc == 0
@@ -147,7 +165,8 @@ class TestRestoreExtended:
         # We patch _validate_git_state to simulate a mismatch prompt
         with patch("kanibako.commands.restore.confirm_prompt"):
             args = argparse.Namespace(
-                path=project_dir, file=archive_path, all_archives=False, force=False,
+                file=archive_path, path=project_dir, name=None,
+                all_archives=False, force=False,
             )
             # This should work since hash matches (same project)
             run(args)
@@ -160,15 +179,16 @@ class TestRestoreExtended:
         )
 
         args = argparse.Namespace(
-            path=project_dir, file=archive_path, all_archives=False, force=True,
+            file=archive_path, path=project_dir, name=None,
+            all_archives=False, force=True,
         )
         rc = run(args)
         assert rc == 0
 
     def test_archive_from_git_workspace_not_git(self, config_file, tmp_home, credentials_dir, fake_git_repo):
-        """Archive from a git repo, restore to a non-git workspace."""
+        """Archive from a git repo, extract to a non-git workspace."""
         from kanibako.commands.archive import run as archive_run
-        from kanibako.commands.restore import run as restore_run
+        from kanibako.commands.restore import run as extract_run
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -183,11 +203,12 @@ class TestRestoreExtended:
         )
         assert archive_run(args) == 0
 
-        # Restore to same path with force (same hash)
+        # Extract to same path with force (same hash)
         args = argparse.Namespace(
-            path=project_dir, file=archive_path, all_archives=False, force=True,
+            file=archive_path, path=project_dir, name=None,
+            all_archives=False, force=True,
         )
-        rc = restore_run(args)
+        rc = extract_run(args)
         assert rc == 0
 
     def test_corrupt_archive_returns_1(self, config_file, tmp_home, credentials_dir):
@@ -197,7 +218,8 @@ class TestRestoreExtended:
         corrupt.write_text("this is not a tar file")
 
         args = argparse.Namespace(
-            path=str(tmp_home / "project"), file=str(corrupt), all_archives=False, force=True,
+            file=str(corrupt), path=str(tmp_home / "project"), name=None,
+            all_archives=False, force=True,
         )
         rc = run(args)
         assert rc == 1
@@ -213,7 +235,8 @@ class TestRestoreExtended:
                 pass
 
         args = argparse.Namespace(
-            path=str(tmp_home / "project"), file=str(empty_archive), all_archives=False, force=True,
+            file=str(empty_archive), path=str(tmp_home / "project"), name=None,
+            all_archives=False, force=True,
         )
         rc = run(args)
         assert rc == 1
@@ -230,15 +253,16 @@ class TestRestoreExtended:
             tar.add(str(dummy_dir), arcname="fakehash")
 
         args = argparse.Namespace(
-            path=str(tmp_home / "project"), file=str(archive_path), all_archives=False, force=True,
+            file=str(archive_path), path=str(tmp_home / "project"), name=None,
+            all_archives=False, force=True,
         )
         rc = run(args)
         assert rc == 1
 
-    def test_restore_standalone_project(self, config_file, tmp_home, credentials_dir):
-        """Restore an archive into a standalone project's kanibako/."""
+    def test_extract_standalone_project(self, config_file, tmp_home, credentials_dir):
+        """Extract an archive into a standalone project's kanibako/."""
         from kanibako.commands.archive import run as archive_run
-        from kanibako.commands.restore import run as restore_run
+        from kanibako.commands.restore import run as extract_run
 
         # First create a local archive (same project dir)
         config = load_config(config_file)
@@ -261,11 +285,12 @@ class TestRestoreExtended:
         # Remove local data so mode detection picks standalone
         shutil.rmtree(proj.metadata_path)
 
-        # Restore into the standalone project
+        # Extract into the standalone project
         args = argparse.Namespace(
-            path=project_dir, file=archive_path, all_archives=False, force=True,
+            file=archive_path, path=project_dir, name=None,
+            all_archives=False, force=True,
         )
-        rc = restore_run(args)
+        rc = extract_run(args)
         assert rc == 0
 
         # Data should now exist in the standalone metadata path

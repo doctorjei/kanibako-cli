@@ -102,6 +102,30 @@ def register_name(
     _save(data_path, names)
 
 
+def update_name_path(
+    data_path: Path,
+    name: str,
+    new_path: str,
+    section: str = "projects",
+) -> bool:
+    """Update the path for an existing registered name.
+
+    Returns True if the name was found and updated, False otherwise.
+    Raises ``ProjectError`` if *new_path* resolves to ``$HOME``.
+    """
+    if Path(new_path).resolve() == Path.home().resolve():
+        raise ProjectError(
+            "Refusing to register $HOME as a project path — this would "
+            "mount your entire home directory as the workspace."
+        )
+    names = _load(data_path)
+    if name not in names.get(section, {}):
+        return False
+    names[section][name] = new_path
+    _save(data_path, names)
+    return True
+
+
 def unregister_name(
     data_path: Path,
     name: str,

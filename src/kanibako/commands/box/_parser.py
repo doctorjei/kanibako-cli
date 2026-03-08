@@ -39,8 +39,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     p = subparsers.add_parser(
         "box",
-        help="Project lifecycle commands (create, list, migrate, duplicate, archive, purge, restore)",
-        description="Manage per-project session data: create, list, migrate, duplicate, archive, purge, restore.",
+        help="Project lifecycle commands (create, list, migrate, duplicate, archive, extract, purge)",
+        description="Manage per-project session data: create, list, migrate, duplicate, archive, extract, purge.",
     )
     box_sub = p.add_subparsers(dest="box_command", metavar="COMMAND")
 
@@ -269,17 +269,40 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     ps_p.set_defaults(func=run_ps)
 
+    # kanibako box move [project] <dest>
+    move_p = box_sub.add_parser(
+        "move",
+        help="Relocate a project workspace to a new directory",
+        description=(
+            "Move a project's workspace directory to a new location.\n"
+            "Updates names.toml and recreates vault symlinks.\n"
+            "Cannot move projects that are inside a workset."
+        ),
+    )
+    move_p.add_argument(
+        "args", nargs="+", metavar="ARG",
+        help="[project] <dest>  — project name/path (optional if cwd) and destination",
+    )
+    move_p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompt",
+    )
+    move_p.set_defaults(func=run_move)
+
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
     from kanibako.commands.clean import add_parser as add_purge_parser
-    from kanibako.commands.restore import add_parser as add_restore_parser
+    from kanibako.commands.restore import add_parser as add_extract_parser
     from kanibako.commands.start import add_start_parser as _add_start_parser
     from kanibako.commands.start import add_shell_parser as _add_shell_parser
     from kanibako.commands.stop import add_parser as _add_stop_parser
 
+    from kanibako.commands.vault_cmd import add_vault_subparser
+
     add_archive_parser(box_sub)
     add_purge_parser(box_sub)
-    add_restore_parser(box_sub)
+    add_extract_parser(box_sub)
+    add_vault_subparser(box_sub)
 
     # Register start, shell, stop as box subcommands (delegates to start.py/stop.py).
     _add_start_parser(box_sub)
@@ -610,6 +633,119 @@ def run_rm(args: argparse.Namespace) -> int:
                 f"Run 'kanibako box rm {name} --purge' to delete."
             )
 
+    return 0
+
+
+def run_move(args: argparse.Namespace) -> int:
+    """Move a project workspace to a new directory."""
+    import shutil as _shutil
+
+    from kanibako.names import lookup_by_path, update_name_path
+    from kanibako.paths import (
+        _remove_project_vault_symlink,
+        detect_project_mode,
+    )
+    from kanibako.utils import confirm_prompt as _confirm
+
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    positional = args.args  # 1 or 2 items: [project] <dest>
+    if len(positional) == 1:
+        project_dir = None
+        dest = positional[0]
+    elif len(positional) == 2:
+        project_dir = positional[0]
+        dest = positional[1]
+    else:
+        print("Error: expected [project] <dest>", file=sys.stderr)
+        return 1
+
+    # Resolve project.
+    try:
+        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not proj.metadata_path.is_dir():
+        print(f"Error: no project data found for {proj.project_path}", file=sys.stderr)
+        return 1
+
+    # Refuse if project is in a workset.
+    dm = detect_project_mode(proj.project_path, std, config)
+    if dm.mode == ProjectMode.workset:
+        print(
+            "Error: cannot move a workset project. "
+            "Use workset-level operations instead.",
+            file=sys.stderr,
+        )
+        return 1
+
+    dest_path = Path(dest).resolve()
+    source_path = proj.project_path
+
+    if dest_path == source_path:
+        print("Error: source and destination are the same.", file=sys.stderr)
+        return 1
+
+    if dest_path.exists():
+        print(f"Error: destination already exists: {dest_path}", file=sys.stderr)
+        return 1
+
+    # Check for running container.
+    lock_file = proj.metadata_path / ".kanibako.lock"
+    if lock_file.exists():
+        print(
+            "Error: lock file found — a container may be running for this project.\n"
+            "Stop the container first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Confirm.
+    if not args.force:
+        print("Move project workspace:")
+        print(f"  from: {source_path}")
+        print(f"    to: {dest_path}")
+        print()
+        try:
+            _confirm("Type 'yes' to confirm: ")
+        except Exception:
+            print("Aborted.")
+            return 2
+
+    # 1. Move workspace directory.
+    try:
+        _shutil.move(str(source_path), str(dest_path))
+    except Exception as e:
+        print(f"Error: failed to move workspace: {e}", file=sys.stderr)
+        return 1
+
+    # 2. Update names.toml path.
+    result = lookup_by_path(std.data_path, str(source_path))
+    if result is not None:
+        name, section = result
+        update_name_path(std.data_path, name, str(dest_path), section=section)
+        print(f"Updated names.toml: {name} -> {dest_path}")
+    elif proj.name:
+        # Try by name directly.
+        update_name_path(std.data_path, proj.name, str(dest_path))
+        print(f"Updated names.toml: {proj.name} -> {dest_path}")
+
+    # 3. Recreate vault symlinks (remove old, create new).
+    _remove_project_vault_symlink(dest_path)
+    vault_meta = proj.metadata_path / "vault"
+    if vault_meta.is_dir():
+        vault_link = dest_path / "vault"
+        if not vault_link.exists():
+            try:
+                vault_link.symlink_to(vault_meta)
+            except OSError:
+                print("Warning: could not recreate vault symlink.", file=sys.stderr)
+
+    print(f"Moved project to {dest_path}")
     return 0
 
 

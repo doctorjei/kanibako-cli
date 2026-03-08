@@ -1,4 +1,4 @@
-"""kanibako restore: restore session data from archive with validation."""
+"""kanibako extract: restore session data from archive with validation."""
 
 from __future__ import annotations
 
@@ -19,15 +19,19 @@ from kanibako.utils import confirm_prompt
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
-        "restore",
-        help="Restore session data from archive",
-        description="Restore session data from a .txz archive created by 'kanibako archive'.",
+        "extract",
+        help="Extract session data from archive",
+        description="Extract session data from a .txz archive created by 'kanibako box archive'.",
     )
+    p.add_argument("file", nargs="?", default=None, help="Archive file to extract from")
     p.add_argument("path", nargs="?", default=None, help="Path to the project directory")
-    p.add_argument("file", nargs="?", default=None, help="Archive file to restore from")
+    p.add_argument(
+        "--name", default=None,
+        help="Override project name for the extracted data",
+    )
     p.add_argument(
         "--all", action="store_true", dest="all_archives",
-        help="Restore all kanibako-*.txz archives in the current directory",
+        help="Extract all kanibako-*.txz archives in the current directory",
     )
     p.add_argument("--force", action="store_true", help="Skip all confirmation prompts")
     p.set_defaults(func=run)
@@ -41,8 +45,8 @@ def run(args: argparse.Namespace) -> int:
     if args.all_archives:
         return _restore_all(std, config, args)
 
-    if args.path is None or args.file is None:
-        print("Error: specify path and file, or use --all", file=sys.stderr)
+    if args.file is None:
+        print("Error: specify an archive file, or use --all", file=sys.stderr)
         return 1
 
     return _restore_one(std, config, project_dir=args.path,
@@ -50,12 +54,16 @@ def run(args: argparse.Namespace) -> int:
 
 
 def _restore_one(std, config, *, project_dir, archive_file, force) -> int:
-    """Restore session data from a single archive."""
+    """Extract session data from a single archive."""
     if not archive_file.is_file():
         print(f"Error: Archive file not found: {archive_file}", file=sys.stderr)
         return 1
 
-    proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
+    proj = resolve_any_project(
+        std, config,
+        project_dir=str(project_dir) if project_dir else None,
+        initialize=False,
+    )
 
     temp_dir = tempfile.mkdtemp()
     try:

@@ -451,7 +451,7 @@ kanibako box ps [--all] [-q/--quiet]
 
 ## Phase 9: `box` Relocation + Vault
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Restructure relocation commands (move/duplicate/archive/extract) and
 nest vault under `box vault`.

@@ -128,19 +128,65 @@ class TestParser:
         assert args.all_projects is True
         assert args.path is None
 
-    def test_box_restore_command(self):
+    def test_box_extract_command(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "restore", "/tmp/project", "archive.txz"])
+        args = parser.parse_args(["box", "extract", "archive.txz", "/tmp/project"])
         assert args.command == "box"
-        assert args.box_command == "restore"
-        assert args.path == "/tmp/project"
+        assert args.box_command == "extract"
         assert args.file == "archive.txz"
+        assert args.path == "/tmp/project"
 
-    def test_box_restore_all(self):
+    def test_box_extract_all(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "restore", "--all"])
+        args = parser.parse_args(["box", "extract", "--all"])
         assert args.all_archives is True
-        assert args.path is None
+        assert args.file is None
+
+    def test_box_move_command(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/src", "/dest"])
+        assert args.command == "box"
+        assert args.box_command == "move"
+        assert args.args == ["/src", "/dest"]
+
+    def test_box_move_single_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/dest"])
+        assert args.args == ["/dest"]
+
+    def test_box_move_force(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/dest", "--force"])
+        assert args.force is True
+
+    def test_box_vault_list(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list"])
+        assert args.command == "box"
+        assert args.vault_command == "list"
+
+    def test_box_vault_snapshot(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "snapshot", "/myproj"])
+        assert args.vault_command == "snapshot"
+        assert args.project == "/myproj"
+
+    def test_box_vault_restore(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "restore", "snap.tar.xz"])
+        assert args.vault_command == "restore"
+        assert args.name == "snap.tar.xz"
+
+    def test_box_vault_prune(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "prune", "--keep", "3"])
+        assert args.vault_command == "prune"
+        assert args.keep == 3
+
+    def test_box_vault_list_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list", "-q"])
+        assert args.quiet is True
 
     def test_box_migrate_command(self):
         parser = build_parser()

@@ -16,39 +16,58 @@ from kanibako.snapshots import (
 )
 
 
+def add_vault_subparser(parent_sub: argparse._SubParsersAction) -> None:
+    """Register vault as a subcommand (used by box parser to nest under box)."""
+    p = parent_sub.add_parser(
+        "vault",
+        help="Vault snapshot commands (snapshot, list, restore, prune)",
+        description="Manage vault share-rw snapshots.",
+    )
+    _add_vault_subcommands(p)
+
+
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Register vault as a top-level command (kept for backward compat during transition)."""
     p = subparsers.add_parser(
         "vault",
         help="Vault snapshot commands (snapshot, list, restore, prune)",
         description="Manage vault share-rw snapshots.",
     )
+    _add_vault_subcommands(p)
+
+
+def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
     vs = p.add_subparsers(dest="vault_command", metavar="COMMAND")
 
-    # kanibako vault snapshot
+    # kanibako box vault snapshot [project]
     snap_p = vs.add_parser(
         "snapshot",
         help="Create a snapshot of vault share-rw",
         description="Create a point-in-time snapshot of the vault share-rw directory.",
     )
     snap_p.add_argument(
-        "-p", "--project", default=None,
-        help="Project directory (default: cwd)",
+        "project", nargs="?", default=None,
+        help="Project directory or name (default: cwd)",
     )
     snap_p.set_defaults(func=run_snapshot)
 
-    # kanibako vault list (default)
+    # kanibako box vault list [project] [-q/--quiet]
     list_p = vs.add_parser(
         "list",
         help="List vault snapshots (default)",
         description="Show all snapshots for the current project's vault.",
     )
     list_p.add_argument(
-        "-p", "--project", default=None,
-        help="Project directory (default: cwd)",
+        "project", nargs="?", default=None,
+        help="Project directory or name (default: cwd)",
+    )
+    list_p.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output snapshot names only, one per line",
     )
     list_p.set_defaults(func=run_list)
 
-    # kanibako vault restore <name>
+    # kanibako box vault restore <name> [project] [--force]
     restore_p = vs.add_parser(
         "restore",
         help="Restore vault share-rw from a snapshot",
@@ -56,24 +75,32 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     restore_p.add_argument("name", help="Snapshot name (e.g. 20260221T103000Z.tar.xz)")
     restore_p.add_argument(
-        "-p", "--project", default=None,
-        help="Project directory (default: cwd)",
+        "project", nargs="?", default=None,
+        help="Project directory or name (default: cwd)",
+    )
+    restore_p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompt",
     )
     restore_p.set_defaults(func=run_restore)
 
-    # kanibako vault prune [--keep N]
+    # kanibako box vault prune [project] [--keep N] [--force]
     prune_p = vs.add_parser(
         "prune",
         help="Remove old snapshots",
         description="Prune old vault snapshots, keeping the most recent ones.",
     )
     prune_p.add_argument(
+        "project", nargs="?", default=None,
+        help="Project directory or name (default: cwd)",
+    )
+    prune_p.add_argument(
         "--keep", type=int, default=_DEFAULT_MAX_SNAPSHOTS,
         help=f"Number of snapshots to keep (default: {_DEFAULT_MAX_SNAPSHOTS})",
     )
     prune_p.add_argument(
-        "-p", "--project", default=None,
-        help="Project directory (default: cwd)",
+        "--force", action="store_true",
+        help="Skip confirmation prompt",
     )
     prune_p.set_defaults(func=run_prune)
 
@@ -114,14 +141,20 @@ def run_list(args: argparse.Namespace) -> int:
     if vault_rw is None:
         return 1
 
+    quiet = getattr(args, "quiet", False)
+
     snaps = list_snapshots(vault_rw)
     if not snaps:
-        print("No snapshots found.")
+        if not quiet:
+            print("No snapshots found.")
         return 0
 
     for name, ts, size in snaps:
-        size_str = _human_size(size)
-        print(f"  {name}  {ts}  {size_str}")
+        if quiet:
+            print(name)
+        else:
+            size_str = _human_size(size)
+            print(f"  {name}  {ts}  {size_str}")
 
     return 0
 
