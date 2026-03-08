@@ -26,7 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sshpass \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --break-system-packages kanibako-base
+RUN if command -v pip >/dev/null 2>&1; then \
+        pip install --break-system-packages kanibako-base; \
+    fi
 
 # GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

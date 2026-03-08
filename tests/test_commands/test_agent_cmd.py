@@ -152,7 +152,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value=None,
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -165,7 +165,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="model",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -176,7 +176,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="env.EDITOR",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -187,7 +187,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="shared.npm",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -198,7 +198,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="nonexistent",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -210,7 +210,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="model=sonnet",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -227,7 +227,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="env.PAGER=less",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -243,7 +243,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="shell=bash",
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -258,7 +258,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="model",
-            effective=False, reset=True, all_keys=False, force=False,
+            effective=False, reset="__RESET__", all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -274,7 +274,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="env.EDITOR",
-            effective=False, reset=True, all_keys=False, force=False,
+            effective=False, reset="__RESET__", all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -289,7 +289,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value="nonexistent",
-            effective=False, reset=True, all_keys=False, force=False,
+            effective=False, reset="__RESET__", all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 0
@@ -301,7 +301,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value=None,
-            effective=False, reset=True, all_keys=True, force=True,
+            effective=False, reset="__RESET__", all_keys=True, force=True,
         )
         rc = run_config(args)
         assert rc == 0
@@ -319,7 +319,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="claude", key_value=None,
-            effective=False, reset=True, all_keys=False, force=False,
+            effective=False, reset="__RESET__", all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 1
@@ -330,7 +330,7 @@ class TestRunConfig:
 
         args = argparse.Namespace(
             agent_id="nonexistent", key_value=None,
-            effective=False, reset=False, all_keys=False, force=False,
+            effective=False, reset=None, all_keys=False, force=False,
         )
         rc = run_config(args)
         assert rc == 1

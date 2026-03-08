@@ -382,13 +382,12 @@ class TestParser:
     def test_agent_config_reset(self):
         parser = build_parser()
         args = parser.parse_args(["agent", "config", "myagent", "--reset", "model"])
-        assert args.reset is True
-        assert args.key_value == "model"
+        assert args.reset == "model"
 
     def test_agent_config_reset_all(self):
         parser = build_parser()
         args = parser.parse_args(["agent", "config", "myagent", "--reset", "--all"])
-        assert args.reset is True
+        assert args.reset == "__RESET__"
         assert args.all_keys is True
 
     def test_agent_reauth(self):

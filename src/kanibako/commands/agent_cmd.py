@@ -62,7 +62,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Show resolved values including defaults",
     )
     config_p.add_argument(
-        "--reset", action="store_true",
+        "--reset", nargs="?", const="__RESET__", default=None,
         help="Remove override for the given key",
     )
     config_p.add_argument(
@@ -253,7 +253,7 @@ def run_config(args: argparse.Namespace) -> int:
     key_value = getattr(args, "key_value", None)
 
     # Handle --reset
-    if args.reset:
+    if args.reset is not None:
         if args.all_keys:
             if not args.force:
                 from kanibako.utils import confirm_prompt
@@ -275,11 +275,13 @@ def run_config(args: argparse.Namespace) -> int:
             print("Reset all agent config overrides.")
             return 0
 
-        if not key_value:
+        # Key can come from --reset VALUE or from positional key_value.
+        reset_key = args.reset if args.reset != "__RESET__" else key_value
+        if not reset_key:
             print("Error: --reset requires a key name (or --all)", file=sys.stderr)
             return 1
 
-        key = key_value.strip()
+        key = reset_key.strip()
         changed = _reset_agent_key(cfg, key)
         if changed:
             write_agent_config(path, cfg)

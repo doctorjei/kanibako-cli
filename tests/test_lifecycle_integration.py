@@ -138,7 +138,8 @@ class TestKanibakoShell:
         )
 
         result = _run_kanibako(
-            "start", "--entrypoint", "/bin/sh", "--", "-c", "echo hello-from-container",
+            "start", "--ephemeral", "--entrypoint", "/bin/sh",
+            "--", "-c", "echo hello-from-container",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
@@ -159,7 +160,7 @@ class TestKanibakoShell:
         marker.write_text("workspace-ok\n")
 
         result = _run_kanibako(
-            "start", "--entrypoint", "/bin/cat",
+            "start", "--ephemeral", "--entrypoint", "/bin/cat",
             "--", "/home/agent/workspace/marker.txt",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
@@ -181,7 +182,8 @@ class TestKanibakoShell:
         env_file.write_text("MY_TEST_VAR=lifecycle-check\n")
 
         result = _run_kanibako(
-            "start", "--entrypoint", "/bin/sh", "--", "-c", "echo $MY_TEST_VAR",
+            "start", "--ephemeral", "--entrypoint", "/bin/sh",
+            "--", "-c", "echo $MY_TEST_VAR",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
@@ -210,7 +212,7 @@ class TestKanibakoLifecycle:
         # Launch kanibako in the background — the container runs `sleep`.
         proc = subprocess.Popen(
             [
-                "kanibako", "start", "--entrypoint", "/bin/sleep", "--", "300",
+                "kanibako", "start", "--ephemeral", "--entrypoint", "/bin/sleep", "--", "300",
             ],
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
