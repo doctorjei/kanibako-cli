@@ -691,6 +691,9 @@ Kanibako is agent-agnostic.  All agent-specific logic lives in **target
 plugins** — Python classes that implement the `Target` abstract base class.
 Claude Code is supported via `kanibako-plugin-claude` (installed by the
 `kanibako` meta-package); other agents can be added as pip packages.
+Plugins under the `kanibako.plugins` namespace are also discovered
+automatically — even without pip metadata — so they travel with kanibako's
+bind-mount into nested containers.
 Install `kanibako-base` for agent-agnostic operation.
 If no agent is detected, kanibako falls back to `no_agent` — a plain shell
 with no agent binary or credentials.
@@ -1017,6 +1020,7 @@ git push && git push --tags
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
 | `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-plugin-claude`) |
+| `plugins/` | Namespace package for built-in and bind-mounted plugins |
 | `helpers.py` | B-ary numbering, spawn budget, directory/channel creation |
 | `helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `helper_client.py` | Container-side socket client for hub communication |

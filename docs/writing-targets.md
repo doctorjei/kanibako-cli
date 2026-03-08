@@ -7,7 +7,8 @@ can launch your preferred AI coding agent inside a container.
 
 Kanibako is agent-agnostic.  All agent-specific logic lives in **target
 plugins** — Python classes that implement the `Target` abstract base class.
-Kanibako discovers installed targets at runtime via Python entry points.
+Kanibako discovers installed targets at runtime via Python entry points and
+by scanning the `kanibako.plugins` namespace package.
 
 A target is responsible for:
 
@@ -369,9 +370,12 @@ descriptors exist, `apply_state()` receives the agent config state as-is.
 
 ## Discovery and registration
 
-Kanibako uses Python [entry points](https://packaging.python.org/en/latest/specifications/entry-points/)
-to discover targets.  Register your target class under the
-`kanibako.targets` group in your `pyproject.toml`:
+Kanibako discovers targets in two ways:
+
+### 1. Entry points (pip-installed plugins)
+
+Register your target class under the `kanibako.targets` group in your
+`pyproject.toml`:
 
 ```toml
 [project.entry-points."kanibako.targets"]
@@ -382,14 +386,34 @@ The entry point **name** (left of `=`) is the target's identifier, matching
 what `Target.name` returns.  The entry point **value** (right of `=`)
 points to the `Target` subclass.
 
+### 2. Namespace scan (bind-mounted plugins)
+
+Kanibako also scans `kanibako.plugins.*` for `Target` subclasses.  This
+allows plugins that live inside the `kanibako/plugins/` directory to be
+discovered automatically — even without pip metadata (dist-info).
+
+This is how the built-in Claude plugin works: it lives at
+`kanibako.plugins.claude` and travels with the kanibako bind-mount into
+nested containers without needing a separate pip install.
+
+To use this approach, place your target module under
+`kanibako/plugins/yourplugin/` with a `Target` subclass.
+
+Entry-point-discovered targets take priority — the namespace scan only
+adds targets not already found via entry points.
+
+### Resolution
+
 When a user runs `kanibako start`, kanibako calls `discover_targets()` which
-loads all registered entry points.  If no `--target` is specified, kanibako
-calls `detect()` on each target and uses the first one that returns an
-`AgentInstall`.  If no target's `detect()` succeeds, kanibako falls back to
-`NoAgentTarget` — a built-in target that launches a plain shell without any
-agent binary or credentials.
+loads all registered entry points and scans `kanibako.plugins.*`.  If no
+`--target` is specified, kanibako calls `detect()` on each target and uses
+the first one that returns an `AgentInstall`.  If no target's `detect()`
+succeeds, kanibako falls back to `NoAgentTarget` — a built-in target that
+launches a plain shell without any agent binary or credentials.
 
 ## Packaging
+
+### Standalone package (recommended for third-party plugins)
 
 Recommended package layout:
 
@@ -430,6 +454,26 @@ Install in development mode with:
 ```
 pip install -e kanibako-target-myagent/
 ```
+
+### Namespace plugin (for bind-mount propagation)
+
+If your plugin needs to travel with kanibako's bind-mount into nested
+containers, place it under the `kanibako.plugins` namespace instead:
+
+```
+packages/plugin-myagent/
+  pyproject.toml
+  src/
+    kanibako/              # no __init__.py (structural only)
+      plugins/             # no __init__.py (structural only)
+        myagent/
+          __init__.py      # exports MyTarget
+          target.py
+```
+
+The `kanibako/` and `plugins/` directories must **not** have `__init__.py`
+files — the base package owns those.  Only your leaf package
+(`myagent/`) gets an `__init__.py`.
 
 ## Testing
 
