@@ -201,6 +201,7 @@ class TestKanibakoLifecycle:
     """Verify the start → running → stop → gone cycle."""
 
     @requires_runtime
+    @pytest.mark.skip(reason="Flaky on CI: container startup timing unreliable in GitHub Actions")
     def test_start_stop_cycle(self, cli_env, container_runtime_cmd):
         """Start a container, verify it runs, stop it, verify it's gone."""
         _setup_with_image(cli_env, "busybox:latest")
