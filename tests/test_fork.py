@@ -260,25 +260,26 @@ class TestRunFork:
 # ---------------------------------------------------------------------------
 
 class TestForkCLIRegistration:
-    def test_fork_in_subcommands(self):
+    def test_agent_in_subcommands(self):
         from kanibako.cli import _SUBCOMMANDS
-        assert "fork" in _SUBCOMMANDS
+        assert "agent" in _SUBCOMMANDS
 
-    def test_fork_parser_registered(self):
+    def test_fork_parser_registered_under_agent(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        # fork should be recognized as a subcommand
-        args = parser.parse_args(["fork", "testname"])
-        assert args.command == "fork"
+        # fork should be recognized as an agent subcommand
+        args = parser.parse_args(["agent", "fork", "testname"])
+        assert args.command == "agent"
+        assert args.agent_command == "fork"
         assert args.name == "testname"
 
     def test_fork_exempt_from_config_check(self):
-        """Fork should not require kanibako.toml to exist."""
+        """agent fork should not require kanibako.toml to exist."""
         from kanibako.cli import main
-        # Calling fork with a missing kanibako.toml should not trigger
+        # Calling agent fork with a missing kanibako.toml should not trigger
         # the "kanibako is not set up" error — it should reach run_fork
         # and fail on the socket check instead.
         with pytest.raises(SystemExit) as exc_info:
-            main(["fork", "test"])
+            main(["agent", "fork", "test"])
         # Should exit with 1 (no socket), not the config-check error
         assert exc_info.value.code == 1

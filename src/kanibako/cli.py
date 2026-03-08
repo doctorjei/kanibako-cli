@@ -54,12 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.remove import add_parser as add_remove_parser
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.upgrade import add_parser as add_upgrade_parser
-    from kanibako.commands.refresh_credentials import (
-        add_parser as add_reauth_parser,
-    )
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
-    from kanibako.commands.helper_cmd import add_parser as add_helper_parser
-    from kanibako.commands.fork_cmd import add_parser as add_fork_parser
+    from kanibako.commands.agent_cmd import add_parser as add_agent_parser
 
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
@@ -67,20 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
     add_image_parser(subparsers)
     add_box_parser(subparsers)
     add_workset_parser(subparsers)
+    add_agent_parser(subparsers)
     add_setup_parser(subparsers)
     add_remove_parser(subparsers)
     add_upgrade_parser(subparsers)
-    add_reauth_parser(subparsers)
-    add_helper_parser(subparsers)
-    add_fork_parser(subparsers)
 
     return parser
 
 
 _SUBCOMMANDS = {
     "start", "shell", "stop", "image",
-    "box", "workset", "setup", "remove", "upgrade", "reauth",
-    "helper", "fork",
+    "box", "workset", "agent", "setup", "remove", "upgrade",
 }
 
 
@@ -116,7 +109,7 @@ def main(argv: list[str] | None = None) -> None:
             effective = ["start"] + effective
         args = parser.parse_args(effective)
 
-        if args.command not in ("setup", "helper", "fork"):
+        if args.command not in ("setup", "agent"):
             from kanibako.paths import xdg
             from kanibako.config import config_file_path
             _cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))

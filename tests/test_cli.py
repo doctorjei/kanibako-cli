@@ -272,10 +272,105 @@ class TestParser:
         args = parser.parse_args(["remove"])
         assert args.command == "remove"
 
-    def test_reauth_command(self):
+    def test_agent_command(self):
         parser = build_parser()
-        args = parser.parse_args(["reauth"])
-        assert args.command == "reauth"
+        args = parser.parse_args(["agent"])
+        assert args.command == "agent"
+
+    def test_agent_list(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "list"])
+        assert args.command == "agent"
+        assert args.agent_command == "list"
+
+    def test_agent_list_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "list", "-q"])
+        assert args.quiet is True
+
+    def test_agent_list_alias_ls(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "ls"])
+        assert args.command == "agent"
+        assert hasattr(args, "func")
+
+    def test_agent_info(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "info", "myagent"])
+        assert args.command == "agent"
+        assert args.agent_command == "info"
+        assert args.agent_id == "myagent"
+
+    def test_agent_info_alias_inspect(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "inspect", "myagent"])
+        assert args.command == "agent"
+        assert args.agent_id == "myagent"
+
+    def test_agent_config_show(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent"])
+        assert args.command == "agent"
+        assert args.agent_command == "config"
+        assert args.agent_id == "myagent"
+        assert args.key_value is None
+
+    def test_agent_config_set(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "model=sonnet"])
+        assert args.agent_id == "myagent"
+        assert args.key_value == "model=sonnet"
+
+    def test_agent_config_get(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "model"])
+        assert args.key_value == "model"
+
+    def test_agent_config_reset(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "--reset", "model"])
+        assert args.reset is True
+        assert args.key_value == "model"
+
+    def test_agent_config_reset_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "config", "myagent", "--reset", "--all"])
+        assert args.reset is True
+        assert args.all_keys is True
+
+    def test_agent_reauth(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "reauth"])
+        assert args.command == "agent"
+        assert args.agent_command == "reauth"
+        assert args.project is None
+
+    def test_agent_reauth_with_project(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "reauth", "/tmp/myproj"])
+        assert args.agent_command == "reauth"
+        assert args.project == "/tmp/myproj"
+
+    def test_agent_helper_spawn(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "helper", "spawn", "--depth", "3"])
+        assert args.command == "agent"
+        assert args.agent_command == "helper"
+        assert args.helper_command == "spawn"
+        assert args.depth == 3
+
+    def test_agent_helper_list(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "helper", "list"])
+        assert args.command == "agent"
+        assert args.helper_command == "list"
+
+    def test_agent_fork(self):
+        parser = build_parser()
+        args = parser.parse_args(["agent", "fork", "feature1"])
+        assert args.command == "agent"
+        assert args.agent_command == "fork"
+        assert args.name == "feature1"
 
     def test_upgrade_command(self):
         parser = build_parser()
@@ -457,8 +552,8 @@ class TestParser:
 class TestConfigCheckExemptions:
     """Commands that skip the kanibako.toml existence check."""
 
-    def test_helper_skips_config_check(self, tmp_path, monkeypatch):
-        """'helper' command should not require kanibako.toml."""
+    def test_agent_helper_skips_config_check(self, tmp_path, monkeypatch):
+        """'agent helper' command should not require kanibako.toml."""
         # Point XDG_CONFIG_HOME to an empty dir (no kanibako.toml)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
@@ -467,10 +562,20 @@ class TestConfigCheckExemptions:
         )
 
         from kanibako.cli import main
-        # 'helper list' should not crash with "not set up yet"
+        # 'agent helper list' should not crash with "not set up yet"
         with pytest.raises(SystemExit) as exc_info:
-            main(["helper", "list"])
+            main(["agent", "helper", "list"])
         assert exc_info.value.code == 0
+
+    def test_agent_fork_skips_config_check(self, tmp_path, monkeypatch):
+        """'agent fork' command should not require kanibako.toml."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        # fork will fail with "no socket" but should NOT fail with config check
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["agent", "fork", "test"])
+        # Should exit with 1 (no socket), not the config-check error
+        assert exc_info.value.code == 1
 
     def test_setup_skips_config_check(self):
         """'setup' command should not require kanibako.toml (pre-existing)."""

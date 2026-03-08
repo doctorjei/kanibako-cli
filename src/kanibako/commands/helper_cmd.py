@@ -26,15 +26,14 @@ from kanibako.helpers import (
 from kanibako.paths import xdg
 
 
-def add_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser(
-        "helper",
-        help="Spawn and manage child kanibako instances",
-        description="Spawn, list, stop, cleanup, and respawn helper instances.",
-    )
+def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
+    """Register helper subcommands on the given parser.
+
+    Called by agent_cmd.py to nest helpers under ``kanibako agent helper``.
+    """
     ss = p.add_subparsers(dest="helper_command", metavar="COMMAND")
 
-    # kanibako helper spawn
+    # helper spawn
     spawn_p = ss.add_parser(
         "spawn",
         help="Spawn a new helper instance",
@@ -54,15 +53,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     spawn_p.set_defaults(func=run_spawn)
 
-    # kanibako helper list
+    # helper list
     list_p = ss.add_parser(
         "list",
+        aliases=["ls"],
         help="List active helpers",
         description="Show all helper instances and their status.",
     )
+    list_p.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Print only helper numbers, one per line",
+    )
     list_p.set_defaults(func=run_list)
 
-    # kanibako helper stop <N>
+    # helper stop <N>
     stop_p = ss.add_parser(
         "stop",
         help="Stop a helper instance",
@@ -71,7 +75,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     stop_p.add_argument("number", type=int, help="Helper number to stop")
     stop_p.set_defaults(func=run_stop)
 
-    # kanibako helper cleanup <N>
+    # helper cleanup <N>
     cleanup_p = ss.add_parser(
         "cleanup",
         help="Stop and remove a helper",
@@ -84,7 +88,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     cleanup_p.set_defaults(func=run_cleanup)
 
-    # kanibako helper respawn <N>
+    # helper respawn <N>
     respawn_p = ss.add_parser(
         "respawn",
         help="Relaunch a stopped helper",
@@ -93,7 +97,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     respawn_p.add_argument("number", type=int, help="Helper number to respawn")
     respawn_p.set_defaults(func=run_respawn)
 
-    # kanibako helper send <N> <message>
+    # helper send <N> <message>
     send_p = ss.add_parser(
         "send",
         help="Send a message to a helper",
@@ -103,7 +107,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     send_p.add_argument("message", help="Message text to send")
     send_p.set_defaults(func=run_send)
 
-    # kanibako helper broadcast <message>
+    # helper broadcast <message>
     bcast_p = ss.add_parser(
         "broadcast",
         help="Broadcast a message to all helpers",
@@ -112,7 +116,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     bcast_p.add_argument("message", help="Message text to broadcast")
     bcast_p.set_defaults(func=run_broadcast)
 
-    # kanibako helper log
+    # helper log
     log_p = ss.add_parser(
         "log",
         help="View inter-agent message log",
@@ -132,7 +136,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     log_p.set_defaults(func=run_log)
 
-    # kanibako helper register <N>  (used by helper-init.sh, hidden from help)
+    # helper register <N>  (used by helper-init.sh, hidden from help)
     register_p = ss.add_parser(
         "register",
         help=argparse.SUPPRESS,
