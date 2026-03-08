@@ -168,7 +168,7 @@ class TestResolveName:
         register_name(data_path, "myws", str(ws_root), section="worksets")
         register_name(data_path, "other", "/other/path")
 
-        # "other" is not in the workset but is a registered AC project.
+        # "other" is not in the workset but is a registered local project.
         path, kind = resolve_name(
             data_path, "other", cwd=ws_root / "workspaces"
         )
@@ -253,8 +253,8 @@ class TestAssignName:
 # Phase 2: Name assignment wiring into project/workset creation
 # ---------------------------------------------------------------------------
 
-class TestACNameAssignment:
-    """Name assignment is wired into account-centric project creation."""
+class TestLocalNameAssignment:
+    """Name assignment is wired into local project creation."""
 
     def test_new_project_gets_name(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config

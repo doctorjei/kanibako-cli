@@ -222,7 +222,7 @@ class ContainerRuntime:
                 cmd += ["-v", f"{vault_ro_path}:/home/agent/share-ro:ro"]
             if vault_rw_path.is_dir():
                 cmd += ["-v", f"{vault_rw_path}:/home/agent/share-rw:Z,U"]
-            # AC vault hiding: read-only tmpfs over workspace/vault
+            # Local vault hiding: read-only tmpfs over workspace/vault
             if vault_tmpfs:
                 cmd += ["--mount", "type=tmpfs,dst=/home/agent/workspace/vault,ro"]
                 # Mount a .gitignore on top of the tmpfs so the stub

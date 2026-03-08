@@ -130,7 +130,7 @@ def _purge_all(std, config, *, force: bool) -> int:
 
     removed = 0
 
-    # Account-centric projects.
+    # Local mode projects.
     vault_dir = std.data_path / config.paths_vault
     for metadata_path, project_path in projects:
         # Clean up vault symlinks before removing data.

@@ -27,7 +27,7 @@ from kanibako.paths import load_std_paths, resolve_project
 
 @pytest.fixture
 def initialized_project(config_file, credentials_dir, tmp_home):
-    """Create a fully initialized account-centric project."""
+    """Create a fully initialized local project."""
     config = load_config(config_file)
     std = load_std_paths(config)
     project_dir = str(tmp_home / "project")
@@ -121,7 +121,7 @@ class TestFormatCredentialAge:
 # _check_container_running tests
 # ---------------------------------------------------------------------------
 
-def _mock_proj(*, name="", project_hash="a" * 64, mode="account_centric",
+def _mock_proj(*, name="", project_hash="a" * 64, mode="local",
                project_path="/home/user/proj"):
     """Duck-typed ProjectPaths for _check_container_running tests."""
     return SimpleNamespace(
@@ -235,7 +235,7 @@ class TestRunStatus:
         assert "No project data found" in out
 
     def test_initialized_project(self, initialized_project, capsys):
-        """Status for an initialized account-centric project."""
+        """Status for an initialized local project."""
         args = argparse.Namespace(project=initialized_project.project_dir)
         with patch(
             "kanibako.commands.status._check_container_running",
@@ -245,7 +245,7 @@ class TestRunStatus:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Name:" in out
-        assert "account-centric" in out
+        assert "local" in out
         assert "Hash:" in out
         assert "Metadata:" in out
         assert "Shell:" in out
@@ -358,16 +358,16 @@ class TestRunStatus:
         assert "n/a" in out
 
 
-class TestRunStatusDecentralized:
-    def test_decentralized_project(self, config_file, tmp_home, credentials_dir, capsys):
-        """Status for a decentralized project."""
-        from kanibako.paths import resolve_decentralized_project
+class TestRunStatusStandalone:
+    def test_standalone_project(self, config_file, tmp_home, credentials_dir, capsys):
+        """Status for a standalone project."""
+        from kanibako.paths import resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
 
-        resolve_decentralized_project(
+        resolve_standalone_project(
             std, config, project_dir=project_dir, initialize=True,
         )
         args = argparse.Namespace(project=project_dir)
@@ -378,5 +378,5 @@ class TestRunStatusDecentralized:
             rc = run_status(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "decentralized" in out
+        assert "standalone" in out
         assert "kanibako" in out

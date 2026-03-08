@@ -235,12 +235,12 @@ class TestRestoreExtended:
         rc = run(args)
         assert rc == 1
 
-    def test_restore_decentralized_project(self, config_file, tmp_home, credentials_dir):
-        """Restore an archive into a decentralized project's kanibako/."""
+    def test_restore_standalone_project(self, config_file, tmp_home, credentials_dir):
+        """Restore an archive into a standalone project's kanibako/."""
         from kanibako.commands.archive import run as archive_run
         from kanibako.commands.restore import run as restore_run
 
-        # First create an account-centric archive (same project dir)
+        # First create a local archive (same project dir)
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -254,20 +254,20 @@ class TestRestoreExtended:
         )
         assert archive_run(args) == 0
 
-        # Now set up the project as decentralized
+        # Now set up the project as standalone
         project_path = tmp_home / "project"
         kanibako_dir = project_path / ".kanibako"
         kanibako_dir.mkdir(exist_ok=True)
-        # Remove account-centric data so mode detection picks decentralized
+        # Remove local data so mode detection picks standalone
         shutil.rmtree(proj.metadata_path)
 
-        # Restore into the decentralized project
+        # Restore into the standalone project
         args = argparse.Namespace(
             path=project_dir, file=archive_path, all_archives=False, force=True,
         )
         rc = restore_run(args)
         assert rc == 0
 
-        # Data should now exist in the decentralized metadata path
+        # Data should now exist in the standalone metadata path
         dec_proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-        assert dec_proj.mode.value == "decentralized"
+        assert dec_proj.mode.value == "standalone"

@@ -53,12 +53,12 @@ def short_hash(full_hash: str, length: int = 8) -> str:
 def container_name_for(proj: ProjectPaths) -> str:
     """Deterministic container name for a project.
 
-    - AC with name: ``kanibako-{name}``
-    - AC without name (legacy): ``kanibako-{short_hash}``
+    - Local with name: ``kanibako-{name}``
+    - Local without name (legacy): ``kanibako-{short_hash}``
     - Workset: ``kanibako-{short_hash}`` (name-based pending workset naming)
-    - Decentralized: ``kanibako-ronin-{escape_path(project_path)}``
+    - Standalone: ``kanibako-ronin-{escape_path(project_path)}``
     """
-    if proj.mode.value == "decentralized":
+    if proj.mode.value == "standalone":
         return f"kanibako-ronin-{escape_path(str(proj.project_path))}"
     if proj.name:
         return f"kanibako-{proj.name}"
@@ -71,7 +71,7 @@ def project_hash(project_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Decentralized path encoding (for container names)
+# Standalone path encoding (for container names)
 # ---------------------------------------------------------------------------
 
 _DASH_ESCAPE = "-."

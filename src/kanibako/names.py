@@ -1,8 +1,8 @@
 """Project name registry (names.toml).
 
 Central index at ``{data_path}/names.toml`` mapping human-readable names to
-project paths (for account-centric projects) and workset roots (for worksets).
-Decentralized projects are intentionally excluded — they have no central
+project paths (for local projects) and workset roots (for worksets).
+Standalone projects are intentionally excluded — they have no central
 registration.
 
 The file has two sections::
@@ -146,7 +146,7 @@ def resolve_name(
     Resolution order:
 
     1. If *cwd* is inside a workset → check that workset's projects first
-    2. ``[projects]`` section (AC projects)
+    2. ``[projects]`` section (local projects)
     3. ``[worksets]`` section (workset names)
 
     *kind* is ``"project"`` or ``"workset"``.
@@ -167,7 +167,7 @@ def resolve_name(
                 if candidate.is_dir():
                     return str(candidate), "project"
 
-    # 2. AC projects.
+    # 2. Local projects.
     if name in names["projects"]:
         return names["projects"][name], "project"
 

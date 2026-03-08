@@ -23,7 +23,7 @@ class TestBuildResourceMounts:
         global_shared.mkdir(parents=True)
         # Write an empty project.toml so read_resource_overrides finds it.
         (metadata / "project.toml").write_text(
-            '[project]\nmode = "account_centric"\nlayout = "default"\n'
+            '[project]\nmode = "local"\nlayout = "default"\n'
             'vault_enabled = true\nauth = "shared"\n\n'
             '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
             'vault_ro = "/ro"\nvault_rw = "/rw"\n'
@@ -167,7 +167,7 @@ class TestResourceOverrideInMounts:
         project_toml = proj.metadata_path / "project.toml"
         write_project_meta(
             project_toml,
-            mode="account_centric", layout="default",
+            mode="local", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         write_resource_override(project_toml, "plugins/", "project")
@@ -189,7 +189,7 @@ class TestResourceOverrideInMounts:
         project_toml = proj.metadata_path / "project.toml"
         write_project_meta(
             project_toml,
-            mode="account_centric", layout="default",
+            mode="local", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         write_resource_override(project_toml, "projects/", "shared")
@@ -210,7 +210,7 @@ class TestResourceOverrideInMounts:
 
         project_toml = tmp_path / "project.toml"
         project_toml.write_text(
-            '[project]\nmode = "account_centric"\nlayout = "default"\n'
+            '[project]\nmode = "local"\nlayout = "default"\n'
             'vault_enabled = true\nauth = "shared"\n\n'
             '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
             'vault_ro = "/ro"\nvault_rw = "/rw"\n'
@@ -281,7 +281,7 @@ class TestBuildEffectiveState:
         project_toml = tmp_path / "project.toml"
         write_project_meta(
             project_toml,
-            mode="account_centric", layout="default",
+            mode="local", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         if settings:

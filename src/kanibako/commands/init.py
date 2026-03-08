@@ -8,7 +8,7 @@ from pathlib import Path
 
 from kanibako.config import config_file_path, load_config, write_project_config
 from kanibako.paths import (
-    xdg, load_std_paths, resolve_decentralized_project, resolve_project,
+    xdg, load_std_paths, resolve_standalone_project, resolve_project,
 )
 
 
@@ -24,7 +24,7 @@ def add_init_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--local", action="store_true",
-        help="Use decentralized mode (all state inside the project directory)",
+        help="Use standalone mode (all state inside the project directory)",
     )
     p.add_argument(
         "-i", "--image", default=None,
@@ -57,7 +57,7 @@ def run_init(args: argparse.Namespace) -> int:
             target.mkdir(parents=True)
 
     if args.local:
-        proj = resolve_decentralized_project(
+        proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
             vault_enabled=vault_enabled, auth=auth,
         )
@@ -79,11 +79,11 @@ def run_init(args: argparse.Namespace) -> int:
     project_toml = proj.metadata_path / "project.toml"
     write_project_config(project_toml, image)
 
-    # Write .gitignore for decentralized projects only
+    # Write .gitignore for standalone projects only
     if args.local:
         _write_project_gitignore(proj.project_path)
 
-    mode = "decentralized" if args.local else "account-centric"
+    mode = "standalone" if args.local else "local"
     print(f"Initialized {mode} project in {proj.project_path}")
     return 0
 

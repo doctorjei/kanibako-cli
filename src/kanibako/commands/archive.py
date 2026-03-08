@@ -156,7 +156,7 @@ def _archive_all(std, config, args) -> int:
     archived = 0
     failed = 0
 
-    # Account-centric projects.
+    # Local mode projects.
     for metadata_path, project_path in projects:
         if project_path:
             try:

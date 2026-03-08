@@ -34,7 +34,7 @@ class TestBoxGet:
         args = argparse.Namespace(key="mode", project=project_dir)
         rc = run_get(args)
         assert rc == 0
-        assert capsys.readouterr().out.strip() == "account_centric"
+        assert capsys.readouterr().out.strip() == "local"
 
     def test_get_shell(self, config_file, tmp_home, credentials_dir, capsys):
         config = load_config(config_file)

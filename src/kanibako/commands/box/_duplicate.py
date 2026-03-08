@@ -12,11 +12,11 @@ from kanibako.names import assign_name
 from kanibako.paths import (
     ProjectMode,
     _find_workset_for_path,
-    _resolve_ac_dir,
+    _resolve_local_dir,
     xdg,
     detect_project_mode,
     load_std_paths,
-    resolve_decentralized_project,
+    resolve_standalone_project,
     resolve_project,
     resolve_workset_project,
 )
@@ -51,10 +51,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if source_mode == ProjectMode.workset:
         return _duplicate_from_workset(args, source_path, new_path, std, config)
 
-    if source_mode == ProjectMode.account_centric:
+    if source_mode == ProjectMode.local:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
-        src_proj = resolve_decentralized_project(std, config, project_dir=str(source_path), initialize=False)
+        src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
 
     if not src_proj.metadata_path.is_dir():
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
@@ -72,7 +72,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Confirm with user.
-    target_mode = ProjectMode.decentralized if to_mode_str == "decentralized" else ProjectMode.account_centric
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -90,10 +90,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target mode layout.
-    if target_mode == ProjectMode.decentralized:
-        _duplicate_to_decentral(src_proj, new_path, args.force)
+    if target_mode == ProjectMode.standalone:
+        _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
-        _duplicate_to_ac(src_proj, new_path, std, config, args.force)
+        _duplicate_to_local(src_proj, new_path, std, config, args.force)
 
     print(f"Duplicated project to {target_mode.value} mode:")
     print(f"  from: {source_path}")
@@ -101,8 +101,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     return 0
 
 
-def _duplicate_to_decentral(src_proj, new_path, force):
-    """Copy metadata into decentralized layout at new_path."""
+def _duplicate_to_standalone(src_proj, new_path, force):
+    """Copy metadata into standalone layout at new_path."""
     from kanibako.commands.init import _write_project_gitignore
 
     dst_metadata = new_path / ".kanibako"
@@ -133,8 +133,8 @@ def _duplicate_to_decentral(src_proj, new_path, force):
             vault_gitignore.write_text("share-rw/\n")
 
 
-def _duplicate_to_ac(src_proj, new_path, std, config, force):
-    """Copy metadata into account-centric layout for new_path."""
+def _duplicate_to_local(src_proj, new_path, std, config, force):
+    """Copy metadata into local layout for new_path."""
     # Assign a new name for the duplicate.
     project_name = assign_name(std.data_path, str(new_path))
     projects_base = std.data_path / "boxes"
@@ -187,10 +187,10 @@ def _duplicate_to_workset(args, std, config) -> int:
             print(f"Error: project '{proj_name}' already exists in workset '{ws_name}'.", file=sys.stderr)
             return 1
 
-    if source_mode == ProjectMode.account_centric:
+    if source_mode == ProjectMode.local:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
-        src_proj = resolve_decentralized_project(std, config, project_dir=str(source_path), initialize=False)
+        src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
 
     if not src_proj.metadata_path.is_dir():
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
@@ -239,7 +239,7 @@ def _duplicate_to_workset(args, std, config) -> int:
     if not args.bare:
         dst_workspace = ws.workspaces_dir / proj_name
         ignore = None
-        if source_mode == ProjectMode.decentralized:
+        if source_mode == ProjectMode.standalone:
             ignore = shutil.ignore_patterns(".kanibako")
         shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
@@ -250,7 +250,7 @@ def _duplicate_to_workset(args, std, config) -> int:
 
 
 def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
-    """Duplicate a workset project to AC or decentralized layout (source untouched)."""
+    """Duplicate a workset project to local or standalone layout (source untouched)."""
     to_mode_str = args.to_mode
 
     ws, proj_name = _find_workset_for_path(source_path, std)
@@ -263,7 +263,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
         return 1
 
-    target_mode = ProjectMode.decentralized if to_mode_str == "decentralized" else ProjectMode.account_centric
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
 
     # Lock file warning.
     lock_file = src_proj.metadata_path / ".kanibako.lock"
@@ -295,10 +295,10 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             shutil.copytree(ws_workspace, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target layout.
-    if target_mode == ProjectMode.decentralized:
-        _duplicate_to_decentral(src_proj, new_path, args.force)
+    if target_mode == ProjectMode.standalone:
+        _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
-        _duplicate_to_ac(src_proj, new_path, std, config, args.force)
+        _duplicate_to_local(src_proj, new_path, std, config, args.force)
 
     print(f"Duplicated project to {target_mode.value} mode:")
     print(f"  from: {ws.name}/{proj_name}")
@@ -329,7 +329,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
 
     # 3. Source must have kanibako metadata.
-    source_name, source_project_dir = _resolve_ac_dir(
+    source_name, source_project_dir = _resolve_local_dir(
         std.data_path, str(source_path),
     )
 
@@ -350,7 +350,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
 
     # 5. Destination metadata must not already exist (unless --force).
-    new_name, new_project_dir = _resolve_ac_dir(
+    new_name, new_project_dir = _resolve_local_dir(
         std.data_path, str(new_path),
     )
 

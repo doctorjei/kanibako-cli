@@ -202,7 +202,7 @@ def start_mocks():
         ):
             proj = MagicMock()
             proj.is_new = False
-            proj.mode = ProjectMode.account_centric
+            proj.mode = ProjectMode.local
             proj.metadata_path = MagicMock()
             proj.metadata_path.__truediv__ = MagicMock(return_value=MagicMock())
             proj.shell_path = MagicMock()

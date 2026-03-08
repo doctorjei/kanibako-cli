@@ -263,8 +263,13 @@ def read_project_meta(path: Path) -> dict | None:
     if not project_sec.get("mode"):
         return None
 
+    # Backward compat: terminology renamed in v1.0.
+    _MODE_COMPAT = {"account_centric": "local", "decentralized": "standalone"}
+    raw_mode = project_sec["mode"]
+    mode = _MODE_COMPAT.get(raw_mode, raw_mode)
+
     return {
-        "mode": project_sec["mode"],
+        "mode": mode,
         # Backward compat: "tree" was renamed to "robust" in v0.6.0.
         "layout": "robust" if project_sec.get("layout") == "tree" else project_sec.get("layout", ""),
         "vault_enabled": project_sec.get("vault_enabled", True),

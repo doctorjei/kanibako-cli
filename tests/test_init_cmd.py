@@ -101,10 +101,10 @@ class TestRunInit:
         captured = capsys.readouterr()
         assert "already initialized" in captured.err
 
-    def test_init_ac_mode(
+    def test_init_local_mode(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        """init without --local creates an AC project."""
+        """init without --local creates a local project."""
         parser = build_parser()
         args = parser.parse_args(["init", str(project_dir)])
         rc = run_init(args)
@@ -124,10 +124,10 @@ class TestRunInit:
         assert gitignore.is_file()
         assert ".kanibako/" in gitignore.read_text()
 
-    def test_init_no_gitignore_for_ac(
+    def test_init_no_gitignore_for_local(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        """AC mode should not write .gitignore (state is external)."""
+        """Local mode should not write .gitignore (state is external)."""
         parser = build_parser()
         args = parser.parse_args(["init", str(project_dir)])
         run_init(args)

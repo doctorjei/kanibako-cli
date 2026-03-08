@@ -30,7 +30,7 @@ from kanibako.paths import (
 )
 from kanibako.utils import short_hash
 
-_MODE_CHOICES = ["account-centric", "decentralized", "workset"]
+_MODE_CHOICES = ["local", "standalone", "workset"]
 
 # Keys that box get can read.
 _GET_KEYS = [
@@ -69,7 +69,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Move project session data from one path hash to another.\n"
             "Use this after moving or renaming a project directory.\n"
-            "With --to, convert a project between modes (e.g. account-centric to decentralized)."
+            "With --to, convert a project between modes (e.g. local to standalone)."
         ),
     )
     migrate_p.add_argument(
@@ -338,7 +338,7 @@ def run_orphan(args: argparse.Namespace) -> int:
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)
 
-    # Account-centric orphans: path missing or no breadcrumb.
+    # Local mode orphans: path missing or no breadcrumb.
     ac_orphans = []
     for metadata_path, project_path in projects:
         if project_path is None or not project_path.is_dir():

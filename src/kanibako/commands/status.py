@@ -109,10 +109,10 @@ def run_status(args: argparse.Namespace) -> int:
     if not has_data:
         print(f"No project data found for: {proj.project_path}")
         print()
-        if proj.mode == ProjectMode.account_centric:
+        if proj.mode == ProjectMode.local:
             print("This directory has not been used with kanibako yet.")
             print("Start a session with 'kanibako start', or initialize with:")
-            print("  kanibako init --local   (decentralized mode)")
+            print("  kanibako init --local   (standalone mode)")
         else:
             print("This directory has not been initialized.")
         return 1

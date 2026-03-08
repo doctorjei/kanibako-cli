@@ -21,7 +21,7 @@ from kanibako.paths import load_std_paths, resolve_project
 
 
 def _init_project_with_vault(config_file, tmp_home, credentials_dir):
-    """Initialize an AC project and populate vault share-rw."""
+    """Initialize a local project and populate vault share-rw."""
     config = load_config(config_file)
     std = load_std_paths(config)
     project_dir = str(tmp_home / "project")

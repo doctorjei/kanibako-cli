@@ -15,7 +15,7 @@ from kanibako.paths import (
     _bootstrap_shell,
     _ensure_human_vault_symlink,
     _ensure_vault_symlink,
-    _find_ac_ancestor,
+    _find_local_ancestor,
     _find_workset_for_path,
     _remove_human_vault_symlink,
     _remove_project_vault_symlink,
@@ -87,13 +87,13 @@ class TestResolveProject:
         assert not proj.metadata_path.exists()
         assert not proj.is_new
 
-    def test_mode_is_account_centric(self, config_file, tmp_home, credentials_dir):
+    def test_mode_is_local(self, config_file, tmp_home, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.mode is ProjectMode.account_centric
+        assert proj.mode is ProjectMode.local
 
 
 class TestProjectMeta:
@@ -112,7 +112,7 @@ class TestProjectMeta:
         from kanibako.config import read_project_meta
         meta = read_project_meta(project_toml)
         assert meta is not None
-        assert meta["mode"] == "account_centric"
+        assert meta["mode"] == "local"
         assert meta["workspace"] == str(proj.project_path)
         assert meta["shell"] == str(proj.shell_path)
         assert meta["vault_ro"] == str(proj.vault_ro_path)
@@ -153,7 +153,7 @@ class TestProjectMeta:
         from kanibako.config import write_project_meta
         write_project_meta(
             proj.metadata_path / "project.toml",
-            mode="account_centric",
+            mode="local",
             layout="default",
             workspace=str(proj.project_path),
             shell=str(custom_shell),
@@ -164,13 +164,13 @@ class TestProjectMeta:
         proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
         assert proj2.shell_path == custom_shell
 
-    def test_decentralized_init_writes_meta(self, config_file, tmp_home, credentials_dir):
-        """resolve_decentralized_project(initialize=True) writes metadata."""
-        from kanibako.paths import resolve_decentralized_project
+    def test_standalone_init_writes_meta(self, config_file, tmp_home, credentials_dir):
+        """resolve_standalone_project(initialize=True) writes metadata."""
+        from kanibako.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
-        proj = resolve_decentralized_project(std, config, project_dir=project_dir, initialize=True)
+        proj = resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
 
         project_toml = proj.metadata_path / "project.toml"
         assert project_toml.is_file()
@@ -178,7 +178,7 @@ class TestProjectMeta:
         from kanibako.config import read_project_meta
         meta = read_project_meta(project_toml)
         assert meta is not None
-        assert meta["mode"] == "decentralized"
+        assert meta["mode"] == "standalone"
         assert meta["workspace"] == str(proj.project_path)
 
     def test_workset_init_writes_meta(self, config_file, tmp_home, credentials_dir):
@@ -222,7 +222,7 @@ class TestProjectMeta:
         from kanibako.config import read_project_meta
         meta = read_project_meta(project_toml)
         assert meta is not None
-        assert meta["mode"] == "account_centric"
+        assert meta["mode"] == "local"
 
     def test_stored_shared_paths_used(self, config_file, tmp_home, credentials_dir):
         """Stored global_shared/local_shared in project.toml override computed values."""
@@ -292,7 +292,7 @@ class TestDetectProjectMode:
         assert hasattr(result, "mode")
         assert hasattr(result, "project_root")
 
-    def test_account_centric_when_projects_dir_exists(self, config_file, tmp_home, credentials_dir):
+    def test_local_when_projects_dir_exists(self, config_file, tmp_home, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -300,32 +300,32 @@ class TestDetectProjectMode:
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
         assert result.project_root == project_dir.resolve()
 
-    def test_decentralized_when_kanibako_dir_exists(self, config_file, tmp_home):
+    def test_standalone_when_kanibako_dir_exists(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
         assert result.project_root == project_dir.resolve()
 
-    def test_default_account_centric_for_new_project(self, config_file, tmp_home):
+    def test_default_local_for_new_project(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         # No projects dir, no kanibako dir -> default
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
         assert result.project_root == project_dir.resolve()
 
-    def test_account_centric_takes_priority_over_decentralized(
+    def test_local_takes_priority_over_standalone(
         self, config_file, tmp_home, credentials_dir
     ):
-        """When both settings/{hash}/ and .kanibako exist, account-centric wins."""
+        """When both settings/{hash}/ and .kanibako exist, local wins."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -333,17 +333,17 @@ class TestDetectProjectMode:
         (project_dir / ".kanibako").mkdir(exist_ok=True)
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
 
-    def test_kanibako_file_not_dir_is_not_decentralized(self, config_file, tmp_home):
-        """A .kanibako *file* (not directory) should not trigger decentralized mode."""
+    def test_kanibako_file_not_dir_is_not_standalone(self, config_file, tmp_home):
+        """A .kanibako *file* (not directory) should not trigger standalone mode."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").write_text("not a directory")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
 
     def test_workset_when_inside_workspaces_dir(self, config_file, tmp_home):
         """Project inside a registered workset's workspaces/ -> workset mode."""
@@ -362,7 +362,7 @@ class TestDetectProjectMode:
         assert result.mode is ProjectMode.workset
 
     def test_workset_takes_priority_over_all(self, config_file, tmp_home, credentials_dir):
-        """Workset detection (step 1) beats account-centric (step 2)."""
+        """Workset detection (step 1) beats local (step 2)."""
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -372,7 +372,7 @@ class TestDetectProjectMode:
 
         proj_dir = ws_root.resolve() / "workspaces" / "my-proj"
         proj_dir.mkdir(parents=True)
-        # Also create account-centric projects dir for the same path
+        # Also create local projects dir for the same path
         resolve_project(std, config, project_dir=str(proj_dir), initialize=True)
 
         result = detect_project_mode(proj_dir, std, config)
@@ -380,10 +380,10 @@ class TestDetectProjectMode:
 
     # --- Ancestor walk tests ---
 
-    def test_ancestor_walk_finds_ac_marker_from_subdirectory(
+    def test_ancestor_walk_finds_local_marker_from_subdirectory(
         self, config_file, tmp_home, credentials_dir
     ):
-        """AC marker in parent is found when CWD is a subdirectory."""
+        """Local marker in parent is found when CWD is a subdirectory."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -393,13 +393,13 @@ class TestDetectProjectMode:
         subdir.mkdir(parents=True)
 
         result = detect_project_mode(subdir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
         assert result.project_root == project_dir.resolve()
 
-    def test_ancestor_walk_finds_decentralized_marker_from_subdirectory(
+    def test_ancestor_walk_finds_standalone_marker_from_subdirectory(
         self, config_file, tmp_home
     ):
-        """Decentralized marker in parent is found from a subdirectory."""
+        """Standalone marker in parent is found from a subdirectory."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -409,7 +409,7 @@ class TestDetectProjectMode:
         subdir.mkdir(parents=True)
 
         result = detect_project_mode(subdir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
         assert result.project_root == project_dir.resolve()
 
     def test_ancestor_walk_innermost_marker_wins(
@@ -430,13 +430,13 @@ class TestDetectProjectMode:
 
         # Detection from inner/ should find inner's marker
         result = detect_project_mode(inner.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
         assert result.project_root == inner.resolve()
 
     # --- Dotless kanibako/ marker tests ---
 
-    def test_dotless_kanibako_dir_triggers_decentralized(self, config_file, tmp_home):
-        """A `kanibako/` directory with project.toml triggers decentralized mode."""
+    def test_dotless_kanibako_dir_triggers_standalone(self, config_file, tmp_home):
+        """A `kanibako/` directory with project.toml triggers standalone mode."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -444,7 +444,7 @@ class TestDetectProjectMode:
         (project_dir / "kanibako" / "project.toml").write_text("")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
         assert result.project_root == project_dir.resolve()
 
     def test_dotless_kanibako_dir_without_toml_ignored(self, config_file, tmp_home):
@@ -455,7 +455,7 @@ class TestDetectProjectMode:
         (project_dir / "kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
 
     def test_dot_kanibako_preferred_over_dotless(self, config_file, tmp_home):
         """.kanibako/ is preferred when both .kanibako/ and kanibako/ exist."""
@@ -467,19 +467,19 @@ class TestDetectProjectMode:
         (project_dir / "kanibako" / "project.toml").write_text("")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
-        # Both trigger decentralized; the function returns on .kanibako first
+        assert result.mode is ProjectMode.standalone
+        # Both trigger standalone; the function returns on .kanibako first
         assert result.project_root == project_dir.resolve()
 
     def test_kanibako_file_not_dir_ignored_for_dotless(self, config_file, tmp_home):
-        """A `kanibako` *file* (not directory) should not trigger decentralized."""
+        """A `kanibako` *file* (not directory) should not trigger standalone."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").write_text("not a directory")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
 
     def test_dotless_marker_found_from_subdirectory(self, config_file, tmp_home):
         """Ancestor walk finds dotless kanibako/ with project.toml in parent."""
@@ -493,7 +493,7 @@ class TestDetectProjectMode:
         subdir.mkdir()
 
         result = detect_project_mode(subdir.resolve(), std, config)
-        assert result.mode is ProjectMode.decentralized
+        assert result.mode is ProjectMode.standalone
         assert result.project_root == project_dir.resolve()
 
     # --- Depth cap tests ---
@@ -513,7 +513,7 @@ class TestDetectProjectMode:
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         # Should NOT find the marker above $HOME
-        assert result.mode is ProjectMode.account_centric
+        assert result.mode is ProjectMode.local
         assert result.project_root == project_dir.resolve()
 
     # --- Workset root detection tests ---
@@ -546,10 +546,10 @@ class TestDetectProjectMode:
         assert result.mode is ProjectMode.workset
 
 
-class TestFindAcAncestor:
-    """Tests for _find_ac_ancestor() one-pass name scan."""
+class TestFindLocalAncestor:
+    """Tests for _find_local_ancestor() one-pass name scan."""
 
-    def test_name_scan_finds_deepest_ac_match(self, config_file, tmp_home, credentials_dir):
+    def test_name_scan_finds_deepest_local_match(self, config_file, tmp_home, credentials_dir):
         """Two nested registered projects — deeper one wins."""
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -568,7 +568,7 @@ class TestFindAcAncestor:
         # From a subdirectory of inner, the deeper match should win.
         target = inner / "src"
         target.mkdir()
-        result = _find_ac_ancestor(target.resolve(), std.data_path)
+        result = _find_local_ancestor(target.resolve(), std.data_path)
         assert result == inner.resolve()
 
     def test_name_scan_ignores_stale_entry_without_boxes_dir(
@@ -583,7 +583,7 @@ class TestFindAcAncestor:
         register_name(std.data_path, "myproject", str(project))
         # Intentionally do NOT create boxes/myproject/
 
-        result = _find_ac_ancestor(project.resolve(), std.data_path)
+        result = _find_local_ancestor(project.resolve(), std.data_path)
         assert result is None
 
     def test_name_scan_exact_match(self, config_file, tmp_home, credentials_dir):
@@ -596,7 +596,7 @@ class TestFindAcAncestor:
         register_name(std.data_path, "exact", str(project))
         (std.data_path / "boxes" / "exact").mkdir(parents=True)
 
-        result = _find_ac_ancestor(project.resolve(), std.data_path)
+        result = _find_local_ancestor(project.resolve(), std.data_path)
         assert result == project.resolve()
 
 
@@ -634,7 +634,7 @@ class TestResolveProjectHomeGuard:
         from kanibako.config import write_project_meta
         write_project_meta(
             boxes_dir / "project.toml",
-            mode="account_centric",
+            mode="local",
             layout="default",
             workspace=str(home.resolve()),
             shell=str(boxes_dir / "shell"),
@@ -662,18 +662,18 @@ class TestResolveProjectHomeGuard:
 
 
 class TestResolveAnyProject:
-    def test_resolve_any_project_account_centric(self, config_file, tmp_home, credentials_dir):
+    def test_resolve_any_project_local(self, config_file, tmp_home, credentials_dir):
         """Falls through to resolve_project for normal dirs."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_any_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.mode is ProjectMode.account_centric
+        assert proj.mode is ProjectMode.local
         assert proj.metadata_path.is_dir()
 
-    def test_resolve_any_project_decentralized(self, config_file, tmp_home):
-        """Dispatches to resolve_decentralized_project when .kanibako/ exists."""
+    def test_resolve_any_project_standalone(self, config_file, tmp_home):
+        """Dispatches to resolve_standalone_project when .kanibako/ exists."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -681,7 +681,7 @@ class TestResolveAnyProject:
 
         proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
 
-        assert proj.mode is ProjectMode.decentralized
+        assert proj.mode is ProjectMode.standalone
         assert proj.metadata_path == project_dir.resolve() / ".kanibako"
 
     def test_resolve_any_project_default_cwd(self, config_file, tmp_home, credentials_dir):
@@ -693,7 +693,7 @@ class TestResolveAnyProject:
 
         # cwd is tmp_home/project (set by tmp_home fixture)
         assert proj.project_path == (tmp_home / "project").resolve()
-        assert proj.mode is ProjectMode.account_centric
+        assert proj.mode is ProjectMode.local
 
     def test_resolve_any_project_workset_mode(self, config_file, tmp_home):
         """Dispatches to resolve_workset_project when inside a workset workspace."""
@@ -757,8 +757,8 @@ class TestResolveAnyProject:
         with pytest.raises(WorksetError, match="not in a specific project"):
             resolve_any_project(std, config, project_dir=str(ws_root), initialize=False)
 
-    def test_resolve_any_project_from_subdirectory_ac(self, config_file, tmp_home, credentials_dir):
-        """resolve_any_project from a subdirectory finds AC project root."""
+    def test_resolve_any_project_from_subdirectory_local(self, config_file, tmp_home, credentials_dir):
+        """resolve_any_project from a subdirectory finds local project root."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -768,11 +768,11 @@ class TestResolveAnyProject:
         subdir.mkdir(parents=True)
 
         proj = resolve_any_project(std, config, project_dir=str(subdir), initialize=False)
-        assert proj.mode is ProjectMode.account_centric
+        assert proj.mode is ProjectMode.local
         assert proj.project_path == project_dir.resolve()
 
-    def test_resolve_any_project_from_subdirectory_decentralized(self, config_file, tmp_home):
-        """resolve_any_project from a subdirectory finds decentralized project root."""
+    def test_resolve_any_project_from_subdirectory_standalone(self, config_file, tmp_home):
+        """resolve_any_project from a subdirectory finds standalone project root."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -782,7 +782,7 @@ class TestResolveAnyProject:
         subdir.mkdir()
 
         proj = resolve_any_project(std, config, project_dir=str(subdir), initialize=False)
-        assert proj.mode is ProjectMode.decentralized
+        assert proj.mode is ProjectMode.standalone
         assert proj.project_path == project_dir.resolve()
 
 
@@ -921,7 +921,7 @@ class TestEnsureVaultSymlink:
         assert link.is_symlink()
         assert link.resolve() == remote_vault.resolve()
 
-    def test_ac_tree_layout_creates_symlink(self, config_file, tmp_home, credentials_dir):
+    def test_local_tree_layout_creates_symlink(self, config_file, tmp_home, credentials_dir):
         """resolve_project with tree layout creates vault symlink."""
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -940,7 +940,7 @@ class TestEnsureVaultSymlink:
         assert link.is_symlink()
         assert (link / "share-ro").is_dir()
 
-    def test_ac_default_layout_no_symlink(self, config_file, tmp_home, credentials_dir):
+    def test_local_default_layout_no_symlink(self, config_file, tmp_home, credentials_dir):
         """resolve_project with default layout does not create symlink."""
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1051,7 +1051,7 @@ class TestUpgradeShell:
 class TestGlobalSharedPath:
     """Tests for global_shared_path on ProjectPaths."""
 
-    def test_ac_has_global_shared_path(self, config_file, tmp_home, credentials_dir):
+    def test_local_has_global_shared_path(self, config_file, tmp_home, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -1060,7 +1060,7 @@ class TestGlobalSharedPath:
         expected = std.data_path / config.paths_shared / "global"
         assert proj.global_shared_path == expected
 
-    def test_ac_no_init_has_global_shared_path(self, config_file, tmp_home):
+    def test_local_no_init_has_global_shared_path(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -1074,7 +1074,7 @@ class TestGlobalSharedPath:
 class TestLocalSharedPath:
     """Tests for local_shared_path on ProjectPaths."""
 
-    def test_ac_has_local_shared_path(self, config_file, tmp_home, credentials_dir):
+    def test_local_has_local_shared_path(self, config_file, tmp_home, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")

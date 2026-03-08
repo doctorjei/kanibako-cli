@@ -1,4 +1,4 @@
-"""Tests for kanibako.cli main() exit codes and decentralized launch."""
+"""Tests for kanibako.cli main() exit codes and standalone launch."""
 
 from __future__ import annotations
 
@@ -143,14 +143,14 @@ class TestConfigPreCheck:
         assert exc_info.value.code == 0
 
 
-class TestDecentralizedLaunch:
-    """Tests for decentralized project detection and launch (Phase 8.3)."""
+class TestStandaloneLaunch:
+    """Tests for standalone project detection and launch (Phase 8.3)."""
 
-    def _make_decentralized_proj(self, project_path):
-        """Build a MagicMock ProjectPaths for decentralized mode."""
+    def _make_standalone_proj(self, project_path):
+        """Build a MagicMock ProjectPaths for standalone mode."""
         proj = MagicMock()
         proj.is_new = False
-        proj.mode = ProjectMode.decentralized
+        proj.mode = ProjectMode.standalone
         proj.project_path = project_path
         proj.project_hash = "abc123"
         proj.metadata_path = project_path / ".kanibako"
@@ -159,8 +159,8 @@ class TestDecentralizedLaunch:
         proj.vault_rw_path = project_path / "vault" / "share-rw"
         return proj
 
-    def test_start_detects_decentralized_project(self, start_mocks, tmp_path):
-        """start from an init --local dir uses resolve_any_project which returns decentralized."""
+    def test_start_detects_standalone_project(self, start_mocks, tmp_path):
+        """start from an init --local dir uses resolve_any_project which returns standalone."""
         from kanibako.commands.start import _run_container
 
         project = tmp_path / "myproject"
@@ -168,7 +168,7 @@ class TestDecentralizedLaunch:
         (project / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(project)
+            proj = self._make_standalone_proj(project)
             m.resolve_any_project.return_value = proj
 
             rc = _run_container(
@@ -180,7 +180,7 @@ class TestDecentralizedLaunch:
         assert rc == 0
         m.resolve_any_project.assert_called_once()
 
-    def test_start_decentralized_creates_lock(self, start_mocks, tmp_path):
+    def test_start_standalone_creates_lock(self, start_mocks, tmp_path):
         """kanibako/.kanibako.lock is used during run."""
         from kanibako.commands.start import _run_container
 
@@ -190,7 +190,7 @@ class TestDecentralizedLaunch:
         kanibako_dir.mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(project)
+            proj = self._make_standalone_proj(project)
             m.resolve_any_project.return_value = proj
 
             rc = _run_container(
@@ -204,7 +204,7 @@ class TestDecentralizedLaunch:
         # which is project/kanibako/.kanibako.lock
         m.fcntl.flock.assert_called()
 
-    def test_start_decentralized_passes_correct_paths(self, start_mocks, tmp_path):
+    def test_start_standalone_passes_correct_paths(self, start_mocks, tmp_path):
         """runtime.run() receives paths inside the project dir."""
         from kanibako.commands.start import _run_container
 
@@ -213,7 +213,7 @@ class TestDecentralizedLaunch:
         (project / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(project)
+            proj = self._make_standalone_proj(project)
             m.resolve_any_project.return_value = proj
 
             _run_container(
@@ -228,7 +228,7 @@ class TestDecentralizedLaunch:
         assert call_kwargs["vault_ro_path"] == project / "vault" / "share-ro"
         assert call_kwargs["vault_rw_path"] == project / "vault" / "share-rw"
 
-    def test_start_decentralized_credential_flow(self, start_mocks, tmp_path):
+    def test_start_standalone_credential_flow(self, start_mocks, tmp_path):
         """Credential refresh uses target.refresh_credentials with shell_path."""
         from kanibako.commands.start import _run_container
 
@@ -237,7 +237,7 @@ class TestDecentralizedLaunch:
         (project / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(project)
+            proj = self._make_standalone_proj(project)
             m.resolve_any_project.return_value = proj
 
             _run_container(
@@ -252,8 +252,8 @@ class TestDecentralizedLaunch:
         # target.writeback_credentials called with shell_path
         m.target.writeback_credentials.assert_called_once_with(project / ".kanibako" / "shell")
 
-    def test_shell_works_with_decentralized(self, start_mocks, tmp_path):
-        """shell auto-detects decentralized mode via resolve_any_project."""
+    def test_shell_works_with_standalone(self, start_mocks, tmp_path):
+        """shell auto-detects standalone mode via resolve_any_project."""
         from kanibako.commands.start import run_shell
 
         import argparse
@@ -261,7 +261,7 @@ class TestDecentralizedLaunch:
         (tmp_path / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(tmp_path)
+            proj = self._make_standalone_proj(tmp_path)
             m.resolve_any_project.return_value = proj
 
             rc = run_shell(args)
@@ -269,8 +269,8 @@ class TestDecentralizedLaunch:
         assert rc == 0
         m.resolve_any_project.assert_called_once()
 
-    def test_resume_works_with_decentralized(self, start_mocks, tmp_path):
-        """resume auto-detects decentralized mode via resolve_any_project."""
+    def test_resume_works_with_standalone(self, start_mocks, tmp_path):
+        """resume auto-detects standalone mode via resolve_any_project."""
         from kanibako.commands.start import run_resume
 
         import argparse
@@ -278,7 +278,7 @@ class TestDecentralizedLaunch:
         (tmp_path / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(tmp_path)
+            proj = self._make_standalone_proj(tmp_path)
             m.resolve_any_project.return_value = proj
 
             rc = run_resume(args)
@@ -286,15 +286,15 @@ class TestDecentralizedLaunch:
         assert rc == 0
         m.resolve_any_project.assert_called_once()
 
-    def test_start_account_centric_still_works(self, start_mocks, tmp_path):
-        """Non-decentralized dir falls through to account-centric."""
+    def test_start_local_still_works(self, start_mocks, tmp_path):
+        """Non-standalone dir falls through to local."""
         from kanibako.commands.start import _run_container
 
         project = tmp_path / "regular_project"
         project.mkdir()
 
         with start_mocks() as m:
-            # Default start_mocks proj is account_centric
+            # Default start_mocks proj is local
             rc = _run_container(
                 project_dir=str(project), entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -304,8 +304,8 @@ class TestDecentralizedLaunch:
         assert rc == 0
         m.resolve_any_project.assert_called_once()
 
-    def test_start_decentralized_no_orphan_hint(self, start_mocks, tmp_path, capsys):
-        """No orphan hint printed for decentralized projects."""
+    def test_start_standalone_no_orphan_hint(self, start_mocks, tmp_path, capsys):
+        """No orphan hint printed for standalone projects."""
         from kanibako.commands.start import _run_container
 
         project = tmp_path / "myproject"
@@ -313,8 +313,8 @@ class TestDecentralizedLaunch:
         (project / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            proj = self._make_decentralized_proj(project)
-            proj.is_new = True  # new project, but decentralized
+            proj = self._make_standalone_proj(project)
+            proj.is_new = True  # new project, but standalone
             m.resolve_any_project.return_value = proj
 
             with patch("kanibako.paths.iter_projects") as m_iter:

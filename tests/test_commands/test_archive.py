@@ -201,17 +201,17 @@ class TestArchiveExtended:
             names = tar.getnames()
             assert any("data.txt" in n for n in names)
 
-    def test_archive_decentralized_project(self, config_file, tmp_home):
-        """Archive works for decentralized projects (settings in kanibako/)."""
+    def test_archive_standalone_project(self, config_file, tmp_home):
+        """Archive works for standalone projects (settings in kanibako/)."""
         from kanibako.commands.archive import run
 
         config = load_config(config_file)
         load_std_paths(config)
         project_dir = tmp_home / "project"
-        # Create decentralized marker and some data
+        # Create standalone marker and some data
         kanibako_dir = project_dir / ".kanibako"
         kanibako_dir.mkdir()
-        (kanibako_dir / "data.txt").write_text("decentralized-data")
+        (kanibako_dir / "data.txt").write_text("standalone-data")
 
         archive_path = str(tmp_home / "dec.txz")
         args = argparse.Namespace(
@@ -234,7 +234,7 @@ class TestArchiveWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create an AC project
+        # Create a local project
         ac_dir = tmp_home / "ac_arch"
         ac_dir.mkdir()
         resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
@@ -257,7 +257,7 @@ class TestArchiveWorkset:
         rc = run(args)
         assert rc == 0
 
-        # Both AC and workset archives should be created
+        # Both local and workset archives should be created
         import glob
         files = glob.glob(str(tmp_home / "kanibako-*.txz"))
         assert len(files) >= 2

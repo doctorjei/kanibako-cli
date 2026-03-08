@@ -88,13 +88,13 @@ class TestPathEdgeCases:
 # ---------------------------------------------------------------------------
 
 class TestProjectPathsModeDefault:
-    def test_mode_defaults_to_account_centric(self, config_file, tmp_home, credentials_dir):
+    def test_mode_defaults_to_local(self, config_file, tmp_home, credentials_dir):
         """Existing ProjectPaths construction (without explicit mode) defaults correctly."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        assert proj.mode is ProjectMode.account_centric
+        assert proj.mode is ProjectMode.local
 
     def test_mode_field_present_on_dataclass(self):
         """ProjectPaths has a mode field with the expected default."""
@@ -105,7 +105,7 @@ class TestProjectPathsModeDefault:
         assert "mode" in field_names
 
         mode_field = next(f for f in fields(ProjectPaths) if f.name == "mode")
-        assert mode_field.default is ProjectMode.account_centric
+        assert mode_field.default is ProjectMode.local
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +113,8 @@ class TestProjectPathsModeDefault:
 # ---------------------------------------------------------------------------
 
 class TestVaultOptional:
-    def test_ac_vault_disabled_skips_dirs(self, config_file, tmp_home, credentials_dir):
-        """AC project with vault_enabled=False skips vault directory creation."""
+    def test_local_vault_disabled_skips_dirs(self, config_file, tmp_home, credentials_dir):
+        """Local project with vault_enabled=False skips vault directory creation."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -128,8 +128,8 @@ class TestVaultOptional:
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
 
-    def test_ac_vault_enabled_creates_dirs(self, config_file, tmp_home, credentials_dir):
-        """AC project with default vault_enabled=True creates vault dirs."""
+    def test_local_vault_enabled_creates_dirs(self, config_file, tmp_home, credentials_dir):
+        """Local project with default vault_enabled=True creates vault dirs."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -159,14 +159,14 @@ class TestVaultOptional:
         )
         assert proj2.vault_enabled is False
 
-    def test_decentralized_vault_disabled(self, config_file, tmp_home, credentials_dir):
-        """Decentralized project with vault_enabled=False skips vault dirs."""
-        from kanibako.paths import resolve_decentralized_project
+    def test_standalone_vault_disabled(self, config_file, tmp_home, credentials_dir):
+        """Standalone project with vault_enabled=False skips vault dirs."""
+        from kanibako.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
 
-        proj = resolve_decentralized_project(
+        proj = resolve_standalone_project(
             std, config, project_dir=project_dir,
             initialize=True, vault_enabled=False,
         )
