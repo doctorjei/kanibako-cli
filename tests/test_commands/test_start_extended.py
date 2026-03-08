@@ -582,7 +582,7 @@ class TestInteractivePersistentGuard:
             m.runtime.run.assert_not_called()
         captured = capsys.readouterr()
         assert "container already exists" in captured.err.lower()
-        assert "kanibako connect" in captured.err
+        assert "kanibako start" in captured.err
 
     def test_no_container_proceeds_normally(self, start_mocks):
         """When no container exists, interactive mode proceeds."""

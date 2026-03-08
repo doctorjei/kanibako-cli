@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import fcntl
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -121,7 +123,15 @@ def run_start(args: argparse.Namespace) -> int:
     secure = getattr(args, "secure", False)
     model_override = getattr(args, "model", None)
     no_helpers = getattr(args, "no_helpers", False)
-    persistent = getattr(args, "persistent", False)
+    explicit_persistent = getattr(args, "persistent", False)
+    explicit_ephemeral = getattr(args, "ephemeral", False)
+    if explicit_persistent:
+        persistent = True
+    elif explicit_ephemeral:
+        persistent = False
+    else:
+        # Default: persistent when tmux is available
+        persistent = _tmux_available()
     env_vars = getattr(args, "env", None) or []
     agent_args = getattr(args, "agent_args", [])
 
@@ -183,6 +193,24 @@ def run_shell(args: argparse.Namespace) -> int:
         resume_mode=False,
         extra_args=shell_args,
     )
+
+
+def _tmux_available() -> bool:
+    """Check if tmux is installed."""
+    return shutil.which("tmux") is not None
+
+
+def _tmux_session_name(project_name: str) -> str:
+    """Generate a deterministic tmux session name for host-side reattach."""
+    return f"kanibako-{project_name}"
+
+
+def _tmux_has_session(session_name: str) -> bool:
+    """Check if a tmux session exists on the host."""
+    return subprocess.run(
+        ["tmux", "has-session", "-t", session_name],
+        capture_output=True,
+    ).returncode == 0
 
 
 def _run_container(
@@ -329,7 +357,7 @@ def _run_container(
         if runtime.container_exists(container_name):
             print(
                 "Error: A container already exists for this project.\n"
-                "If a persistent session is running, use 'kanibako connect' to\n"
+                "If a persistent session is running, use 'kanibako start' to\n"
                 "reattach, or 'kanibako stop' to end it.",
                 file=sys.stderr,
             )

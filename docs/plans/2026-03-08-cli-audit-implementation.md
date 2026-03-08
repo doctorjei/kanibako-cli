@@ -360,7 +360,7 @@ kanibako box start [project] [-N/--new] [-C/--continue] [-R/--resume]
 
 ## Phase 7: Merge `connect` + Session Persistence
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Merge `connect` command behavior into `box start` with tmux-based
 session persistence as default. Remove `connect` command.
