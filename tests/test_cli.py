@@ -247,14 +247,15 @@ class TestParser:
         parser = build_parser()
         args = parser.parse_args(["stop"])
         assert args.command == "stop"
-        assert args.path is None
+        assert args.project is None
         assert args.all_containers is False
+        assert args.force is False
 
     def test_stop_with_path(self):
         parser = build_parser()
         args = parser.parse_args(["stop", "/tmp/myproject"])
         assert args.command == "stop"
-        assert args.path == "/tmp/myproject"
+        assert args.project == "/tmp/myproject"
 
     def test_stop_all(self):
         parser = build_parser()

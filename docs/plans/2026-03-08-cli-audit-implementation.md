@@ -404,7 +404,7 @@ Reattach works via `start`. All tests pass.
 
 ## Phase 8: `box stop` + `box shell` + `box ps`
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Restructure stop/shell under box, add new `box ps` command.
 

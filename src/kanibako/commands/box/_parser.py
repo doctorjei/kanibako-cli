@@ -253,18 +253,38 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     config_p.set_defaults(func=run_config)
 
+    # kanibako box ps [--all] [-q/--quiet]
+    ps_p = box_sub.add_parser(
+        "ps",
+        help="List running kanibako containers",
+        description="List running kanibako containers with their project name, image, and status.",
+    )
+    ps_p.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
+        help="Include stopped containers",
+    )
+    ps_p.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output container names only, one per line",
+    )
+    ps_p.set_defaults(func=run_ps)
+
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
     from kanibako.commands.clean import add_parser as add_purge_parser
     from kanibako.commands.restore import add_parser as add_restore_parser
     from kanibako.commands.start import add_start_parser as _add_start_parser
+    from kanibako.commands.start import add_shell_parser as _add_shell_parser
+    from kanibako.commands.stop import add_parser as _add_stop_parser
 
     add_archive_parser(box_sub)
     add_purge_parser(box_sub)
     add_restore_parser(box_sub)
 
-    # Register start as a box subcommand (delegates to start.py).
+    # Register start, shell, stop as box subcommands (delegates to start.py/stop.py).
     _add_start_parser(box_sub)
+    _add_shell_parser(box_sub)
+    _add_stop_parser(box_sub)
 
     # Default to list if no subcommand given.
     p.set_defaults(func=run_list)
@@ -315,6 +335,54 @@ def run_create(args: argparse.Namespace) -> int:
 
     mode = "standalone" if args.standalone else "local"
     print(f"Created {mode} project in {proj.project_path}")
+    return 0
+
+
+def run_ps(args: argparse.Namespace) -> int:
+    """List running (or all) kanibako containers with project cross-reference."""
+    show_all = getattr(args, "show_all", False)
+    quiet = getattr(args, "quiet", False)
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if show_all:
+        containers = runtime.list_all()
+    else:
+        containers = runtime.list_running()
+
+    if not containers:
+        if not quiet:
+            label = "kanibako containers" if show_all else "running kanibako containers"
+            print(f"No {label} found.")
+        return 0
+
+    # Build reverse lookup: container name → project name from names.toml.
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    try:
+        std = load_std_paths(config)
+        names_data = read_names(std.data_path)
+        # Container names are "kanibako-{project_name}" for local projects.
+        name_to_project: dict[str, str] = {}
+        for proj_name in names_data["projects"]:
+            name_to_project[f"kanibako-{proj_name}"] = proj_name
+    except Exception:
+        name_to_project = {}
+
+    if quiet:
+        for cname, _image, _status in containers:
+            proj_name = name_to_project.get(cname, cname)
+            print(proj_name)
+    else:
+        print(f"{'PROJECT':<20} {'STATUS':<22} {'IMAGE'}")
+        for cname, image, status in containers:
+            proj_name = name_to_project.get(cname, cname)
+            print(f"{proj_name:<20} {status:<22} {image}")
+
     return 0
 
 

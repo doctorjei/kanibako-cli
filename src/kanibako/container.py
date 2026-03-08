@@ -325,6 +325,27 @@ class ContainerRuntime:
                 containers.append((parts[0], parts[1], parts[2]))
         return containers
 
+    def list_all(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
+        """Return all containers (running + stopped) matching *prefix*.
+
+        Returns (name, image, status) tuples.
+        """
+        result = subprocess.run(
+            [
+                self.cmd, "ps", "-a",
+                "--filter", f"name={prefix}",
+                "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        containers: list[tuple[str, str, str]] = []
+        for line in result.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) == 3:
+                containers.append((parts[0], parts[1], parts[2]))
+        return containers
+
     # ------------------------------------------------------------------
     # Digest
     # ------------------------------------------------------------------

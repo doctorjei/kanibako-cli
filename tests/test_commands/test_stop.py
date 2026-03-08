@@ -112,12 +112,12 @@ class TestStopOne:
 
 
 class TestStopAll:
-    def test_stops_multiple_containers(self, mock_runtime, capsys):
+    def test_stops_multiple_containers_with_force(self, mock_runtime, capsys):
         mock_runtime.list_running.return_value = [
             ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
             ("kanibako-11223344", "img:latest", "Up 10 minutes"),
         ]
-        rc = _stop_all(mock_runtime)
+        rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
         assert mock_runtime.stop.call_count == 2
         out = capsys.readouterr().out
@@ -125,7 +125,7 @@ class TestStopAll:
 
     def test_nothing_running(self, mock_runtime, capsys):
         mock_runtime.list_running.return_value = []
-        rc = _stop_all(mock_runtime)
+        rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
         out = capsys.readouterr().out
         assert "No running kanibako containers" in out
@@ -137,21 +137,56 @@ class TestStopAll:
             ("kanibako-11223344", "img:latest", "Up 10 minutes"),
         ]
         mock_runtime.stop.side_effect = [True, False]
-        rc = _stop_all(mock_runtime)
+        rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Stopped 1 container(s)" in out
         capsys.readouterr()  # drain stderr
 
+    def test_confirmation_prompt_accepted(self, mock_runtime, capsys, monkeypatch):
+        """--all without --force shows confirmation and proceeds on 'y'."""
+        mock_runtime.list_running.return_value = [
+            ("kanibako-proj1", "img:latest", "Up 5 minutes"),
+        ]
+        monkeypatch.setattr("builtins.input", lambda _: "y")
+        rc = _stop_all(mock_runtime, force=False)
+        assert rc == 0
+        mock_runtime.stop.assert_called_once()
+        out = capsys.readouterr().out
+        assert "This will stop 1 running container(s)" in out
+
+    def test_confirmation_prompt_rejected(self, mock_runtime, capsys, monkeypatch):
+        """--all without --force aborts on 'n'."""
+        mock_runtime.list_running.return_value = [
+            ("kanibako-proj1", "img:latest", "Up 5 minutes"),
+        ]
+        monkeypatch.setattr("builtins.input", lambda _: "n")
+        rc = _stop_all(mock_runtime, force=False)
+        assert rc == 2
+        mock_runtime.stop.assert_not_called()
+        out = capsys.readouterr().out
+        assert "Aborted" in out
+
+    def test_confirmation_prompt_eof(self, mock_runtime, capsys, monkeypatch):
+        """EOFError during confirmation aborts."""
+        mock_runtime.list_running.return_value = [
+            ("kanibako-proj1", "img:latest", "Up 5 minutes"),
+        ]
+        def raise_eof(_):
+            raise EOFError
+        monkeypatch.setattr("builtins.input", raise_eof)
+        rc = _stop_all(mock_runtime, force=False)
+        assert rc == 2
+
 
 class TestRunDispatch:
-    def test_dispatches_to_stop_all(self, capsys):
+    def test_dispatches_to_stop_all_with_force(self, capsys):
         with patch("kanibako.commands.stop.ContainerRuntime") as m_cls:
             rt = MagicMock()
             rt.list_running.return_value = []
             m_cls.return_value = rt
             import argparse
-            args = argparse.Namespace(all_containers=True, path=None)
+            args = argparse.Namespace(all_containers=True, project=None, force=True)
             rc = run(args)
             assert rc == 0
             rt.list_running.assert_called_once()
@@ -164,16 +199,29 @@ class TestRunDispatch:
             rt = MagicMock()
             m_cls.return_value = rt
             import argparse
-            args = argparse.Namespace(all_containers=False, path=None)
+            args = argparse.Namespace(all_containers=False, project=None, force=False)
             rc = run(args)
             assert rc == 0
             m_stop_one.assert_called_once_with(rt, project_dir=None)
+
+    def test_dispatches_to_stop_one_with_project(self):
+        with (
+            patch("kanibako.commands.stop.ContainerRuntime") as m_cls,
+            patch("kanibako.commands.stop._stop_one", return_value=0) as m_stop_one,
+        ):
+            rt = MagicMock()
+            m_cls.return_value = rt
+            import argparse
+            args = argparse.Namespace(all_containers=False, project="myproj", force=False)
+            rc = run(args)
+            assert rc == 0
+            m_stop_one.assert_called_once_with(rt, project_dir="myproj")
 
     def test_runtime_not_found(self, capsys):
         from kanibako.errors import ContainerError
         with patch("kanibako.commands.stop.ContainerRuntime", side_effect=ContainerError("No runtime")):
             import argparse
-            args = argparse.Namespace(all_containers=False, path=None)
+            args = argparse.Namespace(all_containers=False, project=None, force=False)
             rc = run(args)
             assert rc == 1
             err = capsys.readouterr().err

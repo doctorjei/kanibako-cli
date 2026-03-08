@@ -105,8 +105,32 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Open a bash shell in the container (no agent).",
     )
     p.add_argument(
+        "-e", "--env", action="append", default=None, metavar="KEY=VALUE",
+        help="Set per-run environment variable (repeatable)",
+    )
+    p.add_argument(
+        "--image", default=None,
+        help="Use IMAGE as the container image for this run",
+    )
+    p.add_argument(
         "--entrypoint", default=None,
         help="Use CMD as the container entrypoint",
+    )
+
+    # Session persistence mode
+    persist_group = p.add_mutually_exclusive_group()
+    persist_group.add_argument(
+        "--persistent", action="store_true",
+        help="Run in a persistent tmux session (reattach on subsequent start)",
+    )
+    persist_group.add_argument(
+        "--ephemeral", action="store_true",
+        help="Run in foreground without tmux (single-use session)",
+    )
+
+    p.add_argument(
+        "--no-helpers", action="store_true",
+        help="Disable helper spawning (no hub socket mounted)",
     )
     p.add_argument(
         "shell_args", nargs=argparse.REMAINDER,
@@ -184,14 +208,31 @@ def run_shell(args: argparse.Namespace) -> int:
     # Wrap shell_args as -c "cmd" so /bin/sh executes them as a command
     if shell_args and not getattr(args, "entrypoint", None):
         shell_args = ["-c", " ".join(shell_args)]
+
+    image_override = getattr(args, "image", None)
+    no_helpers = getattr(args, "no_helpers", False)
+    env_vars = getattr(args, "env", None) or []
+
+    explicit_persistent = getattr(args, "persistent", False)
+    explicit_ephemeral = getattr(args, "ephemeral", False)
+    if explicit_persistent:
+        persistent = True
+    elif explicit_ephemeral:
+        persistent = False
+    else:
+        persistent = False  # shell defaults to ephemeral
+
     return _run_container(
         project_dir=project_dir,
         entrypoint=entrypoint,
-        image_override=None,
+        image_override=image_override,
         new_session=False,
         safe_mode=False,
         resume_mode=False,
         extra_args=shell_args,
+        no_helpers=no_helpers,
+        persistent=persistent,
+        cli_env=env_vars,
     )
 
 
