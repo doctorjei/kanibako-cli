@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -11,21 +10,13 @@ from kanibako.errors import KanibakoError, UserCancelled
 from kanibako.paths import ProjectMode
 
 
-def _fake_xdg(*args, **kwargs):
-    """Return a mock Path whose / chain ends with .exists() → True."""
-    p = MagicMock(spec=Path)
-    p.__truediv__ = lambda self, other: p
-    p.exists.return_value = True
-    return p
-
-
 class TestMainExitCodes:
     def test_user_cancelled_exits_2(self):
         from kanibako.cli import main
 
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
-            patch("kanibako.paths.xdg", side_effect=_fake_xdg),
+            patch("kanibako.cli._ensure_initialized"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -40,7 +31,7 @@ class TestMainExitCodes:
 
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
-            patch("kanibako.paths.xdg", side_effect=_fake_xdg),
+            patch("kanibako.cli._ensure_initialized"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -55,7 +46,7 @@ class TestMainExitCodes:
 
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
-            patch("kanibako.paths.xdg", side_effect=_fake_xdg),
+            patch("kanibako.cli._ensure_initialized"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -70,7 +61,7 @@ class TestMainExitCodes:
 
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
-            patch("kanibako.paths.xdg", side_effect=_fake_xdg),
+            patch("kanibako.cli._ensure_initialized"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -85,7 +76,7 @@ class TestMainExitCodes:
 
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
-            patch("kanibako.paths.xdg", side_effect=_fake_xdg),
+            patch("kanibako.cli._ensure_initialized"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -101,7 +92,7 @@ class TestMainExitCodes:
 
         with (
             patch("kanibako.cli.build_parser") as mock_bp,
-            patch("kanibako.paths.xdg", side_effect=_fake_xdg),
+            patch("kanibako.cli._ensure_initialized"),
             pytest.raises(SystemExit) as exc_info,
         ):
             parser = MagicMock()
@@ -117,30 +108,61 @@ class TestMainExitCodes:
         parser.parse_args.assert_called_once_with(["start"])
 
 
-class TestConfigPreCheck:
-    def test_missing_config_exits_1(self, tmp_path, monkeypatch):
-        """Running a non-setup command without config file exits 1."""
-        from kanibako.cli import main
+class TestLazyInit:
+    def test_missing_config_triggers_lazy_init(self, tmp_path, monkeypatch):
+        """Running a command without config file creates it via lazy init."""
+        from kanibako.cli import _ensure_initialized
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "no_config"))
-        with pytest.raises(SystemExit) as exc_info:
-            main(["start"])
-        assert exc_info.value.code == 1
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        (tmp_path / "home").mkdir(parents=True, exist_ok=True)
 
-    def test_setup_exempt_from_config_check(self):
-        """'setup' command does not fail on missing config."""
+        _ensure_initialized()
+
+        config_file = tmp_path / "config" / "kanibako.toml"
+        assert config_file.exists()
+        # Data directories should also be created
+        assert (tmp_path / "data" / "kanibako" / "containers").is_dir()
+        assert (tmp_path / "data" / "kanibako" / "agents").is_dir()
+
+    def test_lazy_init_idempotent(self, tmp_path, monkeypatch):
+        """Running lazy init twice does not error or overwrite config."""
+        from kanibako.cli import _ensure_initialized
+        from kanibako.config import KanibakoConfig, load_config, write_global_config
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+
+        # Write custom config first
+        config_file = tmp_path / "config" / "kanibako.toml"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        write_global_config(config_file, KanibakoConfig(container_image="custom:v1"))
+
+        _ensure_initialized()
+
+        # Custom config should be preserved
+        loaded = load_config(config_file)
+        assert loaded.container_image == "custom:v1"
+
+    def test_agent_exempt_from_lazy_init(self):
+        """'agent' command does not trigger lazy init."""
         from kanibako.cli import main
 
         with (
             patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._ensure_initialized") as mock_init,
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
-            args.command = "setup"
+            args.command = "agent"
             args.func.return_value = 0
             mock_bp.return_value.parse_args.return_value = args
-            main(["setup"])
+            main(["agent"])
         assert exc_info.value.code == 0
+        mock_init.assert_not_called()
 
 
 class TestStandaloneLaunch:

@@ -1,4 +1,10 @@
-"""kanibako setup: first-time environment setup."""
+"""kanibako install utilities: setup logic and shell completion.
+
+The ``setup`` CLI command has been replaced by lazy initialization
+(``_ensure_initialized`` in ``cli.py``).  This module is kept for
+``_install_completion()`` and the ``run()`` helper used by lazy init
+and tests.
+"""
 
 from __future__ import annotations
 
@@ -15,16 +21,6 @@ from kanibako.config import (
 from kanibako.container import ContainerRuntime
 from kanibako.containerfiles import get_containerfile
 from kanibako.paths import xdg
-
-
-def add_parser(subparsers: argparse._SubParsersAction) -> None:
-    p = subparsers.add_parser(
-        "setup",
-        help="First-time setup (config, containers)",
-        description="Set up kanibako: write config, "
-        "install Containerfiles, and pull image.",
-    )
-    p.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> int:

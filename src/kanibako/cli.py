@@ -50,12 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from kanibako.commands.image import add_parser as add_image_parser
     from kanibako.commands.box import add_parser as add_box_parser
-    from kanibako.commands.install import add_parser as add_setup_parser
-    from kanibako.commands.remove import add_parser as add_remove_parser
     from kanibako.commands.stop import add_parser as add_stop_parser
-    from kanibako.commands.upgrade import add_parser as add_upgrade_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.agent_cmd import add_parser as add_agent_parser
+    from kanibako.commands.system_cmd import add_parser as add_system_parser
 
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
@@ -64,17 +62,88 @@ def build_parser() -> argparse.ArgumentParser:
     add_box_parser(subparsers)
     add_workset_parser(subparsers)
     add_agent_parser(subparsers)
-    add_setup_parser(subparsers)
-    add_remove_parser(subparsers)
-    add_upgrade_parser(subparsers)
+    add_system_parser(subparsers)
 
     return parser
 
 
 _SUBCOMMANDS = {
     "start", "shell", "stop", "image",
-    "box", "workset", "agent", "setup", "remove", "upgrade",
+    "box", "workset", "agent", "system",
 }
+
+
+def _ensure_initialized() -> None:
+    """Ensure kanibako is initialized (create config + data dirs on first run)."""
+    from kanibako.config import (
+        KanibakoConfig,
+        config_file_path,
+        write_global_config,
+    )
+    from kanibako.paths import xdg
+
+    config_home = xdg("XDG_CONFIG_HOME", ".config")
+    cf = config_file_path(config_home)
+
+    if cf.exists():
+        return  # Already initialized
+
+    # First run: create config and data dirs
+    config = KanibakoConfig()
+    write_global_config(cf, config)
+
+    # Create data directories
+    data_home = xdg("XDG_DATA_HOME", ".local/share")
+    data_path = data_home / (config.paths_data_path or "kanibako")
+    (data_path / "containers").mkdir(parents=True, exist_ok=True)
+    (data_path / "boxes").mkdir(parents=True, exist_ok=True)
+
+    templates_dir = data_path / (config.paths_templates or "templates")
+    (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
+    (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
+
+    comms_dir = data_path / (config.paths_comms or "comms")
+    (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
+    (comms_dir / "broadcast.log").touch(exist_ok=True)
+
+    # Create agents directory and generate default agent TOMLs.
+    from kanibako.agents import AgentConfig, write_agent_config
+    from kanibako.targets import discover_targets
+
+    agents_path = data_path / (config.paths_agents or "agents")
+    agents_path.mkdir(parents=True, exist_ok=True)
+
+    general_toml = agents_path / "general.toml"
+    if not general_toml.exists():
+        write_agent_config(general_toml, AgentConfig(name="Shell"))
+
+    for target_name, cls in discover_targets().items():
+        target_toml = agents_path / f"{target_name}.toml"
+        if not target_toml.exists():
+            agent_cfg = cls().generate_agent_config()
+            write_agent_config(target_toml, agent_cfg)
+        else:
+            agent_cfg = AgentConfig()
+        (templates_dir / target_name / agent_cfg.shell).mkdir(
+            parents=True, exist_ok=True,
+        )
+
+    # Seed default global environment variables (don't overwrite existing).
+    from kanibako.shellenv import read_env_file, write_env_file
+
+    global_env_path = data_path / "env"
+    global_env = read_env_file(global_env_path)
+    for key, value in {"COLORTERM": "truecolor"}.items():
+        global_env.setdefault(key, value)
+    write_env_file(global_env_path, global_env)
+
+    # Try shell completion
+    try:
+        from kanibako.commands.install import _install_completion
+
+        _install_completion()
+    except Exception:
+        pass
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -109,17 +178,10 @@ def main(argv: list[str] | None = None) -> None:
             effective = ["start"] + effective
         args = parser.parse_args(effective)
 
-        if args.command not in ("setup", "agent"):
-            from kanibako.paths import xdg
-            from kanibako.config import config_file_path
-            _cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-            if not _cf.exists():
-                print(
-                    f"kanibako is not set up yet ({_cf} not found).\n"
-                    f"Run 'kanibako setup' first.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+        # Lazy init: create config + data dirs on first run.
+        # Skip for agent (helper/fork run inside containers).
+        if args.command not in ("agent",):
+            _ensure_initialized()
 
     func = getattr(args, "func", None)
     if func is None:

@@ -262,15 +262,68 @@ class TestParser:
         args = parser.parse_args(["image", "rebuild", "--all"])
         assert args.all_images is True
 
-    def test_setup_command(self):
+    def test_system_command(self):
         parser = build_parser()
-        args = parser.parse_args(["setup"])
-        assert args.command == "setup"
+        args = parser.parse_args(["system"])
+        assert args.command == "system"
 
-    def test_remove_command(self):
+    def test_system_info(self):
         parser = build_parser()
-        args = parser.parse_args(["remove"])
-        assert args.command == "remove"
+        args = parser.parse_args(["system", "info"])
+        assert args.command == "system"
+        assert args.system_command == "info"
+
+    def test_system_info_alias_inspect(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "inspect"])
+        assert args.command == "system"
+        assert hasattr(args, "func")
+
+    def test_system_config(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config"])
+        assert args.command == "system"
+        assert args.system_command == "config"
+
+    def test_system_config_set(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "image=custom:v1"])
+        assert args.key_value == "image=custom:v1"
+
+    def test_system_config_get(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "image"])
+        assert args.key_value == "image"
+
+    def test_system_config_reset(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "--reset", "image"])
+        assert args.reset is True
+        assert args.key_value == "image"
+
+    def test_system_config_reset_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "--reset", "--all"])
+        assert args.reset is True
+        assert args.all_keys is True
+
+    def test_system_config_effective(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "config", "--effective"])
+        assert args.effective is True
+
+    def test_system_upgrade(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "upgrade"])
+        assert args.command == "system"
+        assert args.system_command == "upgrade"
+        assert args.check is False
+
+    def test_system_upgrade_check(self):
+        parser = build_parser()
+        args = parser.parse_args(["system", "upgrade", "--check"])
+        assert args.command == "system"
+        assert args.check is True
 
     def test_agent_command(self):
         parser = build_parser()
@@ -371,18 +424,6 @@ class TestParser:
         assert args.command == "agent"
         assert args.agent_command == "fork"
         assert args.name == "feature1"
-
-    def test_upgrade_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["upgrade"])
-        assert args.command == "upgrade"
-        assert args.check is False
-
-    def test_upgrade_check(self):
-        parser = build_parser()
-        args = parser.parse_args(["upgrade", "--check"])
-        assert args.command == "upgrade"
-        assert args.check is True
 
     def test_stop_command(self):
         parser = build_parser()
@@ -549,11 +590,11 @@ class TestParser:
         assert args.project_name == "proj"
 
 
-class TestConfigCheckExemptions:
-    """Commands that skip the kanibako.toml existence check."""
+class TestLazyInitExemptions:
+    """Commands that skip lazy initialization."""
 
-    def test_agent_helper_skips_config_check(self, tmp_path, monkeypatch):
-        """'agent helper' command should not require kanibako.toml."""
+    def test_agent_helper_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'agent helper' command should not trigger lazy init."""
         # Point XDG_CONFIG_HOME to an empty dir (no kanibako.toml)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
@@ -567,22 +608,29 @@ class TestConfigCheckExemptions:
             main(["agent", "helper", "list"])
         assert exc_info.value.code == 0
 
-    def test_agent_fork_skips_config_check(self, tmp_path, monkeypatch):
-        """'agent fork' command should not require kanibako.toml."""
+    def test_agent_fork_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'agent fork' command should not trigger lazy init."""
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        # fork will fail with "no socket" but should NOT fail with config check
+        # fork will fail with "no socket" but should NOT fail with lazy init
         from kanibako.cli import main
         with pytest.raises(SystemExit) as exc_info:
             main(["agent", "fork", "test"])
-        # Should exit with 1 (no socket), not the config-check error
+        # Should exit with 1 (no socket), not a lazy init error
         assert exc_info.value.code == 1
 
-    def test_setup_skips_config_check(self):
-        """'setup' command should not require kanibako.toml (pre-existing)."""
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["setup"])
-        assert args.command == "setup"
+    def test_system_triggers_lazy_init(self, tmp_path, monkeypatch):
+        """'system' command triggers lazy init (creates config)."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["system", "info"])
+        assert exc_info.value.code == 0
+        # Config should have been created by lazy init
+        assert (tmp_path / "config" / "kanibako.toml").exists()
 
 
 class TestVerboseFlag:

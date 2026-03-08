@@ -13,7 +13,7 @@ from pathlib import Path
 from kanibako.agents import agent_toml_path, load_agent_config, write_agent_config
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
-from kanibako.errors import ConfigError, ContainerError
+from kanibako.errors import ContainerError
 from kanibako.log import get_logger
 from kanibako.paths import (
     ProjectMode,
@@ -271,23 +271,7 @@ def _run_container(
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
 
-    try:
-        std = load_std_paths(config)
-    except ConfigError:
-        print("kanibako hasn't been set up yet. Run setup now? [y/N] ", end="", flush=True)
-        try:
-            answer = input().strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            answer = ""
-        if answer in ("y", "yes"):
-            import argparse as _argparse
-            from kanibako.commands.install import run as setup_run
-            setup_run(_argparse.Namespace())
-            # Retry after setup
-            std = load_std_paths(config)
-        else:
-            print("Run 'kanibako setup' when you're ready.")
-            return 1
+    std = load_std_paths(config)
 
     proj = resolve_any_project(std, config, project_dir, initialize=True)
 
