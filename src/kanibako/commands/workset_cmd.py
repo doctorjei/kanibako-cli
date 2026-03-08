@@ -225,7 +225,7 @@ def run_create(args: argparse.Namespace) -> int:
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)
     if image or standalone or no_vault:
-        import tomli_w
+        from kanibako.config_interface import _serialize_toml
         config_data: dict = {}
         if image:
             config_data["container_image"] = image
@@ -234,8 +234,7 @@ def run_create(args: argparse.Namespace) -> int:
         if no_vault:
             config_data["vault_enabled"] = False
         ws_config = _workset_config_path(ws)
-        with open(ws_config, "wb") as f:
-            tomli_w.dump(config_data, f)
+        ws_config.write_text(_serialize_toml(config_data))
 
     print(f"Created working set '{ws.name}' at {ws.root}")
     return 0

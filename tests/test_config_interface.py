@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import tomllib
 
-import tomli_w
-
 from kanibako.config_interface import (
     ConfigAction,
     ConfigLevel,
+    _serialize_toml,
     is_known_key,
     get_config_value,
     parse_config_arg,
@@ -220,8 +219,7 @@ class TestResourceKeys:
 
     def test_get_resource(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        with open(project_toml, "wb") as f:
-            tomli_w.dump({"resource_overrides": {"plugins": "/a/b"}}, f)
+        project_toml.write_text(_serialize_toml({"resource_overrides": {"plugins": "/a/b"}}))
 
         val = get_config_value(
             "resource.plugins",
@@ -232,8 +230,7 @@ class TestResourceKeys:
 
     def test_reset_resource(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        with open(project_toml, "wb") as f:
-            tomli_w.dump({"resource_overrides": {"plugins": "/a/b"}}, f)
+        project_toml.write_text(_serialize_toml({"resource_overrides": {"plugins": "/a/b"}}))
 
         msg = reset_config_value("resource.plugins", config_path=project_toml)
         assert "Reset" in msg
@@ -287,8 +284,7 @@ class TestTargetSettings:
 
     def test_get_model(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        with open(project_toml, "wb") as f:
-            tomli_w.dump({"target_settings": {"model": "opus"}}, f)
+        project_toml.write_text(_serialize_toml({"target_settings": {"model": "opus"}}))
 
         val = get_config_value(
             "model",
@@ -299,8 +295,7 @@ class TestTargetSettings:
 
     def test_reset_model(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        with open(project_toml, "wb") as f:
-            tomli_w.dump({"target_settings": {"model": "opus"}}, f)
+        project_toml.write_text(_serialize_toml({"target_settings": {"model": "opus"}}))
 
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg

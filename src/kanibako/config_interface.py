@@ -445,10 +445,42 @@ def show_config(
 # TOML section helpers
 # ---------------------------------------------------------------------------
 
+def _serialize_toml(data: dict) -> str:
+    """Minimal TOML serializer for flat section→key→value dicts."""
+    lines: list[str] = []
+    # Top-level keys first (non-dict values).
+    for k, v in data.items():
+        if not isinstance(v, dict):
+            lines.append(f'{k} = {_toml_value(v)}')
+    if lines:
+        lines.append("")
+    # Sections.
+    for k, v in data.items():
+        if isinstance(v, dict):
+            lines.append(f"[{k}]")
+            for sk, sv in v.items():
+                lines.append(f'{sk} = {_toml_value(sv)}')
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _toml_value(v: object) -> str:
+    """Format a Python value as a TOML literal."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, str):
+        return f'"{v}"'
+    if isinstance(v, list):
+        items = ", ".join(_toml_value(i) for i in v)
+        return f"[{items}]"
+    return f'"{v}"'
+
+
 def _write_toml_key(path: Path, section: str, key: str, value: str) -> None:
     """Write a key to a specific TOML section, preserving other content."""
     import tomllib
-    import tomli_w
 
     path.parent.mkdir(parents=True, exist_ok=True)
     data: dict = {}
@@ -457,14 +489,12 @@ def _write_toml_key(path: Path, section: str, key: str, value: str) -> None:
             data = tomllib.load(f)
 
     data.setdefault(section, {})[key] = value
-    with open(path, "wb") as f:
-        tomli_w.dump(data, f)
+    path.write_text(_serialize_toml(data))
 
 
 def _remove_toml_key(path: Path, section: str, key: str) -> bool:
     """Remove a key from a specific TOML section.  Returns True if found."""
     import tomllib
-    import tomli_w
 
     if not path.exists():
         return False
@@ -479,6 +509,5 @@ def _remove_toml_key(path: Path, section: str, key: str) -> bool:
     del sec[key]
     if not sec:
         del data[section]
-    with open(path, "wb") as f:
-        tomli_w.dump(data, f)
+    path.write_text(_serialize_toml(data))
     return True
