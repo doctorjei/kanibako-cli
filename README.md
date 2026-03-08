@@ -275,12 +275,38 @@ directory scaffolding).  The AI agent binary is mounted from the host.
 |-------|-------------|------|
 | `kanibako-min` | droste-seed | Minimal agent container |
 | `kanibako-oci` | droste-fiber | Agent container + nested OCI host |
-| `kanibako-lxc` | droste-thread | LXC system container host (via kento) |
-| `kanibako-vm` | droste-hair | VM host (via kento + tenkei) |
+| `kanibako-lxc` | droste-thread | LXC system container host (via [kento](https://github.com/doctorjei/kento)) |
+| `kanibako-vm` | droste-hair | VM host (via [kento](https://github.com/doctorjei/kento) + [tenkei](https://github.com/doctorjei/tenkei)) |
 
 `kanibako-oci` is the default.  It includes podman and rootless container
 infrastructure, so it can both run agents directly and host nested kanibako
 containers.
+
+### Ecosystem: droste, kento, kanibako
+
+These three tools form a complementary stack:
+
+- **[droste](https://github.com/doctorjei/droste)** builds layered OCI images
+  in four tiers (seed → fiber → thread → hair), from minimal process containers
+  up to full VM-bootable images.
+- **[kento](https://github.com/doctorjei/kento)** converts OCI images into LXC
+  system containers or QEMU VMs by mounting overlayfs directly from Podman's
+  layer store — no image conversion or export needed.  On Proxmox hosts, kento
+  auto-detects PVE and creates containers visible in the web UI.
+- **kanibako** runs AI agents inside OCI containers with per-project isolation.
+
+A typical deployment uses all three: droste builds the base images, kento stands
+up `kanibako-lxc` (or `kanibako-vm`) as the always-on host, and kanibako runs
+`kanibako-oci` agent containers nested inside it.
+
+```
+Any Linux host (kento installed)
+  └── kanibako-lxc (LXC via kento) or kanibako-vm (QEMU VM via kento)
+        └── rootless Podman
+              ├── kanibako-oci (agent 1)
+              ├── kanibako-oci (agent 2)
+              └── kanibako-oci (agent 3)
+```
 
 Images are pulled automatically from GHCR on first use.  If the pull fails,
 kanibako falls back to a local build from the bundled Containerfiles.
@@ -312,12 +338,36 @@ Templates are standard OCI images — push them to any registry for sharing:
 podman push kanibako-template-jvm ghcr.io/myorg/kanibako-template-jvm
 ```
 
-## Host Container
+## Host Deployment
 
-`kanibako-oci` serves double duty as a host container — it includes rootless
+For always-on deployments, use [kento](https://github.com/doctorjei/kento) to
+stand up `kanibako-lxc` or `kanibako-vm` as the host.  Kento reads OCI images
+directly from Podman's layer store — no export or conversion step.
+
+### LXC host (Proxmox or standalone)
+
+```bash
+# Pull the image
+podman pull ghcr.io/doctorjei/kanibako-lxc:latest
+
+# Create and start the LXC (auto-detects Proxmox)
+sudo kento container create kanibako-lxc --name kanibako-host
+sudo kento container start kanibako-host
+```
+
+### VM host (QEMU)
+
+```bash
+podman pull ghcr.io/doctorjei/kanibako-vm:latest
+sudo kento container create kanibako-vm --name kanibako-host --vm
+sudo kento container start kanibako-host
+```
+
+### OCI nested host (alternative)
+
+`kanibako-oci` also serves as a host container — it includes rootless
 podman, so you can run kanibako itself inside it and spawn nested agent
-containers.  For system container or VM deployments, use `kanibako-lxc` or
-`kanibako-vm` with [kento](https://github.com/doctorjei/kento).
+containers.  This is useful when kento is not available.
 
 ### Pull and run (OCI nested host)
 
