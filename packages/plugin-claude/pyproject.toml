@@ -10,7 +10,8 @@ requires-python = ">=3.11"
 dependencies = ["kanibako-base"]
 
 [project.entry-points."kanibako.targets"]
-claude = "kanibako_plugin_claude:ClaudeTarget"
+claude = "kanibako.plugins.claude:ClaudeTarget"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["kanibako.plugins.claude*"]

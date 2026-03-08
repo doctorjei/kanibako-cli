@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
+import pkgutil
 from importlib.metadata import entry_points
 
 from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
@@ -13,14 +16,67 @@ __all__ = [
     "discover_targets", "get_target", "resolve_target",
 ]
 
+logger = logging.getLogger(__name__)
+
+
+def _scan_plugin_modules(targets: dict[str, type[Target]]) -> None:
+    """Scan ``kanibako.plugins.*`` for Target subclasses (bind-mount fallback).
+
+    Entry points rely on dist-info metadata which doesn't travel via
+    bind-mount.  This fallback imports all sub-packages of
+    ``kanibako.plugins`` and collects any ``Target`` subclasses found,
+    keyed by their ``name`` property.
+
+    Already-discovered targets (from entry points) are not overwritten.
+    """
+    try:
+        import kanibako.plugins as plugins_pkg
+    except ImportError:
+        return
+
+    for finder, module_name, ispkg in pkgutil.walk_packages(
+        plugins_pkg.__path__, prefix="kanibako.plugins."
+    ):
+        if module_name in ("kanibako.plugins",):
+            continue
+        try:
+            mod = importlib.import_module(module_name)
+        except Exception:
+            logger.debug("Failed to import plugin module %s", module_name, exc_info=True)
+            continue
+
+        for attr_name in dir(mod):
+            attr = getattr(mod, attr_name, None)
+            if (
+                isinstance(attr, type)
+                and issubclass(attr, Target)
+                and attr is not Target
+                and attr is not NoAgentTarget
+            ):
+                try:
+                    instance = attr()
+                    name = instance.name
+                except Exception:
+                    continue
+                if name not in targets:
+                    targets[name] = attr
+
 
 def discover_targets() -> dict[str, type[Target]]:
-    """Scan the ``kanibako.targets`` entry point group and return a mapping of name → class."""
+    """Scan entry points and plugin modules for targets.
+
+    Primary: ``kanibako.targets`` entry point group (pip-installed plugins).
+    Fallback: ``kanibako.plugins.*`` module scan (bind-mounted plugins).
+    """
     targets: dict[str, type[Target]] = {}
     eps = entry_points(group="kanibako.targets")
     for ep in eps:
         cls = ep.load()
         targets[ep.name] = cls
+
+    # Fallback: scan kanibako.plugins.* for bind-mounted plugins
+    _scan_plugin_modules(targets)
+
     return targets
 
 

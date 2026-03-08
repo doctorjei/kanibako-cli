@@ -1,4 +1,4 @@
-"""Tests for Claude credential functions (kanibako_plugin_claude.credentials)."""
+"""Tests for Claude credential functions (kanibako.plugins.claude.credentials)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 import os
 import time
 
-from kanibako_plugin_claude import ClaudeTarget
-from kanibako_plugin_claude.credentials import (
+from kanibako.plugins.claude import ClaudeTarget
+from kanibako.plugins.claude.credentials import (
     filter_settings,
     refresh_host_to_project,
     writeback_project_to_host,

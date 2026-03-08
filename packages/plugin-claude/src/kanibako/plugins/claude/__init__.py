@@ -1,6 +1,6 @@
 """kanibako-plugin-claude: Claude Code target plugin for kanibako."""
 
-from kanibako_plugin_claude.target import ClaudeTarget
+from kanibako.plugins.claude.target import ClaudeTarget
 
 __version__ = "0.10.0"
 

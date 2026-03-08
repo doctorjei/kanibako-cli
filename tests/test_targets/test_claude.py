@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 
 from kanibako.targets.base import AgentInstall, ResourceMapping, ResourceScope, TargetSetting
-from kanibako_plugin_claude import ClaudeTarget
+from kanibako.plugins.claude import ClaudeTarget
 
 
 class TestClaudeTargetProperties:
@@ -302,8 +302,8 @@ class TestCheckAuth:
             returncode=0,
             stdout=json.dumps({"loggedIn": True}),
         )
-        with patch("kanibako_plugin_claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako_plugin_claude.target.subprocess.run", return_value=status_result):
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
                 assert t.check_auth() is True
 
     def test_not_logged_in_triggers_login(self):
@@ -318,8 +318,8 @@ class TestCheckAuth:
             returncode=0,
             stdout=json.dumps({"loggedIn": True}),
         )
-        with patch("kanibako_plugin_claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako_plugin_claude.target.subprocess.run",
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
                        side_effect=[status_not_logged, login_result, status_after_login]):
                 assert t.check_auth() is True
 
@@ -331,23 +331,23 @@ class TestCheckAuth:
             stdout=json.dumps({"loggedIn": False}),
         )
         login_result = MagicMock(returncode=1)
-        with patch("kanibako_plugin_claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako_plugin_claude.target.subprocess.run",
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
                        side_effect=[status_not_logged, login_result]):
                 assert t.check_auth() is False
 
     def test_binary_not_found_returns_true(self):
         """check_auth returns True when claude binary is not found."""
         t = ClaudeTarget()
-        with patch("kanibako_plugin_claude.target.shutil.which", return_value=None):
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value=None):
             assert t.check_auth() is True
 
     def test_status_command_fails_returns_true(self):
         """check_auth returns True when auth status command fails."""
         t = ClaudeTarget()
         status_result = MagicMock(returncode=1, stdout="")
-        with patch("kanibako_plugin_claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako_plugin_claude.target.subprocess.run", return_value=status_result):
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
                 assert t.check_auth() is True
 
 
@@ -362,7 +362,7 @@ class TestRefreshCredentials:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
         t = ClaudeTarget()
-        with patch("kanibako_plugin_claude.target.refresh_host_to_project") as m_h2p:
+        with patch("kanibako.plugins.claude.target.refresh_host_to_project") as m_h2p:
             t.refresh_credentials(home)
 
         m_h2p.assert_called_once()
@@ -490,7 +490,7 @@ class TestWritebackCredentials:
         (home / ".claude").mkdir(parents=True)
 
         t = ClaudeTarget()
-        with patch("kanibako_plugin_claude.target.writeback_project_to_host") as m_wb:
+        with patch("kanibako.plugins.claude.target.writeback_project_to_host") as m_wb:
             t.writeback_credentials(home)
 
         m_wb.assert_called_once()

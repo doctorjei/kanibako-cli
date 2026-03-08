@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from kanibako.log import get_logger
 from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
 
-from kanibako_plugin_claude.credentials import (
+from kanibako.plugins.claude.credentials import (
     filter_settings,
     refresh_host_to_project,
     writeback_project_to_host,

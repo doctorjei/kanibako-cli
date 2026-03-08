@@ -19,9 +19,14 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1); \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cifs-utils \
+    inotify-tools \
     nfs-common \
+    openssh-client \
     ripgrep \
+    sshpass \
     && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --break-system-packages kanibako-base
 
 # GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

@@ -26,7 +26,7 @@ from kanibako.paths import (
 )
 from kanibako.config import load_config
 from kanibako.targets.base import Mount
-from kanibako_plugin_claude import ClaudeTarget
+from kanibako.plugins.claude import ClaudeTarget
 from kanibako.utils import short_hash
 
 
