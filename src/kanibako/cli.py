@@ -24,11 +24,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run AI coding agents in rootless containers with per-project isolation.",
         epilog=(
             "common switches (for default 'start' command):\n"
-            "  -p, --project DIR   use DIR as the project directory (default: cwd)\n"
-            "  -i, --image IMAGE   use IMAGE as the container image for this run\n"
-            "  -N, --new           start a new conversation (skip default --continue)\n"
-            "  -S, --safe          run without --dangerously-skip-permissions\n"
-            "  -c, --command CMD   use CMD as the container entrypoint\n"
+            "  [project]           project directory or name (default: cwd)\n"
+            "  -N, --new           start a new conversation\n"
+            "  -C, --continue      continue the most recent conversation (default)\n"
+            "  -R, --resume        resume with conversation picker\n"
+            "  -A, --autonomous    run with full permissions (default)\n"
+            "  -S, --secure        run without --dangerously-skip-permissions\n"
+            "  -M, --model MODEL   override the agent model for this run\n"
+            "  --image IMAGE       use IMAGE as the container image\n"
+            "  --entrypoint CMD    use CMD as the container entrypoint\n"
             "  -v, --verbose       show debug output (target detection, container cmd)\n"
             "\n"
             "run 'kanibako COMMAND --help' for subcommand-specific options"
@@ -41,7 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Import and register all subcommand parsers.
     from kanibako.commands.start import (
-        add_resume_parser,
         add_shell_parser,
         add_start_parser,
     )
@@ -63,7 +66,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
-    add_resume_parser(subparsers)
     add_connect_parser(subparsers)
     add_stop_parser(subparsers)
     add_image_parser(subparsers)
@@ -82,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 _SUBCOMMANDS = {
-    "start", "shell", "resume", "connect", "stop", "image",
+    "start", "shell", "connect", "stop", "image",
     "box", "workset", "setup", "remove", "upgrade", "reauth",
     "vault", "helper", "fork",
     "template",

@@ -270,18 +270,20 @@ class TestStandaloneLaunch:
         m.resolve_any_project.assert_called_once()
 
     def test_resume_works_with_standalone(self, start_mocks, tmp_path):
-        """resume auto-detects standalone mode via resolve_any_project."""
-        from kanibako.commands.start import run_resume
+        """start -R auto-detects standalone mode via resolve_any_project."""
+        from kanibako.commands.start import _run_container
 
-        import argparse
-        args = argparse.Namespace(project=str(tmp_path), safe=False)
         (tmp_path / ".kanibako").mkdir()
 
         with start_mocks() as m:
             proj = self._make_standalone_proj(tmp_path)
             m.resolve_any_project.return_value = proj
 
-            rc = run_resume(args)
+            rc = _run_container(
+                project_dir=str(tmp_path), entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=True,
+                extra_args=[],
+            )
 
         assert rc == 0
         m.resolve_any_project.assert_called_once()
@@ -467,22 +469,23 @@ class TestWorksetLaunch:
         m.resolve_any_project.assert_called_once()
 
     def test_resume_works_with_workset(self, start_mocks, tmp_path):
-        """resume auto-detects workset mode via resolve_any_project."""
-        from kanibako.commands.start import run_resume
+        """start -R auto-detects workset mode via resolve_any_project."""
+        from kanibako.commands.start import _run_container
 
-        import argparse
         ws_root = tmp_path / "my-workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)
 
-        args = argparse.Namespace(project=str(workspace), safe=False)
-
         with start_mocks() as m:
             proj = self._make_workset_proj(ws_root, "myproj")
             m.resolve_any_project.return_value = proj
 
-            rc = run_resume(args)
+            rc = _run_container(
+                project_dir=str(workspace), entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=True,
+                extra_args=[],
+            )
 
         assert rc == 0
         m.resolve_any_project.assert_called_once()

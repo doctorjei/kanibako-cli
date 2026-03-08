@@ -257,10 +257,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     from kanibako.commands.archive import add_parser as add_archive_parser
     from kanibako.commands.clean import add_parser as add_purge_parser
     from kanibako.commands.restore import add_parser as add_restore_parser
+    from kanibako.commands.start import add_start_parser as _add_start_parser
 
     add_archive_parser(box_sub)
     add_purge_parser(box_sub)
     add_restore_parser(box_sub)
+
+    # Register start as a box subcommand (delegates to start.py).
+    _add_start_parser(box_sub)
 
     # Default to list if no subcommand given.
     p.set_defaults(func=run_list)

@@ -27,21 +27,60 @@ class TestParser:
 
     def test_start_with_flags(self):
         parser = build_parser()
-        args = parser.parse_args(["start", "-N", "-S", "-i", "my-image:v1"])
-        assert args.new is True
-        assert args.safe is True
+        args = parser.parse_args(["start", "-N", "-S", "--image", "my-image:v1"])
+        assert args.new_session is True
+        assert args.secure is True
         assert args.image == "my-image:v1"
+
+    def test_start_resume_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-R"])
+        assert args.resume_session is True
+
+    def test_start_model_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-M", "opus"])
+        assert args.model == "opus"
+
+    def test_start_autonomous_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-A"])
+        assert args.autonomous is True
+
+    def test_start_env_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "-e", "FOO=bar", "-e", "BAZ=qux"])
+        assert args.env == ["FOO=bar", "BAZ=qux"]
+
+    def test_start_persistent_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "--persistent"])
+        assert args.persistent is True
+
+    def test_start_ephemeral_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "--ephemeral"])
+        assert args.ephemeral is True
+
+    def test_start_entrypoint_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "--entrypoint", "/bin/zsh"])
+        assert args.entrypoint == "/bin/zsh"
+
+    def test_start_project_positional(self):
+        """Project positional is extracted from agent_args in run_start."""
+        # Verify that when parsing 'start /tmp/myproject', the path
+        # ends up in agent_args (since argparse REMAINDER catches it),
+        # and run_start extracts it as the project directory.
+        parser = build_parser()
+        args = parser.parse_args(["start", "/tmp/myproject"])
+        # REMAINDER captures the project path
+        assert args.agent_args == ["/tmp/myproject"]
 
     def test_shell_command(self):
         parser = build_parser()
         args = parser.parse_args(["shell"])
         assert args.command == "shell"
-
-    def test_resume_command(self):
-        parser = build_parser()
-        args = parser.parse_args(["resume", "-S"])
-        assert args.command == "resume"
-        assert args.safe is True
 
     def test_box_command(self):
         parser = build_parser()
@@ -227,6 +266,19 @@ class TestParser:
         parser = build_parser()
         args = parser.parse_args(["start", "--", "--some-flag", "arg"])
         assert args.agent_args == ["--", "--some-flag", "arg"]
+
+    def test_box_start(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "start"])
+        assert args.command == "box"
+        assert args.box_command == "start"
+
+    def test_box_start_with_flags(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "start", "-N", "-A", "-M", "opus"])
+        assert args.new_session is True
+        assert args.autonomous is True
+        assert args.model == "opus"
 
     def test_box_info(self):
         parser = build_parser()

@@ -299,7 +299,7 @@ settings. All old config/env/shared commands removed. Tests pass.
 
 ## Phase 6: `box start` + Agent Flags + Merge Resume
 
-**Status:** NOT STARTED
+**Status:** DONE
 
 **Goal:** Restructure `start` command under `box start`, add full agent flag set,
 merge `resume` into `start -R`.
