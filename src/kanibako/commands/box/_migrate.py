@@ -83,7 +83,7 @@ def run_migrate(args: argparse.Namespace) -> int:
             f"Error: project data already exists for new path: {new_path}",
             file=sys.stderr,
         )
-        print("  Use 'kanibako box purge' to remove it first.", file=sys.stderr)
+        print("  Use 'kanibako box rm --purge' to remove it first.", file=sys.stderr)
         return 1
 
     # Warn if lock file exists.

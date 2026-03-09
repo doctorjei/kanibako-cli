@@ -269,7 +269,7 @@ def build_cli_args(self, *, safe_mode, resume_mode, new_session,
 ### `generate_agent_config() -> AgentConfig`
 
 Return a default `AgentConfig` for this target.  Called on first use or during
-`kanibako setup` to generate the agent TOML file.  The base implementation
+first project creation to generate the agent TOML file.  The base implementation
 returns an `AgentConfig` with `name` set to `self.display_name` and all other
 fields at their defaults.
 
@@ -339,7 +339,7 @@ def resource_mappings(self) -> list[ResourceMapping]:
 *Optional.* Declare what runtime settings this target supports, along with
 defaults and (optionally) valid choices.
 
-Users can override settings per-project via `kanibako box settings set`.
+Users can override settings per-project via `kanibako box config`.
 The effective value follows a 3-tier resolution: project override > agent
 config state > target default.
 

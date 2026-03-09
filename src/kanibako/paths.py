@@ -147,7 +147,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     if config is None:
         if not config_file.exists():
             raise ConfigError(
-                f"{config_file} is missing. Run 'kanibako setup' to set up."
+                f"{config_file} is missing. Run any kanibako command to initialize."
             )
         config = load_config(config_file)
 
@@ -241,7 +241,7 @@ def resolve_project(
                 "Refusing to create a project rooted at $HOME — this would "
                 "mount your entire home directory as the workspace.\n"
                 "If you really want a project here, use:\n"
-                "  kanibako init --local -p ~"
+                "  kanibako create --standalone ~"
             )
         # New project: assign a name first, then create boxes/{name}/.
         project_name = assign_name(std.data_path, project_path_str)
