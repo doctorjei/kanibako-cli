@@ -75,7 +75,7 @@ COPY tmux.conf /etc/tmux.conf
 USER $AGENT_USER
 WORKDIR /home/$AGENT_USER
 
-ENV LANG=en_US.UTF-8
+ENV LANG=C.UTF-8
 ENV PATH="/home/$AGENT_USER/.local/bin:${PATH}"
 
 RUN mkdir -p workspace .kanibako .local/bin share-ro share-rw
