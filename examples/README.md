@@ -26,7 +26,7 @@ pip install -e examples/kanibako-target-aider
 Verify it registers correctly:
 
 ```bash
-kanibako status   # should list "aider" under available targets
+kanibako agent list   # should list "aider" under available targets
 ```
 
 Run its tests:
@@ -41,4 +41,9 @@ pytest examples/kanibako-target-aider/tests/ -v
 2. Rename the package directory and update `pyproject.toml`
 3. Implement the `Target` methods for your agent
 4. Register the entry point under `kanibako.targets`
-5. `pip install -e .` and test with `kanibako start --target yourname`
+5. `pip install -e .` and test:
+   ```bash
+   kanibako agent list                        # verify target is registered
+   kanibako box config target_name=yourname   # select it for a project
+   kanibako start                             # launch
+   ```

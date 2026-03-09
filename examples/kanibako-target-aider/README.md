@@ -18,11 +18,12 @@ pip install -e .
 ## Usage
 
 ```bash
-# Auto-detect (if aider is on PATH)
+# Auto-detect (if aider is on PATH and no other target takes priority)
 kanibako start
 
-# Explicit target selection
-kanibako start --target aider
+# Explicit target selection (persisted in project config)
+kanibako box config target_name=aider
+kanibako start
 ```
 
 ## What this example demonstrates

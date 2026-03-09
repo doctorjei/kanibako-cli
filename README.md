@@ -499,10 +499,28 @@ Mount named volumes or host directories to preserve state across restarts:
 ### Building locally
 
 ```bash
+# OCI container (default)
 podman build -f src/kanibako/containers/Containerfile.kanibako \
     --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:latest \
     -t kanibako-oci src/kanibako/containers/
+
+# LXC system container (requires VARIANT=lxc for systemd/networking fixes)
+podman build -f src/kanibako/containers/Containerfile.kanibako \
+    --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-thread:latest \
+    --build-arg VARIANT=lxc \
+    -t kanibako-lxc src/kanibako/containers/
+
+# VM host (requires VARIANT=vm)
+podman build -f src/kanibako/containers/Containerfile.kanibako \
+    --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-hair:latest \
+    --build-arg VARIANT=vm \
+    -t kanibako-vm src/kanibako/containers/
 ```
+
+The `VARIANT` build arg enables variant-specific configuration in the shared
+Containerfile.  OCI builds don't need it (defaults to `oci`).  LXC builds
+add systemd unit masking, DHCP networking, and cgroupfs for rootless Podman.
+VM builds get the same LXC fixes plus a systemd entrypoint.
 
 ## VM Variant
 

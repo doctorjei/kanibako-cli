@@ -406,10 +406,16 @@ adds targets not already found via entry points.
 
 When a user runs `kanibako start`, kanibako calls `discover_targets()` which
 loads all registered entry points and scans `kanibako.plugins.*`.  If no
-`--target` is specified, kanibako calls `detect()` on each target and uses
-the first one that returns an `AgentInstall`.  If no target's `detect()`
-succeeds, kanibako falls back to `NoAgentTarget` — a built-in target that
-launches a plain shell without any agent binary or credentials.
+`target_name` is set in the project config, kanibako calls `detect()` on each
+target and uses the first one that returns an `AgentInstall`.  If no target's
+`detect()` succeeds, kanibako falls back to `NoAgentTarget` — a built-in
+target that launches a plain shell without any agent binary or credentials.
+
+Users can explicitly select a target for a project:
+
+```bash
+kanibako box config target_name=myagent
+```
 
 ## Packaging
 

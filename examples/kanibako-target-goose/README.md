@@ -22,7 +22,9 @@ pip install -e .
 ## Usage
 
 ```bash
-kanibako start --target goose
+# Explicit target selection (persisted in project config)
+kanibako box config target_name=goose
+kanibako start
 ```
 
 ## What this example demonstrates
