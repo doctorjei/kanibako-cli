@@ -1052,7 +1052,7 @@ Host myproject
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1541)
+pytest tests/ -v                    # unit tests (1542)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
