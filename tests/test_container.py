@@ -136,9 +136,9 @@ class TestRunEnvFlags:
 
 
 class TestDetachMode:
-    """Test detach=True uses -d instead of -it and omits --rm."""
+    """Test detach=True uses -dt (TTY for tmux) and omits --rm."""
 
-    def test_detach_uses_dash_d(self):
+    def test_detach_uses_dash_dt(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         with patch("kanibako.container.subprocess.run") as m:
@@ -153,7 +153,7 @@ class TestDetachMode:
                 detach=True,
             )
             cmd = m.call_args[0][0]
-            assert "-d" in cmd
+            assert "-dt" in cmd
             assert "-it" not in cmd
             assert "--rm" not in cmd
 

@@ -235,7 +235,7 @@ class ContainerRuntime:
         instead of ``-it``, no ``--rm``).  Returns 0 on success.
         """
         if detach:
-            run_flags = ["-d", "--userns=keep-id"]
+            run_flags = ["-dt", "--userns=keep-id"]
         else:
             tty_flag = "-it" if sys.stdin.isatty() else "-i"
             run_flags = [tty_flag, "--rm", "--userns=keep-id"]
