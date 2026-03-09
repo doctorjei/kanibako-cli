@@ -69,6 +69,9 @@ RUN if [ "$VARIANT" = "lxc" ] || [ "$VARIANT" = "vm" ]; then \
     fi \
     && chmod +x /usr/local/bin/kanibako-entrypoint
 
+# Default tmux config (user can override via shell template or bind mount)
+COPY tmux.conf /etc/tmux.conf
+
 USER $AGENT_USER
 WORKDIR /home/$AGENT_USER
 
