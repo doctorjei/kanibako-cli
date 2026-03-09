@@ -52,6 +52,7 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
+            VARIANT=${{ matrix.variant }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 

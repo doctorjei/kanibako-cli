@@ -23,6 +23,14 @@ _IMAGE_CONTAINERFILE_MAP = {
     "kanibako-vm": "kanibako",
 }
 
+# Map image name patterns to build variants (for VARIANT build arg).
+_IMAGE_VARIANT_MAP = {
+    "kanibako-min": "min",
+    "kanibako-oci": "oci",
+    "kanibako-lxc": "lxc",
+    "kanibako-vm": "vm",
+}
+
 # Map image variants to their droste base image for local builds.
 _IMAGE_BASE_MAP = {
     "kanibako-min": "ghcr.io/doctorjei/droste-seed:latest",
@@ -131,6 +139,14 @@ class ContainerRuntime:
         for pattern, base in _IMAGE_BASE_MAP.items():
             if pattern in image:
                 return base
+        return None
+
+    @staticmethod
+    def get_variant(image: str) -> str | None:
+        """Return the build variant (min/oci/lxc/vm) for a kanibako image, or None."""
+        for pattern, variant in _IMAGE_VARIANT_MAP.items():
+            if pattern in image:
+                return variant
         return None
 
     def run_interactive(self, image: str, *, container_name: str | None = None) -> int:

@@ -273,6 +273,7 @@ class TestImageRebuild:
             runtime = MagicMock()
             runtime.guess_containerfile.return_value = "kanibako"
             runtime.get_base_image.return_value = "ghcr.io/doctorjei/droste-fiber:latest"
+            runtime.get_variant.return_value = "oci"
             runtime.rebuild.return_value = 0
             MockRT.return_value = runtime
 
@@ -285,7 +286,10 @@ class TestImageRebuild:
             runtime.rebuild.assert_called_once()
             # Verify build_args passed
             call_kwargs = runtime.rebuild.call_args
-            assert call_kwargs[1]["build_args"] == {"BASE_IMAGE": "ghcr.io/doctorjei/droste-fiber:latest"}
+            assert call_kwargs[1]["build_args"] == {
+                "BASE_IMAGE": "ghcr.io/doctorjei/droste-fiber:latest",
+                "VARIANT": "oci",
+            }
 
     def test_local_build_unknown_image(self, tmp_home, config_file, credentials_dir, capsys):
         """Unknown image pattern falls back to pull."""

@@ -5,6 +5,7 @@ ARG BASE_IMAGE
 FROM $BASE_IMAGE
 
 ARG AGENT_USER=agent
+ARG VARIANT=oci
 
 USER root
 
@@ -16,6 +17,10 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1); \
     fi \
     && echo "$AGENT_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$AGENT_USER \
     && chmod 0440 /etc/sudoers.d/$AGENT_USER
+
+# Fix subuid/subgid ownership after user rename (droste -> agent)
+RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; fi \
+    && if [ -f /etc/subgid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subgid; fi
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cifs-utils \
@@ -37,6 +42,22 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
+
+# LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
+RUN if [ "$VARIANT" = "lxc" ]; then \
+        systemctl mask \
+            systemd-remount-fs.service systemd-growfs-root.service \
+            dev-hugepages.mount dev-mqueue.mount run-lock.mount \
+            tmp.mount run-rpc_pipefs.mount \
+        && mkdir -p /etc/systemd/network \
+        && printf '[Match]\nName=eth0\n\n[Network]\nDHCP=yes\n' \
+               > /etc/systemd/network/80-dhcp.network \
+        && mkdir -p /etc/containers \
+        && printf '[engine]\ncgroup_manager = "cgroupfs"\n\n[network]\ndefault_rootless_network_cmd = "slirp4netns"\n' \
+               > /etc/containers/containers.conf \
+        && mkdir -p /var/lib/systemd/linger \
+        && touch "/var/lib/systemd/linger/$AGENT_USER"; \
+    fi
 
 USER $AGENT_USER
 WORKDIR /home/$AGENT_USER
