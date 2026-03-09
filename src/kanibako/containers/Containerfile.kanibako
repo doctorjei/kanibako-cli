@@ -45,7 +45,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
 RUN if [ "$VARIANT" = "lxc" ]; then \
-        touch /etc/fstab \
+        : > /etc/fstab \
         && systemctl mask \
             systemd-remount-fs.service systemd-growfs-root.service \
             dev-hugepages.mount dev-mqueue.mount run-lock.mount \
