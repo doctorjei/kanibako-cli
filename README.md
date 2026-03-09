@@ -19,20 +19,22 @@ via `pip install`.
 - **Automatic sandboxing** — no Docker or Podman experience required;
   kanibako manages all container operations for you, no root needed
 - **Per-project isolation** — each project gets its own shell, config, and
-  credentials, keyed by directory hash
-- **Three project modes** — account-centric (default), working set (grouped),
-  and decentralized (self-contained)
+  credentials
+- **Three project modes** — local (default), workset (grouped),
+  and standalone (self-contained)
 - **Session continuity** — `kanibako start` defaults to `--continue`, picking
   up where you left off
+- **Persistent sessions** — agents run in tmux-backed containers by default,
+  surviving SSH disconnects; reattach with `kanibako start`
 - **Credential forwarding** — host credentials are synced into the container
   shell and written back after each session (path depends on agent plugin)
 - **Vault** — per-project read-only and read-write shared directories, with
   automatic tar.xz snapshots before each launch
-- **Shell customization** — per-project environment variables (`kanibako env`)
-  and drop-in init scripts (`shell.d/`)
+- **Shell customization** — per-project environment variables (`box config
+  env.*`) and drop-in init scripts (`shell.d/`)
 - **Agent configuration** — per-agent TOML config with template variant,
   default args, state knobs, env vars, and shared caches; per-project setting
-  overrides via `box settings`
+  overrides via `box config`
 - **Shell templates** — layered home directory templates applied on first
   project init, with agent-specific and general variants
 - **Shared caches** — global download caches (pip, cargo, npm, etc.) shared
@@ -41,8 +43,6 @@ via `pip install`.
   package); Claude Code plugin (`kanibako-plugin-claude`) is installed by default
 - **Image freshness checks** — non-blocking digest comparison against GHCR on
   startup (24h cache)
-- **Persistent sessions** — `kanibako connect` runs agents in tmux-backed
-  containers that survive SSH disconnects; reattach seamlessly
 - **Concurrency lock** — prevents two sessions from running in the same
   project simultaneously
 
@@ -69,10 +69,10 @@ pip install kanibako-base
 git clone https://github.com/doctorjei/kanibako.git
 cd kanibako
 pip install -e '.[dev]' -e packages/plugin-claude/
-
-# First-time setup (creates config + pulls image)
-kanibako setup
 ```
+
+On first use, kanibako automatically creates its config and data directories.
+No explicit setup step is needed.
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ cd ~/my-project
 kanibako
 
 # Start with a specific image
-kanibako -i kanibako-min:latest
+kanibako --image kanibako-min:latest
 
 # Open a plain bash shell (no agent)
 kanibako shell
@@ -90,8 +90,11 @@ kanibako shell
 # Run a one-shot command in the container
 kanibako shell -- echo hello
 
-# Resume a previous conversation
-kanibako resume
+# Start a new conversation
+kanibako -N
+
+# Resume with the conversation picker
+kanibako -R
 ```
 
 That's it — no `docker run`, no volume flags, no Containerfile.  On first run,
@@ -106,9 +109,8 @@ gh, nano, jq, ripgrep, tmux, podman, and common dev tools.  This is enough for
 most Python, JavaScript, and general scripting work.
 
 ```bash
-# 1. Install kanibako and run first-time setup
+# 1. Install kanibako
 pip install kanibako
-kanibako setup
 
 # 2. Create or clone a project
 mkdir ~/my-flask-app && cd ~/my-flask-app
@@ -137,62 +139,171 @@ kanibako              # resumes your previous session
 kanibako -N           # or start a fresh conversation
 ```
 
-## Example: C/Rust Project (template)
+## Example: C/Rust Project (custom image)
 
-For projects that need compiled languages, create a template with the
+For projects that need compiled languages, create a custom image with the
 toolchains you need:
 
 ```bash
-# 1. Create a template with C/C++ and Rust
-kanibako template create systems
+# 1. Create a custom image with C/C++ and Rust
+kanibako image create systems
 # (inside: sudo apt install build-essential cmake gdb && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh)
 # exit when done
 
 # 2. Use it for your project
 cd ~/my-rust-project
-kanibako -i kanibako-template-systems
+kanibako --image kanibako-template-systems
 ```
 
 After the first run, kanibako remembers the image choice for this project,
 so you can just run `kanibako` next time.
 
-See [Container Images](#container-images) for the base images and template
-system.
+See [Container Images](#container-images) for the base images and custom image
+creation.
 
 ## Commands
 
+Kanibako organizes commands into five management groups plus six top-level
+aliases for common operations:
+
+### Top-Level Aliases
+
+| Alias | Maps to | Description |
+|-------|---------|-------------|
+| `kanibako [start] [project]` | `box start` | Launch agent session (default command) |
+| `kanibako stop [project\|--all]` | `box stop` | Stop running container(s) |
+| `kanibako shell [project] [-- cmd]` | `box shell` | Open a bash shell or run a one-shot command |
+| `kanibako ps [-a] [-q]` | `box ps` | List running containers |
+| `kanibako create [path]` | `box create` | Create a new project |
+| `kanibako rm <project>` | `box rm` | Remove a project |
+
+### Management Commands
+
 | Command | Description |
 |---------|-------------|
-| `kanibako [start]` | Launch an agent session in a container |
-| `kanibako shell [-- cmd ...]` | Open a bash shell, or run a one-shot command |
-| `kanibako resume` | Resume with the agent's conversation picker |
-| `kanibako connect <project> [-N\|-S\|-i]` | Connect to a persistent session (remote access) |
-| `kanibako stop [path\|--all]` | Stop running container(s) |
-| `kanibako status` | Show project status (mode, paths, lock, image) |
-| `kanibako config [key [value]]` | Get/set per-project configuration |
-| `kanibako image [list\|rebuild]` | Manage container images |
-| `kanibako box [list\|info\|orphan\|get\|set\|resource\|settings\|archive\|restore\|purge\|migrate\|duplicate\|forget]` | Project management |
-| `kanibako workset [create\|list\|delete\|add\|remove\|info\|auth]` | Working set management |
-| `kanibako init [path] [--local] [-i IMAGE]` | Initialize a kanibako project |
-| `kanibako vault [snapshot\|list\|restore\|prune]` | Vault snapshot management |
-| `kanibako env [list\|set\|get\|unset]` | Environment variable management |
-| `kanibako shared [init\|list]` | Shared cache management |
-| `kanibako helper [spawn\|list\|stop\|cleanup\|respawn\|send\|broadcast\|log]` | Child kanibako spawning and messaging |
-| `kanibako template [create\|list\|delete]` | User template image management |
-| `kanibako setup` | Initial setup |
-| `kanibako upgrade [--check]` | Update from git |
-| `kanibako reauth` | Check auth and login if needed |
+| `box` | Project lifecycle (create, list, start, stop, shell, config, archive, ...) |
+| `image` | Container image management (create, list, info, rm, rebuild) |
+| `workset` | Project grouping (create, list, connect, disconnect, config, ...) |
+| `agent` | Agent operations (list, config, reauth, helper, fork) |
+| `system` | Global configuration and self-update (info, config, upgrade) |
 
-### Common flags
+### `box` Subcommands
+
+**Run cycle:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `box start [project]` | Launch agent session (agent flags + infra flags + `-- args`) |
+| `box stop [project]` | Stop container (`--all` stops all, `--force` skips confirm) |
+| `box shell [project]` | Open bash or run one-shot command (infra flags + `-- cmd`) |
+| `box ps` | List running containers (`--all` includes stopped, `-q` names only) |
+
+**Standard lifecycle:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `box create [path]` | Create project (`--name`, `--standalone`, `--image`, `--no-vault`, `--distinct-auth`) |
+| `box list` / `box ls` | List projects (`--all`, `--orphan`, `-q`) |
+| `box info` / `box inspect` | Project details (mode, paths, lock, image) |
+| `box rm` / `box delete` | Remove project (`--purge` deletes metadata, `--force` skips confirm) |
+| `box config` | View or modify project configuration |
+
+**Relocation:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `box move [project] <dest>` | Relocate project workspace |
+| `box duplicate <source> [dest]` | Copy project (`--name`, `--bare`, `--force`) |
+| `box archive [project]` | Pack session data to .txz (`--as-local`, `--as-standalone`, `--force`) |
+| `box extract <archive> [dest]` | Unpack from archive (`--name`, `--force`) |
+
+**Data:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `box vault snapshot` | Create a vault snapshot |
+| `box vault list` / `vault ls` | List snapshots (`-q`) |
+| `box vault restore <name>` | Restore from snapshot (`--force`) |
+| `box vault prune` | Delete old snapshots (`--keep N`, `--force`) |
+
+### `image` Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `image create <name>` | Create image interactively (`--base`, `--always-commit`, `--no-commit-on-error`) |
+| `image list` / `image ls` | List available images (`-q`) |
+| `image info` / `image inspect` | Image details (source, size, recoverability) |
+| `image rm` / `image delete` | Remove image (`--force`) |
+| `image rebuild [image]` | Rebuild from registry or stored Containerfile (`--all`) |
+
+### `workset` Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `workset create [path]` | Create working set (`--name`, `--standalone`, `--image`, `--no-vault`, `--distinct-auth`) |
+| `workset list` / `workset ls` | List working sets (`-q`) |
+| `workset info` / `workset inspect` | Working set details |
+| `workset rm` / `workset delete` | Remove working set (`--purge`, `--force`) |
+| `workset config` | View or modify workset configuration |
+| `workset connect <workset> [source]` | Add project to working set (`--name`) |
+| `workset disconnect <workset> <project>` | Remove project from working set (`--force`) |
+
+### `agent` Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `agent list` / `agent ls` | List configured agents (`-q`) |
+| `agent info` / `agent inspect` | Agent configuration details |
+| `agent config` | View or modify agent configuration |
+| `agent reauth [project]` | Refresh credentials |
+| `agent helper spawn` | Spawn child instance (`--depth`, `--breadth`, `--model`, `--image`) |
+| `agent helper list` / `helper ls` | List helpers (`-q`) |
+| `agent helper stop <n>` | Stop a helper |
+| `agent helper respawn <n>` | Respawn a stopped helper |
+| `agent helper cleanup <n>` | Clean up helper (`--cascade`) |
+| `agent helper send <n> <msg>` | Message a helper |
+| `agent helper broadcast <msg>` | Message all helpers |
+| `agent helper log` | View message log (`-f`, `--from`, `--tail`) |
+| `agent fork <name>` | Fork project into a new directory |
+
+### `system` Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `system info` / `system inspect` | System details (version, runtime, paths) |
+| `system config` | View or modify global configuration |
+| `system upgrade` | Self-update (`--check` for dry run) |
+
+## Common Flags
+
+### Agent Flags (on `start`)
 
 | Flag | Description |
 |------|-------------|
-| `-p, --project DIR` | Use DIR as the project directory (default: cwd) |
-| `-i, --image IMAGE` | Use IMAGE for this run |
-| `-N, --new` | Start a new conversation (skip `--continue`) |
-| `-S, --safe` | Run without `--dangerously-skip-permissions` |
-| `-c, --command CMD` | Use CMD as the container entrypoint |
-| `--distinct-auth` | Use distinct credentials (no sync from host) |
+| `-N, --new` | Start a new conversation |
+| `-C, --continue` | Continue the most recent conversation (default) |
+| `-R, --resume` | Resume with conversation picker |
+| `-A, --autonomous` | Run with full permissions (default) |
+| `-S, --secure` | Run without `--dangerously-skip-permissions` |
+| `-M, --model MODEL` | Override the agent model for this run |
+
+`-N`, `-C`, `-R` are mutually exclusive.  `-A`, `-S` are mutually exclusive.
+
+### Infrastructure Flags (on `start` and `shell`)
+
+| Flag | Description |
+|------|-------------|
+| `-e, --env KEY=VALUE` | Per-run environment variable (repeatable) |
+| `--image IMAGE` | Container image override |
+| `--entrypoint CMD` | Override container entrypoint |
+| `--persistent` | Use tmux session wrapper (default) |
+| `--ephemeral` | No tmux, session dies with terminal |
+| `--no-helpers` | Disable helper spawning |
+
+### Global Flags
+
+| Flag | Description |
+|------|-------------|
 | `-v, --verbose` | Show debug output (target detection, container command) |
 
 ## Project Modes
@@ -200,24 +311,24 @@ system.
 Kanibako supports three ways to organize project state.  The mode is inferred
 automatically from context.
 
-### Account-Centric (default)
+### Local (default)
 
-Centralized store keyed by the SHA-256 hash of the project path.  Just `cd`
-into any directory and run `kanibako`.
+Centralized store keyed by project name.  Just `cd` into any directory and
+run `kanibako`.
 
 ```
-$XDG_DATA_HOME/kanibako/boxes/{hash}/          metadata + shell
-{project}/vault/share-ro/                       read-only vault
-{project}/vault/share-rw/                       read-write vault
+$XDG_DATA_HOME/kanibako/boxes/{name}/          metadata + shell
+{project}/vault/share-ro/                      read-only vault
+{project}/vault/share-rw/                      read-write vault
 ```
 
-### Working Set
+### Workset
 
 Group related projects under a named working set with human-readable paths.
 
 ```bash
-kanibako workset create my-research ~/worksets/research
-kanibako workset add my-research ~/repos/paper-a --name paper-a
+kanibako workset create ~/worksets/research --name my-research
+kanibako workset connect my-research ~/repos/paper-a --name paper-a
 cd ~/worksets/research/workspaces/paper-a
 kanibako
 ```
@@ -228,13 +339,13 @@ kanibako
 {workset}/vault/{name}/share-{ro,rw}/  vault
 ```
 
-### Decentralized
+### Standalone
 
 All state lives inside the project directory itself.  Fully portable.
 
 ```bash
-kanibako init --local              # in the current directory
-kanibako init --local ~/myproj     # create and initialize a new directory
+kanibako create --standalone           # in the current directory
+kanibako create --standalone ~/myproj  # create and initialize a new directory
 ```
 
 ```
@@ -242,28 +353,13 @@ kanibako init --local ~/myproj     # create and initialize a new directory
 {project}/vault/share-{ro,rw}/  vault
 ```
 
-### Cross-mode migration
-
-Convert between modes with `box migrate`:
-
-```bash
-kanibako box migrate --to decentralized          # AC -> decentralized
-kanibako box migrate --to account-centric        # decentralized -> AC
-kanibako box migrate --to workset --workset myws  # any -> workset
-```
-
-Or copy without modifying the source with `box duplicate --to ...`.
-
 ### Orphan detection
 
 Find projects whose workspace directory no longer exists:
 
 ```bash
-kanibako box orphan
+kanibako box list --orphan
 ```
-
-Use `box migrate` to remap orphaned data to a new path, or `box purge` to
-remove it.
 
 ## Container Images
 
@@ -317,22 +413,21 @@ kanibako image rebuild                # rebuild current project's image
 kanibako image rebuild --all          # rebuild all known images
 ```
 
-### Templates
+### Custom Images
 
-Instead of pre-built toolchain variants, create custom templates by
-installing tools interactively and committing the result:
+Create custom images by installing tools interactively and committing
+the result:
 
 ```bash
-kanibako template create jvm          # start from kanibako-oci, install tools
+kanibako image create jvm             # start from kanibako-oci, install tools
 # (inside container: apt install openjdk-21-jdk maven, etc.)
 # exit when done
 
-kanibako template list                # show local templates
-kanibako init --template jvm          # use the template for a new project
-kanibako template delete jvm          # remove a template
+kanibako image list                   # show local images
+kanibako image rm jvm                 # remove a custom image
 ```
 
-Templates are standard OCI images — push them to any registry for sharing:
+Custom images are standard OCI images — push them to any registry for sharing:
 
 ```bash
 podman push kanibako-template-jvm ghcr.io/myorg/kanibako-template-jvm
@@ -389,7 +484,6 @@ Install kanibako and plugins inside the host container:
 
 ```bash
 pip install kanibako    # installs kanibako-base + kanibako-plugin-claude
-kanibako setup
 ```
 
 ### Persistent state
@@ -483,7 +577,6 @@ normally:
 
 ```bash
 ssh agent@<vm-ip>
-kanibako setup
 cd ~/my-project && kanibako
 ```
 
@@ -539,25 +632,26 @@ Inside the container, the agent sees:
 ### Environment variables
 
 Set per-project or global environment variables that are passed to the
-container via `-e` flags:
+container:
 
 ```bash
-kanibako env set EDITOR vim              # project-level
-kanibako env set --global EDITOR nano    # global (all projects)
-kanibako env list                        # show merged (global + project)
-kanibako env get EDITOR                  # show one value
-kanibako env unset EDITOR                # remove from project
+# Persistent (stored in project config)
+kanibako box config env.EDITOR=vim           # project-level
+kanibako system config env.EDITOR=nano       # global (all projects)
+kanibako box config env.EDITOR               # show one value
+
+# Per-run (not persisted)
+kanibako start -e EDITOR=vim -e DEBUG=1
 ```
 
-Project env vars override global ones.  Env files use Docker `.env` format
-(one `KEY=VALUE` per line, `#` comments, no shell expansion).
+Project env vars override global ones.
 
 ### Custom prompt
 
 The shell prompt is controlled by the `KANIBAKO_PS1` environment variable:
 
 ```bash
-kanibako env set KANIBAKO_PS1 "(myproject) \u:\w\$ "
+kanibako box config env.KANIBAKO_PS1="(myproject) \u:\w\$ "
 ```
 
 ### Init scripts
@@ -608,6 +702,14 @@ access = "permissive"
 - `[env]` — environment variables injected into the container
 - `[shared]` — agent-level shared cache paths (mounted from the per-agent
   shared directory, independent of global shared caches)
+
+Manage agent settings via the CLI:
+
+```bash
+kanibako agent list                   # list configured agents
+kanibako agent config model           # show effective model
+kanibako agent config model=sonnet    # set agent-level default
+```
 
 ## Shell Templates
 
@@ -662,9 +764,9 @@ Each project has optional read-only and read-write shared directories:
 - **share-rw/** — files that persist across sessions and can be modified
   (databases, build caches, generated artifacts)
 
-In account-centric mode, vault directories live under your project and are
-hidden inside the container via a read-only tmpfs overlay, so the agent cannot
-see or modify vault metadata.
+In local mode, vault directories live under your project and are hidden inside
+the container via a read-only tmpfs overlay, so the agent cannot see or modify
+vault metadata.
 
 ### Snapshots
 
@@ -672,17 +774,17 @@ Kanibako automatically creates a tar.xz snapshot of `share-rw/` before each
 container launch.  Manage snapshots manually:
 
 ```bash
-kanibako vault snapshot          # create a snapshot now
-kanibako vault list              # show all snapshots
-kanibako vault restore <name>    # restore from a snapshot
-kanibako vault prune --keep 5    # keep only 5 most recent
+kanibako box vault snapshot          # create a snapshot now
+kanibako box vault list              # show all snapshots
+kanibako box vault restore <name>    # restore from a snapshot
+kanibako box vault prune --keep 5    # keep only 5 most recent
 ```
 
 ### Disabling vault
 
 ```bash
-kanibako init --local --no-vault         # decentralized project without vault
-kanibako init --local ~/p --no-vault     # new directory, no vault
+kanibako create --standalone --no-vault          # standalone project without vault
+kanibako create --standalone ~/p --no-vault      # new directory, no vault
 ```
 
 ## Target Plugin System
@@ -713,29 +815,60 @@ Codex CLI, Goose).
 pip install kanibako-target-aider
 
 # Use a specific target
-kanibako config target_name aider
+kanibako box config target_name=aider
 kanibako start
 ```
 
 ## Configuration
 
 ```
-Precedence: CLI flag > project.toml > kanibako.toml > hardcoded defaults
+Precedence: CLI flag > project.toml > workset config > agent config > kanibako.toml > defaults
 ```
 
-- **Global**: `$XDG_CONFIG_HOME/kanibako.toml`
-- **Project**: `boxes/{hash}/project.toml`
-- **Agents**: `$XDG_DATA_HOME/kanibako/agents/{id}.toml`
-- **Templates**: `$XDG_DATA_HOME/kanibako/templates/`
-- **Environment**: `$XDG_DATA_HOME/kanibako/env` (global),
-  `boxes/{hash}/env` (project)
+All configuration levels share a unified interface:
 
 ```bash
-kanibako config --show              # show all resolved config
-kanibako config image               # get current image
-kanibako config image myimage:v2    # set project-level image
-kanibako config --clear             # remove all project overrides
+# Box (project) level
+kanibako box config                     # show project overrides
+kanibako box config --effective         # show resolved values (inherited + overrides)
+kanibako box config model               # get one key
+kanibako box config model=sonnet        # set one key
+kanibako box config --reset model       # remove override, back to default
+
+# Workset level (defaults for projects in this workset)
+kanibako workset config <workset> model=opus
+
+# Agent level (defaults for all projects using this agent)
+kanibako agent config model=opus
+
+# System level (global defaults)
+kanibako system config model=opus
+kanibako system config --reset --all    # reset all global config
 ```
+
+### Config files
+
+- **Global**: `$XDG_CONFIG_HOME/kanibako.toml`
+- **Project**: `boxes/{name}/project.toml`
+- **Agents**: `$XDG_DATA_HOME/kanibako/agents/{id}.toml`
+- **Templates**: `$XDG_DATA_HOME/kanibako/templates/`
+
+### Configuration keys
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `start_mode` | `continue` | Default start mode (continue/new/resume) |
+| `model` | platform default | Agent model name |
+| `autonomous` | `true` | Enable autonomy override |
+| `persistence` | `persistent` | Session type (persistent/ephemeral) |
+| `image` | `kanibako-oci:latest` | Container image |
+| `auth` | `shared` | Credential mode (shared/distinct) |
+| `vault.enabled` | `true` | Enable vault directories |
+| `env.*` | | Persistent environment variables |
+| `resource.*` | | Resource path overrides |
+| `target_name` | (auto-detect) | Agent target plugin |
+
+### Global config file
 
 The global config supports a `[paths]` section to override data directory
 layout, and a `[shared]` section for globally shared cache mounts:
@@ -755,74 +888,8 @@ npm = ".npm"
 ```
 
 Shared caches are **lazy** — they are only mounted if the host directory exists.
-Use `kanibako shared init` to create them:
 
-```bash
-kanibako shared init pip              # create global cache
-kanibako shared init --agent claude plugins  # create agent-level cache
-kanibako shared list                  # show configured caches and status
-```
-
-### Project settings
-
-Use `box get` / `box set` to inspect and override per-project paths and settings
-stored in `project.toml`:
-
-```bash
-kanibako box get shell                # print current shell path
-kanibako box get layout               # print layout (simple/default/robust)
-kanibako box set layout robust        # switch to robust layout
-kanibako box set auth distinct        # disable credential sharing
-kanibako box set shell /custom/shell  # override shell path (must be absolute)
-kanibako box set vault_enabled false  # disable vault
-```
-
-Settable keys: `shell`, `vault_ro`, `vault_rw`, `layout`, `vault_enabled`, `auth`.
-Readable keys include all settable keys plus: `mode`, `metadata`, `project_hash`,
-`global_shared`, `local_shared`.
-
-### Resource scoping
-
-Agent resources (plugins, settings, caches, session data) have a default sharing
-scope defined by the target plugin. Use `box resource` to view and override scopes
-per-project:
-
-```bash
-kanibako box resource list            # show all resources with default/effective scope
-kanibako box resource set plugins/ project  # make plugins project-local
-kanibako box resource set settings.json shared  # share settings across projects
-kanibako box resource unset plugins/  # remove override, revert to default
-```
-
-Scopes: `shared` (bind-mounted from global shared dir), `seeded` (copied from
-shared on first init, then project-local), `project` (no sharing).
-
-### Target settings
-
-Target plugins declare runtime settings (like model and permission mode) with
-defaults and optional constrained choices.  Use `box settings` to view effective
-values and override them per-project:
-
-```bash
-kanibako box settings list             # show settings with default/effective/source
-kanibako box settings get model        # print effective value
-kanibako box settings set model sonnet # per-project override
-kanibako box settings set access default  # constrained: permissive or default
-kanibako box settings unset model      # remove override, revert to agent/default
-```
-
-Effective value resolution (highest wins):
-1. Per-project override (`[target_settings]` in project.toml)
-2. Agent config state (`[state]` in agent TOML)
-3. Target plugin default (from `setting_descriptors()`)
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `container_image` | `ghcr.io/doctorjei/kanibako-oci:latest` | Container image |
-| `target_name` | `""` (auto-detect) | Agent target plugin (falls back to `no_agent` if none detected) |
-| `paths_data_path` | `""` (XDG default) | Override data directory root |
-
-## Helper spawning
+## Helper Spawning
 
 Kanibako containers can spawn child instances for parallel workloads.
 Each child gets its own directory tree, peer communication channels,
@@ -832,31 +899,31 @@ to it for orchestration and messaging.
 
 ```bash
 # Spawning and lifecycle
-kanibako helper spawn                 # spawn a child with default budget
-kanibako helper spawn --model sonnet  # child uses a different model
-kanibako helper spawn --depth 2 --breadth 3  # custom spawn limits
-kanibako helper list                  # show all helpers with status
-kanibako helper stop 1                # stop helper 1
-kanibako helper respawn 1             # relaunch a stopped helper
-kanibako helper cleanup 1             # stop and remove helper 1
-kanibako helper cleanup 1 --cascade   # also remove all descendants
+kanibako agent helper spawn                 # spawn a child with default budget
+kanibako agent helper spawn --model sonnet  # child uses a different model
+kanibako agent helper spawn --depth 2 --breadth 3  # custom spawn limits
+kanibako agent helper list                  # show all helpers with status
+kanibako agent helper stop 1                # stop helper 1
+kanibako agent helper respawn 1             # relaunch a stopped helper
+kanibako agent helper cleanup 1             # stop and remove helper 1
+kanibako agent helper cleanup 1 --cascade   # also remove all descendants
 
 # Messaging
-kanibako helper send 1 "Analyze the auth module"   # send to helper 1
-kanibako helper broadcast "Starting tests"          # send to all helpers
+kanibako agent helper send 1 "Analyze the auth module"
+kanibako agent helper broadcast "Starting tests"
 
 # Conversation log
-kanibako helper log                   # display full message log
-kanibako helper log --follow          # tail log in real-time
-kanibako helper log --from 1          # filter by helper number
-kanibako helper log --last 10         # show last 10 entries
+kanibako agent helper log                   # display full message log
+kanibako agent helper log --follow          # tail log in real-time
+kanibako agent helper log --from 1          # filter by helper number
+kanibako agent helper log --tail 10         # show last 10 entries
 
 # Opt out
-kanibako start --no-helpers           # launch without helper support
+kanibako start --no-helpers                 # launch without helper support
 ```
 
 **Architecture:** The kanibako CLI is bind-mounted into every container
-(director and helpers), so `kanibako helper spawn/send/broadcast/log`
+(director and helpers), so `kanibako agent helper spawn/send/broadcast/log`
 works inside containers. Each helper launches with `helper-init.sh` as
 its entrypoint — the script registers with the hub, sources broadcast
 startup scripts, then execs the agent command.
@@ -870,7 +937,7 @@ Two communication layers work together:
 
 **Logging:** All inter-agent messages are logged to a JSONL file on the
 host. Each entry records sender, recipient(s), timestamp, and message
-content. View the conversation in real-time with `kanibako helper log --follow`:
+content. View the conversation in real-time with `kanibako agent helper log --follow`:
 ```
 12:35:10  [0 → 1]  Analyze the auth module and report back.
 12:36:45  [1 → 0]  Found 3 issues in the token refresh flow.
@@ -907,40 +974,34 @@ A broadcast channel (`all/`) is available to all helpers.
 ~/.local/bin/kanibako   # kanibako CLI (bind-mounted from host, ro)
 ```
 
-## Persistent Sessions & Remote Access
+## Persistent Sessions
 
-`kanibako connect` creates a persistent container session that survives
-SSH disconnects. The container runs tmux as PID 1 — detaching or losing
-the connection leaves the agent running. Reconnecting reattaches to the
-same tmux session.
+`kanibako start` runs agents in tmux by default (`--persistent` mode).
+The container uses tmux as PID 1 — detaching or losing the connection
+leaves the agent running. Running `kanibako start` again reattaches to
+the same session.
 
 ```bash
-# Connect by project name (no cd required)
-kanibako connect myproject
+# Start a session (tmux by default)
+kanibako start myproject
 
-# Connect to a workset project
-kanibako connect client/webapp
+# Detach: Ctrl-B d (agent keeps running)
+# Reattach later:
+kanibako start myproject
 
-# Start a new conversation in a persistent session
-kanibako connect myproject -N
+# Start without tmux (session dies when terminal closes)
+kanibako start --ephemeral myproject
 
-# List available projects and their status
-kanibako connect --list
-
-# Stop a persistent session
-kanibako stop -p /path/to/project
+# List running projects
+kanibako ps
 ```
 
 **Lifecycle:**
-- First `connect` → creates a detached container with tmux, then attaches
-- Subsequent `connect` → reattaches to the running container
-- SSH disconnect → container keeps running; reconnect with `connect`
-- `kanibako stop` → stops and removes the persistent container
+- First `start` → creates a detached container with tmux, then attaches
+- Subsequent `start` → reattaches to the running container
+- SSH disconnect → container keeps running; reconnect with `start`
+- `kanibako stop` → stops and removes the container
 - Agent exits → tmux session ends → container stops
-
-**Interactive guard:** If a persistent container exists for a project,
-`kanibako start` refuses to launch (to prevent conflicts). Use
-`kanibako connect` to reattach or `kanibako stop` to end it.
 
 ### SSH integration
 
@@ -950,8 +1011,8 @@ Each key connects to a specific project — no shell access needed.
 **Per-key routing** in `~/.ssh/authorized_keys`:
 
 ```
-command="kanibako connect myproject" ssh-ed25519 AAAA... user@laptop-myproject
-command="kanibako connect client/webapp" ssh-ed25519 AAAA... user@laptop-webapp
+command="kanibako start myproject" ssh-ed25519 AAAA... user@laptop-myproject
+command="kanibako start client/webapp" ssh-ed25519 AAAA... user@laptop-webapp
 ```
 
 **Dedicated SSH config** on the client:
@@ -963,7 +1024,7 @@ Host myproject
     IdentityFile ~/.ssh/id_myproject
 ```
 
-Then just `ssh myproject` to connect directly to the Claude session.
+Then just `ssh myproject` to connect directly to the agent session.
 
 **With a jump host / bastion:**
 
@@ -979,7 +1040,7 @@ Host myproject
 - Use one SSH key per project for clean routing
 - Set `PermitTTY yes` and `PermitOpen none` in `sshd_config` for the
   kanibako user to restrict access to terminal-only
-- The kanibako user only needs access to `kanibako connect` — no shell
+- The kanibako user only needs access to `kanibako start` — no shell
   required (`ForceCommand` handles routing)
 - Credentials are refreshed on every reattach; if tokens expire, the
   agent prompts for re-auth via URL
@@ -991,11 +1052,14 @@ Host myproject
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1395)
+pytest tests/ -v                    # unit tests (1541)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
 ruff check src/ tests/
+
+# Type checking
+mypy src/kanibako/
 
 # Release
 bump2version patch|minor|major      # auto-commits and tags
@@ -1009,16 +1073,16 @@ git push && git push --tags
 | `cli.py` | Argparse tree, main() entry, `-v` flag |
 | `log.py` | Logging setup (`-v` enables debug output) |
 | `config.py` | TOML config loading, merge logic |
+| `config_interface.py` | Unified config engine (get/set/reset/show for all levels) |
 | `paths.py` | XDG resolution, mode detection, project init |
 | `container.py` | Container runtime (detect, pull, build, run, stop, detach) |
 | `shellenv.py` | Environment variable file handling |
 | `snapshots.py` | Vault snapshot engine |
 | `workset.py` | Working set data model and persistence |
-| `credentials.py` | Credential sync between host and container |
-| `freshness.py` | Non-blocking image digest comparison |
 | `names.py` | Project name registry (names.toml): register, resolve, assign |
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
+| `freshness.py` | Non-blocking image digest comparison |
 | `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-plugin-claude`) |
 | `plugins/` | Namespace package for built-in and bind-mounted plugins |
 | `helpers.py` | B-ary numbering, spawn budget, directory/channel creation |
