@@ -45,10 +45,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
 RUN if [ "$VARIANT" = "lxc" ]; then \
-        systemctl mask \
+        touch /etc/fstab \
+        && systemctl mask \
             systemd-remount-fs.service systemd-growfs-root.service \
             dev-hugepages.mount dev-mqueue.mount run-lock.mount \
             tmp.mount run-rpc_pipefs.mount \
+        && systemctl enable getty@console.service \
         && mkdir -p /etc/systemd/network \
         && printf '[Match]\nName=eth0\n\n[Network]\nDHCP=yes\n' \
                > /etc/systemd/network/80-dhcp.network \
@@ -59,6 +61,14 @@ RUN if [ "$VARIANT" = "lxc" ]; then \
         && touch "/var/lib/systemd/linger/$AGENT_USER"; \
     fi
 
+# LXC/VM need systemd as PID 1; OCI/min use /bin/bash
+RUN if [ "$VARIANT" = "lxc" ] || [ "$VARIANT" = "vm" ]; then \
+        printf '#!/bin/bash\nexec /sbin/init\n' > /usr/local/bin/kanibako-entrypoint; \
+    else \
+        printf '#!/bin/bash\nexec /bin/bash "$@"\n' > /usr/local/bin/kanibako-entrypoint; \
+    fi \
+    && chmod +x /usr/local/bin/kanibako-entrypoint
+
 USER $AGENT_USER
 WORKDIR /home/$AGENT_USER
 
@@ -68,5 +78,4 @@ RUN mkdir -p workspace .kanibako .local/bin share-ro share-rw
 
 WORKDIR /home/$AGENT_USER/workspace
 
-# Override any base image CMD (e.g. /sbin/init in droste-thread/hair)
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/usr/local/bin/kanibako-entrypoint"]
