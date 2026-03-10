@@ -367,6 +367,53 @@ class TestRunReauth:
         assert rc == 1
         assert "Error" in capsys.readouterr().err
 
+    def test_reauth_refreshes_credentials(self, config_file, tmp_home, capsys):
+        """After successful check_auth, credentials are synced to project."""
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with patch("kanibako.targets.resolve_target") as mock_target:
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = True
+            target.display_name = "Claude Code"
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                proj.auth = "shared"
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        assert rc == 0
+        target.refresh_credentials.assert_called_once_with(proj.shell_path)
+
+    def test_reauth_skips_refresh_for_distinct(self, config_file, tmp_home, capsys):
+        """Distinct auth does not trigger credential refresh."""
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with patch("kanibako.targets.resolve_target") as mock_target:
+            target = MagicMock()
+            target.has_binary = True
+            target.display_name = "Claude Code"
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                proj.auth = "distinct"
+                # Distinct auth with credentials present returns 0 before check_auth
+                creds_path = MagicMock()
+                creds_path.is_file.return_value = True
+                target.credential_check_path.return_value = creds_path
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        assert rc == 0
+        target.refresh_credentials.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Parser / alias tests

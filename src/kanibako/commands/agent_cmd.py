@@ -462,6 +462,9 @@ def run_reauth(args: argparse.Namespace) -> int:
             return 1
 
     if target.check_auth():
+        # Sync refreshed credentials to the project shell directory
+        if proj.auth != "distinct":
+            target.refresh_credentials(proj.shell_path)
         print(f"{target.display_name}: authenticated.", file=sys.stderr)
         return 0
     else:
