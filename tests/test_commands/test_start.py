@@ -565,3 +565,128 @@ class TestApplyTweakcc:
             result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
             _, _, cache_obj = result
             assert cache_obj is cache_instance
+
+
+class TestAutoAuth:
+    """Verify automated OAuth refresh integration in _run_container."""
+
+    def test_auto_auth_attempted_for_claude_target(self, start_mocks):
+        """Auto-auth is attempted when target is claude and auto_auth not disabled."""
+        from kanibako.auth_browser import AuthResult
+
+        with start_mocks() as m:
+            m.target.name = "claude"
+            with patch(
+                "kanibako.auth_browser.auto_refresh_auth",
+                return_value=AuthResult(success=True),
+            ) as mock_auto:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+                mock_auto.assert_called_once()
+
+    def test_auto_auth_skipped_with_no_auto_auth(self, start_mocks):
+        """Auto-auth is skipped when no_auto_auth=True."""
+        with start_mocks() as m:
+            m.target.name = "claude"
+            with patch(
+                "kanibako.auth_browser.auto_refresh_auth",
+            ) as mock_auto:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    no_auto_auth=True,
+                )
+                mock_auto.assert_not_called()
+
+    def test_auto_auth_skipped_for_distinct_auth(self, start_mocks):
+        """Auto-auth is skipped when auth mode is distinct."""
+        with start_mocks() as m:
+            m.target.name = "claude"
+            m.proj.auth = "distinct"
+            with patch(
+                "kanibako.auth_browser.auto_refresh_auth",
+            ) as mock_auto:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+                mock_auto.assert_not_called()
+
+    def test_auto_auth_failure_falls_through(self, start_mocks):
+        """Auto-auth failure falls through to interactive check_auth."""
+        from kanibako.auth_browser import AuthResult
+
+        with start_mocks() as m:
+            m.target.name = "claude"
+            m.target.check_auth.return_value = True
+            with patch(
+                "kanibako.auth_browser.auto_refresh_auth",
+                return_value=AuthResult(success=False, error="no playwright"),
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+                assert rc == 0
+                m.target.check_auth.assert_called_once()
+
+    def test_auto_auth_exception_falls_through(self, start_mocks):
+        """Exception in auto-auth is caught and falls through."""
+        with start_mocks() as m:
+            m.target.name = "claude"
+            m.target.check_auth.return_value = True
+            with patch(
+                "kanibako.auth_browser.auto_refresh_auth",
+                side_effect=RuntimeError("boom"),
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+                assert rc == 0
+                m.target.check_auth.assert_called_once()
+
+    def test_auto_auth_skipped_for_non_claude_target(self, start_mocks):
+        """Auto-auth is not attempted for non-claude targets."""
+        with start_mocks() as m:
+            m.target.name = "other_agent"
+            with patch(
+                "kanibako.auth_browser.auto_refresh_auth",
+            ) as mock_auto:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+                mock_auto.assert_not_called()

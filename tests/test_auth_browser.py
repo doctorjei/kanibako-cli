@@ -6,7 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.auth_browser import AuthResult, _handle_auth_page, refresh_auth
+from kanibako.auth_browser import (
+    AuthResult,
+    _handle_auth_page,
+    auto_refresh_auth,
+    refresh_auth,
+)
 
 
 class TestAuthResult:
@@ -204,3 +209,111 @@ class TestHandleAuthPage:
 
         assert result.success is False
         assert "Unrecognized" in result.error
+
+
+class TestAutoRefreshAuth:
+    """Tests for auto_refresh_auth orchestrator."""
+
+    def test_no_playwright(self, tmp_path):
+        """Returns error when playwright is not installed."""
+        with patch("kanibako.auth_browser._check_playwright", return_value=False):
+            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+        assert result.success is False
+        assert "Playwright not installed" in result.error
+
+    def test_binary_not_found(self, tmp_path):
+        """Returns error when claude binary doesn't exist."""
+        with patch("kanibako.auth_browser._check_playwright", return_value=True):
+            result = auto_refresh_auth("/nonexistent/claude", tmp_path)
+        assert result.success is False
+        assert "Failed to start auth" in result.error
+
+    def test_no_url_in_output(self, tmp_path):
+        """Returns error when auth output contains no OAuth URL."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["Welcome to Claude\n", "Please log in\n"])
+        mock_proc.stdin = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.kill.return_value = None
+        mock_proc.wait.return_value = 0
+
+        with (
+            patch("kanibako.auth_browser._check_playwright", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc),
+        ):
+            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+
+        assert result.success is False
+        assert "No OAuth URL" in result.error
+        mock_proc.kill.assert_called_once()
+
+    def test_successful_auto_auth(self, tmp_path):
+        """Successful flow: URL found → browser clicks authorize → login completes."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter([
+            "Open this URL: https://console.anthropic.com/oauth/authorize?foo=bar\n",
+        ])
+        mock_proc.stdin = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.wait.return_value = 0
+
+        with (
+            patch("kanibako.auth_browser._check_playwright", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("kanibako.auth_browser.refresh_auth") as mock_refresh,
+        ):
+            mock_refresh.return_value = AuthResult(success=True, key="KEY123")
+            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+
+        assert result.success is True
+        assert result.key == "KEY123"
+        mock_refresh.assert_called_once()
+        # URL should have been extracted and passed to refresh_auth
+        call_args = mock_refresh.call_args
+        assert "console.anthropic.com" in call_args.args[0]
+
+    def test_browser_auth_fails(self, tmp_path):
+        """Browser automation fails → process is killed."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter([
+            "Open: https://console.anthropic.com/oauth/authorize\n",
+        ])
+        mock_proc.stdin = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.kill.return_value = None
+        mock_proc.wait.return_value = 1
+
+        with (
+            patch("kanibako.auth_browser._check_playwright", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("kanibako.auth_browser.refresh_auth") as mock_refresh,
+        ):
+            mock_refresh.return_value = AuthResult(
+                success=False, error="IdP session expired"
+            )
+            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+
+        assert result.success is False
+        mock_proc.kill.assert_called_once()
+
+    def test_feeds_key_to_stdin(self, tmp_path):
+        """When refresh_auth returns a key, it's fed to the login process."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter([
+            "URL: https://console.anthropic.com/oauth/authorize\n",
+        ])
+        mock_stdin = MagicMock()
+        mock_proc.stdin = mock_stdin
+        mock_proc.poll.return_value = None  # process still running
+        mock_proc.wait.return_value = 0
+
+        with (
+            patch("kanibako.auth_browser._check_playwright", return_value=True),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("kanibako.auth_browser.refresh_auth") as mock_refresh,
+        ):
+            mock_refresh.return_value = AuthResult(success=True, key="MYKEY")
+            auto_refresh_auth("/usr/bin/claude", tmp_path)
+
+        mock_stdin.write.assert_called_once_with("MYKEY\n")
+        mock_stdin.flush.assert_called_once()

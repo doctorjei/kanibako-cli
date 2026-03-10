@@ -180,6 +180,99 @@ def _handle_auth_page(page) -> AuthResult:
     )
 
 
+def auto_refresh_auth(
+    claude_path: str,
+    data_path: Path,
+    *,
+    headless: bool = True,
+    login_timeout: float = 60,
+) -> AuthResult:
+    """Orchestrate fully automated OAuth: start login, parse URL, automate browser.
+
+    1. Start ``claude auth login`` capturing stdout
+    2. Parse the OAuth URL from the output
+    3. Use :func:`refresh_auth` to navigate with stored cookies
+    4. If the browser clicks "Authorize", the redirect completes the login
+    5. Wait for ``claude auth login`` to finish
+
+    Returns :class:`AuthResult` indicating success or failure.
+    """
+    import subprocess
+    import threading
+
+    from kanibako.auth_parser import parse_auth_output
+
+    if not _check_playwright():
+        return AuthResult(
+            success=False,
+            error="Playwright not installed",
+        )
+
+    # Start claude auth login, capturing output to find the URL.
+    try:
+        proc = subprocess.Popen(
+            [claude_path, "auth", "login"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.PIPE,
+            text=True,
+        )
+    except (FileNotFoundError, OSError) as exc:
+        return AuthResult(success=False, error=f"Failed to start auth: {exc}")
+
+    # Read output lines until we find an OAuth URL or the process exits.
+    output_lines: list[str] = []
+    url: str | None = None
+    code: str | None = None
+
+    def _read_output() -> None:
+        nonlocal url, code
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            output_lines.append(line)
+            if url is None:
+                prompt = parse_auth_output("".join(output_lines))
+                if prompt:
+                    url = prompt.url
+                    code = prompt.code
+                    return  # Got what we need
+
+    reader = threading.Thread(target=_read_output, daemon=True)
+    reader.start()
+    reader.join(timeout=15)
+
+    if not url:
+        # No URL found — kill process and bail.
+        proc.kill()
+        proc.wait()
+        return AuthResult(success=False, error="No OAuth URL found in auth output")
+
+    logger.info("Auto-auth: navigating to %s", url)
+    result = refresh_auth(url, data_path, headless=headless)
+
+    if result.success:
+        # If we got a key and the process is waiting for input, feed it.
+        key = result.key or code
+        if key and proc.poll() is None and proc.stdin:
+            try:
+                proc.stdin.write(key + "\n")
+                proc.stdin.flush()
+            except OSError:
+                pass
+
+        # Wait for claude auth login to complete.
+        try:
+            proc.wait(timeout=login_timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    else:
+        proc.kill()
+        proc.wait()
+
+    return result
+
+
 def _extract_key(page) -> str | None:
     """Try to extract the authorization key from the post-authorize page."""
     # Look for common patterns: displayed code, input field with key, etc.

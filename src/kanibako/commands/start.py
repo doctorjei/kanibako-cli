@@ -92,6 +92,10 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Disable helper spawning (no hub socket mounted)",
     )
     p.add_argument(
+        "--no-auto-auth", action="store_true",
+        help="Disable automated browser-based OAuth refresh",
+    )
+    p.add_argument(
         "agent_args", nargs=argparse.REMAINDER,
         help="Arguments passed directly to the agent (after --)",
     )
@@ -147,6 +151,7 @@ def run_start(args: argparse.Namespace) -> int:
     secure = getattr(args, "secure", False)
     model_override = getattr(args, "model", None)
     no_helpers = getattr(args, "no_helpers", False)
+    no_auto_auth = getattr(args, "no_auto_auth", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
     if explicit_persistent:
@@ -183,6 +188,7 @@ def run_start(args: argparse.Namespace) -> int:
         resume_mode=resume_session,
         extra_args=agent_args,
         no_helpers=no_helpers,
+        no_auto_auth=no_auto_auth,
         persistent=persistent,
         model_override=model_override,
         cli_env=env_vars,
@@ -312,6 +318,7 @@ def _run_container(
     resume_mode: bool,
     extra_args: list[str],
     no_helpers: bool = False,
+    no_auto_auth: bool = False,
     persistent: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
@@ -475,6 +482,27 @@ def _run_container(
             (templates_base / target.name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
             apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
             target.init_home(proj.shell_path, auth=proj.auth)
+
+        # Automated OAuth refresh (before interactive check_auth)
+        if (
+            target
+            and install
+            and proj.auth != "distinct"
+            and not no_auto_auth
+            and target.name == "claude"
+        ):
+            try:
+                from kanibako.auth_browser import auto_refresh_auth
+
+                auto_result = auto_refresh_auth(
+                    str(install.binary), std.data_path
+                )
+                if auto_result.success:
+                    logger.info("Auto-auth succeeded")
+                else:
+                    logger.debug("Auto-auth skipped: %s", auto_result.error)
+            except Exception as exc:
+                logger.debug("Auto-auth failed: %s", exc)
 
         # Pre-launch auth check (skip for distinct auth — creds live in project)
         if target and install and proj.auth != "distinct":
