@@ -378,3 +378,227 @@ class TestRebuildBuildArgs:
             )
             cmd = m.call_args[0][0]
             assert "--build-arg" not in cmd
+
+
+class TestPrecreateMountStubs:
+    """Test _precreate_mount_stubs creates directory/file stubs for mounts."""
+
+    def test_workspace_dir_always_created(self, tmp_path):
+        from kanibako.container import _precreate_mount_stubs
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        _precreate_mount_stubs(
+            shell, project, None,
+            vault_enabled=False,
+            vault_ro_path=tmp_path / "no-ro",
+            vault_rw_path=tmp_path / "no-rw",
+            vault_tmpfs=False,
+        )
+        assert (shell / "workspace").is_dir()
+
+    def test_vault_dirs_created_when_enabled(self, tmp_path):
+        from kanibako.container import _precreate_mount_stubs
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        vault_ro = tmp_path / "vault-ro"
+        vault_ro.mkdir()
+        vault_rw = tmp_path / "vault-rw"
+        vault_rw.mkdir()
+        _precreate_mount_stubs(
+            shell, project, None,
+            vault_enabled=True,
+            vault_ro_path=vault_ro,
+            vault_rw_path=vault_rw,
+            vault_tmpfs=True,
+        )
+        assert (shell / "share-ro").is_dir()
+        assert (shell / "share-rw").is_dir()
+        assert (project / "vault").is_dir()
+
+    def test_vault_dirs_skipped_when_source_missing(self, tmp_path):
+        from kanibako.container import _precreate_mount_stubs
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        _precreate_mount_stubs(
+            shell, project, None,
+            vault_enabled=True,
+            vault_ro_path=tmp_path / "missing-ro",
+            vault_rw_path=tmp_path / "missing-rw",
+            vault_tmpfs=False,
+        )
+        assert not (shell / "share-ro").exists()
+        assert not (shell / "share-rw").exists()
+
+    def test_extra_dir_mount_under_home(self, tmp_path):
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        src_dir = tmp_path / "comms-src"
+        src_dir.mkdir()
+        mounts = [FakeMount(source=src_dir, destination="/home/agent/comms")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            vault_enabled=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        assert (shell / "comms").is_dir()
+
+    def test_extra_file_mount_under_home(self, tmp_path):
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        src_file = tmp_path / "claude-binary"
+        src_file.touch()
+        mounts = [FakeMount(source=src_file, destination="/home/agent/.local/bin/claude")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            vault_enabled=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        assert (shell / ".local" / "bin").is_dir()
+        assert (shell / ".local" / "bin" / "claude").is_file()
+
+    def test_extra_mount_under_workspace(self, tmp_path):
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        src_dir = tmp_path / "vault-src"
+        src_dir.mkdir()
+        mounts = [FakeMount(source=src_dir, destination="/home/agent/workspace/vault")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            vault_enabled=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        assert (project / "vault").is_dir()
+
+    def test_mount_outside_home_skipped(self, tmp_path):
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        src_dir = tmp_path / "opt-src"
+        src_dir.mkdir()
+        mounts = [FakeMount(source=src_dir, destination="/opt/kanibako/kanibako")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            vault_enabled=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        # No dirs created under shell or project for /opt/ mounts
+        assert list(shell.iterdir()) == [shell / "workspace"]
+
+    def test_existing_file_not_overwritten(self, tmp_path):
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # Pre-existing file with content
+        (shell / ".local" / "bin").mkdir(parents=True)
+        existing = shell / ".local" / "bin" / "kanibako"
+        existing.write_text("existing content")
+        src_file = tmp_path / "entry"
+        src_file.touch()
+        mounts = [FakeMount(source=src_file, destination="/home/agent/.local/bin/kanibako")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            vault_enabled=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        # File stub should NOT overwrite existing content
+        assert existing.read_text() == "existing content"
+
+    def test_oserror_is_swallowed(self, tmp_path):
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        src_file = tmp_path / "f"
+        src_file.touch()
+        # Make shell read-only so mkdir fails
+        shell.chmod(0o444)
+        try:
+            mounts = [FakeMount(source=src_file, destination="/home/agent/deep/nested/file")]
+            # Should not raise
+            _precreate_mount_stubs(
+                shell, project, mounts,
+                vault_enabled=False,
+                vault_ro_path=tmp_path / "x",
+                vault_rw_path=tmp_path / "y",
+                vault_tmpfs=False,
+            )
+        finally:
+            shell.chmod(0o755)

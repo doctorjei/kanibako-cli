@@ -234,6 +234,13 @@ class ContainerRuntime:
         When *detach* is True the container runs in the background (``-d``
         instead of ``-it``, no ``--rm``).  Returns 0 on success.
         """
+        # Pre-create mount destination stubs so crun doesn't need to mkdir
+        # inside bind-mounted overlay filesystems (fails in LXC).
+        _precreate_mount_stubs(
+            shell_path, project_path, extra_mounts,
+            vault_enabled, vault_ro_path, vault_rw_path, vault_tmpfs,
+        )
+
         if detach:
             run_flags = ["-dt", "--userns=keep-id"]
         else:
@@ -426,3 +433,70 @@ class ContainerRuntime:
                 size = parts[1] if len(parts) > 1 else ""
                 images.append((repo, size))
         return images
+
+
+def _precreate_mount_stubs(
+    shell_path: Path,
+    project_path: Path,
+    extra_mounts: list | None,
+    vault_enabled: bool,
+    vault_ro_path: Path,
+    vault_rw_path: Path,
+    vault_tmpfs: bool,
+) -> None:
+    """Pre-create mount destination stubs to avoid crun permission errors.
+
+    In some environments (e.g. LXC nested containers), the OCI runtime
+    cannot create mount-point directories inside bind-mounted overlay
+    filesystems.  Pre-creating the stubs on the host side avoids the
+    problem.
+
+    Mapping: destinations under ``/home/agent/workspace/`` are created
+    relative to *project_path*; other destinations under ``/home/agent/``
+    are created relative to *shell_path*.
+    """
+    AGENT_HOME = "/home/agent/"
+    WORKSPACE = "/home/agent/workspace/"
+
+    def _ensure_dir(p: Path) -> None:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+
+    def _ensure_file(p: Path) -> None:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if not p.exists():
+                p.touch()
+        except OSError:
+            pass
+
+    # Built-in directory mounts.
+    _ensure_dir(shell_path / "workspace")
+    if vault_enabled:
+        if vault_ro_path.is_dir():
+            _ensure_dir(shell_path / "share-ro")
+        if vault_rw_path.is_dir():
+            _ensure_dir(shell_path / "share-rw")
+        if vault_tmpfs:
+            _ensure_dir(project_path / "vault")
+
+    # Extra mounts: pre-create destination stubs.
+    if not extra_mounts:
+        return
+    for mount in extra_mounts:
+        dest = mount.destination
+        if dest.startswith(WORKSPACE):
+            rel = dest[len(WORKSPACE):]
+            host_path = project_path / rel
+        elif dest.startswith(AGENT_HOME):
+            rel = dest[len(AGENT_HOME):]
+            host_path = shell_path / rel
+        else:
+            continue
+
+        if mount.source.is_dir():
+            _ensure_dir(host_path)
+        else:
+            _ensure_file(host_path)
