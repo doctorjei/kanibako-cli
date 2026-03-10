@@ -43,6 +43,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# tweakcc: custom Claude Code patching tool (requires node/npm from droste base)
+RUN if command -v npm >/dev/null 2>&1; then \
+        npm install -g tweakcc 2>/dev/null || true; \
+    fi
+
 # LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
 RUN if [ "$VARIANT" = "lxc" ]; then \
         : > /etc/fstab \
