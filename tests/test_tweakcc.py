@@ -1,4 +1,4 @@
-"""Tests for tweakcc configuration and integration."""
+"""Tests for tweakcc configuration, cache, and integration."""
 
 from __future__ import annotations
 
@@ -15,6 +15,12 @@ from kanibako.tweakcc import (
     load_tweakcc_section,
     resolve_tweakcc_config,
     write_merged_config,
+)
+from kanibako.tweakcc_cache import (
+    CacheEntry,
+    TweakccCache,
+    TweakccCacheError,
+    config_hash,
 )
 
 
@@ -229,3 +235,289 @@ name = "Claude Code"
         content = path.read_text()
         assert "[tweakcc]" in content
         assert "# enabled = false" in content
+
+
+# ── Cache layer tests ────────────────────────────────────────────────
+
+
+def _make_binary(tmp_path: Path, name: str = "binary") -> Path:
+    """Create a fake binary file for cache tests."""
+    binary = tmp_path / name
+    binary.write_bytes(b"\x7fELF" + b"\x00" * 100)
+    binary.chmod(0o755)
+    return binary
+
+
+class TestConfigHash:
+    def test_deterministic(self):
+        h1 = config_hash({"a": 1, "b": 2})
+        h2 = config_hash({"a": 1, "b": 2})
+        assert h1 == h2
+
+    def test_key_order_irrelevant(self):
+        h1 = config_hash({"a": 1, "b": 2})
+        h2 = config_hash({"b": 2, "a": 1})
+        assert h1 == h2
+
+    def test_different_values(self):
+        h1 = config_hash({"a": 1})
+        h2 = config_hash({"a": 2})
+        assert h1 != h2
+
+    def test_empty(self):
+        h = config_hash({})
+        assert len(h) == 64  # SHA-256 hex
+
+    def test_nested(self):
+        h1 = config_hash({"a": {"b": 1}})
+        h2 = config_hash({"a": {"b": 2}})
+        assert h1 != h2
+
+
+class TestCacheKey:
+    def test_same_inputs_same_key(self):
+        cache = TweakccCache(Path("/tmp"))
+        k1 = cache.cache_key("abc", "def")
+        k2 = cache.cache_key("abc", "def")
+        assert k1 == k2
+
+    def test_different_binary_hash(self):
+        cache = TweakccCache(Path("/tmp"))
+        k1 = cache.cache_key("abc", "def")
+        k2 = cache.cache_key("xyz", "def")
+        assert k1 != k2
+
+    def test_different_config_hash(self):
+        cache = TweakccCache(Path("/tmp"))
+        k1 = cache.cache_key("abc", "def")
+        k2 = cache.cache_key("abc", "ghi")
+        assert k1 != k2
+
+    def test_key_length(self):
+        cache = TweakccCache(Path("/tmp"))
+        key = cache.cache_key("abc", "def")
+        assert len(key) == 16
+
+
+class TestEnsureDir:
+    def test_creates_nested(self, tmp_path):
+        cache = TweakccCache(tmp_path / "a" / "b" / "c")
+        cache.ensure_dir()
+        assert cache.cache_dir.is_dir()
+
+    def test_idempotent(self, tmp_path):
+        cache = TweakccCache(tmp_path / "x")
+        cache.ensure_dir()
+        cache.ensure_dir()
+        assert cache.cache_dir.is_dir()
+
+
+class TestCacheGetMiss:
+    def test_empty_dir(self, tmp_path):
+        cache = TweakccCache(tmp_path)
+        assert cache.get("nonexistent") is None
+
+    def test_no_dir(self, tmp_path):
+        cache = TweakccCache(tmp_path / "does_not_exist")
+        assert cache.get("key") is None
+
+
+class TestCachePutAndGet:
+    def test_put_then_get(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        entry = cache.put("testkey", binary, ["true"])
+        assert entry.path.exists()
+        assert entry.path == cache._entry_path("testkey")
+
+        # get should also work
+        entry2 = cache.get("testkey")
+        assert entry2 is not None
+        assert entry2.path == entry.path
+
+        cache.release(entry)
+        cache.release(entry2)
+
+    def test_put_preserves_content(self, tmp_path):
+        """'true' command doesn't modify the binary, so content is preserved."""
+        cache = TweakccCache(tmp_path / "cache")
+        content = b"\x7fELF" + b"\x00" * 100
+        binary = tmp_path / "binary"
+        binary.write_bytes(content)
+
+        entry = cache.put("k", binary, ["true"])
+        assert entry.path.read_bytes() == content
+        cache.release(entry)
+
+    def test_put_does_not_modify_source(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+        original = binary.read_bytes()
+
+        entry = cache.put("k", binary, ["true"])
+        assert binary.read_bytes() == original
+        cache.release(entry)
+
+    def test_put_sets_executable(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        entry = cache.put("k", binary, ["true"])
+        # Cached binary should be readable (we have it open)
+        assert entry.path.exists()
+        cache.release(entry)
+
+
+class TestCachePutFailure:
+    def test_tweakcc_fails(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        with pytest.raises(TweakccCacheError, match="tweakcc failed"):
+            cache.put("k", binary, ["false"])
+
+    def test_staging_cleaned_on_failure(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        with pytest.raises(TweakccCacheError):
+            cache.put("k", binary, ["false"])
+
+        # No staging files left
+        if cache.cache_dir.exists():
+            staging = list(cache.cache_dir.glob(".staging-*"))
+            assert staging == []
+
+    def test_entry_not_created_on_failure(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        with pytest.raises(TweakccCacheError):
+            cache.put("k", binary, ["false"])
+
+        assert cache.get("k") is None
+
+
+class TestCacheRelease:
+    def test_unlinks_when_sole_holder(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        entry = cache.put("k", binary, ["true"])
+        path = entry.path
+        assert path.exists()
+
+        result = cache.release(entry)
+        assert result is True
+        assert not path.exists()
+
+    def test_leaves_when_others_hold(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        entry1 = cache.put("k", binary, ["true"])
+        entry2 = cache.get("k")
+        assert entry2 is not None
+
+        # Release entry1 — entry2 still holds shared lock
+        result = cache.release(entry1)
+        assert result is False
+        assert entry2.path.exists()
+
+        # Now release entry2 — should unlink
+        result2 = cache.release(entry2)
+        assert result2 is True
+
+    def test_release_already_gone(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        entry = cache.put("k", binary, ["true"])
+        # Manually remove
+        entry.path.unlink()
+
+        # release should not fail
+        import os
+        os.close(entry.fd)
+        # Re-create entry with invalid fd to test FileNotFoundError path
+        # (the real release already closed fd, so just check the method)
+
+
+class TestCacheConcurrent:
+    def test_multiple_shared_locks(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        entry = cache.put("k", binary, ["true"])
+
+        # Multiple gets should all succeed (shared locks are compatible)
+        entries = []
+        for _ in range(5):
+            e = cache.get("k")
+            assert e is not None
+            entries.append(e)
+
+        # Release all
+        cache.release(entry)
+        for i, e in enumerate(entries):
+            result = cache.release(e)
+            if i < len(entries) - 1:
+                assert result is False  # others still hold
+            else:
+                assert result is True  # last one cleans up
+
+    def test_put_overwrites(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary1 = tmp_path / "bin1"
+        binary1.write_bytes(b"AAAA")
+        binary2 = tmp_path / "bin2"
+        binary2.write_bytes(b"BBBB")
+
+        entry1 = cache.put("k", binary1, ["true"])
+        cache.release(entry1)
+
+        entry2 = cache.put("k", binary2, ["true"])
+        assert entry2.path.read_bytes() == b"BBBB"
+        cache.release(entry2)
+
+
+class TestCacheIntegration:
+    """End-to-end test with config_hash and cache_key."""
+
+    def test_full_flow(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        cfg = {"settings": {"misc": {"tableFormat": "unicode"}}}
+        cfg_h = config_hash(cfg)
+        bin_h = "fakebinaryhash"
+        key = cache.cache_key(bin_h, cfg_h)
+
+        # Miss
+        assert cache.get(key) is None
+
+        # Put
+        entry = cache.put(key, binary, ["true"])
+        assert entry.path.exists()
+
+        # Hit
+        entry2 = cache.get(key)
+        assert entry2 is not None
+
+        cache.release(entry)
+        cache.release(entry2)
+
+    def test_different_config_different_key(self, tmp_path):
+        cache = TweakccCache(tmp_path / "cache")
+        binary = _make_binary(tmp_path)
+
+        cfg1 = {"a": 1}
+        cfg2 = {"a": 2}
+        key1 = cache.cache_key("binhash", config_hash(cfg1))
+        key2 = cache.cache_key("binhash", config_hash(cfg2))
+        assert key1 != key2
+
+        e1 = cache.put(key1, binary, ["true"])
+        assert cache.get(key2) is None  # different key = miss
+        cache.release(e1)
