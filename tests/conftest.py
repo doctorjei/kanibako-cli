@@ -240,8 +240,16 @@ def start_mocks():
             target.name = "claude"
             target.default_entrypoint = "claude"
             target.config_dir_name = ".claude"
-            target.detect.return_value = MagicMock()  # install object
-            target.binary_mounts.return_value = []
+            install_mock = MagicMock()
+            install_mock.binary.exists.return_value = True
+            install_mock.install_dir.exists.return_value = True
+            target.detect.return_value = install_mock
+            # Return non-empty mounts so the fail-fast guard doesn't trigger.
+            from kanibako.targets.base import Mount
+            target.binary_mounts.return_value = [
+                Mount(source=MagicMock(), destination="/home/agent/.local/share/claude", options="ro"),
+                Mount(source=MagicMock(), destination="/home/agent/.local/bin/claude", options="ro"),
+            ]
             target.build_cli_args.side_effect = lambda *, safe_mode, resume_mode, new_session, is_new_project, extra_args: (
                 _build_default_cli_args(safe_mode, resume_mode, new_session, is_new_project, extra_args)
             )

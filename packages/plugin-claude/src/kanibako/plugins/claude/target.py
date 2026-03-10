@@ -73,7 +73,7 @@ class ClaudeTarget(Target):
             logger.debug("Failed to resolve symlink: %s", binary)
             return None
 
-        logger.debug("Resolved binary: %s", resolved)
+        logger.debug("Resolved binary: %s (from %s)", resolved, binary)
 
         # Walk up from the resolved binary to find the 'claude' directory.
         install_dir = resolved.parent
@@ -86,7 +86,10 @@ class ClaudeTarget(Target):
             install_dir = resolved.parent
 
         logger.debug("Install dir: %s", install_dir)
-        return AgentInstall(name="claude", binary=binary, install_dir=install_dir)
+        # Use the resolved (symlink-free) binary path so that mount sources
+        # are real files, avoiding symlink resolution issues in nested
+        # containers (e.g. podman inside LXC).
+        return AgentInstall(name="claude", binary=resolved, install_dir=install_dir)
 
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
         """Return mounts for Claude install dir and binary.

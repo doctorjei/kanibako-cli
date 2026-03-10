@@ -461,7 +461,20 @@ def _run_container(
         # Build extra mounts from target binary detection
         extra_mounts = []
         if target and install:
-            extra_mounts.extend(target.binary_mounts(install))
+            binary_mnts = target.binary_mounts(install)
+            if not binary_mnts:
+                print(
+                    f"Error: {target.display_name} binary detected at "
+                    f"{install.binary} but mount sources are missing.\n"
+                    f"  binary:      {install.binary} "
+                    f"({'exists' if install.binary.exists() else 'MISSING'})\n"
+                    f"  install_dir: {install.install_dir} "
+                    f"({'exists' if install.install_dir.exists() else 'MISSING'})\n"
+                    f"The container would launch without the agent binary.",
+                    file=sys.stderr,
+                )
+                return 1
+            extra_mounts.extend(binary_mnts)
 
         # kanibako CLI bind-mount (package + entry script)
         kanibako_mnts = _kanibako_mounts()

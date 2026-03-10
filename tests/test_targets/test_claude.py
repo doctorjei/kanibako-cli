@@ -54,7 +54,8 @@ class TestDetect:
         assert result is not None
         assert isinstance(result, AgentInstall)
         assert result.name == "claude"
-        assert result.binary == symlink
+        # binary is the resolved (symlink-free) path
+        assert result.binary == binary.resolve()
         assert result.install_dir == install_dir
 
     def test_not_found(self):
