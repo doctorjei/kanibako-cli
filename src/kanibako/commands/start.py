@@ -642,6 +642,16 @@ def _run_container(
             if target and install:
                 binary_mounts.extend(target.binary_mounts(install))
 
+            # Share tweakcc cache with helpers so they reuse patched binaries
+            if tweakcc_entry is not None:
+                _tweakcc_cache_dir = std.cache_path / "tweakcc"
+                if _tweakcc_cache_dir.is_dir():
+                    binary_mounts.append(_HMount(
+                        source=_tweakcc_cache_dir,
+                        destination=str(_tweakcc_cache_dir),
+                        options="ro",
+                    ))
+
             helper_ctx = HelperContext(
                 runtime=runtime,
                 image=image,

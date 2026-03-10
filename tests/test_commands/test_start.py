@@ -540,3 +540,28 @@ class TestApplyTweakcc:
 
             assert result is not None
             cache_instance.put.assert_called_once()
+
+    def test_returns_cache_object(self, tmp_path):
+        """Returned tuple includes the cache object for later release."""
+        from kanibako.agents import AgentConfig
+
+        install = MagicMock()
+        install.name = "claude"
+        install.install_dir = tmp_path / "install"
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        logger = MagicMock()
+
+        fake_entry = MagicMock()
+        fake_entry.path = tmp_path / "cached"
+
+        with (
+            patch("kanibako.bun_sea.cli_js_hash", return_value="abc"),
+            patch("kanibako.tweakcc_cache.TweakccCache") as MockCache,
+        ):
+            cache_instance = MockCache.return_value
+            cache_instance.cache_key.return_value = "k"
+            cache_instance.get.return_value = fake_entry
+
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+            _, _, cache_obj = result
+            assert cache_obj is cache_instance
