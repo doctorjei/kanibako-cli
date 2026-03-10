@@ -302,6 +302,8 @@ aliases for common operations:
 | `--persistent` | Use tmux session wrapper (default) |
 | `--ephemeral` | No tmux, session dies with terminal |
 | `--no-helpers` | Disable helper spawning |
+| `--no-auto-auth` | Disable automated browser-based OAuth refresh |
+| `--browser` | Launch a headless browser sidecar (`BROWSER_WS_ENDPOINT` injected) |
 
 ### Global Flags
 
@@ -743,12 +745,16 @@ tweakcc patches Claude Code's embedded cli.js bundle to customize system
 prompts, toolsets, and UI behavior.  When enabled in the agent config,
 kanibako orchestrates the full patching lifecycle:
 
-1. Extracts cli.js from the host binary and computes a content hash
+1. Computes a content hash of the host binary's embedded cli.js
 2. Merges config layers: kanibako defaults → external config file → inline overrides
 3. Checks the flock-based binary cache (at `$XDG_CACHE_HOME/kanibako/tweakcc/`)
-4. On cache miss, copies the binary and runs `tweakcc --apply` to patch it
+4. On cache miss, copies the binary and invokes tweakcc to patch it
 5. Mounts the cached patched binary into the container
 6. Propagates the cache to helper containers
+
+**Note:** tweakcc is a Node.js package and requires Node.js on the host (or
+in the container where patching runs).  The patching invocation is under
+active development — see the implementation plan for current status.
 
 Enable in the agent TOML:
 
@@ -1113,7 +1119,7 @@ Host myproject
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1621)
+pytest tests/ -v                    # unit tests (1690)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
@@ -1146,6 +1152,10 @@ git push && git push --tags
 | `freshness.py` | Non-blocking image digest comparison |
 | `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-plugin-claude`) |
 | `plugins/` | Namespace package for built-in and bind-mounted plugins |
+| `auth_parser.py` | Parse OAuth URL and verification code from `claude auth login` output |
+| `auth_browser.py` | Automated OAuth refresh via headless Playwright browser |
+| `browser_state.py` | Persistent browser context (cookies, localStorage) for OAuth session reuse |
+| `browser_sidecar.py` | On-demand headless Chrome container for agent web access |
 | `helpers.py` | B-ary numbering, spawn budget, directory/channel creation |
 | `helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `helper_client.py` | Container-side socket client for hub communication |
