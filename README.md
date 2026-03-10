@@ -39,6 +39,9 @@ via `pip install`.
   project init, with agent-specific and general variants
 - **Shared caches** — global download caches (pip, cargo, npm, etc.) shared
   across projects; agent-level caches via agent TOML
+- **tweakcc integration** — optional patching of agent binaries via tweakcc
+  with config layering (agent defaults → external config → inline overrides),
+  flock-based binary caching, and automatic propagation to helpers
 - **Target plugin system** — agent-agnostic core (`kanibako-base` Python
   package); Claude Code plugin (`kanibako-plugin-claude`) is installed by default
 - **Image freshness checks** — non-blocking digest comparison against GHCR on
@@ -711,6 +714,10 @@ access = "permissive"
 
 [shared]
 # plugins = ".claude/plugins"  # agent-level shared cache paths
+
+[tweakcc]
+# enabled = false           # enable tweakcc binary patching
+# config = "~/.tweakcc/config.json"  # external tweakcc config file
 ```
 
 **Sections:**
@@ -720,6 +727,7 @@ access = "permissive"
 - `[env]` — environment variables injected into the container
 - `[shared]` — agent-level shared cache paths (mounted from the per-agent
   shared directory, independent of global shared caches)
+- `[tweakcc]` — optional tweakcc integration for binary patching (see below)
 
 Manage agent settings via the CLI:
 
@@ -728,6 +736,41 @@ kanibako agent list                   # list configured agents
 kanibako agent config model           # show effective model
 kanibako agent config model=sonnet    # set agent-level default
 ```
+
+### tweakcc Integration
+
+tweakcc patches Claude Code's embedded cli.js bundle to customize system
+prompts, toolsets, and UI behavior.  When enabled in the agent config,
+kanibako orchestrates the full patching lifecycle:
+
+1. Extracts cli.js from the host binary and computes a content hash
+2. Merges config layers: kanibako defaults → external config file → inline overrides
+3. Checks the flock-based binary cache (at `$XDG_CACHE_HOME/kanibako/tweakcc/`)
+4. On cache miss, copies the binary and runs `tweakcc --apply` to patch it
+5. Mounts the cached patched binary into the container
+6. Propagates the cache to helper containers
+
+Enable in the agent TOML:
+
+```toml
+[tweakcc]
+enabled = true
+config = "~/.tweakcc/config.json"
+```
+
+Inline settings override the external config:
+
+```toml
+[tweakcc]
+enabled = true
+config = "~/.tweakcc/config.json"
+
+[tweakcc.settings.misc]
+mcpConnectionNonBlocking = true
+```
+
+If patching fails (missing tweakcc, bad binary, etc.), kanibako falls back
+gracefully to the unpatched binary.
 
 ## Shell Templates
 
@@ -1070,7 +1113,7 @@ Host myproject
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                    # unit tests (1542)
+pytest tests/ -v                    # unit tests (1621)
 pytest tests/ -v -m integration     # integration tests (35)
 
 # Lint
