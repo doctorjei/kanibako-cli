@@ -690,3 +690,74 @@ class TestAutoAuth:
                     extra_args=[],
                 )
                 mock_auto.assert_not_called()
+
+
+class TestBrowserSidecar:
+    """Verify browser sidecar integration in _run_container."""
+
+    def test_browser_flag_starts_sidecar(self, start_mocks):
+        """--browser starts a browser sidecar and injects BROWSER_WS_ENDPOINT."""
+        mock_sidecar = MagicMock()
+        mock_sidecar.start.return_value = "ws://127.0.0.1:9222/devtools/browser/abc"
+
+        with start_mocks() as m:
+            with (
+                patch(
+                    "kanibako.browser_sidecar.BrowserSidecar",
+                    return_value=mock_sidecar,
+                ),
+                patch(
+                    "kanibako.browser_sidecar.ws_endpoint_for_container",
+                    return_value="ws://host.containers.internal:9222/devtools/browser/abc",
+                ),
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    browser=True,
+                )
+                assert rc == 0
+                mock_sidecar.start.assert_called_once()
+                mock_sidecar.stop.assert_called_once()
+
+    def test_browser_flag_not_set_skips_sidecar(self, start_mocks):
+        """Without --browser, no sidecar is started."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.browser_sidecar.BrowserSidecar",
+            ) as mock_cls:
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+                assert rc == 0
+                mock_cls.assert_not_called()
+
+    def test_browser_sidecar_failure_continues(self, start_mocks):
+        """Sidecar failure doesn't block container launch."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.browser_sidecar.BrowserSidecar",
+                side_effect=RuntimeError("no image"),
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    browser=True,
+                )
+                assert rc == 0  # continues without sidecar

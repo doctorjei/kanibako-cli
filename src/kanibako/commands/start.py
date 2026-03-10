@@ -96,6 +96,10 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Disable automated browser-based OAuth refresh",
     )
     p.add_argument(
+        "--browser", action="store_true",
+        help="Launch a headless browser sidecar (BROWSER_WS_ENDPOINT injected)",
+    )
+    p.add_argument(
         "agent_args", nargs=argparse.REMAINDER,
         help="Arguments passed directly to the agent (after --)",
     )
@@ -152,6 +156,7 @@ def run_start(args: argparse.Namespace) -> int:
     model_override = getattr(args, "model", None)
     no_helpers = getattr(args, "no_helpers", False)
     no_auto_auth = getattr(args, "no_auto_auth", False)
+    browser = getattr(args, "browser", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
     if explicit_persistent:
@@ -189,6 +194,7 @@ def run_start(args: argparse.Namespace) -> int:
         extra_args=agent_args,
         no_helpers=no_helpers,
         no_auto_auth=no_auto_auth,
+        browser=browser,
         persistent=persistent,
         model_override=model_override,
         cli_env=env_vars,
@@ -319,6 +325,7 @@ def _run_container(
     extra_args: list[str],
     no_helpers: bool = False,
     no_auto_auth: bool = False,
+    browser: bool = False,
     persistent: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
@@ -720,6 +727,28 @@ def _run_container(
         # Pre-launch validation: warn about missing mount sources.
         _validate_mounts(extra_mounts, logger)
 
+        # Browser sidecar: on-demand headless Chrome for agent web access
+        browser_sidecar = None
+        if browser:
+            try:
+                from kanibako.browser_sidecar import (
+                    BrowserSidecar,
+                    ws_endpoint_for_container,
+                )
+
+                sidecar_name = f"{container_name}-browser"
+                browser_sidecar = BrowserSidecar(
+                    runtime=runtime,
+                    container_name=sidecar_name,
+                )
+                ws_url = browser_sidecar.start()
+                container_ws = ws_endpoint_for_container(ws_url)
+                container_env["BROWSER_WS_ENDPOINT"] = container_ws
+                logger.info("Browser sidecar started: %s", container_ws)
+            except Exception as exc:
+                logger.warning("Browser sidecar failed to start: %s", exc)
+                browser_sidecar = None
+
         # Persistent mode: wrap command with tmux
         if persistent:
             inner_cmd = entrypoint or (target.default_entrypoint if target else None) or "/bin/bash"
@@ -753,6 +782,12 @@ def _run_container(
             # Release tweakcc cache entry (shared lock)
             if tweakcc_entry is not None and tweakcc_cache_obj is not None:
                 tweakcc_cache_obj.release(tweakcc_entry)
+            # Stop browser sidecar
+            if browser_sidecar is not None:
+                try:
+                    browser_sidecar.stop()
+                except Exception as exc:
+                    logger.debug("Browser sidecar cleanup: %s", exc)
 
         if persistent:
             # Attach to the new tmux session
