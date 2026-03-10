@@ -461,16 +461,20 @@ def _precreate_mount_stubs(
     def _ensure_dir(p: Path) -> None:
         try:
             p.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
+            logger.debug("stub mkdir: %s", p)
+        except OSError as exc:
+            logger.debug("stub mkdir FAILED: %s (%s)", p, exc)
 
     def _ensure_file(p: Path) -> None:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             if not p.exists():
                 p.touch()
-        except OSError:
-            pass
+                logger.debug("stub touch: %s", p)
+            else:
+                logger.debug("stub exists: %s", p)
+        except OSError as exc:
+            logger.debug("stub touch FAILED: %s (%s)", p, exc)
 
     # Built-in directory mounts.
     _ensure_dir(shell_path / "workspace")
@@ -487,6 +491,7 @@ def _precreate_mount_stubs(
         return
     for mount in extra_mounts:
         dest = mount.destination
+        src = mount.source
         if dest.startswith(WORKSPACE):
             rel = dest[len(WORKSPACE):]
             host_path = project_path / rel
@@ -494,9 +499,14 @@ def _precreate_mount_stubs(
             rel = dest[len(AGENT_HOME):]
             host_path = shell_path / rel
         else:
+            logger.debug("stub skip (not under home): %s → %s", src, dest)
             continue
 
-        if mount.source.is_dir():
+        if src.is_dir():
             _ensure_dir(host_path)
         else:
+            logger.debug(
+                "stub file: src=%s is_file=%s is_dir=%s exists=%s → %s",
+                src, src.is_file(), src.is_dir(), src.exists(), host_path,
+            )
             _ensure_file(host_path)
