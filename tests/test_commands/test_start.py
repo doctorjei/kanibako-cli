@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from kanibako.commands.start import _run_container
+from unittest.mock import MagicMock, patch
+
+from kanibako.commands.start import _apply_tweakcc, _run_container
 
 
 class TestTargetWarnings:
@@ -338,3 +340,203 @@ class TestAgentConfigIntegration:
             # agent_toml_path should have been called with agent_id="general"
             call_args = m.agent_toml_path.call_args
             assert call_args[0][1] == "general"
+
+
+class TestTweakccIntegration:
+    """Verify tweakcc patching in the container launch flow."""
+
+    def test_disabled_by_default(self, start_mocks):
+        """Empty tweakcc config → no patching, normal flow."""
+        with start_mocks() as m:
+            assert m.agent_cfg.tweakcc == {}
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m.runtime.run.assert_called_once()
+
+    def test_enabled_calls_apply_tweakcc(self, start_mocks):
+        """When tweakcc is enabled in agent config, _apply_tweakcc is called."""
+        with start_mocks() as m:
+            m.agent_cfg.tweakcc = {"enabled": True}
+            m.load_agent_config.return_value = m.agent_cfg
+
+            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
+                mock_apply.return_value = None  # disabled/failed
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+                mock_apply.assert_called_once()
+
+    def test_patched_binary_used_in_mounts(self, start_mocks, tmp_path):
+        """When tweakcc returns a patched install, binary_mounts uses it."""
+        with start_mocks() as m:
+            m.agent_cfg.tweakcc = {"enabled": True}
+            m.load_agent_config.return_value = m.agent_cfg
+
+            from kanibako.targets.base import AgentInstall, Mount
+            from kanibako.tweakcc_cache import CacheEntry
+
+            patched_binary = tmp_path / "patched"
+            patched_binary.write_bytes(b"\x7fELF" + b"\x00" * 50)
+            patched_install = AgentInstall(
+                name="claude",
+                binary=patched_binary,
+                install_dir=tmp_path / "install",
+            )
+            fake_entry = CacheEntry(path=patched_binary, fd=-1)
+            fake_cache = MagicMock()
+
+            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
+                mock_apply.return_value = (patched_install, fake_entry, fake_cache)
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+                # binary_mounts should be called with the patched install
+                m.target.binary_mounts.assert_called_once_with(patched_install)
+                # cache should be released after container exits
+                fake_cache.release.assert_called_once_with(fake_entry)
+
+    def test_failure_falls_back(self, start_mocks):
+        """When tweakcc fails, original binary is used (graceful fallback)."""
+        with start_mocks() as m:
+            m.agent_cfg.tweakcc = {"enabled": True}
+            m.load_agent_config.return_value = m.agent_cfg
+
+            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
+                mock_apply.return_value = None  # signals failure
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+                assert rc == 0
+                # Original install used (binary_mounts called with mock install)
+                m.target.binary_mounts.assert_called_once()
+
+    def test_telemetry_disabled_for_claude(self, start_mocks):
+        """CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 is set for Claude target."""
+        with start_mocks() as m:
+            m.target.name = "claude"
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "1"
+
+    def test_telemetry_not_overridden_by_user(self, start_mocks):
+        """User can override telemetry setting via -e flag."""
+        with start_mocks() as m:
+            m.target.name = "claude"
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+                cli_env=["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=0"],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            # User's -e override takes priority (set after setdefault)
+            assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "0"
+
+
+class TestApplyTweakcc:
+    """Unit tests for the _apply_tweakcc helper."""
+
+    def test_disabled_returns_none(self, tmp_path):
+        """When tweakcc is not enabled, returns None."""
+        from kanibako.agents import AgentConfig
+
+        install = MagicMock()
+        agent_cfg = AgentConfig(tweakcc={})
+        result = _apply_tweakcc(install, agent_cfg, tmp_path, MagicMock())
+        assert result is None
+
+    def test_enabled_but_empty_returns_none(self, tmp_path):
+        """Enabled=False explicitly → returns None."""
+        from kanibako.agents import AgentConfig
+
+        install = MagicMock()
+        agent_cfg = AgentConfig(tweakcc={"enabled": False})
+        result = _apply_tweakcc(install, agent_cfg, tmp_path, MagicMock())
+        assert result is None
+
+    def test_bun_sea_error_returns_none(self, tmp_path):
+        """BunSEAError during hash → returns None (graceful fallback)."""
+        from kanibako.agents import AgentConfig
+        from kanibako.bun_sea import BunSEAError
+
+        install = MagicMock()
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        logger = MagicMock()
+
+        with patch("kanibako.bun_sea.cli_js_hash") as mock_hash:
+            mock_hash.side_effect = BunSEAError("bad binary")
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+            assert result is None
+            logger.warning.assert_called_once()
+
+    def test_cache_hit(self, tmp_path):
+        """Cache hit → returns patched install without calling put."""
+        from kanibako.agents import AgentConfig
+
+        install = MagicMock()
+        install.name = "claude"
+        install.install_dir = tmp_path / "install"
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        logger = MagicMock()
+
+        fake_entry = MagicMock()
+        fake_entry.path = tmp_path / "cached_binary"
+
+        with (
+            patch("kanibako.bun_sea.cli_js_hash", return_value="abc123"),
+            patch("kanibako.tweakcc_cache.TweakccCache") as MockCache,
+        ):
+            cache_instance = MockCache.return_value
+            cache_instance.cache_key.return_value = "testkey"
+            cache_instance.get.return_value = fake_entry
+
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+
+            assert result is not None
+            patched_install, entry, cache = result
+            assert patched_install.binary == fake_entry.path
+            assert patched_install.install_dir == install.install_dir
+            assert entry is fake_entry
+            cache_instance.put.assert_not_called()
+
+    def test_cache_miss_calls_put(self, tmp_path):
+        """Cache miss → calls put with tweakcc command."""
+        from kanibako.agents import AgentConfig
+
+        install = MagicMock()
+        install.name = "claude"
+        install.binary = tmp_path / "binary"
+        install.install_dir = tmp_path / "install"
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        logger = MagicMock()
+
+        fake_entry = MagicMock()
+        fake_entry.path = tmp_path / "cached"
+
+        with (
+            patch("kanibako.bun_sea.cli_js_hash", return_value="abc123"),
+            patch("kanibako.tweakcc_cache.TweakccCache") as MockCache,
+        ):
+            cache_instance = MockCache.return_value
+            cache_instance.cache_key.return_value = "testkey"
+            cache_instance.get.return_value = None  # miss
+            cache_instance.put.return_value = fake_entry
+
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+
+            assert result is not None
+            cache_instance.put.assert_called_once()

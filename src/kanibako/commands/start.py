@@ -254,6 +254,54 @@ def _tmux_has_session(session_name: str) -> bool:
     ).returncode == 0
 
 
+def _apply_tweakcc(install, agent_cfg, cache_path, logger):
+    """Apply tweakcc patching if enabled in agent config.
+
+    Returns ``(patched_install, cache_entry, cache)`` on success, or
+    *None* if tweakcc is disabled or patching fails (graceful fallback).
+    """
+    from kanibako.bun_sea import BunSEAError, cli_js_hash
+    from kanibako.targets.base import AgentInstall
+    from kanibako.tweakcc import build_merged_config, resolve_tweakcc_config, write_merged_config
+    from kanibako.tweakcc_cache import TweakccCache, TweakccCacheError, config_hash
+
+    tweakcc_cfg = resolve_tweakcc_config(agent_cfg.tweakcc)
+    if not tweakcc_cfg.enabled:
+        return None
+
+    try:
+        merged_config = build_merged_config(tweakcc_cfg)
+        bin_hash = cli_js_hash(install.binary)
+        cfg_hash = config_hash(merged_config)
+
+        cache_dir = cache_path / "tweakcc"
+        cache = TweakccCache(cache_dir)
+        key = cache.cache_key(bin_hash, cfg_hash)
+
+        entry = cache.get(key)
+        if entry is None:
+            config_file = cache_dir / f".config-{key}.json"
+            write_merged_config(merged_config, config_file)
+            tweakcc_cmd = ["tweakcc", "--apply", "--config", str(config_file)]
+            entry = cache.put(key, install.binary, tweakcc_cmd)
+            logger.info("Patched binary cached: %s", key)
+        else:
+            logger.info("Using cached patched binary: %s", key)
+
+        patched_install = AgentInstall(
+            name=install.name,
+            binary=entry.path,
+            install_dir=install.install_dir,
+        )
+        return patched_install, entry, cache
+
+    except (BunSEAError, TweakccCacheError) as exc:
+        logger.warning(
+            "tweakcc patching failed, using unpatched binary: %s", exc,
+        )
+        return None
+
+
 def _run_container(
     *,
     project_dir: str | None,
@@ -438,6 +486,14 @@ def _run_container(
         if target and proj.auth != "distinct":
             target.refresh_credentials(proj.shell_path)
 
+        # tweakcc: patch agent binary if enabled
+        tweakcc_entry = None
+        tweakcc_cache_obj = None
+        if target and install and agent_cfg.tweakcc:
+            result = _apply_tweakcc(install, agent_cfg, std.cache_path, logger)
+            if result:
+                install, tweakcc_entry, tweakcc_cache_obj = result
+
         # Build CLI args via target, merging agent default_args and state
         if target:
             effective_state = _build_effective_state(target, agent_cfg, project_toml)
@@ -540,6 +596,12 @@ def _run_container(
                 if "=" in item:
                     k, v = item.split("=", 1)
                     container_env[k] = v
+
+        # Disable Claude Code telemetry inside containers.
+        if target and target.name == "claude":
+            container_env.setdefault(
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1",
+            )
 
         # Inject instance identity for peer communication.
         if proj.name:
@@ -650,6 +712,9 @@ def _run_container(
             # Stop helper hub after director exits
             if hub is not None:
                 hub.stop()
+            # Release tweakcc cache entry (shared lock)
+            if tweakcc_entry is not None and tweakcc_cache_obj is not None:
+                tweakcc_cache_obj.release(tweakcc_entry)
 
         if persistent:
             # Attach to the new tmux session
