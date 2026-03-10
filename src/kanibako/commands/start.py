@@ -749,9 +749,13 @@ def _run_container(
                 logger.warning("Browser sidecar failed to start: %s", exc)
                 browser_sidecar = None
 
+        # Set agent entrypoint if not explicitly overridden.
+        if not entrypoint and target:
+            entrypoint = target.default_entrypoint
+
         # Persistent mode: wrap command with tmux
         if persistent:
-            inner_cmd = entrypoint or (target.default_entrypoint if target else None) or "/bin/bash"
+            inner_cmd = entrypoint or "/bin/bash"
             tmux_args = ["new-session", "-s", "kanibako", "--", inner_cmd]
             if cli_args:
                 tmux_args.extend(cli_args)
