@@ -25,6 +25,7 @@ class AgentConfig:
     state: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     shared_caches: dict[str, str] = field(default_factory=dict)
+    tweakcc: dict = field(default_factory=dict)
 
 
 def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
@@ -60,6 +61,7 @@ def load_agent_config(path: Path) -> AgentConfig:
     cfg.state = {k: str(v) for k, v in data.get("state", {}).items()}
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
     cfg.shared_caches = {k: str(v) for k, v in data.get("shared", {}).items()}
+    cfg.tweakcc = dict(data.get("tweakcc", {}))
 
     return cfg
 
@@ -102,6 +104,18 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
     lines.append("[shared]")
     for k, v in cfg.shared_caches.items():
         lines.append(f'{k} = "{v}"')
+    lines.append("")
+
+    # [tweakcc] section
+    lines.append("[tweakcc]")
+    if not cfg.tweakcc:
+        lines.append("# enabled = false")
+    else:
+        for k, v in cfg.tweakcc.items():
+            if isinstance(v, bool):
+                lines.append(f"{k} = {str(v).lower()}")
+            else:
+                lines.append(f'{k} = "{v}"')
     lines.append("")
 
     path.write_text("\n".join(lines))
