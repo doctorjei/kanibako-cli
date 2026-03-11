@@ -266,6 +266,10 @@ class ClaudeTarget(Target):
             ResourceMapping("shell-snapshots/", ResourceScope.PROJECT, "Shell state snapshots"),
         ]
 
+    def instruction_files(self) -> list[str]:
+        """Return instruction files to merge across template levels."""
+        return ["CLAUDE.md"]
+
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Claude Code runtime settings.
 

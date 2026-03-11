@@ -178,6 +178,18 @@ class Target(ABC):
         """Agent config dir relative to home (e.g. '.claude'). Default: '.{name}'."""
         return f".{self.name}"
 
+    def instruction_files(self) -> list[str]:
+        """Return filenames that should be layered across template levels.
+
+        These files are merged (concatenated with section markers) from
+        three layers: kanibako base, template, and user project.  Each
+        filename is relative to the agent's config dir within the shell
+        directory (e.g. ``"CLAUDE.md"`` lives at ``shell/.claude/CLAUDE.md``).
+
+        The default returns an empty list (no instruction files merged).
+        """
+        return []
+
     def credential_check_path(self, home: Path) -> Path | None:
         """Path to check for credential existence, or None."""
         return None

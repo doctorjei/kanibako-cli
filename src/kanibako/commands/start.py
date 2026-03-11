@@ -491,6 +491,19 @@ def _run_container(
             apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
             target.init_home(proj.shell_path, auth=proj.auth)
 
+            # Merge layered instruction files (base + template + user).
+            instr_files = target.instruction_files()
+            if instr_files:
+                from kanibako.instructions import merge_instruction_files
+                merge_instruction_files(
+                    shell_path=proj.shell_path,
+                    config_dir_name=target.config_dir_name,
+                    instruction_files=instr_files,
+                    templates_base=templates_base,
+                    agent_name=target.name,
+                    template_name=agent_cfg.shell,
+                )
+
         # Automated OAuth refresh (before interactive check_auth)
         if (
             target
