@@ -17,7 +17,6 @@ from kanibako.tweakcc import (
     write_merged_config,
 )
 from kanibako.tweakcc_cache import (
-    CacheEntry,
     TweakccCache,
     TweakccCacheError,
     config_hash,

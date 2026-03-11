@@ -16,7 +16,6 @@ import json
 import subprocess
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
 from kanibako.container import ContainerRuntime
 from kanibako.log import get_logger

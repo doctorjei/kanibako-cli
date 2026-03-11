@@ -10,10 +10,7 @@ import pytest
 
 from kanibako.bun_sea import (
     BunSEAError,
-    BunModule,
     _BUN_MARKER,
-    _MODULE_STRUCT_SIZE,
-    _OFFSETS_SIZE,
     cli_js_hash,
     extract_cli_js,
     extract_module,

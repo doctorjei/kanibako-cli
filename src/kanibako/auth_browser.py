@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.browser_state import (
-    BrowserState,
     from_playwright_context,
     load_state,
     save_state,

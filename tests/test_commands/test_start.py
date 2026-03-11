@@ -378,7 +378,7 @@ class TestTweakccIntegration:
             m.agent_cfg.tweakcc = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
-            from kanibako.targets.base import AgentInstall, Mount
+            from kanibako.targets.base import AgentInstall
             from kanibako.tweakcc_cache import CacheEntry
 
             patched_binary = tmp_path / "patched"
@@ -700,7 +700,7 @@ class TestBrowserSidecar:
         mock_sidecar = MagicMock()
         mock_sidecar.start.return_value = "ws://127.0.0.1:9222/devtools/browser/abc"
 
-        with start_mocks() as m:
+        with start_mocks():
             with (
                 patch(
                     "kanibako.browser_sidecar.BrowserSidecar",
@@ -727,7 +727,7 @@ class TestBrowserSidecar:
 
     def test_browser_flag_not_set_skips_sidecar(self, start_mocks):
         """Without --browser, no sidecar is started."""
-        with start_mocks() as m:
+        with start_mocks():
             with patch(
                 "kanibako.browser_sidecar.BrowserSidecar",
             ) as mock_cls:
@@ -745,7 +745,7 @@ class TestBrowserSidecar:
 
     def test_browser_sidecar_failure_continues(self, start_mocks):
         """Sidecar failure doesn't block container launch."""
-        with start_mocks() as m:
+        with start_mocks():
             with patch(
                 "kanibako.browser_sidecar.BrowserSidecar",
                 side_effect=RuntimeError("no image"),
