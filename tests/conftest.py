@@ -198,6 +198,7 @@ def start_mocks():
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.agent_toml_path") as m_agent_toml_path,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
+            patch("kanibako.commands.start._container_logs", return_value="") as m_container_logs,
             patch("builtins.open", MagicMock()) as m_open,
         ):
             proj = MagicMock()

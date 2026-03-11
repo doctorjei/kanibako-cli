@@ -169,6 +169,10 @@ class Target(ABC):
         """Binary name for container entrypoint. None = use bash."""
         return None
 
+    def should_retry_new_session(self, output: str) -> bool:
+        """Check if agent output indicates ``--continue`` failed and a new session should be started."""
+        return False
+
     @property
     def config_dir_name(self) -> str:
         """Agent config dir relative to home (e.g. '.claude'). Default: '.{name}'."""

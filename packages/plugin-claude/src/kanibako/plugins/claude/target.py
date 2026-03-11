@@ -39,6 +39,9 @@ class ClaudeTarget(Target):
     def default_entrypoint(self) -> str | None:
         return "claude"
 
+    def should_retry_new_session(self, output: str) -> bool:
+        return "No conversation found" in output
+
     @property
     def config_dir_name(self) -> str:
         return ".claude"

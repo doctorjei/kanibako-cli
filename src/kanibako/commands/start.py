@@ -329,6 +329,7 @@ def _run_container(
     persistent: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
+    _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -798,6 +799,41 @@ def _run_container(
             rc = runtime.exec(
                 container_name, ["tmux", "attach", "-t", "kanibako"]
             )
+            # If agent exited, show container logs so the user can
+            # see why (tmux swallows output on exit).
+            if not runtime.is_running(container_name):
+                logs = _container_logs(runtime, container_name)
+                if logs:
+                    print(logs, file=sys.stderr)
+                    # Auto-retry as new session if the target says so
+                    # (once only — _is_retry prevents loops).
+                    if (
+                        target
+                        and not new_session
+                        and not _is_retry
+                        and target.should_retry_new_session(logs)
+                    ):
+                        print(
+                            "Restarting with a new session.",
+                            file=sys.stderr,
+                        )
+                        runtime.rm(container_name)
+                        return _run_container(
+                            project_dir=project_dir,
+                            entrypoint=None,
+                            image_override=image_override,
+                            new_session=True,
+                            safe_mode=safe_mode,
+                            resume_mode=False,
+                            extra_args=extra_args,
+                            no_helpers=no_helpers,
+                            no_auto_auth=no_auto_auth,
+                            browser=browser,
+                            persistent=persistent,
+                            model_override=model_override,
+                            cli_env=cli_env,
+                            _is_retry=True,
+                        )
         else:
             # Write back refreshed credentials via target (skip for distinct auth)
             if target and proj.auth != "distinct":
@@ -940,6 +976,15 @@ def _build_resource_mounts(proj, target, agent_id: str):
 
 # AF_UNIX sun_path limit (108 on Linux, 104 on macOS).
 _UNIX_SOCKET_PATH_LIMIT = 104
+
+
+def _container_logs(runtime: ContainerRuntime, name: str) -> str:
+    """Return recent container logs, or empty string on failure."""
+    result = subprocess.run(
+        [runtime.cmd, "logs", "--tail", "50", name],
+        capture_output=True, text=True,
+    )
+    return (result.stdout + result.stderr).strip() if result.returncode == 0 else ""
 
 
 def _validate_mounts(mounts: list, logger) -> None:
