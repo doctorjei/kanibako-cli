@@ -41,7 +41,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && mv /root/.local/bin/uvx /usr/local/bin/
 
 RUN if command -v pip >/dev/null 2>&1; then \
-        pip install --break-system-packages kanibako-base; \
+        pip install --break-system-packages kanibako-base build twine; \
     fi
 
 # GitHub CLI
