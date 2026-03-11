@@ -24,12 +24,21 @@ RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; f
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cifs-utils \
+    fd-find \
     inotify-tools \
     nfs-common \
+    nodejs \
+    npm \
     openssh-client \
     ripgrep \
     sshpass \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/fdfind /usr/bin/fd
+
+# uv: fast Python package/tool manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.local/bin/uv /usr/local/bin/ \
+    && mv /root/.local/bin/uvx /usr/local/bin/
 
 RUN if command -v pip >/dev/null 2>&1; then \
         pip install --break-system-packages kanibako-base; \
@@ -43,7 +52,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# tweakcc: custom Claude Code patching tool (requires node/npm from droste base)
+# tweakcc: custom Claude Code patching tool (requires node/npm)
 RUN if command -v npm >/dev/null 2>&1; then \
         npm install -g tweakcc 2>/dev/null || true; \
     fi
