@@ -57,6 +57,7 @@ class KanibakoConfig:
     container_image: str = _DEFAULTS["container_image"]
     target_name: str = _DEFAULTS["target_name"]
     helpers_disabled: bool = False
+    share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
 
 

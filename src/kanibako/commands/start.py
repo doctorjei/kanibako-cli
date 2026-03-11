@@ -100,6 +100,10 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Launch a headless browser sidecar (BROWSER_WS_ENDPOINT injected)",
     )
     p.add_argument(
+        "--share-images", action="store_true",
+        help="Share host container image storage with child (read-only, experimental)",
+    )
+    p.add_argument(
         "agent_args", nargs=argparse.REMAINDER,
         help="Arguments passed directly to the agent (after --)",
     )
@@ -141,6 +145,10 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Disable helper spawning (no hub socket mounted)",
     )
     p.add_argument(
+        "--share-images", action="store_true",
+        help="Share host container image storage with child (read-only, experimental)",
+    )
+    p.add_argument(
         "shell_args", nargs=argparse.REMAINDER,
         help="Command to run (after --): kanibako shell -- echo hello",
     )
@@ -157,6 +165,7 @@ def run_start(args: argparse.Namespace) -> int:
     no_helpers = getattr(args, "no_helpers", False)
     no_auto_auth = getattr(args, "no_auto_auth", False)
     browser = getattr(args, "browser", False)
+    share_images = getattr(args, "share_images", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
     if explicit_persistent:
@@ -195,6 +204,7 @@ def run_start(args: argparse.Namespace) -> int:
         no_helpers=no_helpers,
         no_auto_auth=no_auto_auth,
         browser=browser,
+        share_images=share_images,
         persistent=persistent,
         model_override=model_override,
         cli_env=env_vars,
@@ -223,6 +233,7 @@ def run_shell(args: argparse.Namespace) -> int:
 
     image_override = getattr(args, "image", None)
     no_helpers = getattr(args, "no_helpers", False)
+    share_images = getattr(args, "share_images", False)
     env_vars = getattr(args, "env", None) or []
 
     explicit_persistent = getattr(args, "persistent", False)
@@ -243,6 +254,7 @@ def run_shell(args: argparse.Namespace) -> int:
         resume_mode=False,
         extra_args=shell_args,
         no_helpers=no_helpers,
+        share_images=share_images,
         persistent=persistent,
         cli_env=env_vars,
     )
@@ -326,6 +338,7 @@ def _run_container(
     no_helpers: bool = False,
     no_auto_auth: bool = False,
     browser: bool = False,
+    share_images: bool = False,
     persistent: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
@@ -614,6 +627,23 @@ def _run_container(
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
             extra_mounts.extend(resource_mounts)
 
+        # Image sharing: mount host image storage read-only into child.
+        if share_images or merged.share_images:
+            from kanibako.image_sharing import build_image_sharing_mounts
+            staging = proj.metadata_path / ".image-sharing"
+            img_mounts = build_image_sharing_mounts(
+                runtime.cmd, staging,
+            )
+            if img_mounts:
+                extra_mounts.extend(img_mounts)
+                logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
+            else:
+                print(
+                    "Warning: --share-images enabled but host image storage "
+                    "could not be detected. Continuing without image sharing.",
+                    file=sys.stderr,
+                )
+
         # Peer communication: mount shared comms directory.
         from kanibako.targets.base import Mount as _CMount
         comms_path = Path(merged.paths_comms)
@@ -842,6 +872,7 @@ def _run_container(
                             no_helpers=no_helpers,
                             no_auto_auth=no_auto_auth,
                             browser=browser,
+                            share_images=share_images,
                             persistent=persistent,
                             model_override=model_override,
                             cli_env=cli_env,

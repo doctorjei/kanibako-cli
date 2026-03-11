@@ -217,6 +217,7 @@ def start_mocks():
             merged.container_image = "test:latest"
             merged.target_name = ""
             merged.paths_agents = "agents"
+            merged.share_images = False
             m_merged.return_value = merged
 
             runtime = MagicMock()
