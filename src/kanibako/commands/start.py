@@ -495,6 +495,13 @@ def _run_container(
         # Upgrade shell (add shell.d support to existing shells).
         _upgrade_shell(proj.shell_path)
 
+        # Shell directory hygiene: remove waste files, compress old logs.
+        from kanibako.hygiene import cleanup_shell_dir
+        hygiene_actions = cleanup_shell_dir(proj.shell_path)
+        if hygiene_actions:
+            for action in hygiene_actions:
+                logger.info(action)
+
         # Template application + agent init for new projects.
         if proj.is_new and target:
             from kanibako.templates import apply_shell_template
