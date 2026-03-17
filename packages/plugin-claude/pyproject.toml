@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kanibako-plugin-claude"
-version = "1.0.4"
+version = "1.0.5"
 description = "Claude Code target plugin for kanibako"
 requires-python = ">=3.11"
 dependencies = ["kanibako-base"]

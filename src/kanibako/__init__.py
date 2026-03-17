@@ -1,3 +1,3 @@
 """kanibako: Run AI coding agents in rootless containers with per-project isolation."""
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
