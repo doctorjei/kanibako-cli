@@ -845,6 +845,25 @@ def _run_container(
                     logger.debug("Browser sidecar cleanup: %s", exc)
 
         if persistent:
+            # Wait briefly for the detached container to start, then verify
+            # it's actually running before trying to exec into it.
+            import time
+            for _attempt in range(10):
+                if runtime.is_running(container_name):
+                    break
+                time.sleep(0.3)
+            else:
+                # Container never started or exited immediately.
+                logs = _container_logs(runtime, container_name)
+                if logs:
+                    print(logs, file=sys.stderr)
+                print(
+                    "Error: container exited before session could attach. "
+                    "Check the logs above for details.",
+                    file=sys.stderr,
+                )
+                return 1
+
             # Attach to the new tmux session
             rc = runtime.exec(
                 container_name, ["tmux", "attach", "-t", "kanibako"]

@@ -226,6 +226,13 @@ def start_mocks():
             runtime.container_exists.return_value = False
             runtime.exec.return_value = 0
             runtime.rm.return_value = True
+
+            # Simulate container start: after run(), is_running returns True.
+            _original_run = runtime.run
+            def _run_side_effect(*a, **kw):
+                runtime.is_running.return_value = True
+                return _original_run.return_value
+            runtime.run.side_effect = _run_side_effect
             m_rt_cls.return_value = runtime
 
             # Agent config mock: empty defaults (no default_args, no state, no env)
