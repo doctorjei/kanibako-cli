@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kanibako-plugin-claude"
-version = "1.0.5"
+version = "1.1.0"
 description = "Transitional package — use kanibako-agent-claude instead"
 requires-python = ">=3.11"
 dependencies = ["kanibako-agent-claude>=1.0.5,<2.0"]
