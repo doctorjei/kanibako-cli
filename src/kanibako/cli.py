@@ -67,12 +67,12 @@ def build_parser() -> argparse.ArgumentParser:
         add_shell_parser,
         add_start_parser,
     )
-    from kanibako.commands.image import add_parser as add_image_parser
+    from kanibako.commands.image import add_parser as add_rig_parser
     from kanibako.commands.box import add_parser as add_box_parser
     from kanibako.commands.box._parser import run_create, run_list as run_list_fn, run_ps, run_rm
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
-    from kanibako.commands.agent_cmd import add_parser as add_agent_parser
+    from kanibako.commands.agent_cmd import add_parser as add_crab_parser
     from kanibako.commands.system_cmd import add_parser as add_system_parser
 
     # Top-level aliases (start, shell, stop already have their own parsers).
@@ -150,18 +150,18 @@ def build_parser() -> argparse.ArgumentParser:
     rm_p.set_defaults(func=run_rm)
 
     # Management commands.
-    add_image_parser(subparsers)
+    add_rig_parser(subparsers)
     add_box_parser(subparsers)
     add_workset_parser(subparsers)
-    add_agent_parser(subparsers)
+    add_crab_parser(subparsers)
     add_system_parser(subparsers)
 
     return parser
 
 
 _COMMAND_ALIASES: dict[str, str] = {
-    "crab": "agent",
-    "rig": "image",
+    "agent": "crab",
+    "image": "rig",
     "container": "box",
 }
 
@@ -169,9 +169,9 @@ _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
     "start", "stop", "shell", "ps", "list", "create", "rm",
     # Management commands.
-    "box", "image", "workset", "agent", "system",
+    "box", "rig", "workset", "crab", "system",
     # Command aliases (#62).
-    "crab", "rig", "container",
+    "agent", "image", "container",
 }
 
 
@@ -278,14 +278,14 @@ def main(argv: list[str] | None = None) -> None:
         # If the first arg isn't a known subcommand, default to "start".
         if not effective or effective[0] not in _SUBCOMMANDS:
             effective = ["start"] + effective
-        # Translate command aliases (e.g. crab→agent).
+        # Translate command aliases (e.g. agent→crab, image→rig).
         if effective and effective[0] in _COMMAND_ALIASES:
             effective[0] = _COMMAND_ALIASES[effective[0]]
         args = parser.parse_args(effective)
 
         # Lazy init: create config + data dirs on first run.
-        # Skip for agent (helper/fork run inside containers).
-        if args.command not in ("agent",):
+        # Skip for crab (helper/fork run inside containers).
+        if args.command not in ("crab",):
             _ensure_initialized()
 
     func = getattr(args, "func", None)

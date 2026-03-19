@@ -260,26 +260,37 @@ class TestRunFork:
 # ---------------------------------------------------------------------------
 
 class TestForkCLIRegistration:
-    def test_agent_in_subcommands(self):
+    def test_crab_in_subcommands(self):
+        from kanibako.cli import _SUBCOMMANDS
+        assert "crab" in _SUBCOMMANDS
+
+    def test_agent_alias_in_subcommands(self):
         from kanibako.cli import _SUBCOMMANDS
         assert "agent" in _SUBCOMMANDS
 
-    def test_fork_parser_registered_under_agent(self):
+    def test_fork_parser_registered_under_crab(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        # fork should be recognized as an agent subcommand
-        args = parser.parse_args(["agent", "fork", "testname"])
-        assert args.command == "agent"
-        assert args.agent_command == "fork"
+        # fork should be recognized as a crab subcommand
+        args = parser.parse_args(["crab", "fork", "testname"])
+        assert args.command == "crab"
+        assert args.crab_command == "fork"
         assert args.name == "testname"
 
     def test_fork_exempt_from_config_check(self):
-        """agent fork should not require kanibako.toml to exist."""
+        """crab fork should not require kanibako.toml to exist."""
         from kanibako.cli import main
-        # Calling agent fork with a missing kanibako.toml should not trigger
+        # Calling crab fork with a missing kanibako.toml should not trigger
         # the "kanibako is not set up" error — it should reach run_fork
         # and fail on the socket check instead.
         with pytest.raises(SystemExit) as exc_info:
-            main(["agent", "fork", "test"])
+            main(["crab", "fork", "test"])
         # Should exit with 1 (no socket), not the config-check error
+        assert exc_info.value.code == 1
+
+    def test_fork_via_agent_alias_exempt_from_config_check(self):
+        """'agent fork' alias is translated to 'crab fork' and still works."""
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["agent", "fork", "test"])
         assert exc_info.value.code == 1

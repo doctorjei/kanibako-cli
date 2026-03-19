@@ -437,28 +437,28 @@ class TestAgentParser:
         from kanibako.cli import _SUBCOMMANDS
         assert "reauth" not in _SUBCOMMANDS
 
-    def test_agent_default_is_list(self):
-        """Running 'agent' with no subcommand defaults to list."""
+    def test_crab_default_is_list(self):
+        """Running 'crab' with no subcommand defaults to list."""
         from kanibako.cli import build_parser
         from kanibako.commands.agent_cmd import run_list
 
         parser = build_parser()
-        args = parser.parse_args(["agent"])
+        args = parser.parse_args(["crab"])
         assert args.func == run_list
 
     def test_helper_list_alias_ls(self):
         from kanibako.cli import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(["agent", "helper", "ls"])
-        assert args.command == "agent"
+        args = parser.parse_args(["crab", "helper", "ls"])
+        assert args.command == "crab"
         assert hasattr(args, "func")
 
     def test_helper_send(self):
         from kanibako.cli import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(["agent", "helper", "send", "3", "hello"])
+        args = parser.parse_args(["crab", "helper", "send", "3", "hello"])
         assert args.number == 3
         assert args.message == "hello"
 
@@ -466,14 +466,14 @@ class TestAgentParser:
         from kanibako.cli import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(["agent", "helper", "broadcast", "all hands"])
+        args = parser.parse_args(["crab", "helper", "broadcast", "all hands"])
         assert args.message == "all hands"
 
     def test_helper_log(self):
         from kanibako.cli import build_parser
 
         parser = build_parser()
-        args = parser.parse_args(["agent", "helper", "log", "-f", "--from", "1", "--last", "5"])
+        args = parser.parse_args(["crab", "helper", "log", "-f", "--from", "1", "--last", "5"])
         assert args.follow is True
         assert args.from_helper == 1
         assert args.last == 5

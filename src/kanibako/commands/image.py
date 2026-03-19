@@ -39,11 +39,11 @@ def _confirm(prompt: str) -> bool:
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
-        "image",
+        "rig",
         help="Manage box rigs (images)",
         description="Create, list, inspect, remove, or rebuild box rigs (container images).",
     )
-    image_sub = p.add_subparsers(dest="image_command", metavar="COMMAND")
+    image_sub = p.add_subparsers(dest="rig_command", metavar="COMMAND")
 
     # kanibako image create
     create_p = image_sub.add_parser(

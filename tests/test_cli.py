@@ -240,33 +240,33 @@ class TestParser:
         assert args.bare is True
         assert args.force is True
 
-    def test_image_command(self):
+    def test_rig_command(self):
         parser = build_parser()
-        args = parser.parse_args(["image"])
-        assert args.command == "image"
+        args = parser.parse_args(["rig"])
+        assert args.command == "rig"
 
-    def test_image_list(self):
+    def test_rig_list(self):
         parser = build_parser()
-        args = parser.parse_args(["image", "list"])
-        assert args.command == "image"
-        assert args.image_command == "list"
+        args = parser.parse_args(["rig", "list"])
+        assert args.command == "rig"
+        assert args.rig_command == "list"
 
-    def test_image_rebuild(self):
+    def test_rig_rebuild(self):
         parser = build_parser()
-        args = parser.parse_args(["image", "rebuild"])
-        assert args.command == "image"
-        assert args.image_command == "rebuild"
+        args = parser.parse_args(["rig", "rebuild"])
+        assert args.command == "rig"
+        assert args.rig_command == "rebuild"
         assert args.image is None
         assert args.all_images is False
 
-    def test_image_rebuild_specific(self):
+    def test_rig_rebuild_specific(self):
         parser = build_parser()
-        args = parser.parse_args(["image", "rebuild", "kanibako-oci:latest"])
+        args = parser.parse_args(["rig", "rebuild", "kanibako-oci:latest"])
         assert args.image == "kanibako-oci:latest"
 
-    def test_image_rebuild_all(self):
+    def test_rig_rebuild_all(self):
         parser = build_parser()
-        args = parser.parse_args(["image", "rebuild", "--all"])
+        args = parser.parse_args(["rig", "rebuild", "--all"])
         assert args.all_images is True
 
     def test_system_command(self):
@@ -332,103 +332,103 @@ class TestParser:
         assert args.command == "system"
         assert args.check is True
 
-    def test_agent_command(self):
+    def test_crab_command(self):
         parser = build_parser()
-        args = parser.parse_args(["agent"])
-        assert args.command == "agent"
+        args = parser.parse_args(["crab"])
+        assert args.command == "crab"
 
-    def test_agent_list(self):
+    def test_crab_list(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "list"])
-        assert args.command == "agent"
-        assert args.agent_command == "list"
+        args = parser.parse_args(["crab", "list"])
+        assert args.command == "crab"
+        assert args.crab_command == "list"
 
-    def test_agent_list_quiet(self):
+    def test_crab_list_quiet(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "list", "-q"])
+        args = parser.parse_args(["crab", "list", "-q"])
         assert args.quiet is True
 
-    def test_agent_list_alias_ls(self):
+    def test_crab_list_alias_ls(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "ls"])
-        assert args.command == "agent"
+        args = parser.parse_args(["crab", "ls"])
+        assert args.command == "crab"
         assert hasattr(args, "func")
 
-    def test_agent_info(self):
+    def test_crab_info(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "info", "myagent"])
-        assert args.command == "agent"
-        assert args.agent_command == "info"
+        args = parser.parse_args(["crab", "info", "myagent"])
+        assert args.command == "crab"
+        assert args.crab_command == "info"
         assert args.agent_id == "myagent"
 
-    def test_agent_info_alias_inspect(self):
+    def test_crab_info_alias_inspect(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "inspect", "myagent"])
-        assert args.command == "agent"
+        args = parser.parse_args(["crab", "inspect", "myagent"])
+        assert args.command == "crab"
         assert args.agent_id == "myagent"
 
-    def test_agent_config_show(self):
+    def test_crab_config_show(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent"])
-        assert args.command == "agent"
-        assert args.agent_command == "config"
+        args = parser.parse_args(["crab", "config", "myagent"])
+        assert args.command == "crab"
+        assert args.crab_command == "config"
         assert args.agent_id == "myagent"
         assert args.key_value is None
 
-    def test_agent_config_set(self):
+    def test_crab_config_set(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "model=sonnet"])
+        args = parser.parse_args(["crab", "config", "myagent", "model=sonnet"])
         assert args.agent_id == "myagent"
         assert args.key_value == "model=sonnet"
 
-    def test_agent_config_get(self):
+    def test_crab_config_get(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "model"])
+        args = parser.parse_args(["crab", "config", "myagent", "model"])
         assert args.key_value == "model"
 
-    def test_agent_config_reset(self):
+    def test_crab_config_reset(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "--reset", "model"])
+        args = parser.parse_args(["crab", "config", "myagent", "--reset", "model"])
         assert args.reset == "model"
 
-    def test_agent_config_reset_all(self):
+    def test_crab_config_reset_all(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "--reset", "--all"])
+        args = parser.parse_args(["crab", "config", "myagent", "--reset", "--all"])
         assert args.reset == "__RESET__"
         assert args.all_keys is True
 
-    def test_agent_reauth(self):
+    def test_crab_reauth(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "reauth"])
-        assert args.command == "agent"
-        assert args.agent_command == "reauth"
+        args = parser.parse_args(["crab", "reauth"])
+        assert args.command == "crab"
+        assert args.crab_command == "reauth"
         assert args.project is None
 
-    def test_agent_reauth_with_project(self):
+    def test_crab_reauth_with_project(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "reauth", "/tmp/myproj"])
-        assert args.agent_command == "reauth"
+        args = parser.parse_args(["crab", "reauth", "/tmp/myproj"])
+        assert args.crab_command == "reauth"
         assert args.project == "/tmp/myproj"
 
-    def test_agent_helper_spawn(self):
+    def test_crab_helper_spawn(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "helper", "spawn", "--depth", "3"])
-        assert args.command == "agent"
-        assert args.agent_command == "helper"
+        args = parser.parse_args(["crab", "helper", "spawn", "--depth", "3"])
+        assert args.command == "crab"
+        assert args.crab_command == "helper"
         assert args.helper_command == "spawn"
         assert args.depth == 3
 
-    def test_agent_helper_list(self):
+    def test_crab_helper_list(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "helper", "list"])
-        assert args.command == "agent"
+        args = parser.parse_args(["crab", "helper", "list"])
+        assert args.command == "crab"
         assert args.helper_command == "list"
 
-    def test_agent_fork(self):
+    def test_crab_fork(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "fork", "feature1"])
-        assert args.command == "agent"
-        assert args.agent_command == "fork"
+        args = parser.parse_args(["crab", "fork", "feature1"])
+        assert args.command == "crab"
+        assert args.crab_command == "fork"
         assert args.name == "feature1"
 
     def test_stop_command(self):
@@ -694,9 +694,9 @@ class TestParser:
             # Top-level aliases
             "start", "stop", "shell", "ps", "list", "create", "rm",
             # Management commands
-            "box", "image", "workset", "agent", "system",
+            "box", "rig", "workset", "crab", "system",
             # Command aliases (#62)
-            "crab", "rig", "container",
+            "agent", "image", "container",
         }
         assert _SUBCOMMANDS == expected
 
@@ -715,8 +715,8 @@ class TestParser:
     def test_command_aliases_mapping(self):
         from kanibako.cli import _COMMAND_ALIASES
         assert _COMMAND_ALIASES == {
-            "crab": "agent",
-            "rig": "image",
+            "agent": "crab",
+            "image": "rig",
             "container": "box",
         }
 
@@ -724,8 +724,8 @@ class TestParser:
 class TestLazyInitExemptions:
     """Commands that skip lazy initialization."""
 
-    def test_agent_helper_skips_lazy_init(self, tmp_path, monkeypatch):
-        """'agent helper' command should not trigger lazy init."""
+    def test_crab_helper_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'crab helper' command should not trigger lazy init."""
         # Point XDG_CONFIG_HOME to an empty dir (no kanibako.toml)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
@@ -734,19 +734,40 @@ class TestLazyInitExemptions:
         )
 
         from kanibako.cli import main
-        # 'agent helper list' should not crash with "not set up yet"
+        # 'crab helper list' should not crash with "not set up yet"
+        with pytest.raises(SystemExit) as exc_info:
+            main(["crab", "helper", "list"])
+        assert exc_info.value.code == 0
+
+    def test_agent_alias_helper_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'agent helper' alias is translated to 'crab helper' and skips lazy init."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setattr(
+            "kanibako.commands.helper_cmd._helpers_dir",
+            lambda: tmp_path / "helpers",
+        )
+
+        from kanibako.cli import main
         with pytest.raises(SystemExit) as exc_info:
             main(["agent", "helper", "list"])
         assert exc_info.value.code == 0
 
-    def test_agent_fork_skips_lazy_init(self, tmp_path, monkeypatch):
-        """'agent fork' command should not trigger lazy init."""
+    def test_crab_fork_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'crab fork' command should not trigger lazy init."""
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         # fork will fail with "no socket" but should NOT fail with lazy init
         from kanibako.cli import main
         with pytest.raises(SystemExit) as exc_info:
-            main(["agent", "fork", "test"])
+            main(["crab", "fork", "test"])
         # Should exit with 1 (no socket), not a lazy init error
+        assert exc_info.value.code == 1
+
+    def test_agent_alias_fork_skips_lazy_init(self, tmp_path, monkeypatch):
+        """'agent fork' alias is translated to 'crab fork' and skips lazy init."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["agent", "fork", "test"])
         assert exc_info.value.code == 1
 
     def test_system_triggers_lazy_init(self, tmp_path, monkeypatch):

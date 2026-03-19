@@ -16,10 +16,10 @@ class TestTemplateRemoved:
         except ModuleNotFoundError:
             pass
 
-    def test_image_create_replaces_template_create(self):
+    def test_rig_create_replaces_template_create(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "create", "jvm"])
-        assert args.command == "image"
-        assert args.image_command == "create"
+        args = parser.parse_args(["rig", "create", "jvm"])
+        assert args.command == "rig"
+        assert args.rig_command == "create"
         assert args.name == "jvm"
