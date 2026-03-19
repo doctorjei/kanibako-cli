@@ -54,7 +54,7 @@ def run_setup(args: argparse.Namespace) -> int:
     print()
 
     # Step 3: Default image
-    print("Step 3: Container Image")
+    print("Step 3: Container Rig")
     from kanibako.commands.diagnose import _check_image
 
     try:
@@ -69,10 +69,10 @@ def run_setup(args: argparse.Namespace) -> int:
             print(f"  [ok] {detail}")
         else:
             print(f"  [--] {detail}")
-            print("       The image will be pulled automatically on first use.")
+            print("       The rig will be pulled automatically on first use.")
     except Exception:
         print("  [--] Cannot check (configuration not initialized yet)")
-        print("       Images will be pulled automatically on first use.")
+        print("       Rigs will be pulled automatically on first use.")
     print()
 
     # Summary

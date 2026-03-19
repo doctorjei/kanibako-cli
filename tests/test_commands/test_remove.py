@@ -46,13 +46,13 @@ class TestSystemInfo:
         assert "Data:" in out
         assert "(not configured)" not in out
 
-    def test_shows_not_configured_without_config(self, tmp_home, capsys):
+    def test_shows_not_initialized_without_config(self, tmp_home, capsys):
         from kanibako.commands.system_cmd import run_info
 
         args = argparse.Namespace()
         run_info(args)
         out = capsys.readouterr().out
-        assert "(not configured)" in out
+        assert "not initialized" in out
 
     def test_shows_runtime_not_found(self, tmp_home, capsys):
         from kanibako.commands.system_cmd import run_info
@@ -64,7 +64,7 @@ class TestSystemInfo:
             args = argparse.Namespace()
             run_info(args)
         out = capsys.readouterr().out
-        assert "(not found)" in out
+        assert "not found" in out
 
 
 class TestSystemConfig:

@@ -225,4 +225,4 @@ class TestRunDispatch:
             rc = run(args)
             assert rc == 1
             err = capsys.readouterr().err
-            assert "No runtime" in err
+            assert "No container runtime found" in err

@@ -86,17 +86,19 @@ def run_info(args: argparse.Namespace) -> int:
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
 
-    print(f"kanibako {__version__}")
+    print(f"Kanibako v{__version__}")
     print(f"Python:    {platform.python_version()}")
-    print(f"Config:    {cf}")
 
     if cf.exists():
+        print(f"Config:    {cf}")
         config = load_config(cf)
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         data_path = data_home / (config.paths_data_path or "kanibako")
         print(f"Data:      {data_path}")
     else:
-        print("Data:      (not configured)")
+        print(
+            "Config:    (not initialized — run 'kanibako setup' or just 'kanibako start')"
+        )
 
     # Container runtime
     try:
@@ -111,7 +113,9 @@ def run_info(args: argparse.Namespace) -> int:
         version = result.stdout.strip() if result.returncode == 0 else "unknown"
         print(f"Runtime:   {runtime.cmd} ({version})")
     except Exception:
-        print("Runtime:   (not found)")
+        print(
+            "Runtime:   not found — install podman (https://podman.io/) or Docker"
+        )
 
     # Install method
     try:
@@ -124,6 +128,26 @@ def run_info(args: argparse.Namespace) -> int:
             print("Install:   pip")
     except Exception:
         print("Install:   pip")
+
+    # Agent count
+    try:
+        from kanibako.targets import discover_targets
+
+        targets = discover_targets()
+        count = len(targets)
+        if count > 0:
+            print(
+                f"Agents:    {count} detected (use 'kanibako crab list' for details)"
+            )
+        else:
+            print(
+                "Agents:    none (install a plugin: pip install kanibako-agent-claude)"
+            )
+    except Exception:
+        pass
+
+    print()
+    print("Tip: Run 'kanibako system diagnose' for a full health check.")
 
     return 0
 

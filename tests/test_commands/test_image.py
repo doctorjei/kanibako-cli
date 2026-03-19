@@ -23,7 +23,7 @@ class TestImage:
         assert rc == 0
 
         captured = capsys.readouterr()
-        assert "Current image:" in captured.out
+        assert "Current rig:" in captured.out
 
     def test_quiet_mode(self, config_file, tmp_home, credentials_dir, capsys):
         """Quiet mode prints only image names."""
@@ -46,7 +46,7 @@ class TestImage:
         assert lines == ["kanibako-oci:latest", "kanibako-lxc:latest"]
         # Should NOT contain section headers
         assert "Built-in" not in captured.out
-        assert "Current image:" not in captured.out
+        assert "Current rig:" not in captured.out
 
     def test_quiet_mode_no_runtime(self, config_file, tmp_home, credentials_dir, capsys):
         """Quiet mode with no runtime returns empty output."""

@@ -59,7 +59,8 @@ class ContainerRuntime:
             if path:
                 return path
         raise ContainerError(
-            "No container runtime found. Install podman or docker."
+            "No container runtime found. "
+            "Install podman (https://podman.io/) or Docker."
         )
 
     # ------------------------------------------------------------------
@@ -103,7 +104,7 @@ class ContainerRuntime:
             text=True,
         )
         if result.returncode != 0:
-            raise ContainerError(f"Failed to remove image {image}:\n{result.stderr}")
+            raise ContainerError(f"Failed to remove rig {image}:\n{result.stderr}")
 
     def build(self, image: str, containerfile: Path, context: Path) -> None:
         """Build *image* from *containerfile*. Raises ContainerError on failure."""
@@ -114,7 +115,7 @@ class ContainerRuntime:
         )
         if result.returncode != 0:
             raise ContainerError(
-                f"Failed to build image {image}:\n{result.stderr}"
+                f"Failed to build rig {image}:\n{result.stderr}"
             )
 
     def rebuild(
@@ -178,28 +179,30 @@ class ContainerRuntime:
             return
 
         print(
-            f"Container image not found locally. Pulling {image}...",
+            f"Rig not found locally. Pulling {image}...",
             file=sys.stderr,
         )
         if self.pull(image):
-            print("Image pulled successfully.", file=sys.stderr)
+            print("Rig pulled successfully.", file=sys.stderr)
             return
 
         print("Pull failed. Attempting local build...", file=sys.stderr)
         suffix = self._guess_containerfile(image)
         if suffix is None:
             raise ContainerError(
-                f"Container image not available and cannot determine Containerfile "
-                f"for: {image}"
+                f"Failed to pull rig '{image}' and no local Containerfile found.\n"
+                f"Check your network connection, or run 'kanibako rig rebuild' "
+                f"to build locally."
             )
         containerfile = get_containerfile(suffix, containers_dir)
         if containerfile is None:
             raise ContainerError(
-                f"Container image not available and no local Containerfile found.\n"
-                f"Image: {image}"
+                f"Failed to pull rig '{image}' and no local Containerfile found.\n"
+                f"Check your network connection, or run 'kanibako rig rebuild' "
+                f"to build locally."
             )
         self.build(image, containerfile, containerfile.parent)
-        print("Image built successfully.", file=sys.stderr)
+        print("Rig built successfully.", file=sys.stderr)
 
     @staticmethod
     def _guess_containerfile(image: str) -> str | None:
