@@ -149,7 +149,7 @@ toolchains you need:
 
 ```bash
 # 1. Create a custom image with C/C++ and Rust
-kanibako image create systems
+kanibako rig create systems
 # (inside: sudo apt install build-essential cmake gdb && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh)
 # exit when done
 
@@ -166,17 +166,18 @@ creation.
 
 ## Commands
 
-Kanibako organizes commands into five management groups plus six top-level
-aliases for common operations:
+Kanibako organizes commands into four management groups plus seven top-level
+shortcuts for common operations:
 
-### Top-Level Aliases
+### Top-Level Shortcuts
 
-| Alias | Maps to | Description |
-|-------|---------|-------------|
+| Shortcut | Maps to | Description |
+|----------|---------|-------------|
 | `kanibako [start] [project]` | `box start` | Launch agent session (default command) |
 | `kanibako stop [project\|--all]` | `box stop` | Stop running container(s) |
 | `kanibako shell [project] [-- cmd]` | `box shell` | Open a bash shell or run a one-shot command |
-| `kanibako ps [-a] [-q]` | `box ps` | List running containers |
+| `kanibako list [-a] [-q]` | `box list` | List all projects |
+| `kanibako ps [-a] [-q]` | `box ps` | List active (running) boxes |
 | `kanibako create [path]` | `box create` | Create a new project |
 | `kanibako rm <project>` | `box rm` | Remove a project |
 
@@ -185,10 +186,12 @@ aliases for common operations:
 | Command | Description |
 |---------|-------------|
 | `box` | Project lifecycle (create, list, start, stop, shell, config, archive, ...) |
-| `image` | Container image management (create, list, info, rm, rebuild) |
+| `rig` | Rig management — container images (create, list, info, rm, rebuild) |
 | `workset` | Project grouping (create, list, connect, disconnect, config, ...) |
-| `agent` | Agent operations (list, config, reauth, helper, fork) |
+| `crab` | Crab (agent) management (list, config, reauth, helper, fork) |
 | `system` | Global configuration and self-update (info, config, upgrade) |
+
+**Aliases:** `agent` → `crab`, `image` → `rig`, `container` → `box`
 
 ### `box` Subcommands
 
@@ -199,7 +202,7 @@ aliases for common operations:
 | `box start [project]` | Launch agent session (agent flags + infra flags + `-- args`) |
 | `box stop [project]` | Stop container (`--all` stops all, `--force` skips confirm) |
 | `box shell [project]` | Open bash or run one-shot command (infra flags + `-- cmd`) |
-| `box ps` | List running containers (`--all` includes stopped, `-q` names only) |
+| `box ps` | List active (running) boxes (`--all` includes stopped, `-q` names only) |
 
 **Standard lifecycle:**
 
@@ -229,15 +232,15 @@ aliases for common operations:
 | `box vault restore <name>` | Restore from snapshot (`--force`) |
 | `box vault prune` | Delete old snapshots (`--keep N`, `--force`) |
 
-### `image` Subcommands
+### `rig` Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
-| `image create <name>` | Create image interactively (`--base`, `--always-commit`, `--no-commit-on-error`) |
-| `image list` / `image ls` | List available images (`-q`) |
-| `image info` / `image inspect` | Image details (source, size, recoverability) |
-| `image rm` / `image delete` | Remove image (`--force`) |
-| `image rebuild [image]` | Rebuild from registry or stored Containerfile (`--all`) |
+| `rig create <name>` | Create rig interactively (`--base`, `--always-commit`, `--no-commit-on-error`) |
+| `rig list` / `rig ls` | List available rigs (`-q`) |
+| `rig info` / `rig inspect` | Rig details (source, size, recoverability) |
+| `rig rm` / `rig delete` | Remove rig (`--force`) |
+| `rig rebuild [rig]` | Rebuild from registry or stored Containerfile (`--all`) |
 
 ### `workset` Subcommands
 
@@ -251,23 +254,23 @@ aliases for common operations:
 | `workset connect <workset> [source]` | Add project to working set (`--name`) |
 | `workset disconnect <workset> <project>` | Remove project from working set (`--force`) |
 
-### `agent` Subcommands
+### `crab` Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
-| `agent list` / `agent ls` | List configured agents (`-q`) |
-| `agent info` / `agent inspect` | Agent configuration details |
-| `agent config` | View or modify agent configuration |
-| `agent reauth [project]` | Refresh credentials |
-| `agent helper spawn` | Spawn child instance (`--depth`, `--breadth`, `--model`, `--image`) |
-| `agent helper list` / `helper ls` | List helpers (`-q`) |
-| `agent helper stop <n>` | Stop a helper |
-| `agent helper respawn <n>` | Respawn a stopped helper |
-| `agent helper cleanup <n>` | Clean up helper (`--cascade`) |
-| `agent helper send <n> <msg>` | Message a helper |
-| `agent helper broadcast <msg>` | Message all helpers |
-| `agent helper log` | View message log (`-f`, `--from`, `--tail`) |
-| `agent fork <name>` | Fork project into a new directory |
+| `crab list` / `crab ls` | List configured crabs (`-q`) |
+| `crab info` / `crab inspect` | Crab configuration details |
+| `crab config` | View or modify crab configuration |
+| `crab reauth [project]` | Refresh credentials |
+| `crab helper spawn` | Spawn child instance (`--depth`, `--breadth`, `--model`, `--image`) |
+| `crab helper list` / `helper ls` | List helpers (`-q`) |
+| `crab helper stop <n>` | Stop a helper |
+| `crab helper respawn <n>` | Respawn a stopped helper |
+| `crab helper cleanup <n>` | Clean up helper (`--cascade`) |
+| `crab helper send <n> <msg>` | Message a helper |
+| `crab helper broadcast <msg>` | Message all helpers |
+| `crab helper log` | View message log (`-f`, `--from`, `--tail`) |
+| `crab fork <name>` | Fork project into a new directory |
 
 ### `system` Subcommands
 
@@ -413,9 +416,9 @@ Images are pulled automatically from GHCR on first use.  If the pull fails,
 kanibako falls back to a local build from the bundled Containerfiles.
 
 ```bash
-kanibako image list                   # show local images
-kanibako image rebuild                # rebuild current project's image
-kanibako image rebuild --all          # rebuild all known images
+kanibako rig list                     # show local rigs
+kanibako rig rebuild                  # rebuild current project's rig
+kanibako rig rebuild --all            # rebuild all known rigs
 ```
 
 ### Custom Images
@@ -424,12 +427,12 @@ Create custom images by installing tools interactively and committing
 the result:
 
 ```bash
-kanibako image create jvm             # start from kanibako-oci, install tools
+kanibako rig create jvm               # start from kanibako-oci, install tools
 # (inside container: apt install openjdk-21-jdk maven, etc.)
 # exit when done
 
-kanibako image list                   # show local images
-kanibako image rm jvm                 # remove a custom image
+kanibako rig list                     # show local rigs
+kanibako rig rm jvm                   # remove a custom rig
 ```
 
 Custom images are standard OCI images — push them to any registry for sharing:
@@ -734,9 +737,9 @@ access = "permissive"
 Manage agent settings via the CLI:
 
 ```bash
-kanibako agent list                   # list configured agents
-kanibako agent config model           # show effective model
-kanibako agent config model=sonnet    # set agent-level default
+kanibako crab list                    # list configured crabs
+kanibako crab config model            # show effective model
+kanibako crab config model=sonnet     # set crab-level default
 ```
 
 ### tweakcc Integration
@@ -905,8 +908,8 @@ kanibako box config --reset model       # remove override, back to default
 # Workset level (defaults for projects in this workset)
 kanibako workset config <workset> model=opus
 
-# Agent level (defaults for all projects using this agent)
-kanibako agent config model=opus
+# Crab level (defaults for all projects using this crab)
+kanibako crab config model=opus
 
 # System level (global defaults)
 kanibako system config model=opus
@@ -966,31 +969,31 @@ to it for orchestration and messaging.
 
 ```bash
 # Spawning and lifecycle
-kanibako agent helper spawn                 # spawn a child with default budget
-kanibako agent helper spawn --model sonnet  # child uses a different model
-kanibako agent helper spawn --depth 2 --breadth 3  # custom spawn limits
-kanibako agent helper list                  # show all helpers with status
-kanibako agent helper stop 1                # stop helper 1
-kanibako agent helper respawn 1             # relaunch a stopped helper
-kanibako agent helper cleanup 1             # stop and remove helper 1
-kanibako agent helper cleanup 1 --cascade   # also remove all descendants
+kanibako crab helper spawn                 # spawn a child with default budget
+kanibako crab helper spawn --model sonnet  # child uses a different model
+kanibako crab helper spawn --depth 2 --breadth 3  # custom spawn limits
+kanibako crab helper list                  # show all helpers with status
+kanibako crab helper stop 1                # stop helper 1
+kanibako crab helper respawn 1             # relaunch a stopped helper
+kanibako crab helper cleanup 1             # stop and remove helper 1
+kanibako crab helper cleanup 1 --cascade   # also remove all descendants
 
 # Messaging
-kanibako agent helper send 1 "Analyze the auth module"
-kanibako agent helper broadcast "Starting tests"
+kanibako crab helper send 1 "Analyze the auth module"
+kanibako crab helper broadcast "Starting tests"
 
 # Conversation log
-kanibako agent helper log                   # display full message log
-kanibako agent helper log --follow          # tail log in real-time
-kanibako agent helper log --from 1          # filter by helper number
-kanibako agent helper log --tail 10         # show last 10 entries
+kanibako crab helper log                   # display full message log
+kanibako crab helper log --follow          # tail log in real-time
+kanibako crab helper log --from 1          # filter by helper number
+kanibako crab helper log --tail 10         # show last 10 entries
 
 # Opt out
 kanibako start --no-helpers                 # launch without helper support
 ```
 
 **Architecture:** The kanibako CLI is bind-mounted into every container
-(director and helpers), so `kanibako agent helper spawn/send/broadcast/log`
+(director and helpers), so `kanibako crab helper spawn/send/broadcast/log`
 works inside containers. Each helper launches with `helper-init.sh` as
 its entrypoint — the script registers with the hub, sources broadcast
 startup scripts, then execs the agent command.
@@ -1004,7 +1007,7 @@ Two communication layers work together:
 
 **Logging:** All inter-agent messages are logged to a JSONL file on the
 host. Each entry records sender, recipient(s), timestamp, and message
-content. View the conversation in real-time with `kanibako agent helper log --follow`:
+content. View the conversation in real-time with `kanibako crab helper log --follow`:
 ```
 12:35:10  [0 → 1]  Analyze the auth module and report back.
 12:36:45  [1 → 0]  Found 3 issues in the token refresh flow.
