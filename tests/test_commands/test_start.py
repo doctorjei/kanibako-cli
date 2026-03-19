@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 from unittest.mock import MagicMock, patch
 
-from kanibako.commands.start import _apply_tweakcc, _run_container
+from kanibako.commands.start import _apply_tweakcc, _run_container, run_start
 
 
 class TestTargetWarnings:
@@ -761,3 +762,83 @@ class TestBrowserSidecar:
                     browser=True,
                 )
                 assert rc == 0  # continues without sidecar
+
+
+class TestNoAgentMessage:
+    """Verify run_start prints a message when no agent is detected."""
+
+    @staticmethod
+    def _make_start_args(**overrides):
+        """Build a minimal argparse.Namespace for run_start."""
+        defaults = {
+            "new_session": False,
+            "continue_session": False,
+            "resume_session": False,
+            "secure": False,
+            "autonomous": False,
+            "model": None,
+            "no_helpers": False,
+            "no_auto_auth": False,
+            "browser": False,
+            "share_images": False,
+            "persistent": False,
+            "ephemeral": False,
+            "env": None,
+            "agent_args": [],
+            "project": None,
+            "image": None,
+            "entrypoint": None,
+        }
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_start_no_agent_shows_message(self, capsys):
+        """When no agent is detected, run_start prints a helpful message and returns 0."""
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        with patch("kanibako.commands.start.resolve_target", return_value=NoAgentTarget()):
+            args = self._make_start_args()
+            rc = run_start(args)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "No agents detected." in captured.out
+        assert "kanibako setup" in captured.out
+        assert "kanibako shell" in captured.out
+        assert "kanibako system diagnose" in captured.out
+
+    def test_start_no_agent_does_not_launch_container(self, capsys):
+        """When no agent is detected, _run_container is never called."""
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        with (
+            patch("kanibako.commands.start.resolve_target", return_value=NoAgentTarget()),
+            patch("kanibako.commands.start._run_container") as mock_run,
+        ):
+            args = self._make_start_args()
+            run_start(args)
+            mock_run.assert_not_called()
+
+    def test_shell_still_works_without_agent(self, start_mocks):
+        """run_shell calls _run_container directly — no agent check."""
+        from kanibako.commands.start import run_shell
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        with start_mocks() as m:
+            # Make resolve_target return NoAgentTarget inside _run_container
+            m.resolve_target.return_value = NoAgentTarget()
+            args = argparse.Namespace(
+                shell_args=[],
+                project=None,
+                env=None,
+                image=None,
+                entrypoint=None,
+                persistent=False,
+                ephemeral=False,
+                no_helpers=False,
+                share_images=False,
+            )
+            rc = run_shell(args)
+            # Shell should still launch (entrypoint set → skips target resolution)
+            assert rc == 0
+            m.runtime.run.assert_called_once()

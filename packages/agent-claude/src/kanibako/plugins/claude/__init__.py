@@ -1,4 +1,4 @@
-"""kanibako-plugin-claude: Claude Code target plugin for kanibako."""
+"""kanibako-agent-claude: Claude Code target plugin for kanibako."""
 
 from kanibako.plugins.claude.target import ClaudeTarget
 

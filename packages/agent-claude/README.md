@@ -1,4 +1,4 @@
-# kanibako-plugin-claude
+# kanibako-agent-claude
 
 Claude Code target plugin for [kanibako](https://github.com/doctorjei/kanibako).
 
@@ -17,7 +17,7 @@ To install the plugin separately (e.g. adding Claude support to a `kanibako-base
 install):
 
 ```bash
-pip install kanibako-plugin-claude
+pip install kanibako-agent-claude
 ```
 
 ## What it provides

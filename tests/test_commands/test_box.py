@@ -33,7 +33,7 @@ class TestBoxList:
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "ok" in out
+        assert "stopped" in out
         assert str(tmp_home / "project") in out
 
     def test_list_hides_orphans_by_default(self, config_file, tmp_home, credentials_dir, capsys):

@@ -39,11 +39,11 @@ def _confirm(prompt: str) -> bool:
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
-        "image",
-        help="Manage container images",
-        description="Create, list, inspect, remove, or rebuild container images.",
+        "rig",
+        help="Manage box rigs (images)",
+        description="Create, list, inspect, remove, or rebuild box rigs (container images).",
     )
-    image_sub = p.add_subparsers(dest="image_command", metavar="COMMAND")
+    image_sub = p.add_subparsers(dest="rig_command", metavar="COMMAND")
 
     # kanibako image create
     create_p = image_sub.add_parser(
@@ -116,6 +116,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Update all local kanibako images",
     )
     rebuild_p.set_defaults(func=run_rebuild)
+
+    # rig diagnose
+    from kanibako.commands.diagnose import run_rig_diagnose
+
+    diagnose_p = image_sub.add_parser(
+        "diagnose",
+        help="Check rig (image) status",
+    )
+    diagnose_p.set_defaults(func=run_rig_diagnose)
 
     # Default to list if no subcommand given
     p.set_defaults(func=run_list, quiet=False)
@@ -193,19 +202,19 @@ def run_list(args: argparse.Namespace) -> int:
     containers_dir = std.data_path / "containers"
     variants = list_containerfile_suffixes(containers_dir)
     if variants:
-        print("Built-in image variants:")
+        print("Built-in rig variants:")
         for variant in variants:
             desc = _VARIANT_DESCRIPTIONS.get(variant, "(no description)")
             print(f"  {variant:<12} {desc}")
     else:
-        print("Built-in image variants: (none installed)")
+        print("Built-in rig variants: (none installed)")
 
     print()
 
     # ---- Local Images ----
     try:
         runtime = ContainerRuntime()
-        print("Local images:")
+        print("Local rigs:")
         images = runtime.list_local_images()
         if images:
             for repo, size in images:
@@ -213,7 +222,7 @@ def run_list(args: argparse.Namespace) -> int:
         else:
             print("  (none)")
     except ContainerError:
-        print("Local images: (no container runtime found)")
+        print("Local rigs: (no container runtime found)")
 
     print()
 
@@ -222,7 +231,7 @@ def run_list(args: argparse.Namespace) -> int:
     image = merged.container_image
     owner = _extract_ghcr_owner(image)
 
-    print("Remote registry images:")
+    print("Remote registry rigs:")
     if owner:
         _list_remote_packages(owner)
     elif image:
@@ -233,7 +242,7 @@ def run_list(args: argparse.Namespace) -> int:
     print()
 
     # ---- Current Image ----
-    print(f"Current image: {merged.container_image}")
+    print(f"Current rig: {merged.container_image}")
     return 0
 
 
@@ -252,7 +261,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     data = runtime.image_inspect(image)
     if data is None:
-        print(f"Error: image not found: {image}", file=sys.stderr)
+        print(f"Error: rig not found: {image}", file=sys.stderr)
         return 1
 
     # Display key fields
@@ -304,9 +313,9 @@ def run_rm(args: argparse.Namespace) -> int:
         bare = image.split(":")[0] if ":" in image else image
         image_basename = bare.rsplit("/", 1)[-1]
         if image_basename.startswith(_TEMPLATE_PREFIX):
-            print(f"Image '{image}' is a local template (not recoverable from registry).")
+            print(f"Rig '{image}' is a local template (not recoverable from registry).")
         else:
-            print(f"Image '{image}' may be recoverable via 'kanibako image rebuild'.")
+            print(f"Rig '{image}' may be recoverable via 'kanibako rig rebuild'.")
 
         if not _confirm(f"Remove image '{image}'?"):
             print("Cancelled.")
@@ -314,7 +323,7 @@ def run_rm(args: argparse.Namespace) -> int:
 
     try:
         runtime.remove_image(image)
-        print(f"Removed image '{image}'.")
+        print(f"Removed rig '{image}'.")
     except ContainerError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -435,7 +444,7 @@ def _build_one(runtime: ContainerRuntime, image: str, containers_dir: Path) -> i
     """Build a single image locally from its Containerfile."""
     suffix = runtime.guess_containerfile(image)
     if suffix is None:
-        print(f"Error: cannot determine Containerfile for image: {image}", file=sys.stderr)
+        print(f"Error: cannot determine Containerfile for rig: {image}", file=sys.stderr)
         print("Known patterns: " + ", ".join(
             f"{p} -> Containerfile.{s}"
             for p, s in sorted(set(
@@ -489,7 +498,7 @@ def _update_all(
     """Update all local kanibako images."""
     images = runtime.list_local_images()
     if not images:
-        print("No local kanibako images to update.")
+        print("No local kanibako rigs to update.")
         return 0
 
     failed = 0
@@ -503,8 +512,8 @@ def _update_all(
 
     print()
     if failed:
-        print(f"Updated {len(images) - failed}/{len(images)} images ({failed} failed)")
+        print(f"Updated {len(images) - failed}/{len(images)} rigs ({failed} failed)")
         return 1
     else:
-        print(f"Updated {len(images)} image(s) successfully.")
+        print(f"Updated {len(images)} rig(s) successfully.")
         return 0

@@ -14,9 +14,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 PACKAGES=(
-    "."                          # kanibako-base
-    "packages/plugin-claude"     # kanibako-plugin-claude
-    "packages/meta"              # kanibako (meta)
+    "."                               # kanibako-base
+    "packages/agent-claude"           # kanibako-agent-claude
+    "packages/plugin-claude-wrapper"  # kanibako-plugin-claude (transitional)
+    "packages/meta"                   # kanibako (meta)
 )
 
 UPLOAD=false

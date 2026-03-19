@@ -9,7 +9,7 @@ description = "Run AI coding agents in rootless containers (meta-package: base +
 requires-python = ">=3.11"
 dependencies = [
     "kanibako-base>=1.0.5,<2.0",
-    "kanibako-plugin-claude>=1.0.5,<2.0",
+    "kanibako-agent-claude>=1.0.5,<2.0",
 ]
 
 [project.scripts]

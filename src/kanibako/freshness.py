@@ -37,7 +37,7 @@ def _check(runtime: ContainerRuntime, image: str, cache_path: Path) -> None:
     if local_digest != remote_digest:
         print(
             f"Note: A newer version of {image} is available. "
-            f"Run 'kanibako image rebuild' to update.",
+            f"Run 'kanibako rig rebuild' to update.",
             file=sys.stderr,
         )
 

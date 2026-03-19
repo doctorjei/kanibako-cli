@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
-        "agent",
-        help="Agent management, authentication, and helpers",
-        description="Manage agent configurations, authentication, and helper instances.",
+        "crab",
+        help="Crab (agent) management, authentication, and settings",
+        description="Manage crab configurations, authentication, and helper instances.",
     )
-    agent_sub = p.add_subparsers(dest="agent_command", metavar="COMMAND")
+    agent_sub = p.add_subparsers(dest="crab_command", metavar="COMMAND")
 
     # agent list (default)
     list_p = agent_sub.add_parser(
@@ -116,7 +116,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "name",
         help="Fork name (appended with dot to workspace path)",
     )
-    fork_p.set_defaults(func=run_fork, command="agent")
+    fork_p.set_defaults(func=run_fork, command="crab")
+
+    # crab diagnose
+    from kanibako.commands.diagnose import run_crab_diagnose
+
+    diagnose_p = agent_sub.add_parser(
+        "diagnose",
+        help="Check agent status and configuration",
+    )
+    diagnose_p.set_defaults(func=run_crab_diagnose)
 
     # Default to list if no subcommand given.
     p.set_defaults(func=run_list, quiet=False)

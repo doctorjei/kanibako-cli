@@ -97,20 +97,20 @@ def run(args: argparse.Namespace) -> int:
         runtime = ContainerRuntime()
         image = config.container_image
         if runtime.image_exists(image):
-            print("Container image already exists, skipping.")
+            print("Container rig already exists, skipping.")
         elif runtime.pull(image):
-            print("Image pulled from registry!")
+            print("Rig pulled from registry!")
         else:
             print("Pull failed; building locally...")
             base_cf = get_containerfile("base", containers_dest)
             if base_cf is not None:
                 runtime.build(image, base_cf, base_cf.parent)
-                print("Base image built!")
+                print("Base rig built!")
             else:
                 print("Warning: No Containerfile.base found; skipping build.", file=sys.stderr)
     except Exception as e:
         print(f"Warning: {e}", file=sys.stderr)
-        print("Skipping image setup.")
+        print("Skipping rig setup.")
 
     # ------------------------------------------------------------------
     # 4. Register shell completion

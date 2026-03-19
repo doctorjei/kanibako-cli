@@ -23,7 +23,7 @@ class TestImage:
         assert rc == 0
 
         captured = capsys.readouterr()
-        assert "Current image:" in captured.out
+        assert "Current rig:" in captured.out
 
     def test_quiet_mode(self, config_file, tmp_home, credentials_dir, capsys):
         """Quiet mode prints only image names."""
@@ -46,7 +46,7 @@ class TestImage:
         assert lines == ["kanibako-oci:latest", "kanibako-lxc:latest"]
         # Should NOT contain section headers
         assert "Built-in" not in captured.out
-        assert "Current image:" not in captured.out
+        assert "Current rig:" not in captured.out
 
     def test_quiet_mode_no_runtime(self, config_file, tmp_home, credentials_dir, capsys):
         """Quiet mode with no runtime returns empty output."""
@@ -646,7 +646,7 @@ class TestImageCreateFlags:
         from kanibako.cli import build_parser
         parser = build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["image", "create", "jvm", "--always-commit", "--no-commit-on-error"])
+            parser.parse_args(["rig", "create", "jvm", "--always-commit", "--no-commit-on-error"])
 
 
 class TestImageRegistration:
@@ -654,66 +654,70 @@ class TestImageRegistration:
         from kanibako.cli import _SUBCOMMANDS
         assert "template" not in _SUBCOMMANDS
 
-    def test_image_in_subcommands(self):
+    def test_rig_in_subcommands(self):
+        from kanibako.cli import _SUBCOMMANDS
+        assert "rig" in _SUBCOMMANDS
+
+    def test_image_alias_in_subcommands(self):
         from kanibako.cli import _SUBCOMMANDS
         assert "image" in _SUBCOMMANDS
 
-    def test_image_create_parser_exists(self):
+    def test_rig_create_parser_exists(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "create", "jvm"])
-        assert args.command == "image"
-        assert args.image_command == "create"
+        args = parser.parse_args(["rig", "create", "jvm"])
+        assert args.command == "rig"
+        assert args.rig_command == "create"
         assert args.name == "jvm"
 
-    def test_image_info_parser_exists(self):
+    def test_rig_info_parser_exists(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "info", "kanibako-oci"])
-        assert args.command == "image"
+        args = parser.parse_args(["rig", "info", "kanibako-oci"])
+        assert args.command == "rig"
         assert args.image == "kanibako-oci"
 
-    def test_image_inspect_alias(self):
+    def test_rig_inspect_alias(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "inspect", "kanibako-oci"])
-        assert args.command == "image"
+        args = parser.parse_args(["rig", "inspect", "kanibako-oci"])
+        assert args.command == "rig"
         assert args.image == "kanibako-oci"
 
-    def test_image_rm_parser_exists(self):
+    def test_rig_rm_parser_exists(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "rm", "kanibako-oci"])
-        assert args.command == "image"
+        args = parser.parse_args(["rig", "rm", "kanibako-oci"])
+        assert args.command == "rig"
         assert args.image == "kanibako-oci"
 
-    def test_image_delete_alias(self):
+    def test_rig_delete_alias(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "delete", "kanibako-oci"])
-        assert args.command == "image"
+        args = parser.parse_args(["rig", "delete", "kanibako-oci"])
+        assert args.command == "rig"
         assert args.image == "kanibako-oci"
 
-    def test_image_list_quiet_flag(self):
+    def test_rig_list_quiet_flag(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["image", "list", "-q"])
-        assert args.command == "image"
+        args = parser.parse_args(["rig", "list", "-q"])
+        assert args.command == "rig"
         assert args.quiet is True
 
-    def test_image_rebuild_no_local_flag(self):
+    def test_rig_rebuild_no_local_flag(self):
         """--local flag should no longer exist on rebuild."""
         from kanibako.cli import build_parser
         parser = build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["image", "rebuild", "--local"])
+            parser.parse_args(["rig", "rebuild", "--local"])
 
-    def test_image_list_no_project_flag(self):
+    def test_rig_list_no_project_flag(self):
         """-p/--project flag should no longer exist on list."""
         from kanibako.cli import build_parser
         parser = build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["image", "list", "-p", "foo"])
+            parser.parse_args(["rig", "list", "-p", "foo"])
 
 
 # ---------------------------------------------------------------------------

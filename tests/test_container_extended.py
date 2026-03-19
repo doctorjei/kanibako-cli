@@ -52,7 +52,7 @@ class TestEnsureImage:
             patch.object(rt, "image_exists", return_value=False),
             patch.object(rt, "pull", return_value=False),
         ):
-            with pytest.raises(ContainerError, match="cannot determine Containerfile"):
+            with pytest.raises(ContainerError, match="no local Containerfile"):
                 rt.ensure_image("unknown-image:latest", tmp_path)
 
     def test_unknown_image_no_file_raises(self, tmp_path):

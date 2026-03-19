@@ -193,6 +193,22 @@ def run_start(args: argparse.Namespace) -> int:
     # -S means secure (safe_mode=True). Neither means autonomous (default).
     safe_mode = secure
 
+    # Check for agent before launching container.
+    # If no agent is detected, show a helpful message instead of silently
+    # launching a plain shell.  run_shell() is not affected.
+    from kanibako.targets.no_agent import NoAgentTarget
+    target = resolve_target()
+    if isinstance(target, NoAgentTarget):
+        print()
+        print("No agents detected.")
+        print()
+        print("  Install a plugin:  pip install kanibako-agent-claude")
+        print("  Run setup wizard:  kanibako setup")
+        print("  Health check:      kanibako system diagnose")
+        print("  Plain sandbox:     kanibako shell")
+        print()
+        return 0
+
     return _run_container(
         project_dir=project_dir,
         entrypoint=entrypoint,
@@ -382,8 +398,12 @@ def _run_container(
     # Detect container runtime and ensure image is available
     try:
         runtime = ContainerRuntime()
-    except ContainerError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except ContainerError:
+        print(
+            "Error: No container runtime found.\n"
+            "Install podman (https://podman.io/) or Docker, then try again.",
+            file=sys.stderr,
+        )
         return 1
 
     containers_dir = std.data_path / "containers"
@@ -405,7 +425,12 @@ def _run_container(
         try:
             target = resolve_target(merged.target_name or None)
         except KeyError as e:
-            print(f"Error: {e}", file=sys.stderr)
+            print(
+                f"Error: {e}\n"
+                f"Run 'kanibako crab list' to see available agents, or\n"
+                f"'kanibako system diagnose' for a full health check.",
+                file=sys.stderr,
+            )
             return 1
         logger.debug("Resolved target: %s", target.display_name)
         install = target.detect()
@@ -458,8 +483,8 @@ def _run_container(
         if runtime.container_exists(container_name):
             print(
                 "Error: A container already exists for this project.\n"
-                "If a persistent session is running, use 'kanibako start' to\n"
-                "reattach, or 'kanibako stop' to end it.",
+                "  Reattach:  kanibako start\n"
+                "  Stop it:   kanibako stop",
                 file=sys.stderr,
             )
             return 1
@@ -474,7 +499,9 @@ def _run_container(
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             print(
-                "Error: Another kanibako instance is running for this project.",
+                "Error: Another Kanibako session is already running for this project.\n"
+                "  Stop it first:  kanibako stop\n"
+                "  Or use a shell: kanibako shell",
                 file=sys.stderr,
             )
             lock_fd.close()
@@ -487,8 +514,9 @@ def _run_container(
     try:
         # Auto-snapshot vault share-rw before launch.
         if proj.vault_enabled and proj.vault_rw_path.is_dir():
-            from kanibako.snapshots import auto_snapshot
-            snap = auto_snapshot(proj.vault_rw_path)
+            from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
+            strategy = detect_snapshot_strategy(proj.vault_rw_path)
+            snap = auto_snapshot(proj.vault_rw_path, strategy=strategy)
             if snap:
                 print(f"Vault snapshot: {snap.name}", file=sys.stderr)
 
@@ -548,7 +576,12 @@ def _run_container(
         # Pre-launch auth check (skip for distinct auth — creds live in project)
         if target and install and proj.auth != "distinct":
             if not target.check_auth():
-                print("Error: Authentication failed.", file=sys.stderr)
+                print(
+                    "Error: Authentication failed.\n"
+                    "  Re-authenticate:  kanibako crab reauth\n"
+                    "  Skip agent:       kanibako shell",
+                    file=sys.stderr,
+                )
                 return 1
 
         # Credential refresh via target (skip for distinct auth)
@@ -858,8 +891,8 @@ def _run_container(
                 if logs:
                     print(logs, file=sys.stderr)
                 print(
-                    "Error: container exited before session could attach. "
-                    "Check the logs above for details.",
+                    "Error: Container exited before session could attach.\n"
+                    "Check the logs above, or run 'kanibako system diagnose'.",
                     file=sys.stderr,
                 )
                 return 1
