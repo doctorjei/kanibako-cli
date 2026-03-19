@@ -303,6 +303,21 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     from kanibako.commands.vault_cmd import add_vault_subparser
 
+    # box diagnose [project]
+    from kanibako.commands.diagnose import run_box_diagnose
+
+    diagnose_p = box_sub.add_parser(
+        "diagnose",
+        help="Check project box health",
+    )
+    diagnose_p.add_argument(
+        "project",
+        nargs="?",
+        default=None,
+        help="Project name or workspace path (default: cwd)",
+    )
+    diagnose_p.set_defaults(func=run_box_diagnose)
+
     add_archive_parser(box_sub)
     add_purge_parser(box_sub)
     add_extract_parser(box_sub)

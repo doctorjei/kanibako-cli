@@ -66,6 +66,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     upgrade_p.set_defaults(func=run_upgrade_fn)
 
+    # system diagnose
+    from kanibako.commands.diagnose import run_system_diagnose
+
+    diagnose_p = sys_sub.add_parser(
+        "diagnose",
+        help="Check system health (runtime, images, agents, storage)",
+    )
+    diagnose_p.set_defaults(func=run_system_diagnose)
+
     # Default to info when 'system' is run without a subcommand
     p.set_defaults(func=run_info)
 

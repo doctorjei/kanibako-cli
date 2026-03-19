@@ -117,6 +117,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rebuild_p.set_defaults(func=run_rebuild)
 
+    # rig diagnose
+    from kanibako.commands.diagnose import run_rig_diagnose
+
+    diagnose_p = image_sub.add_parser(
+        "diagnose",
+        help="Check rig (image) status",
+    )
+    diagnose_p.set_defaults(func=run_rig_diagnose)
+
     # Default to list if no subcommand given
     p.set_defaults(func=run_list, quiet=False)
 

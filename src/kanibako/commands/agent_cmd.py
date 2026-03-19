@@ -118,6 +118,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     fork_p.set_defaults(func=run_fork, command="crab")
 
+    # crab diagnose
+    from kanibako.commands.diagnose import run_crab_diagnose
+
+    diagnose_p = agent_sub.add_parser(
+        "diagnose",
+        help="Check agent status and configuration",
+    )
+    diagnose_p.set_defaults(func=run_crab_diagnose)
+
     # Default to list if no subcommand given.
     p.set_defaults(func=run_list, quiet=False)
 

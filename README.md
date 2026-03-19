@@ -213,6 +213,7 @@ shortcuts for common operations:
 | `box info` / `box inspect` | Project details (mode, paths, lock, image) |
 | `box rm` / `box delete` | Remove project (`--purge` deletes metadata, `--force` skips confirm) |
 | `box config` | View or modify project configuration |
+| `box diagnose [project]` | Check project box health |
 
 **Relocation:**
 
@@ -241,6 +242,7 @@ shortcuts for common operations:
 | `rig info` / `rig inspect` | Rig details (source, size, recoverability) |
 | `rig rm` / `rig delete` | Remove rig (`--force`) |
 | `rig rebuild [rig]` | Rebuild from registry or stored Containerfile (`--all`) |
+| `rig diagnose` | Check rig (image) status |
 
 ### `workset` Subcommands
 
@@ -271,6 +273,7 @@ shortcuts for common operations:
 | `crab helper broadcast <msg>` | Message all helpers |
 | `crab helper log` | View message log (`-f`, `--from`, `--tail`) |
 | `crab fork <name>` | Fork project into a new directory |
+| `crab diagnose` | Check agent status and configuration |
 
 ### `system` Subcommands
 
@@ -279,6 +282,7 @@ shortcuts for common operations:
 | `system info` / `system inspect` | System details (version, runtime, paths) |
 | `system config` | View or modify global configuration |
 | `system upgrade` | Self-update (`--check` for dry run) |
+| `system diagnose` | Check system health (runtime, images, agents, storage) |
 
 ## Common Flags
 
