@@ -503,8 +503,9 @@ def _run_container(
     try:
         # Auto-snapshot vault share-rw before launch.
         if proj.vault_enabled and proj.vault_rw_path.is_dir():
-            from kanibako.snapshots import auto_snapshot
-            snap = auto_snapshot(proj.vault_rw_path)
+            from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
+            strategy = detect_snapshot_strategy(proj.vault_rw_path)
+            snap = auto_snapshot(proj.vault_rw_path, strategy=strategy)
             if snap:
                 print(f"Vault snapshot: {snap.name}", file=sys.stderr)
 
