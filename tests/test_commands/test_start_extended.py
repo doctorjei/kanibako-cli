@@ -506,12 +506,67 @@ class TestPersistentMode:
         with start_mocks() as m:
             m.runtime.run.return_value = 0  # detach always returns 0
             m.runtime.exec.return_value = 7
+            # Container dies after exec so we don't retry.
+            _exec_calls = [0]
+            def _exec_side(*a, **kw):
+                _exec_calls[0] += 1
+                m.runtime.is_running.return_value = False
+                return 7
+            m.runtime.exec.side_effect = _exec_side
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=True,
             )
             assert rc == 7
+            assert _exec_calls[0] == 1  # no retry when container died
+
+    def test_persistent_exec_retries_on_transient_failure(self, start_mocks, capsys):
+        """Exec retries when it fails but container is still running."""
+        with start_mocks() as m:
+            # First two execs fail (transient), third succeeds.
+            m.runtime.exec.side_effect = [1, 1, 0]
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            assert m.runtime.exec.call_count == 3
+            captured = capsys.readouterr()
+            assert "attempt 1/5" in captured.err
+            assert "attempt 2/5" in captured.err
+
+    def test_persistent_exec_no_retry_when_container_dies(self, start_mocks):
+        """No retry when exec fails and container is no longer running."""
+        with start_mocks() as m:
+            def _exec_then_die(*a, **kw):
+                m.runtime.is_running.return_value = False
+                return 1
+            m.runtime.exec.side_effect = _exec_then_die
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 1
+            m.runtime.exec.assert_called_once()
+
+    def test_persistent_exec_exhausts_retries(self, start_mocks, capsys):
+        """After exhausting retries, returns last non-zero exit code."""
+        with start_mocks() as m:
+            m.runtime.exec.return_value = 1
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 1
+            assert m.runtime.exec.call_count == 5
+            captured = capsys.readouterr()
+            # Warnings printed for attempts 1-4, not for the last one.
+            assert "attempt 4/5" in captured.err
+            assert "attempt 5/5" not in captured.err
 
 
 class TestNoConversationHint:

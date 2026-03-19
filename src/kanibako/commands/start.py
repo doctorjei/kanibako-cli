@@ -864,10 +864,29 @@ def _run_container(
                 )
                 return 1
 
-            # Attach to the new tmux session
-            rc = runtime.exec(
-                container_name, ["tmux", "attach", "-t", "kanibako"]
-            )
+            # Attach to the new tmux session.  The container may not be
+            # fully ready for exec even though is_running() returned True
+            # (podman race: "container state improper").  Retry a few times.
+            _max_exec_attempts = 5
+            for _exec_attempt in range(1, _max_exec_attempts + 1):
+                rc = runtime.exec(
+                    container_name, ["tmux", "attach", "-t", "kanibako"]
+                )
+                if rc == 0:
+                    break
+                # Non-zero exit — check if the container is still alive.
+                if not runtime.is_running(container_name):
+                    # Container died; fall through to the log-showing code.
+                    break
+                # Container still running but exec failed (transient race).
+                if _exec_attempt < _max_exec_attempts:
+                    print(
+                        f"Warning: container not ready for exec "
+                        f"(attempt {_exec_attempt}/{_max_exec_attempts}), "
+                        f"retrying...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(0.5)
             # If agent exited, show container logs so the user can
             # see why (tmux swallows output on exit).
             if not runtime.is_running(container_name):
