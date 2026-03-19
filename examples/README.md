@@ -1,6 +1,9 @@
 # Kanibako Target Plugin Examples
 
-Three example plugins demonstrating how to write a kanibako target at
+Kanibako ships with Claude Code support built-in.  These examples show how
+to add other agents.
+
+Three example plugins demonstrating how to write a Kanibako target at
 increasing levels of complexity.  Each is a complete, pip-installable
 package that you can copy as a starting point for your own target.
 
@@ -26,7 +29,7 @@ pip install -e examples/kanibako-target-aider
 Verify it registers correctly:
 
 ```bash
-kanibako agent list   # should list "aider" under available targets
+kanibako crab list   # should show "aider" under available targets
 ```
 
 Run its tests:
@@ -43,7 +46,12 @@ pytest examples/kanibako-target-aider/tests/ -v
 4. Register the entry point under `kanibako.targets`
 5. `pip install -e .` and test:
    ```bash
-   kanibako agent list                        # verify target is registered
+   kanibako crab list                         # verify target is registered
    kanibako box config target_name=yourname   # select it for a project
    kanibako start                             # launch
    ```
+
+You can also drop a single `.py` file into
+`~/.local/share/kanibako/plugins/` (user-level) or
+`{project}/.kanibako/plugins/` (project-level) without any packaging.
+See **[docs/writing-targets.md](../docs/writing-targets.md)** for details.
