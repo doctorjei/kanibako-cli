@@ -40,8 +40,8 @@ def _confirm(prompt: str) -> bool:
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "image",
-        help="Manage container images",
-        description="Create, list, inspect, remove, or rebuild container images.",
+        help="Manage box rigs (images)",
+        description="Create, list, inspect, remove, or rebuild box rigs (container images).",
     )
     image_sub = p.add_subparsers(dest="image_command", metavar="COMMAND")
 

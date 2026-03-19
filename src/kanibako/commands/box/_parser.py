@@ -39,8 +39,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     p = subparsers.add_parser(
         "box",
-        help="Project lifecycle commands (create, list, migrate, duplicate, archive, extract, purge)",
-        description="Manage per-project session data: create, list, migrate, duplicate, archive, extract, purge.",
+        help="Project lifecycle commands for boxes (containers)",
+        description="Manage per-project session data for boxes (containers): create, list, migrate, duplicate, archive, extract, purge.",
     )
     box_sub = p.add_subparsers(dest="box_command", metavar="COMMAND")
 

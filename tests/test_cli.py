@@ -801,3 +801,13 @@ class TestVerboseFlag:
     def test_epilog_mentions_verbose(self):
         parser = build_parser()
         assert "-v, --verbose" in parser.epilog
+
+    def test_help_contains_commands_section(self):
+        parser = build_parser()
+        assert "COMMANDS" in parser.epilog
+        assert "SHORTCUTS" in parser.epilog
+        assert "ALIASES" in parser.epilog
+
+    def test_help_description(self):
+        parser = build_parser()
+        assert parser.description == "Safe, persistent workspaces for AI coding agents."

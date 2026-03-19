@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "agent",
-        help="Agent management, authentication, and helpers",
-        description="Manage agent configurations, authentication, and helper instances.",
+        help="Crab (agent) management, authentication, and settings",
+        description="Manage crab configurations, authentication, and helper instances.",
     )
     agent_sub = p.add_subparsers(dest="agent_command", metavar="COMMAND")
 
