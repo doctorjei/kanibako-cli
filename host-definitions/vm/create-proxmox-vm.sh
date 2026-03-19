@@ -45,7 +45,7 @@ Options:
   --storage STORE    Proxmox storage target (default: local-lvm)
   --bridge BRIDGE    Network bridge (default: vmbr0)
   --ssh-key FILE     Path to SSH public key file (required)
-  --claude           Also install kanibako-plugin-claude
+  --claude           Also install kanibako-agent-claude
   --repo URL         Git repository URL (default: upstream GitHub)
   --branch REF       Git branch or tag (default: main)
   --start            Start the VM after creation

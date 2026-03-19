@@ -3,8 +3,8 @@ FROM $BASE_IMAGE
 
 USER root
 
-COPY packages/plugin-claude/ /tmp/plugin-claude
-RUN pip install --break-system-packages /tmp/plugin-claude \
-    && rm -rf /tmp/plugin-claude
+COPY packages/agent-claude/ /tmp/agent-claude
+RUN pip install --break-system-packages /tmp/agent-claude \
+    && rm -rf /tmp/agent-claude
 
 USER agent

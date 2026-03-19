@@ -46,7 +46,7 @@ def run_setup(args: argparse.Namespace) -> int:
 
     if not targets:
         print("  [!!] No agent plugins installed.")
-        print("       Install one: pip install kanibako-plugin-claude")
+        print("       Install one: pip install kanibako-agent-claude")
     elif not found_any:
         print()
         print("  No agents detected on this system.")

@@ -202,7 +202,7 @@ def run_start(args: argparse.Namespace) -> int:
         print()
         print("No agents detected.")
         print()
-        print("  Install a plugin:  pip install kanibako-plugin-claude")
+        print("  Install a plugin:  pip install kanibako-agent-claude")
         print("  Run setup wizard:  kanibako setup")
         print("  Health check:      kanibako system diagnose")
         print("  Plain sandbox:     kanibako shell")

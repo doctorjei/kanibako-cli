@@ -45,7 +45,7 @@ Options:
   --disk-size SIZE   Disk size, e.g. 32G (default: 32G)
   --network NET      Libvirt network name (default: default)
   --ssh-key FILE     Path to SSH public key file (required)
-  --claude           Also install kanibako-plugin-claude
+  --claude           Also install kanibako-agent-claude
   --repo URL         Git repository URL (default: upstream GitHub)
   --branch REF       Git branch or tag (default: main)
   -h, --help         Show this help message

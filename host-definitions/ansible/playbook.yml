@@ -11,7 +11,7 @@
 # Variables:
 #   kanibako_repo    — git URL to clone (default: upstream GitHub)
 #   kanibako_branch  — branch or tag to install from (default: main)
-#   install_claude_plugin — also install kanibako-plugin-claude (default: false)
+#   install_claude_plugin — also install kanibako-agent-claude (default: false)
 
 - name: Provision kanibako host
   hosts: all
@@ -153,9 +153,9 @@
         name: /tmp/kanibako-src
         extra_args: --break-system-packages
 
-    - name: Install kanibako-plugin-claude
+    - name: Install kanibako-agent-claude
       ansible.builtin.pip:
-        name: /tmp/kanibako-src/packages/plugin-claude
+        name: /tmp/kanibako-src/packages/agent-claude
         extra_args: --break-system-packages
       when: install_claude_plugin | bool
 

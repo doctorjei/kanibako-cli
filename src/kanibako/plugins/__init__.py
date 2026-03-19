@@ -1,7 +1,7 @@
 """Namespace package for kanibako plugins.
 
 Uses pkgutil.extend_path so that plugin packages installed in separate
-source trees (e.g. editable installs from packages/plugin-claude/src/)
+source trees (e.g. editable installs from packages/agent-claude/src/)
 merge into a single kanibako.plugins namespace.
 """
 

@@ -43,7 +43,7 @@ via `pip install`.
   with config layering (agent defaults → external config → inline overrides),
   flock-based binary caching, and automatic propagation to helpers
 - **Target plugin system** — agent-agnostic core (`kanibako-base` Python
-  package); Claude Code plugin (`kanibako-plugin-claude`) is installed by default
+  package); Claude Code plugin (`kanibako-agent-claude`) is installed by default
 - **Image freshness checks** — non-blocking digest comparison against GHCR on
   startup (24h cache)
 - **Concurrency lock** — prevents two sessions from running in the same
@@ -71,7 +71,7 @@ pip install kanibako-base
 # Development install
 git clone https://github.com/doctorjei/kanibako.git
 cd kanibako
-pip install -e '.[dev]' -e packages/plugin-claude/
+pip install -e '.[dev]' -e packages/agent-claude/
 ```
 
 On first use, kanibako automatically creates its config and data directories.
@@ -495,7 +495,7 @@ for a narrower permission set.
 Install kanibako and plugins inside the host container:
 
 ```bash
-pip install kanibako    # installs kanibako-base + kanibako-plugin-claude
+pip install kanibako    # installs kanibako-base + kanibako-agent-claude
 ```
 
 ### Persistent state
@@ -865,11 +865,8 @@ kanibako create --standalone ~/p --no-vault      # new directory, no vault
 
 Kanibako is agent-agnostic.  All agent-specific logic lives in **target
 plugins** — Python classes that implement the `Target` abstract base class.
-Claude Code is supported via `kanibako-plugin-claude` (installed by the
+Claude Code is supported via `kanibako-agent-claude` (installed by the
 `kanibako` meta-package); other agents can be added as pip packages.
-Plugins under the `kanibako.plugins` namespace are also discovered
-automatically — even without pip metadata — so they travel with kanibako's
-bind-mount into nested containers.
 Install `kanibako-base` for agent-agnostic operation.
 If no agent is detected, kanibako falls back to `no_agent` — a plain shell
 with no agent binary or credentials.
@@ -879,6 +876,24 @@ A target handles:
 2. Mounting the binary/installation into the container
 3. Syncing credentials between host and container
 4. Building CLI arguments for the agent entrypoint
+
+### Three-tier plugin discovery
+
+Kanibako discovers target plugins from three sources, checked in order.
+Later sources override earlier ones when two plugins register the same name.
+
+| Tier | Location | Use case |
+|------|----------|----------|
+| 1. Entry points | `kanibako.targets` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
+| 2. User directory | `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
+| 3. Project directory | `{project}/.kanibako/plugins/*.py` | Project-specific plugins |
+
+Drop a `.py` file containing a `Target` subclass into the user or project
+plugins directory and kanibako picks it up automatically — no packaging or
+`pip install` needed.  Files starting with `_` are skipped.
+
+**Security note:** file-drop plugins run with the same permissions as
+kanibako itself.  Only place files you trust in plugin directories.
 
 See [docs/writing-targets.md](docs/writing-targets.md) for the full developer
 guide, and [examples/](examples/) for three graduated example plugins (Aider,
@@ -1157,7 +1172,7 @@ git push && git push --tags
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
 | `freshness.py` | Non-blocking image digest comparison |
-| `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-plugin-claude`) |
+| `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-agent-claude`) |
 | `plugins/` | Namespace package for built-in and bind-mounted plugins |
 | `auth_parser.py` | Parse OAuth URL and verification code from `claude auth login` output |
 | `auth_browser.py` | Automated OAuth refresh via headless Playwright browser |
