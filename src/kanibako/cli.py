@@ -136,11 +136,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_COMMAND_ALIASES: dict[str, str] = {
+    "crab": "agent",
+    "rig": "image",
+    "container": "box",
+}
+
 _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
     "start", "stop", "shell", "ps", "create", "rm",
     # Management commands.
     "box", "image", "workset", "agent", "system",
+    # Command aliases (#62).
+    "crab", "rig", "container",
 }
 
 
@@ -247,6 +255,9 @@ def main(argv: list[str] | None = None) -> None:
         # If the first arg isn't a known subcommand, default to "start".
         if not effective or effective[0] not in _SUBCOMMANDS:
             effective = ["start"] + effective
+        # Translate command aliases (e.g. crab→agent).
+        if effective and effective[0] in _COMMAND_ALIASES:
+            effective[0] = _COMMAND_ALIASES[effective[0]]
         args = parser.parse_args(effective)
 
         # Lazy init: create config + data dirs on first run.

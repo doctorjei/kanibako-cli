@@ -660,8 +660,30 @@ class TestParser:
             "start", "stop", "shell", "ps", "create", "rm",
             # Management commands
             "box", "image", "workset", "agent", "system",
+            # Command aliases (#62)
+            "crab", "rig", "container",
         }
         assert _SUBCOMMANDS == expected
+
+    def test_crab_alias_in_subcommands(self):
+        from kanibako.cli import _SUBCOMMANDS
+        assert "crab" in _SUBCOMMANDS
+
+    def test_rig_alias_in_subcommands(self):
+        from kanibako.cli import _SUBCOMMANDS
+        assert "rig" in _SUBCOMMANDS
+
+    def test_container_alias_in_subcommands(self):
+        from kanibako.cli import _SUBCOMMANDS
+        assert "container" in _SUBCOMMANDS
+
+    def test_command_aliases_mapping(self):
+        from kanibako.cli import _COMMAND_ALIASES
+        assert _COMMAND_ALIASES == {
+            "crab": "agent",
+            "rig": "image",
+            "container": "box",
+        }
 
 
 class TestLazyInitExemptions:
