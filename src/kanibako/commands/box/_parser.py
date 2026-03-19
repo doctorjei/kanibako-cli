@@ -89,6 +89,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Include orphaned projects in the listing",
     )
     list_p.add_argument(
+        "--active", action="store_true",
+        help="Show only active (running) boxes",
+    )
+    list_p.add_argument(
         "--orphan", action="store_true",
         help="Show only orphaned projects (missing workspace)",
     )
@@ -362,56 +366,23 @@ def run_create(args: argparse.Namespace) -> int:
 
 
 def run_ps(args: argparse.Namespace) -> int:
-    """List running (or all) kanibako containers with project cross-reference."""
+    """List running boxes (delegates to run_list with active-only filtering).
+
+    ``ps`` shows active boxes by default.  ``ps --all`` / ``ps -a`` shows
+    all boxes (active + inactive), equivalent to ``list``.
+    """
     show_all = getattr(args, "show_all", False)
-    quiet = getattr(args, "quiet", False)
-
-    try:
-        runtime = ContainerRuntime()
-    except ContainerError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    if show_all:
-        containers = runtime.list_all()
-    else:
-        containers = runtime.list_running()
-
-    if not containers:
-        if not quiet:
-            label = "kanibako containers" if show_all else "running kanibako containers"
-            print(f"No {label} found.")
-        return 0
-
-    # Build reverse lookup: container name → project name from names.toml.
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    try:
-        std = load_std_paths(config)
-        names_data = read_names(std.data_path)
-        # Container names are "kanibako-{project_name}" for local projects.
-        name_to_project: dict[str, str] = {}
-        for proj_name in names_data["projects"]:
-            name_to_project[f"kanibako-{proj_name}"] = proj_name
-    except Exception:
-        name_to_project = {}
-
-    if quiet:
-        for cname, _image, _status in containers:
-            proj_name = name_to_project.get(cname, cname)
-            print(proj_name)
-    else:
-        print(f"{'PROJECT':<20} {'STATUS':<22} {'IMAGE'}")
-        for cname, image, status in containers:
-            proj_name = name_to_project.get(cname, cname)
-            print(f"{proj_name:<20} {status:<22} {image}")
-
-    return 0
+    # When ps --all is passed, show everything (like list).
+    # Otherwise, show active only (like list --active).
+    if not show_all:
+        args.active = True
+    return run_list(args)
 
 
 def run_list(args: argparse.Namespace) -> int:
     show_all = getattr(args, "show_all", False)
     orphan_only = getattr(args, "orphan", False)
+    active_only = getattr(args, "active", False) and not show_all
     quiet = getattr(args, "quiet", False)
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -424,18 +395,28 @@ def run_list(args: argparse.Namespace) -> int:
     if orphan_only:
         return _list_orphans(projects, ws_data, std, quiet)
 
+    # Gather running container names for activity cross-reference.
+    running_containers: set[str] = set()
+    try:
+        runtime = ContainerRuntime()
+        for cname, _image, _status in runtime.list_running():
+            running_containers.add(cname)
+    except ContainerError:
+        pass  # No runtime available — all projects show as stopped.
+
     if not projects and not ws_data:
         if not quiet:
             print("No known projects.")
         return 0
 
-    if projects:
-        # Build a reverse lookup from path → name using names.toml.
-        names_data = read_names(std.data_path)
-        path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
+    # Build reverse lookup from path → name using names.toml.
+    names_data = read_names(std.data_path)
+    path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
-        if not quiet:
-            print(f"{'NAME':<18} {'STATUS':<10} {'PATH'}")
+    any_output = False
+
+    if projects:
+        header_printed = False
         for settings_path, project_path in projects:
             # Directory name is now the project name (or hash for legacy).
             dir_name = settings_path.name
@@ -444,7 +425,12 @@ def run_list(args: argparse.Namespace) -> int:
                 status = "unknown"
                 label = "(no breadcrumb)"
             elif project_path.is_dir():
-                status = "ok"
+                # Check if container is running.
+                cname = f"kanibako-{proj_name}"
+                if cname in running_containers:
+                    status = "active"
+                else:
+                    status = "stopped"
                 label = str(project_path)
             else:
                 status = "missing"
@@ -454,34 +440,68 @@ def run_list(args: argparse.Namespace) -> int:
             if status in ("missing", "unknown") and not show_all:
                 continue
 
+            # Skip inactive when --active filter is set.
+            if active_only and status != "active":
+                continue
+
+            any_output = True
             if quiet:
                 print(proj_name)
             else:
+                if not header_printed:
+                    print(f"{'NAME':<18} {'STATUS':<10} {'PATH'}")
+                    header_printed = True
                 print(f"{proj_name:<18} {status:<10} {label}")
 
     for ws_name, ws, project_list in ws_data:
+        ws_items: list[tuple[str, str, str]] = []
+        for proj_name, proj_status in project_list:
+            if proj_status == "missing" and not show_all:
+                continue
+            # Determine activity status for healthy workset projects.
+            if proj_status not in ("missing",):
+                cname = f"kanibako-{proj_name}"
+                if cname in running_containers:
+                    display_status = "active"
+                else:
+                    display_status = "stopped" if proj_status == "ok" else proj_status
+            else:
+                display_status = proj_status
+            if active_only and display_status != "active":
+                continue
+            # Look up source_path from workset projects.
+            source = ""
+            for p in ws.projects:
+                if p.name == proj_name:
+                    source = str(p.source_path)
+                    break
+            ws_items.append((proj_name, display_status, source))
+
+        if not ws_items:
+            if not active_only and not quiet:
+                any_output = True
+                print()
+                print(f"Workset: {ws_name} ({ws.root})")
+                if not project_list:
+                    print("  (no projects)")
+            continue
+
+        any_output = True
         if quiet:
-            for proj_name, status in project_list:
-                if status == "missing" and not show_all:
-                    continue
+            for proj_name, _status, _source in ws_items:
                 print(proj_name)
         else:
             print()
             print(f"Workset: {ws_name} ({ws.root})")
-            if project_list:
-                print(f"  {'NAME':<18} {'STATUS':<10} {'SOURCE'}")
-                for proj_name, status in project_list:
-                    if status == "missing" and not show_all:
-                        continue
-                    # Look up source_path from workset projects.
-                    source = ""
-                    for p in ws.projects:
-                        if p.name == proj_name:
-                            source = str(p.source_path)
-                            break
-                    print(f"  {proj_name:<18} {status:<10} {source}")
-            else:
-                print("  (no projects)")
+            print(f"  {'NAME':<18} {'STATUS':<10} {'SOURCE'}")
+            for proj_name, display_status, source in ws_items:
+                print(f"  {proj_name:<18} {display_status:<10} {source}")
+
+    if not any_output and not quiet:
+        if active_only:
+            print("No active boxes.")
+        else:
+            print("No known projects.")
 
     return 0
 

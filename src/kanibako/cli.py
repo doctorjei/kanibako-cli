@@ -27,7 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  start [project]     start a container session (default command)\n"
             "  stop [project]      stop a running container\n"
             "  shell [project]     open a shell in a container\n"
-            "  ps                  list running containers\n"
+            "  list                list all boxes (active and inactive)\n"
+            "  ps                  list active (running) boxes\n"
             "  create [path]       create a new project\n"
             "  rm <project>        remove a project\n"
             "\n"
@@ -62,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from kanibako.commands.image import add_parser as add_image_parser
     from kanibako.commands.box import add_parser as add_box_parser
-    from kanibako.commands.box._parser import run_create, run_ps, run_rm
+    from kanibako.commands.box._parser import run_create, run_list as run_list_fn, run_ps, run_rm
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.agent_cmd import add_parser as add_agent_parser
@@ -73,15 +74,31 @@ def build_parser() -> argparse.ArgumentParser:
     add_shell_parser(subparsers)
     add_stop_parser(subparsers)
 
-    # ps — top-level alias for box ps
-    ps_p = subparsers.add_parser("ps", help="List running containers")
+    # list — top-level shortcut for box list
+    list_p = subparsers.add_parser("list", help="List active and/or inactive boxes")
+    list_p.add_argument(
+        "--active", action="store_true",
+        help="Show only active (running) boxes",
+    )
+    list_p.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
+        help="Include orphaned boxes",
+    )
+    list_p.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output box names only, one per line",
+    )
+    list_p.set_defaults(func=run_list_fn)
+
+    # ps — top-level shortcut for box list --active
+    ps_p = subparsers.add_parser("ps", help="List active (running) boxes")
     ps_p.add_argument(
         "--all", "-a", action="store_true", dest="show_all",
-        help="Include stopped containers",
+        help="Show all boxes (active and inactive)",
     )
     ps_p.add_argument(
         "-q", "--quiet", action="store_true",
-        help="Output container names only, one per line",
+        help="Output box names only, one per line",
     )
     ps_p.set_defaults(func=run_ps)
 
@@ -144,7 +161,7 @@ _COMMAND_ALIASES: dict[str, str] = {
 
 _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
-    "start", "stop", "shell", "ps", "create", "rm",
+    "start", "stop", "shell", "ps", "list", "create", "rm",
     # Management commands.
     "box", "image", "workset", "agent", "system",
     # Command aliases (#62).

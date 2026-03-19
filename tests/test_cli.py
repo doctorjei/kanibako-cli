@@ -93,6 +93,13 @@ class TestParser:
         assert args.command == "box"
         assert args.box_command == "list"
 
+    def test_box_list_active(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "list", "--active"])
+        assert args.command == "box"
+        assert args.box_command == "list"
+        assert args.active is True
+
     def test_box_archive_command(self):
         parser = build_parser()
         args = parser.parse_args(["box", "archive", "/tmp/project", "out.txz"])
@@ -590,6 +597,34 @@ class TestParser:
 
     # -- Top-level alias tests --
 
+    def test_list_top_level(self):
+        parser = build_parser()
+        args = parser.parse_args(["list"])
+        assert args.command == "list"
+        assert hasattr(args, "func")
+
+    def test_list_top_level_active(self):
+        parser = build_parser()
+        args = parser.parse_args(["list", "--active"])
+        assert args.command == "list"
+        assert args.active is True
+
+    def test_list_top_level_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["list", "--all"])
+        assert args.command == "list"
+        assert args.show_all is True
+
+    def test_list_top_level_quiet(self):
+        parser = build_parser()
+        args = parser.parse_args(["list", "-q"])
+        assert args.command == "list"
+        assert args.quiet is True
+
+    def test_list_in_subcommands(self):
+        from kanibako.cli import _SUBCOMMANDS
+        assert "list" in _SUBCOMMANDS
+
     def test_ps_top_level(self):
         parser = build_parser()
         args = parser.parse_args(["ps"])
@@ -657,7 +692,7 @@ class TestParser:
         from kanibako.cli import _SUBCOMMANDS
         expected = {
             # Top-level aliases
-            "start", "stop", "shell", "ps", "create", "rm",
+            "start", "stop", "shell", "ps", "list", "create", "rm",
             # Management commands
             "box", "image", "workset", "agent", "system",
             # Command aliases (#62)
