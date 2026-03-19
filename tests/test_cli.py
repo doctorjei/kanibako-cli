@@ -697,6 +697,8 @@ class TestParser:
             "box", "rig", "workset", "crab", "system",
             # Command aliases (#62)
             "agent", "image", "container",
+            # Setup wizard
+            "setup",
         }
         assert _SUBCOMMANDS == expected
 

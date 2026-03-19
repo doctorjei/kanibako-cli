@@ -193,6 +193,22 @@ def run_start(args: argparse.Namespace) -> int:
     # -S means secure (safe_mode=True). Neither means autonomous (default).
     safe_mode = secure
 
+    # Check for agent before launching container.
+    # If no agent is detected, show a helpful message instead of silently
+    # launching a plain shell.  run_shell() is not affected.
+    from kanibako.targets.no_agent import NoAgentTarget
+    target = resolve_target()
+    if isinstance(target, NoAgentTarget):
+        print()
+        print("No agents detected.")
+        print()
+        print("  Install a plugin:  pip install kanibako-plugin-claude")
+        print("  Run setup wizard:  kanibako setup")
+        print("  Health check:      kanibako system diagnose")
+        print("  Plain sandbox:     kanibako shell")
+        print()
+        return 0
+
     return _run_container(
         project_dir=project_dir,
         entrypoint=entrypoint,

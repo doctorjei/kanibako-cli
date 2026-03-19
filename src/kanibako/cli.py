@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.agent_cmd import add_parser as add_crab_parser
     from kanibako.commands.system_cmd import add_parser as add_system_parser
 
+    # Setup wizard (before management commands, works pre-init).
+    from kanibako.commands.setup_cmd import run_setup
+    setup_p = subparsers.add_parser("setup", help="Run the setup wizard")
+    setup_p.set_defaults(func=run_setup)
+
     # Top-level aliases (start, shell, stop already have their own parsers).
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
@@ -172,6 +177,8 @@ _SUBCOMMANDS = {
     "box", "rig", "workset", "crab", "system",
     # Command aliases (#62).
     "agent", "image", "container",
+    # Setup wizard.
+    "setup",
 }
 
 
@@ -285,7 +292,7 @@ def main(argv: list[str] | None = None) -> None:
 
         # Lazy init: create config + data dirs on first run.
         # Skip for crab (helper/fork run inside containers).
-        if args.command not in ("crab",):
+        if args.command not in ("crab", "setup"):
             _ensure_initialized()
 
     func = getattr(args, "func", None)
