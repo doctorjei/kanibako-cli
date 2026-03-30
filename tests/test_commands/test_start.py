@@ -457,7 +457,7 @@ class TestApplyTweakcc:
 
         install = MagicMock()
         agent_cfg = AgentConfig(tweakcc={})
-        result = _apply_tweakcc(install, agent_cfg, tmp_path, MagicMock())
+        result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_enabled_but_empty_returns_none(self, tmp_path):
@@ -466,7 +466,7 @@ class TestApplyTweakcc:
 
         install = MagicMock()
         agent_cfg = AgentConfig(tweakcc={"enabled": False})
-        result = _apply_tweakcc(install, agent_cfg, tmp_path, MagicMock())
+        result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_bun_sea_error_returns_none(self, tmp_path):
@@ -480,7 +480,7 @@ class TestApplyTweakcc:
 
         with patch("kanibako.bun_sea.cli_js_hash") as mock_hash:
             mock_hash.side_effect = BunSEAError("bad binary")
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
             assert result is None
             logger.warning.assert_called_once()
 
@@ -505,7 +505,7 @@ class TestApplyTweakcc:
             cache_instance.cache_key.return_value = "testkey"
             cache_instance.get.return_value = fake_entry
 
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
 
             assert result is not None
             patched_install, entry, cache = result
@@ -537,10 +537,14 @@ class TestApplyTweakcc:
             cache_instance.get.return_value = None  # miss
             cache_instance.put.return_value = fake_entry
 
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
 
             assert result is not None
             cache_instance.put.assert_called_once()
+            call_args = cache_instance.put.call_args
+            assert call_args[0][0] == "testkey"  # key
+            assert call_args[0][1] == install.binary  # source_binary
+            assert callable(call_args[0][2])  # patch_fn
 
     def test_returns_cache_object(self, tmp_path):
         """Returned tuple includes the cache object for later release."""
@@ -563,7 +567,7 @@ class TestApplyTweakcc:
             cache_instance.cache_key.return_value = "k"
             cache_instance.get.return_value = fake_entry
 
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, logger)
+            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
             _, _, cache_obj = result
             assert cache_obj is cache_instance
 

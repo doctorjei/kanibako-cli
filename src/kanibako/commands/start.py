@@ -294,8 +294,12 @@ def _tmux_has_session(session_name: str) -> bool:
     ).returncode == 0
 
 
-def _apply_tweakcc(install, agent_cfg, cache_path, logger):
+def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
     """Apply tweakcc patching if enabled in agent config.
+
+    Patching runs inside a throwaway container (``podman run --rm``) using
+    the same image that will be used for the agent.  The patched binary is
+    cached on disk with flock-based reference counting.
 
     Returns ``(patched_install, cache_entry, cache)`` on success, or
     *None* if tweakcc is disabled or patching fails (graceful fallback).
@@ -320,10 +324,31 @@ def _apply_tweakcc(install, agent_cfg, cache_path, logger):
 
         entry = cache.get(key)
         if entry is None:
+            # Write merged config to cache dir (will be mounted into container)
             config_file = cache_dir / f".config-{key}.json"
             write_merged_config(merged_config, config_file)
-            tweakcc_cmd = ["tweakcc", "--apply", "--config", str(config_file)]
-            entry = cache.put(key, install.binary, tweakcc_cmd)
+
+            def patch_fn(staging_dir, staging_binary):
+                """Run tweakcc --apply inside a throwaway container."""
+                cmd = [
+                    runtime_cmd, "run", "--rm", "--network=none",
+                    "-v", f"{staging_dir}:/work:rw",
+                    "-v", f"{config_file}:/root/.tweakcc/config.json:ro",
+                    "-e", f"TWEAKCC_CC_INSTALLATION_PATH=/work/{staging_binary.name}",
+                    image,
+                    "tweakcc", "--apply",
+                ]
+                logger.debug("Running tweakcc via container: %s", cmd)
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, check=False,
+                )
+                if result.returncode != 0:
+                    raise TweakccCacheError(
+                        f"tweakcc container failed (exit {result.returncode}): "
+                        f"{result.stderr.strip()}"
+                    )
+
+            entry = cache.put(key, install.binary, patch_fn)
             logger.info("Patched binary cached: %s", key)
         else:
             logger.info("Using cached patched binary: %s", key)
@@ -592,7 +617,9 @@ def _run_container(
         tweakcc_entry = None
         tweakcc_cache_obj = None
         if target and install and agent_cfg.tweakcc:
-            result = _apply_tweakcc(install, agent_cfg, std.cache_path, logger)
+            result = _apply_tweakcc(
+                install, agent_cfg, std.cache_path, image, runtime.cmd, logger,
+            )
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result
 
