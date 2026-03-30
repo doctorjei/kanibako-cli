@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kanibako-agent-goose"
+version = "0.1.0"
+description = "Goose agent target plugin for kanibako"
+requires-python = ">=3.11"
+dependencies = ["kanibako-base", "pyyaml"]
+
+[project.entry-points."kanibako.targets"]
+goose = "kanibako.plugins.goose:GooseTarget"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["kanibako.plugins.goose*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
