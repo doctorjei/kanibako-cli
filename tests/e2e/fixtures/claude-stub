@@ -1,0 +1,49 @@
+#!/bin/sh
+# Claude stub for e2e tests.
+# Drop-in replacement for the claude binary inside containers.
+# Behavior controlled by environment variables — ignores all flags.
+
+MODE="${CLAUDE_STUB_MODE:-session}"
+EXIT_CODE="${CLAUDE_STUB_EXIT:-0}"
+SLEEP_SECS="${CLAUDE_STUB_SLEEP:-5}"
+OUTPUT="${CLAUDE_STUB_OUTPUT:-}"
+STDERR_MSG="${CLAUDE_STUB_STDERR:-}"
+
+case "$MODE" in
+    session)
+        echo "claude-stub: session mode (sleep=${SLEEP_SECS}s)"
+        [ -n "$OUTPUT" ] && echo "$OUTPUT"
+        [ -n "$STDERR_MSG" ] && echo "$STDERR_MSG" >&2
+        sleep "$SLEEP_SECS"
+        exit "${EXIT_CODE}"
+        ;;
+    error)
+        echo "claude-stub: error mode" >&2
+        [ -n "$STDERR_MSG" ] && echo "$STDERR_MSG" >&2
+        exit "${EXIT_CODE:-1}"
+        ;;
+    no-conversation)
+        # State file in /home/agent/ (bind-mounted shell dir) so it
+        # persists across container recreation during kanibako's retry.
+        STATE_FILE="/home/agent/.claude-stub-retried"
+        if [ -f "$STATE_FILE" ]; then
+            echo "claude-stub: retry succeeded (session mode)"
+            sleep "$SLEEP_SECS"
+            exit 0
+        else
+            touch "$STATE_FILE"
+            echo "No conversation found to continue" >&2
+            exit 1
+        fi
+        ;;
+    long-running)
+        echo "claude-stub: long-running mode"
+        [ -n "$OUTPUT" ] && echo "$OUTPUT"
+        # Sleep forever — killed by container rm
+        while true; do sleep 3600; done
+        ;;
+    *)
+        echo "claude-stub: unknown mode '$MODE'" >&2
+        exit 1
+        ;;
+esac
