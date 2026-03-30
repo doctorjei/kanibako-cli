@@ -20,7 +20,7 @@ case "$MODE" in
     error)
         echo "claude-stub: error mode" >&2
         [ -n "$STDERR_MSG" ] && echo "$STDERR_MSG" >&2
-        exit "${EXIT_CODE:-1}"
+        exit "${CLAUDE_STUB_EXIT:-1}"
         ;;
     no-conversation)
         # State file in /home/agent/ (bind-mounted shell dir) so it
