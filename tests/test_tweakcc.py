@@ -348,7 +348,7 @@ class TestCachePutAndGet:
         cache.release(entry2)
 
     def test_put_preserves_content(self, tmp_path):
-        """'true' command doesn't modify the binary, so content is preserved."""
+        """Noop patch doesn't modify the binary, so content is preserved."""
         cache = TweakccCache(tmp_path / "cache")
         content = b"\x7fELF" + b"\x00" * 100
         binary = tmp_path / "binary"
