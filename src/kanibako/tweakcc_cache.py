@@ -10,7 +10,9 @@ Usage::
     key = cache.cache_key(binary_hash, cfg_hash)
     entry = cache.get(key)
     if entry is None:
-        entry = cache.put(key, source_binary, ["tweakcc", "--apply", ...])
+        def patch_fn(staging_dir, binary_path):
+            subprocess.run(["podman", "run", "--rm", ...], check=True)
+        entry = cache.put(key, source_binary, patch_fn)
     # ... use entry.path as the patched binary ...
     cache.release(entry)
 """
@@ -22,7 +24,7 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -95,38 +97,33 @@ class TweakccCache:
         self,
         key: str,
         source_binary: Path,
-        tweakcc_cmd: list[str],
+        patch_fn: Callable[[Path, Path], None],
     ) -> CacheEntry:
-        """Copy *source_binary*, patch with *tweakcc_cmd*, cache, return entry.
+        """Copy *source_binary* to a staging dir, patch it, cache the result.
 
-        *tweakcc_cmd* is the command prefix; the staging binary path is
-        appended as the last argument.
+        *patch_fn(staging_dir, binary_path)* is called with the staging
+        directory and the path to the copied binary within it.  The callable
+        must modify the binary in-place (it may create temp files in
+        *staging_dir*).
 
-        Raises :class:`TweakccCacheError` if the tweakcc command fails.
+        Raises :class:`TweakccCacheError` if *patch_fn* raises.
         """
         self.ensure_dir()
         entry_path = self._entry_path(key)
-        staging = self.cache_dir / f".staging-{key}-{os.getpid()}"
+        staging_dir = self.cache_dir / f".staging-{key}-{os.getpid()}"
 
         try:
-            # Copy source binary to staging area
-            shutil.copy2(str(source_binary), str(staging))
-            staging.chmod(0o755)
+            staging_dir.mkdir(parents=True)
+            staging_binary = staging_dir / source_binary.name
+            shutil.copy2(str(source_binary), str(staging_binary))
+            staging_binary.chmod(0o755)
 
-            # Run tweakcc to patch the staged binary
-            cmd = list(tweakcc_cmd) + [str(staging)]
-            logger.debug("Running tweakcc: %s", cmd)
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, check=False,
-            )
-            if result.returncode != 0:
-                raise TweakccCacheError(
-                    f"tweakcc failed (exit {result.returncode}): "
-                    f"{result.stderr.strip()}"
-                )
+            # Delegate patching to the caller-supplied function
+            logger.debug("Running patch_fn in staging dir: %s", staging_dir)
+            patch_fn(staging_dir, staging_binary)
 
-            # Atomic rename to final path
-            os.rename(str(staging), str(entry_path))
+            # Move patched binary to cache entry
+            os.rename(str(staging_binary), str(entry_path))
             logger.debug("Cached patched binary: %s", key)
 
             # Acquire shared lock on the cached entry
@@ -139,10 +136,9 @@ class TweakccCache:
         except Exception as exc:
             raise TweakccCacheError(f"Cache put failed: {exc}") from exc
         finally:
-            try:
-                staging.unlink(missing_ok=True)
-            except OSError:
-                pass
+            # Clean up staging directory
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
 
     def release(self, entry: CacheEntry) -> bool:
         """Release a cache entry.  Unlinks the file if no other users remain.

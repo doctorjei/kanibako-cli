@@ -247,6 +247,15 @@ def _make_binary(tmp_path: Path, name: str = "binary") -> Path:
     return binary
 
 
+def _noop_patch(staging_dir: Path, binary_path: Path) -> None:
+    """Patch function that does nothing (binary passes through unchanged)."""
+
+
+def _failing_patch(staging_dir: Path, binary_path: Path) -> None:
+    """Patch function that always fails."""
+    raise RuntimeError("patch failed")
+
+
 class TestConfigHash:
     def test_deterministic(self):
         h1 = config_hash({"a": 1, "b": 2})
@@ -326,7 +335,7 @@ class TestCachePutAndGet:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        entry = cache.put("testkey", binary, ["true"])
+        entry = cache.put("testkey", binary, _noop_patch)
         assert entry.path.exists()
         assert entry.path == cache._entry_path("testkey")
 
@@ -345,7 +354,7 @@ class TestCachePutAndGet:
         binary = tmp_path / "binary"
         binary.write_bytes(content)
 
-        entry = cache.put("k", binary, ["true"])
+        entry = cache.put("k", binary, _noop_patch)
         assert entry.path.read_bytes() == content
         cache.release(entry)
 
@@ -354,7 +363,7 @@ class TestCachePutAndGet:
         binary = _make_binary(tmp_path)
         original = binary.read_bytes()
 
-        entry = cache.put("k", binary, ["true"])
+        entry = cache.put("k", binary, _noop_patch)
         assert binary.read_bytes() == original
         cache.release(entry)
 
@@ -362,7 +371,7 @@ class TestCachePutAndGet:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        entry = cache.put("k", binary, ["true"])
+        entry = cache.put("k", binary, _noop_patch)
         # Cached binary should be readable (we have it open)
         assert entry.path.exists()
         cache.release(entry)
@@ -373,15 +382,15 @@ class TestCachePutFailure:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        with pytest.raises(TweakccCacheError, match="tweakcc failed"):
-            cache.put("k", binary, ["false"])
+        with pytest.raises(TweakccCacheError, match="Cache put failed"):
+            cache.put("k", binary, _failing_patch)
 
     def test_staging_cleaned_on_failure(self, tmp_path):
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
         with pytest.raises(TweakccCacheError):
-            cache.put("k", binary, ["false"])
+            cache.put("k", binary, _failing_patch)
 
         # No staging files left
         if cache.cache_dir.exists():
@@ -393,7 +402,7 @@ class TestCachePutFailure:
         binary = _make_binary(tmp_path)
 
         with pytest.raises(TweakccCacheError):
-            cache.put("k", binary, ["false"])
+            cache.put("k", binary, _failing_patch)
 
         assert cache.get("k") is None
 
@@ -403,7 +412,7 @@ class TestCacheRelease:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        entry = cache.put("k", binary, ["true"])
+        entry = cache.put("k", binary, _noop_patch)
         path = entry.path
         assert path.exists()
 
@@ -415,7 +424,7 @@ class TestCacheRelease:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        entry1 = cache.put("k", binary, ["true"])
+        entry1 = cache.put("k", binary, _noop_patch)
         entry2 = cache.get("k")
         assert entry2 is not None
 
@@ -432,7 +441,7 @@ class TestCacheRelease:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        entry = cache.put("k", binary, ["true"])
+        entry = cache.put("k", binary, _noop_patch)
         # Manually remove
         entry.path.unlink()
 
@@ -448,7 +457,7 @@ class TestCacheConcurrent:
         cache = TweakccCache(tmp_path / "cache")
         binary = _make_binary(tmp_path)
 
-        entry = cache.put("k", binary, ["true"])
+        entry = cache.put("k", binary, _noop_patch)
 
         # Multiple gets should all succeed (shared locks are compatible)
         entries = []
@@ -473,10 +482,10 @@ class TestCacheConcurrent:
         binary2 = tmp_path / "bin2"
         binary2.write_bytes(b"BBBB")
 
-        entry1 = cache.put("k", binary1, ["true"])
+        entry1 = cache.put("k", binary1, _noop_patch)
         cache.release(entry1)
 
-        entry2 = cache.put("k", binary2, ["true"])
+        entry2 = cache.put("k", binary2, _noop_patch)
         assert entry2.path.read_bytes() == b"BBBB"
         cache.release(entry2)
 
@@ -497,7 +506,7 @@ class TestCacheIntegration:
         assert cache.get(key) is None
 
         # Put
-        entry = cache.put(key, binary, ["true"])
+        entry = cache.put(key, binary, _noop_patch)
         assert entry.path.exists()
 
         # Hit
@@ -517,6 +526,6 @@ class TestCacheIntegration:
         key2 = cache.cache_key("binhash", config_hash(cfg2))
         assert key1 != key2
 
-        e1 = cache.put(key1, binary, ["true"])
+        e1 = cache.put(key1, binary, _noop_patch)
         assert cache.get(key2) is None  # different key = miss
         cache.release(e1)
