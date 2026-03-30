@@ -37,5 +37,6 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "integration: tests requiring a real container runtime (podman/docker)",
+    "e2e: end-to-end tests requiring podman + kanibako-oci image",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not e2e'"
