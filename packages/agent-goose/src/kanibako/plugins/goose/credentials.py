@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import shutil
 import stat
-import sys
 from pathlib import Path
 
 from kanibako.utils import cp_if_newer

@@ -13,7 +13,6 @@ from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, Resource
 
 from kanibako.plugins.goose.credentials import (
     filter_config,
-    read_yaml,
     refresh_secrets,
     writeback_secrets,
 )
@@ -38,6 +37,11 @@ class GooseTarget(Target):
     @property
     def config_dir_name(self) -> str:
         return ".config/goose"
+
+    @property
+    def default_entrypoint(self) -> str | None:
+        """Goose binary as container entrypoint."""
+        return "goose"
 
     def detect(self) -> AgentInstall | None:
         """Detect Goose installation on the host.

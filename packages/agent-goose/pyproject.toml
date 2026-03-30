@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kanibako-plugin-goose"
+name = "kanibako-agent-goose"
 version = "0.1.0"
-description = "Goose target plugin for kanibako"
+description = "Goose agent target plugin for kanibako"
 requires-python = ">=3.11"
 dependencies = ["kanibako-base", "pyyaml"]
 
