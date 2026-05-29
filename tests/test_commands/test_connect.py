@@ -107,6 +107,7 @@ class TestDefaultPersistence:
         with (
             patch("kanibako.commands.start._tmux_available", return_value=True),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
+            patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
             from kanibako.commands.start import run_start
             run_start(args)
@@ -119,6 +120,7 @@ class TestDefaultPersistence:
         with (
             patch("kanibako.commands.start._tmux_available", return_value=False),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
+            patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
             from kanibako.commands.start import run_start
             run_start(args)
@@ -131,6 +133,7 @@ class TestDefaultPersistence:
         with (
             patch("kanibako.commands.start._tmux_available", return_value=False),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
+            patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
             from kanibako.commands.start import run_start
             run_start(args)
@@ -143,6 +146,7 @@ class TestDefaultPersistence:
         with (
             patch("kanibako.commands.start._tmux_available", return_value=True),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
+            patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
             from kanibako.commands.start import run_start
             run_start(args)
