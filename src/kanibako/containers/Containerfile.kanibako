@@ -1,7 +1,7 @@
 # Shared Containerfile for all kanibako image variants.
 # The droste base tier is selected via --build-arg BASE_IMAGE=...
 # (seed → min, fiber → oci, thread → lxc, hair → vm).
-ARG BASE_IMAGE
+ARG BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0
 FROM $BASE_IMAGE
 
 ARG AGENT_USER=agent
