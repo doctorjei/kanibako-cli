@@ -16,6 +16,7 @@ import pytest
 
 from kanibako.commands.start import (
     _UNIX_SOCKET_PATH_LIMIT,
+    _sync_binary_symlink,
     _validate_mounts,
     validate_socket_path,
 )
@@ -307,6 +308,120 @@ class TestBinaryMountContract:
         assert len(mounts) == 1
         assert mounts[0].source == install_dir
         assert mounts[0].source.exists()
+
+
+# ── Contract tests: binary symlink sync ───────────────────────────────
+
+class TestSyncBinarySymlink:
+    """_sync_binary_symlink updates stale binary symlinks in the shell dir."""
+
+    def _make_install(self, tmp_path, version="2.1.153"):
+        from kanibako.targets.base import AgentInstall
+        install_dir = tmp_path / "host" / "claude"
+        versions = install_dir / "versions"
+        versions.mkdir(parents=True)
+        binary = versions / version
+        binary.write_bytes(b"fake-binary")
+        return AgentInstall(name="claude", binary=binary, install_dir=install_dir)
+
+    def _make_shell_with_symlink(self, tmp_path, version="2.1.84"):
+        shell = tmp_path / "shell"
+        bin_dir = shell / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        link = bin_dir / "claude"
+        link.symlink_to(f"/home/agent/.local/share/claude/versions/{version}")
+        return shell
+
+    def _make_mounts(self, install):
+        return [
+            Mount(
+                source=install.install_dir,
+                destination="/home/agent/.local/share/claude",
+                options="ro",
+            ),
+            Mount(
+                source=install.binary,
+                destination="/home/agent/.local/bin/claude",
+                options="ro",
+            ),
+        ]
+
+    def test_updates_stale_symlink(self, tmp_path):
+        """Stale symlink pointing to old version is updated to current."""
+        import logging
+        import os
+        log = logging.getLogger("test")
+        install = self._make_install(tmp_path, "2.1.153")
+        shell = self._make_shell_with_symlink(tmp_path, "2.1.84")
+        mounts = self._make_mounts(install)
+
+        _sync_binary_symlink(shell, install, mounts, log)
+
+        link = shell / ".local" / "bin" / "claude"
+        assert os.readlink(str(link)) == "/home/agent/.local/share/claude/versions/2.1.153"
+
+    def test_noop_when_current(self, tmp_path):
+        """No change when symlink already points to the correct version."""
+        import logging
+        import os
+        log = logging.getLogger("test")
+        install = self._make_install(tmp_path, "2.1.153")
+        shell = self._make_shell_with_symlink(tmp_path, "2.1.153")
+        mounts = self._make_mounts(install)
+
+        _sync_binary_symlink(shell, install, mounts, log)
+
+        link = shell / ".local" / "bin" / "claude"
+        assert os.readlink(str(link)) == "/home/agent/.local/share/claude/versions/2.1.153"
+
+    def test_noop_when_no_symlink(self, tmp_path):
+        """No error when the binary path is a regular file, not a symlink."""
+        import logging
+        log = logging.getLogger("test")
+        install = self._make_install(tmp_path, "2.1.153")
+        shell = tmp_path / "shell"
+        bin_dir = shell / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "claude").write_bytes(b"binary")  # regular file
+        mounts = self._make_mounts(install)
+
+        _sync_binary_symlink(shell, install, mounts, log)
+        # Should not raise or modify.
+        assert (bin_dir / "claude").is_file()
+        assert not (bin_dir / "claude").is_symlink()
+
+    def test_noop_when_no_install_dir_mount(self, tmp_path):
+        """No update when there is no install-dir mount (e.g. Goose target)."""
+        import logging
+        import os
+        log = logging.getLogger("test")
+        install = self._make_install(tmp_path, "2.1.153")
+        shell = self._make_shell_with_symlink(tmp_path, "2.1.84")
+        # Only binary mount, no install_dir mount
+        mounts = [
+            Mount(
+                source=install.binary,
+                destination="/home/agent/.local/bin/claude",
+                options="ro",
+            ),
+        ]
+
+        _sync_binary_symlink(shell, install, mounts, log)
+
+        link = shell / ".local" / "bin" / "claude"
+        # Unchanged — no install-dir mount means no shadowing risk
+        assert os.readlink(str(link)) == "/home/agent/.local/share/claude/versions/2.1.84"
+
+    def test_noop_when_bin_dir_missing(self, tmp_path):
+        """No error when the .local/bin/ directory doesn't exist yet."""
+        import logging
+        log = logging.getLogger("test")
+        install = self._make_install(tmp_path, "2.1.153")
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        mounts = self._make_mounts(install)
+
+        _sync_binary_symlink(shell, install, mounts, log)  # Should not raise.
 
 
 # ── Contract tests: CLI args invariants ───────────────────────────────

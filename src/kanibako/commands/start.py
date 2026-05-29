@@ -659,6 +659,7 @@ def _run_container(
                     file=sys.stderr,
                 )
                 return 1
+            _sync_binary_symlink(proj.shell_path, install, binary_mnts, logger)
             extra_mounts.extend(binary_mnts)
 
         # kanibako CLI bind-mount (package + entry script)
@@ -1134,6 +1135,39 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str:
         capture_output=True, text=True,
     )
     return (result.stdout + result.stderr).strip() if result.returncode == 0 else ""
+
+
+def _sync_binary_symlink(shell_path, install, mounts, log) -> None:
+    """Update a stale binary symlink in the shell dir to match the detected version.
+
+    When ``binary_mounts()`` returns both an install-dir mount and a binary
+    mount, podman follows the destination symlink, landing the binary mount
+    inside the install-dir subtree where the directory mount shadows it.
+    Keeping the symlink current ensures the install-dir mount serves the
+    correct binary version.
+    """
+    link = shell_path / ".local" / "bin" / install.name
+    if not link.is_symlink():
+        return
+    # Find the install-dir mount destination (e.g. /home/agent/.local/share/claude).
+    install_dir_dest = None
+    for m in mounts:
+        if m.source == install.install_dir:
+            install_dir_dest = m.destination
+            break
+    if not install_dir_dest:
+        return  # No install-dir mount; no shadowing risk.
+    try:
+        relative = install.binary.relative_to(install.install_dir)
+    except ValueError:
+        return
+    expected = str(Path(install_dir_dest) / relative)
+    current = os.readlink(str(link))
+    if current == expected:
+        return
+    link.unlink()
+    link.symlink_to(expected)
+    log.info("Updated %s symlink: %s → %s", install.name, current, expected)
 
 
 def _validate_mounts(mounts: list, logger) -> None:
