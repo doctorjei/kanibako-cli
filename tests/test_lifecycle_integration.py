@@ -123,14 +123,15 @@ class TestKanibakoImageOps:
 class TestKanibakoShell:
     """Verify kanibako can run commands inside containers.
 
-    Uses ``busybox:latest`` as a lightweight image.  The ``start --entrypoint``
+    Uses ``busybox:latest`` as a lightweight image.  The ``shell --entrypoint``
     flag overrides the entrypoint so the container runs a single command
-    and exits.
+    and exits.  ``shell`` is used (not ``start``) because it does not require
+    a detectable agent.
     """
 
     @requires_runtime
     def test_shell_runs_command(self, cli_env, container_runtime_cmd):
-        """kanibako start --entrypoint runs a command and captures output."""
+        """kanibako shell --entrypoint runs a command and captures output."""
         _setup_with_image(cli_env, "busybox:latest")
         subprocess.run(
             [container_runtime_cmd, "pull", "busybox:latest"],
@@ -138,12 +139,12 @@ class TestKanibakoShell:
         )
 
         result = _run_kanibako(
-            "start", "--ephemeral", "--entrypoint", "/bin/sh",
+            "shell", "--ephemeral", "--entrypoint", "/bin/sh",
             "--", "-c", "echo hello-from-container",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
-        assert result.returncode == 0, f"start failed: {result.stderr}"
+        assert result.returncode == 0, f"shell failed: {result.stderr}"
         assert "hello-from-container" in result.stdout
 
     @requires_runtime
@@ -160,12 +161,12 @@ class TestKanibakoShell:
         marker.write_text("workspace-ok\n")
 
         result = _run_kanibako(
-            "start", "--ephemeral", "--entrypoint", "/bin/cat",
+            "shell", "--ephemeral", "--entrypoint", "/bin/cat",
             "--", "/home/agent/workspace/marker.txt",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
-        assert result.returncode == 0, f"start failed: {result.stderr}"
+        assert result.returncode == 0, f"shell failed: {result.stderr}"
         assert "workspace-ok" in result.stdout
 
     @requires_runtime
@@ -182,12 +183,12 @@ class TestKanibakoShell:
         env_file.write_text("MY_TEST_VAR=lifecycle-check\n")
 
         result = _run_kanibako(
-            "start", "--ephemeral", "--entrypoint", "/bin/sh",
+            "shell", "--ephemeral", "--entrypoint", "/bin/sh",
             "--", "-c", "echo $MY_TEST_VAR",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
-        assert result.returncode == 0, f"start failed: {result.stderr}"
+        assert result.returncode == 0, f"shell failed: {result.stderr}"
         assert "lifecycle-check" in result.stdout
 
 
