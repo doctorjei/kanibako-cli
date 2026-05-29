@@ -6,6 +6,11 @@ on:
     paths:
       - 'src/kanibako/containers/**'
   workflow_dispatch:
+    inputs:
+      push:
+        description: 'Push built images to GHCR (off = build-only test)'
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -48,7 +53,7 @@ jobs:
         with:
           context: src/kanibako/containers/
           file: src/kanibako/containers/Containerfile.kanibako
-          push: true
+          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
@@ -58,6 +63,9 @@ jobs:
 
   build-templates:
     needs: [build-base]
+    # Templates FROM the base image in GHCR, so they require a published base.
+    # Skip on build-only dispatch runs where build-base did not push.
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
