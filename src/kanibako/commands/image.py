@@ -198,9 +198,13 @@ def run_list(args: argparse.Namespace) -> int:
         return 0
 
     # Full display mode
-    # ---- Built-in Variants ----
+    # ---- Built-in Variants & Templates ----
     containers_dir = std.data_path / "containers"
-    variants = list_containerfile_suffixes(containers_dir)
+    suffixes = list_containerfile_suffixes(containers_dir)
+    buildable = ContainerRuntime.buildable_containerfile_suffixes()
+    variants = [s for s in suffixes if s in buildable]
+    templates = [s for s in suffixes if s not in buildable]
+
     if variants:
         print("Built-in rig variants:")
         for variant in variants:
@@ -208,6 +212,13 @@ def run_list(args: argparse.Namespace) -> int:
             print(f"  {variant:<12} {desc}")
     else:
         print("Built-in rig variants: (none installed)")
+
+    if templates:
+        print()
+        print("Example templates (layer on a base image; not built directly):")
+        for tmpl in templates:
+            desc = _VARIANT_DESCRIPTIONS.get(tmpl, "(no description)")
+            print(f"  {tmpl:<12} {desc}")
 
     print()
 

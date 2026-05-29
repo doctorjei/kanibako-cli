@@ -61,6 +61,26 @@ class TestImage:
         captured = capsys.readouterr()
         assert captured.out.strip() == ""
 
+    def test_variants_and_templates_listed_separately(self, config_file, tmp_home, credentials_dir, capsys):
+        """Buildable base variant and example templates appear under distinct headings."""
+        from kanibako.commands.image import run_list
+
+        args = argparse.Namespace(quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+
+        out = capsys.readouterr().out
+        assert "Built-in rig variants:" in out
+        assert "Example templates" in out
+
+        variants_part, _, templates_part = out.partition("Example templates")
+        # kanibako is buildable -> under built-in variants, not templates
+        assert "kanibako" in variants_part
+        assert "jvm" not in variants_part
+        # jvm/systems are example templates -> only after the templates heading
+        assert "jvm" in templates_part
+        assert "systems" in templates_part
+
 
 class TestImageInfo:
     def test_info_shows_details(self, config_file, tmp_home, credentials_dir, capsys):

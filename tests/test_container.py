@@ -335,13 +335,13 @@ class TestGetBaseImage:
     """Test get_base_image() variant-to-droste mapping."""
 
     def test_known_variants(self):
-        assert ContainerRuntime.get_base_image("kanibako-min") == "ghcr.io/doctorjei/droste-seed:latest"
-        assert ContainerRuntime.get_base_image("kanibako-oci") == "ghcr.io/doctorjei/droste-fiber:latest"
-        assert ContainerRuntime.get_base_image("kanibako-lxc") == "ghcr.io/doctorjei/droste-thread:latest"
-        assert ContainerRuntime.get_base_image("kanibako-vm") == "ghcr.io/doctorjei/droste-hair:latest"
+        assert ContainerRuntime.get_base_image("kanibako-min") == "ghcr.io/doctorjei/droste-seed:1.1.0"
+        assert ContainerRuntime.get_base_image("kanibako-oci") == "ghcr.io/doctorjei/droste-fiber:1.1.0"
+        assert ContainerRuntime.get_base_image("kanibako-lxc") == "ghcr.io/doctorjei/droste-thread:1.1.0"
+        assert ContainerRuntime.get_base_image("kanibako-vm") == "ghcr.io/doctorjei/droste-hair:1.1.0"
 
     def test_qualified_image_name(self):
-        assert ContainerRuntime.get_base_image("ghcr.io/x/kanibako-oci:latest") == "ghcr.io/doctorjei/droste-fiber:latest"
+        assert ContainerRuntime.get_base_image("ghcr.io/x/kanibako-oci:latest") == "ghcr.io/doctorjei/droste-fiber:1.1.0"
 
     def test_unknown_returns_none(self):
         assert ContainerRuntime.get_base_image("totally-unrelated:latest") is None

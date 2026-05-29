@@ -33,10 +33,10 @@ _IMAGE_VARIANT_MAP = {
 
 # Map image variants to their droste base image for local builds.
 _IMAGE_BASE_MAP = {
-    "kanibako-min": "ghcr.io/doctorjei/droste-seed:latest",
-    "kanibako-oci": "ghcr.io/doctorjei/droste-fiber:latest",
-    "kanibako-lxc": "ghcr.io/doctorjei/droste-thread:latest",
-    "kanibako-vm": "ghcr.io/doctorjei/droste-hair:latest",
+    "kanibako-min": "ghcr.io/doctorjei/droste-seed:1.1.0",
+    "kanibako-oci": "ghcr.io/doctorjei/droste-fiber:1.1.0",
+    "kanibako-lxc": "ghcr.io/doctorjei/droste-thread:1.1.0",
+    "kanibako-vm": "ghcr.io/doctorjei/droste-hair:1.1.0",
 }
 
 
@@ -210,6 +210,16 @@ class ContainerRuntime:
             if pattern in image:
                 return suffix
         return None
+
+    @staticmethod
+    def buildable_containerfile_suffixes() -> set[str]:
+        """Containerfile suffixes a build command can resolve to an image.
+
+        Suffixes outside this set (e.g. ``jvm``, ``systems``) are example
+        templates that layer on a base image via ``ARG BASE_IMAGE`` and are
+        not built directly by ``rig rebuild``.
+        """
+        return set(_IMAGE_CONTAINERFILE_MAP.values())
 
     # ------------------------------------------------------------------
     # Run

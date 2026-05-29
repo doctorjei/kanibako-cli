@@ -22,35 +22,35 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1); \
 RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; fi \
     && if [ -f /etc/subgid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subgid; fi
 
+# Packages kanibako needs that the droste bases at our tiers don't supply.
+# nodejs/npm back MCP servers + tweakcc. cifs-utils/nfs-common/openssh-client
+# are absent from seed (min) and fiber (oci); they ship in thread/hair
+# (lxc/vm), where reinstalling them is a no-op.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cifs-utils \
-    fd-find \
-    inotify-tools \
     nfs-common \
     nodejs \
     npm \
     openssh-client \
-    ripgrep \
-    sshpass \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/fdfind /usr/bin/fd
+    && rm -rf /var/lib/apt/lists/*
 
-# uv: fast Python package/tool manager
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && mv /root/.local/bin/uv /usr/local/bin/ \
-    && mv /root/.local/bin/uvx /usr/local/bin/
+# Lean CLI tools for the seed-based min variant only. fiber (oci) and the
+# thread/hair tiers (lxc/vm) already ship these via droste, so install them
+# only where the base lacks them. gh and uv are intentionally omitted from
+# min — add them locally if a min box ever needs them.
+RUN if [ "$VARIANT" = "min" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            fd-find \
+            inotify-tools \
+            ripgrep \
+            sshpass \
+        && rm -rf /var/lib/apt/lists/* \
+        && ln -sf /usr/bin/fdfind /usr/local/bin/fd; \
+    fi
 
 RUN if command -v pip >/dev/null 2>&1; then \
         pip install --break-system-packages kanibako-base build twine; \
     fi
-
-# GitHub CLI
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y --no-install-recommends gh \
-    && rm -rf /var/lib/apt/lists/*
 
 # tweakcc: custom Claude Code patching tool (requires node/npm)
 RUN if command -v npm >/dev/null 2>&1; then \
