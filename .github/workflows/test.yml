@@ -62,4 +62,7 @@ jobs:
                  -t kanibako-oci:latest \
                  -f src/kanibako/containers/Containerfile.kanibako .
       - name: Run e2e tests
-        run: pytest tests/e2e/ -v
+        # Explicit `-m e2e` because pyproject.toml's default addopts
+        # is `-m 'not integration and not e2e'` — without overriding,
+        # the suite would collect 0 tests and exit 5.
+        run: pytest -m e2e tests/e2e/ -v
