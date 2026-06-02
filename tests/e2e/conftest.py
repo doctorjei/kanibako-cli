@@ -178,6 +178,7 @@ def host_storage_conf(tmp_path_factory) -> Path:
     conf_path = conf_dir / "storage.conf"
     conf_path.write_text(
         "[storage]\n"
+        'driver = "overlay"\n'
         f'runroot = "{runroot}"\n'
         f'rootless_storage_path = "{graphroot}"\n'
     )

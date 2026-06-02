@@ -45,8 +45,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - name: Install tmux
-        run: sudo apt-get install -y tmux
+      - name: Install tmux + fuse-overlayfs
+        # fuse-overlayfs lets rootless podman use the overlay driver
+        # instead of the much slower vfs fallback. Without it,
+        # `--userns=keep-id` (used by kanibako) hits "creating an ID-
+        # mapped copy of layer" errors on ubuntu-latest runners.
+        run: sudo apt-get install -y tmux fuse-overlayfs
       - name: Install kanibako
         run: pip install -e '.[dev]' -e packages/agent-claude/
       - name: Pull e2e image (with build fallback)
