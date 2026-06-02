@@ -17,7 +17,12 @@ from kanibako.config import (
     write_project_meta,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
-from kanibako.names import assign_name, read_names, register_name
+from kanibako.names import (
+    assign_name,
+    read_names,
+    register_name,
+    resolve_name,
+)
 from kanibako.utils import project_hash
 
 if TYPE_CHECKING:
@@ -203,6 +208,17 @@ def resolve_project(
     Defaults to True for new projects; existing projects read from ``project.toml``.
     """
     raw = project_dir or os.getcwd()
+    # If the user passed a bare token (no path separator) and no file/dir of
+    # that name exists in cwd, try resolving it as a registered project name.
+    # Falls through to path resolution on miss so the eventual error stays
+    # informative.
+    if raw and "/" not in raw and not Path(raw).exists():
+        try:
+            resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
+            if kind == "project":
+                raw = resolved
+        except ProjectError:
+            pass
     project_path = Path(raw).resolve()
 
     if not project_path.is_dir():

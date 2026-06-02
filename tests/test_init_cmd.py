@@ -162,6 +162,28 @@ class TestRunCreate:
             f"got: {names}"
         )
 
+    def test_resolve_project_accepts_registered_name(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """After `create --name X`, resolve_project('X') must find the
+        registered path (not error as if X were a relative path)."""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", str(project_dir), "--name", "named-proj"]
+        )
+        assert run_create(args) == 0
+
+        # Now look up by bare name — must NOT raise.
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_project(std, config, project_dir="named-proj")
+        assert proj.project_path == project_dir.resolve(), (
+            f"Expected {project_dir.resolve()}, got {proj.project_path}"
+        )
+
 
 class TestCreateNoVault:
     """Tests for --no-vault flag on box create."""
