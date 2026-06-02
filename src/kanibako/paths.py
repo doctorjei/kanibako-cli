@@ -17,7 +17,7 @@ from kanibako.config import (
     write_project_meta,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
-from kanibako.names import assign_name, read_names
+from kanibako.names import assign_name, read_names, register_name
 from kanibako.utils import project_hash
 
 if TYPE_CHECKING:
@@ -188,6 +188,7 @@ def resolve_project(
     initialize: bool = False,
     layout: ProjectLayout | None = None,
     vault_enabled: bool | None = None,
+    name_override: str | None = None,
 ) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths.
 
@@ -244,7 +245,13 @@ def resolve_project(
                 "  kanibako create --standalone ~"
             )
         # New project: assign a name first, then create boxes/{name}/.
-        project_name = assign_name(std.data_path, project_path_str)
+        # An explicit override (e.g. `kanibako create --name X`) registers
+        # strictly; collisions error rather than auto-suffix.
+        if name_override:
+            register_name(std.data_path, name_override, project_path_str)
+            project_name = name_override
+        else:
+            project_name = assign_name(std.data_path, project_path_str)
         project_dir_path = std.data_path / "boxes" / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.

@@ -139,6 +139,29 @@ class TestRunCreate:
         gitignore = project_dir.resolve() / ".gitignore"
         assert not gitignore.is_file()
 
+    def test_create_with_name_override_registers_that_name(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """`box create --name X` registers the project under name X,
+        not the directory basename."""
+        from kanibako.names import read_names
+
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", str(project_dir), "--name", "custom-name"]
+        )
+        rc = run_create(args)
+
+        assert rc == 0
+        names = read_names(credentials_dir)
+        assert "custom-name" in names["projects"], (
+            f"Expected 'custom-name' in registered projects, got: {names}"
+        )
+        assert project_dir.name not in names["projects"], (
+            f"Directory basename should NOT be registered when --name given, "
+            f"got: {names}"
+        )
+
 
 class TestCreateNoVault:
     """Tests for --no-vault flag on box create."""

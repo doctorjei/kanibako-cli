@@ -357,6 +357,7 @@ def run_create(args: argparse.Namespace) -> int:
         proj = resolve_project(
             std, config, project_dir=project_dir, initialize=True,
             vault_enabled=vault_enabled if not vault_enabled else None,
+            name_override=getattr(args, "name", None),
         )
 
     if not proj.is_new:
