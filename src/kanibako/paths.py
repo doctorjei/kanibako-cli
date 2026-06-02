@@ -1076,6 +1076,18 @@ def resolve_any_project(
     to the appropriate resolver.
     """
     raw = project_dir or os.getcwd()
+    # CLI front-door: a bare token (no path separator) that doesn't exist in
+    # cwd may be a registered project/workset name.  resolve_project also does
+    # this lookup, but resolve_any_project must do it FIRST -- otherwise
+    # Path(raw).resolve() below path-ifies the name before detect_project_mode
+    # sees it.
+    if raw and "/" not in raw and not Path(raw).exists():
+        try:
+            resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
+            if kind == "project":
+                raw = resolved
+        except ProjectError:
+            pass
     raw_dir = Path(raw).resolve()
     detection = detect_project_mode(raw_dir, std, config)
     root_str = str(detection.project_root)

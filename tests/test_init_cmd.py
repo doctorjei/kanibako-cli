@@ -184,6 +184,28 @@ class TestRunCreate:
             f"Expected {project_dir.resolve()}, got {proj.project_path}"
         )
 
+    def test_resolve_any_project_accepts_registered_name(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """resolve_any_project (the CLI front-door used by `start`) must do
+        bare-name lookup BEFORE path resolution, otherwise the name gets
+        path-ified into cwd/<name> and resolution misses."""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_any_project
+
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", str(project_dir), "--name", "frontdoor-proj"]
+        )
+        assert run_create(args) == 0
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_any_project(std, config, project_dir="frontdoor-proj")
+        assert proj.project_path == project_dir.resolve(), (
+            f"Expected {project_dir.resolve()}, got {proj.project_path}"
+        )
+
 
 class TestCreateNoVault:
     """Tests for --no-vault flag on box create."""
