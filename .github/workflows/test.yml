@@ -5,6 +5,12 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: 'Run e2e job (normally tag-gated)'
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -31,7 +37,9 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_e2e)
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -41,18 +49,17 @@ jobs:
         run: sudo apt-get install -y tmux
       - name: Install kanibako
         run: pip install -e '.[dev]' -e packages/agent-claude/
-      - name: Pull or build image
+      - name: Pull e2e image (with build fallback)
         run: |
-          # For minor releases (x.y.0), build from Containerfile
-          TAG="${GITHUB_REF#refs/tags/v}"
-          PATCH="${TAG##*.}"
-          if [ "$PATCH" = "0" ]; then
-            echo "Minor release — building image from Containerfile"
-            podman build -t kanibako-oci:latest -f containers/Containerfile.kanibako .
-          else
-            echo "Patch release — pulling cached image"
-            podman pull ghcr.io/doctorjei/kanibako-oci:latest || \
-              podman build -t kanibako-oci:latest -f containers/Containerfile.kanibako .
-          fi
+          # Images are published from main on every containers/** change,
+          # so :latest always reflects current main. Just pull. Fall back
+          # to a local build only if the registry is unreachable.
+          podman pull ghcr.io/doctorjei/kanibako-oci:latest \
+            && podman tag ghcr.io/doctorjei/kanibako-oci:latest kanibako-oci:latest \
+            || podman build \
+                 --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0 \
+                 --build-arg VARIANT=oci \
+                 -t kanibako-oci:latest \
+                 -f src/kanibako/containers/Containerfile.kanibako .
       - name: Run e2e tests
         run: pytest tests/e2e/ -v
