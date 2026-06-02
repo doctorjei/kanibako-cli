@@ -314,7 +314,11 @@ class ContainerRuntime:
 
         Returns the exit code of the exec'd process.
         """
-        cmd: list[str] = [self.cmd, "exec", "-it"]
+        # Allocate a pty only when stdin is a real terminal. In scripted /
+        # subprocess contexts (CI, e2e tests), -t causes interactive commands
+        # like ``tmux attach`` to render but never return.
+        tty_flag = "-it" if sys.stdin.isatty() else "-i"
+        cmd: list[str] = [self.cmd, "exec", tty_flag]
         if env:
             for k, v in sorted(env.items()):
                 cmd += ["-e", f"{k}={v}"]

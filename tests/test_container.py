@@ -225,7 +225,8 @@ class TestExec:
     def test_exec_basic_command(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.container.subprocess.run") as m, \
+             patch("kanibako.container.sys.stdin.isatty", return_value=True):
             m.return_value = MagicMock(returncode=0)
             rc = rt.exec("mycontainer", ["tmux", "attach", "-t", "kanibako"])
             assert rc == 0
@@ -234,6 +235,21 @@ class TestExec:
                 "/usr/bin/podman", "exec", "-it",
                 "mycontainer", "tmux", "attach", "-t", "kanibako",
             ]
+
+    def test_exec_no_tty_when_not_a_terminal(self):
+        """Without a stdin TTY (CI, scripts), use -i instead of -it.
+
+        `-t` would cause interactive commands like tmux attach to render
+        but never return.
+        """
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m, \
+             patch("kanibako.container.sys.stdin.isatty", return_value=False):
+            m.return_value = MagicMock(returncode=0)
+            rt.exec("mycontainer", ["echo", "hi"])
+            cmd = m.call_args[0][0]
+            assert cmd[2] == "-i"
 
     def test_exec_returns_exit_code(self):
         from unittest.mock import MagicMock
@@ -246,7 +262,8 @@ class TestExec:
     def test_exec_with_env(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.container.subprocess.run") as m, \
+             patch("kanibako.container.sys.stdin.isatty", return_value=True):
             m.return_value = MagicMock(returncode=0)
             rt.exec("mycontainer", ["bash"], env={"FOO": "bar"})
             cmd = m.call_args[0][0]
