@@ -36,14 +36,17 @@ class TestMountStubs:
         )
         wait_for_container("kanibako-e2e-stubs", timeout=15)
 
-        # Find the shell directory
-        shells_dir = data_home / "kanibako" / "shells"
-        shell_dirs = list(shells_dir.iterdir()) if shells_dir.exists() else []
-        assert len(shell_dirs) > 0, (
-            f"No shell directories found under {shells_dir}"
+        # Find the shell directory (lives under boxes/<name>/shell/).
+        boxes_dir = data_home / "kanibako" / "boxes"
+        box_dirs = list(boxes_dir.iterdir()) if boxes_dir.exists() else []
+        assert len(box_dirs) > 0, (
+            f"No box directories found under {boxes_dir}"
         )
-
-        shell_path = shell_dirs[0]
+        shell_path = box_dirs[0] / "shell"
+        assert shell_path.is_dir(), (
+            f"Shell dir missing: {shell_path} "
+            f"(box contents: {list(box_dirs[0].iterdir())})"
+        )
 
         # These directories must exist as mount point stubs.
         # Without them, crun fails with "Permission denied" in LXC (#57).
