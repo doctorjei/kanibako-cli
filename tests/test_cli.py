@@ -9,6 +9,34 @@ import pytest
 from kanibako.cli import build_parser
 
 
+def _run_main_capturing(cmd: str, extra: list[str], *, target: str = "start") -> dict:
+    """Run cli.main and capture the args namespace seen by the dispatcher.
+
+    Patches the dispatcher (run_start or run_shell) so we can inspect what
+    main() produced — including the '--' split and post-parse args.agent_args
+    or args.shell_args injection.
+    """
+    from unittest.mock import patch
+    from kanibako.cli import main as cli_main
+
+    captured: dict = {}
+
+    def fake_func(args):
+        for name in (
+            "project", "agent_args", "shell_args", "env", "ephemeral",
+            "persistent", "entrypoint",
+        ):
+            captured[name] = getattr(args, name, None)
+        return 0
+
+    target_path = f"kanibako.commands.start.run_{target}"
+    with patch(target_path, fake_func), \
+         patch("kanibako.cli._ensure_initialized"), \
+         patch("sys.exit"):
+        cli_main([cmd] + extra)
+    return captured
+
+
 class TestParser:
     def test_version(self, capsys):
         from kanibako import __version__
@@ -68,14 +96,10 @@ class TestParser:
         assert args.entrypoint == "/bin/zsh"
 
     def test_start_project_positional(self):
-        """Project positional is extracted from agent_args in run_start."""
-        # Verify that when parsing 'start /tmp/myproject', the path
-        # ends up in agent_args (since argparse REMAINDER catches it),
-        # and run_start extracts it as the project directory.
+        """Project positional is bound to args.project directly."""
         parser = build_parser()
         args = parser.parse_args(["start", "/tmp/myproject"])
-        # REMAINDER captures the project path
-        assert args.agent_args == ["/tmp/myproject"]
+        assert args.project == "/tmp/myproject"
 
     def test_shell_command(self):
         parser = build_parser()
@@ -452,9 +476,58 @@ class TestParser:
         assert args.all_containers is True
 
     def test_start_with_agent_args(self):
-        parser = build_parser()
-        args = parser.parse_args(["start", "--", "--some-flag", "arg"])
-        assert args.agent_args == ["--", "--some-flag", "arg"]
+        """Args after '--' are routed to args.agent_args by main().
+
+        The parser itself doesn't see them — main() splits at '--' and
+        sets args.agent_args directly. We test the end-to-end behavior
+        via main() since the parser alone won't bind agent_args.
+        """
+        captured = _run_main_capturing("start", ["--", "--some-flag", "arg"])
+        assert captured["agent_args"] == ["--some-flag", "arg"]
+        assert captured["project"] is None
+
+    def test_start_flags_after_positional(self):
+        """Flags following the project positional are still consumed by kanibako."""
+        captured = _run_main_capturing(
+            "start",
+            ["myproj", "--ephemeral", "-e", "FOO=1", "-e", "BAR=2"],
+        )
+        assert captured["project"] == "myproj"
+        assert captured["ephemeral"] is True
+        assert captured["env"] == ["FOO=1", "BAR=2"]
+        assert captured["agent_args"] == []
+
+    def test_start_flags_before_positional(self):
+        """Flags before the project positional also work (regression check)."""
+        captured = _run_main_capturing(
+            "start",
+            ["--ephemeral", "-e", "FOO=1", "myproj"],
+        )
+        assert captured["project"] == "myproj"
+        assert captured["ephemeral"] is True
+        assert captured["env"] == ["FOO=1"]
+
+    def test_start_positional_then_dash_dash(self):
+        """Positional + '--' + agent args."""
+        captured = _run_main_capturing(
+            "start",
+            ["myproj", "--ephemeral", "--", "--continue", "extra"],
+        )
+        assert captured["project"] == "myproj"
+        assert captured["ephemeral"] is True
+        assert captured["agent_args"] == ["--continue", "extra"]
+
+    def test_shell_flags_after_positional(self):
+        """Shell command: flags after positional work."""
+        captured = _run_main_capturing(
+            "shell",
+            ["myproj", "--ephemeral", "--entrypoint", "/bin/sh", "--", "-c", "echo hi"],
+            target="shell",
+        )
+        assert captured["project"] == "myproj"
+        assert captured["ephemeral"] is True
+        assert captured["entrypoint"] == "/bin/sh"
+        assert captured["shell_args"] == ["-c", "echo hi"]
 
     def test_box_start(self):
         parser = build_parser()

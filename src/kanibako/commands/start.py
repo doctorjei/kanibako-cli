@@ -104,8 +104,8 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Share host container image storage with child (read-only, experimental)",
     )
     p.add_argument(
-        "agent_args", nargs=argparse.REMAINDER,
-        help="Arguments passed directly to the agent (after --)",
+        "project", nargs="?", default=None,
+        help="Project directory or registered name (omit for current dir)",
     )
     p.set_defaults(func=run_start)
 
@@ -149,8 +149,8 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Share host container image storage with child (read-only, experimental)",
     )
     p.add_argument(
-        "shell_args", nargs=argparse.REMAINDER,
-        help="Command to run (after --): kanibako shell -- echo hello",
+        "project", nargs="?", default=None,
+        help="Project directory or registered name (omit for current dir)",
     )
     p.set_defaults(func=run_shell)
 
@@ -176,18 +176,8 @@ def run_start(args: argparse.Namespace) -> int:
         # Default: persistent when tmux is available
         persistent = _tmux_available()
     env_vars = getattr(args, "env", None) or []
-    agent_args = getattr(args, "agent_args", [])
-
-    # Extract [project] positional from agent_args: if the first arg is not
-    # "--" and doesn't start with "-", treat it as the project directory.
     project_dir = getattr(args, "project", None)
-    if project_dir is None and agent_args and agent_args[0] != "--" and not agent_args[0].startswith("-"):
-        project_dir = agent_args[0]
-        agent_args = agent_args[1:]
-
-    # Strip leading '--' from REMAINDER
-    if agent_args and agent_args[0] == "--":
-        agent_args = agent_args[1:]
+    agent_args = getattr(args, "agent_args", [])
 
     # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
     # -S means secure (safe_mode=True). Neither means autonomous (default).
@@ -228,18 +218,9 @@ def run_start(args: argparse.Namespace) -> int:
 
 
 def run_shell(args: argparse.Namespace) -> int:
+    project_dir = getattr(args, "project", None)
     shell_args = getattr(args, "shell_args", [])
 
-    # Extract [project] positional from shell_args: if the first arg is not
-    # "--" and doesn't start with "-", treat it as the project directory.
-    project_dir = getattr(args, "project", None)
-    if project_dir is None and shell_args and shell_args[0] != "--" and not shell_args[0].startswith("-"):
-        project_dir = shell_args[0]
-        shell_args = shell_args[1:]
-
-    # Strip leading '--' from REMAINDER
-    if shell_args and shell_args[0] == "--":
-        shell_args = shell_args[1:]
     entrypoint = getattr(args, "entrypoint", None)
     if not entrypoint:
         entrypoint = "/bin/sh" if shell_args else "/bin/bash"

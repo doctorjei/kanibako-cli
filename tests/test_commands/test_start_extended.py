@@ -133,26 +133,6 @@ class TestFlagCombinations:
             assert "--dangerously-skip-permissions" not in cli_args
             assert "--continue" not in cli_args
 
-    def test_double_dash_stripping(self, start_mocks):
-        """run_start strips leading '--' from agent_args."""
-        from kanibako.commands.start import run_start
-        import argparse
-
-        with start_mocks() as m:
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=False, secure=False,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                agent_args=["--", "--my-flag"],
-            )
-            run_start(args)
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--my-flag" in cli_args
-            # The leading '--' should be stripped
-            assert cli_args[0] != "--" or cli_args == ["--"]
-
     def test_safe_and_resume(self, start_mocks):
         with start_mocks() as m:
             _run_container(
@@ -722,11 +702,11 @@ class TestCliEnv:
             assert rc == 0
 
 
-class TestProjectExtraction:
-    """Verify [project] positional extraction from REMAINDER args."""
+class TestProjectPositional:
+    """Verify args.project is read directly by run_start."""
 
-    def test_project_extracted_from_agent_args(self, start_mocks):
-        """First non-flag arg is extracted as project_dir."""
+    def test_project_passed_through(self, start_mocks):
+        """args.project is forwarded to resolve_any_project."""
         from kanibako.commands.start import run_start
         import argparse
 
@@ -737,15 +717,16 @@ class TestProjectExtraction:
                 resume_session=False, autonomous=False, secure=False,
                 model=None, env=None, persistent=False, ephemeral=False,
                 no_helpers=False,
-                agent_args=["/tmp/myproject"],
+                project="/tmp/myproject",
+                agent_args=[],
             )
             run_start(args)
             m.resolve_any_project.assert_called_once()
             call_args = m.resolve_any_project.call_args
             assert call_args[0][2] == "/tmp/myproject"
 
-    def test_project_not_extracted_from_flags(self, start_mocks):
-        """Args starting with - are not treated as project."""
+    def test_project_none_uses_cwd(self, start_mocks):
+        """args.project=None lets resolve_any_project default to cwd."""
         from kanibako.commands.start import run_start
         import argparse
 
@@ -756,32 +737,12 @@ class TestProjectExtraction:
                 resume_session=False, autonomous=False, secure=False,
                 model=None, env=None, persistent=False, ephemeral=False,
                 no_helpers=False,
-                agent_args=["--my-flag"],
+                project=None,
+                agent_args=[],
             )
             run_start(args)
             m.resolve_any_project.assert_called_once()
             call_args = m.resolve_any_project.call_args
-            # project_dir should be None (--my-flag is not a path)
-            assert call_args[0][2] is None
-
-    def test_project_not_extracted_after_separator(self, start_mocks):
-        """After --, args are not treated as project."""
-        from kanibako.commands.start import run_start
-        import argparse
-
-        with start_mocks() as m:
-            args = argparse.Namespace(
-                entrypoint=None, image=None,
-                new_session=False, continue_session=False,
-                resume_session=False, autonomous=False, secure=False,
-                model=None, env=None, persistent=False, ephemeral=False,
-                no_helpers=False,
-                agent_args=["--", "/tmp/myproject"],
-            )
-            run_start(args)
-            m.resolve_any_project.assert_called_once()
-            call_args = m.resolve_any_project.call_args
-            # project_dir should be None (path is after --)
             assert call_args[0][2] is None
 
 

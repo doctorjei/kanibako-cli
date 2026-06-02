@@ -288,7 +288,26 @@ def main(argv: list[str] | None = None) -> None:
         # Translate command aliases (e.g. agent→crab, image→rig).
         if effective and effective[0] in _COMMAND_ALIASES:
             effective[0] = _COMMAND_ALIASES[effective[0]]
+
+        # For start/shell, split args at '--' so flags after the project
+        # positional still work (REMAINDER would otherwise swallow them).
+        # Everything before '--' goes to argparse; everything after becomes
+        # args passed to the agent/shell.
+        post_dash: list[str] | None = None
+        if (
+            len(effective) >= 2
+            and effective[0] in ("start", "shell")
+            and "--" in effective[1:]
+        ):
+            idx = effective.index("--", 1)
+            post_dash = effective[idx + 1:]
+            effective = effective[:idx]
+
         args = parser.parse_args(effective)
+        if args.command == "start":
+            args.agent_args = post_dash or []
+        elif args.command == "shell":
+            args.shell_args = post_dash or []
 
         # Lazy init: create config + data dirs on first run.
         # Skip for crab (helper/fork run inside containers).
