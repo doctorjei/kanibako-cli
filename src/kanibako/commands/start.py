@@ -485,7 +485,13 @@ def _run_container(
         # Persistent mode forces no helpers
         no_helpers = True
     else:
-        # Interactive mode: guard against existing persistent container
+        # Interactive (shell/ephemeral) mode: if a container is already
+        # running for this project AND we're in shell mode (entrypoint set,
+        # no agent), exec into it instead of erroring — matches the natural
+        # UX of `kanibako shell <name> -- cmd` against a live container.
+        if runtime.is_running(container_name) and entrypoint is not None:
+            exec_cmd = [entrypoint] + (extra_args or [])
+            return runtime.exec(container_name, exec_cmd)
         if runtime.container_exists(container_name):
             print(
                 "Error: A container already exists for this project.\n"
@@ -895,10 +901,41 @@ def _run_container(
                     break
                 time.sleep(0.3)
             else:
-                # Container never started or exited immediately.
+                # Container never started or exited immediately. If the
+                # target says this is recoverable (e.g. "no conversation
+                # to continue"), retry with a fresh session before bailing.
                 logs = _container_logs(runtime, container_name)
                 if logs:
                     print(logs, file=sys.stderr)
+                if (
+                    target
+                    and not new_session
+                    and not _is_retry
+                    and logs
+                    and target.should_retry_new_session(logs)
+                ):
+                    print(
+                        "Restarting with a new session.",
+                        file=sys.stderr,
+                    )
+                    runtime.rm(container_name)
+                    return _run_container(
+                        project_dir=project_dir,
+                        entrypoint=None,
+                        image_override=image_override,
+                        new_session=True,
+                        safe_mode=safe_mode,
+                        resume_mode=False,
+                        extra_args=extra_args,
+                        no_helpers=no_helpers,
+                        no_auto_auth=no_auto_auth,
+                        browser=browser,
+                        share_images=share_images,
+                        persistent=persistent,
+                        model_override=model_override,
+                        cli_env=cli_env,
+                        _is_retry=True,
+                    )
                 print(
                     "Error: Container exited before session could attach.\n"
                     "Check the logs above, or run 'kanibako system diagnose'.",
