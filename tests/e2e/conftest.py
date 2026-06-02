@@ -56,6 +56,34 @@ def _image_available() -> bool:
     return result.returncode == 0
 
 
+def _host_podman_storage() -> tuple[str, str] | None:
+    """Return host's (graphRoot, runRoot) from podman info, or None on failure.
+
+    Captured before any HOME/XDG_DATA_HOME overrides so we can pin the test
+    subprocess's podman storage back to the host's real location via
+    storage.conf. Without this, kanibako-launched podman looks for images
+    in the test's tmp dir and never finds them.
+    """
+    if _podman is None:
+        return None
+    result = subprocess.run(
+        [_podman, "info", "--format",
+         "{{.Store.GraphRoot}}\n{{.Store.RunRoot}}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return None
+    lines = result.stdout.strip().splitlines()
+    if len(lines) != 2:
+        return None
+    return lines[0], lines[1]
+
+
+_host_storage = _host_podman_storage()
+
+
 requires_image = pytest.mark.skipif(
     not _image_available(),
     reason=f"{E2E_IMAGE} not available locally",
@@ -135,6 +163,27 @@ def stub_script() -> Path:
     return stub
 
 
+@pytest.fixture(scope="session")
+def host_storage_conf(tmp_path_factory) -> Path:
+    """Write a storage.conf pinning rootless podman to the host's real graphroot.
+
+    The per-test env overrides HOME and XDG_DATA_HOME, which would otherwise
+    relocate rootless podman's graphroot into the test's tmp dir, hiding the
+    host's pulled images. ``rootless_storage_path`` is the rootless-specific
+    knob that survives those overrides (plain ``graphroot`` does not).
+    """
+    assert _host_storage is not None, "podman info failed; cannot pin storage"
+    graphroot, runroot = _host_storage
+    conf_dir = tmp_path_factory.mktemp("podman-storage")
+    conf_path = conf_dir / "storage.conf"
+    conf_path.write_text(
+        "[storage]\n"
+        f'runroot = "{runroot}"\n'
+        f'rootless_storage_path = "{graphroot}"\n'
+    )
+    return conf_path
+
+
 @pytest.fixture(scope="session", autouse=True)
 def session_cleanup():
     """Safety-net: remove any leftover e2e test containers at suite end."""
@@ -165,7 +214,7 @@ def session_cleanup():
 
 
 @pytest.fixture()
-def e2e_env(tmp_path, stub_script) -> dict:
+def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     """Create an isolated test environment for one e2e test.
 
     Returns a dict with:
@@ -229,6 +278,10 @@ def e2e_env(tmp_path, stub_script) -> dict:
         "PATH": f"{claude_bin_dir}:{env.get('PATH', '')}",
         # Disable telemetry in test containers
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        # Pin rootless podman storage back to the host's real location.
+        # HOME/XDG_DATA_HOME overrides above would otherwise relocate
+        # graphroot into tmp_path and hide the host's pulled images.
+        "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
     })
 
     # Compute expected container name.  For a fresh project created via
