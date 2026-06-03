@@ -1,3 +1,4 @@
+# kanibako-template: C/C++, Rust, cross-compilation toolchain
 # Systems development template: C/C++, Rust, cross-compilation tools.
 # Built on top of any kanibako base image.
 #
