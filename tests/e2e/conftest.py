@@ -27,7 +27,13 @@ import pytest
 
 E2E_IMAGE = "kanibako-oci:latest"
 CONTAINER_PREFIX = "kanibako-e2e-"
-SUBPROCESS_TIMEOUT = 30  # seconds
+# Generous enough to absorb a one-time cold image pull on the first test.
+# The workflow tags the pulled image into the runner's default podman storage,
+# but the test subprocesses pin rootless_storage_path (see host_storage_conf),
+# so the first `kanibako start` may pull the registry image into the pinned
+# store before the rest of the suite reuses it. A tight 30s budget made that
+# first test flaky (pull + start > 30s); 120s covers the pull with headroom.
+SUBPROCESS_TIMEOUT = 120  # seconds
 
 # ---------------------------------------------------------------------------
 # Skip conditions
