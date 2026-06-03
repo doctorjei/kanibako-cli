@@ -103,6 +103,7 @@ class TestCleanExtended:
         project_dir = tmp_home / "project"
         kanibako_dir = project_dir / ".kanibako"
         kanibako_dir.mkdir()
+        (kanibako_dir / "project.toml").write_text('[project]\nmode = "standalone"\n')
         (kanibako_dir / "data.txt").write_text("session-data")
 
         args = argparse.Namespace(
@@ -128,6 +129,9 @@ class TestCleanExtended:
         dec_dir = tmp_home / "dec_project"
         dec_dir.mkdir()
         (dec_dir / ".kanibako").mkdir()
+        (dec_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
         (dec_dir / ".kanibako" / "data.txt").write_text("dec-data")
 
         args = argparse.Namespace(all_projects=True, force=True)

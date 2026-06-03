@@ -135,12 +135,10 @@ class TestDetectionFalsePositives:
         (project_dir / dirname).mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        # Should fall through to local (default), NOT standalone.
-        # Exception: .kanibako is a legitimate marker.
-        if dirname == ".kanibako":
-            assert result.mode is ProjectMode.standalone
-        else:
-            assert result.mode is not ProjectMode.standalone
+        # Should fall through to local (default), NOT standalone.  A bare
+        # directory (even ``.kanibako``) is not a marker on its own: a real
+        # standalone project.toml is required.
+        assert result.mode is not ProjectMode.standalone
 
     def test_ancestor_named_kanibako_no_false_positive(
         self, config_file, tmp_home,
@@ -166,15 +164,33 @@ class TestDetectionFalsePositives:
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text("")
+        (project_dir / "kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is ProjectMode.standalone
 
-    def test_dot_kanibako_marker_without_toml_is_valid(
+    def test_dot_kanibako_marker_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """.kanibako/ is always a valid marker (no project.toml required)."""
+        """.kanibako/ with a real standalone project.toml is a valid marker."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "myproject"
+        project_dir.mkdir()
+        (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.standalone
+
+    def test_dot_kanibako_marker_without_toml_is_not_standalone(
+        self, config_file, tmp_home,
+    ):
+        """A bare .kanibako/ (the baked-in runtime dir) is NOT a marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
@@ -182,7 +198,7 @@ class TestDetectionFalsePositives:
         (project_dir / ".kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.standalone
+        assert result.mode is not ProjectMode.standalone
 
 
 # ── Stale names.toml safety ────────────────────────────────────────────

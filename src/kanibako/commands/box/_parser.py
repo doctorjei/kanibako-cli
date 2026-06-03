@@ -75,6 +75,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--distinct-auth", action="store_true",
         help="Use distinct credentials (no sync from host)",
     )
+    create_p.add_argument(
+        "--allow-home", action="store_true",
+        help="Permit a standalone project rooted at $HOME (mounts your entire "
+             "home directory; required to create one there)",
+    )
     create_p.set_defaults(func=run_create)
 
     # kanibako box list (default behavior)
@@ -341,6 +346,30 @@ def run_create(args: argparse.Namespace) -> int:
     vault_enabled = not getattr(args, "no_vault", False)
     auth = "distinct" if getattr(args, "distinct_auth", False) else None
     project_dir = args.path
+
+    # $HOME guard: a home-directory project mounts the entire home tree, so it
+    # must be (a) standalone and (b) an explicit opt-in via --allow-home. Local
+    # mode at $HOME is never permitted.
+    effective_path = Path(project_dir).resolve() if project_dir else Path.cwd().resolve()
+    if effective_path == Path.home().resolve():
+        if not args.standalone:
+            print(
+                "Error: Refusing to create a project at $HOME.\n"
+                "A home-directory project must be standalone and explicit:\n"
+                "  kanibako create --standalone ~ --allow-home",
+                file=sys.stderr,
+            )
+            return 1
+        if not getattr(args, "allow_home", False):
+            print(
+                "Error: Refusing to create a standalone project at $HOME "
+                "without --allow-home.\n"
+                "This mounts your entire home directory as the project. If you "
+                "really mean it:\n"
+                "  kanibako create --standalone ~ --allow-home",
+                file=sys.stderr,
+            )
+            return 1
 
     # Create directory if it doesn't exist.
     if project_dir is not None:

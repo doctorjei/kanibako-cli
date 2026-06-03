@@ -139,6 +139,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--distinct-auth", action="store_true",
         help="Use distinct credentials (no sync from host)",
     )
+    create_p.add_argument(
+        "--allow-home", action="store_true",
+        help="Permit a standalone project rooted at $HOME (mounts your entire "
+             "home directory; required to create one there)",
+    )
     create_p.set_defaults(func=run_create)
 
     # rm — top-level alias for box rm

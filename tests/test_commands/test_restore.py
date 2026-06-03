@@ -10,7 +10,12 @@ from unittest.mock import patch
 
 from kanibako.config import load_config
 from kanibako.errors import UserCancelled
-from kanibako.paths import load_std_paths, resolve_any_project, resolve_project
+from kanibako.paths import (
+    load_std_paths,
+    resolve_any_project,
+    resolve_project,
+    resolve_standalone_project,
+)
 
 
 class TestExtract:
@@ -39,7 +44,6 @@ class TestExtract:
         assert archive_run(args) == 0
 
         # Clean
-        import shutil
         shutil.rmtree(proj.metadata_path)
         assert not proj.metadata_path.exists()
 
@@ -264,11 +268,15 @@ class TestExtractExtended:
         from kanibako.commands.archive import run as archive_run
         from kanibako.commands.restore import run as extract_run
 
-        # First create a local archive (same project dir)
+        # Create a standalone project and archive it (the archive carries the
+        # standalone project.toml, so extract preserves standalone mode).
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        proj = resolve_standalone_project(
+            std, config, project_dir=project_dir, initialize=True,
+        )
+        assert proj.mode.value == "standalone"
         (proj.metadata_path / "data.txt").write_text("restore-me")
 
         archive_path = str(tmp_home / "dec-restore.txz")
@@ -278,14 +286,12 @@ class TestExtractExtended:
         )
         assert archive_run(args) == 0
 
-        # Now set up the project as standalone
-        project_path = tmp_home / "project"
-        kanibako_dir = project_path / ".kanibako"
-        kanibako_dir.mkdir(exist_ok=True)
-        # Remove local data so mode detection picks standalone
-        shutil.rmtree(proj.metadata_path)
+        # Remove the restorable payload but KEEP the standalone marker, so the
+        # project still resolves as standalone (extract routes its destination
+        # by detection; a real `project.toml` with mode=standalone is required
+        # now that bare `.kanibako` dirs are no longer trusted as markers).
+        (proj.metadata_path / "data.txt").unlink()
 
-        # Extract into the standalone project
         args = argparse.Namespace(
             file=archive_path, path=project_dir, name=None,
             all_archives=False, force=True,
@@ -293,6 +299,8 @@ class TestExtractExtended:
         rc = extract_run(args)
         assert rc == 0
 
-        # Data should now exist in the standalone metadata path
+        # The project still resolves as standalone, and the payload is restored
+        # into the standalone metadata path ({project}/.kanibako).
         dec_proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
         assert dec_proj.mode.value == "standalone"
+        assert (dec_proj.metadata_path / "data.txt").read_text() == "restore-me"

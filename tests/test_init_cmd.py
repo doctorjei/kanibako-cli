@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 from kanibako.cli import _SUBCOMMANDS, build_parser
 from kanibako.commands.box._parser import run_create
@@ -116,6 +117,47 @@ class TestRunCreate:
         assert rc == 0
         captured = capsys.readouterr()
         assert "Created" in captured.out
+
+    def test_create_at_home_local_refused(
+        self, config_file, credentials_dir, tmp_home, capsys,
+    ):
+        """Local create at $HOME is refused outright (no escape hatch)."""
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", str(Path.home())])
+        rc = run_create(args)
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "$HOME" in captured.err
+        assert "--standalone" in captured.err
+        # No project metadata should have been created at $HOME.
+        assert not (Path.home() / ".kanibako").exists()
+
+    def test_create_at_home_standalone_requires_allow_home(
+        self, config_file, credentials_dir, tmp_home, capsys,
+    ):
+        """Standalone create at $HOME without --allow-home is refused."""
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", str(Path.home())])
+        rc = run_create(args)
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "--allow-home" in captured.err
+        assert not (Path.home() / ".kanibako").exists()
+
+    def test_create_at_home_standalone_with_allow_home(
+        self, config_file, credentials_dir, tmp_home, capsys,
+    ):
+        """Standalone create at $HOME succeeds with the explicit --allow-home."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", "--standalone", "--allow-home", str(Path.home())]
+        )
+        rc = run_create(args)
+
+        assert rc == 0
+        assert (Path.home() / ".kanibako").is_dir()
 
     def test_create_writes_gitignore_for_standalone(
         self, config_file, credentials_dir, project_dir, capsys,

@@ -216,7 +216,7 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `box create [path]` | Create project (`--name`, `--standalone`, `--image`, `--no-vault`, `--distinct-auth`) |
+| `box create [path]` | Create project (`--name`, `--standalone`, `--image`, `--no-vault`, `--distinct-auth`, `--allow-home`) |
 | `box list` / `box ls` | List projects (`--all`, `--orphan`, `-q`) |
 | `box info` / `box inspect` | Project details (mode, paths, lock, rig) |
 | `box rm` / `box delete` | Remove project (`--purge` deletes metadata, `--force` skips confirm) |
@@ -825,7 +825,7 @@ A broadcast channel (`all/`) is available to all helpers.
   all/ro/               # broadcast read-only
   all/rw/               # broadcast read-write
   channels/             # raw peer channel directories
-~/.kanibako/
+~/.local/state/kanibako/
   helper.sock           # hub socket (mounted from host)
   helper-messages.jsonl # message log (mounted read-only)
 ~/.local/bin/kanibako   # kanibako CLI (bind-mounted from host, ro)

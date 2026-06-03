@@ -308,6 +308,9 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is ProjectMode.standalone
@@ -404,6 +407,9 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         subdir = project_dir / "src" / "deep" / "nested"
         subdir.mkdir(parents=True)
@@ -422,11 +428,17 @@ class TestDetectProjectMode:
         # Outer project has .kanibako marker
         outer = tmp_home / "project"
         (outer / ".kanibako").mkdir()
+        (outer / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         # Inner project also has .kanibako marker
         inner = outer / "subproject"
         inner.mkdir()
         (inner / ".kanibako").mkdir()
+        (inner / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         # Detection from inner/ should find inner's marker
         result = detect_project_mode(inner.resolve(), std, config)
@@ -441,7 +453,9 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text("")
+        (project_dir / "kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is ProjectMode.standalone
@@ -463,8 +477,13 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text("")
+        (project_dir / "kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is ProjectMode.standalone
@@ -487,13 +506,77 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text("")
+        (project_dir / "kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         subdir = project_dir / "src"
         subdir.mkdir()
 
         result = detect_project_mode(subdir.resolve(), std, config)
         assert result.mode is ProjectMode.standalone
+        assert result.project_root == project_dir.resolve()
+
+    # --- Bare-marker rejection tests (regression: empty ~/.kanibako) ---
+
+    def test_empty_dot_kanibako_dir_is_local(self, config_file, tmp_home):
+        """An empty .kanibako/ (no project.toml) is NOT a standalone marker."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / ".kanibako").mkdir()
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.local
+        assert result.project_root == project_dir.resolve()
+
+    def test_baked_in_home_kanibako_does_not_adopt_home(self, config_file, tmp_home):
+        """THE BUG: the image bakes an empty ~/.kanibako runtime/IPC dir.
+
+        A stray file (e.g. helper.sock) inside it must NOT cause kanibako to
+        adopt the entire $HOME as a standalone project.  Detection from a real
+        project subdir must stay local and rooted at that subdir.
+        """
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        home = Path.home().resolve()
+        # Simulate the baked-in runtime dir at $HOME (no project.toml).
+        (home / ".kanibako").mkdir(parents=True, exist_ok=True)
+        (home / ".kanibako" / "helper.sock").write_text("")
+
+        seadog = home / "workspace" / "seadog"
+        seadog.mkdir(parents=True, exist_ok=True)
+
+        result = detect_project_mode(seadog.resolve(), std, config)
+        assert result.mode is ProjectMode.local
+        assert result.project_root == seadog.resolve()
+
+    def test_malformed_project_toml_is_local_and_does_not_raise(
+        self, config_file, tmp_home
+    ):
+        """A malformed .kanibako/project.toml must not raise; falls to local."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text("not valid toml {{{")
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.local
+        assert result.project_root == project_dir.resolve()
+
+    def test_local_mode_project_toml_is_not_standalone(self, config_file, tmp_home):
+        """A .kanibako/project.toml declaring mode=local is not a standalone marker."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "project"
+        (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "local"\n'
+        )
+
+        result = detect_project_mode(project_dir.resolve(), std, config)
+        assert result.mode is ProjectMode.local
         assert result.project_root == project_dir.resolve()
 
     # --- Depth cap tests ---
@@ -678,6 +761,9 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
 
@@ -777,6 +863,9 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
+        (project_dir / ".kanibako" / "project.toml").write_text(
+            '[project]\nmode = "standalone"\n'
+        )
 
         subdir = project_dir / "src"
         subdir.mkdir()

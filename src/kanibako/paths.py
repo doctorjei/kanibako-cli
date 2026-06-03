@@ -258,7 +258,7 @@ def resolve_project(
                 "Refusing to create a project rooted at $HOME — this would "
                 "mount your entire home directory as the workspace.\n"
                 "If you really want a project here, use:\n"
-                "  kanibako create --standalone ~"
+                "  kanibako create --standalone ~ --allow-home"
             )
         # New project: assign a name first, then create boxes/{name}/.
         # An explicit override (e.g. `kanibako create --name X`) registers
@@ -707,6 +707,25 @@ def _find_local_ancestor(target: Path, data_path: Path) -> Path | None:
     return best
 
 
+def _is_standalone_meta_dir(meta_dir: Path) -> bool:
+    """True only if *meta_dir* is a real standalone project metadata directory.
+
+    A bare directory named ``.kanibako``/``kanibako`` is NOT sufficient: the
+    kanibako container image bakes an empty ``~/.kanibako`` runtime/IPC dir into
+    every container home (helper socket + log), which must never be mistaken for
+    a standalone project marker.  Require a parseable ``project.toml`` that
+    declares ``mode = "standalone"``.
+    """
+    toml = meta_dir / "project.toml"
+    if not meta_dir.is_dir() or not toml.is_file():
+        return False
+    try:
+        meta = read_project_meta(toml)
+    except (OSError, ValueError):  # ValueError covers tomllib.TOMLDecodeError
+        return False
+    return bool(meta and meta.get("mode") == "standalone")
+
+
 def detect_project_mode(
     project_dir: Path,
     std: StandardPaths,
@@ -745,13 +764,12 @@ def detect_project_mode(
     # 3. Walk ancestors for standalone markers.
     current = resolved
     while True:
-        # Standalone check: .kanibako/ or kanibako/ directory.
-        if (current / ".kanibako").is_dir():
+        # Standalone check: .kanibako/ or kanibako/ directory with a real
+        # standalone project.toml.  A bare directory is not enough (the
+        # container image bakes an empty ~/.kanibako runtime/IPC dir).
+        if _is_standalone_meta_dir(current / ".kanibako"):
             return DetectionResult(ProjectMode.standalone, current)
-        # Dotless kanibako/ requires project.toml to avoid false positives
-        # on directories that happen to be named "kanibako".
-        _nodot = current / "kanibako"
-        if _nodot.is_dir() and (_nodot / "project.toml").is_file():
+        if _is_standalone_meta_dir(current / "kanibako"):
             return DetectionResult(ProjectMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
