@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import re
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import NamedTuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from kanibako.container import ContainerRuntime
 
 _TEMPLATE_PREFIX = "kanibako-template-"
 _VALID_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+# Bundled template Containerfiles follow this naming convention. Only files
+# named exactly ``Containerfile.template-<name>`` (with a valid <name>) are
+# treated as shipped templates -- this excludes ``Containerfile.kanibako``
+# (the buildable base) and any non-matching files for free.
+_TEMPLATE_FILE_PREFIX = "Containerfile.template-"
+
+# Optional description header inside a template Containerfile, e.g.
+#   # kanibako-template: Java, Kotlin, Maven (JVM toolchain)
+_DESC_HEADER_RE = re.compile(r"^#\s*kanibako-template:\s*(.+?)\s*$")
+
+# Read at most this many lines looking for the description header.
+_DESC_HEADER_SCAN_LINES = 10
 
 
 def validate_template_name(name: str) -> None:
@@ -33,6 +48,75 @@ def template_image_name(name: str) -> str:
     """
     validate_template_name(name)
     return f"{_TEMPLATE_PREFIX}{name}"
+
+
+class BundledTemplate(NamedTuple):
+    """A template Containerfile shipped with kanibako."""
+
+    name: str
+    description: str
+
+
+def _bundled_containers_dir() -> Path | None:
+    """Return the path to kanibako's shipped ``containers/`` directory.
+
+    Returns ``None`` if the package data cannot be resolved as a real
+    filesystem path (e.g. running from a zip import).
+    """
+    try:
+        traversable = importlib.resources.files("kanibako.containers")
+        path = Path(str(traversable))
+    except (TypeError, FileNotFoundError):
+        return None
+    return path if path.is_dir() else None
+
+
+def _read_template_description(containerfile: Path, name: str) -> str:
+    """Return the ``# kanibako-template:`` header text, or a fallback label."""
+    try:
+        with containerfile.open(encoding="utf-8") as fh:
+            for _, line in zip(range(_DESC_HEADER_SCAN_LINES), fh):
+                match = _DESC_HEADER_RE.match(line)
+                if match:
+                    return match.group(1)
+    except OSError:
+        pass
+    return f"{name} template"
+
+
+def list_bundled_templates(
+    containers_dir: Path | None = None,
+) -> list[BundledTemplate]:
+    """Discover template Containerfiles shipped in *containers_dir*.
+
+    Scans *containers_dir* (defaulting to kanibako's bundled ``containers/``
+    directory) non-recursively for files named exactly
+    ``Containerfile.template-<name>`` where ``<name>`` is a valid template
+    name. The ``archive/`` subdirectory and non-matching files (such as
+    ``Containerfile.kanibako``) are excluded.
+
+    Each template's description is taken from a ``# kanibako-template: <desc>``
+    header comment near the top of the file, falling back to ``"<name>
+    template"`` when absent. Results are sorted by name.
+    """
+    if containers_dir is None:
+        containers_dir = _bundled_containers_dir()
+    if containers_dir is None or not containers_dir.is_dir():
+        return []
+
+    templates: list[BundledTemplate] = []
+    for entry in containers_dir.iterdir():
+        if not entry.is_file():
+            continue
+        if not entry.name.startswith(_TEMPLATE_FILE_PREFIX):
+            continue
+        name = entry.name[len(_TEMPLATE_FILE_PREFIX):]
+        if not _VALID_NAME_RE.match(name):
+            continue
+        description = _read_template_description(entry, name)
+        templates.append(BundledTemplate(name=name, description=description))
+
+    return sorted(templates, key=lambda t: t.name)
 
 
 def list_templates(runtime: ContainerRuntime) -> list[tuple[str, str, str]]:

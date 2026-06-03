@@ -7,7 +7,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from kanibako.templates_image import (
+    BundledTemplate,
     delete_template,
+    list_bundled_templates,
     list_templates,
     template_image_name,
     validate_template_name,
@@ -87,6 +89,42 @@ class TestListTemplates:
         ]
         result = list_templates(runtime)
         assert result == [("jvm", "kanibako-template-jvm", "1.2 GB")]
+
+
+class TestListBundledTemplates:
+    def test_discovers_matching_files_with_descriptions(self, tmp_path):
+        (tmp_path / "Containerfile.template-foo").write_text(
+            "# kanibako-template: Foo desc\nARG BASE_IMAGE=kanibako-oci:latest\n"
+        )
+        (tmp_path / "Containerfile.template-bar").write_text(
+            "ARG BASE_IMAGE=kanibako-oci:latest\n"
+        )
+        (tmp_path / "Containerfile.kanibako").write_text("FROM scratch\n")
+        (tmp_path / "Containerfile.notatemplate").write_text("FROM scratch\n")
+
+        result = list_bundled_templates(tmp_path)
+
+        assert result == [
+            BundledTemplate(name="bar", description="bar template"),
+            BundledTemplate(name="foo", description="Foo desc"),
+        ]
+
+    def test_skips_archive_subdir(self, tmp_path):
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        (archive / "Containerfile.template-old").write_text("FROM scratch\n")
+        (tmp_path / "Containerfile.template-foo").write_text("FROM scratch\n")
+
+        result = list_bundled_templates(tmp_path)
+
+        assert [t.name for t in result] == ["foo"]
+
+    def test_empty_when_dir_missing(self, tmp_path):
+        assert list_bundled_templates(tmp_path / "nope") == []
+
+    def test_bundled_dir_includes_jvm_and_systems(self):
+        names = {t.name for t in list_bundled_templates()}
+        assert {"jvm", "systems"} <= names
 
 
 class TestDeleteTemplate:

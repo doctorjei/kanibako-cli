@@ -14,14 +14,13 @@ from kanibako.container import ContainerRuntime
 from kanibako.containerfiles import get_containerfile, list_containerfile_suffixes
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
-from kanibako.templates_image import template_image_name
+from kanibako.templates_image import list_bundled_templates, template_image_name
 
 
-# Descriptions for known Containerfile variants.
+# Descriptions for buildable Containerfile variants. Example templates are
+# discovered (with their descriptions) via ``list_bundled_templates()``.
 _VARIANT_DESCRIPTIONS = {
     "kanibako": "Base agent container (droste tier selected at build time)",
-    "jvm": "JVM template (Java, Kotlin, Maven)",
-    "systems": "Systems template (C/C++, Rust, cross-compilation)",
 }
 
 _TEMPLATE_PREFIX = "kanibako-template-"
@@ -54,6 +53,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--base", default="kanibako-oci",
         help="Base image to start from (default: kanibako-oci)",
+    )
+    create_p.add_argument(
+        "--template",
+        help="Build a bundled template Containerfile (e.g. jvm, systems) "
+             "instead of an interactive session",
     )
     commit_group = create_p.add_mutually_exclusive_group()
     commit_group.add_argument(
@@ -131,7 +135,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_create(args: argparse.Namespace) -> int:
-    """Create a template: run interactive container, commit on exit."""
+    """Create a template image.
+
+    With ``--template`` builds a bundled ``Containerfile.template-<name>``;
+    otherwise runs an interactive container and commits it on exit.
+    """
+    if getattr(args, "template", None):
+        return _create_from_template(args)
+
     try:
         runtime = ContainerRuntime()
     except ContainerError as e:
@@ -179,6 +190,59 @@ def run_create(args: argparse.Namespace) -> int:
     return 0
 
 
+def _create_from_template(args: argparse.Namespace) -> int:
+    """Build a bundled template Containerfile into a local template image."""
+    template = args.template
+    available = sorted(t.name for t in list_bundled_templates())
+    if template not in available:
+        print(
+            f"error: unknown template '{template}'. "
+            f"Available: {', '.join(available)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        image_name = template_image_name(args.name)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    containers_dir = std.data_path / "containers"
+
+    containerfile = get_containerfile(f"template-{template}", containers_dir)
+    if containerfile is None:
+        print(
+            f"Error: Containerfile not found for template: {template}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    merged = load_merged_config(config_file, None)
+    base_image = resolve_image_name(args.base, merged.container_image)
+    build_args = {"BASE_IMAGE": base_image}
+
+    print(f"Building template '{template}' from {base_image}...")
+    print()
+    rc = runtime.rebuild(image_name, containerfile, containerfile.parent, build_args=build_args)
+    if rc == 0:
+        print()
+        print(f"Template saved as {image_name}")
+    else:
+        print()
+        print(f"Build failed with exit code {rc}", file=sys.stderr)
+    return rc
+
+
 def run_list(args: argparse.Namespace) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -203,7 +267,7 @@ def run_list(args: argparse.Namespace) -> int:
     suffixes = list_containerfile_suffixes(containers_dir)
     buildable = ContainerRuntime.buildable_containerfile_suffixes()
     variants = [s for s in suffixes if s in buildable]
-    templates = [s for s in suffixes if s not in buildable]
+    templates = list_bundled_templates()
 
     if variants:
         print("Built-in rig variants:")
@@ -217,8 +281,7 @@ def run_list(args: argparse.Namespace) -> int:
         print()
         print("Example templates (layer on a base image; not built directly):")
         for tmpl in templates:
-            desc = _VARIANT_DESCRIPTIONS.get(tmpl, "(no description)")
-            print(f"  {tmpl:<12} {desc}")
+            print(f"  {tmpl.name:<12} {tmpl.description}")
 
     print()
 

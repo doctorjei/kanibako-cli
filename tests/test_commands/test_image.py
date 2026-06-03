@@ -735,6 +735,89 @@ class TestImageCreate:
             assert rc == 1
 
 
+class TestImageCreateTemplate:
+    def _make_args(self, name="my-jvm", base="kanibako-lxc", template="jvm"):
+        return argparse.Namespace(
+            name=name, base=base, template=template,
+            always_commit=False, no_commit_on_error=False,
+        )
+
+    def test_template_builds_containerfile(self, tmp_home, config_file, credentials_dir, capsys):
+        """--template builds the bundled Containerfile.template-<name> instead
+        of running an interactive session + commit."""
+        from kanibako.commands.image import run_create
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.rebuild.return_value = 0
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args())
+            assert rc == 0
+
+            # No interactive run / no commit on the build path.
+            runtime.run_interactive.assert_not_called()
+            runtime.commit.assert_not_called()
+
+            runtime.rebuild.assert_called_once()
+            call_args, call_kwargs = runtime.rebuild.call_args
+            # Output tag is kanibako-template-<positional-name>.
+            assert call_args[0] == "kanibako-template-my-jvm"
+            # Containerfile path points at the jvm template.
+            containerfile = call_args[1]
+            assert str(containerfile).endswith("Containerfile.template-jvm")
+            # BASE_IMAGE build-arg resolved from --base kanibako-lxc.
+            build_args = call_kwargs["build_args"]
+            assert build_args["BASE_IMAGE"] == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
+        captured = capsys.readouterr()
+        assert "Template saved as kanibako-template-my-jvm" in captured.out
+
+    def test_unknown_template_lists_available(self, tmp_home, config_file, credentials_dir, capsys):
+        """An unknown --template returns non-zero, lists available templates,
+        and never invokes a build."""
+        from kanibako.commands.image import run_create
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args(template="bogus"))
+            assert rc == 1
+            runtime.rebuild.assert_not_called()
+            runtime.run_interactive.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "unknown template 'bogus'" in captured.err
+        assert "jvm" in captured.err
+
+    def test_no_template_still_interactive_commit(self, tmp_home, config_file, credentials_dir, capsys):
+        """Without --template, the interactive run + commit path is unchanged."""
+        from kanibako.commands.image import run_create
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.run_interactive.return_value = 0
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(
+                name="my-box", base="kanibako-oci", template=None,
+                always_commit=False, no_commit_on_error=False,
+            )
+            rc = run_create(args)
+            assert rc == 0
+
+            runtime.run_interactive.assert_called_once_with(
+                "kanibako-oci",
+                container_name="kanibako-template-build-my-box",
+            )
+            runtime.commit.assert_called_once_with(
+                "kanibako-template-build-my-box",
+                "kanibako-template-my-box",
+            )
+            runtime.rebuild.assert_not_called()
+
+
 class TestImageCreateFlags:
     def test_create_flags_are_mutually_exclusive(self):
         from kanibako.cli import build_parser
