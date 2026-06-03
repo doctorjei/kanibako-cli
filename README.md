@@ -331,10 +331,18 @@ shortcuts for common operations:
 Kanibako supports three ways to organize project state.  The mode is inferred
 automatically from context.
 
+Two of those modes -- **local** and **workset** -- are flavors of the same idea:
+a **project group**, a shared root that holds the boxes, vaults, and a
+group-level config/auth tier that member projects inherit.  Local is simply the
+implicit default group; a workset is a *named* group rooted at a directory you
+choose.  **Standalone** is the odd one out -- its state lives inside the
+project directory rather than in a group root.
+
 ### Local (default)
 
-Centralized store keyed by project name.  Just `cd` into any directory and
-run `kanibako`.
+The default project group: a centralized store keyed by project name, rooted at
+`$XDG_DATA_HOME/kanibako`.  You never name or create it -- just `cd` into any
+directory and run `kanibako`, and the project joins the default group.
 
 ```
 $XDG_DATA_HOME/kanibako/boxes/{name}/          metadata + shell
@@ -344,10 +352,15 @@ $XDG_DATA_HOME/kanibako/boxes/{name}/          metadata + shell
 
 ### Workset
 
-Group related projects under a named working set with human-readable paths.
+A workset is a *named* project group rooted at a directory you pick.  It groups
+related projects under one human-readable root, with a `workset.toml` member
+list and a group-level config/auth tier that member projects inherit (see
+[Configuration](#configuration)).  Mechanically it is the same project-group
+machinery as local mode, just with an explicit name and root instead of the
+implicit default.
 
 Worksets are stable and supported but not actively receiving new features.
-For most use cases, local mode is simpler.
+For most use cases, the default local group is simpler.
 
 ```bash
 kanibako workset create ~/worksets/research --name my-research
@@ -364,7 +377,8 @@ kanibako
 
 ### Standalone
 
-All state lives inside the project directory itself.  Fully portable.
+A separate mode -- not a project group.  All state lives inside the project
+directory itself, co-located with the workspace.  Fully portable.
 
 ```bash
 kanibako create --standalone           # in the current directory
@@ -692,7 +706,7 @@ kanibako box config model               # get one key
 kanibako box config model=sonnet        # set one key
 kanibako box config --reset model       # remove override, back to default
 
-# Workset level (defaults for projects in this workset)
+# Workset level (group defaults inherited by member projects)
 kanibako workset config <workset> model=opus
 
 # Crab level (defaults for all projects using this crab)
