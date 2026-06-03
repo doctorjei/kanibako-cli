@@ -84,9 +84,11 @@ jobs:
 
   build-templates:
     needs: [build-base, discover-templates]
-    # Templates FROM the base image in GHCR, so they require a published base.
-    # Skip on build-only dispatch runs where build-base did not push.
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
+    # Runs on push and on ANY dispatch. Templates FROM the base image in GHCR;
+    # a build-only dispatch (inputs.push=false) layers on the already-published
+    # kanibako-<variant>:latest base to verify the template Containerfiles build
+    # without publishing anything (the per-step push: gate below stays off).
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -116,7 +118,7 @@ jobs:
         with:
           context: src/kanibako/containers/
           file: src/kanibako/containers/Containerfile.template-${{ matrix.template }}
-          push: true
+          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-template-${{ matrix.template }}-${{ matrix.variant }}:latest
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest

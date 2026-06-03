@@ -126,6 +126,10 @@ class TestListBundledTemplates:
         names = {t.name for t in list_bundled_templates()}
         assert {"jvm", "systems"} <= names
 
+    def test_bundled_dir_includes_all_five(self):
+        names = sorted(t.name for t in list_bundled_templates())
+        assert names == ["android", "dotnet", "js", "jvm", "systems"]
+
 
 class TestDeleteTemplate:
     def test_removes_image(self):

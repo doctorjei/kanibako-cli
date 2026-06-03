@@ -1,0 +1,50 @@
+# kanibako-template: Android SDK command-line tools + NDK
+# Android development template: command-line tools, platform-tools,
+# platform android-34, build-tools 34.0.0, NDK, JDK 17.
+# Built on top of any kanibako base image.
+#
+# Default base: kanibako-oci:latest. Override with:
+#   podman build --build-arg BASE_IMAGE=ghcr.io/doctorjei/kanibako-lxc:latest ...
+ARG BASE_IMAGE=ghcr.io/doctorjei/kanibako-oci:latest
+FROM $BASE_IMAGE
+
+# Re-declare ARG after FROM so $BASE_IMAGE is in scope for RUN.
+# Surfaces the actual base in build output (default or explicit).
+ARG BASE_IMAGE
+RUN echo "[kanibako template] Building android on BASE_IMAGE=$BASE_IMAGE"
+
+USER root
+
+# Android tooling needs JDK 17; unzip extracts the command-line tools archive.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk-headless \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH="${PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
+
+# Install the Android command-line tools (pinned release) into
+# $ANDROID_SDK_ROOT/cmdline-tools/latest/. The zip extracts a top-level
+# cmdline-tools/ dir, which sdkmanager requires to live under latest/.
+RUN curl -fsSL \
+        https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+        -o /tmp/cmdline-tools.zip \
+    && mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools" \
+    && unzip -q /tmp/cmdline-tools.zip -d /tmp/android-cmdline \
+    && mv /tmp/android-cmdline/cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest" \
+    && rm -rf /tmp/cmdline-tools.zip /tmp/android-cmdline
+
+# Accept licenses and install a minimal SDK set (pinned versions).
+RUN yes | sdkmanager --licenses \
+    && sdkmanager \
+        "platform-tools" \
+        "platforms;android-34" \
+        "build-tools;34.0.0" \
+        "ndk;26.1.10909125"
+
+# Hand the SDK tree to the agent user so it can run/update tooling.
+RUN chown -R agent:agent "$ANDROID_SDK_ROOT"
+
+USER agent
+WORKDIR /home/agent/workspace

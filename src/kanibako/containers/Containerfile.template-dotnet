@@ -1,0 +1,28 @@
+# kanibako-template: .NET SDK (LTS)
+# .NET development template: .NET SDK on the 8.0 LTS channel.
+# Built on top of any kanibako base image.
+#
+# Default base: kanibako-oci:latest. Override with:
+#   podman build --build-arg BASE_IMAGE=ghcr.io/doctorjei/kanibako-lxc:latest ...
+ARG BASE_IMAGE=ghcr.io/doctorjei/kanibako-oci:latest
+FROM $BASE_IMAGE
+
+# Re-declare ARG after FROM so $BASE_IMAGE is in scope for RUN.
+# Surfaces the actual base in build output (default or explicit).
+ARG BASE_IMAGE
+RUN echo "[kanibako template] Building dotnet on BASE_IMAGE=$BASE_IMAGE"
+
+USER root
+
+# Install the .NET SDK via the official script pinned to the 8.0 LTS channel.
+# Using the script avoids apt-feed/distro coupling across base tiers.
+RUN curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+    && rm /tmp/dotnet-install.sh
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+
+USER agent
+WORKDIR /home/agent/workspace

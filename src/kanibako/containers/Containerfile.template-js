@@ -1,0 +1,38 @@
+# kanibako-template: Node tooling: yarn, pnpm, bun, TypeScript
+# JavaScript/TypeScript development template: yarn, pnpm, bun, TypeScript.
+# node/npm already ship in every kanibako base.
+# Built on top of any kanibako base image.
+#
+# Default base: kanibako-oci:latest. Override with:
+#   podman build --build-arg BASE_IMAGE=ghcr.io/doctorjei/kanibako-lxc:latest ...
+ARG BASE_IMAGE=ghcr.io/doctorjei/kanibako-oci:latest
+FROM $BASE_IMAGE
+
+# Re-declare ARG after FROM so $BASE_IMAGE is in scope for RUN.
+# Surfaces the actual base in build output (default or explicit).
+ARG BASE_IMAGE
+RUN echo "[kanibako template] Building js on BASE_IMAGE=$BASE_IMAGE"
+
+USER root
+
+# unzip is required by the bun installer and is not guaranteed on every base.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install corepack via npm first so it is present regardless of how the base
+# node package was built, then enable it and activate yarn/pnpm. The npm global
+# prefix is root-owned, so shims and global packages install as root.
+RUN npm install -g corepack \
+    && corepack enable \
+    && corepack prepare yarn@stable pnpm@latest --activate
+
+# Global TypeScript tooling (npm global prefix is root-owned)
+RUN npm install -g typescript ts-node
+
+# bun: installed under the agent home so ~/.bun has correct ownership
+USER agent
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/home/agent/.bun/bin:${PATH}"
+
+WORKDIR /home/agent/workspace
