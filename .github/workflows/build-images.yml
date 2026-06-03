@@ -54,7 +54,9 @@ jobs:
           context: src/kanibako/containers/
           file: src/kanibako/containers/Containerfile.kanibako
           push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:edge
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             VARIANT=${{ matrix.variant }}
