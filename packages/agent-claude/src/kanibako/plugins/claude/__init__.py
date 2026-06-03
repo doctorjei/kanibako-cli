@@ -2,6 +2,6 @@
 
 from kanibako.plugins.claude.target import ClaudeTarget
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 __all__ = ["ClaudeTarget", "__version__"]
