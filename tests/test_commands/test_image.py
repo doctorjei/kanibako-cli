@@ -424,18 +424,28 @@ class TestResolveImageReference:
         assert resolve_image_reference(full, rt, "ghcr.io/doctorjei/kanibako-oci:latest") == full
         rt.image_exists.assert_not_called()
 
-    def test_local_hit_returns_bare(self):
-        from kanibako.commands.image import resolve_image_reference
-
-        rt = self._runtime(has=["myimg:latest"])
-        assert resolve_image_reference("myimg", rt, "ghcr.io/doctorjei/kanibako-oci:latest") == "myimg:latest"
-
-    def test_local_miss_returns_prefixed(self):
+    def test_non_kanibako_bare_passes_through(self):
+        """A public Docker Hub bare name must NOT be rewritten to the kanibako
+        registry — the runtime's search registries resolve it."""
         from kanibako.commands.image import resolve_image_reference
 
         rt = self._runtime()
-        result = resolve_image_reference("myimg", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
-        assert result == "ghcr.io/doctorjei/myimg:latest"
+        assert resolve_image_reference("busybox:latest", rt, "ghcr.io/doctorjei/kanibako-oci:latest") == "busybox:latest"
+        assert resolve_image_reference("ubuntu", rt, "ghcr.io/doctorjei/kanibako-oci:latest") == "ubuntu"
+        rt.image_exists.assert_not_called()
+
+    def test_kanibako_local_hit_returns_bare(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime(has=["kanibako-custom:latest"])
+        assert resolve_image_reference("kanibako-custom", rt, "ghcr.io/doctorjei/kanibako-oci:latest") == "kanibako-custom:latest"
+
+    def test_kanibako_local_miss_returns_prefixed(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("kanibako-custom", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-custom:latest"
 
     def test_suffix_expansion_local_miss(self):
         from kanibako.commands.image import resolve_image_reference
@@ -450,13 +460,6 @@ class TestResolveImageReference:
         rt = self._runtime(has=["kanibako-oci:latest"])
         result = resolve_image_reference("oci", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
         assert result == "kanibako-oci:latest"
-
-    def test_missing_tag_gets_latest(self):
-        from kanibako.commands.image import resolve_image_reference
-
-        rt = self._runtime()
-        result = resolve_image_reference("kanibako-custom", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
-        assert result == "ghcr.io/doctorjei/kanibako-custom:latest"
 
     def test_explicit_tag_preserved(self):
         from kanibako.commands.image import resolve_image_reference

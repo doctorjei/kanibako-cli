@@ -391,26 +391,38 @@ _FALLBACK_REGISTRY = "ghcr.io/doctorjei"
 def resolve_image_reference(
     name: str, runtime: ContainerRuntime, configured_image: str,
 ) -> str:
-    """Resolve a (possibly bare) image name to a runtime-usable reference.
+    """Resolve a kanibako image name to a runtime-usable reference.
 
     Resolution order:
 
     1. Already qualified (*name* contains ``/``) -> returned unchanged.
-    2. A known suffix (``min``/``oci``/``lxc``/``vm``) expands to
-       ``kanibako-<suffix>``; a missing tag becomes ``:latest``.
-    3. Local-first: if the local image store already has that bare reference,
-       use it as-is (lets locally built or tagged images win).
+    2. Non-kanibako bare names (e.g. ``busybox``, ``ubuntu``) -> returned
+       unchanged, so the runtime's own ``unqualified-search-registries``
+       resolve them as before. Only kanibako-branded names — a known suffix
+       (``min``/``oci``/``lxc``/``vm``) or a ``kanibako-`` prefix — are
+       expanded and prefixed.
+    3. Local-first: if the local image store already has the (suffix-expanded)
+       bare reference, use it as-is — lets a locally built or bare-tagged
+       kanibako image win without contacting the registry.
     4. Otherwise prefix it with the ``registry/owner`` derived from
        *configured_image* (falling back to :data:`_FALLBACK_REGISTRY`) so the
        runtime can pull it without relying on ``unqualified-search-registries``.
 
-    Unlike :func:`resolve_image_name`, this consults the local store and
-    prefixes *any* bare name, not just kanibako-branded ones.
+    Unlike :func:`resolve_image_name`, this consults the local store first.
+    The branding restriction is deliberate: we cannot safely assume an
+    arbitrary bare name (a public Docker Hub image) belongs to the kanibako
+    registry, so only names we actually publish are rewritten.
     """
     if "/" in name:
         return name
 
-    candidate = f"kanibako-{name}" if name in _KNOWN_SUFFIXES else name
+    if name in _KNOWN_SUFFIXES:
+        candidate = f"kanibako-{name}"
+    elif name.startswith("kanibako-"):
+        candidate = name
+    else:
+        return name
+
     bare = candidate if ":" in candidate else f"{candidate}:latest"
 
     if runtime.image_exists(bare):
