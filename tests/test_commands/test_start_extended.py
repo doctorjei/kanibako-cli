@@ -803,3 +803,54 @@ class TestSecureAutonomousFlags:
             run_start(args)
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" in cli_args
+
+
+# ---------------------------------------------------------------------------
+# Characterization: vault_tmpfs is mode-specific (pins behavior for #71 B0)
+# ---------------------------------------------------------------------------
+
+class TestVaultTmpfsMode:
+    """Pin the current ``vault_tmpfs=(proj.mode == ProjectMode.local)`` wiring.
+
+    start.py passes ``vault_tmpfs`` to ``runtime.run()`` derived solely from
+    the resolved project's mode: LOCAL -> tmpfs vault (True); WORKSET and
+    STANDALONE -> not tmpfs (False).  The #71 refactor unifies local/workset
+    resolution, so these tests lock the per-mode result at the
+    ``runtime.run()`` boundary the existing start tests already mock.
+    """
+
+    def test_local_mode_uses_tmpfs_vault(self, start_mocks):
+        from kanibako.paths import ProjectMode
+
+        with start_mocks() as m:
+            m.proj.mode = ProjectMode.local
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
+
+    def test_workset_mode_does_not_use_tmpfs_vault(self, start_mocks):
+        from kanibako.paths import ProjectMode
+
+        with start_mocks() as m:
+            m.proj.mode = ProjectMode.workset
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is False
+
+    def test_standalone_mode_does_not_use_tmpfs_vault(self, start_mocks):
+        from kanibako.paths import ProjectMode
+
+        with start_mocks() as m:
+            m.proj.mode = ProjectMode.standalone
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is False

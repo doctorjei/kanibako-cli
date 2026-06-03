@@ -6,8 +6,10 @@ import json
 
 import pytest
 
+from kanibako.config import read_project_meta, write_project_meta
 from kanibako.errors import WorksetError
 from kanibako.paths import (
+    ProjectLayout,
     ProjectMode,
     WorksetSpec,
     resolve_workset_project,
@@ -267,3 +269,108 @@ class TestIterWorksetProjects:
         assert len(results) == 0
         err = capsys.readouterr().err
         assert "Warning" in err
+
+
+# ---------------------------------------------------------------------------
+# Characterization: workset auth-override chain (pins behavior for #71 B0)
+# ---------------------------------------------------------------------------
+
+class TestWorksetAuthOverrideChain:
+    """Pin ``resolve_workset_project``'s auth resolution.
+
+    Current code:
+
+        actual_auth = ws.auth
+        if actual_auth == "shared" and meta:
+            actual_auth = meta.get("auth", "shared")
+
+    So the workset's auth wins UNLESS it is the default ``"shared"``, in which
+    case the resolver falls back to the project's stored auth from project.toml.
+    The resolved value surfaces on ``ProjectPaths.auth`` and is persisted into
+    project.toml on initialize.
+    """
+
+    def test_workset_distinct_auth_wins(self, workset_env, std, config, credentials_dir):
+        """A workset with auth='distinct' yields resolved auth 'distinct'."""
+        ws, name = workset_env
+        ws.auth = "distinct"  # Workset is a mutable dataclass.
+
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
+        )
+
+        assert proj.auth == "distinct"
+        # And it is persisted into project.toml.
+        meta = read_project_meta(proj.metadata_path / "project.toml")
+        assert meta is not None
+        assert meta["auth"] == "distinct"
+
+    def test_workset_shared_auth_falls_back_to_project_stored_auth(
+        self, workset_env, std, config, credentials_dir,
+    ):
+        """workset auth='shared' + project stored auth='distinct' -> resolved 'distinct'.
+
+        The workset's auth is the default 'shared', so the resolver reads the
+        project's persisted auth from project.toml and uses that instead.
+        """
+        ws, name = workset_env
+        assert ws.auth == "shared"  # Fixture default.
+
+        # First init: with shared workset auth and no meta, persisted auth='shared'.
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
+        )
+        assert proj.auth == "shared"
+
+        # Adjust the project's stored auth to 'distinct' in project.toml,
+        # preserving the rest of the resolved metadata.
+        project_toml = proj.metadata_path / "project.toml"
+        meta = read_project_meta(project_toml)
+        assert meta is not None
+        write_project_meta(
+            project_toml,
+            mode="workset",
+            layout=meta["layout"] or "robust",
+            workspace=meta["workspace"],
+            shell=meta["shell"],
+            vault_ro=meta["vault_ro"],
+            vault_rw=meta["vault_rw"],
+            vault_enabled=meta["vault_enabled"],
+            auth="distinct",
+            metadata=meta["metadata"],
+            project_hash=meta["project_hash"],
+            global_shared=meta["global_shared"],
+            local_shared=meta["local_shared"],
+        )
+
+        # Re-resolve: workset auth still 'shared' -> falls back to stored 'distinct'.
+        proj2 = resolve_workset_project(
+            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
+        )
+        assert proj2.auth == "distinct"
+
+
+# ---------------------------------------------------------------------------
+# Characterization: workset 'simple' layout paths (pins behavior for #71 B0)
+# ---------------------------------------------------------------------------
+
+class TestWorksetSimpleLayoutPaths:
+    """Pin the concrete paths ``_compute_project_paths`` produces for the
+    workset ``simple`` layout (shell + vault live inside the workspace dir).
+    """
+
+    def test_simple_layout_paths(self, workset_env, std, config, credentials_dir):
+        ws, name = workset_env
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), name, std, config,
+            initialize=True, layout=ProjectLayout.simple,
+        )
+
+        workspace = ws.workspaces_dir / name
+        assert proj.layout is ProjectLayout.simple
+        assert proj.project_path == workspace
+        assert proj.metadata_path == ws.projects_dir / name
+        # simple layout: shell and vault are inside the workspace.
+        assert proj.shell_path == workspace / ".shell"
+        assert proj.vault_ro_path == workspace / "vault" / "share-ro"
+        assert proj.vault_rw_path == workspace / "vault" / "share-rw"
