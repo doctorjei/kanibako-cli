@@ -1,0 +1,241 @@
+name: Release
+
+# rc-then-promote release pipeline. One git tag drives a release with
+# tested-bits == shipped-bits.
+#
+#   * rc tag    v<ver>-rc<n>  (e.g. v1.2.5-rc1)
+#       builds + validates artifacts, pushes ONLY rc-scoped image tags
+#       (kanibako-<variant>:<ver>-rc<n>), and creates a DRAFT prerelease.
+#       Nothing touches :latest, :edge, or prod PyPI.
+#
+#   * release tag  v<ver>     (e.g. v1.2.5)
+#       does NOT rebuild images; PROMOTES the already-built rc images to
+#       :<ver> + :latest via a server-side imagetools copy, publishes the
+#       PyPI packages to prod (OIDC), and publishes the GitHub release.
+#
+# Triggers on ALL v* tags and self-gates by job `if`. No paths: filters.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write    # gh release
+  packages: write    # GHCR push + imagetools
+  id-token: write    # PyPI OIDC
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # rc path: build + validate, push rc-scoped images, draft a prerelease.
+  # ---------------------------------------------------------------------------
+
+  rc-pypi-check:
+    name: rc - validate PyPI packages (no upload)
+    if: ${{ contains(github.ref_name, '-rc') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate tag shape
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "Tag '$GITHUB_REF_NAME' is malformed; expected v<MAJOR>.<MINOR>.<PATCH>[-rc<N>]." >&2
+            exit 1
+          fi
+          echo "RCVER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      - name: Build all distributable packages
+        # Mirrors scripts/build-all.sh's package list. agent-goose is
+        # intentionally excluded (it versions independently at 0.1.0).
+        run: |
+          for pkg in . packages/agent-claude packages/plugin-claude-wrapper packages/meta; do
+            python -m build "$pkg" --outdir "$PWD/dist"
+          done
+
+      - name: Check distributions (NO upload)
+        run: twine check dist/*
+
+  rc-images:
+    name: rc - build + push rc image
+    if: ${{ contains(github.ref_name, '-rc') }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - variant: min
+            base: ghcr.io/doctorjei/droste-seed:1.1.0
+          - variant: oci
+            base: ghcr.io/doctorjei/droste-fiber:1.1.0
+          - variant: lxc
+            base: ghcr.io/doctorjei/droste-thread:1.1.0
+          - variant: vm
+            base: ghcr.io/doctorjei/droste-hair:1.1.0
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate tag shape
+        # Matrix jobs are separate, so RCVER is recomputed here too.
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "Tag '$GITHUB_REF_NAME' is malformed; expected v<MAJOR>.<MINOR>.<PATCH>[-rc<N>]." >&2
+            exit 1
+          fi
+          echo "RCVER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push kanibako-${{ matrix.variant }} (rc-scoped only)
+        uses: docker/build-push-action@v7
+        with:
+          context: src/kanibako/containers/
+          file: src/kanibako/containers/Containerfile.kanibako
+          push: true
+          # rc-scoped tag ONLY — never :latest or :edge.
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:${{ env.RCVER }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.base }}
+            VARIANT=${{ matrix.variant }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+
+  rc-release:
+    name: rc - draft prerelease
+    if: ${{ contains(github.ref_name, '-rc') }}
+    needs: [rc-pypi-check, rc-images]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create draft prerelease
+        # Guard so a re-run does not fail on an existing draft.
+        run: |
+          gh release view "$GITHUB_REF_NAME" \
+            || gh release create "$GITHUB_REF_NAME" \
+                 --draft \
+                 --prerelease \
+                 --generate-notes \
+                 --target "$GITHUB_SHA" \
+                 --title "$GITHUB_REF_NAME"
+
+  # ---------------------------------------------------------------------------
+  # release path: promote the already-built rc images, publish PyPI + release.
+  # Does NOT rebuild images — only a server-side imagetools copy.
+  #
+  # NOTE: the PyPI publish step requires a Trusted Publisher configured per
+  # project on PyPI with: owner=doctorjei, repo=kanibako, workflow=release.yml,
+  # environment=pypi. Without it, the OIDC publish fails with invalid-publisher.
+  # ---------------------------------------------------------------------------
+
+  promote:
+    name: Promote rc -> release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc') }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Validate tag shape
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag '$GITHUB_REF_NAME' is malformed; expected v<MAJOR>.<MINOR>.<PATCH> (no -rc)." >&2
+            exit 1
+          fi
+          echo "VER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Find matching rc tag (hard-fail if none)
+        run: |
+          RC_TAG="$(git tag --list "v${VER}-rc*" | sort -V | tail -n1)"
+          if [[ -z "$RC_TAG" ]]; then
+            echo "No rc tag found for v${VER}; push v${VER}-rcN and let it go green first." >&2
+            exit 1
+          fi
+          echo "RC_TAG=${RC_TAG}" >> "$GITHUB_ENV"
+          echo "RCVER=${RC_TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Verify rc images exist (fail fast)
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          for variant in min oci lxc vm; do
+            docker buildx imagetools inspect \
+              "${REGISTRY}/${OWNER}/kanibako-${variant}:${RCVER}" >/dev/null \
+              || { echo "Missing rc image kanibako-${variant}:${RCVER}"; exit 1; }
+          done
+
+      - name: Promote rc images -> :<ver> + :latest (server-side copy)
+        # Bit-identical, multi-tag in one imagetools call per variant.
+        # No docker pull/push round-trip; no templates.
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          for variant in min oci lxc vm; do
+            docker buildx imagetools create \
+              -t "${REGISTRY}/${OWNER}/kanibako-${variant}:${VER}" \
+              -t "${REGISTRY}/${OWNER}/kanibako-${variant}:latest" \
+              "${REGISTRY}/${OWNER}/kanibako-${variant}:${RCVER}"
+          done
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build all distributable packages
+        # Mirrors scripts/build-all.sh's package list. agent-goose excluded.
+        run: |
+          for pkg in . packages/agent-claude packages/plugin-claude-wrapper packages/meta; do
+            python -m build "$pkg" --outdir "$PWD/dist"
+          done
+
+      - name: Publish to PyPI
+        # OIDC trusted publishing — no token. Default packages-dir is dist/.
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Publish GitHub release + tidy rc draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" \
+            || gh release create "$GITHUB_REF_NAME" \
+                 --generate-notes \
+                 --title "$GITHUB_REF_NAME"
+          gh release delete "$RC_TAG" --yes || true
