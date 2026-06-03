@@ -1,6 +1,6 @@
 # kanibako-template: Android SDK command-line tools + NDK
 # Android development template: command-line tools, platform-tools,
-# platform android-34, build-tools 34.0.0, NDK, JDK 17.
+# platform android-34, build-tools 34.0.0, NDK, and a JDK.
 # Built on top of any kanibako base image.
 #
 # Default base: kanibako-oci:latest. Override with:
@@ -15,9 +15,11 @@ RUN echo "[kanibako template] Building android on BASE_IMAGE=$BASE_IMAGE"
 
 USER root
 
-# Android tooling needs JDK 17; unzip extracts the command-line tools archive.
+# Android tooling needs a JDK; use the distro default (same as the jvm
+# template, which builds cleanly on every base). unzip extracts the
+# command-line tools archive.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jdk-headless \
+    default-jdk \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 

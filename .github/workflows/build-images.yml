@@ -95,6 +95,9 @@ jobs:
       packages: write
 
     strategy:
+      # Templates are independent images — one failing build should not cancel
+      # the others (and on a verification run we want every combo's result).
+      fail-fast: false
       matrix:
         template: ${{ fromJSON(needs.discover-templates.outputs.templates) }}
         variant: [min, oci, lxc, vm]
