@@ -820,10 +820,16 @@ class TestVaultTmpfsMode:
     """
 
     def test_local_mode_uses_tmpfs_vault(self, start_mocks):
-        from kanibako.paths import ProjectMode
+        from pathlib import Path
+
+        from kanibako.paths import ProjectGroup, ProjectMode
 
         with start_mocks() as m:
             m.proj.mode = ProjectMode.local
+            m.proj.group = ProjectGroup(
+                name="default", root=Path("/data"),
+                is_default=True, local_shared_base=Path("/data"),
+            )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -832,10 +838,16 @@ class TestVaultTmpfsMode:
             assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
 
     def test_workset_mode_does_not_use_tmpfs_vault(self, start_mocks):
-        from kanibako.paths import ProjectMode
+        from pathlib import Path
+
+        from kanibako.paths import ProjectGroup, ProjectMode
 
         with start_mocks() as m:
             m.proj.mode = ProjectMode.workset
+            m.proj.group = ProjectGroup(
+                name="ws", root=Path("/ws"),
+                is_default=False, local_shared_base=Path("/ws"),
+            )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -848,6 +860,7 @@ class TestVaultTmpfsMode:
 
         with start_mocks() as m:
             m.proj.mode = ProjectMode.standalone
+            m.proj.group = None
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,

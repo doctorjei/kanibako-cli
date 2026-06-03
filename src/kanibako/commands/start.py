@@ -16,7 +16,6 @@ from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
 from kanibako.paths import (
-    ProjectMode,
     _upgrade_shell,
     xdg,
     load_std_paths,
@@ -374,7 +373,7 @@ def _run_container(
     proj = resolve_any_project(std, config, project_dir, initialize=True)
 
     # Hint about orphaned project data when initializing a new project
-    if proj.is_new and proj.mode == ProjectMode.local:
+    if proj.is_new and proj.group is not None and proj.group.is_default:
         from kanibako.paths import iter_projects
         for _settings, _ppath in iter_projects(std, config):
             if _ppath is not None and not _ppath.is_dir():
@@ -875,7 +874,7 @@ def _run_container(
                 vault_ro_path=proj.vault_ro_path,
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
-                vault_tmpfs=(proj.mode == ProjectMode.local),
+                vault_tmpfs=(proj.group is not None and proj.group.is_default),
                 vault_enabled=proj.vault_enabled,
                 env=container_env,
                 name=container_name,

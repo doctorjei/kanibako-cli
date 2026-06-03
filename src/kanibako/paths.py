@@ -82,6 +82,26 @@ class StandardPaths:
     cache_path: Path
 
 
+@dataclass(frozen=True)
+class ProjectGroup:
+    """Descriptor of a project's grouping (local or workset).
+
+    Captures the local-vs-workset difference as *data* rather than control
+    flow.  The implicit local group is the *default* group (``is_default`` is
+    True); a workset forms a non-default group rooted at the workset root.
+    Standalone projects belong to no group (``ProjectPaths.group`` is None).
+
+    *local_shared_base* is the root under which the local-shared path lives
+    (``base / config.paths_shared``): the standard data path for the default
+    group, the workset root for a workset group.
+    """
+
+    name: str
+    root: Path
+    is_default: bool
+    local_shared_base: Path
+
+
 @dataclass
 class ProjectPaths:
     """Resolved paths for a specific project."""
@@ -100,6 +120,7 @@ class ProjectPaths:
     name: str = field(default="")
     global_shared_path: Path | None = field(default=None)
     local_shared_path: Path | None = field(default=None)
+    group: ProjectGroup | None = field(default=None)
 
 
 class _WorksetLike(Protocol):
@@ -435,6 +456,12 @@ def resolve_project(
         name=project_name,
         global_shared_path=_computed_global_shared,
         local_shared_path=_computed_local_shared,
+        group=ProjectGroup(
+            name="default",
+            root=std.data_path,
+            is_default=True,
+            local_shared_base=std.data_path,
+        ),
     )
 
 
@@ -997,6 +1024,12 @@ def resolve_workset_project(
         name=project_name,
         global_shared_path=_ws_computed_global,
         local_shared_path=_ws_computed_local,
+        group=ProjectGroup(
+            name=ws.name,
+            root=ws.root,
+            is_default=False,
+            local_shared_base=ws.root,
+        ),
     )
 
 
