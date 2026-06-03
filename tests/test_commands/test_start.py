@@ -100,6 +100,48 @@ class TestTargetWarnings:
         assert "Warning:" not in captured.err
 
 
+class TestImageReferenceResolution:
+    """Verify a bare configured image is resolved before ensure_image (#81)."""
+
+    def test_bare_image_resolved_to_prefixed(self, start_mocks):
+        with start_mocks() as m:
+            m.load_config.return_value.container_image = (
+                "ghcr.io/doctorjei/kanibako-oci:latest"
+            )
+            m.merged.container_image = "kanibako-lxc"
+            m.runtime.image_exists.return_value = False
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            ensured = m.runtime.ensure_image.call_args[0][0]
+            assert ensured == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
+    def test_local_image_used_as_is(self, start_mocks):
+        with start_mocks() as m:
+            m.load_config.return_value.container_image = (
+                "ghcr.io/doctorjei/kanibako-oci:latest"
+            )
+            m.merged.container_image = "kanibako-lxc"
+            m.runtime.image_exists.return_value = True
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            ensured = m.runtime.ensure_image.call_args[0][0]
+            assert ensured == "kanibako-lxc:latest"
+
+
 class TestCheckAuth:
     """Verify pre-launch auth check behavior."""
 

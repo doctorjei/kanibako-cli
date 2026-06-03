@@ -95,7 +95,10 @@ def run(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
     try:
         runtime = ContainerRuntime()
-        image = config.container_image
+        from kanibako.commands.image import resolve_image_reference
+        image = resolve_image_reference(
+            config.container_image, runtime, config.container_image,
+        )
         if runtime.image_exists(image):
             print("Container rig already exists, skipping.")
         elif runtime.pull(image):

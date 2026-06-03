@@ -409,6 +409,77 @@ class TestResolveImageName:
         assert result == "oci"
 
 
+class TestResolveImageReference:
+    def _runtime(self, *, has=()):
+        """A fake runtime whose image_exists returns True only for *has*."""
+        rt = MagicMock()
+        rt.image_exists.side_effect = lambda ref: ref in set(has)
+        return rt
+
+    def test_qualified_passthrough(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        full = "ghcr.io/other/kanibako-oci:v2"
+        assert resolve_image_reference(full, rt, "ghcr.io/doctorjei/kanibako-oci:latest") == full
+        rt.image_exists.assert_not_called()
+
+    def test_local_hit_returns_bare(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime(has=["myimg:latest"])
+        assert resolve_image_reference("myimg", rt, "ghcr.io/doctorjei/kanibako-oci:latest") == "myimg:latest"
+
+    def test_local_miss_returns_prefixed(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("myimg", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/myimg:latest"
+
+    def test_suffix_expansion_local_miss(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("lxc", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
+    def test_suffix_expansion_local_hit(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime(has=["kanibako-oci:latest"])
+        result = resolve_image_reference("oci", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "kanibako-oci:latest"
+
+    def test_missing_tag_gets_latest(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("kanibako-custom", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-custom:latest"
+
+    def test_explicit_tag_preserved(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("kanibako-oci:v2", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-oci:v2"
+
+    def test_prefix_from_custom_registry(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("lxc", rt, "ghcr.io/myowner/kanibako-oci:latest")
+        assert result == "ghcr.io/myowner/kanibako-lxc:latest"
+
+    def test_malformed_prefix_falls_back(self):
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("oci", rt, "localimage:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-oci:latest"
+
+
 class TestExtractRegistryPrefix:
     def test_ghcr(self):
         from kanibako.commands.image import _extract_registry_prefix

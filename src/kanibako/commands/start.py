@@ -412,6 +412,11 @@ def _run_container(
         )
         return 1
 
+    # Resolve a possibly-bare image name (local-first, then registry prefix)
+    # so it works without the runtime's unqualified-search-registries config.
+    from kanibako.commands.image import resolve_image_reference
+    image = resolve_image_reference(image, runtime, config.container_image)
+
     containers_dir = std.data_path / "containers"
     try:
         runtime.ensure_image(image, containers_dir)
