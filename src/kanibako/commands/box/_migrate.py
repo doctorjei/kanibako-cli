@@ -195,6 +195,7 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
         return 1
 
     # Resolve current project paths.
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if current_mode == ProjectMode.local:
         proj = resolve_project(std, config, project_dir=str(project_path), initialize=False)
     else:
@@ -230,6 +231,7 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Dispatch.
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.standalone:
         _convert_local_to_standalone(project_path, std, config, proj)
     else:
@@ -310,11 +312,48 @@ def _convert_standalone_to_local(project_path, std, config, proj):
 
 # -- Workset conversion helpers --
 
+def _copy_into_workset(ws, proj_name, src_proj, source_path, source_mode, copy_workspace) -> None:
+    """Re-root a resolved project into a workset group (register + copy).
+
+    Shared by migrate's ``_convert_to_workset`` and duplicate's
+    ``_duplicate_to_workset`` — both place a project under the same workset
+    group roots (``projects_dir`` for metadata/shell, ``workspaces_dir`` for the
+    tree). The only per-caller variation is whether the workspace tree is copied
+    (migrate: ``not in_place``; duplicate: ``not bare``); the standalone
+    ``.kanibako`` ignore filter is uniform. Callers handle source-side cleanup.
+    """
+    from kanibako.workset import add_project
+
+    # Register project in workset (creates skeleton dirs).
+    add_project(ws, proj_name, source_path)
+
+    # Copy metadata (excluding lock, breadcrumb, and home/).
+    dst_project = ws.projects_dir / proj_name
+    shutil.copytree(
+        src_proj.metadata_path, dst_project,
+        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
+        dirs_exist_ok=True,
+    )
+
+    # Copy home.
+    if src_proj.shell_path.is_dir():
+        dst_home = dst_project / "shell"
+        shutil.copytree(src_proj.shell_path, dst_home, dirs_exist_ok=True)
+
+    # Copy workspace tree into the workset (exclude standalone metadata).
+    if copy_workspace:
+        dst_workspace = ws.workspaces_dir / proj_name
+        ignore = None
+        if source_mode == ProjectMode.standalone:
+            ignore = shutil.ignore_patterns(".kanibako")
+        shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+
+
 def _convert_to_workset(args, std, config) -> int:
     """Convert a local or standalone project into a workset."""
     import os
 
-    from kanibako.workset import add_project, list_worksets, load_workset
+    from kanibako.workset import list_worksets, load_workset
 
     ws_name = getattr(args, "workset", None)
     if not ws_name:
@@ -351,6 +390,7 @@ def _convert_to_workset(args, std, config) -> int:
             return 1
 
     # Resolve source paths.
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if current_mode == ProjectMode.local:
         src_proj = resolve_project(std, config, project_dir=str(project_path), initialize=False)
     else:
@@ -387,30 +427,8 @@ def _convert_to_workset(args, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Register project in workset (creates skeleton dirs).
-    add_project(ws, proj_name, project_path)
-
-    # Copy metadata (excluding lock, breadcrumb, and home/).
-    dst_project = ws.projects_dir / proj_name
-    shutil.copytree(
-        src_proj.metadata_path, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
-        dirs_exist_ok=True,
-    )
-
-    # Copy home.
-    if src_proj.shell_path.is_dir():
-        dst_home = dst_project / "shell"
-        shutil.copytree(src_proj.shell_path, dst_home, dirs_exist_ok=True)
-
-    # Move workspace unless --in-place.
-    if not in_place:
-        dst_workspace = ws.workspaces_dir / proj_name
-        # Copy workspace content (exclude standalone metadata).
-        ignore = None
-        if current_mode == ProjectMode.standalone:
-            ignore = shutil.ignore_patterns(".kanibako")
-        shutil.copytree(project_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+    # Re-root the project into the workset group (move workspace unless --in-place).
+    _copy_into_workset(ws, proj_name, src_proj, project_path, current_mode, copy_workspace=not in_place)
 
     # Remove vault symlinks before cleaning up old metadata.
     if current_mode == ProjectMode.local:
@@ -480,6 +498,7 @@ def _convert_from_workset(args, project_path, std, config) -> int:
             print("Aborted.")
             return 2
 
+    # Target layout differs per mode; local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.local:
         _convert_ws_to_local(src_proj, dest_path, std, config)
     else:

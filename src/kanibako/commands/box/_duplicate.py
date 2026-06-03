@@ -52,6 +52,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if source_mode == ProjectMode.workset:
         return _duplicate_from_workset(args, source_path, new_path, std, config)
 
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if source_mode == ProjectMode.local:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
@@ -91,6 +92,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target mode layout.
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
@@ -157,7 +159,8 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
 
 def _duplicate_to_workset(args, std, config) -> int:
     """Duplicate a project into a workset (source untouched)."""
-    from kanibako.workset import add_project, list_worksets, load_workset
+    from kanibako.commands.box._migrate import _copy_into_workset
+    from kanibako.workset import list_worksets, load_workset
 
     ws_name = getattr(args, "workset", None)
     if not ws_name:
@@ -188,6 +191,7 @@ def _duplicate_to_workset(args, std, config) -> int:
             print(f"Error: project '{proj_name}' already exists in workset '{ws_name}'.", file=sys.stderr)
             return 1
 
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if source_mode == ProjectMode.local:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
@@ -220,29 +224,8 @@ def _duplicate_to_workset(args, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Register in workset (creates skeleton dirs).
-    add_project(ws, proj_name, source_path)
-
-    # Copy metadata (excluding lock, breadcrumb, and home/).
-    dst_project = ws.projects_dir / proj_name
-    shutil.copytree(
-        src_proj.metadata_path, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
-        dirs_exist_ok=True,
-    )
-
-    # Copy home.
-    if src_proj.shell_path.is_dir():
-        dst_home = dst_project / "shell"
-        shutil.copytree(src_proj.shell_path, dst_home, dirs_exist_ok=True)
-
-    # Copy workspace (unless --bare).
-    if not args.bare:
-        dst_workspace = ws.workspaces_dir / proj_name
-        ignore = None
-        if source_mode == ProjectMode.standalone:
-            ignore = shutil.ignore_patterns(".kanibako")
-        shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+    # Re-root the project into the workset group (copy workspace unless --bare).
+    _copy_into_workset(ws, proj_name, src_proj, source_path, source_mode, copy_workspace=not args.bare)
 
     print("Duplicated project to workset:")
     print(f"  from:    {source_path}")
@@ -298,6 +281,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             shutil.copytree(ws_workspace, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target layout.
+    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
