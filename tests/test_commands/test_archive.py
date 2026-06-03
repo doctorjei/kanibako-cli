@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 from kanibako.config import load_config
-from kanibako.paths import load_std_paths, resolve_project, resolve_workset_project
+from kanibako.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset
 
 
@@ -246,7 +246,7 @@ class TestArchiveWorkset:
         source = tmp_home / "arch_src"
         source.mkdir()
         add_project(ws, "arch-proj", source)
-        proj = resolve_workset_project(ws, "arch-proj", std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "arch-proj", std, config, initialize=True)
         (proj.metadata_path / "data.txt").write_text("ws-archive-data")
 
         import os
@@ -274,7 +274,7 @@ class TestArchiveWorkset:
         source = tmp_home / "single_src"
         source.mkdir()
         add_project(ws, "single-proj", source)
-        proj = resolve_workset_project(ws, "single-proj", std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single-proj", std, config, initialize=True)
         (proj.metadata_path / "data.txt").write_text("single-data")
 
         archive_path = str(tmp_home / "single.txz")

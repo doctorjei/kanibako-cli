@@ -130,7 +130,13 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
 
 def _archive_all(std, config, args) -> int:
     """Archive session data for all known projects."""
-    from kanibako.paths import iter_projects, iter_workset_projects, resolve_project, resolve_workset_project
+    from kanibako.paths import (
+        WorksetSpec,
+        iter_projects,
+        iter_workset_projects,
+        resolve_project,
+        resolve_workset_project,
+    )
 
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)
@@ -180,7 +186,9 @@ def _archive_all(std, config, args) -> int:
             if status == "no-data":
                 continue
             try:
-                proj = resolve_workset_project(ws, proj_name, std, config, initialize=False)
+                proj = resolve_workset_project(
+                    WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
+                )
             except Exception:
                 failed += 1
                 continue

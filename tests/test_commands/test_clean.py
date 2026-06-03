@@ -6,7 +6,7 @@ import argparse
 
 
 from kanibako.config import load_config
-from kanibako.paths import load_std_paths, resolve_project, resolve_workset_project
+from kanibako.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset
 
 
@@ -162,7 +162,7 @@ class TestCleanWorkset:
         source = tmp_home / "purge_src"
         source.mkdir()
         add_project(ws, "purge-proj", source)
-        ws_proj = resolve_workset_project(ws, "purge-proj", std, config, initialize=True)
+        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "purge-proj", std, config, initialize=True)
         (ws_proj.metadata_path / "data.txt").write_text("ws-data")
 
         args = argparse.Namespace(all_projects=True, force=True)
@@ -185,7 +185,7 @@ class TestCleanWorkset:
         source = tmp_home / "single_purge_src"
         source.mkdir()
         add_project(ws, "single-purge-proj", source)
-        ws_proj = resolve_workset_project(ws, "single-purge-proj", std, config, initialize=True)
+        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single-purge-proj", std, config, initialize=True)
         (ws_proj.metadata_path / "data.txt").write_text("purge-data")
 
         # Use workspace path as path arg

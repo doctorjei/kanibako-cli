@@ -9,6 +9,7 @@ import pytest
 from kanibako.errors import WorksetError
 from kanibako.paths import (
     ProjectMode,
+    WorksetSpec,
     resolve_workset_project,
 )
 from kanibako.utils import project_hash
@@ -37,12 +38,12 @@ def workset_env(std, config, tmp_home):
 class TestResolveWorksetProject:
     def test_returns_project_paths_with_workset_mode(self, workset_env, std, config):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
         assert proj.mode is ProjectMode.workset
 
     def test_paths_use_project_name_not_hash(self, workset_env, std, config):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
 
         assert proj.project_path == ws.workspaces_dir / name
         assert proj.metadata_path == ws.projects_dir / name
@@ -52,7 +53,7 @@ class TestResolveWorksetProject:
 
     def test_project_hash_is_sha256_of_workspace_path(self, workset_env, std, config):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
 
         expected = project_hash(str((ws.workspaces_dir / name).resolve()))
         assert proj.project_hash == expected
@@ -60,13 +61,13 @@ class TestResolveWorksetProject:
     def test_project_not_found_raises(self, workset_env, std, config):
         ws, _ = workset_env
         with pytest.raises(WorksetError, match="not found"):
-            resolve_workset_project(ws, "nonexistent", std, config)
+            resolve_workset_project(WorksetSpec.from_workset(ws), "nonexistent", std, config)
 
     def test_initialize_creates_shell_path(
         self, workset_env, std, config, credentials_dir
     ):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         assert proj.shell_path.is_dir()
 
@@ -75,7 +76,7 @@ class TestResolveWorksetProject:
     ):
         """Credential copy is now handled by target.init_home(), not during init."""
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         creds_file = proj.shell_path / ".claude" / ".credentials.json"
         assert not creds_file.exists()
@@ -84,14 +85,14 @@ class TestResolveWorksetProject:
         self, workset_env, std, config, credentials_dir
     ):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         assert (proj.shell_path / ".bashrc").is_file()
         assert (proj.shell_path / ".profile").is_file()
 
     def test_no_initialize_skips_creation(self, workset_env, std, config):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=False)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=False)
 
         assert not proj.shell_path.is_dir()
         assert not proj.is_new
@@ -100,15 +101,15 @@ class TestResolveWorksetProject:
         self, workset_env, std, config, credentials_dir
     ):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
         assert proj.is_new is True
 
     def test_is_new_false_on_reinit(
         self, workset_env, std, config, credentials_dir
     ):
         ws, name = workset_env
-        resolve_workset_project(ws, name, std, config, initialize=True)
-        proj2 = resolve_workset_project(ws, name, std, config, initialize=True)
+        resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
+        proj2 = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
         assert proj2.is_new is False
 
     def test_recovery_missing_shell_path(
@@ -116,14 +117,14 @@ class TestResolveWorksetProject:
     ):
         ws, name = workset_env
         # First init to create everything.
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
         # Delete shell_path to simulate corruption.
         import shutil
         shutil.rmtree(proj.shell_path)
         assert not proj.shell_path.exists()
 
         # Re-resolve with initialize; recovery should recreate shell_path.
-        proj2 = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj2 = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
         assert proj2.shell_path.is_dir()
 
     def test_no_project_path_breadcrumb(
@@ -131,7 +132,7 @@ class TestResolveWorksetProject:
     ):
         """Workset projects should NOT create project-path.txt."""
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
         assert not (proj.metadata_path / "project-path.txt").exists()
 
     def test_no_vault_gitignore(
@@ -139,7 +140,7 @@ class TestResolveWorksetProject:
     ):
         """Workset projects should NOT create .gitignore in vault dirs."""
         ws, name = workset_env
-        resolve_workset_project(ws, name, std, config, initialize=True)
+        resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
         vault_proj = ws.vault_dir / name
         assert not (vault_proj / ".gitignore").exists()
 
@@ -154,7 +155,7 @@ class TestWorksetGlobalSharedPath:
     ):
         """Workset projects get a global shared path."""
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         expected = std.data_path / config.paths_shared / "global"
         assert proj.global_shared_path == expected
@@ -166,7 +167,7 @@ class TestWorksetLocalSharedPath:
     ):
         """Workset projects get a local shared path under the workset root."""
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         from pathlib import Path
         expected = Path(ws.root) / config.paths_shared
@@ -179,7 +180,7 @@ class TestWorksetProjectCredentialFlow:
     ):
         """Init no longer copies credentials; that's target.init_home()'s job."""
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         creds_file = proj.shell_path / ".claude" / ".credentials.json"
         assert not creds_file.exists()
@@ -188,7 +189,7 @@ class TestWorksetProjectCredentialFlow:
         self, workset_env, std, config, credentials_dir, tmp_home
     ):
         ws, name = workset_env
-        proj = resolve_workset_project(ws, name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         from kanibako.plugins.claude.credentials import refresh_host_to_project
 

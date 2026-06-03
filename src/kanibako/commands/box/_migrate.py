@@ -6,11 +6,13 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from typing import cast
 
 from kanibako.config import config_file_path, load_config
 from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
     ProjectMode,
+    WorksetSpec,
     _ensure_human_vault_symlink,
     _find_workset_for_path,
     _remove_human_vault_symlink,
@@ -437,7 +439,9 @@ def _convert_from_workset(args, project_path, std, config) -> int:
     if proj_name is None:
         print("Error: not inside a specific project workspace.", file=sys.stderr)
         return 1
-    src_proj = resolve_workset_project(ws, proj_name, std, config, initialize=False)
+    src_proj = resolve_workset_project(
+        WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
+    )
 
     target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
 
@@ -489,9 +493,9 @@ def _convert_from_workset(args, project_path, std, config) -> int:
         shutil.copytree(ws_workspace, dest_path, dirs_exist_ok=True)
 
     # Remove workset registration + workset dirs.
-    from kanibako.workset import remove_project
+    from kanibako.workset import Workset, remove_project
 
-    remove_project(ws, proj_name, remove_files=True)
+    remove_project(cast("Workset", ws), proj_name, remove_files=True)
 
     print(f"Converted project to {target_mode.value} mode:")
     print(f"  project: {dest_path}")

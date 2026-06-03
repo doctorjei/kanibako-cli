@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from collections.abc import Sequence
+from typing import NamedTuple, Protocol
 
 from kanibako.config import (
     KanibakoConfig,
@@ -24,9 +25,6 @@ from kanibako.names import (
     resolve_name,
 )
 from kanibako.utils import project_hash
-
-if TYPE_CHECKING:
-    from kanibako.workset import Workset
 
 
 class ProjectMode(Enum):
@@ -102,6 +100,72 @@ class ProjectPaths:
     name: str = field(default="")
     global_shared_path: Path | None = field(default=None)
     local_shared_path: Path | None = field(default=None)
+
+
+class _WorksetLike(Protocol):
+    """Structural type for the attributes :meth:`WorksetSpec.from_workset` reads.
+
+    Avoids importing the concrete :class:`kanibako.workset.Workset` into
+    ``paths.py`` (which ``workset.py`` imports from, creating a cycle).
+    """
+
+    name: str
+    root: Path
+    auth: str
+
+    @property
+    def projects_dir(self) -> Path: ...
+
+    @property
+    def workspaces_dir(self) -> Path: ...
+
+    @property
+    def vault_dir(self) -> Path: ...
+
+    @property
+    def projects(self) -> Sequence[_WorksetProjectLike]: ...
+
+
+class _WorksetProjectLike(Protocol):
+    """Structural type for the workset project attributes read here."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def source_path(self) -> Path: ...
+
+
+@dataclass(frozen=True)
+class WorksetSpec:
+    """Primitive view of a workset, decoupled from :class:`kanibako.workset.Workset`.
+
+    Carries only the values the path resolver and project listings need, so
+    ``paths.py`` does not import the ``workset`` module (which depends on
+    ``paths.py``).  Callers holding a full ``Workset`` build one with
+    :meth:`from_workset`.
+    """
+
+    name: str
+    root: Path
+    auth: str
+    projects_dir: Path
+    workspaces_dir: Path
+    vault_dir: Path
+    project_names: tuple[str, ...]
+
+    @classmethod
+    def from_workset(cls, ws: _WorksetLike) -> WorksetSpec:
+        """Build a :class:`WorksetSpec` from a ``Workset``-like object."""
+        return cls(
+            name=ws.name,
+            root=ws.root,
+            auth=ws.auth,
+            projects_dir=ws.projects_dir,
+            workspaces_dir=ws.workspaces_dir,
+            vault_dir=ws.vault_dir,
+            project_names=tuple(p.name for p in ws.projects),
+        )
 
 
 def xdg(env_var: str, default_suffix: str) -> Path:
@@ -245,8 +309,9 @@ def resolve_project(
         actual_vault_enabled = meta.get("vault_enabled", True) if vault_enabled is None else vault_enabled
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.local]
-        shell_path, vault_ro_path, vault_rw_path = _compute_ac_paths(
+        shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
             actual_layout, metadata_path, project_path,
+            vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
         )
         actual_vault_enabled = vault_enabled if vault_enabled is not None else True
 
@@ -271,8 +336,9 @@ def resolve_project(
         project_dir_path = std.data_path / "boxes" / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
-        shell_path, vault_ro_path, vault_rw_path = _compute_ac_paths(
+        shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
             actual_layout, metadata_path, project_path,
+            vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
         )
         project_toml = metadata_path / "project.toml"
 
@@ -394,39 +460,40 @@ def _resolve_local_dir(
 
 
 
-def _compute_ac_paths(
+def _compute_project_paths(
     layout: ProjectLayout, metadata_path: Path, project_path: Path,
+    *, vault_root: Path,
 ) -> tuple[Path, Path, Path]:
-    """Compute (shell, vault_ro, vault_rw) for local mode."""
+    """Compute ``(shell, vault_ro, vault_rw)`` for local and workset modes.
+
+    The only structural difference between local and workset is *where* the
+    vault lives in the non-``simple`` layouts; the caller expresses that by
+    passing ``vault_root`` — the parent directory under which ``share-ro`` and
+    ``share-rw`` are placed.  The ``simple`` layout always keeps shell and
+    vault inside the workspace and ignores *vault_root*.
+
+    Caller-supplied *vault_root* must reproduce the existing per-mode policy:
+
+    - **local**: ``default`` → ``project_path/"vault"``; ``robust`` →
+      ``metadata_path/"vault"``.
+    - **workset**: ``default``/``robust`` → ``vault_base/project_name``.
+    """
     if layout == ProjectLayout.simple:
         shell = project_path / ".shell"
         vault_ro = project_path / "vault" / "share-ro"
         vault_rw = project_path / "vault" / "share-rw"
-    elif layout == ProjectLayout.robust:
+    else:  # default / robust
         shell = metadata_path / "shell"
-        vault_ro = metadata_path / "vault" / "share-ro"
-        vault_rw = metadata_path / "vault" / "share-rw"
-    else:  # default
-        shell = metadata_path / "shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = vault_root / "share-ro"
+        vault_rw = vault_root / "share-rw"
     return shell, vault_ro, vault_rw
 
 
-def _compute_ws_paths(
-    layout: ProjectLayout, metadata_path: Path, project_path: Path,
-    vault_base: Path, project_name: str,
-) -> tuple[Path, Path, Path]:
-    """Compute (shell, vault_ro, vault_rw) for workset mode."""
-    if layout == ProjectLayout.simple:
-        shell = project_path / ".shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
-    else:  # default / tree (identical for workset)
-        shell = metadata_path / "shell"
-        vault_ro = vault_base / project_name / "share-ro"
-        vault_rw = vault_base / project_name / "share-rw"
-    return shell, vault_ro, vault_rw
+def _local_vault_root(layout: ProjectLayout, metadata_path: Path, project_path: Path) -> Path:
+    """Vault parent dir for local mode in the non-``simple`` layouts."""
+    if layout == ProjectLayout.robust:
+        return metadata_path / "vault"
+    return project_path / "vault"  # default
 
 
 def _compute_standalone_paths(
@@ -823,7 +890,7 @@ def _check_workset(
 
 
 def resolve_workset_project(
-    ws: Workset,
+    ws: WorksetSpec,
     project_name: str,
     std: StandardPaths,
     config: KanibakoConfig,
@@ -834,15 +901,14 @@ def resolve_workset_project(
 ) -> ProjectPaths:
     """Resolve per-project paths for a project inside a workset.
 
+    *ws* is a lightweight :class:`WorksetSpec` describing the workset's name,
+    root, directory layout, auth mode, and registered project names.  Callers
+    holding a full ``Workset`` object pass ``WorksetSpec.from_workset(ws)``.
+
     Raises ``WorksetError`` if *project_name* is not registered in *ws*.
     """
     # Look up project in workset.
-    found = None
-    for p in ws.projects:
-        if p.name == project_name:
-            found = p
-            break
-    if found is None:
+    if project_name not in ws.project_names:
         raise WorksetError(
             f"Project '{project_name}' not found in workset '{ws.name}'."
         )
@@ -863,13 +929,14 @@ def resolve_workset_project(
         actual_vault_enabled = meta.get("vault_enabled", True) if vault_enabled is None else vault_enabled
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.workset]
-        shell_path, vault_ro_path, vault_rw_path = _compute_ws_paths(
-            actual_layout, metadata_path, project_path, ws.vault_dir, project_name,
+        shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
+            actual_layout, metadata_path, project_path,
+            vault_root=ws.vault_dir / project_name,
         )
         actual_vault_enabled = vault_enabled if vault_enabled is not None else True
 
     # Auth mode: workset-level overrides project-level.
-    actual_auth = getattr(ws, "auth", "shared")
+    actual_auth = ws.auth
     if actual_auth == "shared" and meta:
         actual_auth = meta.get("auth", "shared")
 
@@ -880,7 +947,7 @@ def resolve_workset_project(
     if initialize and not shell_path.is_dir():
         _init_workset_project(std, metadata_path, shell_path)
         _ws_global_shared = std.data_path / config.paths_shared / "global"
-        _ws_local_shared = Path(ws.root) / config.paths_shared
+        _ws_local_shared = ws.root / config.paths_shared
         write_project_meta(
             project_toml,
             mode="workset",
@@ -909,7 +976,7 @@ def resolve_workset_project(
 
     # Resolve shared paths: prefer stored values (enables user overrides).
     _ws_computed_global = std.data_path / config.paths_shared / "global"
-    _ws_computed_local = Path(ws.root) / config.paths_shared
+    _ws_computed_local = ws.root / config.paths_shared
     if meta and meta.get("global_shared"):
         _ws_computed_global = Path(meta["global_shared"])
     if meta and meta.get("local_shared"):
@@ -995,19 +1062,21 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
 def iter_workset_projects(
     std: StandardPaths,
     config: KanibakoConfig,
-) -> list[tuple[str, "Workset", list[tuple[str, str]]]]:
+) -> list[tuple[str, _WorksetLike, list[tuple[str, str]]]]:
     """Return workset project info for all registered worksets.
 
     Each entry is ``(workset_name, workset, [(project_name, status), ...])``.
-    Status is ``"ok"``, ``"missing"`` (no workspace), or ``"no-data"``
-    (no project dir).
+    The workset object is a concrete ``kanibako.workset.Workset`` typed
+    structurally as :class:`_WorksetLike` (so ``paths.py`` need not import
+    ``workset``).  Status is ``"ok"``, ``"missing"`` (no workspace), or
+    ``"no-data"`` (no project dir).
     """
     import sys
 
     from kanibako.workset import list_worksets, load_workset
 
     registry = list_worksets(std)
-    results: list[tuple[str, Workset, list[tuple[str, str]]]] = []
+    results: list[tuple[str, _WorksetLike, list[tuple[str, str]]]] = []
 
     for ws_name in sorted(registry):
         root = registry[ws_name]
@@ -1043,8 +1112,13 @@ def iter_workset_projects(
     return results
 
 
-def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[Workset, str | None]:
-    """Return ``(Workset, project_name)`` for a path inside a workset.
+def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]:
+    """Return ``(workset, project_name)`` for a path inside a workset.
+
+    The returned object is a concrete ``kanibako.workset.Workset`` (typed
+    structurally as :class:`_WorksetLike` to avoid importing ``workset`` into
+    ``paths.py``); callers that need a :class:`WorksetSpec` for
+    :func:`resolve_workset_project` wrap it via ``WorksetSpec.from_workset``.
 
     *project_dir* may be the workspace root, a subdirectory within it,
     or anywhere inside the workset root.  When *project_dir* is inside
@@ -1117,7 +1191,9 @@ def resolve_any_project(
                 f"Inside workset '{ws.name}' but not in a specific project workspace. "
                 f"Change to a project directory under {ws.workspaces_dir}/."
             )
-        return resolve_workset_project(ws, proj_name, std, config, initialize=initialize)
+        return resolve_workset_project(
+            WorksetSpec.from_workset(ws), proj_name, std, config, initialize=initialize,
+        )
     if detection.mode == ProjectMode.standalone:
         return resolve_standalone_project(std, config, root_str, initialize=initialize)
     return resolve_project(std, config, project_dir=root_str, initialize=initialize)

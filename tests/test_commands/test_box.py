@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 
 from kanibako.config import load_config
-from kanibako.paths import load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
+from kanibako.paths import WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset, load_workset
 
 
@@ -1482,7 +1482,7 @@ class TestBoxConvertFromWorkset:
         source = tmp_home / f"{proj_name}_src"
         source.mkdir()
         add_project(ws, proj_name, source)
-        proj = resolve_workset_project(ws, proj_name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), proj_name, std, config, initialize=True)
         (proj.metadata_path / "marker.txt").write_text("ws-marker")
         (proj.shell_path / "custom.sh").write_text("echo ws")
         # Put some content in workspace
@@ -1674,7 +1674,7 @@ class TestBoxDuplicateFromWorkset:
         source = tmp_home / f"{proj_name}_src"
         source.mkdir()
         add_project(ws, proj_name, source)
-        proj = resolve_workset_project(ws, proj_name, std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), proj_name, std, config, initialize=True)
         (proj.metadata_path / "marker.txt").write_text("ws-dup-marker")
         (proj.shell_path / "custom.sh").write_text("echo ws-dup")
         (ws.workspaces_dir / proj_name / "code.py").write_text("print('ws-dup')")

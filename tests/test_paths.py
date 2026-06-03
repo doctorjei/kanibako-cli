@@ -183,7 +183,7 @@ class TestProjectMeta:
 
     def test_workset_init_writes_meta(self, config_file, tmp_home, credentials_dir):
         """resolve_workset_project(initialize=True) writes metadata."""
-        from kanibako.paths import resolve_workset_project
+        from kanibako.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -191,7 +191,7 @@ class TestProjectMeta:
         ws = create_workset("meta-ws", ws_root, std)
         add_project(ws, "metaproj", tmp_home / "project")
 
-        proj = resolve_workset_project(ws, "metaproj", std, config, initialize=True)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "metaproj", std, config, initialize=True)
 
         project_toml = proj.metadata_path / "project.toml"
         assert project_toml.is_file()
