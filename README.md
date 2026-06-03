@@ -156,14 +156,13 @@ For projects that need compiled languages, create a custom rig with the
 toolchains you need:
 
 ```bash
-# 1. Create a custom rig with C/C++ and Rust
-kanibako rig create systems
-# (inside: sudo apt install build-essential cmake gdb && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh)
-# exit when done
+# 1. Build the bundled C/C++ + Rust toolchain template
+kanibako rig create my-systems --template systems
+# (or build one interactively without --template, installing tools by hand)
 
 # 2. Use it for your project
 cd ~/my-rust-project
-kanibako --image kanibako-template-systems
+kanibako --image kanibako-template-my-systems
 ```
 
 After the first run, Kanibako remembers the rig choice for this project,
@@ -245,7 +244,7 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `rig create <name>` | Create rig interactively (`--base`, `--always-commit`, `--no-commit-on-error`) |
+| `rig create <name>` | Create rig interactively, or build a bundled template non-interactively with `--template <name>` (`--base`, `--template`, `--always-commit`, `--no-commit-on-error`) |
 | `rig list` / `rig ls` | List available rigs (`-q`) |
 | `rig info` / `rig inspect` | Rig details (source, size, recoverability) |
 | `rig rm` / `rig delete` | Remove rig (`--force`) |
@@ -432,22 +431,57 @@ kanibako rig rebuild --all            # rebuild all known rigs
 
 ### Custom Rigs
 
-Create custom rigs by installing tools interactively and committing
-the result:
+There are two ways to make a custom rig with `rig create`: build a bundled
+toolchain template non-interactively with `--template`, or install tools
+interactively and commit the result.
+
+#### Bundled templates
+
+Kanibako ships a set of curated toolchain templates that layer on a base rig.
+List them with `rig list` (shown under "Example templates"):
+
+| Template | Toolchain |
+|----------|-----------|
+| `jvm` | Java, Kotlin, Maven (JVM toolchain) |
+| `systems` | C/C++, Rust, cross-compilation toolchain |
+| `android` | Android SDK command-line tools + NDK |
+| `dotnet` | .NET SDK (LTS) |
+| `js` | Node tooling: yarn, pnpm, bun, TypeScript |
+
+Build one with `rig create --template`.  The bundled template is built
+non-interactively on the chosen base, producing a local image named after the
+positional argument:
 
 ```bash
-kanibako rig create jvm               # start from kanibako-oci, install tools
+kanibako rig create my-jvm --template jvm                 # build jvm toolchain on kanibako-oci (default base)
+kanibako rig create my-jvm --template jvm --base kanibako-lxc   # choose the base
+# -> local image kanibako-template-my-jvm
+```
+
+New templates are discovered automatically: dropping a
+`Containerfile.template-<name>` (with a `# kanibako-template: <description>`
+header) into the package makes it show up in `rig list`, become buildable via
+`rig create --template <name>`, and get built+published by CI -- no code or
+workflow edits needed.
+
+#### Interactive rigs
+
+Without `--template`, `rig create` drops you into an interactive container on
+the base rig; install tools by hand, then commit the result on exit:
+
+```bash
+kanibako rig create custom            # start from kanibako-oci, install tools
 # (inside container: apt install openjdk-21-jdk maven, etc.)
 # exit when done
 
 kanibako rig list                     # show local rigs
-kanibako rig rm jvm                   # remove a custom rig
+kanibako rig rm custom                # remove a custom rig
 ```
 
 Custom rigs are standard OCI images -- push them to any registry for sharing:
 
 ```bash
-podman push kanibako-template-jvm ghcr.io/myorg/kanibako-template-jvm
+podman push kanibako-template-custom ghcr.io/myorg/kanibako-template-custom
 ```
 
 ### Host Deployment

@@ -50,9 +50,13 @@ promote step ship exactly what the rc tested.
 So: `main` moves `:edge`; a release moves `:latest`. They are deliberately
 decoupled.
 
-**Templates** (`kanibako-template-jvm-*`, `kanibako-template-systems-*`) stay
-**`:latest`-only**, published by `build-images.yml`. They are **out of scope**
-of the promote step for now (tracked under #74).
+**Templates** (`kanibako-template-<name>-*`, one per
+`src/kanibako/containers/Containerfile.template-*`; currently `jvm`, `systems`,
+`android`, `dotnet`, `js`) stay **`:latest`-only**, published by
+`build-images.yml` on `main` pushes through its dynamic `discover-templates` →
+`build-templates` matrix (adding a `Containerfile.template-*` file builds and
+publishes a new one with no workflow edit). They are **out of scope** of the
+promote step for now (tracked under #74).
 
 The four base variants and their droste base images (from `release.yml` /
 `build-images.yml`):
@@ -240,9 +244,10 @@ built-in `GITHUB_TOKEN`. **No extra secret is required.**
 
 ## 7. Deferred / out of scope
 
-- **Templates in promote** — `jvm` / `systems` template images are not
-  promoted; they remain `:latest`-only via `build-images.yml`. Deferred,
-  tracked under #74.
+- **Templates in promote** — the bundled template images (one per
+  `Containerfile.template-*`, data-driven via `build-images.yml`'s
+  `discover-templates` matrix) are not promoted; they remain `:latest`-only.
+  Deferred, tracked under #74.
 - **Tag-immutability rulesets** — making release tags (`v<ver>`) immutable
   while rc tags (`v<ver>-rc<n>`) stay mutable is a separate repo-settings
   follow-up, not yet applied.
