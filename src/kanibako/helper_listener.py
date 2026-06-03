@@ -506,9 +506,11 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
 
     # Helper socket — mount the hub socket into the helper
     if ctx.socket_path.exists():
-        kanibako_dir = helper_root / ".kanibako"
+        kanibako_dir = helper_root / ".local" / "state" / "kanibako"
         kanibako_dir.mkdir(parents=True, exist_ok=True)
-        mounts.append(Mount(ctx.socket_path, "/home/agent/.kanibako/helper.sock", ""))
+        mounts.append(
+            Mount(ctx.socket_path, "/home/agent/.local/state/kanibako/helper.sock", "")
+        )
 
     # Target binary mounts (same agent binary as the director)
     mounts.extend(ctx.binary_mounts)

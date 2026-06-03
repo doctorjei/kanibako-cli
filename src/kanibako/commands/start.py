@@ -806,12 +806,12 @@ def _run_container(
             hub.start(socket_path, helper_ctx, log=msg_log)
 
             # Mount the socket into the container (only if hub started)
-            kanibako_dir = proj.shell_path / ".kanibako"
-            kanibako_dir.mkdir(exist_ok=True)
+            kanibako_dir = proj.shell_path / ".local" / "state" / "kanibako"
+            kanibako_dir.mkdir(parents=True, exist_ok=True)
             if socket_path.exists():
                 extra_mounts.append(_HMount(
                     source=socket_path,
-                    destination="/home/agent/.kanibako/helper.sock",
+                    destination="/home/agent/.local/state/kanibako/helper.sock",
                     options="",
                 ))
 
@@ -819,7 +819,7 @@ def _run_container(
             if log_path.exists():
                 extra_mounts.append(_HMount(
                     source=log_path,
-                    destination="/home/agent/.kanibako/helper-messages.jsonl",
+                    destination="/home/agent/.local/state/kanibako/helper-messages.jsonl",
                     options="ro",
                 ))
 

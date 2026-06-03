@@ -587,8 +587,10 @@ class TestPreservation:
         assert binary.exists()
 
     def test_preserves_kanibako_dir(self, tmp_path):
-        """The .kanibako/ directory is not touched."""
-        sock_marker = _make_file(tmp_path / ".kanibako" / "helper.sock", size=10)
+        """The helper IPC dir (.local/state/kanibako/) is not touched."""
+        sock_marker = _make_file(
+            tmp_path / ".local" / "state" / "kanibako" / "helper.sock", size=10
+        )
         cleanup_shell_dir(tmp_path)
         assert sock_marker.exists()
 

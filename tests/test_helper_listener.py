@@ -191,7 +191,7 @@ class TestBuildHelperMounts:
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert any(m.destination == "/home/agent/.kanibako/helper.sock" for m in mounts)
+        assert any(m.destination == "/home/agent/.local/state/kanibako/helper.sock" for m in mounts)
 
     def test_no_socket_mount_when_missing(self, tmp_path):
         """Socket is not mounted when it doesn't exist."""
@@ -209,7 +209,7 @@ class TestBuildHelperMounts:
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert not any(m.destination == "/home/agent/.kanibako/helper.sock" for m in mounts)
+        assert not any(m.destination == "/home/agent/.local/state/kanibako/helper.sock" for m in mounts)
 
 
 class TestHubSocketProtocol:

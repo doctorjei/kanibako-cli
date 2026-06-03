@@ -403,7 +403,7 @@ class TestRunSend:
 
     def test_send_with_socket(self, helpers_env, capsys):
         """Send succeeds when socket exists and mock returns ok."""
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -414,7 +414,7 @@ class TestRunSend:
         assert "sent" in capsys.readouterr().out
 
     def test_send_failure(self, helpers_env, capsys):
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -432,7 +432,7 @@ class TestRunBroadcast:
         assert "not enabled" in capsys.readouterr().err
 
     def test_broadcast_success(self, helpers_env, capsys):
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -449,7 +449,7 @@ class TestRunRegister:
         assert rc == 1
 
     def test_register_success(self, helpers_env):
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -463,7 +463,7 @@ class TestRunRegister:
         assert req["helper_num"] == 1
 
     def test_register_failure(self, helpers_env):
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -480,7 +480,7 @@ class TestRunLog:
         assert "No helper message log" in capsys.readouterr().err
 
     def test_log_displays_entries(self, helpers_env, capsys):
-        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -498,7 +498,7 @@ class TestRunLog:
         assert "Found 3 issues." in out
 
     def test_log_filter_by_helper(self, helpers_env, capsys):
-        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -515,7 +515,7 @@ class TestRunLog:
         assert "c" not in out
 
     def test_log_last_n(self, helpers_env, capsys):
-        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -532,7 +532,7 @@ class TestRunLog:
         assert "first" not in out
 
     def test_log_control_entries(self, helpers_env, capsys):
-        log_file = helpers_env / ".kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -572,7 +572,7 @@ class TestFormatLogEntry:
 class TestSocketWiring:
     def test_spawn_with_socket(self, helpers_env, capsys):
         """Spawn calls socket client when socket exists."""
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -588,7 +588,7 @@ class TestSocketWiring:
 
     def test_spawn_socket_failure(self, helpers_env, capsys):
         """Spawn records 'failed' when socket returns error."""
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -603,7 +603,7 @@ class TestSocketWiring:
 
     def test_stop_with_socket(self, helpers_env, capsys):
         """Stop calls socket client for container stop."""
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 
@@ -628,7 +628,7 @@ class TestSocketWiring:
 
     def test_respawn_with_socket(self, helpers_env, capsys):
         """Respawn calls socket client for container relaunch."""
-        sock = helpers_env / ".kanibako" / "helper.sock"
+        sock = helpers_env / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
 

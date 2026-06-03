@@ -155,7 +155,7 @@ def _helpers_dir() -> Path:
 
 def _socket_path() -> Path:
     """Return the path to the helper hub socket."""
-    return Path.home() / ".kanibako" / "helper.sock"
+    return Path.home() / ".local" / "state" / "kanibako" / "helper.sock"
 
 
 def _check_helpers_enabled() -> bool:
@@ -548,7 +548,7 @@ def run_register(args: argparse.Namespace) -> int:
 
 def _log_path() -> Path:
     """Return the path to the helper message log file."""
-    return Path.home() / ".kanibako" / "helper-messages.jsonl"
+    return Path.home() / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
 
 
 def run_log(args: argparse.Namespace) -> int:

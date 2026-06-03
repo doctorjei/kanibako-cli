@@ -25,7 +25,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_fork(args: argparse.Namespace) -> int:
-    socket_path = Path.home() / ".kanibako" / "helper.sock"
+    socket_path = Path.home() / ".local" / "state" / "kanibako" / "helper.sock"
     if not socket_path.exists():
         print(
             "Error: fork requires a running kanibako session with helpers enabled.",

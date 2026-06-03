@@ -208,7 +208,7 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="test")
-        sock = tmp_path / ".kanibako" / "helper.sock"
+        sock = tmp_path / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
         with patch("kanibako.helper_client.send_request") as mock_send, \
@@ -229,7 +229,7 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="bad")
-        sock = tmp_path / ".kanibako" / "helper.sock"
+        sock = tmp_path / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
         with patch("kanibako.helper_client.send_request") as mock_send, \
