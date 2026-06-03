@@ -11,6 +11,10 @@ on:
         description: 'Run e2e job (normally tag-gated)'
         type: boolean
         default: false
+      publish_testpypi:
+        description: 'Smoke-test the publish path by uploading to TestPyPI'
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -70,3 +74,76 @@ jobs:
         # is `-m 'not integration and not e2e'` — without overriding,
         # the suite would collect 0 tests and exit 5.
         run: pytest -m e2e tests/e2e/ -v
+
+  publish:
+    name: Publish to PyPI
+    needs: [test, integration, e2e]
+    # Final release tags only. rc tags (v*-rc*) are intentionally excluded —
+    # they are reserved for #82's future TestPyPI / rc-promote path. Because
+    # `needs` requires all three jobs to succeed, a tag only publishes after
+    # test + integration + e2e are green (tested-bits == shipped-bits).
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
+    runs-on: ubuntu-latest
+    # `pypi` scopes the OIDC trust to a named environment (matched in each
+    # project's PyPI Trusted Publisher config). No required reviewers — a
+    # green tag publishes automatically, with no manual twine step to forget.
+    environment: pypi
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install build tooling
+        run: pip install build twine
+      - name: Build all distributable packages
+        # Mirrors scripts/build-all.sh's package list. agent-goose is
+        # intentionally excluded (it versions independently at 0.1.0).
+        # All artifacts land in one top-level dist/ for a single upload.
+        run: |
+          for pkg in . packages/agent-claude packages/plugin-claude-wrapper packages/meta; do
+            python -m build "$pkg" --outdir "$PWD/dist"
+          done
+      - name: Check distributions
+        run: twine check dist/*
+      - name: Publish to PyPI
+        # OIDC trusted publishing — no token. Default packages-dir is dist/.
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  smoke-testpypi:
+    name: Smoke-test publish to TestPyPI
+    # Manual pre-flight for the publish path: build the 4 packages and upload
+    # to TestPyPI to validate the OIDC trusted-publishing wiring before a real
+    # release tag. Gated only on `test` (not e2e/integration) so a plain
+    # dispatch with publish_testpypi=true runs it without also needing
+    # run_e2e=true — a skipped `needs` would otherwise skip this job too.
+    needs: [test]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_testpypi
+    runs-on: ubuntu-latest
+    # Separate environment from prod `pypi`; TestPyPI matches its own Trusted
+    # Publisher config (test.pypi.org, environment name `testpypi`).
+    environment: testpypi
+    permissions:
+      id-token: write  # required for TestPyPI Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install build tooling
+        run: pip install build twine
+      - name: Build all distributable packages
+        run: |
+          for pkg in . packages/agent-claude packages/plugin-claude-wrapper packages/meta; do
+            python -m build "$pkg" --outdir "$PWD/dist"
+          done
+      - name: Check distributions
+        run: twine check dist/*
+      - name: Publish to TestPyPI
+        # skip-existing tolerates re-running the smoke test on a version that
+        # was already uploaded (TestPyPI rejects duplicate version uploads).
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
