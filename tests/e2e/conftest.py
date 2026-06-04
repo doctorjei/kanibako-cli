@@ -33,11 +33,16 @@ CONTAINER_PREFIX = "kanibako-e2e-"
 # the suite can target a different image ref without editing the file.
 DEFAULT_E2E_IMAGE_REF = "ghcr.io/doctorjei/kanibako-oci:edge"
 E2E_IMAGE_REF = os.environ.get("KANIBAKO_E2E_IMAGE_REF", DEFAULT_E2E_IMAGE_REF)
-# Budget for a single kanibako subprocess (start/shell/stop). The image is
-# pre-warmed into the pinned store once at session start
-# (ensure_image_in_pinned_store), so no individual test should pay a cold
-# image pull. 60s leaves comfortable headroom for a genuinely slow container
-# start without masking a regression the way the old 120s cold-pull budget did.
+# Budget for a single kanibako subprocess (start/shell/stop). The real cost
+# the budget must cover is the FIRST container start on a cold runner: CI
+# timing (e2e run with --durations) shows the first `kanibako start` ~30s
+# (fuse-overlayfs first mount + cgroup/userns setup), with every later start
+# ~8-9s once caches are warm. The original 30s budget made that first test
+# flaky (this, not a per-test image pull, was the v1.3.0 rc failure); a brief
+# bump to 120s over-corrected. 60s covers a cold first start with headroom
+# while still failing fast on a real regression. The image is also pre-warmed
+# into the pinned store once at session start (ensure_image_in_pinned_store),
+# so no test pays an image pull regardless.
 SUBPROCESS_TIMEOUT = 60  # seconds
 
 # ---------------------------------------------------------------------------
@@ -218,16 +223,17 @@ def ensure_image_in_pinned_store(host_storage_conf) -> None:
     """Guarantee E2E_IMAGE is present in the pinned store before any test runs.
 
     The per-test subprocesses pin ``rootless_storage_path`` to the host's
-    graphroot (host_storage_conf) so they share the host's image store. The
-    workflow tags the pulled image into podman's *default* store; in some
-    environments (observed on CI at the v1.3.0 rc) the store podman resolves
-    under the pinned config does not contain that tag, so the first
-    ``kanibako start`` would cold-pull the image *inside* the first test and
-    blow SUBPROCESS_TIMEOUT. Pre-warming here -- once, under the same config
-    the subprocesses see, on the session clock rather than a per-test budget --
-    removes that flake regardless of why the stores diverge. When the pinned
-    store already holds the image (the common local/test-vm case where
-    pinned == default), this is a no-op beyond the diagnostics.
+    graphroot (host_storage_conf) so they share the host's image store, where
+    the workflow tagged the pulled image. On the standard CI/local setup the
+    pinned store *is* the default store, so the image is already visible and
+    this fixture is a no-op beyond the diagnostics (confirmed on CI: the
+    pre-warm check adds <1s and never pulls). It exists as defense-in-depth:
+    if a custom graphroot ever makes the pinned store diverge from the store
+    the image was tagged into, the first ``kanibako start`` would otherwise
+    cold-pull *inside* a test and blow SUBPROCESS_TIMEOUT; pre-warming here --
+    once, under the exact config the subprocesses see, on the session clock --
+    removes that risk. The diagnostics it logs (captured vs pinned graphroot,
+    image presence) make any such divergence obvious in the run summary.
     """
     if _podman is None:
         return
