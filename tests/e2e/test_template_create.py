@@ -75,10 +75,13 @@ class TestTemplateCreate:
                 f"image {image_name!r} not found after build: {inspect.stderr}"
             )
 
-            # 3. The JVM toolchain actually runs inside the built image.
+            # 3. The JVM toolchain actually runs inside the built image. Override
+            #    the base ENTRYPOINT (kanibako-entrypoint -> `exec /bin/bash
+            #    "$@"`); without --entrypoint, `podman run IMAGE sh -lc CMD`
+            #    becomes `bash sh -lc CMD` and mangles the command.
             java = subprocess.run(
-                [_podman, "run", "--rm", image_name, "sh", "-lc",
-                 "java -version"],
+                [_podman, "run", "--rm", "--entrypoint", "sh", image_name,
+                 "-lc", "java -version"],
                 capture_output=True,
                 text=True,
                 timeout=120,
