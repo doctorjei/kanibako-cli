@@ -69,4 +69,7 @@ jobs:
         # Explicit `-m e2e` because pyproject.toml's default addopts
         # is `-m 'not integration and not e2e'` — without overriding,
         # the suite would collect 0 tests and exit 5.
-        run: pytest -m e2e tests/e2e/ -v
+        # `--durations` surfaces the slowest tests so a cold first-start vs a
+        # pull regression is visible at a glance; the conftest also writes
+        # storage diagnostics to the run summary (ensure_image_in_pinned_store).
+        run: pytest -m e2e tests/e2e/ -v --durations=15
