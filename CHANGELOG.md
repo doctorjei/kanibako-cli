@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-04
+
 ### Changed
 
 - **Bundled templates are now local-build + CI-verified.** The bundled
@@ -18,7 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *verifies* them -- building each template and running its toolchain smoke
   checks, declared via a new `# kanibako-template-check: <cmd>` Containerfile
   header (sibling to the existing `# kanibako-template:` header) -- instead of
-  publishing them.
+  publishing them. (Running the templates in CI for the first time surfaced and
+  fixed three latent issues: the smoke step must bypass the base `ENTRYPOINT`;
+  the `android` SDK is found via the image `ENV PATH` (non-login shell); and the
+  `js` template pins `pnpm@9` since pnpm 10+ requires Node >=22.13 but the base
+  ships Node 20.)
 - **`rig create --template` honors the template's declared base.** Each
   template declares its base via `ARG BASE_IMAGE` (default `kanibako-oci`).
   `--template` builds on that declared base by default; `--base <image>` is now
