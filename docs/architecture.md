@@ -19,6 +19,8 @@
 | `names.py` | Project name registry (names.toml): register, resolve, assign |
 | `agents.py` | Agent TOML config: load, write, per-agent settings |
 | `templates.py` | Shell template resolution and application |
+| `templates_image.py` | Image-template helpers: user-template image naming + bundled-template discovery (`Containerfile.template-<name>` convention, `# kanibako-template:` descriptions) |
+| `containerfiles.py` | Resolve bundled/override Containerfiles by suffix (`get_containerfile`, `list_containerfile_suffixes`) |
 | `freshness.py` | Non-blocking image digest comparison |
 | `targets/` | Agent plugin system (Target ABC + NoAgentTarget; ClaudeTarget in `kanibako-agent-claude`) |
 | `plugins/` | Namespace package for built-in and bind-mounted plugins |
@@ -30,5 +32,5 @@
 | `helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `helper_client.py` | Container-side socket client for hub communication |
 | `commands/` | CLI subcommand implementations |
-| `containers/` | Bundled Containerfiles |
+| `containers/` | Bundled Containerfiles: base `Containerfile.kanibako` (4 variants) + `Containerfile.template-<name>` toolchain templates (jvm/systems/js/dotnet/android) |
 | `scripts/` | Bundled scripts: `helper-init.sh` (entrypoint wrapper), `kanibako-entry` (container CLI) |
