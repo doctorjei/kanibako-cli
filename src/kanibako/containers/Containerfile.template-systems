@@ -1,4 +1,8 @@
 # kanibako-template: C/C++, Rust, cross-compilation toolchain
+# kanibako-template-check: gcc --version
+# kanibako-template-check: clang --version
+# kanibako-template-check: cmake --version
+# kanibako-template-check: cargo --version
 # Systems development template: C/C++, Rust, cross-compilation tools.
 # Built on top of any kanibako base image.
 #

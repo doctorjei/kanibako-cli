@@ -1,4 +1,5 @@
 # kanibako-template: .NET SDK (LTS)
+# kanibako-template-check: dotnet --info
 # .NET development template: .NET SDK on the 8.0 LTS channel.
 # Built on top of any kanibako base image.
 #

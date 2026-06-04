@@ -26,6 +26,15 @@ _DESC_HEADER_RE = re.compile(r"^#\s*kanibako-template:\s*(.+?)\s*$")
 # Read at most this many lines looking for the description header.
 _DESC_HEADER_SCAN_LINES = 10
 
+# Optional smoke-check header(s) inside a template Containerfile, e.g.
+#   # kanibako-template-check: java -version
+# Zero or more per file; each captured command is one non-interactive smoke
+# test that must exit 0 in the built image.
+_CHECK_HEADER_RE = re.compile(r"^#\s*kanibako-template-check:\s*(.+?)\s*$")
+
+# Backstop: never scan past this many lines looking for check headers.
+_CHECK_HEADER_SCAN_LINES = 30
+
 
 def validate_template_name(name: str) -> None:
     """Raise *ValueError* if *name* contains invalid characters.
@@ -87,6 +96,35 @@ def _read_template_description(containerfile: Path, name: str) -> str:
     except OSError:
         pass
     return f"{name} template"
+
+
+def read_template_checks(containerfile: Path) -> tuple[str, ...]:
+    """Return the ``# kanibako-template-check:`` commands from *containerfile*.
+
+    Each ``# kanibako-template-check: <command>`` header in the file's leading
+    comment block declares one non-interactive smoke command (expected to exit
+    0 in the built image). Commands are returned in file order so they can be
+    run top-to-bottom.
+
+    Only the leading comment block is scanned: scanning starts at line 1 and
+    stops at the first line that is neither blank nor a ``#`` comment (i.e. the
+    first directive such as ``ARG``/``FROM``). As a backstop the scan also
+    stops after :data:`_CHECK_HEADER_SCAN_LINES` lines. Returns an empty tuple
+    when no check headers are present or the file cannot be read.
+    """
+    checks: list[str] = []
+    try:
+        with containerfile.open(encoding="utf-8") as fh:
+            for _, line in zip(range(_CHECK_HEADER_SCAN_LINES), fh):
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    break
+                match = _CHECK_HEADER_RE.match(line)
+                if match:
+                    checks.append(match.group(1))
+    except OSError:
+        return ()
+    return tuple(checks)
 
 
 def _scan_template_dir(

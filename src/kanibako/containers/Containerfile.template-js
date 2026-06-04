@@ -1,4 +1,9 @@
 # kanibako-template: Node tooling: yarn, pnpm, bun, TypeScript
+# kanibako-template-check: node --version
+# kanibako-template-check: yarn --version
+# kanibako-template-check: pnpm --version
+# kanibako-template-check: tsc --version
+# kanibako-template-check: bun --version
 # JavaScript/TypeScript development template: yarn, pnpm, bun, TypeScript.
 # node/npm already ship in every kanibako base.
 # Built on top of any kanibako base image.
