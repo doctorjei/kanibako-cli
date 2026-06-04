@@ -10,6 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Bundled templates are now local-build + CI-verified.** The bundled
+  toolchain templates (`Containerfile.template-*`) are built locally on the
+  user's host via `kanibako rig create <name> --template <name>`. CI now
+  *verifies* them -- building each template and running its toolchain smoke
+  checks, declared via a new `# kanibako-template-check: <cmd>` Containerfile
+  header (sibling to the existing `# kanibako-template:` header) -- instead of
+  publishing them.
+- **`rig create --template` honors the template's declared base.** Each
+  template declares its base via `ARG BASE_IMAGE` (default `kanibako-oci`).
+  `--template` builds on that declared base by default; `--base <image>` is now
+  an explicit override (and prints a note when used).
+
+### Removed
+
+- **Stopped publishing `kanibako-template-*` images to GHCR.** The bundled
+  templates are no longer pushed to any registry; they are local-only artifacts
+  that CI build- and smoke-verifies. User-built custom rigs remain ordinary OCI
+  images you can push to your own registry.
+
 ## [1.3.2] - 2026-06-04
 
 ### Fixed

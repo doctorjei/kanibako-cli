@@ -244,7 +244,7 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `rig create <name>` | Create rig interactively, or build a bundled template non-interactively with `--template <name>` (`--base`, `--template`, `--always-commit`, `--no-commit-on-error`) |
+| `rig create <name>` | Create rig interactively, or build a bundled template non-interactively with `--template <name>` (`--base` defaults to the template's declared base when `--template` is used; `--template`, `--always-commit`, `--no-commit-on-error`) |
 | `rig list` / `rig ls` | List available rigs (`-q`) |
 | `rig info` / `rig inspect` | Rig details (source, size, recoverability) |
 | `rig rm` / `rig delete` | Remove rig (`--force`) |
@@ -449,20 +449,32 @@ List them with `rig list` (shown under "Example templates"):
 | `js` | Node tooling: yarn, pnpm, bun, TypeScript |
 
 Build one with `rig create --template`.  The bundled template is built
-non-interactively on the chosen base, producing a local image named after the
-positional argument:
+**locally on your host** -- non-interactively on its declared base -- producing a
+local image named after the positional argument:
 
 ```bash
-kanibako rig create my-jvm --template jvm                 # build jvm toolchain on kanibako-oci (default base)
-kanibako rig create my-jvm --template jvm --base kanibako-lxc   # choose the base
+kanibako rig create my-jvm --template jvm                 # build jvm toolchain on the template's declared base
+kanibako rig create my-jvm --template jvm --base kanibako-lxc   # override the base
 # -> local image kanibako-template-my-jvm
 ```
 
+Each template is tied to a single declared base via an `ARG BASE_IMAGE` line in
+its Containerfile (default `kanibako-oci`).  `rig create --template` uses that
+declared base by default; passing `--base <image>` overrides it (and prints a
+note).  There is no per-variant matrix -- a template targets one base; to build
+on a different flavor, fork its Containerfile.
+
+These bundled templates are **not published to any registry**.  CI builds them
+and runs their toolchain smoke checks (each Containerfile lists smoke commands
+via a `# kanibako-template-check:` header) so that they are verified to build and
+run, but the resulting images stay local to whoever runs `rig create`.
+
 New templates are discovered automatically: dropping a
 `Containerfile.template-<name>` (with a `# kanibako-template: <description>`
-header) into the package makes it show up in `rig list`, become buildable via
-`rig create --template <name>`, and get built+published by CI -- no code or
-workflow edits needed.
+header, and optionally a `# kanibako-template-check: <cmd>` smoke-check header)
+into the package makes it show up in `rig list`, become buildable via
+`rig create --template <name>`, and get build+smoke-verified by CI (not
+published) -- no code or workflow edits needed.
 
 #### Interactive rigs
 
