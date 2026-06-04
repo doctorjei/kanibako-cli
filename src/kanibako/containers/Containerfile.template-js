@@ -25,17 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install corepack via npm first so it is present regardless of how the base
-# node package was built, then enable it and activate yarn/pnpm. The npm global
-# prefix is root-owned, so shims and global packages install as root.
-# pnpm is pinned to 9.x: pnpm 10 (current @latest) requires Node >=22.13
-# (it imports node:sqlite), but the base ships Node 20 — pnpm 9 supports Node 20.
-RUN npm install -g corepack \
-    && corepack enable \
-    && corepack prepare yarn@stable pnpm@9 --activate
-
-# Global TypeScript tooling (npm global prefix is root-owned)
-RUN npm install -g typescript ts-node
+# Install pinned package managers + TypeScript globally (the npm global prefix is
+# root-owned, so these land as real binaries on PATH for every user).
+# NOT corepack: corepack's `prepare --activate` pins per-user and runs here as
+# root, but the container runs as `agent` at runtime — whose corepack cache has
+# no pinned version, so corepack would re-resolve to the *latest* pnpm/yarn at
+# runtime (pnpm 11 needs Node >=22.13 via node:sqlite; the base ships Node 20).
+# Direct npm-global installs are deterministic and need no network at runtime.
+# pnpm is pinned to 9.x (the last line that supports Node 20).
+RUN npm install -g pnpm@9 yarn typescript ts-node
 
 # bun: installed under the agent home so ~/.bun has correct ownership
 USER agent
