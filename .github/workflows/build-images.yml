@@ -62,6 +62,14 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             VARIANT=${{ matrix.variant }}
+          # Publish a plain single-arch image, NOT an attested OCI index.
+          # buildx's default provenance/SBOM attestations add an
+          # `unknown/unknown` manifest to the index; building FROM (or running)
+          # such an index mis-selects that manifest and yields a non-executable
+          # image ("cannot execute binary file"). Templates build FROM these
+          # bases, so the bases must stay attestation-free.
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
@@ -222,6 +230,12 @@ jobs:
           tags: kanibako-template-${{ matrix.template }}:ci
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-oci:edge
+          # Load a plain single-arch image, NOT an attested index — buildx's
+          # default provenance/SBOM attestations produce an `unknown/unknown`
+          # manifest that `docker run` (and `load`) mis-selects, yielding a
+          # non-executable image. Required for the smoke step below to run.
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=template-${{ matrix.template }}
           cache-to: type=gha,mode=max,scope=template-${{ matrix.template }}
 
