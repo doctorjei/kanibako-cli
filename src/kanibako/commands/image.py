@@ -56,7 +56,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     create_p.add_argument(
         "--template",
-        help="Build a bundled template Containerfile (e.g. jvm, systems) "
+        help="Build a bundled template Containerfile (see 'kanibako rig list') "
              "instead of an interactive session",
     )
     commit_group = create_p.add_mutually_exclusive_group()
