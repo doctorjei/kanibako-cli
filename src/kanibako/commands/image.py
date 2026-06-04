@@ -193,7 +193,15 @@ def run_create(args: argparse.Namespace) -> int:
 def _create_from_template(args: argparse.Namespace) -> int:
     """Build a bundled template Containerfile into a local template image."""
     template = args.template
-    available = sorted(t.name for t in list_bundled_templates())
+
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    containers_dir = std.data_path / "containers"
+
+    available = sorted(
+        t.name for t in list_bundled_templates(override_dir=containers_dir)
+    )
     if template not in available:
         print(
             f"error: unknown template '{template}'. "
@@ -207,11 +215,6 @@ def _create_from_template(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    containers_dir = std.data_path / "containers"
 
     containerfile = get_containerfile(f"template-{template}", containers_dir)
     if containerfile is None:
@@ -267,7 +270,7 @@ def run_list(args: argparse.Namespace) -> int:
     suffixes = list_containerfile_suffixes(containers_dir)
     buildable = ContainerRuntime.buildable_containerfile_suffixes()
     variants = [s for s in suffixes if s in buildable]
-    templates = list_bundled_templates()
+    templates = list_bundled_templates(override_dir=containers_dir)
 
     if variants:
         print("Built-in rig variants:")
@@ -281,7 +284,10 @@ def run_list(args: argparse.Namespace) -> int:
         print()
         print("Example templates (layer on a base image; not built directly):")
         for tmpl in templates:
-            print(f"  {tmpl.name:<12} {tmpl.description}")
+            desc = tmpl.description
+            if tmpl.source == "user":
+                desc = f"{desc} (user)"
+            print(f"  {tmpl.name:<12} {desc}")
 
     print()
 
