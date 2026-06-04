@@ -279,6 +279,9 @@ class TestImageRebuild:
             runtime.pull.assert_called_once()
             runtime.rebuild.assert_not_called()
 
+        # rebuild still works but emits a deprecation notice.
+        assert "note: 'rig rebuild' is deprecated" in capsys.readouterr().err
+
     def test_local_build_one_success(self, tmp_home, config_file, credentials_dir, capsys):
         """Auto-detect triggers local build when Containerfile matches."""
         from kanibako.commands.image import run_rebuild
@@ -350,6 +353,175 @@ class TestImageRebuild:
             rc = run_rebuild(args)
             assert rc == 0
             assert runtime.pull.call_count == 2
+
+
+class TestImagePrep:
+    def _args(self, name=None, force=False, all_images=False):
+        return argparse.Namespace(name=name, force=force, all_images=all_images)
+
+    def _resolution(self, **kw):
+        from kanibako.rig_resolve import RigResolution
+
+        return RigResolution(**kw)
+
+    def test_prep_template_builds(self, tmp_home, config_file, credentials_dir, capsys):
+        """prep on a template name builds the template image and returns rc."""
+        from kanibako.commands.image import run_prep
+        from pathlib import Path
+
+        cf = Path("/somewhere/Containerfile.template-jvm")
+        res = self._resolution(
+            name="jvm", kind="template", image="kanibako-template-jvm",
+            prep_action="build", containerfile=cf,
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res):
+            runtime = MagicMock()
+            runtime.rebuild.return_value = 0
+            MockRT.return_value = runtime
+
+            rc = run_prep(self._args(name="jvm"))
+            assert rc == 0
+            runtime.rebuild.assert_called_once()
+            call_args, call_kwargs = runtime.rebuild.call_args
+            assert call_args[0] == "kanibako-template-jvm"
+            assert call_args[1] == cf
+            assert call_kwargs["build_args"] is None
+            runtime.pull.assert_not_called()
+
+        out = capsys.readouterr().out
+        assert "prepped as kanibako-template-jvm" in out
+
+    def test_prep_template_build_failure_returns_rc(self, tmp_home, config_file, credentials_dir, capsys):
+        """A failed template build surfaces the non-zero rc."""
+        from kanibako.commands.image import run_prep
+        from pathlib import Path
+
+        res = self._resolution(
+            name="jvm", kind="template", image="kanibako-template-jvm",
+            prep_action="build", containerfile=Path("/x/Containerfile.template-jvm"),
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res):
+            runtime = MagicMock()
+            runtime.rebuild.return_value = 2
+            MockRT.return_value = runtime
+
+            rc = run_prep(self._args(name="jvm"))
+            assert rc == 2
+
+        assert "Build failed" in capsys.readouterr().err
+
+    def test_prep_prefab_pulls(self, tmp_home, config_file, credentials_dir, capsys):
+        """prep on a not-local prefab goes through _update_one -> pull."""
+        from kanibako.commands.image import run_prep
+
+        res = self._resolution(
+            name="oci", kind="prefab",
+            image="ghcr.io/doctorjei/kanibako-oci:latest",
+            prep_action="pull", source_ref="oci",
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res):
+            runtime = MagicMock()
+            runtime.guess_containerfile.return_value = None
+            runtime.pull.return_value = True
+            MockRT.return_value = runtime
+
+            rc = run_prep(self._args(name="oci"))
+            assert rc == 0
+            runtime.pull.assert_called_once()
+            runtime.rebuild.assert_not_called()
+
+    def test_prep_force_rebuilds_already_prepped_template(self, tmp_home, config_file, credentials_dir, capsys):
+        """--force does NOT short-circuit an already-prepped template."""
+        from kanibako.commands.image import run_prep
+        from pathlib import Path
+
+        cf = Path("/x/Containerfile.template-jvm")
+        # Already prepped template: prep_action="none", containerfile UNSET.
+        res = self._resolution(
+            name="jvm", kind="template", image="kanibako-template-jvm",
+            prep_action="none",
+        )
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        containers_dir = std.data_path / "containers"
+        containers_dir.mkdir(parents=True, exist_ok=True)
+        (containers_dir / "Containerfile.template-jvm").write_text("FROM x\n")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res), \
+                patch("kanibako.commands.image.get_containerfile",
+                      return_value=containers_dir / "Containerfile.template-jvm"):
+            runtime = MagicMock()
+            runtime.rebuild.return_value = 0
+            MockRT.return_value = runtime
+
+            rc = run_prep(self._args(name="jvm", force=True))
+            assert rc == 0
+            # Built despite being already prepped.
+            runtime.rebuild.assert_called_once()
+        _ = cf  # silence unused
+
+    def test_prep_already_prepped_no_force_short_circuits(self, tmp_home, config_file, credentials_dir, capsys):
+        """Already-prepped rig without --force: prints message, no build/pull."""
+        from kanibako.commands.image import run_prep
+
+        res = self._resolution(
+            name="oci", kind="prefab",
+            image="ghcr.io/doctorjei/kanibako-oci:latest", prep_action="none",
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res):
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+
+            rc = run_prep(self._args(name="oci"))
+            assert rc == 0
+            runtime.rebuild.assert_not_called()
+            runtime.pull.assert_not_called()
+
+        assert "already prepped" in capsys.readouterr().out
+
+    def test_prep_all_updates_all(self, tmp_home, config_file, credentials_dir, capsys):
+        """--all delegates to _update_all over local images."""
+        from kanibako.commands.image import run_prep
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.list_local_images.return_value = [
+                ("ghcr.io/foo/kanibako-oci:latest", "1GB"),
+                ("ghcr.io/foo/kanibako-lxc:latest", "2GB"),
+            ]
+            runtime.guess_containerfile.return_value = None
+            runtime.pull.return_value = True
+            MockRT.return_value = runtime
+
+            rc = run_prep(self._args(all_images=True))
+            assert rc == 0
+            assert runtime.pull.call_count == 2
+
+    def test_prep_no_name_no_all_errors(self, tmp_home, config_file, credentials_dir, capsys):
+        """No name and no --all is an error."""
+        from kanibako.commands.image import run_prep
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_prep(self._args())
+            assert rc == 1
+
+        assert "rig name required" in capsys.readouterr().err
+
+    def test_prepare_alias_parses_to_run_prep(self):
+        """The 'prepare' alias dispatches to run_prep."""
+        from kanibako.cli import build_parser
+        from kanibako.commands.image import run_prep
+
+        parser = build_parser()
+        ns = parser.parse_args(["rig", "prepare", "jvm"])
+        assert ns.func is run_prep
+        assert ns.name == "jvm"
 
 
 class TestExtractGhcrOwner:
@@ -773,6 +945,8 @@ class TestImageCreateTemplate:
         captured = capsys.readouterr()
         assert "Template saved as kanibako-template-my-jvm" in captured.out
         assert "from its default base" in captured.out
+        # Deprecation notice emitted on stderr, behavior otherwise unchanged.
+        assert "note: 'rig create --template' is deprecated" in captured.err
 
     def test_template_base_override(self, tmp_home, config_file, credentials_dir, capsys):
         """An explicit --base overrides the template's declared base and prints
