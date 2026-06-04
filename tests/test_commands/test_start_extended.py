@@ -701,6 +701,26 @@ class TestCliEnv:
             )
             assert rc == 0
 
+    def test_cli_env_passed_to_exec_into_running(self, start_mocks):
+        """Per-run -e vars reach the exec'd process when the box is running.
+
+        Shell mode (entrypoint set) against an already-running container execs
+        in instead of launching; the per-run -e vars must still be applied
+        (previously they were silently dropped on this path).
+        """
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint="/bin/sh", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=["-c", "printenv"], cli_env=["MY_KEY=my_val"],
+            )
+            assert rc == 0
+            m.runtime.run.assert_not_called()
+            m.runtime.exec.assert_called_once()
+            env = m.runtime.exec.call_args.kwargs.get("env") or {}
+            assert env.get("MY_KEY") == "my_val"
+
 
 class TestProjectPositional:
     """Verify args.project is read directly by run_start."""

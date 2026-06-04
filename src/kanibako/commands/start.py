@@ -347,6 +347,16 @@ def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
         return None
 
 
+def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]:
+    """Parse ``-e/--env KEY=VALUE`` items into a dict (ignores malformed ones)."""
+    env: dict[str, str] = {}
+    for item in cli_env or []:
+        if "=" in item:
+            k, v = item.split("=", 1)
+            env[k] = v
+    return env
+
+
 def _run_container(
     *,
     project_dir: str | None,
@@ -495,7 +505,13 @@ def _run_container(
         # UX of `kanibako shell <name> -- cmd` against a live container.
         if runtime.is_running(container_name) and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
-            return runtime.exec(container_name, exec_cmd)
+            # Apply per-run -e/--env vars to the exec'd process. The container's
+            # baseline env (env files, agent_cfg.env, KANIBAKO_NAME) was set at
+            # launch and is inherited by exec; without this, per-run -e vars
+            # would be silently dropped when the box is already running.
+            return runtime.exec(
+                container_name, exec_cmd, env=_parse_cli_env(cli_env)
+            )
         if runtime.container_exists(container_name):
             print(
                 "Error: A container already exists for this project.\n"
@@ -729,11 +745,7 @@ def _run_container(
         container_env.update(state_env)
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
-        if cli_env:
-            for item in cli_env:
-                if "=" in item:
-                    k, v = item.split("=", 1)
-                    container_env[k] = v
+        container_env.update(_parse_cli_env(cli_env))
 
         # Disable Claude Code telemetry inside containers.
         if target and target.name == "claude":

@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-06-04
+
+### Fixed
+
+- **`kanibako shell <box> -e KEY=VAL -- cmd` now applies `-e` vars when the box
+  is already running.** When a persistent box was up, the shell-into-running
+  shortcut exec'd the command without the per-run `-e`/`--env` vars, so the same
+  command behaved differently depending on whether the box happened to be
+  running (the vars were applied on a fresh launch but silently dropped on
+  exec). The per-run env is now passed to the exec'd process in both cases.
+
 ## [1.3.1] - 2026-06-04
 
 ### Added
@@ -66,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the distinction as data (a `ProjectGroup` descriptor) rather than control flow.
   Behavior-preserving; no user-visible change.
 
-[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/doctorjei/kanibako/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/doctorjei/kanibako/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/doctorjei/kanibako/releases/tag/v1.3.0
