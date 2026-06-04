@@ -609,10 +609,34 @@ def _list_orphans(
     return 0
 
 
-def run_rm(args: argparse.Namespace) -> int:
-    """Unregister a project from names.toml, optionally purging metadata."""
+def _purge_dir(target: Path) -> bool:
+    """Remove *target*, tolerating files a rootless container created.
+
+    A box's shell dir can contain files owned by mapped subuids (root inside a
+    ``--userns=keep-id`` container) that the host user cannot unlink, so a plain
+    ``shutil.rmtree`` fails with EACCES. Fall back to ``podman unshare rm -rf``,
+    which deletes from within the user namespace. Returns True if *target* is
+    gone afterwards, False otherwise (caller warns rather than crashing).
+    """
     import shutil
 
+    try:
+        shutil.rmtree(target)
+        return True
+    except OSError:
+        pass
+    try:
+        from kanibako.container import ContainerError, ContainerRuntime
+
+        if ContainerRuntime().unshare_rm(target):
+            return True
+    except ContainerError:
+        pass
+    return not target.exists()
+
+
+def run_rm(args: argparse.Namespace) -> int:
+    """Unregister a project from names.toml, optionally purging metadata."""
     from kanibako.names import lookup_by_path
     from kanibako.paths import (
         _remove_human_vault_symlink,
@@ -679,13 +703,20 @@ def run_rm(args: argparse.Namespace) -> int:
             if path:
                 _remove_project_vault_symlink(Path(path))
 
-            shutil.rmtree(metadata_dir)
-            print(f"Removed metadata: {metadata_dir}")
+            if _purge_dir(metadata_dir):
+                print(f"Removed metadata: {metadata_dir}")
+            else:
+                print(
+                    f"Warning: could not fully remove {metadata_dir} "
+                    "(it may contain files created inside a container). "
+                    f"Try: podman unshare rm -rf {metadata_dir}",
+                    file=sys.stderr,
+                )
 
             # Remove helper log directory if present.
             log_dir = std.data_path / "logs" / name
             if log_dir.is_dir():
-                shutil.rmtree(log_dir)
+                _purge_dir(log_dir)
                 print(f"Removed logs: {log_dir}")
         else:
             print(f"No metadata directory found at {metadata_dir}")

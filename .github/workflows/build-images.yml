@@ -11,6 +11,10 @@ on:
         description: 'Push built images to GHCR (off = build-only test)'
         type: boolean
         default: false
+      diff_base:
+        description: 'Optional git ref/SHA to diff against; selects only changed templates. Empty = build all.'
+        type: string
+        default: ''
 
 env:
   REGISTRY: ghcr.io
@@ -65,22 +69,104 @@ jobs:
     # Enumerate bundled Containerfile.template-<name> files into a JSON array so
     # the build-templates matrix tracks the shipped templates automatically.
     # Adding a Containerfile.template-<name> is all it takes to get it built.
+    #
+    # Diff-driven selection (#74a): on push (and on dispatch with a diff_base),
+    # narrow the matrix to the templates whose Containerfile.template-<name>
+    # actually changed. A change to Containerfile.kanibako or ANY other shared
+    # file under src/kanibako/containers/ forces a full rebuild (it affects every
+    # template). Dispatch WITHOUT diff_base preserves the build-all behavior.
     runs-on: ubuntu-latest
     outputs:
       templates: ${{ steps.list.outputs.templates }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: List bundled templates
         id: list
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DIFF_BASE: ${{ inputs.diff_base }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
         run: |
-          json=$(find src/kanibako/containers -maxdepth 1 \
+          set -euo pipefail
+
+          # FULL list of bundled templates (basename-stripped, sorted JSON).
+          ALL_JSON=$(find src/kanibako/containers -maxdepth 1 \
             -name 'Containerfile.template-*' -printf '%f\n' \
             | sed 's/^Containerfile\.template-//' \
             | jq -R -s -c 'split("\n") | map(select(length > 0)) | sort')
-          echo "templates=$json" >> "$GITHUB_OUTPUT"
-          echo "Discovered templates: $json"
+
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          MODE="ALL"
+          BASE=""
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$DIFF_BASE" ]; then
+            MODE="DIFF"
+            BASE="$DIFF_BASE"
+            HEAD_REF="HEAD"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            BASE="$PUSH_BEFORE"
+            if [ -z "$BASE" ] || [ "$BASE" = "$ZERO_SHA" ]; then
+              MODE="ALL"
+            else
+              MODE="DIFF"
+              HEAD_REF="$PUSH_SHA"
+            fi
+          else
+            MODE="ALL"
+          fi
+
+          if [ "$MODE" = "DIFF" ]; then
+            # Changed paths under the containers dir, ignoring the archive/ subdir.
+            CHANGED=$(git diff --name-only "$BASE" "$HEAD_REF" -- src/kanibako/containers/ \
+              | grep -v '^src/kanibako/containers/archive/' || true)
+
+            if [ -z "$CHANGED" ]; then
+              # No relevant container changes — build nothing.
+              TEMPLATES="[]"
+            else
+              SUBSET="[]"
+              NON_TEMPLATE=0
+              while IFS= read -r path; do
+                [ -z "$path" ] && continue
+                bn=$(basename "$path")
+                case "$bn" in
+                  Containerfile.template-*)
+                    name=${bn#Containerfile.template-}
+                    SUBSET=$(printf '%s\n' "$SUBSET" | jq -c --arg n "$name" '. + [$n]')
+                    ;;
+                  *)
+                    # Shared/base file changed -> rebuild everything.
+                    NON_TEMPLATE=1
+                    ;;
+                esac
+              done <<< "$CHANGED"
+
+              if [ "$NON_TEMPLATE" = "1" ]; then
+                MODE="ALL"
+                TEMPLATES="$ALL_JSON"
+              else
+                # Intersect the changed names with the FULL discovered list so a
+                # deleted template is never built; dedupe + sort.
+                TEMPLATES=$(jq -c -n \
+                  --argjson subset "$SUBSET" \
+                  --argjson all "$ALL_JSON" \
+                  '$subset | map(select(. as $x | $all | index($x))) | unique | sort')
+              fi
+            fi
+          else
+            TEMPLATES="$ALL_JSON"
+          fi
+
+          echo "templates=$TEMPLATES" >> "$GITHUB_OUTPUT"
+          echo "Selection mode : $MODE"
+          echo "Diff base ref  : ${BASE:-<none>}"
+          echo "All templates  : $ALL_JSON"
+          echo "Build templates: $TEMPLATES"
 
   build-templates:
     needs: [build-base, discover-templates]
@@ -88,7 +174,7 @@ jobs:
     # a build-only dispatch (inputs.push=false) layers on the already-published
     # kanibako-<variant>:latest base to verify the template Containerfiles build
     # without publishing anything (the per-step push: gate below stays off).
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.discover-templates.outputs.templates != '[]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

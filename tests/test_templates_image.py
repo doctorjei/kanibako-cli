@@ -131,6 +131,99 @@ class TestListBundledTemplates:
         assert names == ["android", "dotnet", "js", "jvm", "systems"]
 
 
+class TestListBundledTemplatesWithOverride:
+    def test_override_adds_user_template(self, tmp_path):
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "Containerfile.template-foo").write_text(
+            "# kanibako-template: Foo desc\nFROM scratch\n"
+        )
+        override = tmp_path / "override"
+        override.mkdir()
+        (override / "Containerfile.template-custom").write_text(
+            "# kanibako-template: Custom desc\nFROM scratch\n"
+        )
+
+        result = list_bundled_templates(bundled, override_dir=override)
+
+        assert result == [
+            BundledTemplate(
+                name="custom", description="Custom desc", source="user"
+            ),
+            BundledTemplate(name="foo", description="Foo desc", source="bundled"),
+        ]
+
+    def test_user_template_overrides_bundled_same_name(self, tmp_path):
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "Containerfile.template-foo").write_text(
+            "# kanibako-template: Bundled foo\nFROM scratch\n"
+        )
+        override = tmp_path / "override"
+        override.mkdir()
+        (override / "Containerfile.template-foo").write_text(
+            "# kanibako-template: User foo\nFROM scratch\n"
+        )
+
+        result = list_bundled_templates(bundled, override_dir=override)
+
+        assert result == [
+            BundledTemplate(
+                name="foo", description="User foo", source="user"
+            ),
+        ]
+
+    def test_no_override_dir_identical_to_bundled_only(self, tmp_path):
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "Containerfile.template-foo").write_text("FROM scratch\n")
+
+        assert list_bundled_templates(bundled) == list_bundled_templates(
+            bundled, override_dir=None
+        )
+        assert list_bundled_templates(bundled, override_dir=None) == [
+            BundledTemplate(
+                name="foo", description="foo template", source="bundled"
+            ),
+        ]
+
+    def test_empty_override_dir_identical_to_bundled_only(self, tmp_path):
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "Containerfile.template-foo").write_text("FROM scratch\n")
+        empty_override = tmp_path / "override"
+        empty_override.mkdir()
+
+        assert list_bundled_templates(
+            bundled, override_dir=empty_override
+        ) == list_bundled_templates(bundled)
+
+    def test_missing_override_dir_ignored(self, tmp_path):
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "Containerfile.template-foo").write_text("FROM scratch\n")
+
+        assert list_bundled_templates(
+            bundled, override_dir=tmp_path / "nope"
+        ) == list_bundled_templates(bundled)
+
+    def test_invalid_named_override_file_skipped(self, tmp_path):
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        override = tmp_path / "override"
+        override.mkdir()
+        (override / "Containerfile.template-Bad").write_text("FROM scratch\n")
+        (override / "Containerfile.template-good").write_text("FROM scratch\n")
+
+        result = list_bundled_templates(bundled, override_dir=override)
+
+        assert [t.name for t in result] == ["good"]
+        assert result[0].source == "user"
+
+    def test_default_source_is_bundled(self):
+        assert BundledTemplate(name="x", description="y").source == "bundled"
+
+
 class TestDeleteTemplate:
     def test_removes_image(self):
         runtime = MagicMock()

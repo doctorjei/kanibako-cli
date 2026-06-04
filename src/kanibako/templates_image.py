@@ -51,10 +51,15 @@ def template_image_name(name: str) -> str:
 
 
 class BundledTemplate(NamedTuple):
-    """A template Containerfile shipped with kanibako."""
+    """A template Containerfile available to kanibako.
+
+    *source* is ``"bundled"`` for templates shipped with kanibako and
+    ``"user"`` for templates dropped into the user-override directory.
+    """
 
     name: str
     description: str
+    source: str = "bundled"
 
 
 def _bundled_containers_dir() -> Path | None:
@@ -84,23 +89,15 @@ def _read_template_description(containerfile: Path, name: str) -> str:
     return f"{name} template"
 
 
-def list_bundled_templates(
-    containers_dir: Path | None = None,
+def _scan_template_dir(
+    containers_dir: Path | None, source: str
 ) -> list[BundledTemplate]:
-    """Discover template Containerfiles shipped in *containers_dir*.
+    """Scan *containers_dir* for ``Containerfile.template-<name>`` files.
 
-    Scans *containers_dir* (defaulting to kanibako's bundled ``containers/``
-    directory) non-recursively for files named exactly
-    ``Containerfile.template-<name>`` where ``<name>`` is a valid template
-    name. The ``archive/`` subdirectory and non-matching files (such as
-    ``Containerfile.kanibako``) are excluded.
-
-    Each template's description is taken from a ``# kanibako-template: <desc>``
-    header comment near the top of the file, falling back to ``"<name>
-    template"`` when absent. Results are sorted by name.
+    Returns a list of :class:`BundledTemplate` tagged with *source*. Invalid
+    names and non-matching files are skipped. Order is the raw iteration order
+    (the caller is responsible for any sorting/merging).
     """
-    if containers_dir is None:
-        containers_dir = _bundled_containers_dir()
     if containers_dir is None or not containers_dir.is_dir():
         return []
 
@@ -114,9 +111,46 @@ def list_bundled_templates(
         if not _VALID_NAME_RE.match(name):
             continue
         description = _read_template_description(entry, name)
-        templates.append(BundledTemplate(name=name, description=description))
+        templates.append(
+            BundledTemplate(name=name, description=description, source=source)
+        )
+    return templates
 
-    return sorted(templates, key=lambda t: t.name)
+
+def list_bundled_templates(
+    containers_dir: Path | None = None,
+    *,
+    override_dir: Path | None = None,
+) -> list[BundledTemplate]:
+    """Discover template Containerfiles, merging bundled and user overrides.
+
+    Scans *containers_dir* (defaulting to kanibako's bundled ``containers/``
+    directory) non-recursively for files named exactly
+    ``Containerfile.template-<name>`` where ``<name>`` is a valid template
+    name (source ``"bundled"``). The ``archive/`` subdirectory and
+    non-matching files (such as ``Containerfile.kanibako``) are excluded.
+
+    If *override_dir* is a directory, it is scanned the same way for
+    user-dropped templates (source ``"user"``). A user template with the same
+    ``<name>`` as a bundled one *overrides* it -- mirroring
+    :func:`kanibako.containerfiles.get_containerfile`'s override-first
+    precedence -- so the result carries the user file's description and
+    ``source="user"``.
+
+    Each template's description is taken from a ``# kanibako-template: <desc>``
+    header comment near the top of the file, falling back to ``"<name>
+    template"`` when absent. Results are sorted by name.
+    """
+    if containers_dir is None:
+        containers_dir = _bundled_containers_dir()
+
+    merged: dict[str, BundledTemplate] = {}
+    for tmpl in _scan_template_dir(containers_dir, "bundled"):
+        merged[tmpl.name] = tmpl
+    for tmpl in _scan_template_dir(override_dir, "user"):
+        merged[tmpl.name] = tmpl
+
+    return sorted(merged.values(), key=lambda t: t.name)
 
 
 def list_templates(runtime: ContainerRuntime) -> list[tuple[str, str, str]]:

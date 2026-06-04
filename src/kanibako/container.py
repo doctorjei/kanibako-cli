@@ -106,6 +106,25 @@ class ContainerRuntime:
         if result.returncode != 0:
             raise ContainerError(f"Failed to remove rig {image}:\n{result.stderr}")
 
+    def unshare_rm(self, path: Path) -> bool:
+        """Remove *path* from within the rootless user namespace.
+
+        Files a ``--userns=keep-id`` container creates as root map to subuids
+        the host user cannot ``unlink`` directly, so a plain ``rmtree`` of a
+        box's shell dir can fail with EACCES. ``podman unshare`` runs ``rm``
+        inside the user namespace where those subuids appear as root, so the
+        removal succeeds. Returns True on success. Only podman supports
+        ``unshare``; returns False for docker or on any failure.
+        """
+        if "podman" not in Path(self.cmd).name:
+            return False
+        result = subprocess.run(
+            [self.cmd, "unshare", "rm", "-rf", str(path)],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+
     def build(self, image: str, containerfile: Path, context: Path) -> None:
         """Build *image* from *containerfile*. Raises ContainerError on failure."""
         result = subprocess.run(

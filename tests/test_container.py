@@ -75,6 +75,34 @@ class TestGetLocalDigest:
         assert result is None
 
 
+class TestUnshareRm:
+    """Test ContainerRuntime.unshare_rm()."""
+
+    def test_invokes_podman_unshare_rm(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            ok = rt.unshare_rm(Path("/data/boxes/proj"))
+        assert ok is True
+        cmd = m.call_args[0][0]
+        assert cmd == ["/usr/bin/podman", "unshare", "rm", "-rf",
+                       "/data/boxes/proj"]
+
+    def test_returns_false_on_nonzero(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.unshare_rm(Path("/data/boxes/proj")) is False
+
+    def test_docker_has_no_unshare(self):
+        rt = ContainerRuntime(command="/usr/bin/docker")
+        with patch("kanibako.container.subprocess.run") as m:
+            assert rt.unshare_rm(Path("/data/boxes/proj")) is False
+            m.assert_not_called()
+
+
 class TestRunEnvFlags:
     """Test that run() emits -e flags from the env parameter."""
 

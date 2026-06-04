@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -27,13 +28,22 @@ import pytest
 
 E2E_IMAGE = "kanibako-oci:latest"
 CONTAINER_PREFIX = "kanibako-e2e-"
-# Generous enough to absorb a one-time cold image pull on the first test.
-# The workflow tags the pulled image into the runner's default podman storage,
-# but the test subprocesses pin rootless_storage_path (see host_storage_conf),
-# so the first `kanibako start` may pull the registry image into the pinned
-# store before the rest of the suite reuses it. A tight 30s budget made that
-# first test flaky (pull + start > 30s); 120s covers the pull with headroom.
-SUBPROCESS_TIMEOUT = 120  # seconds
+# Registry source used to pre-warm E2E_IMAGE into the pinned store when it is
+# not already present there (see ensure_image_in_pinned_store). Overridable so
+# the suite can target a different image ref without editing the file.
+DEFAULT_E2E_IMAGE_REF = "ghcr.io/doctorjei/kanibako-oci:edge"
+E2E_IMAGE_REF = os.environ.get("KANIBAKO_E2E_IMAGE_REF", DEFAULT_E2E_IMAGE_REF)
+# Budget for a single kanibako subprocess (start/shell/stop). The real cost
+# the budget must cover is the FIRST container start on a cold runner: CI
+# timing (e2e run with --durations) shows the first `kanibako start` ~30s
+# (fuse-overlayfs first mount + cgroup/userns setup), with every later start
+# ~8-9s once caches are warm. The original 30s budget made that first test
+# flaky (this, not a per-test image pull, was the v1.3.0 rc failure); a brief
+# bump to 120s over-corrected. 60s covers a cold first start with headroom
+# while still failing fast on a real regression. The image is also pre-warmed
+# into the pinned store once at session start (ensure_image_in_pinned_store),
+# so no test pays an image pull regardless.
+SUBPROCESS_TIMEOUT = 60  # seconds
 
 # ---------------------------------------------------------------------------
 # Skip conditions
@@ -189,6 +199,77 @@ def host_storage_conf(tmp_path_factory) -> Path:
         f'rootless_storage_path = "{graphroot}"\n'
     )
     return conf_path
+
+
+def _diag(message: str) -> None:
+    """Emit a storage diagnostic to stderr and the CI step summary.
+
+    Written to ``$GITHUB_STEP_SUMMARY`` when set so the facts are visible in
+    the GitHub Actions run summary without needing ``pytest -s``.
+    """
+    line = f"[e2e-storage] {message}"
+    print(line, file=sys.stderr, flush=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        try:
+            with open(summary, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except OSError:
+            pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_image_in_pinned_store(host_storage_conf) -> None:
+    """Guarantee E2E_IMAGE is present in the pinned store before any test runs.
+
+    The per-test subprocesses pin ``rootless_storage_path`` to the host's
+    graphroot (host_storage_conf) so they share the host's image store, where
+    the workflow tagged the pulled image. On the standard CI/local setup the
+    pinned store *is* the default store, so the image is already visible and
+    this fixture is a no-op beyond the diagnostics (confirmed on CI: the
+    pre-warm check adds <1s and never pulls). It exists as defense-in-depth:
+    if a custom graphroot ever makes the pinned store diverge from the store
+    the image was tagged into, the first ``kanibako start`` would otherwise
+    cold-pull *inside* a test and blow SUBPROCESS_TIMEOUT; pre-warming here --
+    once, under the exact config the subprocesses see, on the session clock --
+    removes that risk. The diagnostics it logs (captured vs pinned graphroot,
+    image presence) make any such divergence obvious in the run summary.
+    """
+    if _podman is None:
+        return
+
+    pin_env = os.environ.copy()
+    pin_env["CONTAINERS_STORAGE_CONF"] = str(host_storage_conf)
+
+    info = subprocess.run(
+        [_podman, "info", "--format", "{{.Store.GraphRoot}}"],
+        env=pin_env, capture_output=True, text=True, timeout=20,
+    )
+    pinned_root = info.stdout.strip() if info.returncode == 0 else "<unknown>"
+    _diag(f"captured host store: {_host_storage}")
+    _diag(f"pinned-config graphroot: {pinned_root!r}")
+
+    present = subprocess.run(
+        [_podman, "image", "exists", E2E_IMAGE],
+        env=pin_env, capture_output=True, timeout=20,
+    )
+    if present.returncode == 0:
+        _diag(f"{E2E_IMAGE} already present in pinned store -- no pre-warm needed")
+        return
+
+    _diag(f"{E2E_IMAGE} MISSING from pinned store -- pre-warming from {E2E_IMAGE_REF}")
+    pull = subprocess.run(
+        [_podman, "pull", E2E_IMAGE_REF],
+        env=pin_env, capture_output=True, text=True, timeout=900,
+    )
+    if pull.returncode != 0:
+        _diag(f"pre-warm pull FAILED: {pull.stderr.strip()[-400:]}")
+        return
+    subprocess.run(
+        [_podman, "tag", E2E_IMAGE_REF, E2E_IMAGE],
+        env=pin_env, capture_output=True, timeout=30,
+    )
+    _diag(f"pre-warm complete: {E2E_IMAGE_REF} -> {E2E_IMAGE}")
 
 
 @pytest.fixture(scope="session", autouse=True)
