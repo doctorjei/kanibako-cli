@@ -55,15 +55,19 @@ class TestShellExecIntoRunning:
         ).stdout.strip()
         assert id_before, "Could not read container Id before exec"
 
-        # Exec a one-shot command via shell (no -e: the exec-into-running
-        # path does not inject per-run env, so we only assert on the command).
+        # Exec a one-shot command via shell, carrying a per-run -e var.
+        # Guards that -e propagates on the exec-into-running path (it was
+        # previously dropped because the early exec branch never built the
+        # container env). printenv must echo the value we passed.
         result = run_kanibako(
-            ["shell", "e2e-exec", "--", "echo", "exec-ok"],
+            ["shell", "e2e-exec",
+             "-e", "KANIBAKO_E2E_EXEC_MARKER=exec-marker-77",
+             "--", "printenv", "KANIBAKO_E2E_EXEC_MARKER"],
             env=env,
         )
         assert result.returncode == 0, f"shell exec failed: {result.stderr}"
-        assert "exec-ok" in result.stdout, (
-            f"Expected command output, got: {result.stdout!r}"
+        assert "exec-marker-77" in result.stdout, (
+            f"Expected per-run -e var in exec output, got: {result.stdout!r}"
         )
 
         # The container Id must be unchanged — it exec'd in, did not recreate.
