@@ -81,7 +81,7 @@ class TestTemplateCreate:
             #    becomes `bash sh -lc CMD` and mangles the command.
             java = subprocess.run(
                 [_podman, "run", "--rm", "--entrypoint", "sh", image_name,
-                 "-lc", "java -version"],
+                 "-c", "java -version"],
                 capture_output=True,
                 text=True,
                 timeout=120,

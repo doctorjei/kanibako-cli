@@ -251,17 +251,20 @@ jobs:
 
           IMAGE="kanibako-template-${{ matrix.template }}:ci"
 
-          # Diagnostic: confirm the image runs a plain shell at all. We MUST
-          # override the base ENTRYPOINT (kanibako-entrypoint -> `exec /bin/bash
-          # "$@"`): without --entrypoint, `docker run IMAGE sh -lc CMD` becomes
-          # `bash sh -lc CMD`, which mangles the command. --entrypoint sh runs
-          # the check directly as `sh -lc CMD`.
+          # Run each check directly as `sh -c CMD`. Two things matter:
+          #  - --entrypoint sh: the base sets ENTRYPOINT=[kanibako-entrypoint]
+          #    (`exec /bin/bash "$@"`); without the override `docker run IMAGE sh
+          #    -c CMD` becomes `bash sh -c CMD` and mangles the command.
+          #  - `-c` (NOT `-lc`): a login shell re-derives PATH from /etc/profile
+          #    and drops the image's ENV PATH additions (e.g. the android SDK or
+          #    bun dirs). A non-login shell keeps the image ENV PATH authoritative
+          #    — which is exactly the "is the tool installed and runnable" check.
           echo "::group::image sanity ($IMAGE)"
-          docker run --rm --entrypoint sh "$IMAGE" -lc 'echo "arch=$(uname -m) sh=$(readlink -f /bin/sh)"'
+          docker run --rm --entrypoint sh "$IMAGE" -c 'echo "arch=$(uname -m) sh=$(readlink -f /bin/sh)"'
           echo "::endgroup::"
 
           for cmd in "${CHECKS[@]}"; do
             echo "::group::check: $cmd"
-            docker run --rm --entrypoint sh "$IMAGE" -lc "$cmd"
+            docker run --rm --entrypoint sh "$IMAGE" -c "$cmd"
             echo "::endgroup::"
           done
