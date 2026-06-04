@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from kanibako.container import ContainerRuntime
 
 _TEMPLATE_PREFIX = "kanibako-template-"
+_RIG_PREFIX = "kanibako-rig-"
 _VALID_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # Bundled template Containerfiles follow this naming convention. Only files
@@ -57,6 +58,20 @@ def template_image_name(name: str) -> str:
     """
     validate_template_name(name)
     return f"{_TEMPLATE_PREFIX}{name}"
+
+
+def rig_image_name(name: str) -> str:
+    """Return the OCI image name for an *extended* rig.
+
+    Extended rigs (interactively built, non-reproducible) live under the
+    ``kanibako-rig-`` prefix, distinct from the ``kanibako-template-`` prefix
+    used for buildable templates. Validates *name* the same way
+    :func:`template_image_name` does.
+
+    Raises *ValueError* if *name* is invalid.
+    """
+    validate_template_name(name)
+    return f"{_RIG_PREFIX}{name}"
 
 
 class BundledTemplate(NamedTuple):
