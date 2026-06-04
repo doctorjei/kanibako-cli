@@ -1,4 +1,7 @@
 # kanibako-template: Java, Kotlin, Maven (JVM toolchain)
+# kanibako-template-check: java -version
+# kanibako-template-check: kotlin -version
+# kanibako-template-check: mvn -version
 # JVM development template: Java, Kotlin, Maven.
 # Built on top of any kanibako base image.
 #

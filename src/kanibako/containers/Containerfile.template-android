@@ -1,4 +1,7 @@
 # kanibako-template: Android SDK command-line tools + NDK
+# kanibako-template-check: java -version
+# kanibako-template-check: sdkmanager --version
+# kanibako-template-check: adb --version
 # Android development template: command-line tools, platform-tools,
 # platform android-34, build-tools 34.0.0, NDK, and a JDK.
 # Built on top of any kanibako base image.

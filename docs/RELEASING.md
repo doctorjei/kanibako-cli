@@ -50,13 +50,16 @@ promote step ship exactly what the rc tested.
 So: `main` moves `:edge`; a release moves `:latest`. They are deliberately
 decoupled.
 
-**Templates** (`kanibako-template-<name>-*`, one per
-`src/kanibako/containers/Containerfile.template-*`; currently `jvm`, `systems`,
-`android`, `dotnet`, `js`) stay **`:latest`-only**, published by
-`build-images.yml` on `main` pushes through its dynamic `discover-templates` →
-`build-templates` matrix (adding a `Containerfile.template-*` file builds and
-publishes a new one with no workflow edit). They are **out of scope** of the
-promote step for now (tracked under #74).
+**Templates** (one per `src/kanibako/containers/Containerfile.template-*`;
+currently `jvm`, `systems`, `android`, `dotnet`, `js`) are **not published** to
+any registry. They are built **locally** on the user's host via
+`kanibako rig create <name> --template <name>`. `build-images.yml` on `main`
+pushes runs a dynamic `discover-templates` → `build-templates` matrix that
+**build-verifies** each template (building it and running its toolchain smoke
+checks, declared via `# kanibako-template-check:` headers) but does **not** push
+the resulting images. Adding a `Containerfile.template-*` file extends this
+verification with no workflow edit. Since they are never published, templates
+are **not a release artifact** and have no part in the promote step.
 
 The four base variants and their droste base images (from `release.yml` /
 `build-images.yml`):
@@ -244,10 +247,10 @@ built-in `GITHUB_TOKEN`. **No extra secret is required.**
 
 ## 7. Deferred / out of scope
 
-- **Templates in promote** — the bundled template images (one per
-  `Containerfile.template-*`, data-driven via `build-images.yml`'s
-  `discover-templates` matrix) are not promoted; they remain `:latest`-only.
-  Deferred, tracked under #74.
+- **Templates** — bundled templates (one per `Containerfile.template-*`) are
+  built locally and CI-verified (build + toolchain smoke checks) by
+  `build-images.yml`; they are **not published** to any registry and so are not
+  a release artifact. Nothing template-related is part of the promote step.
 - **Tag-immutability rulesets** — making release tags (`v<ver>`) immutable
   while rc tags (`v<ver>-rc<n>`) stay mutable is a separate repo-settings
   follow-up, not yet applied.

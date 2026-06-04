@@ -51,8 +51,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     create_p.add_argument("name", help="Template name (e.g. jvm, systems)")
     create_p.add_argument(
-        "--base", default="kanibako-oci",
-        help="Base image to start from (default: kanibako-oci)",
+        "--base", default=None,
+        help="Base image to start from. With --template, defaults to the "
+             "template's declared base; without --template, defaults to "
+             "kanibako-oci.",
     )
     create_p.add_argument(
         "--template",
@@ -149,7 +151,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    base = args.base
+    base = args.base or "kanibako-oci"
     name = args.name
     try:
         image_name = template_image_name(name)
@@ -230,11 +232,20 @@ def _create_from_template(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    merged = load_merged_config(config_file, None)
-    base_image = resolve_image_name(args.base, merged.container_image)
-    build_args = {"BASE_IMAGE": base_image}
-
-    print(f"Building template '{template}' from {base_image}...")
+    build_args: dict[str, str] | None
+    if args.base is None:
+        # Let the Containerfile's declared ARG BASE_IMAGE default stand.
+        build_args = None
+        print(f"Building template '{template}' from its default base...")
+    else:
+        merged = load_merged_config(config_file, None)
+        base_image = resolve_image_name(args.base, merged.container_image)
+        build_args = {"BASE_IMAGE": base_image}
+        print(
+            f"Note: overriding template '{template}' default base "
+            f"with {base_image}."
+        )
+        print(f"Building template '{template}' from {base_image}...")
     print()
     rc = runtime.rebuild(image_name, containerfile, containerfile.parent, build_args=build_args)
     if rc == 0:

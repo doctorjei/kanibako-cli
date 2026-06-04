@@ -736,7 +736,7 @@ class TestImageCreate:
 
 
 class TestImageCreateTemplate:
-    def _make_args(self, name="my-jvm", base="kanibako-lxc", template="jvm"):
+    def _make_args(self, name="my-jvm", base=None, template="jvm"):
         return argparse.Namespace(
             name=name, base=base, template=template,
             always_commit=False, no_commit_on_error=False,
@@ -744,7 +744,8 @@ class TestImageCreateTemplate:
 
     def test_template_builds_containerfile(self, tmp_home, config_file, credentials_dir, capsys):
         """--template builds the bundled Containerfile.template-<name> instead
-        of running an interactive session + commit."""
+        of running an interactive session + commit. With no --base, the
+        template's declared base default stands (build_args=None)."""
         from kanibako.commands.image import run_create
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
@@ -766,12 +767,40 @@ class TestImageCreateTemplate:
             # Containerfile path points at the jvm template.
             containerfile = call_args[1]
             assert str(containerfile).endswith("Containerfile.template-jvm")
-            # BASE_IMAGE build-arg resolved from --base kanibako-lxc.
-            build_args = call_kwargs["build_args"]
-            assert build_args["BASE_IMAGE"] == "ghcr.io/doctorjei/kanibako-lxc:latest"
+            # No --base -> no BASE_IMAGE override; the Containerfile default stands.
+            assert call_kwargs["build_args"] is None
 
         captured = capsys.readouterr()
         assert "Template saved as kanibako-template-my-jvm" in captured.out
+        assert "from its default base" in captured.out
+
+    def test_template_base_override(self, tmp_home, config_file, credentials_dir, capsys):
+        """An explicit --base overrides the template's declared base and prints
+        an override note."""
+        from kanibako.commands.image import run_create, resolve_image_name
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.rebuild.return_value = 0
+            MockRT.return_value = runtime
+
+            rc = run_create(self._make_args(base="kanibako-lxc"))
+            assert rc == 0
+
+            runtime.rebuild.assert_called_once()
+            _call_args, call_kwargs = runtime.rebuild.call_args
+            build_args = call_kwargs["build_args"]
+            assert build_args is not None
+            expected = resolve_image_name(
+                "kanibako-lxc", "ghcr.io/doctorjei/kanibako-oci:latest",
+            )
+            assert build_args["BASE_IMAGE"] == expected
+            assert expected == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
+        captured = capsys.readouterr()
+        # Override note printed when --base is supplied.
+        assert "Note: overriding template 'jvm' default base" in captured.out
+        assert expected in captured.out
 
     def test_unknown_template_lists_available(self, tmp_home, config_file, credentials_dir, capsys):
         """An unknown --template returns non-zero, lists available templates,

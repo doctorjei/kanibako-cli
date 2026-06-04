@@ -8,9 +8,11 @@ import pytest
 
 from kanibako.templates_image import (
     BundledTemplate,
+    _bundled_containers_dir,
     delete_template,
     list_bundled_templates,
     list_templates,
+    read_template_checks,
     template_image_name,
     validate_template_name,
 )
@@ -222,6 +224,101 @@ class TestListBundledTemplatesWithOverride:
 
     def test_default_source_is_bundled(self):
         assert BundledTemplate(name="x", description="y").source == "bundled"
+
+
+class TestReadTemplateChecks:
+    def test_parses_single_check(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "# kanibako-template: Foo desc\n"
+            "# kanibako-template-check: java -version\n"
+            "ARG BASE_IMAGE=kanibako-oci:latest\n"
+            "FROM $BASE_IMAGE\n"
+        )
+        assert read_template_checks(cf) == ("java -version",)
+
+    def test_parses_multiple_checks_in_order(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "# kanibako-template: Foo desc\n"
+            "# kanibako-template-check: java -version\n"
+            "# kanibako-template-check: kotlin -version\n"
+            "# kanibako-template-check: mvn -version\n"
+            "FROM scratch\n"
+        )
+        assert read_template_checks(cf) == (
+            "java -version",
+            "kotlin -version",
+            "mvn -version",
+        )
+
+    def test_ignores_description_header(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "# kanibako-template: Foo desc\n"
+            "FROM scratch\n"
+        )
+        assert read_template_checks(cf) == ()
+
+    def test_returns_empty_when_no_checks(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text("FROM scratch\n")
+        assert read_template_checks(cf) == ()
+
+    def test_stops_at_first_directive_line(self, tmp_path):
+        # A check header appearing AFTER a FROM/ARG line must NOT be picked up.
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "# kanibako-template-check: java -version\n"
+            "ARG BASE_IMAGE=kanibako-oci:latest\n"
+            "FROM $BASE_IMAGE\n"
+            "# kanibako-template-check: should-not-appear\n"
+            "RUN echo hi\n"
+        )
+        assert read_template_checks(cf) == ("java -version",)
+
+    def test_allows_blank_lines_in_leading_block(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "# kanibako-template: Foo desc\n"
+            "\n"
+            "# kanibako-template-check: java -version\n"
+            "\n"
+            "# kanibako-template-check: mvn -version\n"
+            "FROM scratch\n"
+        )
+        assert read_template_checks(cf) == (
+            "java -version",
+            "mvn -version",
+        )
+
+    def test_strips_surrounding_whitespace(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "#   kanibako-template-check:    java -version   \n"
+            "FROM scratch\n"
+        )
+        assert read_template_checks(cf) == ("java -version",)
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        assert read_template_checks(tmp_path / "nope") == ()
+
+
+class TestBundledTemplatesDeclareChecks:
+    @pytest.mark.parametrize(
+        "template",
+        list_bundled_templates(),
+        ids=lambda t: t.name,
+    )
+    def test_every_bundled_template_declares_at_least_one_check(self, template):
+        containers_dir = _bundled_containers_dir()
+        assert containers_dir is not None
+        cf = containers_dir / f"Containerfile.template-{template.name}"
+        checks = read_template_checks(cf)
+        assert len(checks) >= 1, (
+            f"bundled template {template.name!r} declares no "
+            "# kanibako-template-check: header"
+        )
 
 
 class TestDeleteTemplate:
