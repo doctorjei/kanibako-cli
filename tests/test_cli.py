@@ -60,6 +60,16 @@ class TestParser:
         assert args.secure is True
         assert args.image == "my-image:v1"
 
+    def test_start_rig_synonym(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "x", "--rig", "jvm"])
+        assert args.image == "jvm"
+
+    def test_start_image_still_works(self):
+        parser = build_parser()
+        args = parser.parse_args(["start", "x", "--image", "jvm"])
+        assert args.image == "jvm"
+
     def test_start_resume_flag(self):
         parser = build_parser()
         args = parser.parse_args(["start", "-R"])
@@ -105,6 +115,16 @@ class TestParser:
         parser = build_parser()
         args = parser.parse_args(["shell"])
         assert args.command == "shell"
+
+    def test_shell_rig_synonym(self):
+        parser = build_parser()
+        args = parser.parse_args(["shell", "x", "--rig", "jvm"])
+        assert args.image == "jvm"
+
+    def test_shell_image_still_works(self):
+        parser = build_parser()
+        args = parser.parse_args(["shell", "x", "--image", "jvm"])
+        assert args.image == "jvm"
 
     def test_box_command(self):
         parser = build_parser()
@@ -734,6 +754,16 @@ class TestParser:
         args = parser.parse_args(["create", "-i", "myimage:v1"])
         assert args.command == "create"
         assert args.image == "myimage:v1"
+
+    def test_box_create_rig_synonym(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "x", "--rig", "X"])
+        assert args.image == "X"
+
+    def test_box_create_image_still_works(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "x", "--image", "X"])
+        assert args.image == "X"
 
     def test_create_top_level_no_path(self):
         parser = build_parser()
