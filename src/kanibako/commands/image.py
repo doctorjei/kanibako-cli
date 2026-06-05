@@ -6,6 +6,7 @@ import argparse
 import json
 import shutil
 import sys
+import tarfile
 import tempfile
 import urllib.request
 import urllib.error
@@ -17,6 +18,12 @@ from kanibako.container import ContainerRuntime
 from kanibako.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
+from kanibako.rig_bundle import (
+    BUNDLE_SUFFIX,
+    pack_bundle,
+    read_bundle_meta,
+    unpack_bundle,
+)
 from kanibako.rig_meta import RigMeta, write_rig_meta
 from kanibako.rig_registry import (
     RigRecord,
@@ -125,6 +132,25 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     extend_commit.add_argument("--always-commit", action="store_true", help="Commit even if the container exits with an error")
     extend_commit.add_argument("--no-commit-on-error", action="store_true", help="Skip commit if the container exits with an error")
     extend_p.set_defaults(func=run_extend)
+
+    # kanibako rig export
+    export_p = image_sub.add_parser(
+        "export",
+        help="Export an extended rig to a portable .rig.tgz bundle",
+        description="Bundle an extended rig (its image + in-image rig.yaml) into a single .rig.tgz for transfer. Only extended rigs export; prefabs/templates travel by locator (use 'rig add').",
+    )
+    export_p.add_argument("name", help="Extended rig name to export")
+    export_p.add_argument("--out", default=None, help="Output path (default: <name>.rig.tgz)")
+    export_p.set_defaults(func=run_export)
+
+    # kanibako rig import
+    import_p = image_sub.add_parser(
+        "import",
+        help="Import an extended rig from a .rig.tgz bundle",
+        description="Restore an extended rig (image + registry row) from a .rig.tgz produced by 'rig export'.",
+    )
+    import_p.add_argument("file", help="Path to a .rig.tgz bundle")
+    import_p.set_defaults(func=run_import)
 
     # kanibako image list (default behavior)
     list_p = image_sub.add_parser(
@@ -1124,3 +1150,151 @@ def _update_all(
     else:
         print(f"Updated {len(images)} rig(s) successfully.")
         return 0
+
+
+def run_export(args: argparse.Namespace) -> int:
+    """Export an *extended* rig to a portable ``.rig.tgz`` bundle.
+
+    Only extended rigs export: prefabs/templates have an external source and
+    travel by locator ('rig add'). Saves ``kanibako-rig-<name>`` to an
+    ``image.tar``, reconstructs the sidecar ``rig.yaml`` from the registry row
+    (the authoritative copy still rides inside the image), and packs both.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        image = rig_image_name(args.name)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    registry = load_registry(registry_path(std))
+    record = registry.get(args.name)
+
+    is_extended = (
+        record is not None and record.kind == "extended"
+    ) or runtime.image_exists(image)
+    if not is_extended:
+        print(
+            f"Error: '{args.name}' is not an extended rig; export is only for "
+            "extended rigs. Prefabs and templates travel by locator -- use "
+            "'rig add'.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not runtime.image_exists(image):
+        print(
+            f"Error: rig image '{image}' is not present locally; nothing to "
+            "export (prep or import it first).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Reconstruct the sidecar metadata from the registry row. The authoritative
+    # copy still rides inside image.tar at /etc/kanibako/rig.yaml.
+    if record is not None:
+        meta = RigMeta(
+            name=args.name,
+            kind="extended",
+            parent=record.parent,
+            foundation_source=record.foundation_source,
+            reproducible=bool(record.reproducible),
+            created=record.created,
+        )
+    else:
+        meta = RigMeta(name=args.name)
+
+    out = Path(args.out) if args.out else Path(f"{args.name}{BUNDLE_SUFFIX}")
+
+    with tempfile.TemporaryDirectory() as td:
+        rig_yaml = Path(td) / "rig.yaml"
+        write_rig_meta(meta, rig_yaml)
+        image_tar = Path(td) / "image.tar"
+        if not runtime.save(image, image_tar):
+            print(f"Error: failed to save image '{image}'.", file=sys.stderr)
+            return 1
+        pack_bundle(out, rig_yaml, image_tar)
+    print(f"Exported '{args.name}' -> {out}")
+    return 0
+
+
+def run_import(args: argparse.Namespace) -> int:
+    """Import an *extended* rig from a ``.rig.tgz`` bundle.
+
+    Loads the bundle's ``image.tar`` and records an extended registry row from
+    the bundle's ``rig.yaml`` metadata.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    tgz = Path(args.file)
+    if not tgz.is_file():
+        print(f"Error: bundle not found: {tgz}", file=sys.stderr)
+        return 1
+    try:
+        meta = read_bundle_meta(tgz)
+    except (ValueError, OSError, tarfile.ReadError) as e:
+        print(f"Error: not a valid rig bundle: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        target = rig_image_name(meta.name)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory() as td:
+        try:
+            members = unpack_bundle(tgz, Path(td))
+        except ValueError as e:
+            print(f"Error: invalid rig bundle: {e}", file=sys.stderr)
+            return 1
+        loaded_ref = runtime.load(members["image_tar"])
+        if loaded_ref is None:
+            print("Error: failed to load the bundle's image.", file=sys.stderr)
+            return 1
+        # Our own bundles save kanibako-rig-<name>, so the loaded image already
+        # carries the right repo name (image_exists(target) resolves :latest).
+        # Auto-retag of a foreign/mistagged bundle is a deferred refinement; we
+        # deliberately do NOT add a 'podman tag' wrapper here (Task 4.1 wrappers
+        # are frozen). Such a bundle is rejected with a clear error instead.
+        if not runtime.image_exists(target):
+            print(
+                f"Error: loaded image '{loaded_ref or '<untagged>'}' does not "
+                f"match expected '{target}'; the bundle may be foreign or "
+                "mistagged.",
+                file=sys.stderr,
+            )
+            return 1
+
+    upsert(
+        registry_path(std),
+        RigRecord(
+            name=meta.name,
+            kind="extended",
+            image=target,
+            parent=meta.parent,
+            foundation_source=meta.foundation_source,
+            reproducible=bool(meta.reproducible),
+            created=meta.created,
+            source_type="import",
+        ),
+    )
+    print(f"Imported extended rig '{meta.name}' as {target}.")
+    return 0

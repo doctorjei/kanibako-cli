@@ -1756,3 +1756,245 @@ class TestContainerRuntimeImageInspect:
             rt = ContainerRuntime(command="docker")
             result = rt.image_inspect("test-image")
             assert result == {"Id": "sha256:def", "Size": 200}
+
+
+class TestRigExportImport:
+    """``rig export NAME`` / ``rig import FILE``: bundle an extended rig to a
+    portable ``.rig.tgz`` and restore one (image + registry row)."""
+
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def _runtime(self):
+        runtime = MagicMock()
+        runtime.image_exists.return_value = False
+        return runtime
+
+    @staticmethod
+    def _fake_save(image, out):
+        out.write_bytes(b"fake-image-tar")
+        return True
+
+    def test_export_extended_rig_produces_bundle(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """An extended rig exports to a real .rig.tgz with rig.yaml + image.tar."""
+        import tarfile
+
+        from kanibako.commands.image import run_export
+        from kanibako.rig_bundle import read_bundle_meta
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(
+                name="mydev", kind="extended", image="kanibako-rig-mydev",
+                parent="kanibako-template-jvm", foundation_source="jvm",
+                created="2026-06-05T00:00:00+00:00",
+            ),
+        )
+
+        out = tmp_path / "mydev.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = True
+            runtime.save.side_effect = self._fake_save
+            MockRT.return_value = runtime
+
+            rc = run_export(argparse.Namespace(name="mydev", out=str(out)))
+            assert rc == 0
+
+        assert out.is_file()
+        names = tarfile.open(out).getnames()
+        assert "rig.yaml" in names
+        assert "image.tar" in names
+        meta = read_bundle_meta(out)
+        assert meta.name == "mydev"
+        assert meta.parent == "kanibako-template-jvm"
+
+    def test_export_non_extended_errors(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A non-extended name (no row, no image) errors with rc 1, no file."""
+        from kanibako.commands.image import run_export
+
+        out = tmp_path / "nope.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = False
+            MockRT.return_value = runtime
+
+            rc = run_export(argparse.Namespace(name="nope", out=str(out)))
+            assert rc == 1
+
+        assert "extended" in capsys.readouterr().err
+        assert not out.exists()
+
+    def test_export_extended_row_but_image_missing(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Registered extended rig whose image is absent errors with rc 1."""
+        from kanibako.commands.image import run_export
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(name="mydev", kind="extended", image="kanibako-rig-mydev"),
+        )
+
+        out = tmp_path / "mydev.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = False
+            MockRT.return_value = runtime
+
+            rc = run_export(argparse.Namespace(name="mydev", out=str(out)))
+            assert rc == 1
+
+        assert "not present" in capsys.readouterr().err
+        assert not out.exists()
+
+    def _build_bundle(self, tmp_path):
+        """Build a real .rig.tgz with rig.yaml + a fake image.tar."""
+        from kanibako.rig_bundle import pack_bundle
+        from kanibako.rig_meta import RigMeta, write_rig_meta
+
+        rig_yaml = tmp_path / "rig.yaml"
+        write_rig_meta(
+            RigMeta(
+                name="mydev", parent="kanibako-template-jvm",
+                foundation_source="jvm", created="2026-06-05T00:00:00+00:00",
+            ),
+            rig_yaml,
+        )
+        image_tar = tmp_path / "image.tar"
+        image_tar.write_bytes(b"x")
+        bundle = tmp_path / "b.rig.tgz"
+        pack_bundle(bundle, rig_yaml, image_tar)
+        return bundle
+
+    def test_import_loads_image_and_writes_row(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Importing a bundle loads the image and records an extended row."""
+        from kanibako.commands.image import run_import
+        from kanibako.rig_registry import load_registry, registry_path
+
+        std = self._std(config_file)
+        bundle = self._build_bundle(tmp_path)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.load.return_value = "kanibako-rig-mydev:latest"
+            runtime.image_exists.return_value = True
+            MockRT.return_value = runtime
+
+            rc = run_import(argparse.Namespace(file=str(bundle)))
+            assert rc == 0
+            runtime.load.assert_called_once()
+
+        reg = load_registry(registry_path(std))
+        assert reg["mydev"].kind == "extended"
+        assert reg["mydev"].image == "kanibako-rig-mydev"
+        assert reg["mydev"].source_type == "import"
+        assert reg["mydev"].parent == "kanibako-template-jvm"
+
+    def test_export_then_import_round_trip(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Export an extended rig, then import the produced file -> row present."""
+        from kanibako.commands.image import run_export, run_import
+        from kanibako.rig_registry import (
+            RigRecord,
+            load_registry,
+            registry_path,
+            remove,
+            upsert,
+        )
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(
+                name="mydev", kind="extended", image="kanibako-rig-mydev",
+                parent="kanibako-template-jvm", foundation_source="jvm",
+                created="2026-06-05T00:00:00+00:00",
+            ),
+        )
+
+        out = tmp_path / "rt.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = True
+            runtime.save.side_effect = self._fake_save
+            MockRT.return_value = runtime
+            assert run_export(argparse.Namespace(name="mydev", out=str(out))) == 0
+
+        # Drop the row so the import is what re-creates it.
+        remove(registry_path(std), "mydev")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.load.return_value = "kanibako-rig-mydev:latest"
+            runtime.image_exists.return_value = True
+            MockRT.return_value = runtime
+            assert run_import(argparse.Namespace(file=str(out))) == 0
+
+        reg = load_registry(registry_path(std))
+        assert reg["mydev"].kind == "extended"
+        assert reg["mydev"].source_type == "import"
+
+    def test_import_missing_file_errors(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A nonexistent bundle path errors with rc 1."""
+        from kanibako.commands.image import run_import
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = self._runtime()
+            rc = run_import(
+                argparse.Namespace(file=str(tmp_path / "nope.rig.tgz")),
+            )
+            assert rc == 1
+
+        assert "not found" in capsys.readouterr().err
+
+    def test_import_non_bundle_errors(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Garbage masquerading as a bundle errors with rc 1."""
+        from kanibako.commands.image import run_import
+
+        bad = tmp_path / "bad.rig.tgz"
+        bad.write_bytes(b"not a tar")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = self._runtime()
+            rc = run_import(argparse.Namespace(file=str(bad)))
+            assert rc == 1
+
+        assert capsys.readouterr().err.strip()
+
+    def test_import_load_failure_writes_no_row(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """When runtime.load returns None, rc 1 and no registry row is written."""
+        from kanibako.commands.image import run_import
+        from kanibako.rig_registry import load_registry, registry_path
+
+        std = self._std(config_file)
+        bundle = self._build_bundle(tmp_path)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.load.return_value = None
+            MockRT.return_value = runtime
+
+            rc = run_import(argparse.Namespace(file=str(bundle)))
+            assert rc == 1
+
+        assert "failed to load" in capsys.readouterr().err
+        assert "mydev" not in load_registry(registry_path(std))
