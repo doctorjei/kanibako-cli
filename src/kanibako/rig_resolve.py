@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from kanibako.config import KanibakoConfig
     from kanibako.container import ContainerRuntime
     from kanibako.paths import StandardPaths
+    from kanibako.rig_registry import RigRecord
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,7 @@ def resolve_rig(
     std: StandardPaths,
     merged: KanibakoConfig,
     *,
-    registry: object | None = None,
+    registry: dict[str, RigRecord] | None = None,
 ) -> RigResolution:
     """Classify rig *name* into a :class:`RigResolution`. Pure -- no side effects.
 
@@ -79,8 +80,11 @@ def resolve_rig(
        :func:`resolve_image_reference`; the rig is a ``"prefab"`` made ready by
        ``"pull"`` (or ``"none"`` if the resolved image already exists locally).
 
-    *registry* is accepted for forward compatibility (a later increment wires a
-    durable locator registry); ``None`` skips that step.
+    Between steps 1 and 2, if *registry* is provided and contains *name*, the
+    matching record decides the result: an ``"extended"`` record resolves to its
+    recorded image (``"none"`` if present locally, else ``"missing"``); any other
+    (prefab) record resolves to its image / source reference made ready by
+    ``"pull"`` (or ``"none"`` if already local). Passing ``None`` skips this step.
     """
     # --- (a) Already-prepped local image -------------------------------
     # rig_image_name / template_image_name raise on names that aren't valid
@@ -106,6 +110,44 @@ def resolve_rig(
             kind="extended",
             image=extended_image,
             prep_action="none",
+        )
+
+    # --- (a2) Host registry (added rigs: prefabs / imported extended) --
+    if registry is not None and name in registry:
+        record = registry[name]
+        if record.kind == "extended":
+            # Extended rigs normally carry their recorded image and a valid
+            # short name (so extended_image is set). Guard the malformed case
+            # -- no recorded image AND a name that isn't a valid default-image
+            # name (extended_image is None) -- by falling back to the name
+            # itself, rather than re-calling rig_image_name(name) which would
+            # raise the same ValueError that already nulled extended_image.
+            img = record.image or extended_image or name
+            action = "none" if runtime.image_exists(img) else "missing"
+            return RigResolution(
+                name=name,
+                kind="extended",
+                image=img,
+                prep_action=action,
+                source_ref=record.source,
+            )
+        # prefab (or any other registry kind): pull-based.
+        if record.image:
+            img = record.image
+        else:
+            # Lazy import to avoid a circular import (see step (c)).
+            from kanibako.commands.image import resolve_image_reference
+
+            img = resolve_image_reference(
+                record.source or name, runtime, merged.container_image
+            )
+        action = "none" if runtime.image_exists(img) else "pull"
+        return RigResolution(
+            name=name,
+            kind=record.kind,
+            image=img,
+            prep_action=action,
+            source_ref=record.source,
         )
 
     # --- (b) Discovered template (buildable Containerfile) -------------

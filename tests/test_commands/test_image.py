@@ -18,11 +18,12 @@ class TestImage:
         """Smoke test: image list runs without crashing."""
         from kanibako.commands.image import run_list
 
-        args = argparse.Namespace(quiet=False)
+        args = argparse.Namespace(quiet=False, as_json=False)
         rc = run_list(args)
         assert rc == 0
 
         captured = capsys.readouterr()
+        assert "Prefabs" in captured.out
         assert "Current rig:" in captured.out
 
     def test_quiet_mode(self, config_file, tmp_home, credentials_dir, capsys):
@@ -61,34 +62,116 @@ class TestImage:
         captured = capsys.readouterr()
         assert captured.out.strip() == ""
 
-    def test_variants_and_templates_listed_separately(self, config_file, tmp_home, credentials_dir, capsys):
-        """Buildable base variant and example templates appear under distinct headings."""
+    def test_groups_by_kind(self, config_file, tmp_home, credentials_dir, capsys):
+        """list groups rigs under Prefabs / Templates / Extended headings."""
         from kanibako.commands.image import run_list
 
-        args = argparse.Namespace(quiet=False)
+        args = argparse.Namespace(quiet=False, as_json=False)
         rc = run_list(args)
         assert rc == 0
 
         out = capsys.readouterr().out
-        assert "Built-in rig variants:" in out
-        assert "Example templates" in out
+        assert "Prefabs (pull to prep):" in out
+        assert "Templates (build to prep):" in out
+        assert "Extended (interactive; export/import to move):" in out
 
-        variants_part, _, templates_part = out.partition("Example templates")
-        # kanibako is buildable -> under built-in variants, not templates
-        assert "kanibako" in variants_part
-        assert "jvm" not in variants_part
-        # jvm/systems are example templates -> only after the templates heading
+        prefabs_part, _, rest = out.partition("Templates (build to prep):")
+        templates_part, _, extended_part = rest.partition(
+            "Extended (interactive; export/import to move):"
+        )
+        # Known base prefabs land under Prefabs.
+        assert "oci" in prefabs_part
+        # Bundled templates land under Templates, tagged [bundled].
         assert "jvm" in templates_part
-        assert "systems" in templates_part
+        assert "[bundled]" in templates_part
+
+    def test_derived_status_prepped_vs_unprepped(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Status is derived live from the local store, not a stored field."""
+        from kanibako.commands.image import run_list
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            # Only kanibako-oci is present locally; everything else is absent.
+            runtime.image_exists.side_effect = lambda img: img == "kanibako-oci:latest"
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(quiet=False, as_json=False)
+            rc = run_list(args)
+            assert rc == 0
+
+        out = capsys.readouterr().out
+        prefabs_part, _, _ = out.partition("Templates (build to prep):")
+        lines = prefabs_part.splitlines()
+        oci_line = next(line for line in lines if line.strip().startswith("oci"))
+        assert "prepped" in oci_line
+        min_line = next(line for line in lines if line.strip().startswith("min"))
+        assert "unprepped" in min_line
+
+    def test_extended_local_image_listed(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A local kanibako-rig-* image appears under Extended as prepped."""
+        from kanibako.commands.image import run_list
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.image_exists.return_value = False
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = [
+                ("kanibako-rig-foo:latest", "1 GB"),
+            ]
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(quiet=False, as_json=False)
+            rc = run_list(args)
+            assert rc == 0
+
+        out = capsys.readouterr().out
+        _, _, extended_part = out.partition(
+            "Extended (interactive; export/import to move):"
+        )
+        foo_line = next(
+            line for line in extended_part.splitlines() if line.strip().startswith("foo")
+        )
+        assert "prepped" in foo_line
+
+    def test_json_output(self, config_file, tmp_home, credentials_dir, capsys):
+        """--json emits a parseable document with the expected groups."""
+        from kanibako.commands.image import run_list
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.image_exists.side_effect = lambda img: img == "kanibako-oci:latest"
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(quiet=False, as_json=True)
+            rc = run_list(args)
+            assert rc == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert set(data) == {"prefabs", "templates", "extended", "current"}
+        oci = next(p for p in data["prefabs"] if p["name"] == "oci")
+        assert oci["status"] == "prepped"
+        min_ = next(p for p in data["prefabs"] if p["name"] == "min")
+        assert min_["status"] == "unprepped"
 
 
 class TestImageInfo:
     def test_info_shows_details(self, config_file, tmp_home, credentials_dir, capsys):
-        """image info displays image metadata."""
+        """image info displays kind, status, and image metadata when prepped."""
         from kanibako.commands.image import run_info
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            # Only the prefab ref exists -> resolves as a prepped prefab (not a
+            # template/extended candidate); inspect then runs.
+            runtime.image_exists.side_effect = lambda img: img == "kanibako-oci:latest"
             runtime.image_inspect.return_value = {
                 "Id": "sha256:abc123def456789",
                 "Created": "2026-03-01T10:00:00Z",
@@ -103,18 +186,22 @@ class TestImageInfo:
 
         captured = capsys.readouterr()
         assert "Name:" in captured.out
+        assert "Kind:    prefab" in captured.out
+        assert "Status:  prepped" in captured.out
         assert "ID:" in captured.out
         assert "Created:" in captured.out
         assert "1.5 GB" in captured.out
         assert "org.example.key=value" in captured.out
 
     def test_info_not_found(self, config_file, tmp_home, credentials_dir, capsys):
-        """image info returns 1 for missing image."""
+        """image info returns 1 for an unknown speculative prefab name."""
         from kanibako.commands.image import run_info
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.return_value = False
             runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
             MockRT.return_value = runtime
 
             args = argparse.Namespace(image="nosuch")
@@ -130,6 +217,7 @@ class TestImageInfo:
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.return_value = True
             runtime.image_inspect.return_value = {
                 "Id": "sha256:abc",
                 "Size": 500_000_000,
@@ -149,6 +237,7 @@ class TestImageInfo:
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.return_value = True
             runtime.image_inspect.return_value = {
                 "Id": "sha256:abc",
             }
@@ -160,6 +249,30 @@ class TestImageInfo:
 
         captured = capsys.readouterr()
         assert "Labels" not in captured.out
+
+    def test_info_template_unprepped_shows_provenance(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """An unprepped bundled template shows Kind/Status + Containerfile/Checks."""
+        from kanibako.commands.image import run_info
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.image_exists.return_value = False  # not built -> unprepped
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(image="jvm")
+            rc = run_info(args)
+            assert rc == 0
+
+        out = capsys.readouterr().out
+        assert "Kind:    template" in out
+        assert "Status:  unprepped" in out
+        assert "Containerfile:" in out
+        assert "Checks:" in out
+        assert "java -version" in out
 
 
 class TestImageRm:
@@ -524,6 +637,300 @@ class TestImagePrep:
         assert ns.name == "jvm"
 
 
+class TestRigAdd:
+    def _args(self, source, name=None, as_=None, force=False):
+        return argparse.Namespace(source=source, name=name, as_=as_, force=force)
+
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def test_add_image_ref_records_row_no_pull(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """rig add of a registry ref records a prefab row, never pulls."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import get, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args("ghcr.io/corp/base:1.0"))
+            assert rc == 0
+            runtime.pull.assert_not_called()
+            runtime.load.assert_not_called()
+
+        rec = get(registry_path(std), "corp/base:1.0")
+        assert rec is not None
+        assert rec.kind == "prefab"
+        assert rec.source_type == "ref"
+        assert rec.source == "ghcr.io/corp/base:1.0"
+        assert "Added prefab 'corp/base:1.0'" in capsys.readouterr().out
+
+    def test_add_template_installs_containerfile_no_row(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """rig add of a Containerfile installs it under containers/, no row."""
+        from kanibako.commands.image import run_add
+        from kanibako.containerfiles import get_containerfile
+        from kanibako.rig_registry import load_registry, registry_path
+
+        cf = tmp_path / "Containerfile.myjvm"
+        cf.write_text("FROM ubuntu\nRUN echo hi\n")
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args(str(cf)))
+            assert rc == 0
+
+        containers_dir = std.data_path / "containers"
+        installed = get_containerfile("template-myjvm", containers_dir)
+        assert installed is not None
+        assert installed.name == "Containerfile.template-myjvm"
+        # No registry row for templates.
+        assert load_registry(registry_path(std)) == {}
+        assert "Added template 'myjvm'" in capsys.readouterr().out
+
+    def test_add_image_tar_loads_and_records(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """rig add of an image tar loads it and records a file-sourced row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import get, registry_path
+
+        tar = tmp_path / "img.tar"
+        tar.write_text("fake")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.detect_source_kind", return_value="image"), \
+                patch("kanibako.commands.image.derive_name", return_value="foo"):
+            runtime = MagicMock()
+            # load() returns the actually-loaded image ref (ground truth).
+            runtime.load.return_value = "loaded/app:2.0"
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args(str(tar), name="foo"))
+            assert rc == 0
+            runtime.load.assert_called_once()
+
+        rec = get(registry_path(std), "foo")
+        assert rec is not None
+        assert rec.kind == "prefab"
+        assert rec.source_type == "file"
+        # The recorded image is what load() reported, not a filename guess.
+        assert rec.image == "loaded/app:2.0"
+        assert "Added prefab 'foo' from archive." in capsys.readouterr().out
+
+    def test_add_image_tar_untagged_returns_1(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """An archive with no RepoTag (load() -> '') errors and writes no row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import load_registry, registry_path
+
+        tar = tmp_path / "img.tar"
+        tar.write_text("fake")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.detect_source_kind", return_value="image"), \
+                patch("kanibako.commands.image.derive_name", return_value="foo"):
+            runtime = MagicMock()
+            runtime.load.return_value = ""
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args(str(tar), name="foo"))
+            assert rc == 1
+
+        assert load_registry(registry_path(std)) == {}
+        assert "no image tag" in capsys.readouterr().err
+
+    def test_add_image_tar_load_failure_returns_1(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A failed runtime.load surfaces an error and writes no row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import load_registry, registry_path
+
+        tar = tmp_path / "img.tar"
+        tar.write_text("fake")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.detect_source_kind", return_value="image"), \
+                patch("kanibako.commands.image.derive_name", return_value="foo"):
+            runtime = MagicMock()
+            runtime.load.return_value = None
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args(str(tar), name="foo"))
+            assert rc == 1
+
+        assert load_registry(registry_path(std)) == {}
+        assert "failed to load image archive" in capsys.readouterr().err
+
+    def test_add_collision_without_force_fails(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """Adding over an existing name without --force returns 1."""
+        from kanibako.commands.image import run_add
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            assert run_add(self._args("ghcr.io/corp/base:1.0")) == 0
+            capsys.readouterr()
+            rc = run_add(self._args("ghcr.io/corp/base:1.0"))
+            assert rc == 1
+
+        assert "already exists" in capsys.readouterr().err
+
+    def test_add_collision_with_force_overwrites(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """--force overwrites an existing rig row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import get, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            assert run_add(self._args("ghcr.io/corp/base:1.0")) == 0
+            capsys.readouterr()
+            rc = run_add(
+                self._args("ghcr.io/corp/base:1.0", name="corp/base:1.0", force=True),
+            )
+            assert rc == 0
+
+        assert get(registry_path(std), "corp/base:1.0") is not None
+
+    def test_add_underivable_name_fails(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A bare Containerfile (no derivable name, no --name) returns 1."""
+        from kanibako.commands.image import run_add
+
+        cf = tmp_path / "Containerfile"
+        cf.write_text("FROM ubuntu\n")
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args(str(cf)))
+            assert rc == 1
+
+        assert "could not derive a rig name" in capsys.readouterr().err
+
+    def test_add_unclassifiable_source_fails(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A source detect_source_kind can't classify returns 1 with its error."""
+        from kanibako.commands.image import run_add
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch(
+                    "kanibako.commands.image.detect_source_kind",
+                    side_effect=ValueError("cannot classify"),
+                ):
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args("???"))
+            assert rc == 1
+
+        assert "cannot classify" in capsys.readouterr().err
+
+    def test_add_url_fetches_first(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A URL source is fetched, then classified from the downloaded file."""
+        from kanibako.commands.image import run_add
+        from kanibako.containerfiles import get_containerfile
+
+        fetched = tmp_path / "Containerfile.fromurl"
+        fetched.write_text("FROM ubuntu\n")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch(
+                    "kanibako.commands.image.fetch_to_temp", return_value=fetched,
+                ) as mock_fetch:
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args("https://example.com/Containerfile.fromurl"))
+            assert rc == 0
+            mock_fetch.assert_called_once()
+
+        installed = get_containerfile("template-fromurl", std.data_path / "containers")
+        assert installed is not None
+
+
+class TestRigRmUnadd:
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def test_rm_registered_prefab_removes_row(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """rig rm of a registered ref removes the row and returns 0."""
+        from kanibako.commands.image import run_add, run_rm
+        from kanibako.rig_registry import get, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            assert run_add(
+                argparse.Namespace(
+                    source="ghcr.io/corp/base:1.0", name=None, as_=None, force=False,
+                ),
+            ) == 0
+            capsys.readouterr()
+
+            rc = run_rm(argparse.Namespace(image="corp/base:1.0", force=False))
+            assert rc == 0
+
+        assert get(registry_path(std), "corp/base:1.0") is None
+        assert "Removed rig 'corp/base:1.0' from the registry." in capsys.readouterr().out
+
+    def test_rm_registered_file_prefab_removes_image(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A file-sourced prefab also removes its loaded local image."""
+        from kanibako.commands.image import run_rm
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(name="foo", kind="prefab", source_type="file", image="foo:latest"),
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+            rc = run_rm(argparse.Namespace(image="foo", force=False))
+            assert rc == 0
+            runtime.remove_image.assert_called_once_with("foo:latest")
+
+    def test_rm_user_template_removes_file(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """rig rm of an installed user template deletes its Containerfile."""
+        from kanibako.commands.image import run_rm
+
+        std = self._std(config_file)
+        containers_dir = std.data_path / "containers"
+        containers_dir.mkdir(parents=True, exist_ok=True)
+        cf = containers_dir / "Containerfile.template-mytools"
+        cf.write_text("FROM ubuntu\n")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_rm(argparse.Namespace(image="mytools", force=False))
+            assert rc == 0
+
+        assert not cf.exists()
+        assert "Removed user template 'mytools'." in capsys.readouterr().out
+
+
 class TestExtractGhcrOwner:
     def test_valid_ghcr_url(self):
         from kanibako.commands.image import _extract_ghcr_owner
@@ -776,40 +1183,64 @@ class TestExtractGhcrOwnerExtended:
 # ---------------------------------------------------------------------------
 
 class TestImageCreate:
+    """Interactive ``rig create`` is now a deprecated alias for ``rig extend``.
+
+    It commits to ``kanibako-rig-<name>`` (extended), writes a registry row, and
+    emits a deprecation notice. These tests pin the delegated behavior; the
+    foundation (``--base``) is treated as already prepped via
+    ``image_exists.return_value = True``.
+    """
+
     def _make_args(self, name="jvm", base="kanibako-oci",
                    always_commit=False, no_commit_on_error=False):
         return argparse.Namespace(
-            name=name, base=base,
+            name=name, base=base, template=None,
             always_commit=always_commit, no_commit_on_error=no_commit_on_error,
         )
 
-    def test_create_runs_container_and_commits(self, capsys):
+    def _runtime(self):
+        runtime = MagicMock()
+        # Only the resolved prefab ref (kanibako-<base>:latest) exists, so the
+        # foundation resolves to prep_action "none"; the template/extended local
+        # probes (no ':latest') stay False.
+        runtime.image_exists.side_effect = lambda img: img.endswith(":latest")
+        runtime.list_local_images.return_value = []
+        runtime.run_interactive.return_value = 0
+        runtime.cp.return_value = True
+        return runtime
+
+    def test_create_runs_container_and_commits(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
         from kanibako.commands.image import run_create
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
-            runtime.run_interactive.return_value = 0
+            runtime = self._runtime()
             MockRT.return_value = runtime
 
             rc = run_create(self._make_args())
             assert rc == 0
 
             runtime.run_interactive.assert_called_once_with(
-                "kanibako-oci",
-                container_name="kanibako-template-build-jvm",
+                "kanibako-oci:latest",
+                container_name="kanibako-extend-jvm",
             )
             runtime.commit.assert_called_once_with(
-                "kanibako-template-build-jvm",
-                "kanibako-template-jvm",
+                "kanibako-extend-jvm",
+                "kanibako-rig-jvm",
             )
             # Build container should be cleaned up
-            runtime.rm.assert_called_once_with("kanibako-template-build-jvm")
+            runtime.rm.assert_called_once_with("kanibako-extend-jvm")
 
-    def test_create_always_commit_on_nonzero_exit(self, capsys):
+        assert "deprecated" in capsys.readouterr().err
+
+    def test_create_always_commit_on_nonzero_exit(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
         from kanibako.commands.image import run_create
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
+            runtime = self._runtime()
             runtime.run_interactive.return_value = 1
             MockRT.return_value = runtime
 
@@ -818,11 +1249,13 @@ class TestImageCreate:
             assert rc == 0
             runtime.commit.assert_called_once()
 
-    def test_create_no_commit_on_error(self, capsys):
+    def test_create_no_commit_on_error(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
         from kanibako.commands.image import run_create
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
+            runtime = self._runtime()
             runtime.run_interactive.return_value = 1
             MockRT.return_value = runtime
 
@@ -833,14 +1266,16 @@ class TestImageCreate:
         captured = capsys.readouterr()
         assert "Skipping commit" in captured.err
 
-    def test_create_prompt_confirm_yes(self, capsys, monkeypatch):
+    def test_create_prompt_confirm_yes(
+        self, tmp_home, config_file, credentials_dir, capsys, monkeypatch,
+    ):
         """Default behavior: prompt on error, user says yes."""
         from kanibako.commands.image import run_create
 
         monkeypatch.setattr("builtins.input", lambda _: "y")
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
+            runtime = self._runtime()
             runtime.run_interactive.return_value = 1
             MockRT.return_value = runtime
 
@@ -848,14 +1283,16 @@ class TestImageCreate:
             assert rc == 0
             runtime.commit.assert_called_once()
 
-    def test_create_prompt_confirm_no(self, capsys, monkeypatch):
+    def test_create_prompt_confirm_no(
+        self, tmp_home, config_file, credentials_dir, capsys, monkeypatch,
+    ):
         """Default behavior: prompt on error, user says no."""
         from kanibako.commands.image import run_create
 
         monkeypatch.setattr("builtins.input", lambda _: "n")
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
+            runtime = self._runtime()
             runtime.run_interactive.return_value = 1
             MockRT.return_value = runtime
 
@@ -863,7 +1300,9 @@ class TestImageCreate:
             assert rc == 1
             runtime.commit.assert_not_called()
 
-    def test_create_no_prompt_on_zero_exit(self, capsys, monkeypatch):
+    def test_create_no_prompt_on_zero_exit(
+        self, tmp_home, config_file, credentials_dir, capsys, monkeypatch,
+    ):
         """No prompt when container exits cleanly."""
         from kanibako.commands.image import run_create
 
@@ -871,19 +1310,20 @@ class TestImageCreate:
         monkeypatch.setattr("builtins.input", lambda _: (_ for _ in ()).throw(AssertionError("should not prompt")))
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
-            runtime.run_interactive.return_value = 0
+            runtime = self._runtime()
             MockRT.return_value = runtime
 
             rc = run_create(self._make_args())
             assert rc == 0
             runtime.commit.assert_called_once()
 
-    def test_create_rejects_invalid_name(self, capsys):
+    def test_create_rejects_invalid_name(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
         from kanibako.commands.image import run_create
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
+            runtime = self._runtime()
             MockRT.return_value = runtime
 
             rc = run_create(self._make_args(name="../evil"))
@@ -893,13 +1333,14 @@ class TestImageCreate:
         captured = capsys.readouterr()
         assert "Invalid template name" in captured.err
 
-    def test_create_fails_on_commit_error(self, capsys):
+    def test_create_fails_on_commit_error(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
         from kanibako.commands.image import run_create
         from kanibako.errors import ContainerError
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
-            runtime.run_interactive.return_value = 0
+            runtime = self._runtime()
             runtime.commit.side_effect = ContainerError("commit failed")
             MockRT.return_value = runtime
 
@@ -994,13 +1435,18 @@ class TestImageCreateTemplate:
         assert "unknown template 'bogus'" in captured.err
         assert "jvm" in captured.err
 
-    def test_no_template_still_interactive_commit(self, tmp_home, config_file, credentials_dir, capsys):
-        """Without --template, the interactive run + commit path is unchanged."""
+    def test_no_template_delegates_to_extend(self, tmp_home, config_file, credentials_dir, capsys):
+        """Without --template, interactive create delegates to 'rig extend':
+        commits to kanibako-rig-<name> with a registry row, not the old
+        kanibako-template-<name> template image."""
         from kanibako.commands.image import run_create
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.side_effect = lambda img: img.endswith(":latest")
+            runtime.list_local_images.return_value = []
             runtime.run_interactive.return_value = 0
+            runtime.cp.return_value = True
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
@@ -1011,14 +1457,177 @@ class TestImageCreateTemplate:
             assert rc == 0
 
             runtime.run_interactive.assert_called_once_with(
-                "kanibako-oci",
-                container_name="kanibako-template-build-my-box",
+                "kanibako-oci:latest",
+                container_name="kanibako-extend-my-box",
             )
             runtime.commit.assert_called_once_with(
-                "kanibako-template-build-my-box",
-                "kanibako-template-my-box",
+                "kanibako-extend-my-box",
+                "kanibako-rig-my-box",
             )
             runtime.rebuild.assert_not_called()
+
+        assert "deprecated" in capsys.readouterr().err
+
+
+class TestRigExtend:
+    """``rig extend NAME --from FOUNDATION``: auto-prep foundation, interactive
+    session, write in-image rig.yaml, commit as kanibako-rig-<name>, record a row.
+    """
+
+    def _args(self, name="mydev", from_="jvm",
+              always_commit=False, no_commit_on_error=False):
+        return argparse.Namespace(
+            name=name, from_=from_,
+            always_commit=always_commit, no_commit_on_error=no_commit_on_error,
+        )
+
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def _runtime(self):
+        runtime = MagicMock()
+        runtime.image_exists.return_value = False
+        runtime.list_local_images.return_value = []
+        runtime.run_interactive.return_value = 0
+        runtime.rebuild.return_value = 0
+        runtime.cp.return_value = True
+        return runtime
+
+    def test_extend_from_template_autobuilds_then_commits(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """Unprepped template foundation -> auto-build, then interactive+commit;
+        a registry row is written for the new extended rig."""
+        from kanibako.commands.image import run_extend
+        from kanibako.rig_registry import load_registry, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            MockRT.return_value = runtime
+
+            rc = run_extend(self._args(name="mydev", from_="jvm"))
+            assert rc == 0
+
+            # Auto-prep built the template foundation.
+            runtime.rebuild.assert_called_once()
+            runtime.run_interactive.assert_called_once()
+            _ri_args, ri_kwargs = runtime.run_interactive.call_args
+            assert ri_kwargs["container_name"] == "kanibako-extend-mydev"
+            runtime.commit.assert_called_once_with(
+                "kanibako-extend-mydev", "kanibako-rig-mydev",
+            )
+            # cp targets /etc/ (so rig.yaml lands at /etc/kanibako/rig.yaml).
+            cp_args, _cp_kwargs = runtime.cp.call_args
+            assert cp_args[1] == "kanibako-extend-mydev:/etc/"
+
+            # Call order: run_interactive -> cp -> commit.
+            relevant = [
+                name for name, _a, _k in runtime.method_calls
+                if name in ("run_interactive", "cp", "commit")
+            ]
+            assert relevant == ["run_interactive", "cp", "commit"]
+
+        reg = load_registry(registry_path(std))
+        assert "mydev" in reg
+        assert reg["mydev"].kind == "extended"
+        assert reg["mydev"].image == "kanibako-rig-mydev"
+        assert reg["mydev"].parent
+
+    def test_extend_from_prepped_foundation_no_autoprep(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """An already-prepped foundation triggers no build/pull."""
+        from kanibako.commands.image import run_extend
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            # Only the foundation's resolved image exists -> prep_action "none".
+            runtime.image_exists.side_effect = (
+                lambda img: img == "kanibako-oci:latest"
+            )
+            MockRT.return_value = runtime
+
+            rc = run_extend(self._args(name="mydev", from_="oci"))
+            assert rc == 0
+            runtime.rebuild.assert_not_called()
+            runtime.pull.assert_not_called()
+            runtime.run_interactive.assert_called_once()
+            runtime.commit.assert_called_once()
+
+    def test_extend_missing_extended_foundation_errors(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A registered-but-missing extended foundation can't be re-prepped."""
+        from kanibako.commands.image import run_extend
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(name="ghost", kind="extended", image="kanibako-rig-ghost"),
+        )
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = False  # image absent
+            MockRT.return_value = runtime
+
+            rc = run_extend(self._args(name="mydev", from_="ghost"))
+            assert rc == 1
+            runtime.run_interactive.assert_not_called()
+
+        assert "missing" in capsys.readouterr().err
+
+    def test_extend_no_commit_on_error(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """Non-zero container exit + --no-commit-on-error -> rc 1, no commit."""
+        from kanibako.commands.image import run_extend
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.run_interactive.return_value = 1
+            MockRT.return_value = runtime
+
+            rc = run_extend(self._args(no_commit_on_error=True))
+            assert rc == 1
+            runtime.commit.assert_not_called()
+            runtime.rm.assert_called_once_with("kanibako-extend-mydev")
+
+    def test_extend_always_commit_on_error(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """Non-zero container exit + --always-commit -> commits anyway."""
+        from kanibako.commands.image import run_extend
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.run_interactive.return_value = 1
+            MockRT.return_value = runtime
+
+            rc = run_extend(self._args(always_commit=True))
+            assert rc == 0
+            runtime.commit.assert_called_once()
+
+    def test_extend_cp_failure_aborts_commit(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A failed metadata cp -> rc 1, no commit, container still cleaned up."""
+        from kanibako.commands.image import run_extend
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.cp.return_value = False
+            MockRT.return_value = runtime
+
+            rc = run_extend(self._args())
+            assert rc == 1
+            runtime.commit.assert_not_called()
+            runtime.rm.assert_called_once_with("kanibako-extend-mydev")
+
+        assert "failed to write rig metadata" in capsys.readouterr().err
 
 
 class TestImageCreateFlags:
@@ -1027,6 +1636,15 @@ class TestImageCreateFlags:
         parser = build_parser()
         with pytest.raises(SystemExit):
             parser.parse_args(["rig", "create", "jvm", "--always-commit", "--no-commit-on-error"])
+
+    def test_rig_extend_parser_exists(self):
+        from kanibako.cli import build_parser
+        from kanibako.commands.image import run_extend
+        parser = build_parser()
+        args = parser.parse_args(["rig", "extend", "mydev", "--from", "jvm"])
+        assert args.func is run_extend
+        assert args.name == "mydev"
+        assert args.from_ == "jvm"
 
 
 class TestImageRegistration:
@@ -1138,3 +1756,245 @@ class TestContainerRuntimeImageInspect:
             rt = ContainerRuntime(command="docker")
             result = rt.image_inspect("test-image")
             assert result == {"Id": "sha256:def", "Size": 200}
+
+
+class TestRigExportImport:
+    """``rig export NAME`` / ``rig import FILE``: bundle an extended rig to a
+    portable ``.rig.tgz`` and restore one (image + registry row)."""
+
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def _runtime(self):
+        runtime = MagicMock()
+        runtime.image_exists.return_value = False
+        return runtime
+
+    @staticmethod
+    def _fake_save(image, out):
+        out.write_bytes(b"fake-image-tar")
+        return True
+
+    def test_export_extended_rig_produces_bundle(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """An extended rig exports to a real .rig.tgz with rig.yaml + image.tar."""
+        import tarfile
+
+        from kanibako.commands.image import run_export
+        from kanibako.rig_bundle import read_bundle_meta
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(
+                name="mydev", kind="extended", image="kanibako-rig-mydev",
+                parent="kanibako-template-jvm", foundation_source="jvm",
+                created="2026-06-05T00:00:00+00:00",
+            ),
+        )
+
+        out = tmp_path / "mydev.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = True
+            runtime.save.side_effect = self._fake_save
+            MockRT.return_value = runtime
+
+            rc = run_export(argparse.Namespace(name="mydev", out=str(out)))
+            assert rc == 0
+
+        assert out.is_file()
+        names = tarfile.open(out).getnames()
+        assert "rig.yaml" in names
+        assert "image.tar" in names
+        meta = read_bundle_meta(out)
+        assert meta.name == "mydev"
+        assert meta.parent == "kanibako-template-jvm"
+
+    def test_export_non_extended_errors(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A non-extended name (no row, no image) errors with rc 1, no file."""
+        from kanibako.commands.image import run_export
+
+        out = tmp_path / "nope.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = False
+            MockRT.return_value = runtime
+
+            rc = run_export(argparse.Namespace(name="nope", out=str(out)))
+            assert rc == 1
+
+        assert "extended" in capsys.readouterr().err
+        assert not out.exists()
+
+    def test_export_extended_row_but_image_missing(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Registered extended rig whose image is absent errors with rc 1."""
+        from kanibako.commands.image import run_export
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(name="mydev", kind="extended", image="kanibako-rig-mydev"),
+        )
+
+        out = tmp_path / "mydev.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = False
+            MockRT.return_value = runtime
+
+            rc = run_export(argparse.Namespace(name="mydev", out=str(out)))
+            assert rc == 1
+
+        assert "not present" in capsys.readouterr().err
+        assert not out.exists()
+
+    def _build_bundle(self, tmp_path):
+        """Build a real .rig.tgz with rig.yaml + a fake image.tar."""
+        from kanibako.rig_bundle import pack_bundle
+        from kanibako.rig_meta import RigMeta, write_rig_meta
+
+        rig_yaml = tmp_path / "rig.yaml"
+        write_rig_meta(
+            RigMeta(
+                name="mydev", parent="kanibako-template-jvm",
+                foundation_source="jvm", created="2026-06-05T00:00:00+00:00",
+            ),
+            rig_yaml,
+        )
+        image_tar = tmp_path / "image.tar"
+        image_tar.write_bytes(b"x")
+        bundle = tmp_path / "b.rig.tgz"
+        pack_bundle(bundle, rig_yaml, image_tar)
+        return bundle
+
+    def test_import_loads_image_and_writes_row(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Importing a bundle loads the image and records an extended row."""
+        from kanibako.commands.image import run_import
+        from kanibako.rig_registry import load_registry, registry_path
+
+        std = self._std(config_file)
+        bundle = self._build_bundle(tmp_path)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.load.return_value = "kanibako-rig-mydev:latest"
+            runtime.image_exists.return_value = True
+            MockRT.return_value = runtime
+
+            rc = run_import(argparse.Namespace(file=str(bundle)))
+            assert rc == 0
+            runtime.load.assert_called_once()
+
+        reg = load_registry(registry_path(std))
+        assert reg["mydev"].kind == "extended"
+        assert reg["mydev"].image == "kanibako-rig-mydev"
+        assert reg["mydev"].source_type == "import"
+        assert reg["mydev"].parent == "kanibako-template-jvm"
+
+    def test_export_then_import_round_trip(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Export an extended rig, then import the produced file -> row present."""
+        from kanibako.commands.image import run_export, run_import
+        from kanibako.rig_registry import (
+            RigRecord,
+            load_registry,
+            registry_path,
+            remove,
+            upsert,
+        )
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(
+                name="mydev", kind="extended", image="kanibako-rig-mydev",
+                parent="kanibako-template-jvm", foundation_source="jvm",
+                created="2026-06-05T00:00:00+00:00",
+            ),
+        )
+
+        out = tmp_path / "rt.rig.tgz"
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.image_exists.return_value = True
+            runtime.save.side_effect = self._fake_save
+            MockRT.return_value = runtime
+            assert run_export(argparse.Namespace(name="mydev", out=str(out))) == 0
+
+        # Drop the row so the import is what re-creates it.
+        remove(registry_path(std), "mydev")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.load.return_value = "kanibako-rig-mydev:latest"
+            runtime.image_exists.return_value = True
+            MockRT.return_value = runtime
+            assert run_import(argparse.Namespace(file=str(out))) == 0
+
+        reg = load_registry(registry_path(std))
+        assert reg["mydev"].kind == "extended"
+        assert reg["mydev"].source_type == "import"
+
+    def test_import_missing_file_errors(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A nonexistent bundle path errors with rc 1."""
+        from kanibako.commands.image import run_import
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = self._runtime()
+            rc = run_import(
+                argparse.Namespace(file=str(tmp_path / "nope.rig.tgz")),
+            )
+            assert rc == 1
+
+        assert "not found" in capsys.readouterr().err
+
+    def test_import_non_bundle_errors(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """Garbage masquerading as a bundle errors with rc 1."""
+        from kanibako.commands.image import run_import
+
+        bad = tmp_path / "bad.rig.tgz"
+        bad.write_bytes(b"not a tar")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = self._runtime()
+            rc = run_import(argparse.Namespace(file=str(bad)))
+            assert rc == 1
+
+        assert capsys.readouterr().err.strip()
+
+    def test_import_load_failure_writes_no_row(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """When runtime.load returns None, rc 1 and no registry row is written."""
+        from kanibako.commands.image import run_import
+        from kanibako.rig_registry import load_registry, registry_path
+
+        std = self._std(config_file)
+        bundle = self._build_bundle(tmp_path)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = self._runtime()
+            runtime.load.return_value = None
+            MockRT.return_value = runtime
+
+            rc = run_import(argparse.Namespace(file=str(bundle)))
+            assert rc == 1
+
+        assert "failed to load" in capsys.readouterr().err
+        assert "mydev" not in load_registry(registry_path(std))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -187,6 +188,64 @@ class ContainerRuntime:
         )
         if result.returncode != 0:
             raise ContainerError(f"Failed to commit container: {result.stderr}")
+
+    def cp(self, src: Path, dest: str) -> bool:
+        """Copy *src* into a container at *dest* (``<container>:<path>``).
+
+        Returns True on success.
+        """
+        result = subprocess.run(
+            [self.cmd, "cp", str(src), dest],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def save(self, image: str, out: Path) -> bool:
+        """Save *image* to a tar archive at *out*. Returns True on success."""
+        result = subprocess.run(
+            [self.cmd, "save", "-o", str(out), image],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def load(self, archive: Path) -> str | None:
+        """Load an image from the tar *archive*.
+
+        Returns the loaded image reference parsed from the runtime's
+        ``Loaded image: <ref>`` output (an archive with no RepoTags yields an
+        empty string), or ``None`` if the load command itself failed. Reading
+        the ref back from the runtime is authoritative -- the archive's
+        filename is not a reliable source for the loaded tag.
+        """
+        result = subprocess.run(
+            [self.cmd, "load", "-i", str(archive)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        # podman/docker print e.g. "Loaded image: repo:tag",
+        # "Loaded image(s): repo:tag", or "Loaded image ID: sha256:...".
+        for line in result.stdout.splitlines():
+            m = re.search(r"Loaded image(?:\(s\)| ID)?:\s*(\S.*)$", line)
+            if m:
+                return m.group(1).strip()
+        return ""
+
+    def diff(self, image: str) -> list[str]:
+        """Return the changed paths for *image* as verbatim lines.
+
+        Each line is a changed path, possibly prefixed by a change-type
+        letter (``C``/``A``/``D``). Returns an empty list on failure.
+        """
+        result = subprocess.run(
+            [self.cmd, "diff", image],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return []
+        return [line for line in result.stdout.splitlines() if line]
 
     def guess_containerfile(self, image: str) -> str | None:
         """Return the Containerfile suffix for a known image pattern, or None."""

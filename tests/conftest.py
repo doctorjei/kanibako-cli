@@ -202,6 +202,8 @@ def start_mocks():
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),
             patch("builtins.open", MagicMock()) as m_open,
+            patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,
+            patch("kanibako.commands.start.registry_path"),
         ):
             proj = MagicMock()
             proj.is_new = False
@@ -289,6 +291,7 @@ def start_mocks():
                 agent_toml_path=m_agent_toml_path,
                 fcntl=m_fcntl,
                 open=m_open,
+                load_registry=m_load_registry,
             )
 
     return _make
