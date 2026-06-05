@@ -14,6 +14,7 @@ from kanibako.container import ContainerRuntime
 from kanibako.containerfiles import get_containerfile, list_containerfile_suffixes
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
+from kanibako.rig_resolve import resolve_rig
 from kanibako.templates_image import list_bundled_templates, template_image_name
 
 
@@ -34,6 +35,11 @@ def _confirm(prompt: str) -> bool:
         print()
         return False
     return answer in ("y", "yes")
+
+
+def _deprecated(old: str, new: str) -> None:
+    """Print a one-line deprecation notice to stderr."""
+    print(f"note: '{old}' is deprecated; use '{new}'.", file=sys.stderr)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -71,6 +77,17 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Skip commit if the container exits with an error",
     )
     create_p.set_defaults(func=run_create)
+
+    # kanibako rig prep
+    prep_p = image_sub.add_parser(
+        "prep", aliases=["prepare"],
+        help="Materialize a rig: build a template or pull a prefab",
+        description="Resolve a rig name and make it ready to use (build templates, pull prefabs).",
+    )
+    prep_p.add_argument("name", nargs="?", default=None, help="Rig name to prep (omit with --all)")
+    prep_p.add_argument("--force", action="store_true", help="Re-prep even if already prepped")
+    prep_p.add_argument("--all", action="store_true", dest="all_images", help="Prep all local kanibako rigs")
+    prep_p.set_defaults(func=run_prep)
 
     # kanibako image list (default behavior)
     list_p = image_sub.add_parser(
@@ -143,6 +160,7 @@ def run_create(args: argparse.Namespace) -> int:
     otherwise runs an interactive container and commits it on exit.
     """
     if getattr(args, "template", None):
+        _deprecated("rig create --template", "rig prep")
         return _create_from_template(args)
 
     try:
@@ -537,8 +555,81 @@ def resolve_image_name(name: str, configured_image: str) -> str:
     return name
 
 
+def run_prep(args: argparse.Namespace) -> int:
+    """Materialize a rig: build a template or pull/build a prefab.
+
+    Resolves *name* via :func:`resolve_rig` (pure) and then performs the
+    side effect it implies. ``--force`` re-preps even if already prepped;
+    ``--all`` build-or-pulls every local kanibako rig.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    containers_dir = std.data_path / "containers"
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.all_images:
+        return _update_all(runtime, containers_dir)
+
+    if args.name is None:
+        print("error: rig name required (or use --all)", file=sys.stderr)
+        return 1
+
+    merged = load_merged_config(config_file, None)
+    res = resolve_rig(args.name, runtime, std, merged)
+    force = getattr(args, "force", False)
+
+    if res.kind == "extended":
+        if force:
+            print(
+                f"error: extended rig '{args.name}' has no recipe to re-prep "
+                f"(use 'rig export'/'rig import' or 'rig extend').",
+                file=sys.stderr,
+            )
+            return 1
+        if res.prep_action == "none":
+            print(f"Rig '{args.name}' is already prepped.")
+            return 0
+        print(
+            f"error: extended rig '{args.name}' image is missing.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if res.prep_action == "none" and not force:
+        print(f"Rig '{args.name}' is already prepped.")
+        return 0
+
+    if res.kind == "template":
+        cf = res.containerfile or get_containerfile(
+            f"template-{args.name}", containers_dir,
+        )
+        if cf is None:
+            print(
+                f"error: Containerfile not found for template '{args.name}'.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"Building rig '{args.name}' from {cf.name}...")
+        rc = runtime.rebuild(res.image, cf, cf.parent, build_args=None)
+        if rc == 0:
+            print(f"Rig '{args.name}' prepped as {res.image}")
+        else:
+            print(f"Build failed with exit code {rc}", file=sys.stderr)
+        return rc
+
+    # prefab: build-if-Containerfile-else-pull (same as rebuild).
+    return _update_one(runtime, res.image, containers_dir)
+
+
 def run_rebuild(args: argparse.Namespace) -> int:
     """Update container image(s): auto-detect local build vs registry pull."""
+    _deprecated("rig rebuild", "rig prep --force")
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)

@@ -13,6 +13,7 @@ from kanibako.templates_image import (
     list_bundled_templates,
     list_templates,
     read_template_checks,
+    rig_image_name,
     template_image_name,
     validate_template_name,
 )
@@ -62,6 +63,28 @@ class TestTemplateImageName:
     def test_rejects_invalid_name(self):
         with pytest.raises(ValueError):
             template_image_name("Bad Name!")
+
+
+class TestRigImageName:
+    def test_simple_name(self):
+        assert rig_image_name("foo") == "kanibako-rig-foo"
+
+    def test_preserves_dashes(self):
+        assert rig_image_name("my-tools") == "kanibako-rig-my-tools"
+
+    def test_preserves_underscores(self):
+        assert rig_image_name("my_tools") == "kanibako-rig-my_tools"
+
+    def test_rejects_invalid_name(self):
+        with pytest.raises(ValueError):
+            rig_image_name("Bad Name!")
+
+    def test_rejects_slash(self):
+        with pytest.raises(ValueError):
+            rig_image_name("foo/bar")
+
+    def test_distinct_from_template_prefix(self):
+        assert rig_image_name("x") != template_image_name("x")
 
 
 class TestListTemplates:
