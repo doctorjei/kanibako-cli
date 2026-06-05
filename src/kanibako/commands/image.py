@@ -6,8 +6,10 @@ import argparse
 import json
 import shutil
 import sys
+import tempfile
 import urllib.request
 import urllib.error
+from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config, load_merged_config
@@ -15,6 +17,7 @@ from kanibako.container import ContainerRuntime
 from kanibako.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
+from kanibako.rig_meta import RigMeta, write_rig_meta
 from kanibako.rig_registry import (
     RigRecord,
     get as registry_get,
@@ -110,6 +113,19 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     add_p.add_argument("--force", action="store_true", help="Overwrite an existing rig of the same name")
     add_p.set_defaults(func=run_add)
 
+    # kanibako rig extend
+    extend_p = image_sub.add_parser(
+        "extend",
+        help="Build a custom rig interactively from a foundation rig",
+        description="Auto-prep a foundation rig, open an interactive shell to customize it, and commit the result as an extended rig (kanibako-rig-<name>).",
+    )
+    extend_p.add_argument("name", help="Name for the new extended rig")
+    extend_p.add_argument("--from", dest="from_", required=True, metavar="RIG", help="Foundation rig to build from (prefab/template/extended)")
+    extend_commit = extend_p.add_mutually_exclusive_group()
+    extend_commit.add_argument("--always-commit", action="store_true", help="Commit even if the container exits with an error")
+    extend_commit.add_argument("--no-commit-on-error", action="store_true", help="Skip commit if the container exits with an error")
+    extend_p.set_defaults(func=run_extend)
+
     # kanibako image list (default behavior)
     list_p = image_sub.add_parser(
         "list",
@@ -188,27 +204,88 @@ def run_create(args: argparse.Namespace) -> int:
         _deprecated("rig create --template", "rig prep")
         return _create_from_template(args)
 
+    # Interactive create is now an alias for 'rig extend'. The base becomes the
+    # foundation rig, and the result is committed as kanibako-rig-<name> with a
+    # registry row -- that IS the migration.
+    _deprecated("rig create (interactive)", "rig extend")
+    args.from_ = args.base or "kanibako-oci"
+    return run_extend(args)
+
+
+def run_extend(args: argparse.Namespace) -> int:
+    """Build a custom *extended* rig interactively from a foundation rig.
+
+    Auto-preps the ``--from`` foundation (build a template / pull-or-build a
+    prefab; an extended foundation must already exist), opens an interactive
+    container, writes in-image ``/etc/kanibako/rig.yaml`` metadata, commits the
+    result as ``kanibako-rig-<name>``, and records a registry row.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    merged = load_merged_config(config_file, None)
+    containers_dir = std.data_path / "containers"
+
     try:
         runtime = ContainerRuntime()
     except ContainerError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    base = args.base or "kanibako-oci"
-    name = args.name
+    # Validate the new name early.
     try:
-        image_name = template_image_name(name)
+        image = rig_image_name(args.name)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    container_name = f"kanibako-template-build-{name}"
 
-    print(f"Starting interactive container from {base}...")
-    print(f"Install your tools, then exit to save as template '{name}'.")
-    print()
+    # Resolve + auto-prep the foundation.
+    registry = load_registry(registry_path(std))
+    res = resolve_rig(args.from_, runtime, std, merged, registry=registry)
+    if res.prep_action != "none":
+        if res.kind == "extended":
+            # A missing extended foundation has no recipe to rebuild.
+            print(
+                f"Error: foundation rig '{args.from_}' is extended but its image "
+                "is missing; no recipe to re-prep it (try 'rig import').",
+                file=sys.stderr,
+            )
+            return 1
+        if res.kind == "template":
+            cf = res.containerfile or get_containerfile(
+                f"template-{args.from_}", containers_dir,
+            )
+            if cf is None:
+                print(
+                    f"Error: Containerfile not found for template '{args.from_}'.",
+                    file=sys.stderr,
+                )
+                return 1
+            print(f"Preparing foundation '{args.from_}' (build {cf.name})...")
+            rc = runtime.rebuild(res.image, cf, cf.parent, build_args=None)
+            if rc != 0:
+                print(
+                    f"Error: failed to build foundation '{args.from_}'.",
+                    file=sys.stderr,
+                )
+                return rc
+        else:
+            # prefab: build-or-pull.
+            print(f"Preparing foundation '{args.from_}'...")
+            rc = _update_one(runtime, res.image, containers_dir)
+            if rc != 0:
+                print(
+                    f"Error: failed to prep foundation '{args.from_}'.",
+                    file=sys.stderr,
+                )
+                return 1
+    foundation_image = res.image
 
-    rc = runtime.run_interactive(base, container_name=container_name)
-
+    # Interactive session (mirror run_create's commit-on-error logic).
+    container_name = f"kanibako-extend-{args.name}"
+    print(f"Starting interactive container from {foundation_image}...")
+    print(f"Customize it, then exit to save as extended rig '{args.name}'.")
+    rc = runtime.run_interactive(foundation_image, container_name=container_name)
     should_commit = True
     if rc != 0:
         print(f"\nContainer exited with code {rc}.", file=sys.stderr)
@@ -216,20 +293,55 @@ def run_create(args: argparse.Namespace) -> int:
             should_commit = False
         elif not args.always_commit:
             should_commit = _confirm("Commit container state anyway?")
-
     if not should_commit:
         print("Skipping commit.", file=sys.stderr)
         runtime.rm(container_name)
         return 1
 
+    # Write in-image metadata, then commit. Always clean up the container.
+    created = datetime.now(timezone.utc).isoformat()
+    foundation_source = res.source_ref or args.from_
     try:
-        runtime.commit(container_name, image_name)
-        print(f"\nTemplate saved as {image_name}")
-    except ContainerError as e:
-        print(f"Failed to commit: {e}", file=sys.stderr)
-        return 1
+        meta = RigMeta(
+            name=args.name,
+            kind="extended",
+            parent=foundation_image,
+            foundation_source=foundation_source,
+            reproducible=False,
+            created=created,
+        )
+        with tempfile.TemporaryDirectory() as td:
+            meta_dir = Path(td) / "kanibako"
+            write_rig_meta(meta, meta_dir / "rig.yaml")
+            # Copy the DIRECTORY into /etc/ -> lands at /etc/kanibako/rig.yaml.
+            # Do NOT cp a bare file to :/etc/kanibako/rig.yaml (fails if the dir
+            # is absent in the image).
+            if not runtime.cp(meta_dir, f"{container_name}:/etc/"):
+                print(
+                    "Error: failed to write rig metadata into the container.",
+                    file=sys.stderr,
+                )
+                return 1
+        try:
+            runtime.commit(container_name, image)
+        except ContainerError as e:
+            print(f"Failed to commit: {e}", file=sys.stderr)
+            return 1
+        upsert(
+            registry_path(std),
+            RigRecord(
+                name=args.name,
+                kind="extended",
+                image=image,
+                parent=foundation_image,
+                foundation_source=foundation_source,
+                reproducible=False,
+                created=created,
+                source_type="extend",
+            ),
+        )
+        print(f"\nExtended rig saved as {image}")
     finally:
-        # Clean up the build container
         runtime.rm(container_name)
 
     return 0
