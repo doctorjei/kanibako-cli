@@ -15,6 +15,7 @@ from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.rig_resolve import resolve_rig
 from kanibako.paths import (
     _upgrade_shell,
     xdg,
@@ -421,17 +422,42 @@ def _run_container(
         )
         return 1
 
-    # Resolve a possibly-bare image name (local-first, then registry prefix)
-    # so it works without the runtime's unqualified-search-registries config.
-    from kanibako.commands.image import resolve_image_reference
-    image = resolve_image_reference(image, runtime, config.container_image)
-
+    # Resolve the rig name to a kind + prep action, then materialize it.
+    # Templates BUILD their Containerfile; prefabs keep the existing
+    # inspect->pull->build behavior via ensure_image (non-regression).
     containers_dir = std.data_path / "containers"
+    res = resolve_rig(image, runtime, std, merged)
     try:
-        runtime.ensure_image(image, containers_dir)
+        if (
+            res.kind == "template"
+            and res.containerfile is not None
+            and not runtime.image_exists(res.image)
+        ):
+            print(
+                f"Rig '{image}' isn't prepped — building...",
+                file=sys.stderr,
+            )
+            rc = runtime.rebuild(
+                res.image,
+                res.containerfile,
+                res.containerfile.parent,
+                build_args=None,
+            )
+            if rc != 0:
+                print(
+                    f"Error: failed to build rig '{image}' "
+                    f"(exit code {rc}).",
+                    file=sys.stderr,
+                )
+                return 1
+        else:
+            # Prefab (or already-local template/extended): preserve the
+            # existing inspect->pull->build-fallback behavior exactly.
+            runtime.ensure_image(res.image, containers_dir)
     except ContainerError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    image = res.image
 
     from kanibako.freshness import check_image_freshness
     check_image_freshness(runtime, image, std.cache_path)

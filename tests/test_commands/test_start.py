@@ -109,6 +109,7 @@ class TestImageReferenceResolution:
                 "ghcr.io/doctorjei/kanibako-oci:latest"
             )
             m.merged.container_image = "kanibako-lxc"
+            # Nothing exists locally: bare name is a prefab needing a pull.
             m.runtime.image_exists.return_value = False
             _run_container(
                 project_dir=None,
@@ -121,6 +122,7 @@ class TestImageReferenceResolution:
             )
             ensured = m.runtime.ensure_image.call_args[0][0]
             assert ensured == "ghcr.io/doctorjei/kanibako-lxc:latest"
+            m.runtime.rebuild.assert_not_called()
 
     def test_local_image_used_as_is(self, start_mocks):
         with start_mocks() as m:
@@ -128,7 +130,12 @@ class TestImageReferenceResolution:
                 "ghcr.io/doctorjei/kanibako-oci:latest"
             )
             m.merged.container_image = "kanibako-lxc"
-            m.runtime.image_exists.return_value = True
+            # Only the resolved prefab reference exists locally; no
+            # kanibako-template-/kanibako-rig- image does, so the resolver
+            # classifies it as a prefab with prep_action="none".
+            m.runtime.image_exists.side_effect = (
+                lambda img: img == "kanibako-lxc:latest"
+            )
             _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -140,6 +147,144 @@ class TestImageReferenceResolution:
             )
             ensured = m.runtime.ensure_image.call_args[0][0]
             assert ensured == "kanibako-lxc:latest"
+            m.runtime.rebuild.assert_not_called()
+
+
+class TestRigPrep:
+    """Verify resolver-driven prep: templates BUILD, prefabs keep ensure_image."""
+
+    def test_template_bare_name_builds_when_absent(self, start_mocks):
+        """A bare template name whose image is absent → runtime.rebuild()."""
+        from pathlib import Path
+
+        from kanibako.rig_resolve import RigResolution
+
+        cf = Path("/bundled/containers/Containerfile.template-jvm")
+        res = RigResolution(
+            name="jvm",
+            kind="template",
+            image="kanibako-template-jvm",
+            prep_action="build",
+            containerfile=cf,
+        )
+        with start_mocks() as m:
+            m.merged.container_image = "jvm"
+            # Template image absent → build branch.
+            m.runtime.image_exists.return_value = False
+            m.runtime.rebuild.return_value = 0
+            with patch(
+                "kanibako.commands.start.resolve_rig", return_value=res
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m.runtime.rebuild.assert_called_once()
+            built_image, built_cf, built_ctx = m.runtime.rebuild.call_args[0][:3]
+            assert built_image == "kanibako-template-jvm"
+            assert built_cf == cf
+            assert built_ctx == cf.parent
+            m.runtime.ensure_image.assert_not_called()
+            # Container still launches with the built template image.
+            m.runtime.run.assert_called_once()
+
+    def test_template_build_failure_returns_1(self, start_mocks, capsys):
+        """A non-zero rebuild exit code aborts start with code 1."""
+        from pathlib import Path
+
+        from kanibako.rig_resolve import RigResolution
+
+        res = RigResolution(
+            name="jvm",
+            kind="template",
+            image="kanibako-template-jvm",
+            prep_action="build",
+            containerfile=Path("/bundled/Containerfile.template-jvm"),
+        )
+        with start_mocks() as m:
+            m.merged.container_image = "jvm"
+            m.runtime.image_exists.return_value = False
+            m.runtime.rebuild.return_value = 7
+            with patch(
+                "kanibako.commands.start.resolve_rig", return_value=res
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        assert "failed to build rig" in capsys.readouterr().err
+
+    def test_prefab_uses_ensure_image_not_rebuild(self, start_mocks):
+        """A prefab → runtime.ensure_image with the resolved ref; no rebuild."""
+        from kanibako.rig_resolve import RigResolution
+
+        res = RigResolution(
+            name="oci",
+            kind="prefab",
+            image="ghcr.io/doctorjei/kanibako-oci:latest",
+            prep_action="pull",
+            source_ref="oci",
+        )
+        with start_mocks() as m:
+            m.merged.container_image = "oci"
+            with patch(
+                "kanibako.commands.start.resolve_rig", return_value=res
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            ensured = m.runtime.ensure_image.call_args[0][0]
+            assert ensured == "ghcr.io/doctorjei/kanibako-oci:latest"
+            m.runtime.rebuild.assert_not_called()
+
+    def test_already_local_template_uses_ensure_image(self, start_mocks):
+        """An already-prepped template (containerfile UNSET) → ensure_image, no rebuild."""
+        from kanibako.rig_resolve import RigResolution
+
+        res = RigResolution(
+            name="jvm",
+            kind="template",
+            image="kanibako-template-jvm",
+            prep_action="none",
+        )
+        with start_mocks() as m:
+            m.merged.container_image = "jvm"
+            with patch(
+                "kanibako.commands.start.resolve_rig", return_value=res
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            ensured = m.runtime.ensure_image.call_args[0][0]
+            assert ensured == "kanibako-template-jvm"
+            m.runtime.rebuild.assert_not_called()
 
 
 class TestCheckAuth:
