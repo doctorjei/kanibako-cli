@@ -12,7 +12,7 @@ from pathlib import Path
 
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
-from kanibako.containerfiles import get_containerfile, list_containerfile_suffixes
+from kanibako.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
 from kanibako.rig_registry import (
@@ -25,14 +25,13 @@ from kanibako.rig_registry import (
 )
 from kanibako.rig_resolve import resolve_rig
 from kanibako.rig_source import derive_name, detect_source_kind, fetch_to_temp
-from kanibako.templates_image import list_bundled_templates, template_image_name
+from kanibako.templates_image import (
+    list_bundled_templates,
+    read_template_checks,
+    rig_image_name,
+    template_image_name,
+)
 
-
-# Descriptions for buildable Containerfile variants. Example templates are
-# discovered (with their descriptions) via ``list_bundled_templates()``.
-_VARIANT_DESCRIPTIONS = {
-    "kanibako": "Base agent container (droste tier selected at build time)",
-}
 
 _TEMPLATE_PREFIX = "kanibako-template-"
 
@@ -120,6 +119,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     list_p.add_argument(
         "-q", "--quiet", action="store_true",
         help="Print only image names, one per line",
+    )
+    list_p.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit machine-readable JSON",
     )
     list_p.set_defaults(func=run_list)
 
@@ -297,130 +300,233 @@ def _create_from_template(args: argparse.Namespace) -> int:
     return rc
 
 
+def _bare_repo(repo: str) -> str:
+    """Strip a trailing ``:tag`` from a ``repo:tag`` reference."""
+    return repo.split(":")[0] if ":" in repo else repo
+
+
 def run_list(args: argparse.Namespace) -> int:
+    """List rigs grouped by kind (prefab / template / extended) with live status.
+
+    Status is derived from the local image store at call time -- never read from
+    a stored field. ``-q/--quiet`` keeps the legacy one-name-per-line behavior;
+    ``--json`` emits a machine-readable document.
+    """
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)
+    merged = load_merged_config(config_file, None)
 
     quiet = getattr(args, "quiet", False)
 
+    runtime: ContainerRuntime | None
+
     if quiet:
-        # Quiet mode: just print image names
+        # Quiet mode: just print image names (unchanged).
         try:
             runtime = ContainerRuntime()
-            images = runtime.list_local_images()
-            for repo, _size in images:
+            for repo, _size in runtime.list_local_images():
                 print(repo)
         except ContainerError:
             pass
         return 0
 
-    # Full display mode
-    # ---- Built-in Variants & Templates ----
-    containers_dir = std.data_path / "containers"
-    suffixes = list_containerfile_suffixes(containers_dir)
-    buildable = ContainerRuntime.buildable_containerfile_suffixes()
-    variants = [s for s in suffixes if s in buildable]
-    templates = list_bundled_templates(override_dir=containers_dir)
-
-    if variants:
-        print("Built-in rig variants:")
-        for variant in variants:
-            desc = _VARIANT_DESCRIPTIONS.get(variant, "(no description)")
-            print(f"  {variant:<12} {desc}")
-    else:
-        print("Built-in rig variants: (none installed)")
-
-    if templates:
-        print()
-        print("Example templates (layer on a base image; not built directly):")
-        for tmpl in templates:
-            desc = tmpl.description
-            if tmpl.source == "user":
-                desc = f"{desc} (user)"
-            print(f"  {tmpl.name:<12} {desc}")
-
-    print()
-
-    # ---- Local Images ----
+    # A runtime is required to derive live status; without one, every status is
+    # reported as "unknown" but the (registry/template) catalogue still lists.
     try:
         runtime = ContainerRuntime()
-        print("Local rigs:")
-        images = runtime.list_local_images()
-        if images:
-            for repo, size in images:
-                print(f"  {repo:<50} {size}")
-        else:
-            print("  (none)")
     except ContainerError:
-        print("Local rigs: (no container runtime found)")
+        runtime = None
 
-    print()
+    containers_dir = std.data_path / "containers"
+    registry = load_registry(registry_path(std))
 
-    # ---- Remote Registry Images ----
-    merged = load_merged_config(config_file, None)
-    image = merged.container_image
-    owner = _extract_ghcr_owner(image)
+    def _status(image: str, *, absent: str = "unprepped") -> str:
+        if runtime is None:
+            return "unknown"
+        return "prepped" if runtime.image_exists(image) else absent
 
-    print("Remote registry rigs:")
-    if owner:
-        _list_remote_packages(owner)
-    elif image:
-        print(f"  (registry owner not detected from image: {image})")
+    # ---- Prefabs ----
+    prefabs: list[dict[str, str]] = []
+    for suffix in sorted(_KNOWN_SUFFIXES):
+        prefabs.append({
+            "name": suffix,
+            "image": f"kanibako-{suffix}",
+            "status": _status(f"kanibako-{suffix}:latest"),
+        })
+    for rec in registry.values():
+        if rec.kind != "prefab":
+            continue
+        if rec.image:
+            img = rec.image
+        elif runtime is not None:
+            img = resolve_image_reference(
+                rec.source or rec.name, runtime, merged.container_image,
+            )
+        else:
+            img = rec.source or rec.name
+        prefabs.append({"name": rec.name, "image": img, "status": _status(img)})
+
+    # ---- Templates ----
+    templates: list[dict[str, str]] = []
+    for t in list_bundled_templates(override_dir=containers_dir):
+        image = template_image_name(t.name)
+        templates.append({
+            "name": t.name,
+            "source": t.source,
+            "image": image,
+            "status": _status(image),
+        })
+
+    # ---- Extended ----
+    extended: list[dict[str, str]] = []
+    seen: set[str] = set()
+    if runtime is not None:
+        for repo, _size in runtime.list_local_images():
+            bare = _bare_repo(repo)
+            basename = bare.rsplit("/", 1)[-1]
+            if basename.startswith("kanibako-rig-"):
+                name = basename[len("kanibako-rig-"):]
+                seen.add(name)
+                extended.append({"name": name, "image": bare, "status": "prepped"})
+    for rec in registry.values():
+        if rec.kind != "extended" or rec.name in seen:
+            continue
+        if rec.image:
+            img = rec.image
+        else:
+            try:
+                img = rig_image_name(rec.name)
+            except ValueError:
+                img = rec.image or rec.name
+        extended.append({
+            "name": rec.name,
+            "image": img,
+            "status": _status(img, absent="missing"),
+        })
+
+    if getattr(args, "as_json", False):
+        data = {
+            "prefabs": prefabs,
+            "templates": templates,
+            "extended": extended,
+            "current": merged.container_image,
+        }
+        print(json.dumps(data, indent=2))
+        return 0
+
+    print("Prefabs (pull to prep):")
+    if prefabs:
+        for p in prefabs:
+            print(f"  {p['name']:<32} {p['status']}")
     else:
-        print("  (image not configured)")
+        print("  (none)")
 
     print()
+    print("Templates (build to prep):")
+    if templates:
+        for t_row in templates:
+            tag = f"[{t_row['source']}]"
+            print(f"  {t_row['name']:<16} {tag:<11} {t_row['status']}")
+    else:
+        print("  (none)")
 
-    # ---- Current Image ----
+    print()
+    print("Extended (interactive; export/import to move):")
+    if extended:
+        for e in extended:
+            print(f"  {e['name']:<32} {e['status']}")
+    else:
+        print("  (none)")
+
+    print()
     print(f"Current rig: {merged.container_image}")
     return 0
 
 
+_PREP_STATUS = {"none": "prepped", "pull": "unprepped", "build": "unprepped", "missing": "missing"}
+
+
 def run_info(args: argparse.Namespace) -> int:
-    """Show details about a container image."""
+    """Show details about a rig: kind, live status, image, and provenance."""
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    merged = load_merged_config(config_file, None)
+
     try:
         runtime = ContainerRuntime()
     except ContainerError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    merged = load_merged_config(
-        config_file_path(xdg("XDG_CONFIG_HOME", ".config")), None,
-    )
-    image = resolve_image_name(args.image, merged.container_image)
+    registry = load_registry(registry_path(std))
+    res = resolve_rig(args.image, runtime, std, merged, registry=registry)
 
-    data = runtime.image_inspect(image)
-    if data is None:
-        print(f"Error: rig not found: {image}", file=sys.stderr)
+    # A speculative prefab guess for an unknown name is "not found": only a known
+    # base, a registered rig, or a discovered template is shown when unprepped.
+    if (
+        res.kind == "prefab"
+        and res.prep_action != "none"
+        and args.image not in _KNOWN_SUFFIXES
+        and args.image not in registry
+    ):
+        print(f"Error: rig not found: {args.image}", file=sys.stderr)
         return 1
 
-    # Display key fields
-    print(f"Name:    {image}")
-    image_id = data.get("Id", "")
-    if image_id:
-        short_id = image_id[:19] if len(image_id) > 19 else image_id
-        print(f"ID:      {short_id}")
-    created = data.get("Created", "")
-    if created:
-        print(f"Created: {created}")
-    size = data.get("Size")
-    if size is not None:
-        # Convert bytes to human-readable
-        if isinstance(size, (int, float)):
-            if size >= 1_000_000_000:
-                print(f"Size:    {size / 1_000_000_000:.1f} GB")
-            elif size >= 1_000_000:
-                print(f"Size:    {size / 1_000_000:.1f} MB")
+    status = _PREP_STATUS.get(res.prep_action, res.prep_action)
+
+    print(f"Name:    {args.image}")
+    print(f"Kind:    {res.kind}")
+    print(f"Status:  {status}")
+    print(f"Image:   {res.image}")
+    if res.source_ref:
+        print(f"Source:  {res.source_ref}")
+
+    # Live image details (only available once the rig is prepped).
+    data = runtime.image_inspect(res.image)
+    if data is not None:
+        image_id = data.get("Id", "")
+        if image_id:
+            short_id = image_id[:19] if len(image_id) > 19 else image_id
+            print(f"ID:      {short_id}")
+        created = data.get("Created", "")
+        if created:
+            print(f"Created: {created}")
+        size = data.get("Size")
+        if size is not None:
+            if isinstance(size, (int, float)):
+                if size >= 1_000_000_000:
+                    print(f"Size:    {size / 1_000_000_000:.1f} GB")
+                elif size >= 1_000_000:
+                    print(f"Size:    {size / 1_000_000:.1f} MB")
+                else:
+                    print(f"Size:    {size} bytes")
             else:
-                print(f"Size:    {size} bytes")
-        else:
-            print(f"Size:    {size}")
-    labels = data.get("Labels") or data.get("Config", {}).get("Labels")
-    if labels:
-        print("Labels:")
-        for k, v in sorted(labels.items()):
-            print(f"  {k}={v}")
+                print(f"Size:    {size}")
+        labels = data.get("Labels") or data.get("Config", {}).get("Labels")
+        if labels:
+            print("Labels:")
+            for k, v in sorted(labels.items()):
+                print(f"  {k}={v}")
+
+    # Provenance.
+    record = registry.get(args.image)
+    if record is not None:
+        if record.parent:
+            print(f"Parent:     {record.parent}")
+        if record.foundation_source:
+            print(f"Foundation: {record.foundation_source}")
+
+    if res.kind == "template":
+        cf = get_containerfile(f"template-{args.image}", std.data_path / "containers")
+        if cf is not None:
+            print(f"Containerfile: {cf}")
+            checks = read_template_checks(cf)
+            if checks:
+                print("Checks:")
+                for check in checks:
+                    print(f"  {check}")
 
     return 0
 

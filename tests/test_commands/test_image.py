@@ -18,11 +18,12 @@ class TestImage:
         """Smoke test: image list runs without crashing."""
         from kanibako.commands.image import run_list
 
-        args = argparse.Namespace(quiet=False)
+        args = argparse.Namespace(quiet=False, as_json=False)
         rc = run_list(args)
         assert rc == 0
 
         captured = capsys.readouterr()
+        assert "Prefabs" in captured.out
         assert "Current rig:" in captured.out
 
     def test_quiet_mode(self, config_file, tmp_home, credentials_dir, capsys):
@@ -61,34 +62,116 @@ class TestImage:
         captured = capsys.readouterr()
         assert captured.out.strip() == ""
 
-    def test_variants_and_templates_listed_separately(self, config_file, tmp_home, credentials_dir, capsys):
-        """Buildable base variant and example templates appear under distinct headings."""
+    def test_groups_by_kind(self, config_file, tmp_home, credentials_dir, capsys):
+        """list groups rigs under Prefabs / Templates / Extended headings."""
         from kanibako.commands.image import run_list
 
-        args = argparse.Namespace(quiet=False)
+        args = argparse.Namespace(quiet=False, as_json=False)
         rc = run_list(args)
         assert rc == 0
 
         out = capsys.readouterr().out
-        assert "Built-in rig variants:" in out
-        assert "Example templates" in out
+        assert "Prefabs (pull to prep):" in out
+        assert "Templates (build to prep):" in out
+        assert "Extended (interactive; export/import to move):" in out
 
-        variants_part, _, templates_part = out.partition("Example templates")
-        # kanibako is buildable -> under built-in variants, not templates
-        assert "kanibako" in variants_part
-        assert "jvm" not in variants_part
-        # jvm/systems are example templates -> only after the templates heading
+        prefabs_part, _, rest = out.partition("Templates (build to prep):")
+        templates_part, _, extended_part = rest.partition(
+            "Extended (interactive; export/import to move):"
+        )
+        # Known base prefabs land under Prefabs.
+        assert "oci" in prefabs_part
+        # Bundled templates land under Templates, tagged [bundled].
         assert "jvm" in templates_part
-        assert "systems" in templates_part
+        assert "[bundled]" in templates_part
+
+    def test_derived_status_prepped_vs_unprepped(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Status is derived live from the local store, not a stored field."""
+        from kanibako.commands.image import run_list
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            # Only kanibako-oci is present locally; everything else is absent.
+            runtime.image_exists.side_effect = lambda img: img == "kanibako-oci:latest"
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(quiet=False, as_json=False)
+            rc = run_list(args)
+            assert rc == 0
+
+        out = capsys.readouterr().out
+        prefabs_part, _, _ = out.partition("Templates (build to prep):")
+        lines = prefabs_part.splitlines()
+        oci_line = next(line for line in lines if line.strip().startswith("oci"))
+        assert "prepped" in oci_line
+        min_line = next(line for line in lines if line.strip().startswith("min"))
+        assert "unprepped" in min_line
+
+    def test_extended_local_image_listed(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A local kanibako-rig-* image appears under Extended as prepped."""
+        from kanibako.commands.image import run_list
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.image_exists.return_value = False
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = [
+                ("kanibako-rig-foo:latest", "1 GB"),
+            ]
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(quiet=False, as_json=False)
+            rc = run_list(args)
+            assert rc == 0
+
+        out = capsys.readouterr().out
+        _, _, extended_part = out.partition(
+            "Extended (interactive; export/import to move):"
+        )
+        foo_line = next(
+            line for line in extended_part.splitlines() if line.strip().startswith("foo")
+        )
+        assert "prepped" in foo_line
+
+    def test_json_output(self, config_file, tmp_home, credentials_dir, capsys):
+        """--json emits a parseable document with the expected groups."""
+        from kanibako.commands.image import run_list
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.image_exists.side_effect = lambda img: img == "kanibako-oci:latest"
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(quiet=False, as_json=True)
+            rc = run_list(args)
+            assert rc == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert set(data) == {"prefabs", "templates", "extended", "current"}
+        oci = next(p for p in data["prefabs"] if p["name"] == "oci")
+        assert oci["status"] == "prepped"
+        min_ = next(p for p in data["prefabs"] if p["name"] == "min")
+        assert min_["status"] == "unprepped"
 
 
 class TestImageInfo:
     def test_info_shows_details(self, config_file, tmp_home, credentials_dir, capsys):
-        """image info displays image metadata."""
+        """image info displays kind, status, and image metadata when prepped."""
         from kanibako.commands.image import run_info
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            # Only the prefab ref exists -> resolves as a prepped prefab (not a
+            # template/extended candidate); inspect then runs.
+            runtime.image_exists.side_effect = lambda img: img == "kanibako-oci:latest"
             runtime.image_inspect.return_value = {
                 "Id": "sha256:abc123def456789",
                 "Created": "2026-03-01T10:00:00Z",
@@ -103,18 +186,22 @@ class TestImageInfo:
 
         captured = capsys.readouterr()
         assert "Name:" in captured.out
+        assert "Kind:    prefab" in captured.out
+        assert "Status:  prepped" in captured.out
         assert "ID:" in captured.out
         assert "Created:" in captured.out
         assert "1.5 GB" in captured.out
         assert "org.example.key=value" in captured.out
 
     def test_info_not_found(self, config_file, tmp_home, credentials_dir, capsys):
-        """image info returns 1 for missing image."""
+        """image info returns 1 for an unknown speculative prefab name."""
         from kanibako.commands.image import run_info
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.return_value = False
             runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
             MockRT.return_value = runtime
 
             args = argparse.Namespace(image="nosuch")
@@ -130,6 +217,7 @@ class TestImageInfo:
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.return_value = True
             runtime.image_inspect.return_value = {
                 "Id": "sha256:abc",
                 "Size": 500_000_000,
@@ -149,6 +237,7 @@ class TestImageInfo:
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
+            runtime.image_exists.return_value = True
             runtime.image_inspect.return_value = {
                 "Id": "sha256:abc",
             }
@@ -160,6 +249,30 @@ class TestImageInfo:
 
         captured = capsys.readouterr()
         assert "Labels" not in captured.out
+
+    def test_info_template_unprepped_shows_provenance(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """An unprepped bundled template shows Kind/Status + Containerfile/Checks."""
+        from kanibako.commands.image import run_info
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            runtime.image_exists.return_value = False  # not built -> unprepped
+            runtime.image_inspect.return_value = None
+            runtime.list_local_images.return_value = []
+            MockRT.return_value = runtime
+
+            args = argparse.Namespace(image="jvm")
+            rc = run_info(args)
+            assert rc == 0
+
+        out = capsys.readouterr().out
+        assert "Kind:    template" in out
+        assert "Status:  unprepped" in out
+        assert "Containerfile:" in out
+        assert "Checks:" in out
+        assert "java -version" in out
 
 
 class TestImageRm:
