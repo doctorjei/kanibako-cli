@@ -524,6 +524,300 @@ class TestImagePrep:
         assert ns.name == "jvm"
 
 
+class TestRigAdd:
+    def _args(self, source, name=None, as_=None, force=False):
+        return argparse.Namespace(source=source, name=name, as_=as_, force=force)
+
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def test_add_image_ref_records_row_no_pull(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """rig add of a registry ref records a prefab row, never pulls."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import get, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args("ghcr.io/corp/base:1.0"))
+            assert rc == 0
+            runtime.pull.assert_not_called()
+            runtime.load.assert_not_called()
+
+        rec = get(registry_path(std), "corp/base:1.0")
+        assert rec is not None
+        assert rec.kind == "prefab"
+        assert rec.source_type == "ref"
+        assert rec.source == "ghcr.io/corp/base:1.0"
+        assert "Added prefab 'corp/base:1.0'" in capsys.readouterr().out
+
+    def test_add_template_installs_containerfile_no_row(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """rig add of a Containerfile installs it under containers/, no row."""
+        from kanibako.commands.image import run_add
+        from kanibako.containerfiles import get_containerfile
+        from kanibako.rig_registry import load_registry, registry_path
+
+        cf = tmp_path / "Containerfile.myjvm"
+        cf.write_text("FROM ubuntu\nRUN echo hi\n")
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args(str(cf)))
+            assert rc == 0
+
+        containers_dir = std.data_path / "containers"
+        installed = get_containerfile("template-myjvm", containers_dir)
+        assert installed is not None
+        assert installed.name == "Containerfile.template-myjvm"
+        # No registry row for templates.
+        assert load_registry(registry_path(std)) == {}
+        assert "Added template 'myjvm'" in capsys.readouterr().out
+
+    def test_add_image_tar_loads_and_records(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """rig add of an image tar loads it and records a file-sourced row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import get, registry_path
+
+        tar = tmp_path / "img.tar"
+        tar.write_text("fake")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.detect_source_kind", return_value="image"), \
+                patch("kanibako.commands.image.derive_name", return_value="foo"):
+            runtime = MagicMock()
+            # load() returns the actually-loaded image ref (ground truth).
+            runtime.load.return_value = "loaded/app:2.0"
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args(str(tar), name="foo"))
+            assert rc == 0
+            runtime.load.assert_called_once()
+
+        rec = get(registry_path(std), "foo")
+        assert rec is not None
+        assert rec.kind == "prefab"
+        assert rec.source_type == "file"
+        # The recorded image is what load() reported, not a filename guess.
+        assert rec.image == "loaded/app:2.0"
+        assert "Added prefab 'foo' from archive." in capsys.readouterr().out
+
+    def test_add_image_tar_untagged_returns_1(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """An archive with no RepoTag (load() -> '') errors and writes no row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import load_registry, registry_path
+
+        tar = tmp_path / "img.tar"
+        tar.write_text("fake")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.detect_source_kind", return_value="image"), \
+                patch("kanibako.commands.image.derive_name", return_value="foo"):
+            runtime = MagicMock()
+            runtime.load.return_value = ""
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args(str(tar), name="foo"))
+            assert rc == 1
+
+        assert load_registry(registry_path(std)) == {}
+        assert "no image tag" in capsys.readouterr().err
+
+    def test_add_image_tar_load_failure_returns_1(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A failed runtime.load surfaces an error and writes no row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import load_registry, registry_path
+
+        tar = tmp_path / "img.tar"
+        tar.write_text("fake")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.detect_source_kind", return_value="image"), \
+                patch("kanibako.commands.image.derive_name", return_value="foo"):
+            runtime = MagicMock()
+            runtime.load.return_value = None
+            MockRT.return_value = runtime
+
+            rc = run_add(self._args(str(tar), name="foo"))
+            assert rc == 1
+
+        assert load_registry(registry_path(std)) == {}
+        assert "failed to load image archive" in capsys.readouterr().err
+
+    def test_add_collision_without_force_fails(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """Adding over an existing name without --force returns 1."""
+        from kanibako.commands.image import run_add
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            assert run_add(self._args("ghcr.io/corp/base:1.0")) == 0
+            capsys.readouterr()
+            rc = run_add(self._args("ghcr.io/corp/base:1.0"))
+            assert rc == 1
+
+        assert "already exists" in capsys.readouterr().err
+
+    def test_add_collision_with_force_overwrites(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """--force overwrites an existing rig row."""
+        from kanibako.commands.image import run_add
+        from kanibako.rig_registry import get, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            assert run_add(self._args("ghcr.io/corp/base:1.0")) == 0
+            capsys.readouterr()
+            rc = run_add(
+                self._args("ghcr.io/corp/base:1.0", name="corp/base:1.0", force=True),
+            )
+            assert rc == 0
+
+        assert get(registry_path(std), "corp/base:1.0") is not None
+
+    def test_add_underivable_name_fails(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A bare Containerfile (no derivable name, no --name) returns 1."""
+        from kanibako.commands.image import run_add
+
+        cf = tmp_path / "Containerfile"
+        cf.write_text("FROM ubuntu\n")
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args(str(cf)))
+            assert rc == 1
+
+        assert "could not derive a rig name" in capsys.readouterr().err
+
+    def test_add_unclassifiable_source_fails(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A source detect_source_kind can't classify returns 1 with its error."""
+        from kanibako.commands.image import run_add
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch(
+                    "kanibako.commands.image.detect_source_kind",
+                    side_effect=ValueError("cannot classify"),
+                ):
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args("???"))
+            assert rc == 1
+
+        assert "cannot classify" in capsys.readouterr().err
+
+    def test_add_url_fetches_first(
+        self, tmp_home, config_file, credentials_dir, capsys, tmp_path,
+    ):
+        """A URL source is fetched, then classified from the downloaded file."""
+        from kanibako.commands.image import run_add
+        from kanibako.containerfiles import get_containerfile
+
+        fetched = tmp_path / "Containerfile.fromurl"
+        fetched.write_text("FROM ubuntu\n")
+        std = self._std(config_file)
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch(
+                    "kanibako.commands.image.fetch_to_temp", return_value=fetched,
+                ) as mock_fetch:
+            MockRT.return_value = MagicMock()
+            rc = run_add(self._args("https://example.com/Containerfile.fromurl"))
+            assert rc == 0
+            mock_fetch.assert_called_once()
+
+        installed = get_containerfile("template-fromurl", std.data_path / "containers")
+        assert installed is not None
+
+
+class TestRigRmUnadd:
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def test_rm_registered_prefab_removes_row(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """rig rm of a registered ref removes the row and returns 0."""
+        from kanibako.commands.image import run_add, run_rm
+        from kanibako.rig_registry import get, registry_path
+
+        std = self._std(config_file)
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            assert run_add(
+                argparse.Namespace(
+                    source="ghcr.io/corp/base:1.0", name=None, as_=None, force=False,
+                ),
+            ) == 0
+            capsys.readouterr()
+
+            rc = run_rm(argparse.Namespace(image="corp/base:1.0", force=False))
+            assert rc == 0
+
+        assert get(registry_path(std), "corp/base:1.0") is None
+        assert "Removed rig 'corp/base:1.0' from the registry." in capsys.readouterr().out
+
+    def test_rm_registered_file_prefab_removes_image(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A file-sourced prefab also removes its loaded local image."""
+        from kanibako.commands.image import run_rm
+        from kanibako.rig_registry import RigRecord, registry_path, upsert
+
+        std = self._std(config_file)
+        upsert(
+            registry_path(std),
+            RigRecord(name="foo", kind="prefab", source_type="file", image="foo:latest"),
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            runtime = MagicMock()
+            MockRT.return_value = runtime
+            rc = run_rm(argparse.Namespace(image="foo", force=False))
+            assert rc == 0
+            runtime.remove_image.assert_called_once_with("foo:latest")
+
+    def test_rm_user_template_removes_file(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """rig rm of an installed user template deletes its Containerfile."""
+        from kanibako.commands.image import run_rm
+
+        std = self._std(config_file)
+        containers_dir = std.data_path / "containers"
+        containers_dir.mkdir(parents=True, exist_ok=True)
+        cf = containers_dir / "Containerfile.template-mytools"
+        cf.write_text("FROM ubuntu\n")
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
+            MockRT.return_value = MagicMock()
+            rc = run_rm(argparse.Namespace(image="mytools", force=False))
+            assert rc == 0
+
+        assert not cf.exists()
+        assert "Removed user template 'mytools'." in capsys.readouterr().out
+
+
 class TestExtractGhcrOwner:
     def test_valid_ghcr_url(self):
         from kanibako.commands.image import _extract_ghcr_owner

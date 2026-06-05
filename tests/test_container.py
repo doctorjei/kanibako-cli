@@ -411,21 +411,39 @@ class TestCpSaveLoadDiff:
             m.return_value = MagicMock(returncode=1)
             assert rt.save("img", Path("/o.tar")) is False
 
-    def test_load_success(self):
+    def test_load_success_returns_ref(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         with patch("kanibako.container.subprocess.run") as m:
-            m.return_value = MagicMock(returncode=0)
-            assert rt.load(Path("/a.tar")) is True
+            m.return_value = MagicMock(
+                returncode=0, stdout="Loaded image: repo/app:1.0\n",
+            )
+            assert rt.load(Path("/a.tar")) == "repo/app:1.0"
             cmd = m.call_args[0][0]
             assert cmd == ["/usr/bin/podman", "load", "-i", "/a.tar"]
 
-    def test_load_failure(self):
+    def test_load_success_image_id_form(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         with patch("kanibako.container.subprocess.run") as m:
-            m.return_value = MagicMock(returncode=1)
-            assert rt.load(Path("/a.tar")) is False
+            m.return_value = MagicMock(
+                returncode=0, stdout="Loaded image(s): ghcr.io/x/y:tag\n",
+            )
+            assert rt.load(Path("/a.tar")) == "ghcr.io/x/y:tag"
+
+    def test_load_success_untagged_returns_empty(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="")
+            assert rt.load(Path("/a.tar")) == ""
+
+    def test_load_failure_returns_none(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stdout="")
+            assert rt.load(Path("/a.tar")) is None
 
     def test_diff_returns_lines(self):
         from unittest.mock import MagicMock

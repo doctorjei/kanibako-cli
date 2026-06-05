@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 import urllib.request
 import urllib.error
@@ -14,7 +15,16 @@ from kanibako.container import ContainerRuntime
 from kanibako.containerfiles import get_containerfile, list_containerfile_suffixes
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
+from kanibako.rig_registry import (
+    RigRecord,
+    get as registry_get,
+    load_registry,
+    registry_path,
+    remove as registry_remove,
+    upsert,
+)
 from kanibako.rig_resolve import resolve_rig
+from kanibako.rig_source import derive_name, detect_source_kind, fetch_to_temp
 from kanibako.templates_image import list_bundled_templates, template_image_name
 
 
@@ -88,6 +98,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     prep_p.add_argument("--force", action="store_true", help="Re-prep even if already prepped")
     prep_p.add_argument("--all", action="store_true", dest="all_images", help="Prep all local kanibako rigs")
     prep_p.set_defaults(func=run_prep)
+
+    # kanibako rig add
+    add_p = image_sub.add_parser(
+        "add",
+        help="Register a foreign rig (prefab image ref or template Containerfile)",
+        description="Add a rig by source: an image reference/tar (prefab) or a Containerfile (template). Does not pull or build; run 'rig prep <name>' afterward.",
+    )
+    add_p.add_argument("source", help="Image ref, image tar, Containerfile path, or URL")
+    add_p.add_argument("--name", default=None, help="Rig name (derived from source if omitted)")
+    add_p.add_argument("--as", dest="as_", choices=["image", "template"], default=None, help="Force the source kind (escape hatch)")
+    add_p.add_argument("--force", action="store_true", help="Overwrite an existing rig of the same name")
+    add_p.set_defaults(func=run_add)
 
     # kanibako image list (default behavior)
     list_p = image_sub.add_parser(
@@ -404,16 +426,38 @@ def run_info(args: argparse.Namespace) -> int:
 
 
 def run_rm(args: argparse.Namespace) -> int:
-    """Remove a local container image."""
+    """Remove a local container image, or un-add a registered/template rig."""
     try:
         runtime = ContainerRuntime()
     except ContainerError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    merged = load_merged_config(
-        config_file_path(xdg("XDG_CONFIG_HOME", ".config")), None,
-    )
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    # --- Un-add: a registered rig (rigs.yaml) wins over image removal. ---
+    record = registry_get(registry_path(std), args.image)
+    if record is not None:
+        registry_remove(registry_path(std), args.image)
+        print(f"Removed rig '{args.image}' from the registry.")
+        # A loaded (file-sourced) prefab owns its local image; clean it up.
+        if record.source_type == "file" and record.image:
+            try:
+                runtime.remove_image(record.image)
+            except ContainerError:
+                pass
+        return 0
+
+    # --- Un-add: an installed user template removes its Containerfile. ---
+    override = std.data_path / "containers" / f"Containerfile.template-{args.image}"
+    if override.is_file():
+        override.unlink()
+        print(f"Removed user template '{args.image}'.")
+        return 0
+
+    merged = load_merged_config(config_file, None)
     image = resolve_image_name(args.image, merged.container_image)
 
     if not args.force:
@@ -581,7 +625,8 @@ def run_prep(args: argparse.Namespace) -> int:
         return 1
 
     merged = load_merged_config(config_file, None)
-    res = resolve_rig(args.name, runtime, std, merged)
+    registry = load_registry(registry_path(std))
+    res = resolve_rig(args.name, runtime, std, merged, registry=registry)
     force = getattr(args, "force", False)
 
     if res.kind == "extended":
@@ -625,6 +670,121 @@ def run_prep(args: argparse.Namespace) -> int:
 
     # prefab: build-if-Containerfile-else-pull (same as rebuild).
     return _update_one(runtime, res.image, containers_dir)
+
+
+def run_add(args: argparse.Namespace) -> int:
+    """Register a foreign rig from a source. Never pulls or builds.
+
+    The *source* is classified (an image ref/tar -> prefab; a Containerfile ->
+    template) and recorded. Templates install their Containerfile under the
+    user-override dir (the file IS the source of truth -- no registry row);
+    prefabs get a ``rigs.yaml`` row (a tar is loaded via ``runtime.load`` first,
+    a ref is recorded as-is). Run ``rig prep <name>`` afterward to materialize.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    source = args.source
+
+    # A raw URL is undecidable on its own; fetch it first, then classify the
+    # downloaded file. The temp file doubles as the source for tar/template.
+    if source.lower().startswith(("http://", "https://")):
+        local_path: Path | None = fetch_to_temp(source)
+        detect_target = str(local_path)
+    else:
+        local_path = None
+        detect_target = source
+
+    try:
+        kind = detect_source_kind(detect_target, force=args.as_)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    name = args.name or derive_name(source, kind)
+    if name is None:
+        print(
+            "Error: could not derive a rig name from source; pass --name NAME.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Collision: a registry row OR an installed user template of the same name.
+    containers_dir = std.data_path / "containers"
+    exists = registry_get(registry_path(std), name) is not None or (
+        get_containerfile(f"template-{name}", containers_dir) is not None
+    )
+    if exists and not args.force:
+        print(
+            f"Error: rig '{name}' already exists; use --force to overwrite.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if kind == "template":
+        # Install the Containerfile under the user-override dir; that file is the
+        # source of truth for templates, so no registry row is written.
+        dest_dir = std.data_path / "containers"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / f"Containerfile.template-{name}"
+        src_file = local_path if local_path is not None else Path(source)
+        shutil.copyfile(src_file, dest)
+        print(
+            f"Added template '{name}' ({dest}). "
+            f"Run 'kanibako rig prep {name}' to build it."
+        )
+        return 0
+
+    # kind == "image": a local tar (or fetched tar) is loaded now; a bare
+    # reference is recorded without pulling.
+    is_tar = local_path is not None or Path(source).is_file()
+    if is_tar:
+        archive = local_path if local_path is not None else Path(source)
+        loaded_ref = runtime.load(archive)
+        if loaded_ref is None:
+            print(
+                f"Error: failed to load image archive '{archive}'.",
+                file=sys.stderr,
+            )
+            return 1
+        if not loaded_ref:
+            # Loaded, but the archive carries no RepoTag, so there is no stable
+            # reference to run the rig by. Don't record a guessed/wrong image.
+            print(
+                f"Error: loaded '{archive}' but it has no image tag; re-save "
+                "the image with a tag, or add it by reference instead.",
+                file=sys.stderr,
+            )
+            return 1
+        upsert(
+            registry_path(std),
+            RigRecord(
+                name=name,
+                kind="prefab",
+                source=str(Path(source).resolve()) if local_path is None else source,
+                source_type="file",
+                image=loaded_ref,
+            ),
+        )
+        print(f"Added prefab '{name}' from archive.")
+        return 0
+
+    upsert(
+        registry_path(std),
+        RigRecord(name=name, kind="prefab", source=source, source_type="ref"),
+    )
+    print(
+        f"Added prefab '{name}' -> {source}. "
+        f"Run 'kanibako rig prep {name}' to pull it."
+    )
+    return 0
 
 
 def run_rebuild(args: argparse.Namespace) -> int:

@@ -15,6 +15,7 @@ from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
 from kanibako.paths import (
     _upgrade_shell,
@@ -434,7 +435,8 @@ def _run_container(
     # Templates BUILD their Containerfile; prefabs keep the existing
     # inspect->pull->build behavior via ensure_image (non-regression).
     containers_dir = std.data_path / "containers"
-    res = resolve_rig(image, runtime, std, merged)
+    registry = load_registry(registry_path(std))
+    res = resolve_rig(image, runtime, std, merged, registry=registry)
     try:
         if (
             res.kind == "template"

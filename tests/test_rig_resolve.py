@@ -144,12 +144,137 @@ class TestRegistryParamAccepted:
         res = resolve_rig("jvm", _runtime(), _std(tmp_path), _merged(), registry=None)
         assert res.kind == "template"
 
-    def test_registry_passed_is_ignored_for_now(self, tmp_path):
-        sentinel = object()
+    def test_registry_without_name_falls_through(self, tmp_path):
+        """A registry that doesn't contain the name doesn't change resolution."""
+        from kanibako.rig_registry import RigRecord
+
+        registry = {"other": RigRecord(name="other", kind="prefab")}
         res = resolve_rig(
-            "jvm", _runtime(), _std(tmp_path), _merged(), registry=sentinel
+            "jvm", _runtime(), _std(tmp_path), _merged(), registry=registry
         )
         assert res.kind == "template"
+
+
+class TestRegistryConsultation:
+    def _reg(self, *records):
+        return {r.name: r for r in records}
+
+    def test_prefab_image_present_is_none(self, tmp_path):
+        """A prefab row with an image that exists locally -> prep none."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(name="corp/base", kind="prefab", image="corp/base:1.0")
+        rt = _runtime(has=["corp/base:1.0"])
+        res = resolve_rig(
+            "corp/base", rt, _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "prefab"
+        assert res.prep_action == "none"
+        assert res.image == "corp/base:1.0"
+
+    def test_prefab_image_absent_pulls(self, tmp_path):
+        """A prefab row whose image is absent -> prep pull."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(name="corp/base", kind="prefab", image="corp/base:1.0")
+        res = resolve_rig(
+            "corp/base", _runtime(), _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "prefab"
+        assert res.prep_action == "pull"
+        assert res.image == "corp/base:1.0"
+
+    def test_prefab_no_image_resolves_source_ref(self, tmp_path):
+        """A prefab row with only a source ref resolves it via the reference path."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(
+            name="mybox", kind="prefab",
+            source="ghcr.io/corp/base:1.0", source_type="ref",
+        )
+        res = resolve_rig(
+            "mybox", _runtime(), _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "prefab"
+        assert res.prep_action == "pull"
+        # 'ghcr.io/corp/base:1.0' is already qualified -> passes through.
+        assert res.image == "ghcr.io/corp/base:1.0"
+        assert res.source_ref == "ghcr.io/corp/base:1.0"
+
+    def test_extended_image_present_is_none(self, tmp_path):
+        """An extended row whose image exists -> extended/none."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(name="imported", kind="extended", image="kanibako-rig-imported")
+        rt = _runtime(has=["kanibako-rig-imported"])
+        res = resolve_rig(
+            "imported", rt, _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "extended"
+        assert res.prep_action == "none"
+        assert res.image == "kanibako-rig-imported"
+
+    def test_extended_image_absent_is_missing(self, tmp_path):
+        """An extended row whose image is absent -> extended/missing."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(name="imported", kind="extended", image="kanibako-rig-imported")
+        res = resolve_rig(
+            "imported", _runtime(), _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "extended"
+        assert res.prep_action == "missing"
+
+    def test_extended_no_image_derives_default(self, tmp_path):
+        """An extended row without an image falls back to kanibako-rig-<name>."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(name="imported", kind="extended")
+        rt = _runtime(has=["kanibako-rig-imported"])
+        res = resolve_rig(
+            "imported", rt, _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "extended"
+        assert res.prep_action == "none"
+        assert res.image == "kanibako-rig-imported"
+
+    def test_extended_no_image_invalid_name_does_not_raise(self, tmp_path):
+        """A malformed extended row (no image, name invalid for the default
+        kanibako-rig-<name>) must resolve without raising, not crash."""
+        from kanibako.rig_registry import RigRecord
+
+        # 'corp/base:1.0' is a valid registry key but NOT a valid short name,
+        # so the default rig_image_name() would raise -- the resolver must
+        # fall back instead of propagating that ValueError.
+        rec = RigRecord(name="corp/base:1.0", kind="extended")
+        res = resolve_rig(
+            "corp/base:1.0", _runtime(), _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        assert res.kind == "extended"
+        assert res.prep_action == "missing"
+        assert res.image == "corp/base:1.0"
+
+    def test_local_image_wins_over_registry(self, tmp_path):
+        """An already-prepped local template short-circuits before the registry."""
+        from kanibako.rig_registry import RigRecord
+
+        rec = RigRecord(name="jvm", kind="prefab", image="corp/base:1.0")
+        rt = _runtime(has=["kanibako-template-jvm"])
+        res = resolve_rig(
+            "jvm", rt, _std(tmp_path), _merged(),
+            registry=self._reg(rec),
+        )
+        # Local prepped template wins; registry row is never consulted.
+        assert res.kind == "template"
+        assert res.prep_action == "none"
+        assert res.image == "kanibako-template-jvm"
 
 
 if __name__ == "__main__":  # pragma: no cover
