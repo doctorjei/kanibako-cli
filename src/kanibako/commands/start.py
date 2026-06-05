@@ -69,7 +69,11 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--image", default=None,
-        help="Use IMAGE as the container image for this run",
+        help="Use IMAGE as the container image for this run (--rig is the preferred spelling)",
+    )
+    p.add_argument(
+        "--rig", dest="image", default=None,
+        help="Rig (image) to use; synonym for --image",
     )
     p.add_argument(
         "--entrypoint", default=None,
@@ -122,7 +126,11 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--image", default=None,
-        help="Use IMAGE as the container image for this run",
+        help="Use IMAGE as the container image for this run (--rig is the preferred spelling)",
+    )
+    p.add_argument(
+        "--rig", dest="image", default=None,
+        help="Rig (image) to use; synonym for --image",
     )
     p.add_argument(
         "--entrypoint", default=None,

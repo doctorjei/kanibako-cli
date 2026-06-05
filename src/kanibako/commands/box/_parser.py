@@ -65,7 +65,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     create_p.add_argument(
         "-i", "--image", default=None,
-        help="Container image to use for this project",
+        help="Container image to use for this project (--rig is the preferred spelling)",
+    )
+    create_p.add_argument(
+        "--rig", dest="image", default=None,
+        help="Rig (image) to use; synonym for --image",
     )
     create_p.add_argument(
         "--no-vault", action="store_true",
