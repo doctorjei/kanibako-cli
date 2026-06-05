@@ -1,13 +1,12 @@
-"""Host-side rig registry stored in a single ``rigs.toml`` file.
+"""Host-side rig registry stored in a single ``rigs.yaml`` file.
 
 Pure load/save/query helpers for "added" rig records, keyed by rig name.
 Rig names may contain ``/`` and ``:`` (e.g. ``"corp/base:1.0"``); they are
-always emitted as quoted TOML table keys.
+emitted as plain YAML mapping keys (PyYAML quotes them as needed).
 
-Reads use the stdlib :mod:`tomllib` (matching :mod:`kanibako.config`).  Writes
-are hand-rolled TOML strings — :mod:`kanibako.config` does the same
-(``write_global_config`` builds the file line-by-line) rather than depending on
-a third-party writer such as ``tomli_w`` (which is not a project dependency).
+Reads and writes go through PyYAML (``yaml.safe_load`` / ``yaml.safe_dump``).
+PyYAML handles all escaping and quoting, so there is no hand-rolled
+serializer here.
 
 No network, no global state: the registry path is always passed in.
 """
@@ -18,8 +17,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-# Python 3.11+ stdlib (read-only), as used throughout kanibako.config.
-import tomllib
+import yaml  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
     from kanibako.paths import StandardPaths
@@ -46,32 +44,34 @@ class RigRecord:
 
 
 # Fields stored *inside* the table (i.e. everything except ``name``, which is
-# the table key) in a stable, file-friendly order.
+# the mapping key) in a stable, file-friendly order.
 _INNER_FIELDS: tuple[str, ...] = tuple(
     f.name for f in fields(RigRecord) if f.name != "name"
 )
 
 
 def registry_path(std: StandardPaths) -> Path:
-    """Return the path to ``rigs.toml`` under the standard data directory."""
-    return std.data_path / "rigs.toml"
+    """Return the path to ``rigs.yaml`` under the standard data directory."""
+    return std.data_path / "rigs.yaml"
 
 
 def load_registry(path: Path) -> dict[str, RigRecord]:
     """Load all rig records from *path*, keyed by rig name.
 
-    A missing file yields an empty dict.  The file is shaped as a top-level
-    ``[rigs]`` table whose keys are rig names::
+    A missing or empty file yields an empty dict.  The file is shaped as a
+    top-level ``rigs:`` mapping whose keys are rig names::
 
-        [rigs."corp/base:1.0"]
-        kind = "prefab"
-        ...
+        rigs:
+          corp/base:1.0:
+            kind: prefab
+            ...
     """
     if not path.exists():
         return {}
 
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = yaml.safe_load(path.read_text())
+    if not data:
+        return {}
 
     rigs = data.get("rigs", {})
     records: dict[str, RigRecord] = {}
@@ -85,26 +85,26 @@ def load_registry(path: Path) -> dict[str, RigRecord]:
 
 
 def save_registry(path: Path, records: dict[str, RigRecord]) -> None:
-    """Write *records* to *path* as a ``[rigs."<name>"]`` table per record.
+    """Write *records* to *path* as a ``rigs:`` mapping (one entry per record).
 
     ``None``-valued fields are omitted so the file stays clean.  ``name`` is the
-    table key and is not duplicated inside the table.  The parent directory is
+    mapping key and is not duplicated inside the entry.  The parent directory is
     created if needed.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    lines: list[str] = []
-    for name in records:
-        record = records[name]
-        lines.append(f"[rigs.{_quote_key(name)}]")
+    rigs: dict[str, dict[str, object]] = {}
+    for name, record in records.items():
+        table: dict[str, object] = {}
         for field_name in _INNER_FIELDS:
             value = getattr(record, field_name)
             if value is None:
                 continue
-            lines.append(f"{field_name} = {_format_value(value)}")
-        lines.append("")
+            table[field_name] = value
+        rigs[name] = table
 
-    path.write_text("\n".join(lines))
+    data = {"rigs": rigs}
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
 
 
 def upsert(path: Path, record: RigRecord) -> None:
@@ -130,40 +130,3 @@ def remove(path: Path, name: str) -> bool:
 def get(path: Path, name: str) -> RigRecord | None:
     """Return the record named *name*, or ``None`` if it is not registered."""
     return load_registry(path).get(name)
-
-
-# ---------------------------------------------------------------------------
-# Minimal TOML serialization helpers (str + bool only — the types we emit).
-# ---------------------------------------------------------------------------
-
-def _escape_basic_string(s: str) -> str:
-    """Escape a string for a TOML basic (double-quoted) string."""
-    out = []
-    for ch in s:
-        if ch == "\\":
-            out.append("\\\\")
-        elif ch == '"':
-            out.append('\\"')
-        elif ch == "\n":
-            out.append("\\n")
-        elif ch == "\t":
-            out.append("\\t")
-        elif ch == "\r":
-            out.append("\\r")
-        else:
-            out.append(ch)
-    return "".join(out)
-
-
-def _quote_key(name: str) -> str:
-    """Return *name* as a quoted TOML key (rig names may contain ``/`` and ``:``)."""
-    return f'"{_escape_basic_string(name)}"'
-
-
-def _format_value(value: object) -> str:
-    """Format a scalar value as a TOML right-hand side."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, str):
-        return f'"{_escape_basic_string(value)}"'
-    raise TypeError(f"unsupported rig record value type: {type(value).__name__}")
