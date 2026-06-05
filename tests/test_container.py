@@ -376,6 +376,82 @@ class TestCommit:
                 rt.commit("bad", "img")
 
 
+class TestCpSaveLoadDiff:
+    """Test cp(), save(), load(), diff() thin wrappers."""
+
+    def test_cp_success(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.cp(Path("/x/y"), "ctr:/etc/") is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "cp", "/x/y", "ctr:/etc/"]
+
+    def test_cp_failure(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.cp(Path("/x/y"), "ctr:/etc/") is False
+
+    def test_save_success(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.save("img", Path("/o.tar")) is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "save", "-o", "/o.tar", "img"]
+
+    def test_save_failure(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.save("img", Path("/o.tar")) is False
+
+    def test_load_success(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.load(Path("/a.tar")) is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "load", "-i", "/a.tar"]
+
+    def test_load_failure(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.load(Path("/a.tar")) is False
+
+    def test_diff_returns_lines(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="C /etc\nA /etc/foo\n")
+            result = rt.diff("img")
+            assert result == ["C /etc", "A /etc/foo"]
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "diff", "img"]
+
+    def test_diff_empty_stdout(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="")
+            assert rt.diff("img") == []
+
+    def test_diff_failure_returns_empty(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stdout="")
+            assert rt.diff("img") == []
+
+
 class TestGetBaseImage:
     """Test get_base_image() variant-to-droste mapping."""
 
