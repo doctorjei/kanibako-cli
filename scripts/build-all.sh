@@ -16,7 +16,6 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGES=(
     "."                               # kanibako-base
     "packages/agent-claude"           # kanibako-agent-claude
-    "packages/plugin-claude-wrapper"  # kanibako-plugin-claude (transitional)
     "packages/meta"                   # kanibako (meta)
 )
 

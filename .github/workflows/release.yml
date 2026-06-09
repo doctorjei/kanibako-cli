@@ -58,7 +58,7 @@ jobs:
         # Mirrors scripts/build-all.sh's package list. agent-goose is
         # intentionally excluded (it versions independently at 0.1.0).
         run: |
-          for pkg in . packages/agent-claude packages/plugin-claude-wrapper packages/meta; do
+          for pkg in . packages/agent-claude packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"
           done
 
@@ -222,7 +222,7 @@ jobs:
       - name: Build all distributable packages
         # Mirrors scripts/build-all.sh's package list. agent-goose excluded.
         run: |
-          for pkg in . packages/agent-claude packages/plugin-claude-wrapper packages/meta; do
+          for pkg in . packages/agent-claude packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"
           done
 
