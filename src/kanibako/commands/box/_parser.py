@@ -934,9 +934,11 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Load merged config for image info.
     project_toml = proj.metadata_path / "project.toml"
+    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
+        workset_path=workset_path,
     )
 
     # Gather status info.

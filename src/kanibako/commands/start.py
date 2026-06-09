@@ -405,11 +405,13 @@ def _run_container(
                 )
                 break
 
-    # Load merged config (global + project)
+    # Load merged config (global + workset + project)
     project_toml = proj.metadata_path / "project.toml"
+    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml,
+        workset_path=workset_path,
         cli_overrides={"container_image": image_override} if image_override else None,
     )
 
