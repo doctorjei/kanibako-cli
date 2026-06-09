@@ -259,7 +259,7 @@ shortcuts for common operations:
 | `workset list` / `workset ls` | List working sets (`-q`) |
 | `workset info` / `workset inspect` | Working set details |
 | `workset rm` / `workset delete` | Remove working set (`--purge`, `--force`) |
-| `workset config` | View or modify workset configuration |
+| `workset config` | View or modify workset configuration (use `workset config default <key>=<value>` for account-wide defaults) |
 | `workset connect <workset> [source]` | Add project to working set (`--name`) |
 | `workset disconnect <workset> <project>` | Remove project from working set (`--force`) |
 
@@ -342,6 +342,23 @@ project directory rather than in a group root.
 The default project group: a centralized store keyed by project name, rooted at
 `$XDG_DATA_HOME/kanibako`.  You never name or create it -- just `cd` into any
 directory and run `kanibako`, and the project joins the default group.
+
+The local group is itself modeled as an always-present **default workset**
+(alias `default`, id `__default__`).  It is virtual -- never created or deleted,
+with no on-disk workset file -- but it is addressable through the same `workset`
+commands as named worksets, so account-wide settings use the ordinary `workset
+config` mechanism (see [Configuration](#configuration)):
+
+```bash
+kanibako workset info default                       # show the account-wide group
+kanibako workset config default model=opus          # default for ALL local projects
+kanibako workset config default group_auth=false    # distinct credentials by default
+```
+
+In `kanibako workset list` the default workset appears with its root displayed
+as `<account-wide>`.  The names `default` / `__default__` are reserved: they
+cannot be used as a named-workset name, and the default workset cannot be
+removed.
 
 ```
 $XDG_DATA_HOME/kanibako/boxes/{name}/          metadata + shell
@@ -739,8 +756,16 @@ kanibako start
 ## Configuration
 
 ```
-Precedence: CLI flag > project.toml > workset config > crab config > kanibako.toml > defaults
+Precedence: CLI flag > project.toml > workset config.toml > crab config > kanibako.toml (system) > defaults
 ```
+
+The **workset config tier** is a workset's own `config.toml`, applied at box
+start/status.  For a named workset it lives at `<workset_root>/config.toml`; for
+the always-present default workset (the local/account group) it is
+`<data_dir>/config.toml`.  Setting it on the default workset (`kanibako workset
+config default <key>=<value>`) establishes account-wide defaults inherited by
+all local projects, while an individual project (or a CLI flag) may still
+override.
 
 All configuration levels share a unified interface:
 
@@ -754,6 +779,7 @@ kanibako box config --reset model       # remove override, back to default
 
 # Workset level (group defaults inherited by member projects)
 kanibako workset config <workset> model=opus
+kanibako workset config default model=opus   # account-wide default (local group)
 
 # Crab level (defaults for all projects using this crab)
 kanibako crab config model=opus
