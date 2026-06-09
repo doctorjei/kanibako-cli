@@ -47,7 +47,7 @@ pytest examples/kanibako-target-aider/tests/ -v
 5. `pip install -e .` and test:
    ```bash
    kanibako crab list                         # verify target is registered
-   kanibako box config target_name=yourname   # select it for a project
+   kanibako box config crab_name=yourname     # select it for a project
    kanibako start                             # launch
    ```
 

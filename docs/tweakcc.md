@@ -4,7 +4,7 @@
 > [README.md](../README.md) for an overview of Kanibako.
 
 tweakcc patches Claude Code's embedded cli.js bundle to customize system
-prompts, toolsets, and UI behavior.  When enabled in the agent config,
+prompts, toolsets, and UI behavior.  When enabled in the crab config,
 Kanibako orchestrates the full patching lifecycle:
 
 1. Computes a content hash of the host binary's embedded cli.js
@@ -18,7 +18,7 @@ Kanibako orchestrates the full patching lifecycle:
 in the container where patching runs).  The patching invocation is under
 active development -- see the implementation plan for current status.
 
-Enable in the agent TOML:
+Enable in the crab TOML:
 
 ```toml
 [tweakcc]
