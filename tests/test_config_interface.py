@@ -282,11 +282,11 @@ class TestTargetSettings:
 
         with open(project_toml, "rb") as f:
             data = tomllib.load(f)
-        assert data["crab_settings"]["model"] == "sonnet"
+        assert data["crab"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"crab_settings": {"model": "opus"}}))
+        project_toml.write_text(_serialize_toml({"crab": {"model": "opus"}}))
 
         val = get_config_value(
             "model",
@@ -297,7 +297,7 @@ class TestTargetSettings:
 
     def test_reset_model(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"crab_settings": {"model": "opus"}}))
+        project_toml.write_text(_serialize_toml({"crab": {"model": "opus"}}))
 
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg

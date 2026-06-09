@@ -238,10 +238,10 @@ def run_config(args: argparse.Namespace) -> int:
     """View or modify crab configuration.
 
     Maps config keys to crab TOML sections:
-      model, start_mode, etc. -> [state]
+      model, start_mode, etc. -> [crab] (state keys)
       env.X                   -> [env]
       shared.X                -> [shared]
-      shell, run_args         -> [crab]
+      shell, run_args, name   -> [crab] (identity keys)
     """
     from kanibako.crabs import load_crab_config, write_crab_config
 
@@ -403,7 +403,7 @@ def _show_crab_config(
         print(f"  run_args = {cfg.run_args}")
     has_output = True
 
-    # [state] section
+    # crab-state keys
     if cfg.state:
         for k, v in sorted(cfg.state.items()):
             print(f"  {k} = {v}")

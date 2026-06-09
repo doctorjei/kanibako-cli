@@ -164,7 +164,7 @@ def _is_shared_key(key: str) -> bool:
 
 
 def _is_crab_setting(key: str) -> bool:
-    """Keys that belong in [crab_settings] of project.toml."""
+    """Keys that belong in the [crab] section of project.toml."""
     return key in {"model", "start_mode", "autonomous"}
 
 
@@ -289,7 +289,7 @@ def set_config_value(
 
     # target settings
     if _is_crab_setting(canonical):
-        _write_toml_key(config_path, "crab_settings", canonical, value)
+        _write_toml_key(config_path, "crab", canonical, value)
         return f"Set {canonical}={value}"
 
     # system.path.* keys — write to the nested [system.path] table.
@@ -336,7 +336,7 @@ def reset_config_value(
 
     # target settings
     if _is_crab_setting(canonical):
-        if _remove_toml_key(config_path, "crab_settings", canonical):
+        if _remove_toml_key(config_path, "crab", canonical):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -381,9 +381,9 @@ def reset_all(
         import tomllib
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
-        if data.get("crab_settings"):
-            for k in list(data["crab_settings"]):
-                _remove_toml_key(config_path, "crab_settings", k)
+        if data.get("crab"):
+            for k in list(data["crab"]):
+                _remove_toml_key(config_path, "crab", k)
                 count += 1
         if data.get("resource_overrides"):
             for k in list(data["resource_overrides"]):

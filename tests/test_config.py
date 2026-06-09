@@ -560,7 +560,7 @@ class TestTargetSettings:
         assert settings == {"model": "sonnet", "access": "default"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """Old project.toml without [crab_settings] returns empty dict."""
+        """project.toml without a [crab] section returns empty dict."""
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
 

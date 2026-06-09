@@ -1080,8 +1080,8 @@ def _build_effective_state(target, crab_cfg, project_toml) -> dict[str, str]:
     """Merge target defaults, crab config state, and project overrides.
 
     Resolution order (highest wins):
-      1. Project overrides (``[crab_settings]`` in project.toml)
-      2. Crab config state (``[state]`` in crab TOML)
+      1. Project overrides (``[crab]`` in project.toml)
+      2. Crab config state (``[crab]`` state keys in crab TOML)
       3. Target defaults (from ``setting_descriptors()``)
 
     Undeclared keys in crab state are passed through unchanged.

@@ -157,7 +157,7 @@ class Target(ABC):
         return _CrabConfig(name=self.display_name)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Translate ``[state]`` values into CLI args and env vars.
+        """Translate crab-state values into CLI args and env vars.
 
         Returns ``(cli_args, env_vars)``.  Base implementation ignores all
         state keys.  Subclasses override to handle known keys.

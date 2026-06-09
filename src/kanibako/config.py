@@ -457,20 +457,21 @@ def load_project_overrides(path: Path) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def read_crab_settings(path: Path) -> dict[str, str]:
-    """Read ``[crab_settings]`` from a project.toml.
+    """Read crab-state overrides from a project.toml ``[crab]`` section.
 
-    Returns a dict of setting_key → value (e.g. ``{"model": "sonnet"}``).
+    project.toml's ``[crab]`` holds box-level crab-state overrides (e.g.
+    ``{"model": "sonnet"}``); identity keys live in ``[box].crab``, not here.
     Returns an empty dict when the file or section is absent.
     """
     if not path.exists():
         return {}
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    return {k: str(v) for k, v in data.get("crab_settings", {}).items()}
+    return {k: str(v) for k, v in data.get("crab", {}).items()}
 
 
 def write_crab_setting(path: Path, key: str, value: str) -> None:
-    """Write a single target setting override to ``[crab_settings]`` in project.toml.
+    """Write a single crab-state override to ``[crab]`` in project.toml.
 
     Preserves all other sections.
     """
@@ -478,13 +479,13 @@ def write_crab_setting(path: Path, key: str, value: str) -> None:
     if path.exists():
         with open(path, "rb") as f:
             existing = tomllib.load(f)
-    existing.setdefault("crab_settings", {})
-    existing["crab_settings"][key] = value
+    existing.setdefault("crab", {})
+    existing["crab"][key] = value
     _write_toml(path, existing)
 
 
 def remove_crab_setting(path: Path, key: str) -> bool:
-    """Remove a single target setting override from ``[crab_settings]``.
+    """Remove a single crab-state override from ``[crab]`` in project.toml.
 
     Returns True if the setting was found and removed, False otherwise.
     """
@@ -492,12 +493,12 @@ def remove_crab_setting(path: Path, key: str) -> bool:
         return False
     with open(path, "rb") as f:
         existing = tomllib.load(f)
-    settings = existing.get("crab_settings", {})
+    settings = existing.get("crab", {})
     if key not in settings:
         return False
     del settings[key]
     if not settings:
-        existing.pop("crab_settings", None)
+        existing.pop("crab", None)
     _write_toml(path, existing)
     return True
 

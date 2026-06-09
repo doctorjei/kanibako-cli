@@ -80,8 +80,6 @@ class TestLoadCrabConfig:
             'name = "Claude Code"\n'
             'shell = "minimal"\n'
             'run_args = ["--verbose", "--debug"]\n'
-            '\n'
-            '[state]\n'
             'model = "opus"\n'
             'access = "permissive"\n'
             '\n'
@@ -113,15 +111,27 @@ class TestLoadCrabConfig:
         assert cfg.env == {}
         assert cfg.shared_caches == {}
 
-    def test_load_missing_crab_section(self, tmp_path):
+    def test_load_state_keys_without_identity(self, tmp_path):
+        # [crab] with only state keys (no identity keys) → all land in state.
         toml_path = tmp_path / "test.toml"
         toml_path.write_text(
-            '[state]\n'
+            '[crab]\n'
             'access = "safe"\n'
         )
         cfg = load_crab_config(toml_path)
         assert cfg.name == ""
         assert cfg.state == {"access": "safe"}
+
+    def test_load_missing_crab_section(self, tmp_path):
+        toml_path = tmp_path / "test.toml"
+        toml_path.write_text(
+            '[env]\n'
+            'FOO = "bar"\n'
+        )
+        cfg = load_crab_config(toml_path)
+        assert cfg.name == ""
+        assert cfg.state == {}
+        assert cfg.env == {"FOO": "bar"}
 
     def test_load_empty_file(self, tmp_path):
         toml_path = tmp_path / "test.toml"
@@ -149,7 +159,7 @@ class TestWriteCrabConfig:
         assert path.exists()
         content = path.read_text()
         assert '[crab]' in content
-        assert '[state]' in content
+        assert '[state]' not in content
         assert '[env]' in content
         assert '[shared]' in content
         assert '# model = "opus"' in content
@@ -234,6 +244,31 @@ class TestRoundTrip:
         assert loaded.state == {}
         assert loaded.env == {}
         assert loaded.shared_caches == {}
+
+    def test_state_folded_into_single_crab_section(self, tmp_path):
+        # Writing state must produce ONE [crab] section (identity + state),
+        # with no separate [state] section, and load back intact.
+        path = tmp_path / "test.toml"
+        original = CrabConfig(
+            name="Claude Code",
+            shell="minimal",
+            run_args=["--verbose"],
+            state={"model": "sonnet"},
+        )
+        write_crab_config(path, original)
+        content = path.read_text()
+        assert '[state]' not in content
+        assert content.count("[crab]") == 1
+        assert 'name = "Claude Code"' in content
+        assert 'shell = "minimal"' in content
+        assert 'run_args = ["--verbose"]' in content
+        assert 'model = "sonnet"' in content
+
+        loaded = load_crab_config(path)
+        assert loaded.state == {"model": "sonnet"}
+        assert loaded.name == "Claude Code"
+        assert loaded.shell == "minimal"
+        assert loaded.run_args == ["--verbose"]
 
     def test_round_trip_multiple_run_args(self, tmp_path):
         path = tmp_path / "test.toml"

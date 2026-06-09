@@ -7,14 +7,17 @@ from pathlib import Path
 
 import tomllib
 
+# Keys that live directly in [crab] as crab identity (not crab state).
+IDENTITY_KEYS = frozenset({"name", "shell", "run_args"})
+
 
 @dataclass
 class CrabConfig:
     """Per-crab configuration loaded from a crab TOML file.
 
     Sections:
-      [crab]   — identity and defaults (name, shell, run_args)
-      [state]  — runtime behavior knobs (model, access, etc.)
+      [crab]   — identity (name, shell, run_args) plus crab-state knobs
+                 (model, access, start_mode, autonomous, …)
       [env]    — raw env vars injected into container
       [shared] — crab-level shared cache paths
     """
@@ -58,7 +61,9 @@ def load_crab_config(path: Path) -> CrabConfig:
     raw_args = crab_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
-    cfg.state = {k: str(v) for k, v in data.get("state", {}).items()}
+    cfg.state = {
+        k: str(v) for k, v in crab_sec.items() if k not in IDENTITY_KEYS
+    }
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
     cfg.shared_caches = {k: str(v) for k, v in data.get("shared", {}).items()}
     cfg.tweakcc = dict(data.get("tweakcc", {}))
@@ -74,24 +79,17 @@ def write_crab_config(path: Path, cfg: CrabConfig) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
 
-    # [crab] section
+    # [crab] section — identity keys plus crab-state knobs
     lines.append("[crab]")
     lines.append(f'name = "{cfg.name}"')
     lines.append(f'shell = "{cfg.shell}"')
     args_str = ", ".join(f'"{a}"' for a in cfg.run_args)
     lines.append(f"run_args = [{args_str}]")
-    lines.append("")
-
-    # [state] section
-    lines.append("[state]")
-    if not cfg.state:
-        lines.append("# model = \"opus\"")
-    else:
-        # Always emit model as comment if not present
-        if "model" not in cfg.state:
-            lines.append("# model = \"opus\"")
-        for k, v in cfg.state.items():
-            lines.append(f'{k} = "{v}"')
+    # Emit model as a hint comment when not explicitly set.
+    if "model" not in cfg.state:
+        lines.append('# model = "opus"')
+    for k, v in cfg.state.items():
+        lines.append(f'{k} = "{v}"')
     lines.append("")
 
     # [env] section

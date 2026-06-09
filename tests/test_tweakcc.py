@@ -182,8 +182,6 @@ class TestCrabConfigTweakcc:
 name = "Claude Code"
 shell = "standard"
 run_args = []
-
-[state]
 model = "opus"
 
 [env]
@@ -205,8 +203,6 @@ config = "~/.tweakcc/config.json"
         toml_content = """\
 [crab]
 name = "Claude Code"
-
-[state]
 """
         path = tmp_path / "agent.toml"
         path.write_text(toml_content)

@@ -275,7 +275,7 @@ class TestBuildEffectiveState:
         return target
 
     def _make_project_toml(self, tmp_path, settings=None):
-        """Create a minimal project.toml, optionally with [crab_settings]."""
+        """Create a minimal project.toml, optionally with [crab] overrides."""
         from kanibako.config import write_project_meta, write_crab_setting
 
         project_toml = tmp_path / "project.toml"
