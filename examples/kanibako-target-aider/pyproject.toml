@@ -9,7 +9,7 @@ description = "Kanibako target plugin for Aider"
 requires-python = ">=3.11"
 dependencies = ["kanibako"]
 
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 aider = "kanibako_target_aider:AiderTarget"
 
 [tool.setuptools.packages.find]

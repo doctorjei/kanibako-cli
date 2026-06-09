@@ -374,11 +374,11 @@ Kanibako discovers targets in two ways:
 
 ### 1. Entry points (pip-installed plugins)
 
-Register your target class under the `kanibako.targets` group in your
+Register your target class under the `kanibako.agents` group in your
 `pyproject.toml`:
 
 ```toml
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 myagent = "my_package:MyTarget"
 ```
 
@@ -448,7 +448,7 @@ description = "Kanibako target plugin for MyAgent"
 requires-python = ">=3.11"
 dependencies = ["kanibako"]
 
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 myagent = "kanibako_target_myagent:MyTarget"
 
 [tool.setuptools.packages.find]

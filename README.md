@@ -712,7 +712,7 @@ Later sources override earlier ones when two plugins register the same name.
 
 | Tier | Location | Use case |
 |------|----------|----------|
-| 1. Entry points | `kanibako.targets` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
+| 1. Entry points | `kanibako.agents` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
 | 2. User directory | `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
 | 3. Project directory | `{project}/.kanibako/plugins/*.py` | Project-specific plugins |
 

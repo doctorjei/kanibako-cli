@@ -43,7 +43,7 @@ pytest examples/kanibako-target-aider/tests/ -v
 1. Copy the example closest to your agent's setup
 2. Rename the package directory and update `pyproject.toml`
 3. Implement the `Target` methods for your agent
-4. Register the entry point under `kanibako.targets`
+4. Register the entry point under `kanibako.agents`
 5. `pip install -e .` and test:
    ```bash
    kanibako crab list                         # verify target is registered

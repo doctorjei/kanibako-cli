@@ -9,7 +9,7 @@ description = "Goose agent target plugin for kanibako"
 requires-python = ">=3.11"
 dependencies = ["kanibako-base", "pyyaml"]
 
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 goose = "kanibako.plugins.goose:GooseTarget"
 
 [tool.setuptools.packages.find]
