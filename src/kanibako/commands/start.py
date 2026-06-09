@@ -778,13 +778,27 @@ def _run_container(
             _CMount(comms_path, "/home/agent/comms", "Z,U"),
         )
 
-        # Read per-project and global environment variables.
-        from kanibako.shellenv import merge_env
+        # Read environment variables, accumulating across config levels with
+        # the settings-framework precedence (low->high): system < crab <
+        # workset < box.  Target-derived state env and per-run CLI -e env stay
+        # above all config levels.
+        from kanibako.shellenv import read_env_file
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
-        container_env: dict[str, str] = merge_env(global_env_path, project_env_path) or {}
-        container_env.update(crab_cfg.env)
-        container_env.update(state_env)
+        # Workset-level env applies only for a named (non-default) workset
+        # group; the default/local group's tier is already the system env.
+        workset_env_path = (
+            proj.group.root / "env"
+            if (proj.group is not None and not proj.group.is_default)
+            else None
+        )
+        container_env: dict[str, str] = {}
+        container_env.update(read_env_file(global_env_path))   # system
+        container_env.update(crab_cfg.env)                     # crab
+        if workset_env_path is not None:
+            container_env.update(read_env_file(workset_env_path))  # workset
+        container_env.update(read_env_file(project_env_path))  # box (highest config level)
+        container_env.update(state_env)                        # target-derived state env
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
         container_env.update(_parse_cli_env(cli_env))

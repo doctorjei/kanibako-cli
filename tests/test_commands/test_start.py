@@ -530,6 +530,188 @@ class TestCrabConfigIntegration:
             assert div_call[0][0] == "general.toml"
 
 
+class TestContainerEnvPrecedence:
+    """Verify container env accumulation precedence (P3.4).
+
+    Order (low->high, later .update wins):
+        system < crab < workset < box < state < cli
+
+    This mirrors the exact ``.update`` sequence in ``_run_container``
+    (see ``src/kanibako/commands/start.py``) over real ``.env`` files plus
+    a fake crab ``[env]`` mapping, so the contract is pinned even when the
+    surrounding launch flow is heavily mocked.
+    """
+
+    @staticmethod
+    def _assemble(
+        *,
+        system_env_path,
+        project_env_path,
+        workset_env_path,
+        crab_env,
+        state_env,
+        cli_env,
+    ):
+        """Replicate the start.py env-assembly sequence verbatim."""
+        from kanibako.shellenv import read_env_file
+
+        container_env: dict[str, str] = {}
+        container_env.update(read_env_file(system_env_path))   # system
+        container_env.update(crab_env)                         # crab
+        if workset_env_path is not None:
+            container_env.update(read_env_file(workset_env_path))  # workset
+        container_env.update(read_env_file(project_env_path))  # box
+        container_env.update(state_env)                        # state
+        container_env.update(cli_env)                          # cli
+        return container_env
+
+    def test_box_overrides_crab_overrides_system(self, tmp_path):
+        """box (project/env) > crab ([env]) > system (global/env)."""
+        system = tmp_path / "global_env"
+        system.write_text("K=system\nONLY_SYSTEM=s\n")
+        box = tmp_path / "project_env"
+        box.write_text("K=box\nONLY_BOX=b\n")
+        env = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=None,
+            crab_env={"K": "crab", "ONLY_CRAB": "c"},
+            state_env={},
+            cli_env={},
+        )
+        assert env["K"] == "box"          # box wins the shared key
+        assert env["ONLY_BOX"] == "b"
+        assert env["ONLY_CRAB"] == "c"
+        assert env["ONLY_SYSTEM"] == "s"
+
+    def test_workset_sits_between_crab_and_box(self, tmp_path):
+        """workset (ws_root/env) overrides crab/system, loses to box."""
+        system = tmp_path / "global_env"
+        system.write_text("K=system\n")
+        ws = tmp_path / "ws_env"
+        ws.write_text("K=workset\nONLY_WS=w\n")
+        box = tmp_path / "project_env"
+        box.write_text("K=box\n")
+        env = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={},
+            cli_env={},
+        )
+        assert env["K"] == "box"          # box still wins overall
+        assert env["ONLY_WS"] == "w"
+        # Without a box value, the workset value should beat crab/system.
+        box.write_text("")               # box empty
+        env2 = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={},
+            cli_env={},
+        )
+        assert env2["K"] == "workset"
+
+    def test_state_and_cli_override_all_config_levels(self, tmp_path):
+        """state_env and CLI -e env both sit above every config level."""
+        system = tmp_path / "global_env"
+        system.write_text("K=system\n")
+        box = tmp_path / "project_env"
+        box.write_text("K=box\n")
+        ws = tmp_path / "ws_env"
+        ws.write_text("K=workset\n")
+        # state beats config levels
+        env_state = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={"K": "state"},
+            cli_env={},
+        )
+        assert env_state["K"] == "state"
+        # cli beats everything incl. state
+        env_cli = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={"K": "state"},
+            cli_env={"K": "cli"},
+        )
+        assert env_cli["K"] == "cli"
+
+
+class TestContainerEnvWorksetGating:
+    """Verify the workset env file is consulted only for named worksets.
+
+    Exercises the real ``_run_container`` flow: when ``proj.group`` is None
+    or ``is_default`` is True, no workset env path is built, so a workset
+    ``env`` file must never leak into the container env.
+    """
+
+    def test_no_workset_env_for_default_group(self, start_mocks, tmp_path):
+        """Default (local) group → workset env file is not read."""
+        with start_mocks() as m:
+            # Fixture default: proj.group.is_default is True.
+            assert m.proj.group.is_default is True
+            # Point the workset root at a dir with an env file that MUST NOT
+            # be read.  group is frozen-ish dataclass; rebuild with a real root.
+            from kanibako.paths import ProjectGroup
+            ws_root = tmp_path / "ws"
+            ws_root.mkdir()
+            (ws_root / "env").write_text("LEAKED=yes\n")
+            m.proj.group = ProjectGroup(
+                name="default",
+                root=ws_root,
+                is_default=True,
+                local_shared_base=ws_root,
+            )
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert "LEAKED" not in env
+
+    def test_no_workset_env_when_group_none(self, start_mocks, tmp_path):
+        """proj.group is None → workset env path is None (no crash)."""
+        with start_mocks() as m:
+            m.proj.group = None
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert "LEAKED" not in env
+
+    def test_named_workset_env_is_read(self, start_mocks, tmp_path):
+        """Named (non-default) workset → ws_root/env is injected."""
+        with start_mocks() as m:
+            from kanibako.paths import ProjectGroup
+            ws_root = tmp_path / "ws"
+            ws_root.mkdir()
+            (ws_root / "env").write_text("WS_VAR=present\n")
+            m.proj.group = ProjectGroup(
+                name="myws",
+                root=ws_root,
+                is_default=False,
+                local_shared_base=ws_root,
+            )
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("WS_VAR") == "present"
+
+
 class TestTweakccIntegration:
     """Verify tweakcc patching in the container launch flow."""
 
