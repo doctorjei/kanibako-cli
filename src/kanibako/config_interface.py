@@ -74,14 +74,17 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.rw",
     # Target settings (Claude-specific)
     "crab_name",
-    # System-level path settings
-    "paths.data_path",
-    "paths.boxes",
+    # System-level path settings (resolver-backed system.path.* tier)
+    "system.path.data",
+    "system.path.boxes",
+    "system.path.crabs",
+    "system.path.comms",
+    "system.path.templates",
+    "system.path.ws_hints",
+    # Box-level path settings (flat KanibakoConfig.paths_* fields)
     "paths.shell",
     "paths.vault",
     "paths.shared",
-    "paths.comms",
-    "paths.templates",
     # Helpers
     "allow_helpers",
 })
@@ -165,6 +168,11 @@ def _is_crab_setting(key: str) -> bool:
     return key in {"model", "start_mode", "autonomous"}
 
 
+def _is_system_path_key(key: str) -> bool:
+    """Keys that belong in the nested ``[system.path]`` table (system-only)."""
+    return key.startswith("system.path.")
+
+
 def _dot_to_flat(key: str) -> str:
     """Convert ``vault.enabled`` to ``enable_vault``, etc."""
     # For paths.* keys, convert to the flat KanibakoConfig field name.
@@ -223,6 +231,12 @@ def get_config_value(
                 return settings[canonical]
         return None
 
+    # system.path.* keys — read the raw set-value from the global config's
+    # [system.path] table (system-only tier; not a merged-config field).
+    if _is_system_path_key(canonical):
+        cfg = load_merged_config(global_config_path, project_toml)
+        return cfg.system_paths.get(canonical)
+
     # Regular config keys — use merged config
     flat = _dot_to_flat(canonical)
     cfg = load_merged_config(global_config_path, project_toml)
@@ -278,6 +292,12 @@ def set_config_value(
         _write_toml_key(config_path, "crab_settings", canonical, value)
         return f"Set {canonical}={value}"
 
+    # system.path.* keys — write to the nested [system.path] table.
+    if _is_system_path_key(canonical):
+        leaf = canonical[len("system.path."):]
+        _write_nested_toml_key(config_path, ("system", "path"), leaf, value)
+        return f"Set {canonical}={value}"
+
     # Regular config keys
     flat = _dot_to_flat(canonical)
     write_project_config_key(config_path, flat, value)
@@ -317,6 +337,13 @@ def reset_config_value(
     # target settings
     if _is_crab_setting(canonical):
         if _remove_toml_key(config_path, "crab_settings", canonical):
+            return f"Reset {canonical}"
+        return f"No override for {canonical}"
+
+    # system.path.* keys — remove from the nested [system.path] table.
+    if _is_system_path_key(canonical):
+        leaf = canonical[len("system.path."):]
+        if _remove_nested_toml_key(config_path, ("system", "path"), leaf):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -446,7 +473,11 @@ def show_config(
 # ---------------------------------------------------------------------------
 
 def _serialize_toml(data: dict) -> str:
-    """Minimal TOML serializer for flat section→key→value dicts."""
+    """Minimal TOML serializer for section→key→value dicts.
+
+    Handles one level of plain sections plus one level of nested sub-tables
+    (emitted as dotted headers, e.g. ``[system.path]``).
+    """
     lines: list[str] = []
     # Top-level keys first (non-dict values).
     for k, v in data.items():
@@ -456,9 +487,19 @@ def _serialize_toml(data: dict) -> str:
         lines.append("")
     # Sections.
     for k, v in data.items():
-        if isinstance(v, dict):
+        if not isinstance(v, dict):
+            continue
+        scalars = {sk: sv for sk, sv in v.items() if not isinstance(sv, dict)}
+        subtables = {sk: sv for sk, sv in v.items() if isinstance(sv, dict)}
+        if scalars or not subtables:
             lines.append(f"[{k}]")
-            for sk, sv in v.items():
+            for sk, sv in scalars.items():
+                lines.append(f'{sk} = {_toml_value(sv)}')
+            lines.append("")
+        # Nested sub-tables → dotted headers (e.g. [system.path]).
+        for sub_name, sub_val in subtables.items():
+            lines.append(f"[{k}.{sub_name}]")
+            for sk, sv in sub_val.items():
                 lines.append(f'{sk} = {_toml_value(sv)}')
             lines.append("")
     return "\n".join(lines)
@@ -509,5 +550,65 @@ def _remove_toml_key(path: Path, section: str, key: str) -> bool:
     del sec[key]
     if not sec:
         del data[section]
+    path.write_text(_serialize_toml(data))
+    return True
+
+
+def _write_nested_toml_key(
+    path: Path, sections: tuple[str, ...], key: str, value: str | bool,
+) -> None:
+    """Write *key* into a nested table (e.g. ``("system", "path")``).
+
+    Preserves other content; creates intermediate tables as needed.
+    """
+    import tomllib
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if path.exists():
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+
+    node = data
+    for sec in sections:
+        node = node.setdefault(sec, {})
+    node[key] = value
+    path.write_text(_serialize_toml(data))
+
+
+def _remove_nested_toml_key(
+    path: Path, sections: tuple[str, ...], key: str,
+) -> bool:
+    """Remove *key* from a nested table.  Returns True if found.
+
+    Prunes now-empty intermediate tables.
+    """
+    import tomllib
+
+    if not path.exists():
+        return False
+
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
+
+    # Walk to the innermost table, recording the chain for pruning.
+    chain: list[dict] = [data]
+    node = data
+    for sec in sections:
+        if sec not in node or not isinstance(node[sec], dict):
+            return False
+        node = node[sec]
+        chain.append(node)
+
+    if key not in node:
+        return False
+    del node[key]
+
+    # Prune empty tables bottom-up.
+    for i in range(len(sections) - 1, -1, -1):
+        if not chain[i + 1]:
+            del chain[i][sections[i]]
+        else:
+            break
     path.write_text(_serialize_toml(data))
     return True

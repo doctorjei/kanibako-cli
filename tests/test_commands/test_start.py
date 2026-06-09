@@ -525,9 +525,9 @@ class TestCrabConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # crab_toml_path should have been called with agent_id="general"
-            call_args = m.crab_toml_path.call_args
-            assert call_args[0][1] == "general"
+            # The crab TOML path is derived as std.crabs / "general.toml".
+            div_call = m.load_std_paths.return_value.crabs.__truediv__.call_args
+            assert div_call[0][0] == "general.toml"
 
 
 class TestTweakccIntegration:

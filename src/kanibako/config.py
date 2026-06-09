@@ -16,47 +16,36 @@ import tomllib
 # ---------------------------------------------------------------------------
 
 _DEFAULTS = {
-    "paths_data_path": "",
-    "paths_crabs": "crabs",
-    "paths_boxes": "boxes",
     "paths_project_toml": "project.toml",
     "paths_shared": "shared",
     "paths_shell": "shell",
-    "paths_templates": "templates",
     "paths_vault": "vault",
-    "paths_comms": "comms",
-    "paths_ws_hints": "worksets.toml",
     "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "crab_name": "",
 }
 
 # Backward-compat aliases: old field name -> new field name.
 # Applied during load_config() so old TOML files still work.
-_FIELD_ALIASES: dict[str, str] = {
-    "paths_relative_std_path": "paths_data_path",
-    "paths_settings_path": "paths_boxes",
-}
+_FIELD_ALIASES: dict[str, str] = {}
 
 
 @dataclass
 class KanibakoConfig:
     """Merged configuration (hardcoded defaults < kanibako.toml < project.toml < CLI)."""
 
-    paths_data_path: str = _DEFAULTS["paths_data_path"]
-    paths_crabs: str = _DEFAULTS["paths_crabs"]
-    paths_boxes: str = _DEFAULTS["paths_boxes"]
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]
     paths_shell: str = _DEFAULTS["paths_shell"]
-    paths_templates: str = _DEFAULTS["paths_templates"]
     paths_vault: str = _DEFAULTS["paths_vault"]
-    paths_comms: str = _DEFAULTS["paths_comms"]
-    paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
     container_image: str = _DEFAULTS["container_image"]
     crab_name: str = _DEFAULTS["crab_name"]
     allow_helpers: bool = True
     share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
+    # System-level path tier: raw set-values keyed by full dotted name
+    # ("system.path.<leaf>"), read from the file's [system][path] table.
+    # System-only (never supplied by project/workset configs).
+    system_paths: dict[str, str] = field(default_factory=dict)
 
 
 def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
@@ -128,6 +117,14 @@ def load_config(path: Path) -> KanibakoConfig:
         # Extract [shared] section before flattening (it's a key-value dict,
         # not nested config fields).
         shared = data.pop("shared", {})
+        # Extract the [system][path] table before flattening: these are the
+        # system-level path tier (resolver expressions), not flat fields.
+        system_path = data.get("system", {}).pop("path", {})
+        if "system" in data and not data["system"]:
+            data.pop("system")
+        cfg.system_paths = {
+            f"system.path.{k}": str(v) for k, v in system_path.items()
+        }
         flat = _flatten_toml(data)
         valid_keys = {fld.name for fld in fields(cfg)}
         for k, v in flat.items():
@@ -152,10 +149,16 @@ def load_merged_config(
     """
     cfg = load_config(global_path)
     defaults = KanibakoConfig()
+    # system_paths is SYSTEM-ONLY: only the global config supplies it.  Skip it
+    # in the project/workset overlay so a non-global file never clobbers the
+    # global's resolved system path tier (its default {} would otherwise be a
+    # no-op, but skipping makes the system-only invariant explicit).
     if workset_path and workset_path.exists():
         ws = load_config(workset_path)
         # Only override non-default values from workset config.
         for fld in fields(ws):
+            if fld.name == "system_paths":
+                continue
             val = getattr(ws, fld.name)
             if val != getattr(defaults, fld.name):
                 setattr(cfg, fld.name, val)
@@ -163,6 +166,8 @@ def load_merged_config(
         proj = load_config(project_path)
         # Only override non-default values from project config.
         for fld in fields(proj):
+            if fld.name == "system_paths":
+                continue
             val = getattr(proj, fld.name)
             if val != getattr(defaults, fld.name):
                 setattr(cfg, fld.name, val)
@@ -182,12 +187,18 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
     if cfg is None:
         cfg = KanibakoConfig()
     path.parent.mkdir(parents=True, exist_ok=True)
+    # System-level path tier (settings-framework "system.path.*"), written at
+    # the DEFAULT expressions.  Kept in lock-step with
+    # paths.SYSTEM_PATH_DEFAULTS (imported lazily there to avoid an import
+    # cycle); the resolver fills these in if the file omits them.
     lines = [
-        "[paths]",
-        f'data_path = "{cfg.paths_data_path}"',
-        f'boxes = "{cfg.paths_boxes}"',
-        f'shell = "{cfg.paths_shell}"',
-        f'vault = "{cfg.paths_vault}"',
+        "[system.path]",
+        'data = "$XDG_DATA_HOME/kanibako"',
+        'boxes = "@system.path.data/boxes"',
+        'crabs = "@system.path.data/crabs"',
+        'comms = "@system.path.data/comms"',
+        'templates = "@system.path.data/templates"',
+        'ws_hints = "@system.path.data/worksets.toml"',
         "",
         "[container]",
         f'image = "{cfg.container_image}"',

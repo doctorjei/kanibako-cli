@@ -28,7 +28,8 @@ class TestLoadConfig:
     def test_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.toml")
         assert cfg.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
-        assert cfg.paths_boxes == "boxes"
+        assert cfg.paths_shell == "shell"
+        assert cfg.system_paths == {}
 
     def test_round_trip(self, tmp_path):
         path = tmp_path / "test.toml"
@@ -36,19 +37,16 @@ class TestLoadConfig:
         write_global_config(path, cfg)
         loaded = load_config(path)
         assert loaded.container_image == "custom:latest"
-        assert loaded.paths_data_path == ""
+        # The written [system.path] table holds DEFAULT expressions.
+        assert loaded.system_paths["system.path.data"] == "$XDG_DATA_HOME/kanibako"
+        assert loaded.system_paths["system.path.boxes"] == "@system.path.data/boxes"
 
-    def test_loads_old_field_names_via_aliases(self, tmp_path):
-        """Old TOML files with paths_relative_std_path / paths_settings_path still load."""
-        path = tmp_path / "old.toml"
-        path.write_text(
-            '[paths]\nrelative_std_path = "kanibako"\nsettings_path = "settings"\n'
-            '[container]\nimage = "old:v1"\n'
-        )
+    def test_system_path_table_populates_system_paths(self, tmp_path):
+        """[system.path] keys land in cfg.system_paths (full dotted names)."""
+        path = tmp_path / "sys.toml"
+        path.write_text('[system.path]\nboxes = "/x"\n')
         cfg = load_config(path)
-        assert cfg.paths_data_path == "kanibako"
-        assert cfg.paths_boxes == "settings"
-        assert cfg.container_image == "old:v1"
+        assert cfg.system_paths == {"system.path.boxes": "/x"}
 
 
 class TestMergedConfig:

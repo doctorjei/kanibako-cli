@@ -309,8 +309,7 @@ class TestCrabConfigFirstUse:
     def test_generates_config_on_first_use(self, start_mocks):
         """When agent TOML doesn't exist, target.generate_crab_config() is called."""
         with start_mocks() as m:
-            mock_path = m.crab_toml_path.return_value
-            mock_path.exists.return_value = False
+            m.crab_toml_path.exists.return_value = False
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -321,8 +320,7 @@ class TestCrabConfigFirstUse:
     def test_does_not_generate_when_exists(self, start_mocks):
         """When agent TOML exists, generate_crab_config() is NOT called."""
         with start_mocks() as m:
-            mock_path = m.crab_toml_path.return_value
-            mock_path.exists.return_value = True
+            m.crab_toml_path.exists.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -359,8 +357,8 @@ class TestCrabConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            call_args = m.crab_toml_path.call_args[0]
-            assert call_args[1] == "no_agent"
+            div_call = m.load_std_paths.return_value.crabs.__truediv__.call_args
+            assert div_call[0][0] == "no_agent.toml"
 
 
 # ---------------------------------------------------------------------------

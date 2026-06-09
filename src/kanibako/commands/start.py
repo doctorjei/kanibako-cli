@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.crabs import crab_toml_path, load_crab_config, write_crab_config
+from kanibako.crabs import load_crab_config, write_crab_config
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
@@ -507,7 +507,7 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    crab_cfg_path = crab_toml_path(std.data_path, agent_id, merged.paths_crabs)
+    crab_cfg_path = std.crabs / f"{agent_id}.toml"
     if target and not crab_cfg_path.exists():
         # First-use: generate default crab config from target plugin
         crab_cfg = target.generate_crab_config()
@@ -603,7 +603,7 @@ def _run_container(
         # Template application + agent init for new projects.
         if proj.is_new and target:
             from kanibako.templates import apply_shell_template
-            templates_base = std.data_path / merged.paths_templates
+            templates_base = std.templates
             # Ensure the agent-specific template variant directory exists.
             (templates_base / target.name / crab_cfg.shell).mkdir(parents=True, exist_ok=True)
             apply_shell_template(proj.shell_path, templates_base, target.name, crab_cfg.shell)
@@ -759,9 +759,7 @@ def _run_container(
 
         # Peer communication: mount shared comms directory.
         from kanibako.targets.base import Mount as _CMount
-        comms_path = Path(merged.paths_comms)
-        if not comms_path.is_absolute():
-            comms_path = std.data_path / comms_path
+        comms_path = std.comms
         comms_path.mkdir(parents=True, exist_ok=True)
         if proj.name:
             mailbox = comms_path / "mailbox" / proj.name

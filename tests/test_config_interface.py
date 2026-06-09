@@ -75,7 +75,9 @@ class TestIsKnownKey:
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
-        assert is_known_key("paths.data_path") is True
+        assert is_known_key("paths.shell") is True
+        assert is_known_key("system.path.data") is True
+        assert is_known_key("system.path.boxes") is True
 
     def test_dynamic_env_prefix(self):
         assert is_known_key("env.MY_VAR") is True

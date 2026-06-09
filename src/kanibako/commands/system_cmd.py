@@ -92,8 +92,13 @@ def run_info(args: argparse.Namespace) -> int:
     if cf.exists():
         print(f"Config:    {cf}")
         config = load_config(cf)
+        from pathlib import Path
+
+        from kanibako.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
-        data_path = data_home / (config.paths_data_path or "kanibako")
+        data_path = resolve_system_paths(
+            config.system_paths, data_home=data_home, home=Path.home(),
+        )["system.path.data"]
         print(f"Data:      {data_path}")
     else:
         print(

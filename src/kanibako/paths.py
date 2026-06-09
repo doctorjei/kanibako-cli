@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol
 
 from kanibako.config import (
@@ -18,6 +18,14 @@ from kanibako.config import (
     write_project_meta,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
+from kanibako.settings_resolve import (
+    LevelView,
+    ResolveCtx,
+    SettingsError,
+    _Unset,
+    expand_expr,
+    resolve_value,
+)
 from kanibako.names import (
     assign_name,
     read_names,
@@ -80,6 +88,12 @@ class StandardPaths:
     data_path: Path
     state_path: Path
     cache_path: Path
+    # System-level derived directories (settings-framework "system.path.*").
+    boxes: Path
+    crabs: Path
+    comms: Path
+    templates: Path
+    ws_hints: Path
 
 
 @dataclass(frozen=True)
@@ -200,6 +214,66 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     return Path.home() / default_suffix
 
 
+# ---------------------------------------------------------------------------
+# System-level path tier (settings-framework "system.path.*")
+# ---------------------------------------------------------------------------
+#
+# These model the system-level derived directories as resolver-backed path
+# expressions.  Keys are the FULL dotted names so ``@``-refs (e.g.
+# ``@system.path.data``) resolve against the same table.  Defaults reproduce
+# today's flat ``KanibakoConfig.paths_*`` behavior byte-for-byte: the data path
+# is ``$XDG_DATA_HOME/kanibako`` and the other dirs (and the ``ws_hints`` file)
+# hang off it.
+SYSTEM_PATH_DEFAULTS: dict[str, str] = {
+    "system.path.data": "$XDG_DATA_HOME/kanibako",
+    "system.path.boxes": "@system.path.data/boxes",
+    "system.path.crabs": "@system.path.data/crabs",
+    "system.path.comms": "@system.path.data/comms",
+    "system.path.templates": "@system.path.data/templates",
+    "system.path.ws_hints": "@system.path.data/worksets.toml",
+}
+
+
+def resolve_system_paths(
+    set_values: Mapping[str, str], *, data_home: Path, home: Path,
+) -> dict[str, Path]:
+    """Resolve the ``system.path.*`` tier to concrete host paths.
+
+    *set_values* holds raw user-set expressions keyed by their full dotted name
+    (``system.path.<leaf>``); typically the global config's ``system_paths``.
+    *data_home* is the already-resolved XDG data base (e.g. ``~/.local/share``)
+    exposed to expressions as ``$XDG_DATA_HOME``; *home* expands a leading
+    ``~``.  Returns ``{full_dotted_key: Path}`` for every key in
+    :data:`SYSTEM_PATH_DEFAULTS`.
+    """
+    ctx = ResolveCtx(
+        crab_name=None,
+        workset_name=None,
+        host_home=str(home),
+        xdg={"XDG_DATA_HOME": str(data_home)},
+    )
+    levels = [
+        LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)
+    ]
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):
+            raise SettingsError(f"Unknown @-reference: {ref}")
+        return expand_expr(
+            rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain,
+        )
+
+    resolved: dict[str, Path] = {}
+    for key in SYSTEM_PATH_DEFAULTS:
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):  # Unreachable: every key has a default.
+            raise SettingsError(f"Unresolvable system path: {key}")
+        expanded = expand_expr(rv.value, space="host", ctx=ctx, lookup=lookup)
+        resolved[key] = Path(expanded)
+    return resolved
+
+
 def _migrate_global_env(config_home: Path, data_path: Path) -> None:
     """Move global env file from old config_home/kanibako/env to data_path/env."""
     old = config_home / "kanibako" / "env"
@@ -212,14 +286,13 @@ def _migrate_global_env(config_home: Path, data_path: Path) -> None:
         print(f"Migrated: {old} → {new}", file=sys.stderr)
 
 
-def _migrate_settings_to_boxes(data_path: Path) -> None:
-    """Rename ``data_path/settings`` to ``data_path/boxes`` if needed."""
+def _migrate_settings_to_boxes(data_path: Path, boxes_path: Path) -> None:
+    """Rename the legacy ``data_path/settings`` dir to the resolved boxes dir."""
     old = data_path / "settings"
-    new = data_path / "boxes"
-    if old.is_dir() and not new.exists():
-        old.rename(new)
+    if old.is_dir() and not boxes_path.exists():
+        old.rename(boxes_path)
         import sys
-        print(f"Migrated: {old} → {new}", file=sys.stderr)
+        print(f"Migrated: {old} → {boxes_path}", file=sys.stderr)
 
 
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
@@ -244,13 +317,19 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
             )
         config = load_config(config_file)
 
-    rel = config.paths_data_path or "kanibako"
-    data_path = data_home / rel
+    # Resolve the system-level path tier (settings-framework "system.path.*").
+    resolved = resolve_system_paths(
+        config.system_paths, data_home=data_home, home=Path.home(),
+    )
+    data_path = resolved["system.path.data"]
+    # state/cache paths track the data dir's leaf name (unchanged behavior:
+    # default leaf "kanibako" under each XDG base).
+    rel = data_path.name
     state_path = state_home / rel
     cache_path = cache_home / rel
 
     # Migrate settings/ -> boxes/ if needed.
-    _migrate_settings_to_boxes(data_path)
+    _migrate_settings_to_boxes(data_path, resolved["system.path.boxes"])
 
     # Migrate global env file from config_home/kanibako/env to data_path/env.
     _migrate_global_env(config_home, data_path)
@@ -270,6 +349,11 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         data_path=data_path,
         state_path=state_path,
         cache_path=cache_path,
+        boxes=resolved["system.path.boxes"],
+        crabs=resolved["system.path.crabs"],
+        comms=resolved["system.path.comms"],
+        templates=resolved["system.path.templates"],
+        ws_hints=resolved["system.path.ws_hints"],
     )
 
 

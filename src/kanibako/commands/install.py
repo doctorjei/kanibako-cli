@@ -42,18 +42,25 @@ def run(args: argparse.Namespace) -> int:
     # ------------------------------------------------------------------
     # 2. Create containers directory for user overrides
     # ------------------------------------------------------------------
+    from pathlib import Path
+
+    from kanibako.paths import resolve_system_paths
+
     data_home = xdg("XDG_DATA_HOME", ".local/share")
-    data_path = data_home / (config.paths_data_path or "kanibako")
+    sys_paths = resolve_system_paths(
+        config.system_paths, data_home=data_home, home=Path.home(),
+    )
+    data_path = sys_paths["system.path.data"]
     containers_dest = data_path / "containers"
     containers_dest.mkdir(parents=True, exist_ok=True)
 
     # Create template directory structure.
-    templates_dir = data_path / (config.paths_templates or "templates")
+    templates_dir = sys_paths["system.path.templates"]
     (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
     (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
 
     # Create peer communication directory.
-    comms_dir = data_path / (config.paths_comms or "comms")
+    comms_dir = sys_paths["system.path.comms"]
     (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
     (comms_dir / "broadcast.log").touch(exist_ok=True)
 
@@ -61,7 +68,7 @@ def run(args: argparse.Namespace) -> int:
     from kanibako.crabs import CrabConfig, write_crab_config
     from kanibako.targets import discover_targets
 
-    crabs_path = data_path / (config.paths_crabs or "crabs")
+    crabs_path = sys_paths["system.path.crabs"]
     crabs_path.mkdir(parents=True, exist_ok=True)
 
     # general.toml (no-agent default)

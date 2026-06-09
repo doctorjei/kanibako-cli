@@ -398,12 +398,12 @@ class TestBoxConfigTooManyArgs:
 class TestWriteProjectConfigKey:
     def test_write_paths_key(self, tmp_path):
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "paths_boxes", "custom_boxes")
+        write_project_config_key(p, "paths_shell", "custom_shell")
         loaded = load_config(p)
-        assert loaded.paths_boxes == "custom_boxes"
+        assert loaded.paths_shell == "custom_shell"
         text = p.read_text()
         assert "[paths]" in text
-        assert 'boxes = "custom_boxes"' in text
+        assert 'shell = "custom_shell"' in text
 
     def test_write_container_key(self, tmp_path):
         p = tmp_path / "project.toml"
@@ -427,10 +427,10 @@ class TestWriteProjectConfigKey:
         """Writing keys from different sections should create both."""
         p = tmp_path / "project.toml"
         write_project_config_key(p, "container_image", "multi:v1")
-        write_project_config_key(p, "paths_boxes", "multi_boxes")
+        write_project_config_key(p, "paths_shell", "multi_shell")
         loaded = load_config(p)
         assert loaded.container_image == "multi:v1"
-        assert loaded.paths_boxes == "multi_boxes"
+        assert loaded.paths_shell == "multi_shell"
 
     def test_update_existing_key(self, tmp_path):
         p = tmp_path / "project.toml"
@@ -463,7 +463,7 @@ class TestUnsetProjectConfigKey:
         from kanibako.config import unset_project_config_key
         p = tmp_path / "project.toml"
         write_project_config_key(p, "container_image", "keep:v1")
-        assert unset_project_config_key(p, "paths_boxes") is False
+        assert unset_project_config_key(p, "paths_shell") is False
         # Original key should still be there
         loaded = load_config(p)
         assert loaded.container_image == "keep:v1"
@@ -477,10 +477,10 @@ class TestUnsetProjectConfigKey:
         from kanibako.config import unset_project_config_key
         p = tmp_path / "project.toml"
         write_project_config_key(p, "container_image", "img:v1")
-        write_project_config_key(p, "paths_boxes", "my_boxes")
+        write_project_config_key(p, "paths_shell", "my_shell")
         assert unset_project_config_key(p, "container_image") is True
         loaded = load_config(p)
-        assert loaded.paths_boxes == "my_boxes"
+        assert loaded.paths_shell == "my_shell"
         assert loaded.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
 
@@ -496,7 +496,7 @@ class TestLoadProjectOverrides:
         assert "container_image" in overrides
         assert overrides["container_image"] == "override:v1"
         # Other keys should not appear (they are defaults)
-        assert "paths_boxes" not in overrides
+        assert "paths_shell" not in overrides
 
 
 class TestSplitConfigKey:
@@ -506,11 +506,11 @@ class TestSplitConfigKey:
 
     def test_paths_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("paths_boxes") == ("paths", "boxes")
+        assert _split_config_key("paths_shell") == ("paths", "shell")
 
     def test_paths_key_with_underscores(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("paths_data_path") == ("paths", "data_path")
+        assert _split_config_key("paths_project_toml") == ("paths", "project_toml")
 
     def test_target_key(self):
         from kanibako.config import _split_config_key
@@ -533,7 +533,6 @@ class TestConfigKeys:
         from kanibako.config import config_keys
         keys = config_keys()
         assert "container_image" in keys
-        assert "paths_boxes" in keys
         assert "paths_shell" in keys
-        assert "paths_data_path" in keys
+        assert "paths_vault" in keys
         assert "crab_name" in keys

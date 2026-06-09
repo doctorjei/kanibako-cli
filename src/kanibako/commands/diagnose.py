@@ -131,8 +131,11 @@ def run_system_diagnose(args: object) -> int:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)
         config = load_config(cf)
+        from kanibako.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
-        data_path = data_home / (config.paths_data_path or "kanibako")
+        data_path = resolve_system_paths(
+            config.system_paths, data_home=data_home, home=Path.home(),
+        )["system.path.data"]
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))
     except Exception:
