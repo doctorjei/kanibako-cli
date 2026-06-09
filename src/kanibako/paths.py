@@ -133,6 +133,7 @@ class _WorksetLike(Protocol):
     name: str
     root: Path
     group_auth: bool
+    is_default: bool
 
     @property
     def projects_dir(self) -> Path: ...
@@ -174,6 +175,7 @@ class WorksetSpec:
     workspaces_dir: Path
     vault_dir: Path
     project_names: tuple[str, ...]
+    is_default: bool = False
 
     @classmethod
     def from_workset(cls, ws: _WorksetLike) -> WorksetSpec:
@@ -186,6 +188,7 @@ class WorksetSpec:
             workspaces_dir=ws.workspaces_dir,
             vault_dir=ws.vault_dir,
             project_names=tuple(p.name for p in ws.projects),
+            is_default=ws.is_default,
         )
 
 
@@ -336,6 +339,17 @@ def resolve_project(
         )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
+    # Auth mode for the account (default group): the default workset's
+    # group_auth (from {data_path}/config.toml) is the base; a project may
+    # narrow shared→distinct via its own meta — mirroring the named-workset
+    # logic in resolve_workset_project.  No-op on upgrade: default_workset's
+    # group_auth is True until a user runs `workset config default group_auth`,
+    # and existing project meta froze group_auth=True at init.
+    from kanibako.workset import default_workset
+    actual_group_auth = default_workset(std).group_auth
+    if actual_group_auth and meta:
+        actual_group_auth = bool(meta.get("group_auth", True))
+
     is_new = False
     if initialize and not project_dir_path.is_dir():
         # Guard: refuse to implicitly create a project rooted at $HOME.
@@ -453,6 +467,7 @@ def resolve_project(
         mode=ProjectMode.local,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
+        group_auth=actual_group_auth,
         name=project_name,
         global_shared_path=_computed_global_shared,
         local_shared_path=_computed_local_shared,
@@ -1296,6 +1311,8 @@ def resolve_standalone_project(
     project_toml = metadata_path / "project.toml"
 
     # Auth mode for standalone: explicit param > meta > default.
+    # Standalone projects are NOT in the account/default group, so they do
+    # not consult the default workset config.toml.
     actual_group_auth = (
         group_auth
         if group_auth is not None

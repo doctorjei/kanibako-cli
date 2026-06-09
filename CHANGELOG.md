@@ -33,6 +33,32 @@ agent stays agent-domain). These are breaking renames with **no back-compat shim
   `ws_hints` default name (`working_sets.toml` → `worksets.toml`); dropped the unused
   `paths.workspaces` config key.
 
+### Added (v1.5.0 — workset↔account merge; Phase 2)
+
+The account / local-projects group is now modeled as a synthesized **default
+workset**, so "account-wide" settings use the same mechanism as named worksets.
+
+- **Default workset is addressable.** It is a virtual workset (fixed id
+  `__default__`, typeable alias `default`; never created or deleted, no on-disk
+  file). `kanibako workset list` shows it (root `<account-wide>`),
+  `kanibako workset info default` works, and `kanibako workset config default
+  <key>=<value>` sets defaults for all local/account projects. `default` /
+  `__default__` are reserved as workset names; the default workset cannot be removed.
+- **Workset config tier.** A workset's `config.toml` is now applied at box
+  start/status. Precedence is now `CLI > project.toml > workset config.toml >
+  crab config > kanibako.toml (system) > defaults`. For a named workset the file
+  is `<workset_root>/config.toml`; for the default workset it is
+  `<data_dir>/config.toml`. `group_auth` set on the default workset applies to
+  all account projects (a project may still narrow shared→distinct).
+
+### Changed (Phase 2; pre-broad-release)
+
+- **Named worksets now honor their `config.toml` at box start/status** (the
+  `KanibakoConfig` keys, e.g. `container_image`). Previously this file was only
+  read by the `workset config` command and ignored when launching — now it
+  participates in the precedence chain above. No-op for installs without a
+  workset `config.toml`.
+
 ## [1.4.0] - 2026-06-04
 
 ### Changed

@@ -130,14 +130,17 @@ class TestWorksetCreate:
 
 
 class TestWorksetList:
-    def test_list_empty(self, config_file, tmp_home, capsys):
+    def test_list_empty_shows_only_default(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_list
 
         args = argparse.Namespace(quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "No working sets" in out
+        # The synthesized default workset is always present.
+        assert "default" in out
+        assert "<account-wide>" in out
+        assert "NAME" in out
 
     def test_list_shows_worksets(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_list
@@ -184,20 +187,23 @@ class TestWorksetList:
         assert rc == 0
         out = capsys.readouterr().out
         lines = out.strip().split("\n")
-        assert len(lines) == 2
+        # 2 named worksets + the synthesized default.
+        assert len(lines) == 3
+        assert "default" in lines
         assert "quiet1" in lines
         assert "quiet2" in lines
         # Quiet mode should not have header
         assert "NAME" not in out
 
-    def test_list_quiet_empty(self, config_file, tmp_home, capsys):
+    def test_list_quiet_empty_shows_default(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_list
 
         args = argparse.Namespace(quiet=True)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert out == ""
+        # Even with no named worksets, the default workset is listed.
+        assert out.strip() == "default"
 
 
 class TestWorksetRm:
@@ -666,6 +672,119 @@ class TestWorksetConfig:
         assert rc == 1
         err = capsys.readouterr().err
         assert "not registered" in err
+
+
+class TestDefaultWorksetCli:
+    def _std(self, config_file):
+        config = load_config(config_file)
+        return load_std_paths(config)
+
+    def test_config_set_group_auth_roundtrips_via_config_toml(
+        self, config_file, tmp_home, capsys,
+    ):
+        """`workset config default group_auth=false` writes config.toml, not a
+        workset.toml."""
+        from unittest.mock import MagicMock, patch
+
+        from kanibako.commands.workset_cmd import run_config
+        std = self._std(config_file)
+
+        mock_target = MagicMock()
+        args = argparse.Namespace(
+            workset="default", key_value="group_auth=false",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        with patch("kanibako.targets.resolve_target", return_value=mock_target):
+            rc = run_config(args)
+        assert rc == 0
+
+        # No workset.toml created at the data path.
+        assert not (std.data_path / "workset.toml").exists()
+        # group_auth persisted in config.toml [project].
+        import tomllib
+        with open(std.data_path / "config.toml", "rb") as f:
+            data = tomllib.load(f)
+        assert data["project"]["group_auth"] is False
+
+        # And it reads back via the default workset.
+        from kanibako.workset import default_workset
+        assert default_workset(std).group_auth is False
+
+    def test_config_get_group_auth(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_config
+        args = argparse.Namespace(
+            workset="default", key_value="group_auth",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "True" in out
+
+    def test_config_reset_group_auth(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_config
+        std = self._std(config_file)
+        (std.data_path / "config.toml").write_text("[project]\ngroup_auth = false\n")
+
+        args = argparse.Namespace(
+            workset="default", key_value=None,
+            effective=False, reset="group_auth", reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        from kanibako.workset import default_workset
+        assert default_workset(std).group_auth is True
+
+    def test_config_set_regular_key_writes_config_toml(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_config
+        std = self._std(config_file)
+
+        args = argparse.Namespace(
+            workset="default", key_value="container_image=myimg:1",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        import tomllib
+        with open(std.data_path / "config.toml", "rb") as f:
+            data = tomllib.load(f)
+        assert data["container"]["image"] == "myimg:1"
+        assert not (std.data_path / "workset.toml").exists()
+
+    def test_info_default(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_info
+        args = argparse.Namespace(name="default")
+        rc = run_info(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "__default__" in out
+        assert "<account-wide>" in out
+
+    def test_rm_default_refused(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_rm
+        for name in ("default", "__default__"):
+            args = argparse.Namespace(name=name, purge=False, force=True)
+            rc = run_rm(args)
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert "cannot be removed" in err
+
+    def test_disconnect_default_refused(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_disconnect
+        args = argparse.Namespace(
+            workset="default", project="anything",
+            remove_files=False, force=True,
+        )
+        rc = run_disconnect(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "cannot be removed" in err
 
 
 class TestWorksetParser:

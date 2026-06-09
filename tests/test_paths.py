@@ -95,6 +95,53 @@ class TestResolveProject:
 
         assert proj.mode is ProjectMode.local
 
+    def test_group_auth_defaults_true_without_workset_config(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """No param, no project-meta group_auth, no config.toml -> True (no-op)."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        assert not (std.data_path / "config.toml").exists()
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        assert proj.group_auth is True
+
+    def test_group_auth_from_default_workset_config(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """{data_path}/config.toml [project] group_auth=false flows through."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        std.data_path.mkdir(parents=True, exist_ok=True)
+        (std.data_path / "config.toml").write_text(
+            "[project]\ngroup_auth = false\n"
+        )
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        assert proj.group_auth is False
+
+    def test_group_auth_default_workset_applies_to_existing_project(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """Re-resolving an already-initialized account project still honors the
+        default workset's group_auth — init freezes group_auth=True in project
+        meta, but the default-workset value is the base (mirrors named worksets)
+        so `workset config default group_auth=false` reaches existing projects."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        # First resolve initializes the project (writes [project] group_auth=true).
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+        # Now set the default workset to distinct creds.
+        std.data_path.mkdir(parents=True, exist_ok=True)
+        (std.data_path / "config.toml").write_text("[project]\ngroup_auth = false\n")
+        # Second resolve of the existing project must reflect it (not the frozen meta).
+        proj = resolve_project(std, config, project_dir=project_dir)
+
+        assert proj.group_auth is False
+
 
 class TestProjectMeta:
     """Tests for project metadata storage in project.toml (Phase 1b)."""

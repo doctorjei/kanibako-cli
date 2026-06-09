@@ -76,6 +76,72 @@ class TestMergedConfig:
         )
         assert merged.container_image == "cli-image:v3"
 
+    def test_workset_path_none_is_byte_identical(self, tmp_path):
+        """Omitting workset_path must reproduce the pre-P2.2 global+project merge."""
+        global_path = tmp_path / "global.toml"
+        project_path = tmp_path / "project.toml"
+
+        write_global_config(global_path)
+        write_project_config(project_path, "my-image:v2")
+
+        baseline = load_merged_config(global_path, project_path)
+        with_none = load_merged_config(global_path, project_path, workset_path=None)
+        assert with_none == baseline
+        assert with_none.container_image == "my-image:v2"
+
+    def test_workset_overrides_global(self, tmp_path):
+        global_path = tmp_path / "global.toml"
+        workset_path = tmp_path / "ws-config.toml"
+
+        write_global_config(global_path)
+        write_project_config(workset_path, "ws-image:v1")
+
+        merged = load_merged_config(global_path, workset_path=workset_path)
+        assert merged.container_image == "ws-image:v1"
+
+    def test_project_overrides_workset(self, tmp_path):
+        global_path = tmp_path / "global.toml"
+        workset_path = tmp_path / "ws-config.toml"
+        project_path = tmp_path / "project.toml"
+
+        write_global_config(global_path)
+        write_project_config(workset_path, "ws-image:v1")
+        write_project_config(project_path, "proj-image:v2")
+
+        merged = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
+        assert merged.container_image == "proj-image:v2"
+
+    def test_cli_overrides_workset(self, tmp_path):
+        global_path = tmp_path / "global.toml"
+        workset_path = tmp_path / "ws-config.toml"
+
+        write_global_config(global_path)
+        write_project_config(workset_path, "ws-image:v1")
+
+        merged = load_merged_config(
+            global_path,
+            workset_path=workset_path,
+            cli_overrides={"container_image": "cli-image:v3"},
+        )
+        assert merged.container_image == "cli-image:v3"
+
+    def test_account_no_op_when_no_workset_config(self, tmp_path):
+        """A local project with no workset config.toml merges exactly as before."""
+        global_path = tmp_path / "global.toml"
+        project_path = tmp_path / "project.toml"
+        missing_workset = tmp_path / "no-such-config.toml"
+
+        write_global_config(global_path)
+        write_project_config(project_path, "my-image:v2")
+
+        baseline = load_merged_config(global_path, project_path)
+        with_missing = load_merged_config(
+            global_path, project_path, workset_path=missing_workset
+        )
+        assert with_missing == baseline
+
 
 class TestFlattenToml:
     def test_nested_dict(self):

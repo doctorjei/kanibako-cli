@@ -143,17 +143,25 @@ def load_merged_config(
     global_path: Path,
     project_path: Path | None = None,
     *,
+    workset_path: Path | None = None,
     cli_overrides: dict[str, str] | None = None,
 ) -> KanibakoConfig:
-    """Load global config, overlay project config, then CLI overrides.
+    """Load global config, overlay workset config, project config, then CLI overrides.
 
-    Precedence: CLI flags > project.toml > kanibako.toml > hardcoded defaults.
+    Precedence: CLI flags > project.toml > workset config.toml > kanibako.toml > hardcoded defaults.
     """
     cfg = load_config(global_path)
+    defaults = KanibakoConfig()
+    if workset_path and workset_path.exists():
+        ws = load_config(workset_path)
+        # Only override non-default values from workset config.
+        for fld in fields(ws):
+            val = getattr(ws, fld.name)
+            if val != getattr(defaults, fld.name):
+                setattr(cfg, fld.name, val)
     if project_path and project_path.exists():
         proj = load_config(project_path)
         # Only override non-default values from project config.
-        defaults = KanibakoConfig()
         for fld in fields(proj):
             val = getattr(proj, fld.name)
             if val != getattr(defaults, fld.name):

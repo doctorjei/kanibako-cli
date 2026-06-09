@@ -478,7 +478,7 @@ def _toml_value(v: object) -> str:
     return f'"{v}"'
 
 
-def _write_toml_key(path: Path, section: str, key: str, value: str) -> None:
+def _write_toml_key(path: Path, section: str, key: str, value: str | bool) -> None:
     """Write a key to a specific TOML section, preserving other content."""
     import tomllib
 

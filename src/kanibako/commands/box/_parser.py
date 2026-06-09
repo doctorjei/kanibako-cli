@@ -924,7 +924,7 @@ def run_info(args: argparse.Namespace) -> int:
     if not has_data:
         print(f"No project data found for: {proj.project_path}")
         print()
-        if proj.mode == ProjectMode.local:
+        if proj.group is not None and proj.group.is_default:
             print("This directory has not been used with kanibako yet.")
             print("Start a session with 'kanibako start', or create with:")
             print("  kanibako box create")
@@ -934,9 +934,11 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Load merged config for image info.
     project_toml = proj.metadata_path / "project.toml"
+    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
+        workset_path=workset_path,
     )
 
     # Gather status info.

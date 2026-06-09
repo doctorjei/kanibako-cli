@@ -25,8 +25,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.errors import WorksetError
-from kanibako.names import register_name, unregister_name
+from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import StandardPaths
+
+
+# Identity of the synthesized "default" workset (a.k.a. the account / local
+# projects group).  This workset is virtual — it is never written to disk.
+DEFAULT_WORKSET_ID = "__default__"
+DEFAULT_WORKSET_ALIAS = "default"
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +56,7 @@ class Workset:
     created: str                            # ISO 8601, UTC
     projects: list[WorksetProject] = field(default_factory=list)
     group_auth: bool = field(default=True)  # True = shared creds, False = distinct
+    is_default: bool = False                 # True = synthesized default workset
 
     # Convenience paths -------------------------------------------------------
 
@@ -158,6 +165,9 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
     if not name:
         raise WorksetError("Workset name must not be empty.")
 
+    if name in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+        raise WorksetError("'default' is reserved for the default workset.")
+
     registry = _load_registry(std)
     if name in registry:
         raise WorksetError(
@@ -209,8 +219,63 @@ def load_workset(root: Path) -> Workset:
 
 
 def list_worksets(std: StandardPaths) -> dict[str, Path]:
-    """Return ``{name: root_path}`` for all registered worksets."""
+    """Return ``{name: root_path}`` for all registered worksets.
+
+    This returns ONLY the on-disk registry; the synthesized default workset is
+    never injected here.
+    """
     return _load_registry(std)
+
+
+def default_workset(std: StandardPaths) -> Workset:
+    """Synthesize the default workset (the account / local-projects group).
+
+    The default workset is virtual: its members are the local projects in
+    ``names.toml [projects]`` and its ``group_auth`` lives as a normal key in
+    ``{data_path}/config.toml``.  This object is NEVER persisted to disk (no
+    workset.toml / registry write).
+    """
+    projects_map = read_names(std.data_path).get("projects", {})
+    projects = [
+        WorksetProject(name=name, source_path=Path(path))
+        for name, path in projects_map.items()
+    ]
+
+    group_auth = True
+    config_path = std.data_path / "config.toml"
+    if config_path.is_file():
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+        # group_auth lives in the [project] section (see config.py loader);
+        # tolerate a top-level key too for robustness.
+        if "group_auth" in data.get("project", {}):
+            group_auth = bool(data["project"]["group_auth"])
+        elif "group_auth" in data:
+            group_auth = bool(data["group_auth"])
+
+    return Workset(
+        name=DEFAULT_WORKSET_ID,
+        root=std.data_path,
+        created="",
+        projects=projects,
+        group_auth=group_auth,
+        is_default=True,
+    )
+
+
+def resolve_workset_name(name: str, std: StandardPaths) -> Workset:
+    """Resolve a workset *name* to a :class:`Workset`.
+
+    The names ``default`` / ``__default__`` resolve to the synthesized default
+    workset; any other name is looked up in the on-disk registry.  Raises
+    ``WorksetError`` if the name is not registered.
+    """
+    if name in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+        return default_workset(std)
+    registry = _load_registry(std)
+    if name not in registry:
+        raise WorksetError(f"Working set '{name}' is not registered.")
+    return load_workset(registry[name])
 
 
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False) -> Path:
