@@ -24,9 +24,8 @@ _DEFAULTS = {
     "paths_shell": "shell",
     "paths_templates": "templates",
     "paths_vault": "vault",
-    "paths_workspaces": "workspaces",
     "paths_comms": "comms",
-    "paths_ws_hints": "working_sets.toml",
+    "paths_ws_hints": "worksets.toml",
     "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "crab_name": "",
 }
@@ -52,7 +51,6 @@ class KanibakoConfig:
     paths_templates: str = _DEFAULTS["paths_templates"]
     paths_vault: str = _DEFAULTS["paths_vault"]
     paths_comms: str = _DEFAULTS["paths_comms"]
-    paths_workspaces: str = _DEFAULTS["paths_workspaces"]
     paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
     container_image: str = _DEFAULTS["container_image"]
     crab_name: str = _DEFAULTS["crab_name"]
