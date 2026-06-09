@@ -335,7 +335,7 @@ class TestWorksetAuthOverrideChain:
             shell=meta["shell"],
             vault_ro=meta["vault_ro"],
             vault_rw=meta["vault_rw"],
-            vault_enabled=meta["vault_enabled"],
+            enable_vault=meta["enable_vault"],
             auth="distinct",
             metadata=meta["metadata"],
             project_hash=meta["project_hash"],

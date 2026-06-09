@@ -297,7 +297,7 @@ class HelperHub:
                 vault_ro_path=helpers_dir_host / str(helper_num) / "vault" / "share-ro",
                 vault_rw_path=helpers_dir_host / str(helper_num) / "vault" / "share-rw",
                 extra_mounts=mounts or None,
-                vault_enabled=True,
+                enable_vault=True,
                 env=ctx.env,
                 name=container_name,
                 entrypoint=init_script,

@@ -274,7 +274,7 @@ class TestVaultDisabled:
         project_dir = str(tmp_home / "project")
         resolve_project(
             std, config, project_dir=project_dir,
-            initialize=True, vault_enabled=False,
+            initialize=True, enable_vault=False,
         )
 
         parser = build_parser()

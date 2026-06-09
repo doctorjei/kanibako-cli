@@ -73,7 +73,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.ro",
     "vault.rw",
     # Target settings (Claude-specific)
-    "target_name",
+    "crab_name",
     # System-level path settings
     "paths.data_path",
     "paths.boxes",
@@ -166,7 +166,7 @@ def _is_target_setting(key: str) -> bool:
 
 
 def _dot_to_flat(key: str) -> str:
-    """Convert ``vault.enabled`` to ``vault_enabled``, etc."""
+    """Convert ``vault.enabled`` to ``enable_vault``, etc."""
     # For paths.* keys, convert to the flat KanibakoConfig field name.
     if key.startswith("paths."):
         return "paths_" + key[6:]

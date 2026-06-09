@@ -28,7 +28,7 @@ _DEFAULTS = {
     "paths_comms": "comms",
     "paths_ws_hints": "working_sets.toml",
     "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "target_name": "",
+    "crab_name": "",
 }
 
 # Backward-compat aliases: old field name -> new field name.
@@ -55,7 +55,7 @@ class KanibakoConfig:
     paths_workspaces: str = _DEFAULTS["paths_workspaces"]
     paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
     container_image: str = _DEFAULTS["container_image"]
-    target_name: str = _DEFAULTS["target_name"]
+    crab_name: str = _DEFAULTS["crab_name"]
     helpers_disabled: bool = False
     share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
@@ -212,7 +212,7 @@ def write_project_meta(
     shell: str,
     vault_ro: str,
     vault_rw: str,
-    vault_enabled: bool = True,
+    enable_vault: bool = True,
     auth: str = "shared",
     metadata: str = "",
     project_hash: str = "",
@@ -228,7 +228,7 @@ def write_project_meta(
 
     project_sec: dict = {
         "mode": mode, "layout": layout,
-        "vault_enabled": vault_enabled, "auth": auth,
+        "enable_vault": enable_vault, "auth": auth,
     }
     if name:
         project_sec["name"] = name
@@ -273,7 +273,7 @@ def read_project_meta(path: Path) -> dict | None:
         "mode": mode,
         # Backward compat: "tree" was renamed to "robust" in v0.6.0.
         "layout": "robust" if project_sec.get("layout") == "tree" else project_sec.get("layout", ""),
-        "vault_enabled": project_sec.get("vault_enabled", True),
+        "enable_vault": project_sec.get("enable_vault", True),
         "auth": project_sec.get("auth", "shared"),
         "name": project_sec.get("name", ""),
         "workspace": resolved_sec.get("workspace", ""),
@@ -322,7 +322,7 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
     ``"container_image"`` → ``("container", "image")``
     ``"paths_dot_path"``  → ``("paths", "dot_path")``
     """
-    for prefix in ("paths_", "container_", "target_"):
+    for prefix in ("paths_", "container_", "crab_"):
         if flat_key.startswith(prefix):
             section = prefix.rstrip("_")
             toml_key = flat_key[len(prefix):]

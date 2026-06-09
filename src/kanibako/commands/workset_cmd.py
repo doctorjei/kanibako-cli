@@ -232,7 +232,7 @@ def run_create(args: argparse.Namespace) -> int:
         if standalone:
             config_data["standalone"] = True
         if no_vault:
-            config_data["vault_enabled"] = False
+            config_data["enable_vault"] = False
         ws_config = _workset_config_path(ws)
         ws_config.write_text(_serialize_toml(config_data))
 

@@ -225,7 +225,7 @@ def start_mocks():
 
             merged = MagicMock()
             merged.container_image = "test:latest"
-            merged.target_name = ""
+            merged.crab_name = ""
             merged.paths_crabs = "crabs"
             merged.share_images = False
             m_merged.return_value = merged

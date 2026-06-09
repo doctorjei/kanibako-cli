@@ -479,7 +479,7 @@ def _run_container(
     install = None
     if is_agent_mode:
         try:
-            target = resolve_target(merged.target_name or None)
+            target = resolve_target(merged.crab_name or None)
         except KeyError as e:
             print(
                 f"Error: {e}\n"
@@ -581,7 +581,7 @@ def _run_container(
 
     try:
         # Auto-snapshot vault share-rw before launch.
-        if proj.vault_enabled and proj.vault_rw_path.is_dir():
+        if proj.enable_vault and proj.vault_rw_path.is_dir():
             from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
             strategy = detect_snapshot_strategy(proj.vault_rw_path)
             snap = auto_snapshot(proj.vault_rw_path, strategy=strategy)
@@ -923,7 +923,7 @@ def _run_container(
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
                 vault_tmpfs=(proj.group is not None and proj.group.is_default),
-                vault_enabled=proj.vault_enabled,
+                enable_vault=proj.enable_vault,
                 env=container_env,
                 name=container_name,
                 entrypoint=entrypoint,

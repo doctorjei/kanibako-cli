@@ -114,7 +114,7 @@ def _resolve_vault_rw(project_dir: str | None):
     std = load_std_paths(config)
     proj = resolve_any_project(std, config, project_dir, initialize=False)
 
-    if not proj.vault_enabled:
+    if not proj.enable_vault:
         print("Vault is disabled for this project.", file=sys.stderr)
         return None
     return proj.vault_rw_path

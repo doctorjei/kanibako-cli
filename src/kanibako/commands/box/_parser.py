@@ -347,7 +347,7 @@ def run_create(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    vault_enabled = not getattr(args, "no_vault", False)
+    enable_vault = not getattr(args, "no_vault", False)
     auth = "distinct" if getattr(args, "distinct_auth", False) else None
     project_dir = args.path
 
@@ -384,12 +384,12 @@ def run_create(args: argparse.Namespace) -> int:
     if args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
-            vault_enabled=vault_enabled, auth=auth,
+            enable_vault=enable_vault, auth=auth,
         )
     else:
         proj = resolve_project(
             std, config, project_dir=project_dir, initialize=True,
-            vault_enabled=vault_enabled if not vault_enabled else None,
+            enable_vault=enable_vault if not enable_vault else None,
             name_override=getattr(args, "name", None),
         )
 
@@ -947,7 +947,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Resolve target for credential check path
     try:
-        target = resolve_target(merged.target_name or None)
+        target = resolve_target(merged.crab_name or None)
         creds_file = target.credential_check_path(proj.shell_path)
     except (KeyError, Exception):
         creds_file = None

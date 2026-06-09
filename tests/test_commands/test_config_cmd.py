@@ -416,11 +416,11 @@ class TestWriteProjectConfigKey:
 
     def test_write_target_key(self, tmp_path):
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "target_name", "my-target")
+        write_project_config_key(p, "crab_name", "my-target")
         loaded = load_config(p)
-        assert loaded.target_name == "my-target"
+        assert loaded.crab_name == "my-target"
         text = p.read_text()
-        assert "[target]" in text
+        assert "[crab]" in text
         assert 'name = "my-target"' in text
 
     def test_write_multiple_sections(self, tmp_path):
@@ -514,7 +514,7 @@ class TestSplitConfigKey:
 
     def test_target_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("target_name") == ("target", "name")
+        assert _split_config_key("crab_name") == ("crab", "name")
 
     def test_unknown_prefix_raises(self):
         from kanibako.config import _split_config_key
@@ -536,4 +536,4 @@ class TestConfigKeys:
         assert "paths_boxes" in keys
         assert "paths_shell" in keys
         assert "paths_data_path" in keys
-        assert "target_name" in keys
+        assert "crab_name" in keys

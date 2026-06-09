@@ -313,7 +313,7 @@ class TestListLocalImages:
 
 
 class TestVaultDisabledRun:
-    """Tests that vault_enabled=False suppresses vault mounts and tmpfs."""
+    """Tests that enable_vault=False suppresses vault mounts and tmpfs."""
 
     def _make_rt(self):
         return ContainerRuntime(command="/usr/bin/podman")
@@ -333,7 +333,7 @@ class TestVaultDisabledRun:
                 vault_ro_path=vault_ro,
                 vault_rw_path=vault_rw,
                 vault_tmpfs=True,
-                vault_enabled=False,
+                enable_vault=False,
             )
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)
@@ -358,7 +358,7 @@ class TestVaultDisabledRun:
                 vault_ro_path=vault_ro,
                 vault_rw_path=vault_rw,
                 vault_tmpfs=True,
-                vault_enabled=True,
+                enable_vault=True,
             )
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)

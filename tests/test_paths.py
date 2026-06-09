@@ -242,7 +242,7 @@ class TestProjectMeta:
             mode=meta["mode"], layout=meta["layout"],
             workspace=meta["workspace"], shell=meta["shell"],
             vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
-            vault_enabled=meta["vault_enabled"], auth=meta["auth"],
+            enable_vault=meta["enable_vault"], auth=meta["auth"],
             metadata=meta["metadata"], project_hash=meta["project_hash"],
             global_shared=str(custom_global),
             local_shared=str(custom_local),
@@ -268,7 +268,7 @@ class TestProjectMeta:
             mode=meta["mode"], layout=meta["layout"],
             workspace=meta["workspace"], shell=meta["shell"],
             vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
-            vault_enabled=meta["vault_enabled"], auth=meta["auth"],
+            enable_vault=meta["enable_vault"], auth=meta["auth"],
             metadata=meta["metadata"], project_hash=meta["project_hash"],
             global_shared="",
             local_shared="",
@@ -723,7 +723,7 @@ class TestResolveProjectHomeGuard:
             shell=str(boxes_dir / "shell"),
             vault_ro=str(home / "vault" / "share-ro"),
             vault_rw=str(home / "vault" / "share-rw"),
-            vault_enabled=True,
+            enable_vault=True,
             metadata=str(boxes_dir),
             project_hash=project_hash(str(home.resolve())),
             name="home",
@@ -1319,7 +1319,7 @@ class TestHumanFriendlyVaultSymlink:
 
         resolve_project(
             std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.robust, vault_enabled=False,
+            initialize=True, layout=ProjectLayout.robust, enable_vault=False,
         )
 
         human_vault_dir = std.data_path / config.paths_vault

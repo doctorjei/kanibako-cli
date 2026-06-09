@@ -313,7 +313,7 @@ class ContainerRuntime:
         vault_rw_path: Path,
         extra_mounts: list | None = None,
         vault_tmpfs: bool = False,
-        vault_enabled: bool = True,
+        enable_vault: bool = True,
         env: dict[str, str] | None = None,
         name: str | None = None,
         entrypoint: str | None = None,
@@ -329,7 +329,7 @@ class ContainerRuntime:
         # inside bind-mounted overlay filesystems (fails in LXC).
         _precreate_mount_stubs(
             shell_path, project_path, extra_mounts,
-            vault_enabled, vault_ro_path, vault_rw_path, vault_tmpfs,
+            enable_vault, vault_ro_path, vault_rw_path, vault_tmpfs,
         )
 
         if detach:
@@ -346,7 +346,7 @@ class ContainerRuntime:
             "-w", "/home/agent/workspace",
         ]
         # Vault mounts (only if directories exist and vault is enabled)
-        if vault_enabled:
+        if enable_vault:
             if vault_ro_path.is_dir():
                 cmd += ["-v", f"{vault_ro_path}:/home/agent/share-ro:ro"]
             if vault_rw_path.is_dir():
@@ -534,7 +534,7 @@ def _precreate_mount_stubs(
     shell_path: Path,
     project_path: Path,
     extra_mounts: list | None,
-    vault_enabled: bool,
+    enable_vault: bool,
     vault_ro_path: Path,
     vault_rw_path: Path,
     vault_tmpfs: bool,
@@ -573,7 +573,7 @@ def _precreate_mount_stubs(
 
     # Built-in directory mounts.
     _ensure_dir(shell_path / "workspace")
-    if vault_enabled:
+    if enable_vault:
         if vault_ro_path.is_dir():
             _ensure_dir(shell_path / "share-ro")
         if vault_rw_path.is_dir():

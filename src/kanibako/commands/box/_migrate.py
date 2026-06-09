@@ -140,7 +140,7 @@ def run_migrate(args: argparse.Namespace) -> int:
             shell=str(new_project_dir / "shell"),
             vault_ro=meta.get("vault_ro", ""),
             vault_rw=meta.get("vault_rw", ""),
-            vault_enabled=meta.get("vault_enabled", True),
+            enable_vault=meta.get("enable_vault", True),
             auth=meta.get("auth", "shared"),
             metadata=str(new_project_dir),
             project_hash=new_hash,
