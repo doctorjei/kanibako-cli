@@ -133,6 +133,7 @@ class _WorksetLike(Protocol):
     name: str
     root: Path
     group_auth: bool
+    is_default: bool
 
     @property
     def projects_dir(self) -> Path: ...
@@ -174,6 +175,7 @@ class WorksetSpec:
     workspaces_dir: Path
     vault_dir: Path
     project_names: tuple[str, ...]
+    is_default: bool = False
 
     @classmethod
     def from_workset(cls, ws: _WorksetLike) -> WorksetSpec:
@@ -186,6 +188,7 @@ class WorksetSpec:
             workspaces_dir=ws.workspaces_dir,
             vault_dir=ws.vault_dir,
             project_names=tuple(p.name for p in ws.projects),
+            is_default=ws.is_default,
         )
 
 

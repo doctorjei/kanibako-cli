@@ -15,7 +15,22 @@ from kanibako.paths import (
     resolve_workset_project,
 )
 from kanibako.utils import project_hash
-from kanibako.workset import add_project, create_workset
+from kanibako.workset import add_project, create_workset, default_workset
+
+
+# ---------------------------------------------------------------------------
+# WorksetSpec.from_workset
+# ---------------------------------------------------------------------------
+
+class TestWorksetSpecFromWorkset:
+    def test_carries_is_default_false(self, std, tmp_home):
+        ws = create_workset("named", tmp_home / "worksets" / "named", std)
+        spec = WorksetSpec.from_workset(ws)
+        assert spec.is_default is False
+
+    def test_carries_is_default_true(self, std):
+        spec = WorksetSpec.from_workset(default_workset(std))
+        assert spec.is_default is True
 
 
 # ---------------------------------------------------------------------------

@@ -6,13 +6,18 @@ from __future__ import annotations
 import pytest
 
 from kanibako.errors import WorksetError
+from kanibako.names import register_name
 from kanibako.workset import (
+    DEFAULT_WORKSET_ALIAS,
+    DEFAULT_WORKSET_ID,
     add_project,
     create_workset,
+    default_workset,
     delete_workset,
     list_worksets,
     load_workset,
     remove_project,
+    resolve_workset_name,
 )
 
 
@@ -75,6 +80,88 @@ class TestCreateWorkset:
         root = tmp_home / "worksets" / "empty-name"
         with pytest.raises(WorksetError, match="must not be empty"):
             create_workset("", root, std)
+
+    def test_reserved_alias_name_raises(self, std, tmp_home):
+        root = tmp_home / "worksets" / "default"
+        with pytest.raises(WorksetError, match="reserved"):
+            create_workset("default", root, std)
+
+    def test_reserved_id_name_raises(self, std, tmp_home):
+        root = tmp_home / "worksets" / "default-id"
+        with pytest.raises(WorksetError, match="reserved"):
+            create_workset("__default__", root, std)
+
+
+# ---------------------------------------------------------------------------
+# default_workset / resolve_workset_name
+# ---------------------------------------------------------------------------
+
+class TestDefaultWorkset:
+    def test_synthesized_identity(self, std):
+        ws = default_workset(std)
+        assert ws.is_default is True
+        assert ws.name == DEFAULT_WORKSET_ID
+        assert ws.root == std.data_path
+
+    def test_mirrors_names_projects(self, std, tmp_home):
+        proj_a = tmp_home / "proj_a"
+        proj_b = tmp_home / "proj_b"
+        proj_a.mkdir()
+        proj_b.mkdir()
+        register_name(std.data_path, "alpha", str(proj_a))
+        register_name(std.data_path, "beta", str(proj_b))
+
+        ws = default_workset(std)
+        by_name = {p.name: p.source_path for p in ws.projects}
+        assert by_name == {"alpha": proj_a, "beta": proj_b}
+
+    def test_group_auth_defaults_true(self, std):
+        assert default_workset(std).group_auth is True
+
+    def test_group_auth_read_from_config(self, std):
+        config_path = std.data_path / "config.toml"
+        config_path.write_text("[project]\ngroup_auth = false\n")
+        assert default_workset(std).group_auth is False
+
+    def test_not_persisted(self, std):
+        # Synthesizing the default workset must not create a registry or
+        # a workset.toml.
+        default_workset(std)
+        assert not (std.data_path / "worksets.toml").exists()
+        assert not (std.data_path / "workset.toml").exists()
+        assert DEFAULT_WORKSET_ID not in list_worksets(std)
+        assert DEFAULT_WORKSET_ALIAS not in list_worksets(std)
+
+
+class TestResolveWorksetName:
+    def test_alias_resolves_to_default(self, std):
+        ws = resolve_workset_name(DEFAULT_WORKSET_ALIAS, std)
+        assert ws.is_default and ws.name == DEFAULT_WORKSET_ID
+
+    def test_id_resolves_to_default(self, std):
+        ws = resolve_workset_name(DEFAULT_WORKSET_ID, std)
+        assert ws.is_default and ws.name == DEFAULT_WORKSET_ID
+
+    def test_named_workset_resolves(self, std, tmp_home):
+        root = tmp_home / "worksets" / "real"
+        create_workset("real", root, std)
+        ws = resolve_workset_name("real", std)
+        assert ws.name == "real"
+        assert ws.is_default is False
+
+    def test_unknown_name_raises(self, std):
+        with pytest.raises(WorksetError, match="not registered"):
+            resolve_workset_name("nope", std)
+
+
+class TestListWorksetsExcludesDefault:
+    def test_default_not_in_registry(self, std, tmp_home):
+        root = tmp_home / "worksets" / "real"
+        create_workset("real", root, std)
+        registry = list_worksets(std)
+        assert DEFAULT_WORKSET_ID not in registry
+        assert DEFAULT_WORKSET_ALIAS not in registry
+        assert "real" in registry
 
 
 # ---------------------------------------------------------------------------

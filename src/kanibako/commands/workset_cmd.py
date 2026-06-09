@@ -11,6 +11,8 @@ from kanibako.errors import WorksetError
 from kanibako.paths import xdg, load_std_paths
 from kanibako.utils import confirm_prompt
 from kanibako.workset import (
+    DEFAULT_WORKSET_ALIAS,
+    DEFAULT_WORKSET_ID,
     _write_workset_toml,
     add_project,
     create_workset,
@@ -18,6 +20,7 @@ from kanibako.workset import (
     list_worksets,
     load_workset,
     remove_project,
+    resolve_workset_name,
 )
 
 
@@ -241,22 +244,25 @@ def run_create(args: argparse.Namespace) -> int:
 
 
 def run_list(args: argparse.Namespace) -> int:
+    from kanibako.workset import default_workset
+
     std = _load_std()
     registry = list_worksets(std)
     quiet = getattr(args, "quiet", False)
 
-    if not registry:
-        if not quiet:
-            print("No working sets registered.")
-        return 0
-
     if quiet:
+        print(DEFAULT_WORKSET_ALIAS)
         for name in sorted(registry):
             print(name)
         return 0
 
-    # Load each workset to get project count.
-    rows: list[tuple[str, int, str]] = []
+    # The default workset is always present (synthesized).
+    dflt = default_workset(std)
+
+    # Load each named workset to get project count.
+    rows: list[tuple[str, int, str]] = [
+        (f"{DEFAULT_WORKSET_ALIAS} (default)", len(dflt.projects), "<account-wide>"),
+    ]
     for name in sorted(registry):
         root = registry[name]
         try:
@@ -274,6 +280,10 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_rm(args: argparse.Namespace) -> int:
     std = _load_std()
+
+    if args.name in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+        print("Error: The default workset cannot be removed.", file=sys.stderr)
+        return 1
 
     # Check if workset has projects — error unless --force.
     registry = list_worksets(std)
@@ -333,6 +343,11 @@ def run_connect(args: argparse.Namespace) -> int:
 
 def run_disconnect(args: argparse.Namespace) -> int:
     std = _load_std()
+
+    if args.workset in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+        print("Error: The default workset cannot be removed.", file=sys.stderr)
+        return 1
+
     registry = list_worksets(std)
     if args.workset not in registry:
         print(f"Error: Working set '{args.workset}' is not registered.", file=sys.stderr)
@@ -362,19 +377,15 @@ def run_disconnect(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     std = _load_std()
-    registry = list_worksets(std)
-    if args.name not in registry:
-        print(f"Error: Working set '{args.name}' is not registered.", file=sys.stderr)
-        return 1
-
     try:
-        ws = load_workset(registry[args.name])
+        ws = resolve_workset_name(args.name, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    root_display = "<account-wide>" if ws.is_default else str(ws.root)
     print(f"Name:     {ws.name}")
-    print(f"Root:     {ws.root}")
+    print(f"Root:     {root_display}")
     print(f"Created:  {ws.created}")
     print(f"Group auth: {ws.group_auth}")
     if ws.projects:
@@ -403,14 +414,9 @@ def run_config(args: argparse.Namespace) -> int:
     )
 
     std = _load_std()
-    registry = list_worksets(std)
     ws_name = args.workset
-    if ws_name not in registry:
-        print(f"Error: Working set '{ws_name}' is not registered.", file=sys.stderr)
-        return 1
-
     try:
-        ws = load_workset(registry[ws_name])
+        ws = resolve_workset_name(ws_name, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -434,7 +440,13 @@ def run_config(args: argparse.Namespace) -> int:
         # Special case: resetting group_auth reverts to True (shared)
         if reset_key == "group_auth":
             ws.group_auth = True
-            _write_workset_toml(ws)
+            if ws.is_default:
+                # Default workset has no workset.toml — clear the key in
+                # config.toml's [project] section.
+                from kanibako.config_interface import _remove_toml_key
+                _remove_toml_key(ws_config, "project", "group_auth")
+            else:
+                _write_workset_toml(ws)
             print("Reset group_auth (reverts to default: true)")
             return 0
 
@@ -493,7 +505,13 @@ def run_config(args: argparse.Namespace) -> int:
 
             old_group_auth = ws.group_auth
             ws.group_auth = new_group_auth
-            _write_workset_toml(ws)
+            if ws.is_default:
+                # Default workset has no workset.toml — write group_auth as a
+                # normal boolean key in config.toml's [project] section.
+                from kanibako.config_interface import _write_toml_key
+                _write_toml_key(ws_config, "project", "group_auth", new_group_auth)
+            else:
+                _write_workset_toml(ws)
 
             if (not new_group_auth) and old_group_auth:
                 # Switched shared→distinct: invalidate credentials in all shells.
