@@ -228,6 +228,9 @@ def start_mocks():
             merged.crab_name = ""
             merged.paths_crabs = "crabs"
             merged.share_images = False
+            # Helpers off by default in the mock (MagicMock attrs are truthy);
+            # individual tests opt in by setting merged.allow_helpers = True.
+            merged.allow_helpers = False
             m_merged.return_value = merged
 
             runtime = MagicMock()

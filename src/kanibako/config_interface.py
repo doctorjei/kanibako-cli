@@ -83,7 +83,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "paths.comms",
     "paths.templates",
     # Helpers
-    "helpers_disabled",
+    "allow_helpers",
 })
 
 # Prefixes for dynamic keys (env vars, resources, shared caches).

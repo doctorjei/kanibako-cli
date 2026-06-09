@@ -56,7 +56,7 @@ class KanibakoConfig:
     paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
     container_image: str = _DEFAULTS["container_image"]
     crab_name: str = _DEFAULTS["crab_name"]
-    helpers_disabled: bool = False
+    allow_helpers: bool = True
     share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
 

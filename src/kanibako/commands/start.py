@@ -795,7 +795,7 @@ def _run_container(
 
         # Helper hub: start listener before director, mount socket
         hub = None
-        helpers_enabled = not no_helpers and not merged.helpers_disabled
+        helpers_enabled = not no_helpers and merged.allow_helpers
         if helpers_enabled:
             from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
             from kanibako.targets.base import Mount as _HMount
