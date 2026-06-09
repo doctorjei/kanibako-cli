@@ -243,7 +243,7 @@ class TestProjectMeta:
         # Write old-style TOML without new fields.
         toml_path.write_text(
             '[project]\nmode = "local"\nlayout = "default"\n'
-            'enable_vault = true\nauth = "shared"\n\n'
+            'enable_vault = true\ngroup_auth = true\n\n'
             '[resolved]\nworkspace = "/old"\nshell = "/old/shell"\n'
             'vault_ro = "/old/ro"\nvault_rw = "/old/rw"\n'
         )

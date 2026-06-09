@@ -115,17 +115,17 @@ class ClaudeTarget(Target):
             ))
         return mounts
 
-    def init_home(self, home: Path, *, auth: str = "shared") -> None:
+    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         """Initialize Claude-specific files in the project home.
 
-        Creates ``.claude/`` directory.  When *auth* is ``"shared"``, copies
-        credentials and filtered settings from the host.  When ``"distinct"``,
+        Creates ``.claude/`` directory.  When *group_auth* is ``True``, copies
+        credentials and filtered settings from the host.  When ``False``,
         skips credential copy (project manages its own auth).
         """
         claude_dir = home / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
 
-        if auth != "distinct":
+        if group_auth:
             # Copy credentials from host ~/.claude/.credentials.json
             host_creds = Path.home() / ".claude" / ".credentials.json"
             if host_creds.is_file():

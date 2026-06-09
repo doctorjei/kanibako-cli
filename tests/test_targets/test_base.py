@@ -93,7 +93,7 @@ class TestTargetABC:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, auth="shared"):
+            def init_home(self, home, *, group_auth=True):
                 pass
 
             def refresh_credentials(self, home):
@@ -131,7 +131,7 @@ class TestTargetABC:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, auth="shared"):
+            def init_home(self, home, *, group_auth=True):
                 pass
 
             def refresh_credentials(self, home):
@@ -181,7 +181,7 @@ class TestGenerateCrabConfig:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, auth="shared"):
+            def init_home(self, home, *, group_auth=True):
                 pass
 
             def refresh_credentials(self, home):
@@ -221,7 +221,7 @@ class TestApplyState:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, auth="shared"):
+            def init_home(self, home, *, group_auth=True):
                 pass
 
             def refresh_credentials(self, home):

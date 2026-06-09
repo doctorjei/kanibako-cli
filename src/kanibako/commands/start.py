@@ -524,7 +524,7 @@ def _run_container(
     if persistent:
         if runtime.is_running(container_name):
             # Refresh credentials before reattaching
-            if target and proj.auth != "distinct":
+            if target and proj.group_auth:
                 target.refresh_credentials(proj.shell_path)
             return runtime.exec(
                 container_name, ["tmux", "attach", "-t", "kanibako"]
@@ -605,7 +605,7 @@ def _run_container(
             # Ensure the agent-specific template variant directory exists.
             (templates_base / target.name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
             apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
-            target.init_home(proj.shell_path, auth=proj.auth)
+            target.init_home(proj.shell_path, group_auth=proj.group_auth)
 
             # Merge layered instruction files (base + template + user).
             instr_files = target.instruction_files()
@@ -624,7 +624,7 @@ def _run_container(
         if (
             target
             and install
-            and proj.auth != "distinct"
+            and proj.group_auth
             and not no_auto_auth
             and target.name == "claude"
         ):
@@ -642,7 +642,7 @@ def _run_container(
                 logger.debug("Auto-auth failed: %s", exc)
 
         # Pre-launch auth check (skip for distinct auth — creds live in project)
-        if target and install and proj.auth != "distinct":
+        if target and install and proj.group_auth:
             if not target.check_auth():
                 print(
                     "Error: Authentication failed.\n"
@@ -653,7 +653,7 @@ def _run_container(
                 return 1
 
         # Credential refresh via target (skip for distinct auth)
-        if target and proj.auth != "distinct":
+        if target and proj.group_auth:
             target.refresh_credentials(proj.shell_path)
 
         # tweakcc: patch agent binary if enabled
@@ -1056,7 +1056,7 @@ def _run_container(
                         )
         else:
             # Write back refreshed credentials via target (skip for distinct auth)
-            if target and proj.auth != "distinct":
+            if target and proj.group_auth:
                 target.writeback_credentials(proj.shell_path)
 
             # Hint when agent exits non-zero and --continue/--resume was used

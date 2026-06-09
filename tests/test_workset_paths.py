@@ -272,7 +272,7 @@ class TestIterWorksetProjects:
 
 
 # ---------------------------------------------------------------------------
-# Characterization: workset auth-override chain (pins behavior for #71 B0)
+# Characterization: workset group_auth-override chain (pins behavior for #71 B0)
 # ---------------------------------------------------------------------------
 
 class TestWorksetAuthOverrideChain:
@@ -280,49 +280,51 @@ class TestWorksetAuthOverrideChain:
 
     Current code:
 
-        actual_auth = ws.auth
-        if actual_auth == "shared" and meta:
-            actual_auth = meta.get("auth", "shared")
+        actual_group_auth = ws.group_auth
+        if actual_group_auth and meta:
+            actual_group_auth = bool(meta.get("group_auth", True))
 
-    So the workset's auth wins UNLESS it is the default ``"shared"``, in which
-    case the resolver falls back to the project's stored auth from project.toml.
-    The resolved value surfaces on ``ProjectPaths.auth`` and is persisted into
-    project.toml on initialize.
+    So the workset's distinct setting (``group_auth=False``) wins UNLESS it is
+    the default ``True`` (shared), in which case the resolver falls back to the
+    project's stored ``group_auth`` from project.toml.  The resolved value
+    surfaces on ``ProjectPaths.group_auth`` and is persisted into project.toml
+    on initialize.
     """
 
     def test_workset_distinct_auth_wins(self, workset_env, std, config, credentials_dir):
-        """A workset with auth='distinct' yields resolved auth 'distinct'."""
+        """A workset with group_auth=False yields resolved group_auth=False."""
         ws, name = workset_env
-        ws.auth = "distinct"  # Workset is a mutable dataclass.
+        ws.group_auth = False  # Workset is a mutable dataclass.
 
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws), name, std, config, initialize=True,
         )
 
-        assert proj.auth == "distinct"
+        assert proj.group_auth is False
         # And it is persisted into project.toml.
         meta = read_project_meta(proj.metadata_path / "project.toml")
         assert meta is not None
-        assert meta["auth"] == "distinct"
+        assert meta["group_auth"] is False
 
     def test_workset_shared_auth_falls_back_to_project_stored_auth(
         self, workset_env, std, config, credentials_dir,
     ):
-        """workset auth='shared' + project stored auth='distinct' -> resolved 'distinct'.
+        """workset group_auth=True + project stored group_auth=False -> resolved False.
 
-        The workset's auth is the default 'shared', so the resolver reads the
-        project's persisted auth from project.toml and uses that instead.
+        The workset's group_auth is the default True (shared), so the resolver
+        reads the project's persisted group_auth from project.toml and uses
+        that instead.
         """
         ws, name = workset_env
-        assert ws.auth == "shared"  # Fixture default.
+        assert ws.group_auth is True  # Fixture default.
 
-        # First init: with shared workset auth and no meta, persisted auth='shared'.
+        # First init: with shared workset auth and no meta, persisted group_auth=True.
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws), name, std, config, initialize=True,
         )
-        assert proj.auth == "shared"
+        assert proj.group_auth is True
 
-        # Adjust the project's stored auth to 'distinct' in project.toml,
+        # Adjust the project's stored group_auth to False in project.toml,
         # preserving the rest of the resolved metadata.
         project_toml = proj.metadata_path / "project.toml"
         meta = read_project_meta(project_toml)
@@ -336,18 +338,18 @@ class TestWorksetAuthOverrideChain:
             vault_ro=meta["vault_ro"],
             vault_rw=meta["vault_rw"],
             enable_vault=meta["enable_vault"],
-            auth="distinct",
+            group_auth=False,
             metadata=meta["metadata"],
             project_hash=meta["project_hash"],
             global_shared=meta["global_shared"],
             local_shared=meta["local_shared"],
         )
 
-        # Re-resolve: workset auth still 'shared' -> falls back to stored 'distinct'.
+        # Re-resolve: workset group_auth still True -> falls back to stored False.
         proj2 = resolve_workset_project(
             WorksetSpec.from_workset(ws), name, std, config, initialize=True,
         )
-        assert proj2.auth == "distinct"
+        assert proj2.group_auth is False
 
 
 # ---------------------------------------------------------------------------

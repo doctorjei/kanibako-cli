@@ -24,7 +24,7 @@ class TestBuildResourceMounts:
         # Write an empty project.toml so read_resource_overrides finds it.
         (metadata / "project.toml").write_text(
             '[project]\nmode = "local"\nlayout = "default"\n'
-            'enable_vault = true\nauth = "shared"\n\n'
+            'enable_vault = true\ngroup_auth = true\n\n'
             '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
             'vault_ro = "/ro"\nvault_rw = "/rw"\n'
             'metadata = ""\nproject_hash = ""\n'
@@ -211,7 +211,7 @@ class TestResourceOverrideInMounts:
         project_toml = tmp_path / "project.toml"
         project_toml.write_text(
             '[project]\nmode = "local"\nlayout = "default"\n'
-            'enable_vault = true\nauth = "shared"\n\n'
+            'enable_vault = true\ngroup_auth = true\n\n'
             '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
             'vault_ro = "/ro"\nvault_rw = "/rw"\n'
             'metadata = ""\nproject_hash = ""\n'

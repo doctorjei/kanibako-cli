@@ -361,9 +361,9 @@ class TestDistinctAuth:
     """Verify distinct auth skips host credential sync."""
 
     def test_distinct_auth_skips_refresh(self, start_mocks):
-        """When proj.auth == 'distinct', refresh_credentials is not called."""
+        """When proj.group_auth is False, refresh_credentials is not called."""
         with start_mocks() as m:
-            m.proj.auth = "distinct"
+            m.proj.group_auth = False
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -378,9 +378,9 @@ class TestDistinctAuth:
             m.target.writeback_credentials.assert_not_called()
 
     def test_distinct_auth_skips_check_auth(self, start_mocks):
-        """When proj.auth == 'distinct', check_auth is not called."""
+        """When proj.group_auth is False, check_auth is not called."""
         with start_mocks() as m:
-            m.proj.auth = "distinct"
+            m.proj.group_auth = False
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -394,9 +394,9 @@ class TestDistinctAuth:
             m.target.check_auth.assert_not_called()
 
     def test_shared_auth_calls_refresh(self, start_mocks):
-        """When proj.auth == 'shared', refresh_credentials is called."""
+        """When proj.group_auth is True, refresh_credentials is called."""
         with start_mocks() as m:
-            m.proj.auth = "shared"
+            m.proj.group_auth = True
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -806,7 +806,7 @@ class TestAutoAuth:
         """Auto-auth is skipped when auth mode is distinct."""
         with start_mocks() as m:
             m.target.name = "claude"
-            m.proj.auth = "distinct"
+            m.proj.group_auth = False
             with patch(
                 "kanibako.auth_browser.auto_refresh_auth",
             ) as mock_auto:

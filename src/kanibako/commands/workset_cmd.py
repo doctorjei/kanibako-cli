@@ -147,7 +147,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "  workset config myws --effective     show resolved values\n"
             "  workset config myws model           get the value of 'model'\n"
             "  workset config myws model=sonnet    set 'model' to 'sonnet'\n"
-            "  workset config myws auth=distinct   set auth mode\n"
+            "  workset config myws group_auth=false set auth mode\n"
             "  workset config myws --reset model   reset one key\n"
             "  workset config myws --reset --all   reset all overrides\n"
         ),
@@ -207,7 +207,7 @@ def run_create(args: argparse.Namespace) -> int:
     name = args.name or path.name
 
     # Store additional flags in workset config if provided.
-    auth = "distinct" if getattr(args, "distinct_auth", False) else "shared"
+    group_auth = not getattr(args, "distinct_auth", False)
 
     try:
         ws = create_workset(name, path, std)
@@ -216,8 +216,8 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     # Set auth mode if distinct.
-    if auth == "distinct":
-        ws.auth = auth
+    if not group_auth:
+        ws.group_auth = group_auth
         _write_workset_toml(ws)
 
     # Store additional settings in workset-level config.toml.
@@ -376,7 +376,7 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"Name:     {ws.name}")
     print(f"Root:     {ws.root}")
     print(f"Created:  {ws.created}")
-    print(f"Auth:     {ws.auth}")
+    print(f"Group auth: {ws.group_auth}")
     if ws.projects:
         print(f"Projects: {len(ws.projects)}")
         for proj in ws.projects:
@@ -390,7 +390,7 @@ def run_config(args: argparse.Namespace) -> int:
     """Unified config interface for working set settings.
 
     Handles get, set, show, reset operations via the config_interface engine.
-    The ``auth`` key is special-cased to update workset.toml directly.
+    The ``group_auth`` key is special-cased to update workset.toml directly.
     """
     from kanibako.config_interface import (
         ConfigAction,
@@ -431,11 +431,11 @@ def run_config(args: argparse.Namespace) -> int:
             return 0
 
         reset_key = args.reset
-        # Special case: resetting auth reverts to "shared"
-        if reset_key == "auth":
-            ws.auth = "shared"
+        # Special case: resetting group_auth reverts to True (shared)
+        if reset_key == "group_auth":
+            ws.group_auth = True
             _write_workset_toml(ws)
-            print("Reset auth (reverts to default: shared)")
+            print("Reset group_auth (reverts to default: true)")
             return 0
 
         msg = reset_config_value(
@@ -460,9 +460,9 @@ def run_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
-        # Special case: auth key lives in workset.toml
-        if key == "auth":
-            print(ws.auth)
+        # Special case: group_auth key lives in workset.toml
+        if key == "group_auth":
+            print(ws.group_auth)
             return 0
 
         val = get_config_value(
@@ -477,21 +477,26 @@ def run_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Special case: auth key updates workset.toml directly
-        if key == "auth":
-            if value not in ("shared", "distinct"):
+        # Special case: group_auth key updates workset.toml directly
+        if key == "group_auth":
+            normalized = value.strip().lower()
+            if normalized in ("true", "1"):
+                new_group_auth = True
+            elif normalized in ("false", "0"):
+                new_group_auth = False
+            else:
                 print(
-                    f"Error: auth mode must be 'shared' or 'distinct', got '{value}'",
+                    f"Error: group_auth must be 'true' or 'false', got '{value}'",
                     file=sys.stderr,
                 )
                 return 1
 
-            old_auth = ws.auth
-            ws.auth = value
+            old_group_auth = ws.group_auth
+            ws.group_auth = new_group_auth
             _write_workset_toml(ws)
 
-            if value == "distinct" and old_auth != "distinct":
-                # Invalidate credentials in all project shells.
+            if (not new_group_auth) and old_group_auth:
+                # Switched shared→distinct: invalidate credentials in all shells.
                 from kanibako.targets import resolve_target
                 try:
                     target = resolve_target(None)
@@ -503,11 +508,11 @@ def run_config(args: argparse.Namespace) -> int:
                         if shell_path.is_dir():
                             target.invalidate_credentials(shell_path)
                 print(
-                    f"Set auth mode to 'distinct' for '{ws.name}'. "
+                    f"Set group_auth to false (distinct) for '{ws.name}'. "
                     f"Credentials cleared in {len(ws.projects)} project(s).",
                 )
             else:
-                print(f"Set auth mode to '{value}' for '{ws.name}'.")
+                print(f"Set group_auth to {str(new_group_auth).lower()} for '{ws.name}'.")
             return 0
 
         # Handle --local for resource keys

@@ -321,7 +321,7 @@ class TestCreateDistinctAuth:
 
         meta = read_project_meta(project / ".kanibako" / "project.toml")
         assert meta is not None
-        assert meta["auth"] == "distinct"
+        assert meta["group_auth"] is False
 
     def test_parser_accepts_distinct_auth(self):
         parser = build_parser()

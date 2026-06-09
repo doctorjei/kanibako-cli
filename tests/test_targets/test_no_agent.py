@@ -35,7 +35,7 @@ class TestNoAgentTarget:
     def test_init_home_distinct_auth(self, tmp_path):
         home = tmp_path / "shell"
         home.mkdir()
-        self.target.init_home(home, auth="distinct")
+        self.target.init_home(home, group_auth=False)
         assert list(home.iterdir()) == []
 
     def test_refresh_credentials_is_noop(self, tmp_path):

@@ -141,7 +141,7 @@ def run_migrate(args: argparse.Namespace) -> int:
             vault_ro=meta.get("vault_ro", ""),
             vault_rw=meta.get("vault_rw", ""),
             enable_vault=meta.get("enable_vault", True),
-            auth=meta.get("auth", "shared"),
+            group_auth=bool(meta.get("group_auth", True)),
             metadata=str(new_project_dir),
             project_hash=new_hash,
             global_shared=meta.get("global_shared", ""),

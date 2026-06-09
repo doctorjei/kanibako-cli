@@ -82,11 +82,11 @@ class GooseTarget(Target):
             ))
         return mounts
 
-    def init_home(self, home: Path, *, auth: str = "shared") -> None:
+    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         """Initialize Goose-specific files in the project home.
 
-        Creates ``.config/goose/`` directory.  When *auth* is ``"shared"``,
-        copies filtered config and secrets from the host.  When ``"distinct"``,
+        Creates ``.config/goose/`` directory.  When *group_auth* is ``True``,
+        copies filtered config and secrets from the host.  When ``False``,
         creates a minimal empty config.
         """
         config_dir = home / ".config" / "goose"
@@ -94,7 +94,7 @@ class GooseTarget(Target):
 
         project_config = config_dir / "config.yaml"
 
-        if auth != "distinct":
+        if group_auth:
             # Copy filtered config from host (only safe keys)
             if not project_config.exists():
                 host_config = Path.home() / ".config" / "goose" / "config.yaml"

@@ -142,7 +142,7 @@ class TestInitHome:
         host_secrets = fake_host / ".config" / "goose" / "secrets.yaml"
         host_secrets.write_text("api_key: secret\n")
 
-        GooseTarget().init_home(project_home, auth="distinct")
+        GooseTarget().init_home(project_home, group_auth=False)
 
         project_config = project_home / ".config" / "goose" / "config.yaml"
         assert project_config.is_file()

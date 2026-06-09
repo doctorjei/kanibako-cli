@@ -381,7 +381,7 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.auth = "shared"
+                proj.group_auth = True
                 mock_proj.return_value = proj
 
                 rc = run_reauth(args)
@@ -402,7 +402,7 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.auth = "distinct"
+                proj.group_auth = False
                 # Distinct auth with credentials present returns 0 before check_auth
                 creds_path = MagicMock()
                 creds_path.is_file.return_value = True

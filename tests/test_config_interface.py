@@ -71,7 +71,7 @@ class TestIsKnownKey:
     def test_known_static_key(self):
         assert is_known_key("image") is True
         assert is_known_key("model") is True
-        assert is_known_key("auth") is True
+        assert is_known_key("group_auth") is True
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True

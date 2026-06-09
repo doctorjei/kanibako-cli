@@ -213,7 +213,7 @@ def write_project_meta(
     vault_ro: str,
     vault_rw: str,
     enable_vault: bool = True,
-    auth: str = "shared",
+    group_auth: bool = True,
     metadata: str = "",
     project_hash: str = "",
     global_shared: str = "",
@@ -228,7 +228,7 @@ def write_project_meta(
 
     project_sec: dict = {
         "mode": mode, "layout": layout,
-        "enable_vault": enable_vault, "auth": auth,
+        "enable_vault": enable_vault, "group_auth": group_auth,
     }
     if name:
         project_sec["name"] = name
@@ -274,7 +274,7 @@ def read_project_meta(path: Path) -> dict | None:
         # Backward compat: "tree" was renamed to "robust" in v0.6.0.
         "layout": "robust" if project_sec.get("layout") == "tree" else project_sec.get("layout", ""),
         "enable_vault": project_sec.get("enable_vault", True),
-        "auth": project_sec.get("auth", "shared"),
+        "group_auth": project_sec.get("group_auth", True),
         "name": project_sec.get("name", ""),
         "workspace": resolved_sec.get("workspace", ""),
         "shell": resolved_sec.get("shell", ""),

@@ -116,7 +116,7 @@ class ProjectPaths:
     mode: ProjectMode = field(default=ProjectMode.local)
     layout: ProjectLayout = field(default=ProjectLayout.default)
     enable_vault: bool = field(default=True)
-    auth: str = field(default="shared")
+    group_auth: bool = field(default=True)
     name: str = field(default="")
     global_shared_path: Path | None = field(default=None)
     local_shared_path: Path | None = field(default=None)
@@ -132,7 +132,7 @@ class _WorksetLike(Protocol):
 
     name: str
     root: Path
-    auth: str
+    group_auth: bool
 
     @property
     def projects_dir(self) -> Path: ...
@@ -169,7 +169,7 @@ class WorksetSpec:
 
     name: str
     root: Path
-    auth: str
+    group_auth: bool
     projects_dir: Path
     workspaces_dir: Path
     vault_dir: Path
@@ -181,7 +181,7 @@ class WorksetSpec:
         return cls(
             name=ws.name,
             root=ws.root,
-            auth=ws.auth,
+            group_auth=ws.group_auth,
             projects_dir=ws.projects_dir,
             workspaces_dir=ws.workspaces_dir,
             vault_dir=ws.vault_dir,
@@ -963,9 +963,9 @@ def resolve_workset_project(
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Auth mode: workset-level overrides project-level.
-    actual_auth = ws.auth
-    if actual_auth == "shared" and meta:
-        actual_auth = meta.get("auth", "shared")
+    actual_group_auth = ws.group_auth
+    if actual_group_auth and meta:
+        actual_group_auth = bool(meta.get("group_auth", True))
 
     # Hash the resolved workspace path for container naming.
     phash = project_hash(str(project_path.resolve()))
@@ -984,7 +984,7 @@ def resolve_workset_project(
             vault_ro=str(vault_ro_path),
             vault_rw=str(vault_rw_path),
             enable_vault=actual_vault_enabled,
-            auth=actual_auth,
+            group_auth=actual_group_auth,
             metadata=str(metadata_path),
             project_hash=phash,
             global_shared=str(_ws_global_shared),
@@ -1020,7 +1020,7 @@ def resolve_workset_project(
         mode=ProjectMode.workset,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
-        auth=actual_auth,
+        group_auth=actual_group_auth,
         name=project_name,
         global_shared_path=_ws_computed_global,
         local_shared_path=_ws_computed_local,
@@ -1240,7 +1240,7 @@ def resolve_standalone_project(
     initialize: bool = False,
     layout: ProjectLayout | None = None,
     enable_vault: bool | None = None,
-    auth: str | None = None,
+    group_auth: bool | None = None,
 ) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths for standalone mode.
 
@@ -1296,7 +1296,11 @@ def resolve_standalone_project(
     project_toml = metadata_path / "project.toml"
 
     # Auth mode for standalone: explicit param > meta > default.
-    actual_auth = auth or (meta.get("auth", "shared") if meta else "shared")
+    actual_group_auth = (
+        group_auth
+        if group_auth is not None
+        else (bool(meta.get("group_auth", True)) if meta else True)
+    )
 
     is_new = False
     if initialize and not metadata_path.is_dir():
@@ -1314,7 +1318,7 @@ def resolve_standalone_project(
             vault_ro=str(vault_ro_path),
             vault_rw=str(vault_rw_path),
             enable_vault=actual_vault_enabled,
-            auth=actual_auth,
+            group_auth=actual_group_auth,
             metadata=str(metadata_path),
             project_hash=phash,
         )
@@ -1337,7 +1341,7 @@ def resolve_standalone_project(
         mode=ProjectMode.standalone,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
-        auth=actual_auth,
+        group_auth=actual_group_auth,
         global_shared_path=None,
     )
 

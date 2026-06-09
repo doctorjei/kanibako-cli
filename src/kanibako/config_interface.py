@@ -65,7 +65,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "image",
     "container_image",
     # Auth / project
-    "auth",
+    "group_auth",
     "layout",
     "mode",
     # Vault

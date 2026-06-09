@@ -107,7 +107,7 @@ class TestWorksetCreate:
         # Verify auth mode is set to distinct
         from kanibako.workset import load_workset
         ws = load_workset(ws_root.resolve())
-        assert ws.auth == "distinct"
+        assert ws.group_auth is False
 
     def test_create_with_image(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
@@ -454,8 +454,8 @@ class TestWorksetInfo:
         rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Auth:" in out
-        assert "shared" in out
+        assert "Group auth:" in out
+        assert "True" in out
 
 
 class TestWorksetConfig:
@@ -478,7 +478,7 @@ class TestWorksetConfig:
         assert "no overrides" in out
 
     def test_config_get_auth(self, config_file, tmp_home, capsys):
-        """Getting auth key returns value from workset.toml."""
+        """Getting group_auth key returns value from workset.toml."""
         from kanibako.commands.workset_cmd import run_config
 
         config = load_config(config_file)
@@ -486,17 +486,17 @@ class TestWorksetConfig:
         create_workset("authcfg", tmp_home / "ws_authcfg", std)
 
         args = argparse.Namespace(
-            workset="authcfg", key_value="auth",
+            workset="authcfg", key_value="group_auth",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         rc = run_config(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "shared" in out
+        assert "True" in out
 
     def test_config_set_auth_distinct(self, config_file, tmp_home, capsys):
-        """Setting auth=distinct updates workset.toml and clears credentials."""
+        """Setting group_auth=false updates workset.toml and clears credentials."""
         from kanibako.commands.workset_cmd import run_config
         from unittest.mock import MagicMock, patch
 
@@ -508,7 +508,7 @@ class TestWorksetConfig:
         mock_target.invalidate_credentials.return_value = None
 
         args = argparse.Namespace(
-            workset="setauth", key_value="auth=distinct",
+            workset="setauth", key_value="group_auth=false",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -524,10 +524,10 @@ class TestWorksetConfig:
         # Verify workset.toml was updated
         from kanibako.workset import load_workset
         ws = load_workset((tmp_home / "ws_setauth").resolve())
-        assert ws.auth == "distinct"
+        assert ws.group_auth is False
 
     def test_config_set_auth_invalid(self, config_file, tmp_home, capsys):
-        """Setting auth to invalid value produces error."""
+        """Setting group_auth to invalid value produces error."""
         from kanibako.commands.workset_cmd import run_config
 
         config = load_config(config_file)
@@ -535,14 +535,14 @@ class TestWorksetConfig:
         create_workset("badauth", tmp_home / "ws_badauth", std)
 
         args = argparse.Namespace(
-            workset="badauth", key_value="auth=bogus",
+            workset="badauth", key_value="group_auth=bogus",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         rc = run_config(args)
         assert rc == 1
         err = capsys.readouterr().err
-        assert "shared" in err or "distinct" in err
+        assert "true" in err or "false" in err
 
     def test_config_set_regular_key(self, config_file, tmp_home, capsys):
         """Setting a regular config key writes to config.toml."""
@@ -592,7 +592,7 @@ class TestWorksetConfig:
         assert "Reset" in out or "No override" in out
 
     def test_config_reset_auth(self, config_file, tmp_home, capsys):
-        """Resetting auth key reverts to shared."""
+        """Resetting group_auth key reverts to True (shared)."""
         from kanibako.commands.workset_cmd import run_config
         from unittest.mock import MagicMock, patch
 
@@ -604,7 +604,7 @@ class TestWorksetConfig:
         mock_target = MagicMock()
         mock_target.invalidate_credentials.return_value = None
         set_args = argparse.Namespace(
-            workset="resetauth", key_value="auth=distinct",
+            workset="resetauth", key_value="group_auth=false",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -615,17 +615,17 @@ class TestWorksetConfig:
         # Then reset.
         reset_args = argparse.Namespace(
             workset="resetauth", key_value=None,
-            effective=False, reset="auth", reset_all=False,
+            effective=False, reset="group_auth", reset_all=False,
             force=False, local=False,
         )
         rc = run_config(reset_args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "shared" in out
+        assert "group_auth" in out
 
         from kanibako.workset import load_workset
         ws = load_workset((tmp_home / "ws_resetauth").resolve())
-        assert ws.auth == "shared"
+        assert ws.group_auth is True
 
     def test_config_reset_all(self, config_file, tmp_home, capsys):
         """--reset --all clears all overrides."""

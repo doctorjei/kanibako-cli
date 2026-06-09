@@ -348,7 +348,7 @@ def run_create(args: argparse.Namespace) -> int:
     std = load_std_paths(config)
 
     enable_vault = not getattr(args, "no_vault", False)
-    auth = "distinct" if getattr(args, "distinct_auth", False) else None
+    group_auth = False if getattr(args, "distinct_auth", False) else None
     project_dir = args.path
 
     # $HOME guard: a home-directory project mounts the entire home tree, so it
@@ -384,7 +384,7 @@ def run_create(args: argparse.Namespace) -> int:
     if args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
-            enable_vault=enable_vault, auth=auth,
+            enable_vault=enable_vault, group_auth=group_auth,
         )
     else:
         proj = resolve_project(
