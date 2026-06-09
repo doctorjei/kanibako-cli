@@ -33,6 +33,7 @@ class HelperContext:
     default_entrypoint: str | None = None  # from target.default_entrypoint
     project_path: Path | None = None   # host-side workspace directory
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
+    boxes: Path | None = None          # resolved system.path.boxes (std.boxes)
 
 
 class HelperHub:
@@ -376,11 +377,12 @@ class HelperHub:
         # Resolve source metadata dir via names.toml reverse lookup
         from kanibako.names import assign_name, read_names
 
+        boxes_base = ctx.boxes or (ctx.data_path / "boxes")
         source_meta_dir: Path | None = None
         names = read_names(ctx.data_path)
         for rname, rpath in names["projects"].items():
             if rpath == str(ctx.project_path):
-                candidate = ctx.data_path / "boxes" / rname
+                candidate = boxes_base / rname
                 if candidate.is_dir():
                     source_meta_dir = candidate
                 break
@@ -399,7 +401,7 @@ class HelperHub:
 
         # Copy metadata if we found the source
         if source_meta_dir is not None:
-            new_meta_dir = ctx.data_path / "boxes" / new_name
+            new_meta_dir = boxes_base / new_name
             try:
                 if not new_meta_dir.exists():
                     shutil.copytree(

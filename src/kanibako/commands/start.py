@@ -851,6 +851,7 @@ def _run_container(
                 default_entrypoint=target.default_entrypoint if target else None,
                 project_path=proj.project_path,
                 data_path=std.data_path,
+                boxes=std.boxes,
             )
 
             msg_log = MessageLog(log_path)

@@ -123,7 +123,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force) -> int:
 
         # Restore session data
         print("Restoring session data... ", end="", flush=True)
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         projects_base.mkdir(parents=True, exist_ok=True)
 
         if proj.metadata_path.exists():

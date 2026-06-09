@@ -125,7 +125,7 @@ def _load_workset_toml(root: Path) -> Workset:
 # ---------------------------------------------------------------------------
 
 def _registry_path(std: StandardPaths) -> Path:
-    return std.data_path / "worksets.toml"
+    return std.ws_hints
 
 
 def _load_registry(std: StandardPaths) -> dict[str, Path]:

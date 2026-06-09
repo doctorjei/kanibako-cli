@@ -401,7 +401,7 @@ def resolve_project(
 
     # Determine the project directory: name-based (boxes/{name}/).
     project_name, project_dir_path = _resolve_local_dir(
-        std.data_path, project_path_str,
+        std.data_path, project_path_str, std.boxes,
     )
 
     metadata_path = project_dir_path
@@ -452,7 +452,7 @@ def resolve_project(
             project_name = name_override
         else:
             project_name = assign_name(std.data_path, project_path_str)
-        project_dir_path = std.data_path / "boxes" / project_name
+        project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
         shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
@@ -567,11 +567,14 @@ def resolve_project(
 def _resolve_local_dir(
     data_path: Path,
     project_path_str: str,
+    boxes_dir: Path,
 ) -> tuple[str, Path]:
     """Find the boxes directory for a local project.
 
     Looks up the project name via names.toml reverse lookup and returns
-    ``(project_name, boxes/{name}/)`` path.
+    ``(project_name, boxes_dir/{name}/)`` path.  *boxes_dir* is the resolved
+    ``system.path.boxes`` directory (``std.boxes``); *data_path* is still
+    needed to read ``names.toml``.
 
     Returns ``("", empty_path)`` when no name is registered — the caller
     (``resolve_project``) will assign a name during initialization.
@@ -580,9 +583,9 @@ def _resolve_local_dir(
     # Reverse lookup: path → name.
     for name, path in names["projects"].items():
         if path == project_path_str:
-            return name, data_path / "boxes" / name
+            return name, boxes_dir / name
 
-    return "", data_path / "boxes" / "__unregistered__"
+    return "", boxes_dir / "__unregistered__"
 
 
 
@@ -873,13 +876,14 @@ def _init_project(
 
 
 
-def _find_local_ancestor(target: Path, data_path: Path) -> Path | None:
+def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path | None:
     """Find the deepest registered local project that is an ancestor of *target*.
 
     Reads ``names.toml`` and, for each entry whose registered path is a
-    prefix of *target*, checks that ``boxes/{name}/`` actually exists on
+    prefix of *target*, checks that ``boxes_dir/{name}/`` actually exists on
     disk.  Among all valid matches, the deepest (most path components)
-    wins.  Returns the matched path or ``None``.
+    wins.  Returns the matched path or ``None``.  *boxes_dir* is the resolved
+    ``system.path.boxes`` directory (``std.boxes``).
     """
     names = read_names(data_path)
     best: Path | None = None
@@ -890,8 +894,8 @@ def _find_local_ancestor(target: Path, data_path: Path) -> Path | None:
             target.relative_to(registered)
         except ValueError:
             continue
-        # Only accept if boxes/{name}/ exists on disk.
-        if not (data_path / "boxes" / name).is_dir():
+        # Only accept if boxes_dir/{name}/ exists on disk.
+        if not (boxes_dir / name).is_dir():
             continue
         depth = len(registered.parts)
         if depth > best_depth:
@@ -950,7 +954,7 @@ def detect_project_mode(
         return ws_result
 
     # 2. Name-based local check (one-pass scan, deepest match wins).
-    ac_ancestor = _find_local_ancestor(resolved, std.data_path)
+    ac_ancestor = _find_local_ancestor(resolved, std.data_path, std.boxes)
     if ac_ancestor is not None:
         return DetectionResult(ProjectMode.local, ac_ancestor)
 
@@ -987,7 +991,7 @@ def _check_workset(
     Checks ``workspaces/`` first (specific project), then the workset root
     itself (inside workset but not necessarily a project workspace).
     """
-    worksets_toml = std.data_path / "worksets.toml"
+    worksets_toml = std.ws_hints
     if not worksets_toml.is_file():
         return None
 
@@ -1168,7 +1172,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     *project_path* is read from ``project.toml`` (``workspace`` field) when
     available, falling back to ``project-path.txt`` for backward compat.
     """
-    projects_dir = std.data_path / "boxes"
+    projects_dir = std.boxes
     if not projects_dir.is_dir():
         return []
     results: list[tuple[Path, Path | None]] = []

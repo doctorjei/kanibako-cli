@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from kanibako.crabs import CrabConfig
+    from kanibako.paths import StandardPaths
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -136,28 +136,27 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _load_data_path() -> Path:
-    """Load config and return the data_path."""
+def _load_std() -> StandardPaths:
+    """Load config and return the resolved standard paths."""
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import xdg, load_std_paths
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
-    std = load_std_paths(config)
-    return std.data_path
+    return load_std_paths(config)
 
 
 def run_list(args: argparse.Namespace) -> int:
     """List configured crabs."""
-    from kanibako.crabs import crabs_dir, load_crab_config
+    from kanibako.crabs import load_crab_config
 
     try:
-        data_path = _load_data_path()
+        std = _load_std()
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    adir = crabs_dir(data_path)
+    adir = std.crabs
     if not adir.is_dir():
         quiet = getattr(args, "quiet", False)
         if not quiet:
@@ -189,16 +188,16 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     """Show crab configuration details."""
-    from kanibako.crabs import crab_toml_path, load_crab_config
+    from kanibako.crabs import load_crab_config
 
     try:
-        data_path = _load_data_path()
+        std = _load_std()
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
     crab_id = args.crab_id
-    path = crab_toml_path(data_path, crab_id)
+    path = std.crabs / f"{crab_id}.toml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
@@ -244,16 +243,16 @@ def run_config(args: argparse.Namespace) -> int:
       shared.X                -> [shared]
       shell, run_args         -> [crab]
     """
-    from kanibako.crabs import crab_toml_path, load_crab_config, write_crab_config
+    from kanibako.crabs import load_crab_config, write_crab_config
 
     try:
-        data_path = _load_data_path()
+        std = _load_std()
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
     crab_id = args.crab_id
-    path = crab_toml_path(data_path, crab_id)
+    path = std.crabs / f"{crab_id}.toml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1

@@ -698,7 +698,7 @@ class TestFindLocalAncestor:
         # From a subdirectory of inner, the deeper match should win.
         target = inner / "src"
         target.mkdir()
-        result = _find_local_ancestor(target.resolve(), std.data_path)
+        result = _find_local_ancestor(target.resolve(), std.data_path, std.boxes)
         assert result == inner.resolve()
 
     def test_name_scan_ignores_stale_entry_without_boxes_dir(
@@ -713,7 +713,7 @@ class TestFindLocalAncestor:
         register_name(std.data_path, "myproject", str(project))
         # Intentionally do NOT create boxes/myproject/
 
-        result = _find_local_ancestor(project.resolve(), std.data_path)
+        result = _find_local_ancestor(project.resolve(), std.data_path, std.boxes)
         assert result is None
 
     def test_name_scan_exact_match(self, config_file, tmp_home, credentials_dir):
@@ -726,7 +726,7 @@ class TestFindLocalAncestor:
         register_name(std.data_path, "exact", str(project))
         (std.data_path / "boxes" / "exact").mkdir(parents=True)
 
-        result = _find_local_ancestor(project.resolve(), std.data_path)
+        result = _find_local_ancestor(project.resolve(), std.data_path, std.boxes)
         assert result == project.resolve()
 
 

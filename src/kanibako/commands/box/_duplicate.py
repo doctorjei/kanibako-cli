@@ -140,7 +140,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into local layout for new_path."""
     # Assign a new name for the duplicate.
     project_name = assign_name(std.data_path, str(new_path))
-    projects_base = std.data_path / "boxes"
+    projects_base = std.boxes
     dst_project = projects_base / project_name
 
     if force and dst_project.is_dir():
@@ -317,7 +317,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 3. Source must have kanibako metadata.
     source_name, source_project_dir = _resolve_local_dir(
-        std.data_path, str(source_path),
+        std.data_path, str(source_path), std.boxes,
     )
 
     if not source_project_dir.is_dir():
@@ -338,7 +338,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 5. Destination metadata must not already exist (unless --force).
     new_name, new_project_dir = _resolve_local_dir(
-        std.data_path, str(new_path),
+        std.data_path, str(new_path), std.boxes,
     )
 
     if new_project_dir.is_dir() and not args.force:
@@ -379,7 +379,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # Assign a new name for the duplicate.
     dup_name = assign_name(std.data_path, str(new_path))
-    new_project_dir = std.data_path / "boxes" / dup_name
+    new_project_dir = std.boxes / dup_name
 
     # Copy metadata (entire project dir including home/).
     if args.force and new_project_dir.is_dir():

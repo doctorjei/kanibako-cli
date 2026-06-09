@@ -686,7 +686,7 @@ def run_rm(args: argparse.Namespace) -> int:
     print(f"Removed '{name}' from names.toml")
 
     if args.purge:
-        metadata_dir = std.data_path / "boxes" / name
+        metadata_dir = std.boxes / name
 
         if metadata_dir.is_dir():
             if not args.force:
@@ -726,7 +726,7 @@ def run_rm(args: argparse.Namespace) -> int:
             print(f"No metadata directory found at {metadata_dir}")
     else:
         # Hint about --purge when metadata still exists.
-        metadata_dir = std.data_path / "boxes" / name
+        metadata_dir = std.boxes / name
         if metadata_dir.is_dir():
             print(
                 f"Metadata still present at {metadata_dir}. "

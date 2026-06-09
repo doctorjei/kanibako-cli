@@ -99,3 +99,59 @@ class TestLoadStdPathsParity:
         assert std.comms == std.data_path / "comms"
         assert std.templates == std.data_path / "templates"
         assert std.ws_hints == std.data_path / "worksets.toml"
+
+
+class TestBoxesOverrideConsumers:
+    """A ``system.path.boxes`` override is honored consistently by both
+    project creation/listing AND the names.toml reverse-lookup helpers.
+    """
+
+    def test_boxes_override_used_by_creation_and_lookup(self, tmp_home):
+        """Creating a project under a custom boxes dir registers it there, and
+        the reverse-lookup helpers find it at ``<custom>/<name>``.
+        """
+        from kanibako.config import load_config
+        from kanibako.paths import (
+            _find_local_ancestor,
+            _resolve_local_dir,
+            iter_projects,
+            load_std_paths,
+            resolve_project,
+        )
+
+        custom_boxes = tmp_home / "srv_boxes"
+
+        # Write a config that overrides system.path.boxes to the custom dir.
+        cf = tmp_home / "config" / "kanibako.toml"
+        cf.write_text(f'[system.path]\nboxes = "{custom_boxes}"\n')
+
+        config = load_config(cf)
+        assert config.system_paths == {"system.path.boxes": str(custom_boxes)}
+        std = load_std_paths(config)
+        assert std.boxes == custom_boxes
+
+        # Create a project — its metadata dir must land under the custom boxes.
+        workspace = tmp_home / "ws"
+        workspace.mkdir()
+        proj = resolve_project(std, config, str(workspace), initialize=True)
+        assert proj.metadata_path.is_dir()
+        assert proj.metadata_path == custom_boxes / proj.name
+        # Nothing was created under the default data_path/boxes.
+        assert not (std.data_path / "boxes").exists()
+
+        # Reverse-lookup (path -> name -> dir) resolves under the custom dir.
+        name, box_dir = _resolve_local_dir(
+            std.data_path, str(workspace.resolve()), std.boxes,
+        )
+        assert name == proj.name
+        assert box_dir == custom_boxes / proj.name
+
+        # Deepest-ancestor lookup also keys off the custom boxes dir.
+        sub = workspace / "src"
+        sub.mkdir()
+        ancestor = _find_local_ancestor(sub.resolve(), std.data_path, std.boxes)
+        assert ancestor == workspace.resolve()
+
+        # Listing enumerates the custom boxes dir.
+        listed = {p.name for p, _ in iter_projects(std, config)}
+        assert proj.name in listed
