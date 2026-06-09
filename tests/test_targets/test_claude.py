@@ -435,22 +435,22 @@ class TestSettingDescriptors:
         assert descriptors["access"].choices == ("permissive", "default")
 
 
-class TestGenerateAgentConfig:
+class TestGenerateCrabConfig:
     def test_returns_claude_defaults(self):
         t = ClaudeTarget()
-        cfg = t.generate_agent_config()
+        cfg = t.generate_crab_config()
         assert cfg.name == "Claude Code"
         assert cfg.shell == "standard"
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
-        assert cfg.default_args == []
+        assert cfg.run_args == []
         assert cfg.env == {}
 
-    def test_is_agent_config_instance(self):
-        from kanibako.agents import AgentConfig
+    def test_is_crab_config_instance(self):
+        from kanibako.crabs import CrabConfig
         t = ClaudeTarget()
-        cfg = t.generate_agent_config()
-        assert isinstance(cfg, AgentConfig)
+        cfg = t.generate_crab_config()
+        assert isinstance(cfg, CrabConfig)
 
 
 class TestApplyState:

@@ -449,14 +449,14 @@ class TestStartArgs:
             assert "--dangerously-skip-permissions" not in cli_args
 
 
-class TestAgentConfigIntegration:
+class TestCrabConfigIntegration:
     """Verify agent config integration in _run_container."""
 
     def test_default_args_merged_into_cli(self, start_mocks):
         """Agent default_args are prepended to extra_args."""
         with start_mocks() as m:
-            m.agent_cfg.default_args = ["--verbose"]
-            m.load_agent_config.return_value = m.agent_cfg
+            m.agent_cfg.run_args = ["--verbose"]
+            m.load_crab_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -470,7 +470,7 @@ class TestAgentConfigIntegration:
         """target.apply_state() is called with agent_cfg.state."""
         with start_mocks() as m:
             m.agent_cfg.state = {"model": "opus"}
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -495,7 +495,7 @@ class TestAgentConfigIntegration:
         """Agent [env] section values are included in container env."""
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_VAR": "hello"}
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -525,8 +525,8 @@ class TestAgentConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # agent_toml_path should have been called with agent_id="general"
-            call_args = m.agent_toml_path.call_args
+            # crab_toml_path should have been called with agent_id="general"
+            call_args = m.crab_toml_path.call_args
             assert call_args[0][1] == "general"
 
 
@@ -549,7 +549,7 @@ class TestTweakccIntegration:
         """When tweakcc is enabled in agent config, _apply_tweakcc is called."""
         with start_mocks() as m:
             m.agent_cfg.tweakcc = {"enabled": True}
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
 
             with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
                 mock_apply.return_value = None  # disabled/failed
@@ -564,7 +564,7 @@ class TestTweakccIntegration:
         """When tweakcc returns a patched install, binary_mounts uses it."""
         with start_mocks() as m:
             m.agent_cfg.tweakcc = {"enabled": True}
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
 
             from kanibako.targets.base import AgentInstall
             from kanibako.tweakcc_cache import CacheEntry
@@ -595,7 +595,7 @@ class TestTweakccIntegration:
         """When tweakcc fails, original binary is used (graceful fallback)."""
         with start_mocks() as m:
             m.agent_cfg.tweakcc = {"enabled": True}
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
 
             with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
                 mock_apply.return_value = None  # signals failure
@@ -640,29 +640,29 @@ class TestApplyTweakcc:
 
     def test_disabled_returns_none(self, tmp_path):
         """When tweakcc is not enabled, returns None."""
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
 
         install = MagicMock()
-        agent_cfg = AgentConfig(tweakcc={})
+        agent_cfg = CrabConfig(tweakcc={})
         result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_enabled_but_empty_returns_none(self, tmp_path):
         """Enabled=False explicitly → returns None."""
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
 
         install = MagicMock()
-        agent_cfg = AgentConfig(tweakcc={"enabled": False})
+        agent_cfg = CrabConfig(tweakcc={"enabled": False})
         result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_bun_sea_error_returns_none(self, tmp_path):
         """BunSEAError during hash → returns None (graceful fallback)."""
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
         from kanibako.bun_sea import BunSEAError
 
         install = MagicMock()
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = CrabConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         with patch("kanibako.bun_sea.cli_js_hash") as mock_hash:
@@ -673,12 +673,12 @@ class TestApplyTweakcc:
 
     def test_cache_hit(self, tmp_path):
         """Cache hit → returns patched install without calling put."""
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
 
         install = MagicMock()
         install.name = "claude"
         install.install_dir = tmp_path / "install"
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = CrabConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -703,13 +703,13 @@ class TestApplyTweakcc:
 
     def test_cache_miss_calls_put(self, tmp_path):
         """Cache miss → calls put with tweakcc command."""
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
 
         install = MagicMock()
         install.name = "claude"
         install.binary = tmp_path / "binary"
         install.install_dir = tmp_path / "install"
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = CrabConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -735,12 +735,12 @@ class TestApplyTweakcc:
 
     def test_returns_cache_object(self, tmp_path):
         """Returned tuple includes the cache object for later release."""
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
 
         install = MagicMock()
         install.name = "claude"
         install.install_dir = tmp_path / "install"
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = CrabConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()

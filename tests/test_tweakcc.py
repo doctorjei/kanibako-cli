@@ -171,17 +171,17 @@ class TestWriteMergedConfig:
         assert output.exists()
 
 
-class TestAgentConfigTweakcc:
-    """Test that AgentConfig round-trips the tweakcc section."""
+class TestCrabConfigTweakcc:
+    """Test that CrabConfig round-trips the tweakcc section."""
 
     def test_load_with_tweakcc(self, tmp_path):
-        from kanibako.agents import load_agent_config
+        from kanibako.crabs import load_crab_config
 
         toml_content = """\
-[agent]
+[crab]
 name = "Claude Code"
 shell = "standard"
-default_args = []
+run_args = []
 
 [state]
 model = "opus"
@@ -196,41 +196,41 @@ config = "~/.tweakcc/config.json"
 """
         path = tmp_path / "agent.toml"
         path.write_text(toml_content)
-        cfg = load_agent_config(path)
+        cfg = load_crab_config(path)
         assert cfg.tweakcc == {"enabled": True, "config": "~/.tweakcc/config.json"}
 
     def test_load_without_tweakcc(self, tmp_path):
-        from kanibako.agents import load_agent_config
+        from kanibako.crabs import load_crab_config
 
         toml_content = """\
-[agent]
+[crab]
 name = "Claude Code"
 
 [state]
 """
         path = tmp_path / "agent.toml"
         path.write_text(toml_content)
-        cfg = load_agent_config(path)
+        cfg = load_crab_config(path)
         assert cfg.tweakcc == {}
 
     def test_write_with_tweakcc(self, tmp_path):
-        from kanibako.agents import AgentConfig, load_agent_config, write_agent_config
+        from kanibako.crabs import CrabConfig, load_crab_config, write_crab_config
 
-        cfg = AgentConfig(name="Test", tweakcc={"enabled": True, "config": "/path"})
+        cfg = CrabConfig(name="Test", tweakcc={"enabled": True, "config": "/path"})
         path = tmp_path / "agent.toml"
-        write_agent_config(path, cfg)
+        write_crab_config(path, cfg)
 
         # Round-trip
-        loaded = load_agent_config(path)
+        loaded = load_crab_config(path)
         assert loaded.tweakcc["enabled"] is True
         assert loaded.tweakcc["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
-        from kanibako.agents import AgentConfig, write_agent_config
+        from kanibako.crabs import CrabConfig, write_crab_config
 
-        cfg = AgentConfig(name="Test")
+        cfg = CrabConfig(name="Test")
         path = tmp_path / "agent.toml"
-        write_agent_config(path, cfg)
+        write_crab_config(path, cfg)
         content = path.read_text()
         assert "[tweakcc]" in content
         assert "# enabled = false" in content

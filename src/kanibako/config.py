@@ -17,7 +17,7 @@ import tomllib
 
 _DEFAULTS = {
     "paths_data_path": "",
-    "paths_agents": "agents",
+    "paths_crabs": "crabs",
     "paths_boxes": "boxes",
     "paths_project_toml": "project.toml",
     "paths_shared": "shared",
@@ -44,7 +44,7 @@ class KanibakoConfig:
     """Merged configuration (hardcoded defaults < kanibako.toml < project.toml < CLI)."""
 
     paths_data_path: str = _DEFAULTS["paths_data_path"]
-    paths_agents: str = _DEFAULTS["paths_agents"]
+    paths_crabs: str = _DEFAULTS["paths_crabs"]
     paths_boxes: str = _DEFAULTS["paths_boxes"]
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]

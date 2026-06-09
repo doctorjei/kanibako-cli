@@ -162,10 +162,10 @@ class TestTargetABC:
             IncompleteTarget()  # type: ignore[abstract]
 
 
-class TestGenerateAgentConfig:
-    """Tests for Target.generate_agent_config() default implementation."""
+class TestGenerateCrabConfig:
+    """Tests for Target.generate_crab_config() default implementation."""
 
-    def test_default_returns_agent_config(self):
+    def test_default_returns_crab_config(self):
         class SimpleTarget(Target):
             @property
             def name(self) -> str:
@@ -194,10 +194,10 @@ class TestGenerateAgentConfig:
                 return []
 
         t = SimpleTarget()
-        cfg = t.generate_agent_config()
+        cfg = t.generate_crab_config()
         assert cfg.name == "Simple Agent"
         assert cfg.shell == "standard"
-        assert cfg.default_args == []
+        assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.shared_caches == {}
 

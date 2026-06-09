@@ -1,4 +1,4 @@
-"""Agent TOML configuration: load, write, and resolve per-agent settings."""
+"""Crab TOML configuration: load, write, and resolve per-crab settings."""
 
 from __future__ import annotations
 
@@ -9,54 +9,54 @@ import tomllib
 
 
 @dataclass
-class AgentConfig:
-    """Per-agent configuration loaded from an agent TOML file.
+class CrabConfig:
+    """Per-crab configuration loaded from a crab TOML file.
 
     Sections:
-      [agent]  — identity and defaults (name, shell, default_args)
+      [crab]   — identity and defaults (name, shell, run_args)
       [state]  — runtime behavior knobs (model, access, etc.)
       [env]    — raw env vars injected into container
-      [shared] — agent-level shared cache paths
+      [shared] — crab-level shared cache paths
     """
 
     name: str = ""
     shell: str = "standard"
-    default_args: list[str] = field(default_factory=list)
+    run_args: list[str] = field(default_factory=list)
     state: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     shared_caches: dict[str, str] = field(default_factory=dict)
     tweakcc: dict = field(default_factory=dict)
 
 
-def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
-    """Return the agents directory under *data_path*."""
-    return data_path / (paths_agents or "agents")
+def crabs_dir(data_path: Path, paths_crabs: str = "crabs") -> Path:
+    """Return the crabs directory under *data_path*."""
+    return data_path / (paths_crabs or "crabs")
 
 
-def agent_toml_path(
-    data_path: Path, agent_id: str, paths_agents: str = "agents",
+def crab_toml_path(
+    data_path: Path, crab_id: str, paths_crabs: str = "crabs",
 ) -> Path:
-    """Return the path to an agent's TOML file."""
-    return agents_dir(data_path, paths_agents) / f"{agent_id}.toml"
+    """Return the path to a crab's TOML file."""
+    return crabs_dir(data_path, paths_crabs) / f"{crab_id}.toml"
 
 
-def load_agent_config(path: Path) -> AgentConfig:
-    """Read an agent TOML file and return an AgentConfig.
+def load_crab_config(path: Path) -> CrabConfig:
+    """Read a crab TOML file and return a CrabConfig.
 
     Returns defaults if the file does not exist.
     """
-    cfg = AgentConfig()
+    cfg = CrabConfig()
     if not path.exists():
         return cfg
 
     with open(path, "rb") as f:
         data = tomllib.load(f)
 
-    agent_sec = data.get("agent", {})
-    cfg.name = str(agent_sec.get("name", ""))
-    cfg.shell = str(agent_sec.get("shell", "standard"))
-    raw_args = agent_sec.get("default_args", [])
-    cfg.default_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
+    crab_sec = data.get("crab", {})
+    cfg.name = str(crab_sec.get("name", ""))
+    cfg.shell = str(crab_sec.get("shell", "standard"))
+    raw_args = crab_sec.get("run_args", [])
+    cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
     cfg.state = {k: str(v) for k, v in data.get("state", {}).items()}
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
@@ -66,20 +66,20 @@ def load_agent_config(path: Path) -> AgentConfig:
     return cfg
 
 
-def write_agent_config(path: Path, cfg: AgentConfig) -> None:
-    """Write an AgentConfig to a TOML file.
+def write_crab_config(path: Path, cfg: CrabConfig) -> None:
+    """Write a CrabConfig to a TOML file.
 
     Uses a custom serializer since config._write_toml() cannot handle lists.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
 
-    # [agent] section
-    lines.append("[agent]")
+    # [crab] section
+    lines.append("[crab]")
     lines.append(f'name = "{cfg.name}"')
     lines.append(f'shell = "{cfg.shell}"')
-    args_str = ", ".join(f'"{a}"' for a in cfg.default_args)
-    lines.append(f"default_args = [{args_str}]")
+    args_str = ", ".join(f'"{a}"' for a in cfg.run_args)
+    lines.append(f"run_args = [{args_str}]")
     lines.append("")
 
     # [state] section

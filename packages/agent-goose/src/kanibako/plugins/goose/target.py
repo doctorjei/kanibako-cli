@@ -18,7 +18,7 @@ from kanibako.plugins.goose.credentials import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.agents import AgentConfig
+    from kanibako.crabs import CrabConfig
 
 logger = get_logger("targets.goose")
 
@@ -172,11 +172,11 @@ class GooseTarget(Target):
 
         return True
 
-    def generate_agent_config(self) -> AgentConfig:
-        """Return default Goose agent configuration."""
-        from kanibako.agents import AgentConfig as _AgentConfig
+    def generate_crab_config(self) -> CrabConfig:
+        """Return default Goose crab configuration."""
+        from kanibako.crabs import CrabConfig as _CrabConfig
 
-        return _AgentConfig(
+        return _CrabConfig(
             name="Goose",
             shell="standard",
             state={"provider": "anthropic", "model": "claude-sonnet-4-20250514"},

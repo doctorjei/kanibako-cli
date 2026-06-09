@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from kanibako.agents import AgentConfig, write_agent_config, agents_dir
+from kanibako.crabs import CrabConfig, write_crab_config, crabs_dir
 
 
 # ---------------------------------------------------------------------------
@@ -24,19 +24,19 @@ def agent_env(config_file, tmp_home):
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    adir = agents_dir(std.data_path)
+    adir = crabs_dir(std.data_path)
     adir.mkdir(parents=True, exist_ok=True)
 
     # Create a sample agent
-    cfg = AgentConfig(
+    cfg = CrabConfig(
         name="claude",
         shell="standard",
-        default_args=["--no-helpers"],
+        run_args=["--no-helpers"],
         state={"model": "opus"},
         env={"EDITOR": "vim"},
         shared_caches={"npm": "/home/agent/.npm"},
     )
-    write_agent_config(adir / "claude.toml", cfg)
+    write_crab_config(adir / "claude.toml", cfg)
 
     return std.data_path
 
@@ -100,9 +100,9 @@ class TestRunList:
         """List shows multiple agents sorted by name."""
         from kanibako.commands.agent_cmd import run_list
 
-        adir = agents_dir(agent_env)
-        cfg2 = AgentConfig(name="aider", shell="bash", state={"model": "sonnet"})
-        write_agent_config(adir / "aider.toml", cfg2)
+        adir = crabs_dir(agent_env)
+        cfg2 = CrabConfig(name="aider", shell="bash", state={"model": "sonnet"})
+        write_crab_config(adir / "aider.toml", cfg2)
 
         args = argparse.Namespace(quiet=False)
         rc = run_list(args)
@@ -206,7 +206,7 @@ class TestRunConfig:
 
     def test_config_set_state_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
-        from kanibako.agents import agent_toml_path, load_agent_config
+        from kanibako.crabs import crab_toml_path, load_crab_config
 
         args = argparse.Namespace(
             agent_id="claude", key_value="model=sonnet",
@@ -217,13 +217,13 @@ class TestRunConfig:
         assert "Set model=sonnet" in capsys.readouterr().out
 
         # Verify the file was updated
-        path = agent_toml_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        path = crab_toml_path(agent_env, "claude")
+        cfg = load_crab_config(path)
         assert cfg.state["model"] == "sonnet"
 
     def test_config_set_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
-        from kanibako.agents import agent_toml_path, load_agent_config
+        from kanibako.crabs import crab_toml_path, load_crab_config
 
         args = argparse.Namespace(
             agent_id="claude", key_value="env.PAGER=less",
@@ -233,13 +233,13 @@ class TestRunConfig:
         assert rc == 0
         assert "Set env.PAGER=less" in capsys.readouterr().out
 
-        path = agent_toml_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        path = crab_toml_path(agent_env, "claude")
+        cfg = load_crab_config(path)
         assert cfg.env["PAGER"] == "less"
 
     def test_config_set_shell(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
-        from kanibako.agents import agent_toml_path, load_agent_config
+        from kanibako.crabs import crab_toml_path, load_crab_config
 
         args = argparse.Namespace(
             agent_id="claude", key_value="shell=bash",
@@ -248,13 +248,13 @@ class TestRunConfig:
         rc = run_config(args)
         assert rc == 0
 
-        path = agent_toml_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        path = crab_toml_path(agent_env, "claude")
+        cfg = load_crab_config(path)
         assert cfg.shell == "bash"
 
     def test_config_reset_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
-        from kanibako.agents import agent_toml_path, load_agent_config
+        from kanibako.crabs import crab_toml_path, load_crab_config
 
         args = argparse.Namespace(
             agent_id="claude", key_value="model",
@@ -264,13 +264,13 @@ class TestRunConfig:
         assert rc == 0
         assert "Reset model" in capsys.readouterr().out
 
-        path = agent_toml_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        path = crab_toml_path(agent_env, "claude")
+        cfg = load_crab_config(path)
         assert "model" not in cfg.state
 
     def test_config_reset_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
-        from kanibako.agents import agent_toml_path, load_agent_config
+        from kanibako.crabs import crab_toml_path, load_crab_config
 
         args = argparse.Namespace(
             agent_id="claude", key_value="env.EDITOR",
@@ -280,8 +280,8 @@ class TestRunConfig:
         assert rc == 0
         assert "Reset env.EDITOR" in capsys.readouterr().out
 
-        path = agent_toml_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        path = crab_toml_path(agent_env, "claude")
+        cfg = load_crab_config(path)
         assert "EDITOR" not in cfg.env
 
     def test_config_reset_missing_key(self, agent_env, capsys):
@@ -297,7 +297,7 @@ class TestRunConfig:
 
     def test_config_reset_all_forced(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
-        from kanibako.agents import agent_toml_path, load_agent_config
+        from kanibako.crabs import crab_toml_path, load_crab_config
 
         args = argparse.Namespace(
             agent_id="claude", key_value=None,
@@ -307,12 +307,12 @@ class TestRunConfig:
         assert rc == 0
         assert "Reset all" in capsys.readouterr().out
 
-        path = agent_toml_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        path = crab_toml_path(agent_env, "claude")
+        cfg = load_crab_config(path)
         assert cfg.state == {}
         assert cfg.env == {}
         assert cfg.shared_caches == {}
-        assert cfg.default_args == []
+        assert cfg.run_args == []
 
     def test_config_reset_requires_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config

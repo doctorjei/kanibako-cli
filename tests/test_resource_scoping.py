@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from kanibako.agents import AgentConfig
+from kanibako.crabs import CrabConfig
 from kanibako.targets.base import ResourceMapping, ResourceScope, TargetSetting
 
 
@@ -298,7 +298,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="access", description="Access", default="permissive"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig()  # empty state
+        agent_cfg = CrabConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -312,7 +312,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        agent_cfg = CrabConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -326,7 +326,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        agent_cfg = CrabConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -340,7 +340,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
+        agent_cfg = CrabConfig(state={"model": "sonnet", "custom_key": "custom_value"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -352,7 +352,7 @@ class TestBuildEffectiveState:
         from kanibako.commands.start import _build_effective_state
 
         target = self._make_target([])  # no descriptors
-        agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
+        agent_cfg = CrabConfig(state={"model": "opus", "access": "permissive"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)

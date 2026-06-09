@@ -305,30 +305,30 @@ class TestOrphanDetectionHint:
 # Agent config first-use generation
 # ---------------------------------------------------------------------------
 
-class TestAgentConfigFirstUse:
+class TestCrabConfigFirstUse:
     def test_generates_config_on_first_use(self, start_mocks):
-        """When agent TOML doesn't exist, target.generate_agent_config() is called."""
+        """When agent TOML doesn't exist, target.generate_crab_config() is called."""
         with start_mocks() as m:
-            mock_path = m.agent_toml_path.return_value
+            mock_path = m.crab_toml_path.return_value
             mock_path.exists.return_value = False
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            m.target.generate_agent_config.assert_called_once()
+            m.target.generate_crab_config.assert_called_once()
 
     def test_does_not_generate_when_exists(self, start_mocks):
-        """When agent TOML exists, generate_agent_config() is NOT called."""
+        """When agent TOML exists, generate_crab_config() is NOT called."""
         with start_mocks() as m:
-            mock_path = m.agent_toml_path.return_value
+            mock_path = m.crab_toml_path.return_value
             mock_path.exists.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            m.target.generate_agent_config.assert_not_called()
+            m.target.generate_crab_config.assert_not_called()
 
     def test_agent_template_variant_used(self, start_mocks):
         """Template application uses agent_cfg.shell for template variant."""
@@ -336,7 +336,7 @@ class TestAgentConfigFirstUse:
         with start_mocks() as m:
             m.proj.is_new = True
             m.agent_cfg.shell = "minimal"
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -359,7 +359,7 @@ class TestAgentConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            call_args = m.agent_toml_path.call_args[0]
+            call_args = m.crab_toml_path.call_args[0]
             assert call_args[1] == "no_agent"
 
 
@@ -682,7 +682,7 @@ class TestCliEnv:
         """Per-run env vars have highest priority over agent env."""
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_KEY": "agent_val"}
-            m.load_agent_config.return_value = m.agent_cfg
+            m.load_crab_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,

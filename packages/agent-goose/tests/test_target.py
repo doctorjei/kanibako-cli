@@ -246,9 +246,9 @@ class TestCheckAuth:
         assert GooseTarget().check_auth() is True
 
 
-class TestGenerateAgentConfig:
+class TestGenerateCrabConfig:
     def test_returns_correct_defaults(self):
-        config = GooseTarget().generate_agent_config()
+        config = GooseTarget().generate_crab_config()
         assert config.name == "Goose"
         assert config.shell == "standard"
         assert config.state["provider"] == "anthropic"

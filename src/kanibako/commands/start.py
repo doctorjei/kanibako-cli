@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.agents import agent_toml_path, load_agent_config, write_agent_config
+from kanibako.crabs import crab_toml_path, load_crab_config, write_crab_config
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
@@ -505,13 +505,13 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    agent_cfg_path = agent_toml_path(std.data_path, agent_id, merged.paths_agents)
+    agent_cfg_path = crab_toml_path(std.data_path, agent_id, merged.paths_crabs)
     if target and not agent_cfg_path.exists():
-        # First-use: generate default agent config from target plugin
-        agent_cfg = target.generate_agent_config()
-        write_agent_config(agent_cfg_path, agent_cfg)
+        # First-use: generate default crab config from target plugin
+        agent_cfg = target.generate_crab_config()
+        write_crab_config(agent_cfg_path, agent_cfg)
     else:
-        agent_cfg = load_agent_config(agent_cfg_path)
+        agent_cfg = load_crab_config(agent_cfg_path)
 
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
@@ -666,14 +666,14 @@ def _run_container(
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result
 
-        # Build CLI args via target, merging agent default_args and state
+        # Build CLI args via target, merging crab run_args and state
         if target:
             effective_state = _build_effective_state(target, agent_cfg, project_toml)
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
             state_args, state_env = target.apply_state(effective_state)
-            all_extra = list(agent_cfg.default_args) + list(extra_args)
+            all_extra = list(agent_cfg.run_args) + list(extra_args)
             cli_args = target.build_cli_args(
                 safe_mode=safe_mode,
                 resume_mode=resume_mode,

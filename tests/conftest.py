@@ -185,7 +185,7 @@ def start_mocks():
     def _make():
         from pathlib import Path
 
-        from kanibako.agents import AgentConfig
+        from kanibako.crabs import CrabConfig
         from kanibako.paths import ProjectGroup, ProjectMode
 
         with (
@@ -197,8 +197,8 @@ def start_mocks():
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
             patch("kanibako.commands.start._upgrade_shell"),
             patch("kanibako.templates.apply_shell_template"),
-            patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
-            patch("kanibako.commands.start.agent_toml_path") as m_agent_toml_path,
+            patch("kanibako.commands.start.load_crab_config") as m_load_agent_cfg,
+            patch("kanibako.commands.start.crab_toml_path") as m_crab_toml_path,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),
             patch("builtins.open", MagicMock()) as m_open,
@@ -226,7 +226,7 @@ def start_mocks():
             merged = MagicMock()
             merged.container_image = "test:latest"
             merged.target_name = ""
-            merged.paths_agents = "agents"
+            merged.paths_crabs = "crabs"
             merged.share_images = False
             m_merged.return_value = merged
 
@@ -245,13 +245,13 @@ def start_mocks():
             runtime.run.side_effect = _run_side_effect
             m_rt_cls.return_value = runtime
 
-            # Agent config mock: empty defaults (no default_args, no state, no env)
-            agent_cfg = AgentConfig()
+            # Crab config mock: empty defaults (no run_args, no state, no env)
+            agent_cfg = CrabConfig()
             m_load_agent_cfg.return_value = agent_cfg
-            # agent_toml_path returns a mock Path that reports exists()=True
-            mock_agent_path = MagicMock()
-            mock_agent_path.exists.return_value = True
-            m_agent_toml_path.return_value = mock_agent_path
+            # crab_toml_path returns a mock Path that reports exists()=True
+            mock_crab_path = MagicMock()
+            mock_crab_path.exists.return_value = True
+            m_crab_toml_path.return_value = mock_crab_path
 
             # Target mock: resolve_target returns a mock target with detect/build_cli_args/etc.
             target = MagicMock()
@@ -287,8 +287,8 @@ def start_mocks():
                 resolve_target=m_resolve_target,
                 target=target,
                 agent_cfg=agent_cfg,
-                load_agent_config=m_load_agent_cfg,
-                agent_toml_path=m_agent_toml_path,
+                load_crab_config=m_load_agent_cfg,
+                crab_toml_path=m_crab_toml_path,
                 fcntl=m_fcntl,
                 open=m_open,
                 load_registry=m_load_registry,
