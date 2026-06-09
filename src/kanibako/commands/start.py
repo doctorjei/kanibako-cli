@@ -670,7 +670,13 @@ def _run_container(
 
         # Build CLI args via target, merging crab run_args and state
         if target:
-            effective_state = _build_effective_state(target, crab_cfg, project_toml)
+            effective_state = _build_effective_state(
+                target,
+                crab_cfg,
+                project_toml,
+                global_config_path=config_file,
+                workset_config_path=workset_path,
+            )
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
@@ -1076,35 +1082,97 @@ def _run_container(
             lock_fd.close()
 
 
-def _build_effective_state(target, crab_cfg, project_toml) -> dict[str, str]:
-    """Merge target defaults, crab config state, and project overrides.
+def _build_effective_state(
+    target,
+    crab_cfg,
+    project_toml,
+    *,
+    global_config_path,
+    workset_config_path=None,
+) -> dict[str, str]:
+    """Resolve effective crab-state via the settings precedence walk.
 
-    Resolution order (highest wins):
-      1. Project overrides (``[crab]`` in project.toml)
-      2. Crab config state (``[crab]`` state keys in crab TOML)
-      3. Target defaults (from ``setting_descriptors()``)
+    Walks four levels MOST-SPECIFIC-FIRST — box > workset > crab > system —
+    with the target's declared defaults as a FLOOR (the system level's declared
+    defaults).  Sources for each level's ``[crab]`` table:
 
-    Undeclared keys in crab state are passed through unchanged.
+      * **box**     — ``[crab]`` in project.toml
+      * **workset** — ``[crab]`` in the workset's config.toml (if any)
+      * **crab**    — the crab config's own state dict
+      * **system**  — ``[crab]`` in the global kanibako.toml
+      * **floor**   — target ``setting_descriptors()`` defaults
+
+    Explicit set values beat all declared defaults; the most-specific level
+    wins; an explicit ``""`` is terminal (no fall-through to the floor).
+    Undeclared keys set anywhere (e.g. ``start_mode``) are passed through.
+
+    Values are used verbatim — no ``@``-ref / ``$var`` / ``~`` expansion.
+
+    With no system/workset ``[crab]`` config (the common case) the walk reduces
+    to box > crab > floor, i.e. project override > crab state > target default —
+    identical to the prior two-source merge.
     """
     from kanibako.config import read_crab_settings
+    from kanibako.settings_resolve import (
+        LevelView,
+        ResolveCtx,
+        SettingsError,
+        _Unset,
+        resolve_value,
+    )
 
     descriptors = target.setting_descriptors()
     if not descriptors:
         return dict(crab_cfg.state)
 
-    try:
-        project_overrides = read_crab_settings(project_toml)
-    except Exception:
-        project_overrides = {}
+    def _read(path) -> dict[str, str]:
+        if not path:
+            return {}
+        try:
+            if not path.exists():
+                return {}
+            return read_crab_settings(path)
+        except Exception:
+            return {}
 
-    # Start with target defaults.
-    effective: dict[str, str] = {d.key: d.default for d in descriptors}
+    # Gather per-level [crab] leaf values.
+    box_vals = _read(project_toml)
+    ws_vals = _read(workset_config_path)
+    crab_vals = dict(crab_cfg.state)
+    sys_vals = _read(global_config_path)
+    floor = {d.key: d.default for d in descriptors}
 
-    # Layer agent config state (all keys, including undeclared).
-    effective.update(crab_cfg.state)
+    # Most-specific first; the floor is the system level's declared defaults.
+    levels = [
+        LevelView("box", box_vals),
+        LevelView("workset", ws_vals),
+        LevelView("crab", crab_vals),
+        LevelView("system", sys_vals, defaults=floor),
+    ]
 
-    # Layer project overrides (only declared keys survive validation at CLI).
-    effective.update(project_overrides)
+    keys = (
+        set(floor)
+        | set(box_vals)
+        | set(ws_vals)
+        | set(crab_vals)
+        | set(sys_vals)
+    )
+
+    ctx = ResolveCtx(
+        crab_name=target.name,
+        workset_name=None,
+        host_home=str(Path.home()),
+        xdg={},
+    )
+
+    def _no_lookup(ref, chain):
+        raise SettingsError(f"@-refs not supported in crab settings: {ref}")
+
+    effective: dict[str, str] = {}
+    for key in keys:
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=_no_lookup)
+        if not isinstance(rv, _Unset):
+            effective[key] = rv.value
 
     return effective
 

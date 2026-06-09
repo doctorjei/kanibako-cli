@@ -267,17 +267,42 @@ class TestKanibakoMounts:
 
 
 class TestBuildEffectiveState:
-    """Tests for _build_effective_state() 3-tier merge in start.py."""
+    """Tests for _build_effective_state() precedence walk in start.py."""
 
     def _make_target(self, descriptors):
         target = MagicMock()
         target.setting_descriptors.return_value = descriptors
+        target.name = "claude"
         return target
+
+    def _make_global_config(self, tmp_path, settings=None):
+        """Create a minimal global kanibako.toml, optionally with [crab]."""
+        from kanibako.config import write_crab_setting
+
+        global_toml = tmp_path / "kanibako.toml"
+        global_toml.write_text("")
+        if settings:
+            for k, v in settings.items():
+                write_crab_setting(global_toml, k, v)
+        return global_toml
+
+    def _make_workset_config(self, tmp_path, settings=None):
+        """Create a minimal workset config.toml, optionally with [crab]."""
+        from kanibako.config import write_crab_setting
+
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        ws_toml = tmp_path / "config.toml"
+        ws_toml.write_text("")
+        if settings:
+            for k, v in settings.items():
+                write_crab_setting(ws_toml, k, v)
+        return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None):
         """Create a minimal project.toml, optionally with [crab] overrides."""
         from kanibako.config import write_project_meta, write_crab_setting
 
+        tmp_path.mkdir(parents=True, exist_ok=True)
         project_toml = tmp_path / "project.toml"
         write_project_meta(
             project_toml,
@@ -301,7 +326,9 @@ class TestBuildEffectiveState:
         agent_cfg = CrabConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
 
-        result = _build_effective_state(target, agent_cfg, project_toml)
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=None
+        )
         assert result == {"model": "opus", "access": "permissive"}
 
     def test_agent_overrides_default(self, tmp_path):
@@ -315,7 +342,9 @@ class TestBuildEffectiveState:
         agent_cfg = CrabConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path)
 
-        result = _build_effective_state(target, agent_cfg, project_toml)
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=None
+        )
         assert result["model"] == "sonnet"
 
     def test_project_override_wins(self, tmp_path):
@@ -329,7 +358,9 @@ class TestBuildEffectiveState:
         agent_cfg = CrabConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
 
-        result = _build_effective_state(target, agent_cfg, project_toml)
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=None
+        )
         assert result["model"] == "haiku"
 
     def test_agent_state_passthrough_for_undeclared_keys(self, tmp_path):
@@ -343,7 +374,9 @@ class TestBuildEffectiveState:
         agent_cfg = CrabConfig(state={"model": "sonnet", "custom_key": "custom_value"})
         project_toml = self._make_project_toml(tmp_path)
 
-        result = _build_effective_state(target, agent_cfg, project_toml)
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=None
+        )
         assert result["model"] == "sonnet"
         assert result["custom_key"] == "custom_value"
 
@@ -355,5 +388,98 @@ class TestBuildEffectiveState:
         agent_cfg = CrabConfig(state={"model": "opus", "access": "permissive"})
         project_toml = self._make_project_toml(tmp_path)
 
-        result = _build_effective_state(target, agent_cfg, project_toml)
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=None
+        )
         assert result == {"model": "opus", "access": "permissive"}
+
+    def test_system_level_provides_value(self, tmp_path):
+        """System [crab] (global kanibako.toml) supplies a value when nothing
+        more specific sets it."""
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        target = self._make_target(descriptors)
+        agent_cfg = CrabConfig()  # empty state
+        project_toml = self._make_project_toml(tmp_path)
+        global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
+
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=global_toml
+        )
+        # System set value beats the target-default floor.
+        assert result["model"] == "sonnet"
+
+    def test_precedence_box_workset_crab_system(self, tmp_path):
+        """Precedence is box > workset > crab > system; system beats the floor.
+
+        Levels are most-specific-first ``[box, workset, crab, system]``, so a
+        value set at the workset level beats one set in crab state.
+        """
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+            TargetSetting(key="access", description="Access", default="permissive"),
+        ]
+        target = self._make_target(descriptors)
+        global_toml = self._make_global_config(
+            tmp_path, settings={"model": "sys-model", "access": "default"}
+        )
+        # workset config lives in its own dir to avoid colliding filenames.
+        ws_toml = self._make_workset_config(
+            tmp_path / "ws", settings={"model": "ws-model"}
+        )
+
+        # crab state also sets model — but workset is more specific, so workset
+        # wins.  access is left for the system level only.
+        agent_cfg = CrabConfig(state={"model": "crab-model"})
+        proj_dir = tmp_path / "proj"
+        proj_dir.mkdir()
+        project_toml = self._make_project_toml(proj_dir)
+
+        result = _build_effective_state(
+            target,
+            agent_cfg,
+            project_toml,
+            global_config_path=global_toml,
+            workset_config_path=ws_toml,
+        )
+        # model: box unset → workset (more specific than crab/system) wins.
+        assert result["model"] == "ws-model"
+        # access: only system sets it; nothing more specific does, so the
+        # system set value wins over the "permissive" floor.
+        assert result["access"] == "default"
+
+        # Now set model at the box level too → box beats workset.
+        box_toml = self._make_project_toml(
+            tmp_path / "proj2", settings={"model": "box-model"}
+        )
+        result2 = _build_effective_state(
+            target,
+            agent_cfg,
+            box_toml,
+            global_config_path=global_toml,
+            workset_config_path=ws_toml,
+        )
+        assert result2["model"] == "box-model"
+
+    def test_empty_string_is_terminal(self, tmp_path):
+        """An explicit '' at a level suppresses fall-through to the floor."""
+        from kanibako.commands.start import _build_effective_state
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        target = self._make_target(descriptors)
+        # crab state explicitly clears model.
+        agent_cfg = CrabConfig(state={"model": ""})
+        project_toml = self._make_project_toml(tmp_path)
+
+        result = _build_effective_state(
+            target, agent_cfg, project_toml, global_config_path=None
+        )
+        # Terminal "" — does not fall back to the "opus" floor.
+        assert result["model"] == ""
