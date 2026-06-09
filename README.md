@@ -564,15 +564,15 @@ support `shell.d/` on the next launch.
 ## Crab Configuration
 
 Each crab (agent instance) gets a TOML configuration file at
-`$XDG_DATA_HOME/kanibako/agents/{id}.toml`.  The file is generated
-automatically on first use (via the target plugin's `generate_agent_config()`
+`$XDG_DATA_HOME/kanibako/crabs/{id}.toml`.  The file is generated
+automatically on first use (via the target plugin's `generate_crab_config()`
 method) and can be edited afterwards.
 
 ```toml
-[agent]
+[crab]
 name = "Claude Code"
 shell = "standard"          # template variant (see Shell Templates)
-default_args = []           # extra CLI args prepended on every launch
+run_args = []               # extra CLI args prepended on every launch
 
 [state]
 model = "opus"              # target-specific knobs (e.g. --model for Claude)
@@ -590,7 +590,7 @@ access = "permissive"
 ```
 
 **Sections:**
-- `[agent]` -- identity and defaults (name, shell template variant, default CLI args)
+- `[crab]` -- identity and defaults (name, shell template variant, default CLI args)
 - `[state]` -- runtime behavior knobs translated by the target plugin into CLI
   args and env vars (e.g. Claude maps `model` -> `--model`)
 - `[env]` -- environment variables injected into the container
@@ -712,7 +712,7 @@ Later sources override earlier ones when two plugins register the same name.
 
 | Tier | Location | Use case |
 |------|----------|----------|
-| 1. Entry points | `kanibako.targets` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
+| 1. Entry points | `kanibako.agents` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
 | 2. User directory | `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
 | 3. Project directory | `{project}/.kanibako/plugins/*.py` | Project-specific plugins |
 
@@ -732,7 +732,7 @@ Codex CLI, Goose).
 pip install kanibako-target-aider
 
 # Use a specific target
-kanibako box config target_name=aider
+kanibako box config crab_name=aider
 kanibako start
 ```
 
@@ -767,7 +767,7 @@ kanibako system config --reset --all    # reset all global config
 
 - **Global**: `$XDG_CONFIG_HOME/kanibako.toml`
 - **Project**: `boxes/{name}/project.toml`
-- **Crabs**: `$XDG_DATA_HOME/kanibako/agents/{id}.toml`
+- **Crabs**: `$XDG_DATA_HOME/kanibako/crabs/{id}.toml`
 - **Templates**: `$XDG_DATA_HOME/kanibako/templates/`
 
 ### Configuration keys
@@ -779,11 +779,11 @@ kanibako system config --reset --all    # reset all global config
 | `autonomous` | `true` | Enable autonomy override |
 | `persistence` | `persistent` | Session type (persistent/ephemeral) |
 | `image` | `kanibako-oci:latest` | Container rig |
-| `auth` | `shared` | Credential mode (shared/distinct) |
-| `vault.enabled` | `true` | Enable vault directories |
+| `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-project (`false`) |
+| `enable_vault` | `true` | Enable vault directories |
 | `env.*` | | Persistent environment variables |
 | `resource.*` | | Resource path overrides |
-| `target_name` | (auto-detect) | Agent target plugin |
+| `crab_name` | (auto-detect) | Agent target plugin |
 
 ### Global config file
 
@@ -794,7 +794,7 @@ layout, and a `[shared]` section for globally shared cache mounts:
 [paths]
 data_path = ""         # override XDG_DATA_HOME/kanibako
 boxes = "boxes"        # project state subdirectory
-agents = "agents"      # crab TOML subdirectory
+crabs = "crabs"        # crab TOML subdirectory
 shared = "shared"      # shared caches subdirectory
 templates = "templates"
 

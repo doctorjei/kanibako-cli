@@ -19,7 +19,7 @@ from kanibako.plugins.claude.credentials import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.agents import AgentConfig
+    from kanibako.crabs import CrabConfig
 
 logger = get_logger("targets.claude")
 
@@ -115,17 +115,17 @@ class ClaudeTarget(Target):
             ))
         return mounts
 
-    def init_home(self, home: Path, *, auth: str = "shared") -> None:
+    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         """Initialize Claude-specific files in the project home.
 
-        Creates ``.claude/`` directory.  When *auth* is ``"shared"``, copies
-        credentials and filtered settings from the host.  When ``"distinct"``,
+        Creates ``.claude/`` directory.  When *group_auth* is ``True``, copies
+        credentials and filtered settings from the host.  When ``False``,
         skips credential copy (project manages its own auth).
         """
         claude_dir = home / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
 
-        if auth != "distinct":
+        if group_auth:
             # Copy credentials from host ~/.claude/.credentials.json
             host_creds = Path.home() / ".claude" / ".credentials.json"
             if host_creds.is_file():
@@ -141,11 +141,11 @@ class ClaudeTarget(Target):
             # Distinct auth: create empty .claude.json
             (home / ".claude.json").touch()
 
-    def generate_agent_config(self) -> AgentConfig:
-        """Return default Claude Code agent configuration."""
-        from kanibako.agents import AgentConfig as _AgentConfig
+    def generate_crab_config(self) -> CrabConfig:
+        """Return default Claude Code crab configuration."""
+        from kanibako.crabs import CrabConfig as _CrabConfig
 
-        return _AgentConfig(
+        return _CrabConfig(
             name="Claude Code",
             shell="standard",
             state={"model": "opus", "access": "permissive"},

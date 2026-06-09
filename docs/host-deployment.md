@@ -58,7 +58,7 @@ Mount named volumes or host directories to preserve state across restarts:
 
 | Mount target | Purpose |
 |------|---------|
-| `/home/agent/.local/share/kanibako` | Project state, agent configs, names |
+| `/home/agent/.local/share/kanibako` | Project state, crab configs, names |
 | `/home/agent/.config` | kanibako.toml, Podman storage config |
 | `/home/agent/workspace` | Optional: bind a host project directory |
 

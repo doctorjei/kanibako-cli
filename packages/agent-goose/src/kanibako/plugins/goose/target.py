@@ -18,7 +18,7 @@ from kanibako.plugins.goose.credentials import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.agents import AgentConfig
+    from kanibako.crabs import CrabConfig
 
 logger = get_logger("targets.goose")
 
@@ -82,11 +82,11 @@ class GooseTarget(Target):
             ))
         return mounts
 
-    def init_home(self, home: Path, *, auth: str = "shared") -> None:
+    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         """Initialize Goose-specific files in the project home.
 
-        Creates ``.config/goose/`` directory.  When *auth* is ``"shared"``,
-        copies filtered config and secrets from the host.  When ``"distinct"``,
+        Creates ``.config/goose/`` directory.  When *group_auth* is ``True``,
+        copies filtered config and secrets from the host.  When ``False``,
         creates a minimal empty config.
         """
         config_dir = home / ".config" / "goose"
@@ -94,7 +94,7 @@ class GooseTarget(Target):
 
         project_config = config_dir / "config.yaml"
 
-        if auth != "distinct":
+        if group_auth:
             # Copy filtered config from host (only safe keys)
             if not project_config.exists():
                 host_config = Path.home() / ".config" / "goose" / "config.yaml"
@@ -172,11 +172,11 @@ class GooseTarget(Target):
 
         return True
 
-    def generate_agent_config(self) -> AgentConfig:
-        """Return default Goose agent configuration."""
-        from kanibako.agents import AgentConfig as _AgentConfig
+    def generate_crab_config(self) -> CrabConfig:
+        """Return default Goose crab configuration."""
+        from kanibako.crabs import CrabConfig as _CrabConfig
 
-        return _AgentConfig(
+        return _CrabConfig(
             name="Goose",
             shell="standard",
             state={"provider": "anthropic", "model": "claude-sonnet-4-20250514"},

@@ -33,7 +33,7 @@ def run(args: argparse.Namespace) -> int:
     proj = resolve_any_project(std, config, getattr(args, "project", None))
 
     try:
-        target = resolve_target(config.target_name or None)
+        target = resolve_target(config.crab_name or None)
     except KeyError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -42,7 +42,7 @@ def run(args: argparse.Namespace) -> int:
         print("No agent target configured.", file=sys.stderr)
         return 1
 
-    if proj.auth == "distinct":
+    if not proj.group_auth:
         # Check project's own credentials instead of host.
         creds_path = target.credential_check_path(proj.shell_path)
         if creds_path and creds_path.is_file():
@@ -58,7 +58,7 @@ def run(args: argparse.Namespace) -> int:
 
     if target.check_auth():
         # Sync refreshed credentials to the project shell directory
-        if proj.auth != "distinct":
+        if proj.group_auth:
             target.refresh_credentials(proj.shell_path)
         print(f"{target.display_name}: authenticated.", file=sys.stderr)
         return 0

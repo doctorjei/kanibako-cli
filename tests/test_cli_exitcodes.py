@@ -124,7 +124,7 @@ class TestLazyInit:
         assert config_file.exists()
         # Data directories should also be created
         assert (tmp_path / "data" / "kanibako" / "containers").is_dir()
-        assert (tmp_path / "data" / "kanibako" / "agents").is_dir()
+        assert (tmp_path / "data" / "kanibako" / "crabs").is_dir()
 
     def test_lazy_init_idempotent(self, tmp_path, monkeypatch):
         """Running lazy init twice does not error or overwrite config."""

@@ -24,7 +24,7 @@ from kanibako.config import (
     _DEFAULTS,
     load_merged_config,
     load_project_overrides,
-    read_target_settings,
+    read_crab_settings,
     unset_project_config_key,
     write_project_config_key,
 )
@@ -48,7 +48,7 @@ class ConfigLevel(Enum):
 
     box = "box"
     workset = "workset"
-    agent = "agent"
+    crab = "crab"
     system = "system"
 
 
@@ -65,7 +65,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "image",
     "container_image",
     # Auth / project
-    "auth",
+    "group_auth",
     "layout",
     "mode",
     # Vault
@@ -73,7 +73,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.ro",
     "vault.rw",
     # Target settings (Claude-specific)
-    "target_name",
+    "crab_name",
     # System-level path settings
     "paths.data_path",
     "paths.boxes",
@@ -83,7 +83,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "paths.comms",
     "paths.templates",
     # Helpers
-    "helpers_disabled",
+    "allow_helpers",
 })
 
 # Prefixes for dynamic keys (env vars, resources, shared caches).
@@ -160,13 +160,13 @@ def _is_shared_key(key: str) -> bool:
     return key.startswith("shared.")
 
 
-def _is_target_setting(key: str) -> bool:
-    """Keys that belong in [target_settings] of project.toml."""
+def _is_crab_setting(key: str) -> bool:
+    """Keys that belong in [crab_settings] of project.toml."""
     return key in {"model", "start_mode", "autonomous"}
 
 
 def _dot_to_flat(key: str) -> str:
-    """Convert ``vault.enabled`` to ``vault_enabled``, etc."""
+    """Convert ``vault.enabled`` to ``enable_vault``, etc."""
     # For paths.* keys, convert to the flat KanibakoConfig field name.
     if key.startswith("paths."):
         return "paths_" + key[6:]
@@ -216,9 +216,9 @@ def get_config_value(
         return cfg.shared_caches.get(cache_name)
 
     # target settings (model, start_mode, autonomous)
-    if _is_target_setting(canonical):
+    if _is_crab_setting(canonical):
         if project_toml and project_toml.exists():
-            settings = read_target_settings(project_toml)
+            settings = read_crab_settings(project_toml)
             if canonical in settings:
                 return settings[canonical]
         return None
@@ -274,8 +274,8 @@ def set_config_value(
         return f"Set shared.{cache_name}={value}"
 
     # target settings
-    if _is_target_setting(canonical):
-        _write_toml_key(config_path, "target_settings", canonical, value)
+    if _is_crab_setting(canonical):
+        _write_toml_key(config_path, "crab_settings", canonical, value)
         return f"Set {canonical}={value}"
 
     # Regular config keys
@@ -315,8 +315,8 @@ def reset_config_value(
         return f"No override for shared.{cache_name}"
 
     # target settings
-    if _is_target_setting(canonical):
-        if _remove_toml_key(config_path, "target_settings", canonical):
+    if _is_crab_setting(canonical):
+        if _remove_toml_key(config_path, "crab_settings", canonical):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -354,9 +354,9 @@ def reset_all(
         import tomllib
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
-        if data.get("target_settings"):
-            for k in list(data["target_settings"]):
-                _remove_toml_key(config_path, "target_settings", k)
+        if data.get("crab_settings"):
+            for k in list(data["crab_settings"]):
+                _remove_toml_key(config_path, "crab_settings", k)
                 count += 1
         if data.get("resource_overrides"):
             for k in list(data["resource_overrides"]):
@@ -400,7 +400,7 @@ def show_config(
 
         # Target settings
         if config_path and config_path.exists():
-            settings = read_target_settings(config_path)
+            settings = read_crab_settings(config_path)
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
@@ -423,7 +423,7 @@ def show_config(
             has_output = True
 
         if config_path and config_path.exists():
-            settings = read_target_settings(config_path)
+            settings = read_crab_settings(config_path)
             for k, v in sorted(settings.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True

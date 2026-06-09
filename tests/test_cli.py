@@ -403,26 +403,26 @@ class TestParser:
         args = parser.parse_args(["crab", "info", "myagent"])
         assert args.command == "crab"
         assert args.crab_command == "info"
-        assert args.agent_id == "myagent"
+        assert args.crab_id == "myagent"
 
     def test_crab_info_alias_inspect(self):
         parser = build_parser()
         args = parser.parse_args(["crab", "inspect", "myagent"])
         assert args.command == "crab"
-        assert args.agent_id == "myagent"
+        assert args.crab_id == "myagent"
 
     def test_crab_config_show(self):
         parser = build_parser()
         args = parser.parse_args(["crab", "config", "myagent"])
         assert args.command == "crab"
         assert args.crab_command == "config"
-        assert args.agent_id == "myagent"
+        assert args.crab_id == "myagent"
         assert args.key_value is None
 
     def test_crab_config_set(self):
         parser = build_parser()
         args = parser.parse_args(["crab", "config", "myagent", "model=sonnet"])
-        assert args.agent_id == "myagent"
+        assert args.crab_id == "myagent"
         assert args.key_value == "model=sonnet"
 
     def test_crab_config_get(self):

@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.agents import agent_toml_path, load_agent_config, write_agent_config
+from kanibako.crabs import crab_toml_path, load_crab_config, write_crab_config
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
@@ -284,8 +284,8 @@ def _tmux_has_session(session_name: str) -> bool:
     ).returncode == 0
 
 
-def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
-    """Apply tweakcc patching if enabled in agent config.
+def _apply_tweakcc(install, crab_cfg, cache_path, image, runtime_cmd, logger):
+    """Apply tweakcc patching if enabled in crab config.
 
     Patching runs inside a throwaway container (``podman run --rm``) using
     the same image that will be used for the agent.  The patched binary is
@@ -299,7 +299,7 @@ def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
     from kanibako.tweakcc import build_merged_config, resolve_tweakcc_config, write_merged_config
     from kanibako.tweakcc_cache import TweakccCache, TweakccCacheError, config_hash
 
-    tweakcc_cfg = resolve_tweakcc_config(agent_cfg.tweakcc)
+    tweakcc_cfg = resolve_tweakcc_config(crab_cfg.tweakcc)
     if not tweakcc_cfg.enabled:
         return None
 
@@ -479,7 +479,7 @@ def _run_container(
     install = None
     if is_agent_mode:
         try:
-            target = resolve_target(merged.target_name or None)
+            target = resolve_target(merged.crab_name or None)
         except KeyError as e:
             print(
                 f"Error: {e}\n"
@@ -505,13 +505,13 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    agent_cfg_path = agent_toml_path(std.data_path, agent_id, merged.paths_agents)
-    if target and not agent_cfg_path.exists():
-        # First-use: generate default agent config from target plugin
-        agent_cfg = target.generate_agent_config()
-        write_agent_config(agent_cfg_path, agent_cfg)
+    crab_cfg_path = crab_toml_path(std.data_path, agent_id, merged.paths_crabs)
+    if target and not crab_cfg_path.exists():
+        # First-use: generate default crab config from target plugin
+        crab_cfg = target.generate_crab_config()
+        write_crab_config(crab_cfg_path, crab_cfg)
     else:
-        agent_cfg = load_agent_config(agent_cfg_path)
+        crab_cfg = load_crab_config(crab_cfg_path)
 
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
@@ -524,7 +524,7 @@ def _run_container(
     if persistent:
         if runtime.is_running(container_name):
             # Refresh credentials before reattaching
-            if target and proj.auth != "distinct":
+            if target and proj.group_auth:
                 target.refresh_credentials(proj.shell_path)
             return runtime.exec(
                 container_name, ["tmux", "attach", "-t", "kanibako"]
@@ -542,7 +542,7 @@ def _run_container(
         if runtime.is_running(container_name) and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
-            # baseline env (env files, agent_cfg.env, KANIBAKO_NAME) was set at
+            # baseline env (env files, crab_cfg.env, KANIBAKO_NAME) was set at
             # launch and is inherited by exec; without this, per-run -e vars
             # would be silently dropped when the box is already running.
             return runtime.exec(
@@ -581,7 +581,7 @@ def _run_container(
 
     try:
         # Auto-snapshot vault share-rw before launch.
-        if proj.vault_enabled and proj.vault_rw_path.is_dir():
+        if proj.enable_vault and proj.vault_rw_path.is_dir():
             from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
             strategy = detect_snapshot_strategy(proj.vault_rw_path)
             snap = auto_snapshot(proj.vault_rw_path, strategy=strategy)
@@ -603,9 +603,9 @@ def _run_container(
             from kanibako.templates import apply_shell_template
             templates_base = std.data_path / merged.paths_templates
             # Ensure the agent-specific template variant directory exists.
-            (templates_base / target.name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
-            apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
-            target.init_home(proj.shell_path, auth=proj.auth)
+            (templates_base / target.name / crab_cfg.shell).mkdir(parents=True, exist_ok=True)
+            apply_shell_template(proj.shell_path, templates_base, target.name, crab_cfg.shell)
+            target.init_home(proj.shell_path, group_auth=proj.group_auth)
 
             # Merge layered instruction files (base + template + user).
             instr_files = target.instruction_files()
@@ -617,14 +617,14 @@ def _run_container(
                     instruction_files=instr_files,
                     templates_base=templates_base,
                     agent_name=target.name,
-                    template_name=agent_cfg.shell,
+                    template_name=crab_cfg.shell,
                 )
 
         # Automated OAuth refresh (before interactive check_auth)
         if (
             target
             and install
-            and proj.auth != "distinct"
+            and proj.group_auth
             and not no_auto_auth
             and target.name == "claude"
         ):
@@ -642,7 +642,7 @@ def _run_container(
                 logger.debug("Auto-auth failed: %s", exc)
 
         # Pre-launch auth check (skip for distinct auth — creds live in project)
-        if target and install and proj.auth != "distinct":
+        if target and install and proj.group_auth:
             if not target.check_auth():
                 print(
                     "Error: Authentication failed.\n"
@@ -653,27 +653,27 @@ def _run_container(
                 return 1
 
         # Credential refresh via target (skip for distinct auth)
-        if target and proj.auth != "distinct":
+        if target and proj.group_auth:
             target.refresh_credentials(proj.shell_path)
 
         # tweakcc: patch agent binary if enabled
         tweakcc_entry = None
         tweakcc_cache_obj = None
-        if target and install and agent_cfg.tweakcc:
+        if target and install and crab_cfg.tweakcc:
             result = _apply_tweakcc(
-                install, agent_cfg, std.cache_path, image, runtime.cmd, logger,
+                install, crab_cfg, std.cache_path, image, runtime.cmd, logger,
             )
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result
 
-        # Build CLI args via target, merging agent default_args and state
+        # Build CLI args via target, merging crab run_args and state
         if target:
-            effective_state = _build_effective_state(target, agent_cfg, project_toml)
+            effective_state = _build_effective_state(target, crab_cfg, project_toml)
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
             state_args, state_env = target.apply_state(effective_state)
-            all_extra = list(agent_cfg.default_args) + list(extra_args)
+            all_extra = list(crab_cfg.run_args) + list(extra_args)
             cli_args = target.build_cli_args(
                 safe_mode=safe_mode,
                 resume_mode=resume_mode,
@@ -722,9 +722,9 @@ def _run_container(
                     ))
 
         # Agent-level shared cache mounts (lazy — only mount if dir exists)
-        if proj.local_shared_path and agent_cfg.shared_caches:
+        if proj.local_shared_path and crab_cfg.shared_caches:
             from kanibako.targets.base import Mount as _Mount
-            for cache_name, container_rel in agent_cfg.shared_caches.items():
+            for cache_name, container_rel in crab_cfg.shared_caches.items():
                 host_dir = proj.local_shared_path / agent_id / cache_name
                 if host_dir.is_dir():
                     extra_mounts.append(_Mount(
@@ -777,7 +777,7 @@ def _run_container(
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
         container_env: dict[str, str] = merge_env(global_env_path, project_env_path) or {}
-        container_env.update(agent_cfg.env)
+        container_env.update(crab_cfg.env)
         container_env.update(state_env)
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
@@ -795,7 +795,7 @@ def _run_container(
 
         # Helper hub: start listener before director, mount socket
         hub = None
-        helpers_enabled = not no_helpers and not merged.helpers_disabled
+        helpers_enabled = not no_helpers and merged.allow_helpers
         if helpers_enabled:
             from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
             from kanibako.targets.base import Mount as _HMount
@@ -923,7 +923,7 @@ def _run_container(
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
                 vault_tmpfs=(proj.group is not None and proj.group.is_default),
-                vault_enabled=proj.vault_enabled,
+                enable_vault=proj.enable_vault,
                 env=container_env,
                 name=container_name,
                 entrypoint=entrypoint,
@@ -1056,7 +1056,7 @@ def _run_container(
                         )
         else:
             # Write back refreshed credentials via target (skip for distinct auth)
-            if target and proj.auth != "distinct":
+            if target and proj.group_auth:
                 target.writeback_credentials(proj.shell_path)
 
             # Hint when agent exits non-zero and --continue/--resume was used
@@ -1075,24 +1075,24 @@ def _run_container(
             lock_fd.close()
 
 
-def _build_effective_state(target, agent_cfg, project_toml) -> dict[str, str]:
-    """Merge target defaults, agent config state, and project overrides.
+def _build_effective_state(target, crab_cfg, project_toml) -> dict[str, str]:
+    """Merge target defaults, crab config state, and project overrides.
 
     Resolution order (highest wins):
-      1. Project overrides (``[target_settings]`` in project.toml)
-      2. Agent config state (``[state]`` in agent TOML)
+      1. Project overrides (``[crab_settings]`` in project.toml)
+      2. Crab config state (``[state]`` in crab TOML)
       3. Target defaults (from ``setting_descriptors()``)
 
-    Undeclared keys in agent state are passed through unchanged.
+    Undeclared keys in crab state are passed through unchanged.
     """
-    from kanibako.config import read_target_settings
+    from kanibako.config import read_crab_settings
 
     descriptors = target.setting_descriptors()
     if not descriptors:
-        return dict(agent_cfg.state)
+        return dict(crab_cfg.state)
 
     try:
-        project_overrides = read_target_settings(project_toml)
+        project_overrides = read_crab_settings(project_toml)
     except Exception:
         project_overrides = {}
 
@@ -1100,7 +1100,7 @@ def _build_effective_state(target, agent_cfg, project_toml) -> dict[str, str]:
     effective: dict[str, str] = {d.key: d.default for d in descriptors}
 
     # Layer agent config state (all keys, including undeclared).
-    effective.update(agent_cfg.state)
+    effective.update(crab_cfg.state)
 
     # Layer project overrides (only declared keys survive validation at CLI).
     effective.update(project_overrides)

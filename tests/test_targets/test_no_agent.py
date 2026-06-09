@@ -35,7 +35,7 @@ class TestNoAgentTarget:
     def test_init_home_distinct_auth(self, tmp_path):
         home = tmp_path / "shell"
         home.mkdir()
-        self.target.init_home(home, auth="distinct")
+        self.target.init_home(home, group_auth=False)
         assert list(home.iterdir()) == []
 
     def test_refresh_credentials_is_noop(self, tmp_path):
@@ -65,11 +65,11 @@ class TestNoAgentTarget:
         assert cli_args == []
         assert env_vars == {}
 
-    def test_generate_agent_config(self):
-        cfg = self.target.generate_agent_config()
+    def test_generate_crab_config(self):
+        cfg = self.target.generate_crab_config()
         assert cfg.name == "Shell"
         assert cfg.shell == "standard"
-        assert cfg.default_args == []
+        assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.shared_caches == {}
 

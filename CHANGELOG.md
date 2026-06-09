@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (v1.5.0 settings-framework rewrite — Part 1; BREAKING, pre-broad-release)
+
+The configured-agent-in-a-box is now consistently called a **crab** (the external
+decision-making entity stays an **agent**; the plugin/`Target` layer that adapts an
+agent stays agent-domain). These are breaking renames with **no back-compat shims**
+(the `kanibako agent` CLI noun is kept only as a typed alias for `kanibako crab`):
+
+- **CLI / data model:** `kanibako agent …` → `kanibako crab …` (alias: `agent`);
+  `AgentConfig` → `CrabConfig`; per-crab data dir `agents/` → `crabs/`
+  (move the dir by hand — no auto-migration); per-crab TOML section `[agent]` → `[crab]`.
+- **Config keys:** `target_name` → `crab_name`; `vault_enabled` → `enable_vault`;
+  `helpers_disabled` → `allow_helpers` (**inverted** boolean); `default_args` →
+  `run_args`; the project.toml `[target_settings]` section → `[crab_settings]`.
+- **Auth is now a boolean:** `auth = "shared"`/`"distinct"` → `group_auth = true`/`false`
+  (default `true` = shared credentials across the group). `--distinct-auth` flag
+  unchanged (now sets `group_auth = false`).
+- **Plugin entry-point group:** `kanibako.targets` → `kanibako.agents` (a registry of
+  agent adapters). The Python import path `kanibako.targets.*` and the `Target` API are
+  unchanged; reinstall plugin packages for the new group to take effect.
+- **Cleanup:** removed the dead `kanibako-plugin-claude` wrapper package; fixed the
+  `ws_hints` default name (`working_sets.toml` → `worksets.toml`); dropped the unused
+  `paths.workspaces` config key.
+
 ## [1.4.0] - 2026-06-04
 
 ### Changed

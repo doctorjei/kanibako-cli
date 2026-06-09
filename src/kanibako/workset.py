@@ -49,7 +49,7 @@ class Workset:
     root: Path
     created: str                            # ISO 8601, UTC
     projects: list[WorksetProject] = field(default_factory=list)
-    auth: str = field(default="shared")     # "shared" or "distinct"
+    group_auth: bool = field(default=True)  # True = shared creds, False = distinct
 
     # Convenience paths -------------------------------------------------------
 
@@ -79,7 +79,7 @@ def _write_workset_toml(ws: Workset) -> None:
     lines = [
         f'name = "{ws.name}"',
         f'created = "{ws.created}"',
-        f'auth = "{ws.auth}"',
+        f'group_auth = {str(ws.group_auth).lower()}',
         "",
     ]
     for proj in ws.projects:
@@ -101,7 +101,7 @@ def _load_workset_toml(root: Path) -> Workset:
     if not name:
         raise WorksetError(f"workset.toml in {root} has no 'name' key")
     created = data.get("created", "")
-    auth = data.get("auth", "shared")
+    group_auth = bool(data.get("group_auth", True))
     projects = []
     for entry in data.get("projects", []):
         projects.append(
@@ -110,7 +110,7 @@ def _load_workset_toml(root: Path) -> Workset:
                 source_path=Path(entry["source_path"]),
             )
         )
-    return Workset(name=name, root=root, created=created, projects=projects, auth=auth)
+    return Workset(name=name, root=root, created=created, projects=projects, group_auth=group_auth)
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,6 @@ pip install kanibako-agent-claude
 
 ## Entry point
 
-Registered as `claude` in the `kanibako.targets` entry point group.
+Registered as `claude` in the `kanibako.agents` entry point group.
 
 Requires `kanibako-base` (the core package).

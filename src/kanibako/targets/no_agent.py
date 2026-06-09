@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from kanibako.targets.base import AgentInstall, Mount, Target
 
 if TYPE_CHECKING:
-    from kanibako.agents import AgentConfig
+    from kanibako.crabs import CrabConfig
 
 
 class NoAgentTarget(Target):
@@ -32,7 +32,7 @@ class NoAgentTarget(Target):
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
         return []
 
-    def init_home(self, home: Path, *, auth: str = "shared") -> None:
+    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         pass
 
     def refresh_credentials(self, home: Path) -> None:
@@ -52,7 +52,7 @@ class NoAgentTarget(Target):
     ) -> list[str]:
         return []
 
-    def generate_agent_config(self) -> AgentConfig:
-        from kanibako.agents import AgentConfig as _AgentConfig
+    def generate_crab_config(self) -> CrabConfig:
+        from kanibako.crabs import CrabConfig as _CrabConfig
 
-        return _AgentConfig(name="Shell")
+        return _CrabConfig(name="Shell")

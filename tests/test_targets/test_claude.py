@@ -177,7 +177,7 @@ class TestInitHome:
 
 class TestInitHomeDistinctAuth:
     def test_distinct_auth_skips_credential_copy(self, tmp_path, monkeypatch):
-        """init_home with auth='distinct' skips credential copy."""
+        """init_home with group_auth=False skips credential copy."""
         home = tmp_path / "home"
         home.mkdir()
 
@@ -189,7 +189,7 @@ class TestInitHomeDistinctAuth:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
         t = ClaudeTarget()
-        t.init_home(home, auth="distinct")
+        t.init_home(home, group_auth=False)
 
         assert (home / ".claude").is_dir()
         assert not (home / ".claude" / ".credentials.json").exists()
@@ -198,7 +198,7 @@ class TestInitHomeDistinctAuth:
         assert (home / ".claude.json").read_text() == ""
 
     def test_shared_auth_copies_credentials(self, tmp_path, monkeypatch):
-        """init_home with auth='shared' (default) copies credentials."""
+        """init_home with group_auth=True (default) copies credentials."""
         home = tmp_path / "home"
         home.mkdir()
 
@@ -209,7 +209,7 @@ class TestInitHomeDistinctAuth:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
         t = ClaudeTarget()
-        t.init_home(home, auth="shared")
+        t.init_home(home, group_auth=True)
 
         copied = home / ".claude" / ".credentials.json"
         assert copied.is_file()
@@ -435,22 +435,22 @@ class TestSettingDescriptors:
         assert descriptors["access"].choices == ("permissive", "default")
 
 
-class TestGenerateAgentConfig:
+class TestGenerateCrabConfig:
     def test_returns_claude_defaults(self):
         t = ClaudeTarget()
-        cfg = t.generate_agent_config()
+        cfg = t.generate_crab_config()
         assert cfg.name == "Claude Code"
         assert cfg.shell == "standard"
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
-        assert cfg.default_args == []
+        assert cfg.run_args == []
         assert cfg.env == {}
 
-    def test_is_agent_config_instance(self):
-        from kanibako.agents import AgentConfig
+    def test_is_crab_config_instance(self):
+        from kanibako.crabs import CrabConfig
         t = ClaudeTarget()
-        cfg = t.generate_agent_config()
-        assert isinstance(cfg, AgentConfig)
+        cfg = t.generate_crab_config()
+        assert isinstance(cfg, CrabConfig)
 
 
 class TestApplyState:

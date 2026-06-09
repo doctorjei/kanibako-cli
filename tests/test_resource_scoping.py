@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from kanibako.agents import AgentConfig
+from kanibako.crabs import CrabConfig
 from kanibako.targets.base import ResourceMapping, ResourceScope, TargetSetting
 
 
@@ -24,7 +24,7 @@ class TestBuildResourceMounts:
         # Write an empty project.toml so read_resource_overrides finds it.
         (metadata / "project.toml").write_text(
             '[project]\nmode = "local"\nlayout = "default"\n'
-            'vault_enabled = true\nauth = "shared"\n\n'
+            'enable_vault = true\ngroup_auth = true\n\n'
             '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
             'vault_ro = "/ro"\nvault_rw = "/rw"\n'
             'metadata = ""\nproject_hash = ""\n'
@@ -211,7 +211,7 @@ class TestResourceOverrideInMounts:
         project_toml = tmp_path / "project.toml"
         project_toml.write_text(
             '[project]\nmode = "local"\nlayout = "default"\n'
-            'vault_enabled = true\nauth = "shared"\n\n'
+            'enable_vault = true\ngroup_auth = true\n\n'
             '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
             'vault_ro = "/ro"\nvault_rw = "/rw"\n'
             'metadata = ""\nproject_hash = ""\n'
@@ -275,8 +275,8 @@ class TestBuildEffectiveState:
         return target
 
     def _make_project_toml(self, tmp_path, settings=None):
-        """Create a minimal project.toml, optionally with [target_settings]."""
-        from kanibako.config import write_project_meta, write_target_setting
+        """Create a minimal project.toml, optionally with [crab_settings]."""
+        from kanibako.config import write_project_meta, write_crab_setting
 
         project_toml = tmp_path / "project.toml"
         write_project_meta(
@@ -286,7 +286,7 @@ class TestBuildEffectiveState:
         )
         if settings:
             for k, v in settings.items():
-                write_target_setting(project_toml, k, v)
+                write_crab_setting(project_toml, k, v)
         return project_toml
 
     def test_target_defaults_only(self, tmp_path):
@@ -298,7 +298,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="access", description="Access", default="permissive"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig()  # empty state
+        agent_cfg = CrabConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -312,7 +312,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        agent_cfg = CrabConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -326,7 +326,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        agent_cfg = CrabConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -340,7 +340,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
+        agent_cfg = CrabConfig(state={"model": "sonnet", "custom_key": "custom_value"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)
@@ -352,7 +352,7 @@ class TestBuildEffectiveState:
         from kanibako.commands.start import _build_effective_state
 
         target = self._make_target([])  # no descriptors
-        agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
+        agent_cfg = CrabConfig(state={"model": "opus", "access": "permissive"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(target, agent_cfg, project_toml)

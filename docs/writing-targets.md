@@ -34,13 +34,13 @@ class MyTarget(Target):
     def display_name(self) -> str: ...
     def detect(self) -> AgentInstall | None: ...
     def binary_mounts(self, install: AgentInstall) -> list[Mount]: ...
-    def init_home(self, home: Path, *, auth: str = "shared") -> None: ...
+    def init_home(self, home: Path, *, group_auth: bool = True) -> None: ...
     def check_auth(self) -> bool: ...
     def refresh_credentials(self, home: Path) -> None: ...
     def writeback_credentials(self, home: Path) -> None: ...
     def build_cli_args(self, *, safe_mode, resume_mode, new_session,
                        is_new_project, extra_args) -> list[str]: ...
-    def generate_agent_config(self) -> AgentConfig: ...
+    def generate_crab_config(self) -> CrabConfig: ...
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]: ...
     def setting_descriptors(self) -> list[TargetSetting]: ...
 ```
@@ -58,8 +58,8 @@ symlink).  `install_dir` is the root of the installation tree.
 
 **`TargetSetting(key, description, default="", choices=())`** — Declares a
 runtime setting that the target supports.  `key` is the setting name (must
-match a key in the agent TOML `[state]` section).  `description` is
-human-readable.  `default` is the value used when neither the agent TOML
+match a key in the crab TOML `[state]` section).  `description` is
+human-readable.  `default` is the value used when neither the crab TOML
 nor a project override specifies one.  `choices` constrains allowed values;
 leave empty for freeform input.
 
@@ -68,7 +68,7 @@ leave empty for freeform input.
 ### `name` (property)
 
 Short machine-readable identifier for this target, e.g. `"claude"`,
-`"aider"`, `"goose"`.  Used in configuration (`target_name = "aider"`) and
+`"aider"`, `"goose"`.  Used in configuration (`crab_name = "aider"`) and
 entry point registration.  Must be unique across all installed targets.
 
 ### `display_name` (property)
@@ -146,30 +146,30 @@ host's agent installation.
 For pip-installed Python tools that don't need binary mounting (they run
 from the container's own Python environment), return an empty list.
 
-### `init_home(home: Path, *, auth: str = "shared") -> None`
+### `init_home(home: Path, *, group_auth: bool = True) -> None`
 
 Initialize agent-specific configuration in the project home directory.
 Called from `start.py` for new projects (`proj.is_new`), after shell
 template application and target resolution.
 
-The `auth` parameter indicates the project's authentication mode:
-- `"shared"` — copy credentials from host (default)
-- `"distinct"` — skip credential copy (project manages its own auth)
+The `group_auth` parameter indicates the project's authentication mode:
+- `True` — copy credentials from host (default; shared across the group)
+- `False` — skip credential copy (project manages its own credentials)
 
 Always perform non-credential setup (config directories, default files)
 regardless of auth mode.
 
 Typical work: create config directories, copy/generate default config
-files, copy credentials from host (if auth is shared).
+files, copy credentials from host (if `group_auth` is true).
 
 ```python
-def init_home(self, home: Path, *, auth: str = "shared") -> None:
+def init_home(self, home: Path, *, group_auth: bool = True) -> None:
     config_dir = home / ".config" / "myagent"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_file = config_dir / "config.json"
     if not config_file.exists():
         config_file.write_text("{}\n")
-    if auth != "distinct":
+    if group_auth:
         # Copy credentials from host
         ...
 ```
@@ -266,21 +266,21 @@ def build_cli_args(self, *, safe_mode, resume_mode, new_session,
     return args
 ```
 
-### `generate_agent_config() -> AgentConfig`
+### `generate_crab_config() -> CrabConfig`
 
-Return a default `AgentConfig` for this target.  Called on first use or during
-first project creation to generate the agent TOML file.  The base implementation
-returns an `AgentConfig` with `name` set to `self.display_name` and all other
+Return a default `CrabConfig` for this target.  Called on first use or during
+first project creation to generate the crab TOML file.  The base implementation
+returns a `CrabConfig` with `name` set to `self.display_name` and all other
 fields at their defaults.
 
 Subclasses should override to provide agent-specific defaults — template
 variant, state knobs, shared cache paths, etc.
 
 ```python
-from kanibako.agents import AgentConfig
+from kanibako.crabs import CrabConfig
 
-def generate_agent_config(self) -> AgentConfig:
-    return AgentConfig(
+def generate_crab_config(self) -> CrabConfig:
+    return CrabConfig(
         name="MyAgent",
         shell="standard",
         state={"access": "permissive"},
@@ -290,7 +290,7 @@ def generate_agent_config(self) -> AgentConfig:
 
 ### `apply_state(state: dict[str, str]) -> tuple[list[str], dict[str, str]]`
 
-Translate `[state]` section values from the agent TOML into CLI arguments and
+Translate `[state]` section values from the crab TOML into CLI arguments and
 environment variables.  Returns a tuple of `(cli_args, env_vars)`.
 
 The base implementation returns `([], {})` — all state keys are silently
@@ -366,7 +366,7 @@ Freeform settings (empty `choices`) accept any value.  Constrained settings
 reject values not in the `choices` tuple at the CLI level.
 
 The default returns an empty list (no declared settings).  When no
-descriptors exist, `apply_state()` receives the agent config state as-is.
+descriptors exist, `apply_state()` receives the crab config state as-is.
 
 ## Discovery and registration
 
@@ -374,11 +374,11 @@ Kanibako discovers targets in two ways:
 
 ### 1. Entry points (pip-installed plugins)
 
-Register your target class under the `kanibako.targets` group in your
+Register your target class under the `kanibako.agents` group in your
 `pyproject.toml`:
 
 ```toml
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 myagent = "my_package:MyTarget"
 ```
 
@@ -406,7 +406,7 @@ adds targets not already found via entry points.
 
 When a user runs `kanibako start`, kanibako calls `discover_targets()` which
 loads all registered entry points and scans `kanibako.plugins.*`.  If no
-`target_name` is set in the project config, kanibako calls `detect()` on each
+`crab_name` is set in the project config, kanibako calls `detect()` on each
 target and uses the first one that returns an `AgentInstall`.  If no target's
 `detect()` succeeds, kanibako falls back to `NoAgentTarget` — a built-in
 target that launches a plain shell without any agent binary or credentials.
@@ -414,7 +414,7 @@ target that launches a plain shell without any agent binary or credentials.
 Users can explicitly select a target for a project:
 
 ```bash
-kanibako box config target_name=myagent
+kanibako box config crab_name=myagent
 ```
 
 ## Packaging
@@ -448,7 +448,7 @@ description = "Kanibako target plugin for MyAgent"
 requires-python = ">=3.11"
 dependencies = ["kanibako"]
 
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 myagent = "kanibako_target_myagent:MyTarget"
 
 [tool.setuptools.packages.find]

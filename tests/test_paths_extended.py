@@ -109,27 +109,27 @@ class TestProjectPathsModeDefault:
 
 
 # ---------------------------------------------------------------------------
-# Vault optional (vault_enabled=False skips vault dirs)
+# Vault optional (enable_vault=False skips vault dirs)
 # ---------------------------------------------------------------------------
 
 class TestVaultOptional:
     def test_local_vault_disabled_skips_dirs(self, config_file, tmp_home, credentials_dir):
-        """Local project with vault_enabled=False skips vault directory creation."""
+        """Local project with enable_vault=False skips vault directory creation."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
 
         proj = resolve_project(
             std, config, project_dir=project_dir,
-            initialize=True, vault_enabled=False,
+            initialize=True, enable_vault=False,
         )
 
-        assert proj.vault_enabled is False
+        assert proj.enable_vault is False
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
 
     def test_local_vault_enabled_creates_dirs(self, config_file, tmp_home, credentials_dir):
-        """Local project with default vault_enabled=True creates vault dirs."""
+        """Local project with default enable_vault=True creates vault dirs."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -138,29 +138,29 @@ class TestVaultOptional:
             std, config, project_dir=project_dir, initialize=True,
         )
 
-        assert proj.vault_enabled is True
+        assert proj.enable_vault is True
         assert proj.vault_ro_path.is_dir()
         assert proj.vault_rw_path.is_dir()
 
     def test_vault_disabled_persists_in_metadata(self, config_file, tmp_home, credentials_dir):
-        """vault_enabled=False is stored in project.toml and read back."""
+        """enable_vault=False is stored in project.toml and read back."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
 
         resolve_project(
             std, config, project_dir=project_dir,
-            initialize=True, vault_enabled=False,
+            initialize=True, enable_vault=False,
         )
 
         # Second resolve reads metadata, should still be False.
         proj2 = resolve_project(
             std, config, project_dir=project_dir, initialize=False,
         )
-        assert proj2.vault_enabled is False
+        assert proj2.enable_vault is False
 
     def test_standalone_vault_disabled(self, config_file, tmp_home, credentials_dir):
-        """Standalone project with vault_enabled=False skips vault dirs."""
+        """Standalone project with enable_vault=False skips vault dirs."""
         from kanibako.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -168,9 +168,9 @@ class TestVaultOptional:
 
         proj = resolve_standalone_project(
             std, config, project_dir=project_dir,
-            initialize=True, vault_enabled=False,
+            initialize=True, enable_vault=False,
         )
 
-        assert proj.vault_enabled is False
+        assert proj.enable_vault is False
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()

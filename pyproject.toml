@@ -12,7 +12,7 @@ dependencies = ["argcomplete>=3.0", "PyYAML>=6.0"]
 [project.scripts]
 kanibako = "kanibako.cli:main"
 
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 no_agent = "kanibako.targets.no_agent:NoAgentTarget"
 
 [project.optional-dependencies]

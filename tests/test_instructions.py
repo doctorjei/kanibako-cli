@@ -533,7 +533,7 @@ class TestTargetInstructionFiles:
             def display_name(self): return "Test"
             def detect(self): return None
             def binary_mounts(self, install): return []
-            def init_home(self, home, *, auth="shared"): pass
+            def init_home(self, home, *, group_auth=True): pass
             def refresh_credentials(self, home): pass
             def writeback_credentials(self, home): pass
             def build_cli_args(self, **kwargs): return []

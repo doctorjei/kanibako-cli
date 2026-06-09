@@ -17,18 +17,17 @@ import tomllib
 
 _DEFAULTS = {
     "paths_data_path": "",
-    "paths_agents": "agents",
+    "paths_crabs": "crabs",
     "paths_boxes": "boxes",
     "paths_project_toml": "project.toml",
     "paths_shared": "shared",
     "paths_shell": "shell",
     "paths_templates": "templates",
     "paths_vault": "vault",
-    "paths_workspaces": "workspaces",
     "paths_comms": "comms",
-    "paths_ws_hints": "working_sets.toml",
+    "paths_ws_hints": "worksets.toml",
     "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "target_name": "",
+    "crab_name": "",
 }
 
 # Backward-compat aliases: old field name -> new field name.
@@ -44,7 +43,7 @@ class KanibakoConfig:
     """Merged configuration (hardcoded defaults < kanibako.toml < project.toml < CLI)."""
 
     paths_data_path: str = _DEFAULTS["paths_data_path"]
-    paths_agents: str = _DEFAULTS["paths_agents"]
+    paths_crabs: str = _DEFAULTS["paths_crabs"]
     paths_boxes: str = _DEFAULTS["paths_boxes"]
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]
@@ -52,11 +51,10 @@ class KanibakoConfig:
     paths_templates: str = _DEFAULTS["paths_templates"]
     paths_vault: str = _DEFAULTS["paths_vault"]
     paths_comms: str = _DEFAULTS["paths_comms"]
-    paths_workspaces: str = _DEFAULTS["paths_workspaces"]
     paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
     container_image: str = _DEFAULTS["container_image"]
-    target_name: str = _DEFAULTS["target_name"]
-    helpers_disabled: bool = False
+    crab_name: str = _DEFAULTS["crab_name"]
+    allow_helpers: bool = True
     share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
 
@@ -212,8 +210,8 @@ def write_project_meta(
     shell: str,
     vault_ro: str,
     vault_rw: str,
-    vault_enabled: bool = True,
-    auth: str = "shared",
+    enable_vault: bool = True,
+    group_auth: bool = True,
     metadata: str = "",
     project_hash: str = "",
     global_shared: str = "",
@@ -228,7 +226,7 @@ def write_project_meta(
 
     project_sec: dict = {
         "mode": mode, "layout": layout,
-        "vault_enabled": vault_enabled, "auth": auth,
+        "enable_vault": enable_vault, "group_auth": group_auth,
     }
     if name:
         project_sec["name"] = name
@@ -273,8 +271,8 @@ def read_project_meta(path: Path) -> dict | None:
         "mode": mode,
         # Backward compat: "tree" was renamed to "robust" in v0.6.0.
         "layout": "robust" if project_sec.get("layout") == "tree" else project_sec.get("layout", ""),
-        "vault_enabled": project_sec.get("vault_enabled", True),
-        "auth": project_sec.get("auth", "shared"),
+        "enable_vault": project_sec.get("enable_vault", True),
+        "group_auth": project_sec.get("group_auth", True),
         "name": project_sec.get("name", ""),
         "workspace": resolved_sec.get("workspace", ""),
         "shell": resolved_sec.get("shell", ""),
@@ -322,7 +320,7 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
     ``"container_image"`` → ``("container", "image")``
     ``"paths_dot_path"``  → ``("paths", "dot_path")``
     """
-    for prefix in ("paths_", "container_", "target_"):
+    for prefix in ("paths_", "container_", "crab_"):
         if flat_key.startswith(prefix):
             section = prefix.rstrip("_")
             toml_key = flat_key[len(prefix):]
@@ -437,8 +435,8 @@ def load_project_overrides(path: Path) -> dict[str, str]:
 # Target settings overrides (per-project)
 # ---------------------------------------------------------------------------
 
-def read_target_settings(path: Path) -> dict[str, str]:
-    """Read ``[target_settings]`` from a project.toml.
+def read_crab_settings(path: Path) -> dict[str, str]:
+    """Read ``[crab_settings]`` from a project.toml.
 
     Returns a dict of setting_key → value (e.g. ``{"model": "sonnet"}``).
     Returns an empty dict when the file or section is absent.
@@ -447,11 +445,11 @@ def read_target_settings(path: Path) -> dict[str, str]:
         return {}
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    return {k: str(v) for k, v in data.get("target_settings", {}).items()}
+    return {k: str(v) for k, v in data.get("crab_settings", {}).items()}
 
 
-def write_target_setting(path: Path, key: str, value: str) -> None:
-    """Write a single target setting override to ``[target_settings]`` in project.toml.
+def write_crab_setting(path: Path, key: str, value: str) -> None:
+    """Write a single target setting override to ``[crab_settings]`` in project.toml.
 
     Preserves all other sections.
     """
@@ -459,13 +457,13 @@ def write_target_setting(path: Path, key: str, value: str) -> None:
     if path.exists():
         with open(path, "rb") as f:
             existing = tomllib.load(f)
-    existing.setdefault("target_settings", {})
-    existing["target_settings"][key] = value
+    existing.setdefault("crab_settings", {})
+    existing["crab_settings"][key] = value
     _write_toml(path, existing)
 
 
-def remove_target_setting(path: Path, key: str) -> bool:
-    """Remove a single target setting override from ``[target_settings]``.
+def remove_crab_setting(path: Path, key: str) -> bool:
+    """Remove a single target setting override from ``[crab_settings]``.
 
     Returns True if the setting was found and removed, False otherwise.
     """
@@ -473,12 +471,12 @@ def remove_target_setting(path: Path, key: str) -> bool:
         return False
     with open(path, "rb") as f:
         existing = tomllib.load(f)
-    settings = existing.get("target_settings", {})
+    settings = existing.get("crab_settings", {})
     if key not in settings:
         return False
     del settings[key]
     if not settings:
-        existing.pop("target_settings", None)
+        existing.pop("crab_settings", None)
     _write_toml(path, existing)
     return True
 

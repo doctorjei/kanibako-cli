@@ -82,7 +82,6 @@ bumped together by `.bumpversion.cfg`:
 | --- | --- |
 | `kanibako-base` | `.` (repo root) |
 | `kanibako-agent-claude` | `packages/agent-claude` |
-| `kanibako-plugin-claude` | `packages/plugin-claude-wrapper` (transitional wrapper) |
 | `kanibako` (meta) | `packages/meta` |
 
 `kanibako-agent-goose` is **excluded** — it versions independently (`0.1.0`),
@@ -215,12 +214,11 @@ So a stray `v<ver>` tag with no green rc behind it cannot ship.
 
 ### PyPI Trusted Publishers
 
-Each of the **four** PyPI projects must have a Trusted Publisher configured so
+Each of the **three** PyPI projects must have a Trusted Publisher configured so
 the `promote` job can publish via OIDC:
 
 - `kanibako-base`
 - `kanibako-agent-claude`
-- `kanibako-plugin-claude`
 - `kanibako`
 
 For **each** project, add a Trusted Publisher with:

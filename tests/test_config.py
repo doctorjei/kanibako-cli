@@ -13,14 +13,14 @@ from kanibako.config import (
     migrate_config,
     read_project_meta,
     read_resource_overrides,
-    read_target_settings,
+    read_crab_settings,
     remove_resource_override,
-    remove_target_setting,
+    remove_crab_setting,
     write_global_config,
     write_project_config,
     write_project_meta,
     write_resource_override,
-    write_target_setting,
+    write_crab_setting,
 )
 
 
@@ -243,7 +243,7 @@ class TestProjectMeta:
         # Write old-style TOML without new fields.
         toml_path.write_text(
             '[project]\nmode = "local"\nlayout = "default"\n'
-            'vault_enabled = true\nauth = "shared"\n\n'
+            'enable_vault = true\ngroup_auth = true\n\n'
             '[resolved]\nworkspace = "/old"\nshell = "/old/shell"\n'
             'vault_ro = "/old/ro"\nvault_rw = "/old/rw"\n'
         )
@@ -489,44 +489,44 @@ class TestTargetSettings:
         """Write and read back target settings."""
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
-        write_target_setting(p, "model", "sonnet")
-        write_target_setting(p, "access", "default")
+        write_crab_setting(p, "model", "sonnet")
+        write_crab_setting(p, "access", "default")
 
-        settings = read_target_settings(p)
+        settings = read_crab_settings(p)
         assert settings == {"model": "sonnet", "access": "default"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """Old project.toml without [target_settings] returns empty dict."""
+        """Old project.toml without [crab_settings] returns empty dict."""
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
 
-        settings = read_target_settings(p)
+        settings = read_crab_settings(p)
         assert settings == {}
 
     def test_remove_setting(self, tmp_path):
-        """remove_target_setting removes a single setting."""
+        """remove_crab_setting removes a single setting."""
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
-        write_target_setting(p, "model", "sonnet")
-        write_target_setting(p, "access", "default")
+        write_crab_setting(p, "model", "sonnet")
+        write_crab_setting(p, "access", "default")
 
-        assert remove_target_setting(p, "model") is True
-        settings = read_target_settings(p)
+        assert remove_crab_setting(p, "model") is True
+        settings = read_crab_settings(p)
         assert "model" not in settings
         assert "access" in settings
 
     def test_remove_nonexistent(self, tmp_path):
-        """remove_target_setting returns False for missing key."""
+        """remove_crab_setting returns False for missing key."""
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
 
-        assert remove_target_setting(p, "nonexistent") is False
+        assert remove_crab_setting(p, "nonexistent") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
         p = tmp_path / "project.toml"
         self._write_base_toml(p)
-        write_target_setting(p, "model", "haiku")
+        write_crab_setting(p, "model", "haiku")
 
         # Project metadata should still be intact.
         meta = read_project_meta(p)

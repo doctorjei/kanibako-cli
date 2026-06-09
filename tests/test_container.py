@@ -117,7 +117,7 @@ class TestRunEnvFlags:
                 project_path=Path("/tmp/project"),
                 vault_ro_path=Path("/tmp/vault-ro"),
                 vault_rw_path=Path("/tmp/vault-rw"),
-                vault_enabled=False,
+                enable_vault=False,
                 env={"EDITOR": "vim", "NODE_ENV": "development"},
             )
             cmd = m.call_args[0][0]
@@ -139,7 +139,7 @@ class TestRunEnvFlags:
                 project_path=Path("/tmp/project"),
                 vault_ro_path=Path("/tmp/vault-ro"),
                 vault_rw_path=Path("/tmp/vault-rw"),
-                vault_enabled=False,
+                enable_vault=False,
                 env=None,
             )
             cmd = m.call_args[0][0]
@@ -156,7 +156,7 @@ class TestRunEnvFlags:
                 project_path=Path("/tmp/project"),
                 vault_ro_path=Path("/tmp/vault-ro"),
                 vault_rw_path=Path("/tmp/vault-rw"),
-                vault_enabled=False,
+                enable_vault=False,
                 env={},
             )
             cmd = m.call_args[0][0]
@@ -177,7 +177,7 @@ class TestDetachMode:
                 project_path=Path("/tmp/project"),
                 vault_ro_path=Path("/tmp/vault-ro"),
                 vault_rw_path=Path("/tmp/vault-rw"),
-                vault_enabled=False,
+                enable_vault=False,
                 detach=True,
             )
             cmd = m.call_args[0][0]
@@ -196,7 +196,7 @@ class TestDetachMode:
                 project_path=Path("/tmp/project"),
                 vault_ro_path=Path("/tmp/vault-ro"),
                 vault_rw_path=Path("/tmp/vault-rw"),
-                vault_enabled=False,
+                enable_vault=False,
                 detach=False,
             )
             cmd = m.call_args[0][0]
@@ -530,7 +530,7 @@ class TestPrecreateMountStubs:
         project.mkdir()
         _precreate_mount_stubs(
             shell, project, None,
-            vault_enabled=False,
+            enable_vault=False,
             vault_ro_path=tmp_path / "no-ro",
             vault_rw_path=tmp_path / "no-rw",
             vault_tmpfs=False,
@@ -549,7 +549,7 @@ class TestPrecreateMountStubs:
         vault_rw.mkdir()
         _precreate_mount_stubs(
             shell, project, None,
-            vault_enabled=True,
+            enable_vault=True,
             vault_ro_path=vault_ro,
             vault_rw_path=vault_rw,
             vault_tmpfs=True,
@@ -566,7 +566,7 @@ class TestPrecreateMountStubs:
         project.mkdir()
         _precreate_mount_stubs(
             shell, project, None,
-            vault_enabled=True,
+            enable_vault=True,
             vault_ro_path=tmp_path / "missing-ro",
             vault_rw_path=tmp_path / "missing-rw",
             vault_tmpfs=False,
@@ -593,7 +593,7 @@ class TestPrecreateMountStubs:
         mounts = [FakeMount(source=src_dir, destination="/home/agent/comms")]
         _precreate_mount_stubs(
             shell, project, mounts,
-            vault_enabled=False,
+            enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
             vault_tmpfs=False,
@@ -619,7 +619,7 @@ class TestPrecreateMountStubs:
         mounts = [FakeMount(source=src_file, destination="/home/agent/.local/bin/claude")]
         _precreate_mount_stubs(
             shell, project, mounts,
-            vault_enabled=False,
+            enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
             vault_tmpfs=False,
@@ -646,7 +646,7 @@ class TestPrecreateMountStubs:
         mounts = [FakeMount(source=src_dir, destination="/home/agent/workspace/vault")]
         _precreate_mount_stubs(
             shell, project, mounts,
-            vault_enabled=False,
+            enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
             vault_tmpfs=False,
@@ -672,7 +672,7 @@ class TestPrecreateMountStubs:
         mounts = [FakeMount(source=src_dir, destination="/opt/kanibako/kanibako")]
         _precreate_mount_stubs(
             shell, project, mounts,
-            vault_enabled=False,
+            enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
             vault_tmpfs=False,
@@ -703,7 +703,7 @@ class TestPrecreateMountStubs:
         mounts = [FakeMount(source=src_file, destination="/home/agent/.local/bin/kanibako")]
         _precreate_mount_stubs(
             shell, project, mounts,
-            vault_enabled=False,
+            enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
             vault_tmpfs=False,
@@ -734,7 +734,7 @@ class TestPrecreateMountStubs:
             # Should not raise
             _precreate_mount_stubs(
                 shell, project, mounts,
-                vault_enabled=False,
+                enable_vault=False,
                 vault_ro_path=tmp_path / "x",
                 vault_rw_path=tmp_path / "y",
                 vault_tmpfs=False,

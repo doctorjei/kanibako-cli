@@ -71,7 +71,7 @@ class TestIsKnownKey:
     def test_known_static_key(self):
         assert is_known_key("image") is True
         assert is_known_key("model") is True
-        assert is_known_key("auth") is True
+        assert is_known_key("group_auth") is True
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
@@ -280,11 +280,11 @@ class TestTargetSettings:
 
         with open(project_toml, "rb") as f:
             data = tomllib.load(f)
-        assert data["target_settings"]["model"] == "sonnet"
+        assert data["crab_settings"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"target_settings": {"model": "opus"}}))
+        project_toml.write_text(_serialize_toml({"crab_settings": {"model": "opus"}}))
 
         val = get_config_value(
             "model",
@@ -295,7 +295,7 @@ class TestTargetSettings:
 
     def test_reset_model(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"target_settings": {"model": "opus"}}))
+        project_toml.write_text(_serialize_toml({"crab_settings": {"model": "opus"}}))
 
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg
@@ -381,5 +381,5 @@ class TestConfigLevel:
     def test_levels(self):
         assert ConfigLevel.box.value == "box"
         assert ConfigLevel.workset.value == "workset"
-        assert ConfigLevel.agent.value == "agent"
+        assert ConfigLevel.crab.value == "crab"
         assert ConfigLevel.system.value == "system"

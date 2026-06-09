@@ -9,7 +9,7 @@ description = "Kanibako target plugin for Codex CLI"
 requires-python = ">=3.11"
 dependencies = ["kanibako"]
 
-[project.entry-points."kanibako.targets"]
+[project.entry-points."kanibako.agents"]
 codex = "kanibako_target_codex:CodexTarget"
 
 [tool.setuptools.packages.find]
