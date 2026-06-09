@@ -1079,20 +1079,20 @@ def _build_effective_state(target, agent_cfg, project_toml) -> dict[str, str]:
     """Merge target defaults, agent config state, and project overrides.
 
     Resolution order (highest wins):
-      1. Project overrides (``[target_settings]`` in project.toml)
+      1. Project overrides (``[crab_settings]`` in project.toml)
       2. Agent config state (``[state]`` in agent TOML)
       3. Target defaults (from ``setting_descriptors()``)
 
     Undeclared keys in agent state are passed through unchanged.
     """
-    from kanibako.config import read_target_settings
+    from kanibako.config import read_crab_settings
 
     descriptors = target.setting_descriptors()
     if not descriptors:
         return dict(agent_cfg.state)
 
     try:
-        project_overrides = read_target_settings(project_toml)
+        project_overrides = read_crab_settings(project_toml)
     except Exception:
         project_overrides = {}
 
