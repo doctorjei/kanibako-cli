@@ -105,10 +105,10 @@ class TestImageReferenceResolution:
 
     def test_bare_image_resolved_to_prefixed(self, start_mocks):
         with start_mocks() as m:
-            m.load_config.return_value.container_image = (
+            m.load_config.return_value.box_image = (
                 "ghcr.io/doctorjei/kanibako-oci:latest"
             )
-            m.merged.container_image = "kanibako-lxc"
+            m.merged.box_image = "kanibako-lxc"
             # Nothing exists locally: bare name is a prefab needing a pull.
             m.runtime.image_exists.return_value = False
             _run_container(
@@ -126,10 +126,10 @@ class TestImageReferenceResolution:
 
     def test_local_image_used_as_is(self, start_mocks):
         with start_mocks() as m:
-            m.load_config.return_value.container_image = (
+            m.load_config.return_value.box_image = (
                 "ghcr.io/doctorjei/kanibako-oci:latest"
             )
-            m.merged.container_image = "kanibako-lxc"
+            m.merged.box_image = "kanibako-lxc"
             # Only the resolved prefab reference exists locally; no
             # kanibako-template-/kanibako-rig- image does, so the resolver
             # classifies it as a prefab with prep_action="none".
@@ -168,7 +168,7 @@ class TestRigPrep:
             containerfile=cf,
         )
         with start_mocks() as m:
-            m.merged.container_image = "jvm"
+            m.merged.box_image = "jvm"
             # Template image absent → build branch.
             m.runtime.image_exists.return_value = False
             m.runtime.rebuild.return_value = 0
@@ -208,7 +208,7 @@ class TestRigPrep:
             containerfile=Path("/bundled/Containerfile.template-jvm"),
         )
         with start_mocks() as m:
-            m.merged.container_image = "jvm"
+            m.merged.box_image = "jvm"
             m.runtime.image_exists.return_value = False
             m.runtime.rebuild.return_value = 7
             with patch(
@@ -239,7 +239,7 @@ class TestRigPrep:
             source_ref="oci",
         )
         with start_mocks() as m:
-            m.merged.container_image = "oci"
+            m.merged.box_image = "oci"
             with patch(
                 "kanibako.commands.start.resolve_rig", return_value=res
             ):
@@ -268,7 +268,7 @@ class TestRigPrep:
             prep_action="none",
         )
         with start_mocks() as m:
-            m.merged.container_image = "jvm"
+            m.merged.box_image = "jvm"
             with patch(
                 "kanibako.commands.start.resolve_rig", return_value=res
             ):

@@ -226,9 +226,9 @@ def start_mocks():
             m_resolve_any.return_value = proj
 
             merged = MagicMock()
-            merged.container_image = "test:latest"
-            merged.crab_name = ""
-            merged.share_images = False
+            merged.box_image = "test:latest"
+            merged.box_crab = ""
+            merged.box_share_images = False
             # Helpers off by default in the mock (MagicMock attrs are truthy);
             # individual tests opt in by setting merged.allow_helpers = True.
             merged.allow_helpers = False

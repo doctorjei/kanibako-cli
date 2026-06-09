@@ -358,7 +358,7 @@ class TestCreateImage:
 
         project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
         merged = load_merged_config(config_file, project_toml)
-        assert merged.container_image == "kanibako-template-jvm-oci"
+        assert merged.box_image == "kanibako-template-jvm-oci"
 
     def test_create_default_image_persisted(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -370,4 +370,4 @@ class TestCreateImage:
 
         project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
         merged = load_merged_config(config_file, project_toml)
-        assert "kanibako" in merged.container_image
+        assert "kanibako" in merged.box_image

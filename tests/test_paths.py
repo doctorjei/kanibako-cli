@@ -249,7 +249,7 @@ class TestProjectMeta:
         assert meta["mode"] == "workset"
 
     def test_meta_preserves_existing_config(self, config_file, tmp_home, credentials_dir):
-        """write_project_meta preserves existing [container] section."""
+        """write_project_meta preserves existing [box] section."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -263,7 +263,7 @@ class TestProjectMeta:
         # Re-read — image should be there alongside metadata
         from kanibako.config import load_merged_config
         merged = load_merged_config(config_file, project_toml)
-        assert merged.container_image == "custom-image:v1"
+        assert merged.box_image == "custom-image:v1"
 
         # Metadata should also be intact
         from kanibako.config import read_project_meta

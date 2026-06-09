@@ -401,7 +401,7 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     # Persist image setting.
-    image = args.image or config.container_image
+    image = args.image or config.box_image
     project_toml = proj.metadata_path / "project.toml"
     write_project_config(project_toml, image)
 
@@ -949,7 +949,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Resolve target for credential check path
     try:
-        target = resolve_target(merged.crab_name or None)
+        target = resolve_target(merged.box_crab or None)
         creds_file = target.credential_check_path(proj.shell_path)
     except (KeyError, Exception):
         creds_file = None
@@ -974,7 +974,7 @@ def run_info(args: argparse.Namespace) -> int:
     if proj.local_shared_path:
         rows.append(("Local", str(proj.local_shared_path)))
     rows.extend([
-        ("Image", merged.container_image),
+        ("Image", merged.box_image),
         ("Lock", "ACTIVE" if lock_held else "none"),
         ("Container", container_detail),
         ("Credentials", cred_age),

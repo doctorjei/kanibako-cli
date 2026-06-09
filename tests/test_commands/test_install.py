@@ -24,7 +24,7 @@ class TestInstall:
         assert rc == 0
         assert config_file.exists()
         cfg = load_config(config_file)
-        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
 
 class TestInstallExtended:
@@ -47,7 +47,7 @@ class TestInstallExtended:
         self._base_setup(tmp_home)
         config_file = tmp_home / "config" / "kanibako.toml"
         config_file.parent.mkdir(parents=True, exist_ok=True)
-        custom_cfg = KanibakoConfig(container_image="custom:v1")
+        custom_cfg = KanibakoConfig(box_image="custom:v1")
         write_global_config(config_file, custom_cfg)
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
@@ -55,7 +55,7 @@ class TestInstallExtended:
         assert rc == 0
         # Custom image should be preserved
         loaded = load_config(config_file)
-        assert loaded.container_image == "custom:v1"
+        assert loaded.box_image == "custom:v1"
 
     def test_fresh_install_writes_defaults(self, tmp_home):
         from kanibako.commands.install import run
@@ -69,7 +69,7 @@ class TestInstallExtended:
         assert rc == 0
         assert config_file.exists()
         loaded = load_config(config_file)
-        assert loaded.container_image == KanibakoConfig().container_image
+        assert loaded.box_image == KanibakoConfig().box_image
 
 
 class TestInstallAgentTomls:

@@ -420,7 +420,7 @@ def _create_from_template(args: argparse.Namespace) -> int:
         print(f"Building template '{template}' from its default base...")
     else:
         merged = load_merged_config(config_file, None)
-        base_image = resolve_image_name(args.base, merged.container_image)
+        base_image = resolve_image_name(args.base, merged.box_image)
         build_args = {"BASE_IMAGE": base_image}
         print(
             f"Note: overriding template '{template}' default base "
@@ -499,7 +499,7 @@ def run_list(args: argparse.Namespace) -> int:
             img = rec.image
         elif runtime is not None:
             img = resolve_image_reference(
-                rec.source or rec.name, runtime, merged.container_image,
+                rec.source or rec.name, runtime, merged.box_image,
             )
         else:
             img = rec.source or rec.name
@@ -548,7 +548,7 @@ def run_list(args: argparse.Namespace) -> int:
             "prefabs": prefabs,
             "templates": templates,
             "extended": extended,
-            "current": merged.container_image,
+            "current": merged.box_image,
         }
         print(json.dumps(data, indent=2))
         return 0
@@ -578,7 +578,7 @@ def run_list(args: argparse.Namespace) -> int:
         print("  (none)")
 
     print()
-    print(f"Current rig: {merged.container_image}")
+    print(f"Current rig: {merged.box_image}")
     return 0
 
 
@@ -702,7 +702,7 @@ def run_rm(args: argparse.Namespace) -> int:
         return 0
 
     merged = load_merged_config(config_file, None)
-    image = resolve_image_name(args.image, merged.container_image)
+    image = resolve_image_name(args.image, merged.box_image)
 
     if not args.force:
         # Check if local-only (template images are local-only)
@@ -1052,9 +1052,9 @@ def run_rebuild(args: argparse.Namespace) -> int:
     merged = load_merged_config(config_file, None)
     image = args.image
     if image is None:
-        image = merged.container_image
+        image = merged.box_image
     else:
-        image = resolve_image_name(image, merged.container_image)
+        image = resolve_image_name(image, merged.box_image)
 
     return _update_one(runtime, image, containers_dir)
 

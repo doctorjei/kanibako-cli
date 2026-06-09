@@ -88,7 +88,7 @@ class TestSystemConfig:
         rc = run_config(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "container_image" in out
+        assert "box_image" in out
 
     def test_get_known_key(self, tmp_home, config_file, capsys):
         from kanibako.commands.system_cmd import run_config

@@ -126,7 +126,7 @@ class TestWorksetCreate:
         assert config_toml.exists()
         with open(config_toml, "rb") as f:
             data = tomllib.load(f)
-        assert data["container_image"] == "custom:latest"
+        assert data["box"]["image"] == "custom:latest"
 
 
 class TestWorksetList:
@@ -559,7 +559,7 @@ class TestWorksetConfig:
         create_workset("regcfg", tmp_home / "ws_regcfg", std)
 
         args = argparse.Namespace(
-            workset="regcfg", key_value="container_image=myimage:latest",
+            workset="regcfg", key_value="box.image=myimage:latest",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -567,7 +567,7 @@ class TestWorksetConfig:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Set" in out
-        assert "container_image" in out
+        assert "box_image" in out
 
     def test_config_reset_key(self, config_file, tmp_home, capsys):
         """Resetting a config key removes the override."""
@@ -579,7 +579,7 @@ class TestWorksetConfig:
 
         # First set a value.
         set_args = argparse.Namespace(
-            workset="resetcfg", key_value="container_image=myimage:latest",
+            workset="resetcfg", key_value="box.image=myimage:latest",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -589,7 +589,7 @@ class TestWorksetConfig:
         # Then reset it.
         reset_args = argparse.Namespace(
             workset="resetcfg", key_value=None,
-            effective=False, reset="container_image", reset_all=False,
+            effective=False, reset="box.image", reset_all=False,
             force=False, local=False,
         )
         rc = run_config(reset_args)
@@ -643,7 +643,7 @@ class TestWorksetConfig:
 
         # Set a value first.
         set_args = argparse.Namespace(
-            workset="resetall", key_value="container_image=myimage:latest",
+            workset="resetall", key_value="box.image=myimage:latest",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -745,7 +745,7 @@ class TestDefaultWorksetCli:
         std = self._std(config_file)
 
         args = argparse.Namespace(
-            workset="default", key_value="container_image=myimg:1",
+            workset="default", key_value="box.image=myimg:1",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -754,7 +754,7 @@ class TestDefaultWorksetCli:
         import tomllib
         with open(std.data_path / "config.toml", "rb") as f:
             data = tomllib.load(f)
-        assert data["container"]["image"] == "myimg:1"
+        assert data["box"]["image"] == "myimg:1"
         assert not (std.data_path / "workset.toml").exists()
 
     def test_info_default(self, config_file, tmp_home, capsys):

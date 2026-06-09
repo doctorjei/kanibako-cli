@@ -27,16 +27,16 @@ from kanibako.config import (
 class TestLoadConfig:
     def test_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.toml")
-        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
         assert cfg.paths_shell == "shell"
         assert cfg.system_paths == {}
 
     def test_round_trip(self, tmp_path):
         path = tmp_path / "test.toml"
-        cfg = KanibakoConfig(container_image="custom:latest")
+        cfg = KanibakoConfig(box_image="custom:latest")
         write_global_config(path, cfg)
         loaded = load_config(path)
-        assert loaded.container_image == "custom:latest"
+        assert loaded.box_image == "custom:latest"
         # The written [system.path] table holds DEFAULT expressions.
         assert loaded.system_paths["system.path.data"] == "$XDG_DATA_HOME/kanibako"
         assert loaded.system_paths["system.path.boxes"] == "@system.path.data/boxes"
@@ -58,7 +58,7 @@ class TestMergedConfig:
         write_project_config(project_path, "my-image:v2")
 
         merged = load_merged_config(global_path, project_path)
-        assert merged.container_image == "my-image:v2"
+        assert merged.box_image == "my-image:v2"
 
     def test_cli_overrides_all(self, tmp_path):
         global_path = tmp_path / "global.toml"
@@ -70,9 +70,9 @@ class TestMergedConfig:
         merged = load_merged_config(
             global_path,
             project_path,
-            cli_overrides={"container_image": "cli-image:v3"},
+            cli_overrides={"box_image": "cli-image:v3"},
         )
-        assert merged.container_image == "cli-image:v3"
+        assert merged.box_image == "cli-image:v3"
 
     def test_workset_path_none_is_byte_identical(self, tmp_path):
         """Omitting workset_path must reproduce the pre-P2.2 global+project merge."""
@@ -85,7 +85,7 @@ class TestMergedConfig:
         baseline = load_merged_config(global_path, project_path)
         with_none = load_merged_config(global_path, project_path, workset_path=None)
         assert with_none == baseline
-        assert with_none.container_image == "my-image:v2"
+        assert with_none.box_image == "my-image:v2"
 
     def test_workset_overrides_global(self, tmp_path):
         global_path = tmp_path / "global.toml"
@@ -95,7 +95,7 @@ class TestMergedConfig:
         write_project_config(workset_path, "ws-image:v1")
 
         merged = load_merged_config(global_path, workset_path=workset_path)
-        assert merged.container_image == "ws-image:v1"
+        assert merged.box_image == "ws-image:v1"
 
     def test_project_overrides_workset(self, tmp_path):
         global_path = tmp_path / "global.toml"
@@ -109,7 +109,7 @@ class TestMergedConfig:
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
         )
-        assert merged.container_image == "proj-image:v2"
+        assert merged.box_image == "proj-image:v2"
 
     def test_cli_overrides_workset(self, tmp_path):
         global_path = tmp_path / "global.toml"
@@ -121,9 +121,9 @@ class TestMergedConfig:
         merged = load_merged_config(
             global_path,
             workset_path=workset_path,
-            cli_overrides={"container_image": "cli-image:v3"},
+            cli_overrides={"box_image": "cli-image:v3"},
         )
-        assert merged.container_image == "cli-image:v3"
+        assert merged.box_image == "cli-image:v3"
 
     def test_account_no_op_when_no_workset_config(self, tmp_path):
         """A local project with no workset config.toml merges exactly as before."""
@@ -163,14 +163,14 @@ class TestWriteProjectConfig:
         path = tmp_path / "project.toml"
         write_project_config(path, "new-image:latest")
         cfg = load_config(path)
-        assert cfg.container_image == "new-image:latest"
+        assert cfg.box_image == "new-image:latest"
 
     def test_updates_existing(self, tmp_path):
         path = tmp_path / "project.toml"
         write_project_config(path, "first:latest")
         write_project_config(path, "second:latest")
         cfg = load_config(path)
-        assert cfg.container_image == "second:latest"
+        assert cfg.box_image == "second:latest"
 
     def test_update_existing_image(self, tmp_path):
         p = tmp_path / "project.toml"
@@ -183,7 +183,7 @@ class TestWriteProjectConfig:
 
     def test_add_image_to_container_section(self, tmp_path):
         p = tmp_path / "project.toml"
-        p.write_text("[container]\n# empty section\n")
+        p.write_text("[box]\n# empty section\n")
         write_project_config(p, "new:img")
         text = p.read_text()
         assert 'image = "new:img"' in text
@@ -192,7 +192,7 @@ class TestWriteProjectConfig:
         p = tmp_path / "sub" / "project.toml"
         write_project_config(p, "fresh:v1")
         assert p.exists()
-        assert "[container]" in p.read_text()
+        assert "[box]" in p.read_text()
         assert 'image = "fresh:v1"' in p.read_text()
 
 
@@ -226,13 +226,13 @@ class TestProjectMeta:
 
     def test_read_no_project_section(self, tmp_path):
         toml_path = tmp_path / "project.toml"
-        toml_path.write_text('[container]\nimage = "foo"\n')
+        toml_path.write_text('[box]\nimage = "foo"\n')
         meta = read_project_meta(toml_path)
         assert meta is None
 
     def test_preserves_existing_sections(self, tmp_path):
         toml_path = tmp_path / "project.toml"
-        toml_path.write_text('[container]\nimage = "custom:v1"\n')
+        toml_path.write_text('[box]\nimage = "custom:v1"\n')
 
         write_project_meta(
             toml_path,
@@ -246,7 +246,7 @@ class TestProjectMeta:
 
         # Container section preserved
         cfg = load_config(toml_path)
-        assert cfg.container_image == "custom:v1"
+        assert cfg.box_image == "custom:v1"
 
         # Metadata also present
         meta = read_project_meta(toml_path)
@@ -424,7 +424,7 @@ class TestSharedCaches:
         path = tmp_path / "kanibako.toml"
         path.write_text(
             '[paths]\ndata_path = ""\n\n'
-            '[container]\nimage = "test:latest"\n\n'
+            '[box]\nimage = "test:latest"\n\n'
             '[shared]\ncargo-git = ".cargo/git"\npip = ".cache/pip"\n'
         )
         cfg = load_config(path)
@@ -467,15 +467,15 @@ class TestSharedCaches:
         global_path = tmp_path / "global.toml"
         global_path.write_text(
             '[paths]\ndata_path = ""\n\n'
-            '[container]\nimage = "test:latest"\n\n'
+            '[box]\nimage = "test:latest"\n\n'
             '[shared]\npip = ".cache/pip"\n'
         )
         project_path = tmp_path / "project.toml"
-        project_path.write_text('[container]\nimage = "proj:v1"\n')
+        project_path.write_text('[box]\nimage = "proj:v1"\n')
 
         merged = load_merged_config(global_path, project_path)
         assert merged.shared_caches == {"pip": ".cache/pip"}
-        assert merged.container_image == "proj:v1"
+        assert merged.box_image == "proj:v1"
 
 
 class TestResourceOverrides:

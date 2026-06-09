@@ -38,7 +38,7 @@ def helpers_env(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     config_file = config_dir / "kanibako.toml"
-    config_file.write_text("[container]\nimage = \"test\"\n")
+    config_file.write_text("[box]\nimage = \"test\"\n")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     return home
 

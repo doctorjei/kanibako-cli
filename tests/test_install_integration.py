@@ -41,12 +41,12 @@ class TestInstallFilesystem:
 
         # Write a config with a custom image
         config = load_config(integration_config)
-        config.container_image = "custom:v99"
+        config.box_image = "custom:v99"
         write_global_config(integration_config, config)
 
         # Reload and verify custom value preserved
         reloaded = load_config(integration_config)
-        assert reloaded.container_image == "custom:v99"
+        assert reloaded.box_image == "custom:v99"
 
     def test_install_filters_settings_json(
         self, integration_home, integration_config

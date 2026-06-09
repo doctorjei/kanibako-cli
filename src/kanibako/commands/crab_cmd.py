@@ -443,7 +443,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     proj = resolve_any_project(std, config, getattr(args, "project", None))
 
     try:
-        target = resolve_target(config.crab_name or None)
+        target = resolve_target(config.box_crab or None)
     except KeyError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

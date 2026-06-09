@@ -61,9 +61,10 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "autonomous",
     "model",
     "persistence",
-    # Container
-    "image",
-    "container_image",
+    # Box
+    "box.image",
+    "box.crab",
+    "box.share_images",
     # Auth / project
     "group_auth",
     "layout",
@@ -72,8 +73,6 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.enabled",
     "vault.ro",
     "vault.rw",
-    # Target settings (Claude-specific)
-    "crab_name",
     # System-level path settings (resolver-backed system.path.* tier)
     "system.path.data",
     "system.path.boxes",
@@ -94,13 +93,14 @@ DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.", "shared.")
 
 # Map friendly short names to canonical flat config keys.
 _KEY_ALIASES: dict[str, str] = {
-    "image": "container_image",
+    "image": "box.image",
+    "crab": "box.crab",
 }
 
 
 def is_known_key(arg: str) -> bool:
     """Return True if *arg* looks like a config key (not a project name)."""
-    if arg in KNOWN_CONFIG_KEYS:
+    if arg in KNOWN_CONFIG_KEYS or arg in _KEY_ALIASES:
         return True
     return any(arg.startswith(p) for p in DYNAMIC_PREFIXES)
 
@@ -142,7 +142,7 @@ def parse_config_arg(arg: str | None) -> tuple[ConfigAction, str, str]:
 def _resolve_key(raw: str) -> str:
     """Map a user-supplied key name to the canonical form.
 
-    Accepts aliases (``image`` → ``container_image``), dot-notation
+    Accepts aliases (``image`` → ``box.image``), dot-notation
     (``vault.enabled``), or the raw flat key.  Returns the key unchanged
     if no alias exists.
     """

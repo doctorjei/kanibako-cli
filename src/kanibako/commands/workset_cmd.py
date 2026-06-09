@@ -231,7 +231,7 @@ def run_create(args: argparse.Namespace) -> int:
         from kanibako.config_interface import _serialize_toml
         config_data: dict = {}
         if image:
-            config_data["container_image"] = image
+            config_data["box"] = {"image": image}
         if standalone:
             config_data["standalone"] = True
         if no_vault:

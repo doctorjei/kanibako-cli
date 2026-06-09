@@ -38,7 +38,7 @@ def _check_image(config: object) -> tuple[str, str]:
         from kanibako.container import ContainerRuntime
 
         runtime = ContainerRuntime()
-        image_name: str = getattr(config, "container_image", "")
+        image_name: str = getattr(config, "box_image", "")
         data = runtime.image_inspect(image_name)
         if data is not None:
             return "ok", f"{image_name} (available locally)"

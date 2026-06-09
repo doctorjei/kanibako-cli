@@ -153,7 +153,7 @@ class TestFlagCombinations:
             )
             # load_merged_config should have been called with cli_overrides
             call_kwargs = m.load_merged_config.call_args
-            assert call_kwargs.kwargs["cli_overrides"] == {"container_image": "custom:v1"}
+            assert call_kwargs.kwargs["cli_overrides"] == {"box_image": "custom:v1"}
 
     def test_runtime_not_found_returns_1(self, start_mocks):
         with start_mocks() as m:

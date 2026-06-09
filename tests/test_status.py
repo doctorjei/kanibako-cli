@@ -307,7 +307,7 @@ class TestRunInfo:
     def test_shows_project_image_override(self, initialized_project, capsys):
         """Info shows project-specific image when project.toml is set."""
         project_toml = initialized_project.proj.metadata_path / "project.toml"
-        project_toml.write_text('[container]\nimage = "custom:v2"\n')
+        project_toml.write_text('[box]\nimage = "custom:v2"\n')
         args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
             "kanibako.commands.box._parser._check_container_running",

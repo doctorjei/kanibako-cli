@@ -134,7 +134,7 @@ class TestCheckImage:
     def test_check_image_found(self) -> None:
         """Image available locally returns ok."""
         mock_config = MagicMock()
-        mock_config.container_image = "kanibako-oci:latest"
+        mock_config.box_image = "kanibako-oci:latest"
 
         mock_runtime = MagicMock()
         mock_runtime.image_inspect.return_value = {"Id": "abc123"}
@@ -150,7 +150,7 @@ class TestCheckImage:
     def test_check_image_not_found(self) -> None:
         """Image not locally available returns error."""
         mock_config = MagicMock()
-        mock_config.container_image = "kanibako-oci:latest"
+        mock_config.box_image = "kanibako-oci:latest"
 
         mock_runtime = MagicMock()
         mock_runtime.image_inspect.return_value = None

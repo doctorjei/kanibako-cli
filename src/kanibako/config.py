@@ -20,8 +20,8 @@ _DEFAULTS = {
     "paths_shared": "shared",
     "paths_shell": "shell",
     "paths_vault": "vault",
-    "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "crab_name": "",
+    "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
+    "box_crab": "",
 }
 
 # Backward-compat aliases: old field name -> new field name.
@@ -37,10 +37,10 @@ class KanibakoConfig:
     paths_shared: str = _DEFAULTS["paths_shared"]
     paths_shell: str = _DEFAULTS["paths_shell"]
     paths_vault: str = _DEFAULTS["paths_vault"]
-    container_image: str = _DEFAULTS["container_image"]
-    crab_name: str = _DEFAULTS["crab_name"]
+    box_image: str = _DEFAULTS["box_image"]
+    box_crab: str = _DEFAULTS["box_crab"]
     allow_helpers: bool = True
-    share_images: bool = False
+    box_share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
     # System-level path tier: raw set-values keyed by full dotted name
     # ("system.path.<leaf>"), read from the file's [system][path] table.
@@ -200,8 +200,10 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
         'templates = "@system.path.data/templates"',
         'ws_hints = "@system.path.data/worksets.toml"',
         "",
-        "[container]",
-        f'image = "{cfg.container_image}"',
+        "[box]",
+        f'image = "{cfg.box_image}"',
+        f'crab = "{cfg.box_crab}"',
+        f'share_images = {str(cfg.box_share_images).lower()}',
         "",
         "[shared]",
         '# Global shared caches (lazy: only mounted if dir exists on host)',
@@ -217,7 +219,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
 
 def write_project_config(path: Path, image: str) -> None:
     """Write or update a project.toml with the given image."""
-    write_project_config_key(path, "container_image", image)
+    write_project_config_key(path, "box_image", image)
 
 
 def write_project_meta(
@@ -336,10 +338,10 @@ def _write_toml(path: Path, data: dict) -> None:
 def _split_config_key(flat_key: str) -> tuple[str, str]:
     """Split a flat config key into (section, toml_key).
 
-    ``"container_image"`` → ``("container", "image")``
+    ``"box_image"``       → ``("box", "image")``
     ``"paths_dot_path"``  → ``("paths", "dot_path")``
     """
-    for prefix in ("paths_", "container_", "crab_"):
+    for prefix in ("paths_", "box_"):
         if flat_key.startswith(prefix):
             section = prefix.rstrip("_")
             toml_key = flat_key[len(prefix):]
@@ -355,7 +357,7 @@ def config_keys() -> list[str]:
 def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
     """Write or update a single key in a project.toml.
 
-    *flat_key* is the underscore-joined config name (e.g. ``"container_image"``).
+    *flat_key* is the underscore-joined config name (e.g. ``"box_image"``).
     """
     section, toml_key = _split_config_key(flat_key)
     section_header = f"[{section}]"

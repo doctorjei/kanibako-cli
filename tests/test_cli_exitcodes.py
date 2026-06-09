@@ -139,13 +139,13 @@ class TestLazyInit:
         # Write custom config first
         config_file = tmp_path / "config" / "kanibako.toml"
         config_file.parent.mkdir(parents=True, exist_ok=True)
-        write_global_config(config_file, KanibakoConfig(container_image="custom:v1"))
+        write_global_config(config_file, KanibakoConfig(box_image="custom:v1"))
 
         _ensure_initialized()
 
         # Custom config should be preserved
         loaded = load_config(config_file)
-        assert loaded.container_image == "custom:v1"
+        assert loaded.box_image == "custom:v1"
 
     def test_crab_exempt_from_lazy_init(self):
         """'crab' command does not trigger lazy init."""

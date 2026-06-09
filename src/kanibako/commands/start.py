@@ -412,10 +412,10 @@ def _run_container(
         config_file,
         project_toml,
         workset_path=workset_path,
-        cli_overrides={"container_image": image_override} if image_override else None,
+        cli_overrides={"box_image": image_override} if image_override else None,
     )
 
-    image = merged.container_image
+    image = merged.box_image
 
     # Persist image override for new projects so it becomes the default
     if proj.is_new and image_override:
@@ -481,7 +481,7 @@ def _run_container(
     install = None
     if is_agent_mode:
         try:
-            target = resolve_target(merged.crab_name or None)
+            target = resolve_target(merged.box_crab or None)
         except KeyError as e:
             print(
                 f"Error: {e}\n"
@@ -741,7 +741,7 @@ def _run_container(
             extra_mounts.extend(resource_mounts)
 
         # Image sharing: mount host image storage read-only into child.
-        if share_images or merged.share_images:
+        if share_images or merged.box_share_images:
             from kanibako.image_sharing import build_image_sharing_mounts
             staging = proj.metadata_path / ".image-sharing"
             img_mounts = build_image_sharing_mounts(

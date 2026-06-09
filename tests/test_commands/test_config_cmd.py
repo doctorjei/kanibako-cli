@@ -54,7 +54,7 @@ class TestBoxConfigShow:
         rc = run_config(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "container_image" in captured.out
+        assert "box_image" in captured.out
 
     def test_show_with_override(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_config
@@ -231,7 +231,7 @@ class TestBoxConfigReset:
 
         # Reset
         args = argparse.Namespace(
-            args=[project_dir], effective=False, reset="container_image",
+            args=[project_dir], effective=False, reset="box_image",
             reset_all=False, force=False, local=False,
         )
         rc = run_config(args)
@@ -272,7 +272,7 @@ class TestBoxConfigReset:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            args=[project_dir], effective=False, reset="container_image",
+            args=[project_dir], effective=False, reset="box_image",
             reset_all=False, force=False, local=False,
         )
         rc = run_config(args)
@@ -405,39 +405,39 @@ class TestWriteProjectConfigKey:
         assert "[paths]" in text
         assert 'shell = "custom_shell"' in text
 
-    def test_write_container_key(self, tmp_path):
+    def test_write_box_key(self, tmp_path):
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "myimg:v1")
+        write_project_config_key(p, "box_image", "myimg:v1")
         loaded = load_config(p)
-        assert loaded.container_image == "myimg:v1"
+        assert loaded.box_image == "myimg:v1"
         text = p.read_text()
-        assert "[container]" in text
+        assert "[box]" in text
         assert 'image = "myimg:v1"' in text
 
-    def test_write_target_key(self, tmp_path):
+    def test_write_crab_key(self, tmp_path):
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "crab_name", "my-target")
+        write_project_config_key(p, "box_crab", "my-target")
         loaded = load_config(p)
-        assert loaded.crab_name == "my-target"
+        assert loaded.box_crab == "my-target"
         text = p.read_text()
-        assert "[crab]" in text
-        assert 'name = "my-target"' in text
+        assert "[box]" in text
+        assert 'crab = "my-target"' in text
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "multi:v1")
+        write_project_config_key(p, "box_image", "multi:v1")
         write_project_config_key(p, "paths_shell", "multi_shell")
         loaded = load_config(p)
-        assert loaded.container_image == "multi:v1"
+        assert loaded.box_image == "multi:v1"
         assert loaded.paths_shell == "multi_shell"
 
     def test_update_existing_key(self, tmp_path):
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "old:v1")
-        write_project_config_key(p, "container_image", "new:v2")
+        write_project_config_key(p, "box_image", "old:v1")
+        write_project_config_key(p, "box_image", "new:v2")
         loaded = load_config(p)
-        assert loaded.container_image == "new:v2"
+        assert loaded.box_image == "new:v2"
         text = p.read_text()
         assert "old:v1" not in text
 
@@ -446,42 +446,42 @@ class TestWriteProjectConfigKey:
         p = tmp_path / "project.toml"
         write_project_config(p, "compat:v1")
         loaded = load_config(p)
-        assert loaded.container_image == "compat:v1"
+        assert loaded.box_image == "compat:v1"
 
 
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "remove-me:v1")
-        assert unset_project_config_key(p, "container_image") is True
+        write_project_config_key(p, "box_image", "remove-me:v1")
+        assert unset_project_config_key(p, "box_image") is True
         loaded = load_config(p)
         # Should revert to default
-        assert loaded.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        assert loaded.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "keep:v1")
+        write_project_config_key(p, "box_image", "keep:v1")
         assert unset_project_config_key(p, "paths_shell") is False
         # Original key should still be there
         loaded = load_config(p)
-        assert loaded.container_image == "keep:v1"
+        assert loaded.box_image == "keep:v1"
 
     def test_unset_no_file(self, tmp_path):
         from kanibako.config import unset_project_config_key
         p = tmp_path / "nonexistent.toml"
-        assert unset_project_config_key(p, "container_image") is False
+        assert unset_project_config_key(p, "box_image") is False
 
     def test_unset_preserves_other_keys(self, tmp_path):
         from kanibako.config import unset_project_config_key
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "img:v1")
+        write_project_config_key(p, "box_image", "img:v1")
         write_project_config_key(p, "paths_shell", "my_shell")
-        assert unset_project_config_key(p, "container_image") is True
+        assert unset_project_config_key(p, "box_image") is True
         loaded = load_config(p)
         assert loaded.paths_shell == "my_shell"
-        assert loaded.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        assert loaded.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
 
 class TestLoadProjectOverrides:
@@ -491,18 +491,18 @@ class TestLoadProjectOverrides:
 
     def test_returns_only_overrides(self, tmp_path):
         p = tmp_path / "project.toml"
-        write_project_config_key(p, "container_image", "override:v1")
+        write_project_config_key(p, "box_image", "override:v1")
         overrides = load_project_overrides(p)
-        assert "container_image" in overrides
-        assert overrides["container_image"] == "override:v1"
+        assert "box_image" in overrides
+        assert overrides["box_image"] == "override:v1"
         # Other keys should not appear (they are defaults)
         assert "paths_shell" not in overrides
 
 
 class TestSplitConfigKey:
-    def test_container_key(self):
+    def test_box_image_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("container_image") == ("container", "image")
+        assert _split_config_key("box_image") == ("box", "image")
 
     def test_paths_key(self):
         from kanibako.config import _split_config_key
@@ -512,9 +512,9 @@ class TestSplitConfigKey:
         from kanibako.config import _split_config_key
         assert _split_config_key("paths_project_toml") == ("paths", "project_toml")
 
-    def test_target_key(self):
+    def test_box_crab_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("crab_name") == ("crab", "name")
+        assert _split_config_key("box_crab") == ("box", "crab")
 
     def test_unknown_prefix_raises(self):
         from kanibako.config import _split_config_key
@@ -532,7 +532,7 @@ class TestConfigKeys:
     def test_includes_known_keys(self):
         from kanibako.config import config_keys
         keys = config_keys()
-        assert "container_image" in keys
+        assert "box_image" in keys
         assert "paths_shell" in keys
         assert "paths_vault" in keys
-        assert "crab_name" in keys
+        assert "box_crab" in keys

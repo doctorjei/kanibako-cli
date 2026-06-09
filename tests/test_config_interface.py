@@ -103,7 +103,7 @@ class TestRegularConfigKeys:
     def test_get_default_image(self, tmp_path):
         """Reading image with no overrides returns the global default."""
         global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "my-image:latest"\n')
+        global_cfg.write_text('[box]\nimage = "my-image:latest"\n')
         project_toml = tmp_path / "project.toml"
 
         val = get_config_value(
@@ -116,7 +116,7 @@ class TestRegularConfigKeys:
     def test_set_and_get_image(self, tmp_path):
         """Setting a config key writes it and subsequent get returns it."""
         global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "default:latest"\n')
+        global_cfg.write_text('[box]\nimage = "default:latest"\n')
         project_toml = tmp_path / "project.toml"
 
         msg = set_config_value(
@@ -136,7 +136,7 @@ class TestRegularConfigKeys:
     def test_reset_image(self, tmp_path):
         """Resetting a key removes the project-level override."""
         global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "default:latest"\n')
+        global_cfg.write_text('[box]\nimage = "default:latest"\n')
         project_toml = tmp_path / "project.toml"
 
         set_config_value("image", "custom:v2", config_path=project_toml)
@@ -324,7 +324,7 @@ class TestShowConfig:
 
     def test_show_effective(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "my:img"\n')
+        global_cfg.write_text('[box]\nimage = "my:img"\n')
         project_toml = tmp_path / "project.toml"
 
         show_config(
@@ -333,21 +333,21 @@ class TestShowConfig:
             effective=True,
         )
         captured = capsys.readouterr()
-        assert "container_image" in captured.out
+        assert "box_image" in captured.out
         assert "my:img" in captured.out
 
     def test_show_with_override(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "default"\n')
+        global_cfg.write_text('[box]\nimage = "default"\n')
         project_toml = tmp_path / "project.toml"
-        project_toml.write_text('[container]\nimage = "custom"\n')
+        project_toml.write_text('[box]\nimage = "custom"\n')
 
         show_config(
             global_config_path=global_cfg,
             config_path=project_toml,
         )
         captured = capsys.readouterr()
-        assert "container_image" in captured.out
+        assert "box_image" in captured.out
         assert "custom" in captured.out
 
 
@@ -360,7 +360,7 @@ class TestResetAll:
 
     def test_reset_all_with_force(self, tmp_path):
         project_toml = tmp_path / "project.toml"
-        project_toml.write_text('[container]\nimage = "custom"\n')
+        project_toml.write_text('[box]\nimage = "custom"\n')
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
 
