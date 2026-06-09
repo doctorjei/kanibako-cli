@@ -1,4 +1,4 @@
-"""kanibako agent: agent management, authentication, and coordination."""
+"""kanibako crab: crab management, authentication, and coordination."""
 
 from __future__ import annotations
 
@@ -17,42 +17,42 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Crab (agent) management, authentication, and settings",
         description="Manage crab configurations, authentication, and helper instances.",
     )
-    agent_sub = p.add_subparsers(dest="crab_command", metavar="COMMAND")
+    crab_sub = p.add_subparsers(dest="crab_command", metavar="COMMAND")
 
-    # agent list (default)
-    list_p = agent_sub.add_parser(
+    # crab list (default)
+    list_p = crab_sub.add_parser(
         "list",
         aliases=["ls"],
-        help="List configured agents",
+        help="List configured crabs",
     )
     list_p.add_argument("-q", "--quiet", action="store_true", help="Names only")
     list_p.set_defaults(func=run_list)
 
-    # agent info <agent>
-    info_p = agent_sub.add_parser(
+    # crab info <crab>
+    info_p = crab_sub.add_parser(
         "info",
         aliases=["inspect"],
-        help="Show agent configuration details",
+        help="Show crab configuration details",
     )
-    info_p.add_argument("agent_id", help="Agent identifier")
+    info_p.add_argument("crab_id", help="Crab identifier")
     info_p.set_defaults(func=run_info)
 
-    # agent config <agent> [key[=value]] [--effective] [--reset] [--all] [--force]
-    config_p = agent_sub.add_parser(
+    # crab config <crab> [key[=value]] [--effective] [--reset] [--all] [--force]
+    config_p = crab_sub.add_parser(
         "config",
-        help="View or modify agent configuration",
+        help="View or modify crab configuration",
         description=(
-            "Unified config interface for agent settings.\n\n"
-            "  agent config myagent                 show all settings\n"
-            "  agent config myagent model            get the value of 'model'\n"
-            "  agent config myagent model=sonnet     set 'model' to 'sonnet'\n"
-            "  agent config myagent env.FOO=bar      set env var FOO\n"
-            "  agent config myagent --reset model    reset one key\n"
-            "  agent config myagent --reset --all    reset all overrides\n"
+            "Unified config interface for crab settings.\n\n"
+            "  crab config mycrab                 show all settings\n"
+            "  crab config mycrab model            get the value of 'model'\n"
+            "  crab config mycrab model=sonnet     set 'model' to 'sonnet'\n"
+            "  crab config mycrab env.FOO=bar      set env var FOO\n"
+            "  crab config mycrab --reset model    reset one key\n"
+            "  crab config mycrab --reset --all    reset all overrides\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    config_p.add_argument("agent_id", help="Agent identifier")
+    config_p.add_argument("crab_id", help="Crab identifier")
     config_p.add_argument(
         "key_value", nargs="?", default=None,
         help="Config key or key=value pair",
@@ -76,7 +76,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     config_p.set_defaults(func=run_config)
 
     # agent reauth [project]
-    reauth_p = agent_sub.add_parser(
+    reauth_p = crab_sub.add_parser(
         "reauth",
         help="Check authentication and login if needed",
         description=(
@@ -90,20 +90,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     reauth_p.set_defaults(func=run_reauth)
 
-    # agent helper -- delegate to helper_cmd
+    # crab helper -- delegate to helper_cmd
     from kanibako.commands.helper_cmd import add_helper_subparsers
 
-    helper_p = agent_sub.add_parser(
+    helper_p = crab_sub.add_parser(
         "helper",
         help="Manage helper instances",
         description="Spawn, list, stop, cleanup, and respawn helper instances.",
     )
     add_helper_subparsers(helper_p)
 
-    # agent fork <name> -- delegate to fork_cmd
+    # crab fork <name> -- delegate to fork_cmd
     from kanibako.commands.fork_cmd import run_fork
 
-    fork_p = agent_sub.add_parser(
+    fork_p = crab_sub.add_parser(
         "fork",
         help="Fork this project into a new directory",
         description=(
@@ -121,9 +121,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     # crab diagnose
     from kanibako.commands.diagnose import run_crab_diagnose
 
-    diagnose_p = agent_sub.add_parser(
+    diagnose_p = crab_sub.add_parser(
         "diagnose",
-        help="Check agent status and configuration",
+        help="Check crab status and configuration",
     )
     diagnose_p.set_defaults(func=run_crab_diagnose)
 
@@ -132,7 +132,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Agent list / info / config / reauth handlers
+# Crab list / info / config + agent reauth handlers
 # ---------------------------------------------------------------------------
 
 
@@ -148,7 +148,7 @@ def _load_data_path() -> Path:
 
 
 def run_list(args: argparse.Namespace) -> int:
-    """List configured agents."""
+    """List configured crabs."""
     from kanibako.crabs import crabs_dir, load_crab_config
 
     try:
@@ -161,14 +161,14 @@ def run_list(args: argparse.Namespace) -> int:
     if not adir.is_dir():
         quiet = getattr(args, "quiet", False)
         if not quiet:
-            print("No agents configured.")
+            print("No crabs configured.")
         return 0
 
     toml_files = sorted(adir.glob("*.toml"))
     if not toml_files:
         quiet = getattr(args, "quiet", False)
         if not quiet:
-            print("No agents configured.")
+            print("No crabs configured.")
         return 0
 
     quiet = getattr(args, "quiet", False)
@@ -188,7 +188,7 @@ def run_list(args: argparse.Namespace) -> int:
 
 
 def run_info(args: argparse.Namespace) -> int:
-    """Show agent configuration details."""
+    """Show crab configuration details."""
     from kanibako.crabs import crab_toml_path, load_crab_config
 
     try:
@@ -197,14 +197,14 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    agent_id = args.agent_id
-    path = crab_toml_path(data_path, agent_id)
+    crab_id = args.crab_id
+    path = crab_toml_path(data_path, crab_id)
     if not path.exists():
-        print(f"Error: agent '{agent_id}' not found ({path})", file=sys.stderr)
+        print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
 
     cfg = load_crab_config(path)
-    print(f"Name:         {cfg.name or agent_id}")
+    print(f"Name:         {cfg.name or crab_id}")
     print(f"Shell:        {cfg.shell}")
     if cfg.run_args:
         print(f"Default args: {' '.join(cfg.run_args)}")
@@ -236,9 +236,9 @@ def run_info(args: argparse.Namespace) -> int:
 
 
 def run_config(args: argparse.Namespace) -> int:
-    """View or modify agent configuration.
+    """View or modify crab configuration.
 
-    Maps config keys to agent TOML sections:
+    Maps config keys to crab TOML sections:
       model, start_mode, etc. -> [state]
       env.X                   -> [env]
       shared.X                -> [shared]
@@ -252,10 +252,10 @@ def run_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    agent_id = args.agent_id
-    path = crab_toml_path(data_path, agent_id)
+    crab_id = args.crab_id
+    path = crab_toml_path(data_path, crab_id)
     if not path.exists():
-        print(f"Error: agent '{agent_id}' not found ({path})", file=sys.stderr)
+        print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
 
     cfg = load_crab_config(path)
@@ -270,7 +270,7 @@ def run_config(args: argparse.Namespace) -> int:
 
                 try:
                     confirm_prompt(
-                        "Reset all agent config overrides? Type 'yes' to proceed: "
+                        "Reset all crab config overrides? Type 'yes' to proceed: "
                     )
                 except UserCancelled:
                     print("Aborted.")
@@ -281,7 +281,7 @@ def run_config(args: argparse.Namespace) -> int:
             cfg.shared_caches.clear()
             cfg.run_args.clear()
             write_crab_config(path, cfg)
-            print("Reset all agent config overrides.")
+            print("Reset all crab config overrides.")
             return 0
 
         # Key can come from --reset VALUE or from positional key_value.
@@ -291,7 +291,7 @@ def run_config(args: argparse.Namespace) -> int:
             return 1
 
         key = reset_key.strip()
-        changed = _reset_agent_key(cfg, key)
+        changed = _reset_crab_key(cfg, key)
         if changed:
             write_crab_config(path, cfg)
             print(f"Reset {key}")
@@ -302,20 +302,20 @@ def run_config(args: argparse.Namespace) -> int:
     # Parse key/value argument
     if key_value is None:
         # Show mode
-        return _show_agent_config(cfg, args.agent_id, effective=args.effective)
+        return _show_crab_config(cfg, args.crab_id, effective=args.effective)
 
     if "=" in key_value:
         key, _, value = key_value.partition("=")
         key = key.strip()
         value = value.strip()
-        _set_agent_key(cfg, key, value)
+        _set_crab_key(cfg, key, value)
         write_crab_config(path, cfg)
         print(f"Set {key}={value}")
         return 0
 
     # Get mode
     key = key_value.strip()
-    val = _get_agent_key(cfg, key)
+    val = _get_crab_key(cfg, key)
     if val is not None:
         print(val)
     else:
@@ -323,8 +323,8 @@ def run_config(args: argparse.Namespace) -> int:
     return 0
 
 
-def _get_agent_key(cfg: CrabConfig, key: str) -> str | None:
-    """Read a single key from agent config."""
+def _get_crab_key(cfg: CrabConfig, key: str) -> str | None:
+    """Read a single key from crab config."""
     if key.startswith("env."):
         env_name = key[4:]
         return cfg.env.get(env_name)
@@ -341,8 +341,8 @@ def _get_agent_key(cfg: CrabConfig, key: str) -> str | None:
     return cfg.state.get(key)
 
 
-def _set_agent_key(cfg: CrabConfig, key: str, value: str) -> None:
-    """Set a single key in agent config."""
+def _set_crab_key(cfg: CrabConfig, key: str, value: str) -> None:
+    """Set a single key in crab config."""
     if key.startswith("env."):
         env_name = key[4:]
         cfg.env[env_name] = value
@@ -360,8 +360,8 @@ def _set_agent_key(cfg: CrabConfig, key: str, value: str) -> None:
         cfg.state[key] = value
 
 
-def _reset_agent_key(cfg: CrabConfig, key: str) -> bool:
-    """Remove a single key from agent config.  Returns True if found."""
+def _reset_crab_key(cfg: CrabConfig, key: str) -> bool:
+    """Remove a single key from crab config.  Returns True if found."""
     if key.startswith("env."):
         env_name = key[4:]
         if env_name in cfg.env:
@@ -391,14 +391,14 @@ def _reset_agent_key(cfg: CrabConfig, key: str) -> bool:
     return False
 
 
-def _show_agent_config(
-    cfg: CrabConfig, agent_id: str, *, effective: bool = False,
+def _show_crab_config(
+    cfg: CrabConfig, crab_id: str, *, effective: bool = False,
 ) -> int:
-    """Display agent config."""
+    """Display crab config."""
     has_output = False
 
     # [crab] section
-    print(f"  name = {cfg.name or agent_id}")
+    print(f"  name = {cfg.name or crab_id}")
     print(f"  shell = {cfg.shell}")
     if cfg.run_args:
         print(f"  run_args = {cfg.run_args}")

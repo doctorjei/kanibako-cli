@@ -29,7 +29,7 @@ from kanibako.paths import xdg
 def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
     """Register helper subcommands on the given parser.
 
-    Called by agent_cmd.py to nest helpers under ``kanibako agent helper``.
+    Called by crab_cmd.py to nest helpers under ``kanibako crab helper``.
     """
     ss = p.add_subparsers(dest="helper_command", metavar="COMMAND")
 

@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.box._parser import run_create, run_list as run_list_fn, run_ps, run_rm
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
-    from kanibako.commands.agent_cmd import add_parser as add_crab_parser
+    from kanibako.commands.crab_cmd import add_parser as add_crab_parser
     from kanibako.commands.system_cmd import add_parser as add_system_parser
 
     # Setup wizard (before management commands, works pre-init).
@@ -234,11 +234,11 @@ def _ensure_initialized() -> None:
     for target_name, cls in discover_targets().items():
         target_toml = crabs_path / f"{target_name}.toml"
         if not target_toml.exists():
-            agent_cfg = cls().generate_crab_config()
-            write_crab_config(target_toml, agent_cfg)
+            crab_cfg = cls().generate_crab_config()
+            write_crab_config(target_toml, crab_cfg)
         else:
-            agent_cfg = CrabConfig()
-        (templates_dir / target_name / agent_cfg.shell).mkdir(
+            crab_cfg = CrabConfig()
+        (templates_dir / target_name / crab_cfg.shell).mkdir(
             parents=True, exist_ok=True,
         )
 

@@ -48,7 +48,7 @@ class ConfigLevel(Enum):
 
     box = "box"
     workset = "workset"
-    agent = "agent"
+    crab = "crab"
     system = "system"
 
 

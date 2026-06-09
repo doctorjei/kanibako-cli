@@ -381,5 +381,5 @@ class TestConfigLevel:
     def test_levels(self):
         assert ConfigLevel.box.value == "box"
         assert ConfigLevel.workset.value == "workset"
-        assert ConfigLevel.agent.value == "agent"
+        assert ConfigLevel.crab.value == "crab"
         assert ConfigLevel.system.value == "system"
