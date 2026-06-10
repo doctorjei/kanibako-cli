@@ -92,6 +92,8 @@ class StandardPaths:
     boxes: Path
     crabs: Path
     comms: Path
+    share_ro: Path
+    share_rw: Path
     templates: Path
     ws_hints: Path
 
@@ -229,6 +231,8 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.path.boxes": "@system.path.data/boxes",
     "system.path.crabs": "@system.path.data/crabs",
     "system.path.comms": "@system.path.data/comms",
+    "system.path.share_ro": "@system.path.data/share_ro",
+    "system.path.share_rw": "@system.path.data/share_rw",
     "system.path.templates": "@system.path.data/templates",
     "system.path.ws_hints": "@system.path.data/worksets.toml",
 }
@@ -352,6 +356,8 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         boxes=resolved["system.path.boxes"],
         crabs=resolved["system.path.crabs"],
         comms=resolved["system.path.comms"],
+        share_ro=resolved["system.path.share_ro"],
+        share_rw=resolved["system.path.share_rw"],
         templates=resolved["system.path.templates"],
         ws_hints=resolved["system.path.ws_hints"],
     )
