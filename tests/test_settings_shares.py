@@ -14,7 +14,7 @@ from kanibako.settings_resolve import (
     resolve_value,
     _Unset,
 )
-from kanibako.settings_shares import resolve_shares
+from kanibako.settings_shares import is_share_key, resolve_shares
 
 HOST_HOME = "/home/u"
 
@@ -298,3 +298,27 @@ class TestOrdering:
         mounts = _resolve(levels, ctx)
         # ro sorts before rw; within rw, name ascending.
         assert [m.destination for m in mounts] == ["/gm", "/ga", "/gz"]
+
+
+# ---------------------------------------------------------------------------
+# is_share_key
+# ---------------------------------------------------------------------------
+
+
+class TestIsShareKey:
+    def test_true_for_each_scope_and_mode(self):
+        assert is_share_key("system.path.share_ro.foo")
+        assert is_share_key("crab.path.share_rw.bar")
+        assert is_share_key("workset.path.share_ro.x")
+        assert is_share_key("box.path.share_rw.y")
+        # Dotted name is allowed (greedy remainder).
+        assert is_share_key("system.path.share_rw.a.b.c")
+
+    def test_false_for_non_share_keys(self):
+        assert not is_share_key("system.path.data")
+        assert not is_share_key("crab.model")
+        assert not is_share_key("box.image")
+        assert not is_share_key("nope.path.share_rw.foo")
+        assert not is_share_key("system.path.share_xx.foo")
+        # Missing the trailing name.
+        assert not is_share_key("system.path.share_rw")

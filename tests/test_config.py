@@ -13,6 +13,7 @@ from kanibako.config import (
     migrate_config,
     read_project_meta,
     read_resource_overrides,
+    read_shares,
     read_crab_settings,
     remove_resource_override,
     remove_crab_setting,
@@ -596,3 +597,55 @@ class TestTargetSettings:
         meta = read_project_meta(p)
         assert meta is not None
         assert meta["mode"] == "local"
+
+
+class TestReadShares:
+    def test_reads_dotted_share_keys(self, tmp_path):
+        p = tmp_path / "kanibako.toml"
+        p.write_text(
+            "[system.path.share_rw]\n"
+            'foo = "h:g"\n'
+            'bar = "/abs:~/bar"\n'
+        )
+        shares = read_shares(p)
+        assert shares == {
+            "system.path.share_rw.foo": "h:g",
+            "system.path.share_rw.bar": "/abs:~/bar",
+        }
+
+    def test_no_share_keys_returns_empty(self, tmp_path):
+        p = tmp_path / "kanibako.toml"
+        p.write_text('box_image = "x"\n[crab]\nmodel = "sonnet"\n')
+        assert read_shares(p) == {}
+
+    def test_none_path_returns_empty(self):
+        assert read_shares(None) == {}
+
+    def test_missing_path_returns_empty(self, tmp_path):
+        assert read_shares(tmp_path / "nope.toml") == {}
+
+    def test_only_share_keys_returned_when_mixed(self, tmp_path):
+        p = tmp_path / "kanibako.toml"
+        p.write_text(
+            'box_image = "img"\n'
+            "[crab]\n"
+            'model = "haiku"\n'
+            "[system.path]\n"
+            'data = "/d"\n'
+            "[crab.path.share_ro]\n"
+            'docs = "/host/docs:/srv/docs"\n'
+        )
+        assert read_shares(p) == {
+            "crab.path.share_ro.docs": "/host/docs:/srv/docs",
+        }
+
+    def test_suppression_empty_value_returned(self, tmp_path):
+        """An explicit '' is preserved so the resolver can see the suppression."""
+        p = tmp_path / "project.toml"
+        p.write_text('[system.path.share_rw]\nfoo = ""\n')
+        assert read_shares(p) == {"system.path.share_rw.foo": ""}
+
+    def test_unreadable_toml_returns_empty(self, tmp_path):
+        p = tmp_path / "bad.toml"
+        p.write_text("this is = = not valid toml [[[\n")
+        assert read_shares(p) == {}

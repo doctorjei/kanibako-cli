@@ -746,6 +746,19 @@ def _run_container(
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
             extra_mounts.extend(resource_mounts)
 
+        # Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*).
+        # Additive: empty config → no mounts → no behavior change.
+        share_mounts = _build_share_mounts(
+            std=std,
+            proj=proj,
+            crab_name=agent_id,
+            global_config_path=config_file,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            crab_config_path=crab_cfg_path,
+        )
+        extra_mounts.extend(share_mounts)
+
         # Image sharing: mount host image storage read-only into child.
         if share_images or merged.box_share_images:
             from kanibako.image_sharing import build_image_sharing_mounts
@@ -1189,6 +1202,83 @@ def _build_effective_state(
             effective[key] = rv.value
 
     return effective
+
+
+def _build_share_mounts(
+    *,
+    std,
+    proj,
+    crab_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    crab_config_path,
+) -> list:
+    """Resolve scoped-share config ({scope}.path.share_{ro,rw}.*) into Mounts.
+
+    ADDITIVE: with no share keys configured, returns []. Reads each level's set
+    share keys from its config file; the KEY's scope sets the source root +
+    mode, the LEVEL where set decides precedence (a box can suppress an
+    inherited system share with a terminal "").
+    """
+    from kanibako.config import read_shares
+    from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
+    from kanibako.settings_shares import resolve_shares
+
+    # Four precedence levels, most-specific first.
+    levels = [
+        LevelView("box", read_shares(project_toml)),
+        LevelView("workset", read_shares(workset_config_path)),
+        LevelView("crab", read_shares(crab_config_path)),
+        LevelView("system", read_shares(global_config_path)),
+    ]
+
+    # Source roots per scope group (concrete host paths → expand_expr verbatim).
+    crab_share_root = str(std.crabs / crab_name / "share")
+    scope_roots = {
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+        "crab.path.share_ro": crab_share_root,
+        "crab.path.share_rw": crab_share_root,
+    }
+    if proj.group is not None and not proj.group.is_default:
+        ws_root = str(proj.group.root)
+        scope_roots["workset.path.share_ro"] = ws_root
+        scope_roots["workset.path.share_rw"] = ws_root
+    # box scope: arbitrary host path, NO root → omit (host_src used as-is).
+
+    workset_name = (
+        proj.group.name
+        if (proj.group is not None and not proj.group.is_default)
+        else None
+    )
+    ctx = ResolveCtx(
+        crab_name=crab_name,
+        workset_name=workset_name,
+        host_home=str(Path.home()),
+        xdg={"XDG_DATA_HOME": str(std.data_home)},
+    )
+
+    # Share VALUES may reference the resolved system path tier via @-refs.
+    resolved_sys = {
+        "system.path.data": str(std.data_path),
+        "system.path.boxes": str(std.boxes),
+        "system.path.crabs": str(std.crabs),
+        "system.path.comms": str(std.comms),
+        "system.path.templates": str(std.templates),
+        "system.path.ws_hints": str(std.ws_hints),
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+    }
+
+    def _lookup(ref, chain):
+        if ref in resolved_sys:
+            return resolved_sys[ref]
+        raise SettingsError(f"Unresolvable @-reference in share value: {ref}")
+
+    return resolve_shares(
+        levels=levels, ctx=ctx, lookup=_lookup, scope_roots=scope_roots
+    )
 
 
 def _kanibako_mounts():

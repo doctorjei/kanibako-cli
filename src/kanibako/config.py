@@ -504,6 +504,44 @@ def remove_crab_setting(path: Path, key: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*)
+# ---------------------------------------------------------------------------
+
+def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
+    """Flatten nested dict into DOTTED-key form, stringifying scalar leaves.
+
+    ``{"system": {"path": {"share_rw": {"foo": "h:g"}}}}`` →
+    ``{"system.path.share_rw.foo": "h:g"}``.
+    """
+    out: dict[str, str] = {}
+    for k, v in data.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            out.update(_flatten_dotted(v, key))
+        else:
+            out[key] = str(v)
+    return out
+
+
+def read_shares(path: Path | None) -> dict[str, str]:
+    """Read scoped-share keys ({scope}.path.share_{ro,rw}.{name}) from a config
+    file as a flat dotted-key dict. Missing/None/unreadable path → {}."""
+    from kanibako.settings_shares import is_share_key
+
+    if path is None:
+        return {}
+    try:
+        if not path.exists():
+            return {}
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return {}
+    flat = _flatten_dotted(data)
+    return {k: v for k, v in flat.items() if is_share_key(k)}
+
+
+# ---------------------------------------------------------------------------
 # Resource scope overrides (per-project)
 # ---------------------------------------------------------------------------
 

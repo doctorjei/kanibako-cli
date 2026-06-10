@@ -66,9 +66,15 @@ from kanibako.targets.base import Mount
 
 # Matches a scoped-share key: scope . path . share_{ro|rw} . name
 # (name greedily captures the remainder, which may contain dots).
-_SHARE_KEY_RE = re.compile(
+SHARE_KEY_RE = re.compile(
     r"^(?P<scope>system|crab|workset|box)\.path\.share_(?P<mode>ro|rw)\.(?P<name>.+)$"
 )
+
+
+def is_share_key(key: str) -> bool:
+    """True if *key* is a scoped-share config key ({scope}.path.share_{ro,rw}.{name})."""
+    return SHARE_KEY_RE.match(key) is not None
+
 
 # Apply order: REVERSE of precedence (most-specific scope mounts LAST so
 # podman's last-`-v`-wins dedup honors it).
@@ -95,15 +101,15 @@ def resolve_shares(
     keys: set[str] = set()
     for level in levels:
         for key in level.values:
-            if _SHARE_KEY_RE.match(key):
+            if SHARE_KEY_RE.match(key):
                 keys.add(key)
         for key in level.defaults:
-            if _SHARE_KEY_RE.match(key):
+            if SHARE_KEY_RE.match(key):
                 keys.add(key)
 
     mounts: list[tuple[tuple[int, str, str], Mount]] = []
     for key in keys:
-        m = _SHARE_KEY_RE.match(key)
+        m = SHARE_KEY_RE.match(key)
         assert m is not None  # keys were filtered by the same regex.
         scope = m.group("scope")
         mode = m.group("mode")

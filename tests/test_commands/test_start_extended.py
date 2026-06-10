@@ -357,8 +357,13 @@ class TestCrabConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            div_call = m.load_std_paths.return_value.crabs.__truediv__.call_args
-            assert div_call[0][0] == "no_agent.toml"
+            # std.crabs also gets a / "no_agent" / "share" call from the
+            # scoped-share resolver, so check the full call list.
+            div_args = [
+                c[0][0]
+                for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
+            ]
+            assert "no_agent.toml" in div_args
 
 
 # ---------------------------------------------------------------------------

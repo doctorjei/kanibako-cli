@@ -526,8 +526,13 @@ class TestCrabConfigIntegration:
                 extra_args=[],
             )
             # The crab TOML path is derived as std.crabs / "general.toml".
-            div_call = m.load_std_paths.return_value.crabs.__truediv__.call_args
-            assert div_call[0][0] == "general.toml"
+            # (std.crabs also gets a / "general" / "share" call from the scoped-
+            # share resolver, so check the full call list rather than the last.)
+            div_args = [
+                c[0][0]
+                for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
+            ]
+            assert "general.toml" in div_args
 
 
 class TestContainerEnvPrecedence:
@@ -1215,3 +1220,108 @@ class TestNoAgentMessage:
             # Shell should still launch (entrypoint set → skips target resolution)
             assert rc == 0
             m.runtime.run.assert_called_once()
+
+
+class TestBuildShareMounts:
+    """Unit tests for _build_share_mounts (scoped-share wiring)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            share_ro=tmp_path / "share-ro",
+            share_rw=tmp_path / "share-rw",
+            crabs=tmp_path / "crabs",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            boxes=tmp_path / "boxes",
+            comms=tmp_path / "comms",
+            templates=tmp_path / "templates",
+            ws_hints=tmp_path / "ws_hints.toml",
+        )
+
+    def _proj(self, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(group=group)
+
+    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
+              project_toml=None, workset_config_path=None, crab_config_path=None):
+        from kanibako.commands.start import _build_share_mounts
+        return _build_share_mounts(
+            std=std or self._std(tmp_path),
+            proj=proj or self._proj(),
+            crab_name="claude",
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            crab_config_path=crab_config_path,
+        )
+
+    def test_empty_config_returns_empty(self, tmp_path):
+        """No share keys anywhere → no mounts (the no-behavior-change guarantee)."""
+        glob = tmp_path / "kanibako.toml"
+        glob.write_text('box_image = "img"\n[crab]\nmodel = "sonnet"\n')
+        ptoml = tmp_path / "project.toml"
+        ptoml.write_text("[box]\nimage = \"x\"\n")
+        mounts = self._call(
+            tmp_path,
+            global_config_path=glob,
+            project_toml=ptoml,
+            workset_config_path=None,
+            crab_config_path=None,
+        )
+        assert mounts == []
+
+    def test_all_paths_none_returns_empty(self, tmp_path):
+        assert self._call(tmp_path) == []
+
+    def test_system_share_rw_one_mount(self, tmp_path):
+        from pathlib import Path
+        glob = tmp_path / "kanibako.toml"
+        glob.write_text(
+            "[system.path.share_rw]\n"
+            'data = "/host/x:~/data"\n'
+        )
+        mounts = self._call(tmp_path, global_config_path=glob)
+        assert len(mounts) == 1
+        m = mounts[0]
+        assert m.source == Path("/host/x")
+        assert m.destination == "/home/agent/data"
+        assert m.options == "Z,U"
+
+    def test_box_level_suppression(self, tmp_path):
+        """project.toml '' for a system-scoped key suppresses the system share."""
+        glob = tmp_path / "kanibako.toml"
+        glob.write_text('[system.path.share_rw]\nfoo = "/a:~/foo"\n')
+        ptoml = tmp_path / "project.toml"
+        ptoml.write_text('[system.path.share_rw]\nfoo = ""\n')
+        mounts = self._call(
+            tmp_path, global_config_path=glob, project_toml=ptoml,
+        )
+        assert mounts == []
+
+    def test_crab_scope_root_join(self, tmp_path):
+        """A relative crab share joins under std.crabs/<crab>/share."""
+        crab_cfg = tmp_path / "claude.toml"
+        crab_cfg.write_text(
+            '[crab.path.share_rw]\nplugins = "plugins:~/.claude/plugins"\n'
+        )
+        std = self._std(tmp_path)
+        mounts = self._call(tmp_path, std=std, crab_config_path=crab_cfg)
+        assert len(mounts) == 1
+        m = mounts[0]
+        assert m.source == std.crabs / "claude" / "share" / "plugins"
+        assert m.destination == "/home/agent/.claude/plugins"
+
+    def test_workset_root_only_for_non_default_group(self, tmp_path):
+        from types import SimpleNamespace
+        ws_root = tmp_path / "myws"
+        group = SimpleNamespace(root=ws_root, name="myws", is_default=False)
+        ws_cfg = tmp_path / "config.toml"
+        ws_cfg.write_text('[workset.path.share_rw]\nshared = "rel:~/shared"\n')
+        mounts = self._call(
+            tmp_path,
+            proj=self._proj(group=group),
+            workset_config_path=ws_cfg,
+        )
+        assert len(mounts) == 1
+        assert mounts[0].source == ws_root / "rel"
