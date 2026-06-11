@@ -195,8 +195,8 @@ class TestStandaloneLaunch:
         proj.project_hash = "abc123"
         proj.metadata_path = project_path / ".kanibako"
         proj.shell_path = project_path / ".kanibako" / "shell"
-        proj.vault_ro_path = project_path / "vault" / "share-ro"
-        proj.vault_rw_path = project_path / "vault" / "share-rw"
+        proj.vault_ro_path = project_path / "vault" / "ro"
+        proj.vault_rw_path = project_path / "vault" / "rw"
         return proj
 
     def test_start_detects_standalone_project(self, start_mocks, tmp_path):
@@ -265,8 +265,8 @@ class TestStandaloneLaunch:
         call_kwargs = m.runtime.run.call_args.kwargs
         assert call_kwargs["shell_path"] == project / ".kanibako" / "shell"
         assert call_kwargs["project_path"] == project
-        assert call_kwargs["vault_ro_path"] == project / "vault" / "share-ro"
-        assert call_kwargs["vault_rw_path"] == project / "vault" / "share-rw"
+        assert call_kwargs["vault_ro_path"] == project / "vault" / "ro"
+        assert call_kwargs["vault_rw_path"] == project / "vault" / "rw"
 
     def test_start_standalone_credential_flow(self, start_mocks, tmp_path):
         """Credential refresh uses target.refresh_credentials with shell_path."""
@@ -389,8 +389,8 @@ class TestWorksetLaunch:
         proj.project_hash = "ws123abc"
         proj.metadata_path = ws_root / "kanibako" / project_name
         proj.shell_path = ws_root / "kanibako" / project_name / "shell"
-        proj.vault_ro_path = ws_root / "vault" / project_name / "share-ro"
-        proj.vault_rw_path = ws_root / "vault" / project_name / "share-rw"
+        proj.vault_ro_path = ws_root / "vault" / project_name / "ro"
+        proj.vault_rw_path = ws_root / "vault" / project_name / "rw"
         return proj
 
     def test_start_detects_workset_project(self, start_mocks, tmp_path):
@@ -459,8 +459,8 @@ class TestWorksetLaunch:
         call_kwargs = m.runtime.run.call_args.kwargs
         assert call_kwargs["shell_path"] == ws_root / "kanibako" / "myproj" / "shell"
         assert call_kwargs["project_path"] == ws_root / "workspaces" / "myproj"
-        assert call_kwargs["vault_ro_path"] == ws_root / "vault" / "myproj" / "share-ro"
-        assert call_kwargs["vault_rw_path"] == ws_root / "vault" / "myproj" / "share-rw"
+        assert call_kwargs["vault_ro_path"] == ws_root / "vault" / "myproj" / "ro"
+        assert call_kwargs["vault_rw_path"] == ws_root / "vault" / "myproj" / "rw"
 
     def test_start_workset_credential_flow(self, start_mocks, tmp_path):
         """Credential refresh uses target with workset shell_path."""

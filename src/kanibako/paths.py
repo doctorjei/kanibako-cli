@@ -126,8 +126,8 @@ class ProjectPaths:
     project_hash: str
     metadata_path: Path      # host-only: project.toml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
-    vault_ro_path: Path      # {project}/vault/share-ro (→ /home/agent/share-ro)
-    vault_rw_path: Path      # {project}/vault/share-rw (→ /home/agent/share-rw)
+    vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/share-ro)
+    vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
     is_new: bool = field(default=False)
     mode: ProjectMode = field(default=ProjectMode.local)
     layout: ProjectLayout = field(default=ProjectLayout.default)
@@ -418,8 +418,8 @@ def resolve_project(
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.local]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.local]
@@ -603,8 +603,8 @@ def _compute_project_paths(
 
     The only structural difference between local and workset is *where* the
     vault lives in the non-``simple`` layouts; the caller expresses that by
-    passing ``vault_root`` — the parent directory under which ``share-ro`` and
-    ``share-rw`` are placed.  The ``simple`` layout always keeps shell and
+    passing ``vault_root`` — the parent directory under which ``ro`` and
+    ``rw`` are placed.  The ``simple`` layout always keeps shell and
     vault inside the workspace and ignores *vault_root*.
 
     Caller-supplied *vault_root* must reproduce the existing per-mode policy:
@@ -615,12 +615,12 @@ def _compute_project_paths(
     """
     if layout == ProjectLayout.simple:
         shell = project_path / ".shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = project_path / "vault" / "ro"
+        vault_rw = project_path / "vault" / "rw"
     else:  # default / robust
         shell = metadata_path / "shell"
-        vault_ro = vault_root / "share-ro"
-        vault_rw = vault_root / "share-rw"
+        vault_ro = vault_root / "ro"
+        vault_rw = vault_root / "rw"
     return shell, vault_ro, vault_rw
 
 
@@ -637,12 +637,12 @@ def _compute_standalone_paths(
     """Compute (shell, vault_ro, vault_rw) for standalone mode."""
     if layout == ProjectLayout.robust:
         shell = project_path / "shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = project_path / "vault" / "ro"
+        vault_rw = project_path / "vault" / "rw"
     else:  # simple (default for standalone)
         shell = metadata_path / "shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = project_path / "vault" / "ro"
+        vault_rw = project_path / "vault" / "rw"
     return shell, vault_ro, vault_rw
 
 
@@ -854,11 +854,11 @@ def _init_common(
     if enable_vault:
         vault_ro_path.mkdir(parents=True, exist_ok=True)
         vault_rw_path.mkdir(parents=True, exist_ok=True)
-        # .gitignore in vault/ to exclude share-rw from version control.
+        # .gitignore in vault/ to exclude rw from version control.
         vault_dir = vault_ro_path.parent
         gitignore = vault_dir / ".gitignore"
         if not gitignore.exists():
-            gitignore.write_text("share-rw/\n")
+            gitignore.write_text("rw/\n")
 
     print("done.", file=sys.stderr)
 
@@ -1060,8 +1060,8 @@ def resolve_workset_project(
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.workset]
         shell_path = Path(meta["shell"]) if meta["shell"] else project_dir / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else ws.vault_dir / project_name / "share-ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else ws.vault_dir / project_name / "share-rw"
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else ws.vault_dir / project_name / "ro"
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else ws.vault_dir / project_name / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.workset]
@@ -1391,8 +1391,8 @@ def resolve_standalone_project(
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.standalone]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         if actual_layout is None:

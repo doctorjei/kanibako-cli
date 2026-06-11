@@ -133,7 +133,7 @@ def _duplicate_to_standalone(src_proj, new_path, force):
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"
         if not vault_gitignore.exists():
-            vault_gitignore.write_text("share-rw/\n")
+            vault_gitignore.write_text("rw/\n")
 
 
 def _duplicate_to_local(src_proj, new_path, std, config, force):

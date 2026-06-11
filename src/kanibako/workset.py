@@ -10,8 +10,8 @@ single root directory chosen by the user.  The layout is:
             project.toml          ← per-project config
             .kanibako.lock        ← concurrency lock
         workspaces/{name}/        ← per-project workspace (source tree)
-        vault/{name}/share-ro/    ← per-project read-only vault
-        vault/{name}/share-rw/    ← per-project read-write vault
+        vault/{name}/ro/    ← per-project read-only vault
+        vault/{name}/rw/    ← per-project read-write vault
 
 A global registry at ``$XDG_DATA_HOME/kanibako/worksets.toml`` maps workset
 names to root paths so they can be discovered from anywhere.
@@ -315,8 +315,8 @@ def add_project(ws: Workset, name: str, source_path: Path) -> WorksetProject:
     for parent in (ws.projects_dir, ws.workspaces_dir):
         (parent / name).mkdir(parents=True, exist_ok=True)
     vault_proj = ws.vault_dir / name
-    (vault_proj / "share-ro").mkdir(parents=True, exist_ok=True)
-    (vault_proj / "share-rw").mkdir(parents=True, exist_ok=True)
+    (vault_proj / "ro").mkdir(parents=True, exist_ok=True)
+    (vault_proj / "rw").mkdir(parents=True, exist_ok=True)
 
     proj = WorksetProject(name=name, source_path=source_path.resolve())
     ws.projects.append(proj)

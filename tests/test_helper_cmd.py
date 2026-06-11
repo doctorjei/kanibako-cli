@@ -92,8 +92,8 @@ class TestRunSpawn:
 
         # Directory structure created
         helpers = helpers_env / "helpers"
-        assert (helpers / "1" / "vault" / "share-ro").is_dir()
-        assert (helpers / "1" / "vault" / "share-rw").is_dir()
+        assert (helpers / "1" / "vault" / "ro").is_dir()
+        assert (helpers / "1" / "vault" / "rw").is_dir()
         assert (helpers / "1" / "workspace").is_dir()
         assert (helpers / "1" / "peers").is_dir()
 

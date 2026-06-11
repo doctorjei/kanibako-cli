@@ -251,8 +251,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -278,8 +278,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -295,8 +295,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -315,8 +315,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -335,8 +335,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",

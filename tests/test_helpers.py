@@ -373,8 +373,8 @@ class TestCreateHelperDirs:
         helpers.mkdir()
         root = create_helper_dirs(helpers, 1)
         assert root == helpers / "1"
-        assert (root / "vault" / "share-ro").is_dir()
-        assert (root / "vault" / "share-rw").is_dir()
+        assert (root / "vault" / "ro").is_dir()
+        assert (root / "vault" / "rw").is_dir()
         assert (root / "workspace").is_dir()
         assert (root / "playbook" / "scripts").is_dir()
         assert (root / "peers").is_dir()

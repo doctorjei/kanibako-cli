@@ -768,8 +768,8 @@ class TestResolveProjectHomeGuard:
             layout="default",
             workspace=str(home.resolve()),
             shell=str(boxes_dir / "shell"),
-            vault_ro=str(home / "vault" / "share-ro"),
-            vault_rw=str(home / "vault" / "share-rw"),
+            vault_ro=str(home / "vault" / "ro"),
+            vault_rw=str(home / "vault" / "rw"),
             enable_vault=True,
             metadata=str(boxes_dir),
             project_hash=project_hash(str(home.resolve())),
@@ -985,7 +985,7 @@ class TestEnsureVaultSymlink:
         project = tmp_path / "project"
         project.mkdir()
         remote_vault = tmp_path / "settings" / "abc" / "vault"
-        vault_ro = remote_vault / "share-ro"
+        vault_ro = remote_vault / "ro"
         vault_ro.mkdir(parents=True)
 
         _ensure_vault_symlink(project, vault_ro)
@@ -998,7 +998,7 @@ class TestEnsureVaultSymlink:
         """No symlink created when vault is already under project_path."""
         project = tmp_path / "project"
         vault = project / "vault"
-        vault_ro = vault / "share-ro"
+        vault_ro = vault / "ro"
         vault_ro.mkdir(parents=True)
 
         _ensure_vault_symlink(project, vault_ro)
@@ -1015,7 +1015,7 @@ class TestEnsureVaultSymlink:
         (existing_vault / "my-data").touch()
 
         remote_vault = tmp_path / "remote" / "vault"
-        vault_ro = remote_vault / "share-ro"
+        vault_ro = remote_vault / "ro"
         vault_ro.mkdir(parents=True)
 
         _ensure_vault_symlink(project, vault_ro)
@@ -1033,7 +1033,7 @@ class TestEnsureVaultSymlink:
         link.symlink_to(old_target)
 
         new_target = tmp_path / "new" / "vault"
-        vault_ro = new_target / "share-ro"
+        vault_ro = new_target / "ro"
         vault_ro.mkdir(parents=True)
 
         _ensure_vault_symlink(project, vault_ro)
@@ -1046,7 +1046,7 @@ class TestEnsureVaultSymlink:
         project = tmp_path / "project"
         project.mkdir()
         remote_vault = tmp_path / "settings" / "vault"
-        vault_ro = remote_vault / "share-ro"
+        vault_ro = remote_vault / "ro"
         vault_ro.mkdir(parents=True)
 
         link = project / "vault"
@@ -1074,7 +1074,7 @@ class TestEnsureVaultSymlink:
         # Symlink should exist at project_path/vault.
         link = proj.project_path / "vault"
         assert link.is_symlink()
-        assert (link / "share-ro").is_dir()
+        assert (link / "ro").is_dir()
 
     def test_local_default_layout_no_symlink(self, config_file, tmp_home, credentials_dir):
         """resolve_project with default layout does not create symlink."""

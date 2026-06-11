@@ -215,7 +215,7 @@ def _format_value(v: object) -> str:
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     """Create the directory layout for a single helper.
 
-    Creates vault (with share-ro, share-rw), workspace, playbook/scripts,
+    Creates vault (with ro, rw), workspace, playbook/scripts,
     and peers directories.  Returns the helper's root directory.
     """
     root = helpers_dir / str(helper_num)
@@ -224,8 +224,8 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     # Vault with communication channels
     vault = root / "vault"
     vault.mkdir(exist_ok=True)
-    (vault / "share-ro").mkdir(exist_ok=True)
-    (vault / "share-rw").mkdir(exist_ok=True)
+    (vault / "ro").mkdir(exist_ok=True)
+    (vault / "rw").mkdir(exist_ok=True)
 
     # Standard layout
     (root / "workspace").mkdir(exist_ok=True)

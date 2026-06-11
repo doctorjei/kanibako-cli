@@ -43,7 +43,7 @@ def fork_ctx(tmp_path):
     (shell_dir / ".bashrc").write_text("# bashrc\n")
     vault_dir = meta_dir / "vault"
     vault_dir.mkdir()
-    (vault_dir / "share-ro").mkdir()
+    (vault_dir / "ro").mkdir()
     (meta_dir / "project.toml").write_text("[meta]\nmode = \"local\"\n")
     (meta_dir / ".kanibako.lock").write_text("lock\n")
     helpers_dir_meta = meta_dir / "helpers"
@@ -139,7 +139,7 @@ class TestHandleFork:
         # shell should be copied
         assert (new_meta / "shell" / ".bashrc").is_file()
         # vault should be copied
-        assert (new_meta / "vault" / "share-ro").is_dir()
+        assert (new_meta / "vault" / "ro").is_dir()
         # lock file should NOT be copied
         assert not (new_meta / ".kanibako.lock").exists()
         # helpers dir should NOT be copied

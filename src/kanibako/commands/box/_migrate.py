@@ -267,7 +267,7 @@ def _convert_local_to_standalone(project_path, std, config, proj):
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"
         if not vault_gitignore.exists():
-            vault_gitignore.write_text("share-rw/\n")
+            vault_gitignore.write_text("rw/\n")
 
     # Remove vault symlinks before cleaning up old local data.
     human_vault_dir = std.data_path / config.paths_vault
@@ -571,4 +571,4 @@ def _convert_ws_to_standalone(src_proj, dest_path):
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"
         if not vault_gitignore.exists():
-            vault_gitignore.write_text("share-rw/\n")
+            vault_gitignore.write_text("rw/\n")

@@ -208,8 +208,8 @@ class TestProjectMeta:
             layout="default",
             workspace="/home/user/myproject",
             shell="/data/kanibako/settings/abc/shell",
-            vault_ro="/home/user/myproject/vault/share-ro",
-            vault_rw="/home/user/myproject/vault/share-rw",
+            vault_ro="/home/user/myproject/vault/ro",
+            vault_rw="/home/user/myproject/vault/rw",
         )
         assert toml_path.is_file()
 
@@ -218,8 +218,8 @@ class TestProjectMeta:
         assert meta["mode"] == "local"
         assert meta["workspace"] == "/home/user/myproject"
         assert meta["shell"] == "/data/kanibako/settings/abc/shell"
-        assert meta["vault_ro"] == "/home/user/myproject/vault/share-ro"
-        assert meta["vault_rw"] == "/home/user/myproject/vault/share-rw"
+        assert meta["vault_ro"] == "/home/user/myproject/vault/ro"
+        assert meta["vault_rw"] == "/home/user/myproject/vault/rw"
 
     def test_read_missing_file(self, tmp_path):
         meta = read_project_meta(tmp_path / "nonexistent.toml")
@@ -241,8 +241,8 @@ class TestProjectMeta:
             layout="default",
             workspace="/tmp/proj",
             shell="/tmp/proj/.kanibako/shell",
-            vault_ro="/tmp/proj/vault/share-ro",
-            vault_rw="/tmp/proj/vault/share-rw",
+            vault_ro="/tmp/proj/vault/ro",
+            vault_rw="/tmp/proj/vault/rw",
         )
 
         # Container section preserved
@@ -287,8 +287,8 @@ class TestProjectMeta:
             layout="default",
             workspace="/home/user/proj",
             shell="/data/boxes/abc/shell",
-            vault_ro="/home/user/proj/vault/share-ro",
-            vault_rw="/home/user/proj/vault/share-rw",
+            vault_ro="/home/user/proj/vault/ro",
+            vault_rw="/home/user/proj/vault/rw",
             metadata="/data/boxes/abc",
             project_hash="abc123def456",
             global_shared="/data/shared/global",
@@ -329,8 +329,8 @@ class TestProjectMeta:
             layout="robust",
             workspace="/ws/proj",
             shell="/ws/proj/shell",
-            vault_ro="/ws/vault/proj/share-ro",
-            vault_rw="/ws/vault/proj/share-rw",
+            vault_ro="/ws/vault/proj/ro",
+            vault_rw="/ws/vault/proj/rw",
             metadata="/ws/data/proj",
             # project_hash, global_shared, local_shared not passed → default ""
         )

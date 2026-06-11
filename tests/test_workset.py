@@ -274,8 +274,8 @@ class TestAddProject:
         resolved = root.resolve()
         assert (resolved / "boxes" / "cool-app").is_dir()
         assert (resolved / "workspaces" / "cool-app").is_dir()
-        assert (resolved / "vault" / "cool-app" / "share-ro").is_dir()
-        assert (resolved / "vault" / "cool-app" / "share-rw").is_dir()
+        assert (resolved / "vault" / "cool-app" / "ro").is_dir()
+        assert (resolved / "vault" / "cool-app" / "rw").is_dir()
 
     def test_persists_to_toml(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"

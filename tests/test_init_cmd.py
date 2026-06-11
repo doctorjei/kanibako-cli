@@ -64,8 +64,8 @@ class TestRunCreate:
         resolved = project_dir.resolve()
         assert (resolved / ".kanibako").is_dir()
         assert (resolved / ".kanibako" / "shell").is_dir()
-        assert (resolved / "vault" / "share-ro").is_dir()
-        assert (resolved / "vault" / "share-rw").is_dir()
+        assert (resolved / "vault" / "ro").is_dir()
+        assert (resolved / "vault" / "rw").is_dir()
 
     def test_create_standalone_cwd(
         self, config_file, credentials_dir, project_dir, monkeypatch, capsys,
@@ -287,8 +287,8 @@ class TestCreateNoVault:
         rc = run_create(args)
 
         assert rc == 0
-        assert (project / "vault" / "share-ro").is_dir()
-        assert (project / "vault" / "share-rw").is_dir()
+        assert (project / "vault" / "ro").is_dir()
+        assert (project / "vault" / "rw").is_dir()
 
 
 class TestCreateDistinctAuth:

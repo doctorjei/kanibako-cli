@@ -65,8 +65,8 @@ class TestResolveWorksetProject:
         assert proj.project_path == ws.workspaces_dir / name
         assert proj.metadata_path == ws.projects_dir / name
         assert proj.shell_path == ws.projects_dir / name / "shell"
-        assert proj.vault_ro_path == ws.vault_dir / name / "share-ro"
-        assert proj.vault_rw_path == ws.vault_dir / name / "share-rw"
+        assert proj.vault_ro_path == ws.vault_dir / name / "ro"
+        assert proj.vault_rw_path == ws.vault_dir / name / "rw"
 
     def test_project_hash_is_sha256_of_workspace_path(self, workset_env, std, config):
         ws, name = workset_env
@@ -389,5 +389,5 @@ class TestWorksetSimpleLayoutPaths:
         assert proj.metadata_path == ws.projects_dir / name
         # simple layout: shell and vault are inside the workspace.
         assert proj.shell_path == workspace / ".shell"
-        assert proj.vault_ro_path == workspace / "vault" / "share-ro"
-        assert proj.vault_rw_path == workspace / "vault" / "share-rw"
+        assert proj.vault_ro_path == workspace / "vault" / "ro"
+        assert proj.vault_rw_path == workspace / "vault" / "rw"

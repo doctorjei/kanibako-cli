@@ -221,8 +221,8 @@ def _stub_project(metadata_path, project_path, config):
         project_hash=phash,
         metadata_path=metadata_path,
         shell_path=metadata_path / "shell",
-        vault_ro_path=effective_path / "vault" / "share-ro",
-        vault_rw_path=effective_path / "vault" / "share-rw",
+        vault_ro_path=effective_path / "vault" / "ro",
+        vault_rw_path=effective_path / "vault" / "rw",
         is_new=False,
         name=name,
     )

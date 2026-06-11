@@ -976,7 +976,7 @@ class TestBoxConvert:
         assert rc == 0
 
         assert vault_gitignore.exists()
-        assert "share-rw/" in vault_gitignore.read_text()
+        assert "rw/" in vault_gitignore.read_text()
 
     def test_convert_writes_root_gitignore(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_migrate
