@@ -146,6 +146,39 @@ class TestTargetABC:
         t = MinimalTarget()
         assert t.resource_mappings() == []
 
+    def test_default_seeds(self):
+        """Default default_seeds() returns empty dict (no seeds)."""
+
+        class MinimalTarget(Target):
+            @property
+            def name(self) -> str:
+                return "minimal"
+
+            @property
+            def display_name(self) -> str:
+                return "Minimal"
+
+            def detect(self):
+                return None
+
+            def binary_mounts(self, install):
+                return []
+
+            def init_home(self, home, *, group_auth=True):
+                pass
+
+            def refresh_credentials(self, home):
+                pass
+
+            def writeback_credentials(self, home):
+                pass
+
+            def build_cli_args(self, **kwargs):
+                return []
+
+        t = MinimalTarget()
+        assert t.default_seeds() == {}
+
     def test_abstract_methods_enforced(self):
         """Target subclass missing abstract methods cannot be instantiated."""
 

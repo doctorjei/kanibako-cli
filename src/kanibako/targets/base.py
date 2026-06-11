@@ -147,6 +147,17 @@ class Target(ABC):
         """
         return {}
 
+    def default_seeds(self) -> dict[str, str]:
+        """Declare default copy-once-at-init seeds for this agent's crab.
+
+        Returns a mapping of full seed keys ({scope}.path.seeded.{name}) to
+        host_src:guest_dest expressions, injected as the CRAB level's declared
+        defaults in the seed resolver. A user can override or suppress (terminal
+        "" or the "empty" sentinel) any of them at a more-specific level. The
+        default returns {} (no seeds). No target ships a default seed yet.
+        """
+        return {}
+
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare what runtime settings this target supports.
 

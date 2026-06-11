@@ -1362,3 +1362,131 @@ class TestBuildShareMounts:
     def test_target_none_no_default_shares(self, tmp_path):
         """target=None means no default shares (backward compatible)."""
         assert self._call(tmp_path, target=None) == []
+
+
+class TestApplyInitSeeds:
+    """Unit tests for _apply_init_seeds (copy-once-at-init seed wiring)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            share_ro=tmp_path / "share-ro",
+            share_rw=tmp_path / "share-rw",
+            crabs=tmp_path / "crabs",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            boxes=tmp_path / "boxes",
+            comms=tmp_path / "comms",
+            templates=tmp_path / "templates",
+            ws_hints=tmp_path / "ws_hints.toml",
+        )
+
+    def _proj(self, shell_path, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(shell_path=shell_path, group=group)
+
+    def _logger(self):
+        import logging
+        return logging.getLogger("test_apply_init_seeds")
+
+    def _shell(self, tmp_path):
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        return shell
+
+    def _call(self, tmp_path, *, std=None, proj=None, target=None,
+              global_config_path=None, project_toml=None,
+              workset_config_path=None, crab_config_path=None):
+        from kanibako.commands.start import _apply_init_seeds
+        _apply_init_seeds(
+            std=std or self._std(tmp_path),
+            proj=proj,
+            crab_name="claude",
+            target=target,
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            crab_config_path=crab_config_path,
+            logger=self._logger(),
+        )
+
+    def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
+        """No seed config and target=None → nothing copied (no behavior change)."""
+        shell = self._shell(tmp_path)
+        glob = tmp_path / "kanibako.toml"
+        glob.write_text('box_image = "img"\n[crab]\nmodel = "sonnet"\n')
+        self._call(
+            tmp_path,
+            proj=self._proj(shell),
+            target=None,
+            global_config_path=glob,
+        )
+        assert list(shell.iterdir()) == []
+
+    def test_configured_crab_seed_copied(self, tmp_path):
+        """A crab-config seed copies host_src dir into shell_path/<dest>."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "file.txt").write_text("hello")
+        crab_cfg = tmp_path / "claude.toml"
+        crab_cfg.write_text(f'[crab.path.seeded]\nfoo = "{src}:~/foo"\n')
+        self._call(
+            tmp_path,
+            proj=self._proj(shell),
+            crab_config_path=crab_cfg,
+        )
+        assert (shell / "foo" / "file.txt").read_text() == "hello"
+
+    def test_target_default_seed_served(self, tmp_path):
+        """A target's declared default seed copies even with no config files."""
+        from types import SimpleNamespace
+        shell = self._shell(tmp_path)
+        src = tmp_path / "tsrc"
+        src.mkdir()
+        (src / "x.txt").write_text("data")
+        target = SimpleNamespace(
+            name="claude",
+            default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
+        )
+        self._call(tmp_path, proj=self._proj(shell), target=target)
+        assert (shell / "x" / "x.txt").read_text() == "data"
+
+    def test_box_suppresses_target_default_seed(self, tmp_path):
+        """A box-level '' suppresses the target-declared default seed."""
+        from types import SimpleNamespace
+        shell = self._shell(tmp_path)
+        src = tmp_path / "ssrc"
+        src.mkdir()
+        (src / "x.txt").write_text("data")
+        target = SimpleNamespace(
+            name="claude",
+            default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
+        )
+        ptoml = tmp_path / "project.toml"
+        ptoml.write_text('[crab.path.seeded]\nx = ""\n')
+        self._call(
+            tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
+        )
+        assert not (shell / "x").exists()
+
+    def test_guest_home_dest_copies_contents_into_root(self, tmp_path):
+        """guest_dest of ~/ (== /home/agent) copies src contents into shell root."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "hsrc"
+        src.mkdir()
+        (src / "root_file.txt").write_text("top")
+        crab_cfg = tmp_path / "claude.toml"
+        crab_cfg.write_text(f'[crab.path.seeded]\nhome = "{src}:~/"\n')
+        self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
+        assert (shell / "root_file.txt").read_text() == "top"
+
+    def test_missing_host_src_skipped(self, tmp_path):
+        """A seed whose host_src does not exist is skipped (no crash, no copy)."""
+        shell = self._shell(tmp_path)
+        missing = tmp_path / "does_not_exist"
+        crab_cfg = tmp_path / "claude.toml"
+        crab_cfg.write_text(f'[crab.path.seeded]\ngone = "{missing}:~/gone"\n')
+        self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
+        assert not (shell / "gone").exists()
+        assert list(shell.iterdir()) == []

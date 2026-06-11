@@ -13,6 +13,7 @@ from kanibako.config import (
     migrate_config,
     read_project_meta,
     read_resource_overrides,
+    read_seeds,
     read_shares,
     read_crab_settings,
     remove_resource_override,
@@ -649,3 +650,56 @@ class TestReadShares:
         p = tmp_path / "bad.toml"
         p.write_text("this is = = not valid toml [[[\n")
         assert read_shares(p) == {}
+
+
+class TestReadSeeds:
+    def test_reads_dotted_seed_keys(self, tmp_path):
+        p = tmp_path / "kanibako.toml"
+        p.write_text(
+            "[crab.path.seeded]\n"
+            'foo = "/src:~/foo"\n'
+            'bar = "/abs:/home/agent/bar"\n'
+        )
+        assert read_seeds(p) == {
+            "crab.path.seeded.foo": "/src:~/foo",
+            "crab.path.seeded.bar": "/abs:/home/agent/bar",
+        }
+
+    def test_no_seed_keys_returns_empty(self, tmp_path):
+        p = tmp_path / "kanibako.toml"
+        p.write_text('box_image = "x"\n[crab]\nmodel = "sonnet"\n')
+        assert read_seeds(p) == {}
+
+    def test_none_path_returns_empty(self):
+        assert read_seeds(None) == {}
+
+    def test_missing_path_returns_empty(self, tmp_path):
+        assert read_seeds(tmp_path / "nope.toml") == {}
+
+    def test_only_seed_keys_returned_when_mixed(self, tmp_path):
+        p = tmp_path / "kanibako.toml"
+        p.write_text(
+            'box_image = "img"\n'
+            "[crab]\n"
+            'model = "haiku"\n'
+            "[system.path]\n"
+            'data = "/d"\n'
+            "[crab.path.share_ro]\n"
+            'docs = "/host/docs:/srv/docs"\n'
+            "[box.path.seeded]\n"
+            'init = "/host/init:~/init"\n'
+        )
+        assert read_seeds(p) == {
+            "box.path.seeded.init": "/host/init:~/init",
+        }
+
+    def test_suppression_empty_value_returned(self, tmp_path):
+        """An explicit '' is preserved so the resolver can see the suppression."""
+        p = tmp_path / "project.toml"
+        p.write_text('[crab.path.seeded]\nfoo = ""\n')
+        assert read_seeds(p) == {"crab.path.seeded.foo": ""}
+
+    def test_unreadable_toml_returns_empty(self, tmp_path):
+        p = tmp_path / "bad.toml"
+        p.write_text("this is = = not valid toml [[[\n")
+        assert read_seeds(p) == {}

@@ -541,6 +541,24 @@ def read_shares(path: Path | None) -> dict[str, str]:
     return {k: v for k, v in flat.items() if is_share_key(k)}
 
 
+def read_seeds(path: Path | None) -> dict[str, str]:
+    """Read seed keys ({scope}.path.seeded.{name}) from a config file as a flat
+    dotted-key dict. Missing/None/unreadable path → {}."""
+    from kanibako.settings_seeds import is_seed_key
+
+    if path is None:
+        return {}
+    try:
+        if not path.exists():
+            return {}
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return {}
+    flat = _flatten_dotted(data)
+    return {k: v for k, v in flat.items() if is_seed_key(k)}
+
+
 # ---------------------------------------------------------------------------
 # Resource scope overrides (per-project)
 # ---------------------------------------------------------------------------

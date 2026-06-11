@@ -622,6 +622,16 @@ def _run_container(
                     template_name=crab_cfg.shell,
                 )
 
+        # Copy-once-at-init seeds (additive; overlays templates). target may be
+        # None (no agent) — seeds can still come from config levels.
+        if proj.is_new:
+            _apply_init_seeds(
+                std=std, proj=proj, crab_name=agent_id, target=target,
+                global_config_path=config_file, project_toml=project_toml,
+                workset_config_path=workset_path, crab_config_path=crab_cfg_path,
+                logger=logger,
+            )
+
         # Automated OAuth refresh (before interactive check_auth)
         if (
             target
@@ -1203,6 +1213,105 @@ def _build_effective_state(
             effective[key] = rv.value
 
     return effective
+
+
+def _apply_init_seeds(
+    *,
+    std,
+    proj,
+    crab_name: str,
+    target=None,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    crab_config_path,
+    logger,
+) -> None:
+    """Copy configured copy-once-at-init seeds into the new project's shell dir.
+
+    ADDITIVE: with no seed config and no target default seeds, copies nothing.
+    Resolves {scope}.path.seeded.* across the 4 levels (target.default_seeds()
+    as the crab level's declared defaults), translates each SeedPair's
+    guest_dest (/home/agent/X) to a host path under proj.shell_path, and copies
+    host_src -> that path once (dir -> copytree dirs_exist_ok; file -> copy2).
+    """
+    import shutil
+
+    from kanibako.config import read_seeds
+    from kanibako.settings_resolve import (
+        GUEST_HOME,
+        LevelView,
+        ResolveCtx,
+        SettingsError,
+    )
+    from kanibako.settings_seeds import resolve_seeds
+
+    default_seeds = target.default_seeds() if target is not None else {}
+
+    # Four precedence levels, most-specific first; crab carries the defaults.
+    levels = [
+        LevelView("box", read_seeds(project_toml)),
+        LevelView("workset", read_seeds(workset_config_path)),
+        LevelView("crab", read_seeds(crab_config_path), defaults=default_seeds),
+        LevelView("system", read_seeds(global_config_path)),
+    ]
+
+    workset_name = (
+        proj.group.name
+        if (proj.group is not None and not proj.group.is_default)
+        else None
+    )
+    ctx = ResolveCtx(
+        crab_name=crab_name,
+        workset_name=workset_name,
+        host_home=str(Path.home()),
+        xdg={"XDG_DATA_HOME": str(std.data_home)},
+    )
+
+    resolved_sys = {
+        "system.path.data": str(std.data_path),
+        "system.path.boxes": str(std.boxes),
+        "system.path.crabs": str(std.crabs),
+        "system.path.comms": str(std.comms),
+        "system.path.templates": str(std.templates),
+        "system.path.ws_hints": str(std.ws_hints),
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+    }
+
+    def _lookup(ref, chain):
+        if ref in resolved_sys:
+            return resolved_sys[ref]
+        raise SettingsError(f"Unresolvable @-reference in seed value: {ref}")
+
+    seeds = resolve_seeds(levels=levels, ctx=ctx, lookup=_lookup)
+
+    for seed in seeds:
+        gd = seed.guest_dest.rstrip("/")
+        if gd == GUEST_HOME:
+            dest = proj.shell_path
+        elif gd.startswith(GUEST_HOME + "/"):
+            rel = gd[len(GUEST_HOME) + 1:]
+            dest = proj.shell_path / rel
+        else:
+            logger.warning(
+                "seed %s: guest_dest %r is outside %s; skipping",
+                seed.name, seed.guest_dest, GUEST_HOME,
+            )
+            continue
+        src = Path(seed.host_src)
+        if not src.exists():
+            logger.warning(
+                "seed %s: host_src %r does not exist; skipping",
+                seed.name, seed.host_src,
+            )
+            continue
+        if src.is_dir():
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dest))
 
 
 def _build_share_mounts(
