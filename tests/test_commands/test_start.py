@@ -1244,7 +1244,8 @@ class TestBuildShareMounts:
         return SimpleNamespace(group=group)
 
     def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
-              project_toml=None, workset_config_path=None, crab_config_path=None):
+              project_toml=None, workset_config_path=None, crab_config_path=None,
+              target=None):
         from kanibako.commands.start import _build_share_mounts
         return _build_share_mounts(
             std=std or self._std(tmp_path),
@@ -1254,6 +1255,7 @@ class TestBuildShareMounts:
             project_toml=project_toml,
             workset_config_path=workset_config_path,
             crab_config_path=crab_config_path,
+            target=target,
         )
 
     def test_empty_config_returns_empty(self, tmp_path):
@@ -1325,3 +1327,38 @@ class TestBuildShareMounts:
         )
         assert len(mounts) == 1
         assert mounts[0].source == ws_root / "rel"
+
+    def _claude_target(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            name="claude",
+            default_shares=lambda: {
+                "crab.path.share_rw.plugins": "plugins:~/.claude/plugins"
+            },
+        )
+
+    def test_target_default_share_served(self, tmp_path):
+        """A target's declared default share mounts even with no config files."""
+        std = self._std(tmp_path)
+        mounts = self._call(tmp_path, std=std, target=self._claude_target())
+        assert len(mounts) == 1
+        m = mounts[0]
+        assert m.source == std.crabs / "claude" / "share" / "plugins"
+        assert m.destination == "/home/agent/.claude/plugins"
+        assert m.options == "Z,U"
+        # rw share source dir is created best-effort.
+        assert m.source.exists()
+        assert m.source.is_dir()
+
+    def test_target_default_share_suppressed_by_box(self, tmp_path):
+        """A box-level '' overrides/suppresses the target-declared default share."""
+        ptoml = tmp_path / "project.toml"
+        ptoml.write_text('[crab.path.share_rw]\nplugins = ""\n')
+        mounts = self._call(
+            tmp_path, project_toml=ptoml, target=self._claude_target(),
+        )
+        assert mounts == []
+
+    def test_target_none_no_default_shares(self, tmp_path):
+        """target=None means no default shares (backward compatible)."""
+        assert self._call(tmp_path, target=None) == []

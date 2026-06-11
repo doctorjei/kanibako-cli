@@ -756,6 +756,7 @@ def _run_container(
             project_toml=project_toml,
             workset_config_path=workset_path,
             crab_config_path=crab_cfg_path,
+            target=target,
         )
         extra_mounts.extend(share_mounts)
 
@@ -1213,23 +1214,32 @@ def _build_share_mounts(
     project_toml,
     workset_config_path,
     crab_config_path,
+    target=None,
 ) -> list:
     """Resolve scoped-share config ({scope}.path.share_{ro,rw}.*) into Mounts.
 
-    ADDITIVE: with no share keys configured, returns []. Reads each level's set
-    share keys from its config file; the KEY's scope sets the source root +
-    mode, the LEVEL where set decides precedence (a box can suppress an
-    inherited system share with a terminal "").
+    ADDITIVE: with no share keys configured (and no target default shares),
+    returns []. Reads each level's set share keys from its config file; the
+    KEY's scope sets the source root + mode, the LEVEL where set decides
+    precedence (a box can suppress an inherited system share with a terminal "").
+
+    *target*'s ``default_shares()`` (if a target is given) are injected as the
+    CRAB level's *declared defaults*: they mount unless overridden/suppressed at
+    a more-specific level. After resolution, host source directories for any
+    read-write share are created best-effort (mirrors the old SHARED-mount
+    behavior) so podman does not stub them; a bad source never crashes launch.
     """
     from kanibako.config import read_shares
     from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
     from kanibako.settings_shares import resolve_shares
 
+    default_shares = target.default_shares() if target is not None else {}
+
     # Four precedence levels, most-specific first.
     levels = [
         LevelView("box", read_shares(project_toml)),
         LevelView("workset", read_shares(workset_config_path)),
-        LevelView("crab", read_shares(crab_config_path)),
+        LevelView("crab", read_shares(crab_config_path), defaults=default_shares),
         LevelView("system", read_shares(global_config_path)),
     ]
 
@@ -1276,9 +1286,16 @@ def _build_share_mounts(
             return resolved_sys[ref]
         raise SettingsError(f"Unresolvable @-reference in share value: {ref}")
 
-    return resolve_shares(
+    mounts = resolve_shares(
         levels=levels, ctx=ctx, lookup=_lookup, scope_roots=scope_roots
     )
+    for m in mounts:
+        if m.options != "ro":  # rw share: create the host source dir if absent
+            try:
+                m.source.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass  # best-effort; podman will surface a genuinely bad source
+    return mounts
 
 
 def _kanibako_mounts():

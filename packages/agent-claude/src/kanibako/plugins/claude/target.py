@@ -149,8 +149,11 @@ class ClaudeTarget(Target):
             name="Claude Code",
             shell="standard",
             state={"model": "opus", "access": "permissive"},
-            shared_caches={"plugins": ".claude/plugins"},
         )
+
+    def default_shares(self) -> dict[str, str]:
+        """Plugins are shared across all Claude crabs (identical binaries/registry)."""
+        return {"crab.path.share_rw.plugins": "plugins:~/.claude/plugins"}
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.
@@ -238,13 +241,13 @@ class ClaudeTarget(Target):
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare Claude Code resource sharing scopes.
 
-        Shared: plugin binaries only (identical across projects).
         Seeded: settings.json, CLAUDE.md (copied from workset template at creation).
         Project: everything else (caches, stats, telemetry, session data, tasks).
+
+        Plugins are served separately as a crab-scoped default share
+        (see ``default_shares``), not as a SHARED resource mapping.
         """
         return [
-            # Shared at workset/account level
-            ResourceMapping("plugins/", ResourceScope.SHARED, "Plugin binaries and registry"),
             ResourceMapping("cache/", ResourceScope.PROJECT, "General cache"),
             ResourceMapping("stats-cache.json", ResourceScope.PROJECT, "Usage stats cache"),
             ResourceMapping("statsig/", ResourceScope.PROJECT, "Feature flags"),

@@ -385,13 +385,20 @@ class TestResourceMappings:
         for m in t.resource_mappings():
             assert isinstance(m, ResourceMapping)
 
-    def test_shared_resources(self):
-        """Only plugin binaries are shared."""
+    def test_no_shared_resources(self):
+        """Plugins moved to a crab-scoped default share; no SHARED mappings remain."""
         t = ClaudeTarget()
         mappings = {m.path: m.scope for m in t.resource_mappings()}
-        assert mappings["plugins/"] == ResourceScope.SHARED
+        assert "plugins/" not in mappings
         shared = [p for p, s in mappings.items() if s == ResourceScope.SHARED]
-        assert shared == ["plugins/"]
+        assert shared == []
+
+    def test_default_shares(self):
+        """Plugins are declared as a crab-scoped rw default share."""
+        t = ClaudeTarget()
+        assert t.default_shares() == {
+            "crab.path.share_rw.plugins": "plugins:~/.claude/plugins"
+        }
 
     def test_seeded_resources(self):
         """settings.json and CLAUDE.md are seeded from workset."""
@@ -442,7 +449,7 @@ class TestGenerateCrabConfig:
         assert cfg.name == "Claude Code"
         assert cfg.shell == "standard"
         assert cfg.state == {"model": "opus", "access": "permissive"}
-        assert cfg.shared_caches == {"plugins": ".claude/plugins"}
+        assert cfg.shared_caches == {}
         assert cfg.run_args == []
         assert cfg.env == {}
 

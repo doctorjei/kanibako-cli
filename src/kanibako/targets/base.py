@@ -136,6 +136,17 @@ class Target(ABC):
         """
         return []
 
+    def default_shares(self) -> dict[str, str]:
+        """Declare default scoped shares for this agent's crab.
+
+        Returns a mapping of full scoped-share keys
+        ({scope}.path.share_{ro,rw}.{name}) to host_src:guest_dest bind
+        expressions. These become the CRAB level's *declared defaults* in the
+        share resolver — a user can override or suppress (terminal "") any of
+        them at a more-specific level. The default returns {} (no shares).
+        """
+        return {}
+
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare what runtime settings this target supports.
 

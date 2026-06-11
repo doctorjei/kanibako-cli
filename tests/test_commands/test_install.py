@@ -108,7 +108,7 @@ class TestInstallAgentTomls:
         cfg = load_crab_config(claude_toml)
         assert cfg.name == "Claude Code"
         assert cfg.state == {"model": "opus", "access": "permissive"}
-        assert cfg.shared_caches == {"plugins": ".claude/plugins"}
+        assert cfg.shared_caches == {}
 
     def test_does_not_overwrite_existing_agent_toml(self, tmp_home):
         from kanibako.commands.install import run
