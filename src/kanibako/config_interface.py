@@ -408,6 +408,9 @@ def show_config(
     env_project: Path | None = None,
     effective: bool = False,
     file: Any = None,
+    workset_path: Path | None = None,
+    crab_state: dict[str, str] | None = None,
+    env_resolved: dict[str, str] | None = None,
 ) -> int:
     """Display config values.  Returns exit code.
 
@@ -418,23 +421,42 @@ def show_config(
 
     if effective:
         # Show all resolved values
-        cfg = load_merged_config(global_config_path, config_path)
+        cfg = load_merged_config(
+            global_config_path, config_path, workset_path=workset_path,
+        )
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):
             val = getattr(cfg, fld.name)
             marker = " (override)" if fld.name in overrides else ""
             print(f"  {fld.name} = {val}{marker}", file=out)
 
-        # Target settings
-        if config_path and config_path.exists():
+        # Crab settings.  When a fully-resolved crab_state is supplied (box
+        # view), render it; mark only the keys actually set at the box level.
+        # Otherwise fall back to the project-level overrides (today's behavior).
+        if crab_state is not None:
+            proj_crab = (
+                read_crab_settings(config_path)
+                if config_path and config_path.exists()
+                else {}
+            )
+            if crab_state:
+                print("", file=out)
+                for k, v in sorted(crab_state.items()):
+                    marker = " (override)" if k in proj_crab else ""
+                    print(f"  {k} = {v}{marker}", file=out)
+        elif config_path and config_path.exists():
             settings = read_crab_settings(config_path)
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
                     print(f"  {k} = {v} (override)", file=out)
 
-        # Env vars
-        merged = merge_env(env_global, env_project)
+        # Env vars.  Prefer the fully-resolved env (box view) when supplied.
+        merged = (
+            env_resolved
+            if env_resolved is not None
+            else merge_env(env_global, env_project)
+        )
         if merged:
             print("", file=out)
             for k in sorted(merged):

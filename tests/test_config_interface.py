@@ -350,6 +350,89 @@ class TestShowConfig:
         assert "box_image" in captured.out
         assert "custom" in captured.out
 
+    def test_effective_new_params_default_none_is_byte_identical(
+        self, tmp_path, capsys,
+    ):
+        """With workset_path/crab_state/env_resolved=None, output is unchanged."""
+        global_cfg = tmp_path / "kanibako.toml"
+        global_cfg.write_text('[box]\nimage = "my:img"\n')
+        project_toml = tmp_path / "project.toml"
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+        )
+        baseline = capsys.readouterr().out
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            workset_path=None,
+            crab_state=None,
+            env_resolved=None,
+        )
+        with_none = capsys.readouterr().out
+
+        assert with_none == baseline
+
+    def test_effective_workset_path_overlays(self, tmp_path, capsys):
+        """A value set only at the workset level is reflected when supplied."""
+        global_cfg = tmp_path / "kanibako.toml"
+        global_cfg.write_text('[box]\nimage = "sys:img"\n')
+        project_toml = tmp_path / "project.toml"
+        workset_cfg = tmp_path / "config.toml"
+        workset_cfg.write_text('[box]\nimage = "ws:img"\n')
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            workset_path=workset_cfg,
+        )
+        captured = capsys.readouterr()
+        assert "box_image" in captured.out
+        assert "ws:img" in captured.out
+        assert "sys:img" not in captured.out
+
+    def test_effective_crab_state_renders_with_override_marker(
+        self, tmp_path, capsys,
+    ):
+        """crab_state is rendered; only box-level keys get the override marker."""
+        global_cfg = tmp_path / "kanibako.toml"
+        global_cfg.write_text("")
+        project_toml = tmp_path / "project.toml"
+        project_toml.write_text('[crab]\nmodel = "sonnet"\n')
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            crab_state={"model": "sonnet", "start_mode": "default"},
+        )
+        captured = capsys.readouterr()
+        # model is set at box level -> marked override
+        assert "model = sonnet (override)" in captured.out
+        # start_mode comes from a lower level -> no marker
+        assert "start_mode = default\n" in captured.out
+        assert "start_mode = default (override)" not in captured.out
+
+    def test_effective_env_resolved_used_when_supplied(self, tmp_path, capsys):
+        """env_resolved is the source dict for the env section when given."""
+        global_cfg = tmp_path / "kanibako.toml"
+        global_cfg.write_text("")
+        project_toml = tmp_path / "project.toml"
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            env_resolved={"RESOLVED_VAR": "yes"},
+        )
+        captured = capsys.readouterr()
+        assert "env.RESOLVED_VAR = yes" in captured.out
+
 
 # ---------------------------------------------------------------------------
 # reset_all

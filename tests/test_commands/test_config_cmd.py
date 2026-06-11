@@ -78,6 +78,41 @@ class TestBoxConfigShow:
         captured = capsys.readouterr()
         assert "custom:v1" in captured.out
 
+    def test_show_effective_reflects_workset_tier(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """A value set ONLY in the workset config.toml shows in --effective.
+
+        This is the P3.7 parity fix: ``box config --effective`` must reflect
+        the workset tier that ``start`` resolves (previously it skipped it).
+        """
+        from kanibako.commands.box._parser import run_config
+        from kanibako.paths import load_std_paths
+        from kanibako.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("cfgtier", tmp_home / "ws_cfgtier", std)
+
+        src = tmp_home / "proj_cfgtier"
+        src.mkdir()
+        add_project(ws, "myproj", src)
+
+        # Set a box.* value ONLY at the workset level.
+        (ws.root / "config.toml").write_text('[box]\nimage = "ws-tier-img:1"\n')
+
+        # Resolve via cwd inside the project's workspace dir.
+        monkeypatch.chdir(ws.workspaces_dir / "myproj")
+        args = argparse.Namespace(
+            args=[], effective=True, reset=None,
+            reset_all=False, force=False, local=False,
+        )
+        rc = run_config(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "box_image" in captured.out
+        assert "ws-tier-img:1" in captured.out
+
 
 class TestBoxConfigGet:
     def test_get_image(self, config_file, tmp_home, credentials_dir, capsys):

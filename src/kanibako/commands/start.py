@@ -806,7 +806,6 @@ def _run_container(
         # the settings-framework precedence (low->high): system < crab <
         # workset < box.  Target-derived state env and per-run CLI -e env stay
         # above all config levels.
-        from kanibako.shellenv import read_env_file
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
         # Workset-level env applies only for a named (non-default) workset
@@ -816,12 +815,9 @@ def _run_container(
             if (proj.group is not None and not proj.group.is_default)
             else None
         )
-        container_env: dict[str, str] = {}
-        container_env.update(read_env_file(global_env_path))   # system
-        container_env.update(crab_cfg.env)                     # crab
-        if workset_env_path is not None:
-            container_env.update(read_env_file(workset_env_path))  # workset
-        container_env.update(read_env_file(project_env_path))  # box (highest config level)
+        container_env = _build_config_env(
+            global_env_path, crab_cfg.env, workset_env_path, project_env_path,
+        )
         container_env.update(state_env)                        # target-derived state env
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
@@ -1118,6 +1114,29 @@ def _run_container(
         if lock_fd is not None:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
+
+
+def _build_config_env(
+    global_env_path,
+    crab_env: dict[str, str],
+    workset_env_path,
+    project_env_path,
+) -> dict[str, str]:
+    """Layer config-level env vars, low->high: system < crab < workset < box.
+
+    Shared between container launch (start) and ``box config --effective`` so
+    the resolved config-env matches exactly. Runtime-only layers (target state
+    env, per-run ``-e``) are applied by the caller ON TOP of this and are NOT
+    config, so they are excluded here.
+    """
+    from kanibako.shellenv import read_env_file
+    env: dict[str, str] = {}
+    env.update(read_env_file(global_env_path))   # system
+    env.update(crab_env)                         # crab
+    if workset_env_path is not None:
+        env.update(read_env_file(workset_env_path))  # workset
+    env.update(read_env_file(project_env_path))  # box (highest config level)
+    return env
 
 
 def _build_effective_state(

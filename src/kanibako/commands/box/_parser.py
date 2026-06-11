@@ -1085,12 +1085,61 @@ def run_config(args: argparse.Namespace) -> int:
     env_project = proj.metadata_path / "env"
 
     if action == ConfigAction.show:
+        workset_path = (
+            (proj.group.root / "config.toml") if proj.group is not None else None
+        )
+        crab_state = None
+        env_resolved = None
+        if args.effective:
+            from kanibako.config import load_merged_config
+            from kanibako.crabs import load_crab_config
+            from kanibako.targets import resolve_target
+            from kanibako.commands.start import (
+                _build_config_env,
+                _build_effective_state,
+            )
+            merged = load_merged_config(
+                config_file, project_toml if project_toml.exists() else None,
+                workset_path=workset_path,
+            )
+            try:
+                target = resolve_target(merged.box_crab or None)
+            except (KeyError, Exception):
+                target = None
+            agent_id = target.name if target else "general"
+            crab_cfg_path = std.crabs / f"{agent_id}.toml"
+            if target and not crab_cfg_path.exists():
+                crab_cfg = target.generate_crab_config()
+            elif crab_cfg_path.exists():
+                crab_cfg = load_crab_config(crab_cfg_path)
+            else:
+                crab_cfg = None
+            if target is not None and crab_cfg is not None:
+                crab_state = _build_effective_state(
+                    target, crab_cfg, project_toml,
+                    global_config_path=config_file,
+                    workset_config_path=workset_path,
+                )
+            workset_env_path = (
+                proj.group.root / "env"
+                if (proj.group is not None and not proj.group.is_default)
+                else None
+            )
+            env_resolved = _build_config_env(
+                std.data_path / "env",
+                crab_cfg.env if crab_cfg is not None else {},
+                workset_env_path,
+                proj.metadata_path / "env",
+            )
         return show_config(
             global_config_path=config_file,
             config_path=project_toml,
             env_global=env_global,
             env_project=env_project,
             effective=args.effective,
+            workset_path=workset_path,
+            crab_state=crab_state,
+            env_resolved=env_resolved,
         )
 
     if action == ConfigAction.get:
