@@ -21,8 +21,8 @@ class TestCommsConfig:
 
         from kanibako.paths import resolve_system_paths
 
-        toml = tmp_path / "kanibako.toml"
-        toml.write_text('[system.path]\ncomms = "/custom-comms"\n')
+        toml = tmp_path / "kanibako.yaml"
+        toml.write_text('system:\n  path:\n    comms: "/custom-comms"\n')
         cfg = load_config(toml)
         resolved = resolve_system_paths(
             cfg.system_paths, data_home=tmp_path, home=tmp_path,

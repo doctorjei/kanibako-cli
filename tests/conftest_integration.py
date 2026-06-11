@@ -120,9 +120,9 @@ def integration_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def integration_config(integration_home):
-    """Write a default ``kanibako.toml`` and return its path."""
+    """Write a default ``kanibako.yaml`` and return its path."""
     config_home = integration_home / "int_config"
-    cf = config_home / "kanibako.toml"
+    cf = config_home / "kanibako.yaml"
     write_global_config(cf)
     return cf
 

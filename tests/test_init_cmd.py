@@ -319,7 +319,7 @@ class TestCreateDistinctAuth:
         args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
         run_create(args)
 
-        meta = read_project_meta(project / ".kanibako" / "project.toml")
+        meta = read_project_meta(project / ".kanibako" / "project.yaml")
         assert meta is not None
         assert meta["group_auth"] is False
 
@@ -356,7 +356,7 @@ class TestCreateImage:
         ])
         run_create(args)
 
-        project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
+        project_toml = project_dir.resolve() / ".kanibako" / "project.yaml"
         merged = load_merged_config(config_file, project_toml)
         assert merged.box_image == "kanibako-template-jvm-oci"
 
@@ -368,6 +368,6 @@ class TestCreateImage:
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
 
-        project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
+        project_toml = project_dir.resolve() / ".kanibako" / "project.yaml"
         merged = load_merged_config(config_file, project_toml)
         assert "kanibako" in merged.box_image

@@ -525,14 +525,14 @@ class TestCrabConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The crab TOML path is derived as std.crabs / "general.toml".
+            # The crab config path is derived as std.crabs / "general.yaml".
             # (std.crabs also gets a / "general" / "share" call from the scoped-
             # share resolver, so check the full call list rather than the last.)
             div_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
             ]
-            assert "general.toml" in div_args
+            assert "general.yaml" in div_args
 
 
 class TestContainerEnvPrecedence:
@@ -1236,7 +1236,7 @@ class TestBuildShareMounts:
             boxes=tmp_path / "boxes",
             comms=tmp_path / "comms",
             templates=tmp_path / "templates",
-            ws_hints=tmp_path / "ws_hints.toml",
+            ws_hints=tmp_path / "ws_hints.yaml",
         )
 
     def _proj(self, group=None):
@@ -1260,10 +1260,10 @@ class TestBuildShareMounts:
 
     def test_empty_config_returns_empty(self, tmp_path):
         """No share keys anywhere → no mounts (the no-behavior-change guarantee)."""
-        glob = tmp_path / "kanibako.toml"
-        glob.write_text('box_image = "img"\n[crab]\nmodel = "sonnet"\n')
-        ptoml = tmp_path / "project.toml"
-        ptoml.write_text("[box]\nimage = \"x\"\n")
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text('box_image: "img"\ncrab:\n  model: "sonnet"\n')
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  image: "x"\n')
         mounts = self._call(
             tmp_path,
             global_config_path=glob,
@@ -1278,10 +1278,12 @@ class TestBuildShareMounts:
 
     def test_system_share_rw_one_mount(self, tmp_path):
         from pathlib import Path
-        glob = tmp_path / "kanibako.toml"
+        glob = tmp_path / "kanibako.yaml"
         glob.write_text(
-            "[system.path.share_rw]\n"
-            'data = "/host/x:~/data"\n'
+            "system:\n"
+            "  path:\n"
+            "    share_rw:\n"
+            '      data: "/host/x:~/data"\n'
         )
         mounts = self._call(tmp_path, global_config_path=glob)
         assert len(mounts) == 1
@@ -1291,11 +1293,13 @@ class TestBuildShareMounts:
         assert m.options == "Z,U"
 
     def test_box_level_suppression(self, tmp_path):
-        """project.toml '' for a system-scoped key suppresses the system share."""
-        glob = tmp_path / "kanibako.toml"
-        glob.write_text('[system.path.share_rw]\nfoo = "/a:~/foo"\n')
-        ptoml = tmp_path / "project.toml"
-        ptoml.write_text('[system.path.share_rw]\nfoo = ""\n')
+        """project.yaml '' for a system-scoped key suppresses the system share."""
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text(
+            'system:\n  path:\n    share_rw:\n      foo: "/a:~/foo"\n'
+        )
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('system:\n  path:\n    share_rw:\n      foo: ""\n')
         mounts = self._call(
             tmp_path, global_config_path=glob, project_toml=ptoml,
         )
@@ -1303,9 +1307,9 @@ class TestBuildShareMounts:
 
     def test_crab_scope_root_join(self, tmp_path):
         """A relative crab share joins under std.crabs/<crab>/share."""
-        crab_cfg = tmp_path / "claude.toml"
+        crab_cfg = tmp_path / "claude.yaml"
         crab_cfg.write_text(
-            '[crab.path.share_rw]\nplugins = "plugins:~/.claude/plugins"\n'
+            'crab:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
         )
         std = self._std(tmp_path)
         mounts = self._call(tmp_path, std=std, crab_config_path=crab_cfg)
@@ -1318,8 +1322,10 @@ class TestBuildShareMounts:
         from types import SimpleNamespace
         ws_root = tmp_path / "myws"
         group = SimpleNamespace(root=ws_root, name="myws", is_default=False)
-        ws_cfg = tmp_path / "config.toml"
-        ws_cfg.write_text('[workset.path.share_rw]\nshared = "rel:~/shared"\n')
+        ws_cfg = tmp_path / "config.yaml"
+        ws_cfg.write_text(
+            'workset:\n  path:\n    share_rw:\n      shared: "rel:~/shared"\n'
+        )
         mounts = self._call(
             tmp_path,
             proj=self._proj(group=group),
@@ -1352,8 +1358,8 @@ class TestBuildShareMounts:
 
     def test_target_default_share_suppressed_by_box(self, tmp_path):
         """A box-level '' overrides/suppresses the target-declared default share."""
-        ptoml = tmp_path / "project.toml"
-        ptoml.write_text('[crab.path.share_rw]\nplugins = ""\n')
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('crab:\n  path:\n    share_rw:\n      plugins: ""\n')
         mounts = self._call(
             tmp_path, project_toml=ptoml, target=self._claude_target(),
         )
@@ -1378,7 +1384,7 @@ class TestApplyInitSeeds:
             boxes=tmp_path / "boxes",
             comms=tmp_path / "comms",
             templates=tmp_path / "templates",
-            ws_hints=tmp_path / "ws_hints.toml",
+            ws_hints=tmp_path / "ws_hints.yaml",
         )
 
     def _proj(self, shell_path, group=None):
@@ -1413,8 +1419,8 @@ class TestApplyInitSeeds:
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
         """No seed config and target=None → nothing copied (no behavior change)."""
         shell = self._shell(tmp_path)
-        glob = tmp_path / "kanibako.toml"
-        glob.write_text('box_image = "img"\n[crab]\nmodel = "sonnet"\n')
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text('box_image: "img"\ncrab:\n  model: "sonnet"\n')
         self._call(
             tmp_path,
             proj=self._proj(shell),
@@ -1429,8 +1435,10 @@ class TestApplyInitSeeds:
         src = tmp_path / "src"
         src.mkdir()
         (src / "file.txt").write_text("hello")
-        crab_cfg = tmp_path / "claude.toml"
-        crab_cfg.write_text(f'[crab.path.seeded]\nfoo = "{src}:~/foo"\n')
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            f'crab:\n  path:\n    seeded:\n      foo: "{src}:~/foo"\n'
+        )
         self._call(
             tmp_path,
             proj=self._proj(shell),
@@ -1463,8 +1471,8 @@ class TestApplyInitSeeds:
             name="claude",
             default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
         )
-        ptoml = tmp_path / "project.toml"
-        ptoml.write_text('[crab.path.seeded]\nx = ""\n')
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('crab:\n  path:\n    seeded:\n      x: ""\n')
         self._call(
             tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
         )
@@ -1476,8 +1484,10 @@ class TestApplyInitSeeds:
         src = tmp_path / "hsrc"
         src.mkdir()
         (src / "root_file.txt").write_text("top")
-        crab_cfg = tmp_path / "claude.toml"
-        crab_cfg.write_text(f'[crab.path.seeded]\nhome = "{src}:~/"\n')
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            f'crab:\n  path:\n    seeded:\n      home: "{src}:~/"\n'
+        )
         self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
 
@@ -1485,8 +1495,10 @@ class TestApplyInitSeeds:
         """A seed whose host_src does not exist is skipped (no crash, no copy)."""
         shell = self._shell(tmp_path)
         missing = tmp_path / "does_not_exist"
-        crab_cfg = tmp_path / "claude.toml"
-        crab_cfg.write_text(f'[crab.path.seeded]\ngone = "{missing}:~/gone"\n')
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            f'crab:\n  path:\n    seeded:\n      gone: "{missing}:~/gone"\n'
+        )
         self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
         assert not (shell / "gone").exists()
         assert list(shell.iterdir()) == []

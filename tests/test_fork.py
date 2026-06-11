@@ -29,10 +29,10 @@ def fork_ctx(tmp_path):
     data_path.mkdir()
     (data_path / "boxes").mkdir()
 
-    # Set up names.toml with the project registered
-    names_toml = data_path / "names.toml"
+    # Set up names.yaml with the project registered
+    names_toml = data_path / "names.yaml"
     names_toml.write_text(
-        f'[projects]\nmyapp = "{project_path}"\n\n[worksets]\n'
+        f'projects:\n  myapp: "{project_path}"\nworksets: {{}}\n'
     )
 
     # Set up metadata dir (boxes/myapp/)
@@ -44,7 +44,7 @@ def fork_ctx(tmp_path):
     vault_dir = meta_dir / "vault"
     vault_dir.mkdir()
     (vault_dir / "ro").mkdir()
-    (meta_dir / "project.toml").write_text("[meta]\nmode = \"local\"\n")
+    (meta_dir / "project.yaml").write_text('meta:\n  mode: "local"\n')
     (meta_dir / ".kanibako.lock").write_text("lock\n")
     helpers_dir_meta = meta_dir / "helpers"
     helpers_dir_meta.mkdir()
@@ -122,7 +122,7 @@ class TestHandleFork:
         resp = _send(sock_path, {"action": "fork", "name": "named"})
         assert resp["status"] == "ok"
         assert "name" in resp
-        # The assigned name should be registered in names.toml
+        # The assigned name should be registered in names.yaml
         from kanibako.names import read_names
         names = read_names(ctx.data_path)
         assert resp["name"] in names["projects"]
@@ -134,8 +134,8 @@ class TestHandleFork:
         new_name = resp["name"]
         new_meta = ctx.data_path / "boxes" / new_name
         assert new_meta.is_dir()
-        # project.toml should be copied
-        assert (new_meta / "project.toml").is_file()
+        # project.yaml should be copied
+        assert (new_meta / "project.yaml").is_file()
         # shell should be copied
         assert (new_meta / "shell" / ".bashrc").is_file()
         # vault should be copied
@@ -278,9 +278,9 @@ class TestForkCLIRegistration:
         assert args.name == "testname"
 
     def test_fork_exempt_from_config_check(self):
-        """crab fork should not require kanibako.toml to exist."""
+        """crab fork should not require kanibako.yaml to exist."""
         from kanibako.cli import main
-        # Calling crab fork with a missing kanibako.toml should not trigger
+        # Calling crab fork with a missing kanibako.yaml should not trigger
         # the "kanibako is not set up" error — it should reach run_fork
         # and fail on the socket check instead.
         with pytest.raises(SystemExit) as exc_info:

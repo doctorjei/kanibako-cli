@@ -98,10 +98,10 @@ class TestResolveProject:
     def test_group_auth_defaults_true_without_workset_config(
         self, config_file, tmp_home, credentials_dir
     ):
-        """No param, no project-meta group_auth, no config.toml -> True (no-op)."""
+        """No param, no project-meta group_auth, no config.yaml -> True (no-op)."""
         config = load_config(config_file)
         std = load_std_paths(config)
-        assert not (std.data_path / "config.toml").exists()
+        assert not (std.data_path / "config.yaml").exists()
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
@@ -110,12 +110,12 @@ class TestResolveProject:
     def test_group_auth_from_default_workset_config(
         self, config_file, tmp_home, credentials_dir
     ):
-        """{data_path}/config.toml [project] group_auth=false flows through."""
+        """{data_path}/config.yaml [project] group_auth=false flows through."""
         config = load_config(config_file)
         std = load_std_paths(config)
         std.data_path.mkdir(parents=True, exist_ok=True)
-        (std.data_path / "config.toml").write_text(
-            "[project]\ngroup_auth = false\n"
+        (std.data_path / "config.yaml").write_text(
+            "project:\n  group_auth: false\n"
         )
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -136,7 +136,7 @@ class TestResolveProject:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
         # Now set the default workset to distinct creds.
         std.data_path.mkdir(parents=True, exist_ok=True)
-        (std.data_path / "config.toml").write_text("[project]\ngroup_auth = false\n")
+        (std.data_path / "config.yaml").write_text("project:\n  group_auth: false\n")
         # Second resolve of the existing project must reflect it (not the frozen meta).
         proj = resolve_project(std, config, project_dir=project_dir)
 
@@ -144,16 +144,16 @@ class TestResolveProject:
 
 
 class TestProjectMeta:
-    """Tests for project metadata storage in project.toml (Phase 1b)."""
+    """Tests for project metadata storage in project.yaml (Phase 1b)."""
 
     def test_init_writes_project_toml(self, config_file, tmp_home, credentials_dir):
-        """resolve_project(initialize=True) writes metadata to project.toml."""
+        """resolve_project(initialize=True) writes metadata to project.yaml."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         assert project_toml.is_file()
 
         from kanibako.config import read_project_meta
@@ -166,17 +166,17 @@ class TestProjectMeta:
         assert meta["vault_rw"] == str(proj.vault_rw_path)
 
     def test_no_meta_without_initialize(self, config_file, tmp_home):
-        """resolve_project(initialize=False) does not write project.toml."""
+        """resolve_project(initialize=False) does not write project.yaml."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=False)
 
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         assert not project_toml.exists()
 
     def test_stored_paths_used_on_subsequent_access(self, config_file, tmp_home, credentials_dir):
-        """Subsequent resolve reads stored paths from project.toml."""
+        """Subsequent resolve reads stored paths from project.yaml."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -189,17 +189,17 @@ class TestProjectMeta:
         assert proj2.vault_rw_path == proj1.vault_rw_path
 
     def test_stored_path_override(self, config_file, tmp_home, credentials_dir):
-        """User can override shell_path by editing project.toml."""
+        """User can override shell_path by editing project.yaml."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Override shell path in project.toml
+        # Override shell path in project.yaml
         custom_shell = tmp_home / "custom_shell"
         from kanibako.config import write_project_meta
         write_project_meta(
-            proj.metadata_path / "project.toml",
+            proj.metadata_path / "project.yaml",
             mode="local",
             layout="default",
             workspace=str(proj.project_path),
@@ -219,7 +219,7 @@ class TestProjectMeta:
         project_dir = str(tmp_home / "project")
         proj = resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
 
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         assert project_toml.is_file()
 
         from kanibako.config import read_project_meta
@@ -240,7 +240,7 @@ class TestProjectMeta:
 
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), "metaproj", std, config, initialize=True)
 
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         assert project_toml.is_file()
 
         from kanibako.config import read_project_meta
@@ -256,7 +256,7 @@ class TestProjectMeta:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Write a container image override
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         from kanibako.config import write_project_config
         write_project_config(project_toml, "custom-image:v1")
 
@@ -272,17 +272,17 @@ class TestProjectMeta:
         assert meta["mode"] == "local"
 
     def test_stored_shared_paths_used(self, config_file, tmp_home, credentials_dir):
-        """Stored global_shared/local_shared in project.toml override computed values."""
+        """Stored global_shared/local_shared in project.yaml override computed values."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Override shared paths in project.toml.
+        # Override shared paths in project.yaml.
         custom_global = tmp_home / "custom_global_shared"
         custom_local = tmp_home / "custom_local_shared"
         from kanibako.config import read_project_meta, write_project_meta
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         meta = read_project_meta(project_toml)
         write_project_meta(
             project_toml,
@@ -307,7 +307,7 @@ class TestProjectMeta:
 
         # Initialize to create metadata, then clear stored shared paths.
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         from kanibako.config import read_project_meta, write_project_meta
         meta = read_project_meta(project_toml)
         write_project_meta(
@@ -355,8 +355,8 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -454,8 +454,8 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         subdir = project_dir / "src" / "deep" / "nested"
@@ -475,16 +475,16 @@ class TestDetectProjectMode:
         # Outer project has .kanibako marker
         outer = tmp_home / "project"
         (outer / ".kanibako").mkdir()
-        (outer / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (outer / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         # Inner project also has .kanibako marker
         inner = outer / "subproject"
         inner.mkdir()
         (inner / ".kanibako").mkdir()
-        (inner / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (inner / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         # Detection from inner/ should find inner's marker
@@ -495,13 +495,13 @@ class TestDetectProjectMode:
     # --- Dotless kanibako/ marker tests ---
 
     def test_dotless_kanibako_dir_triggers_standalone(self, config_file, tmp_home):
-        """A `kanibako/` directory with project.toml triggers standalone mode."""
+        """A `kanibako/` directory with project.yaml triggers standalone mode."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / "kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -509,7 +509,7 @@ class TestDetectProjectMode:
         assert result.project_root == project_dir.resolve()
 
     def test_dotless_kanibako_dir_without_toml_ignored(self, config_file, tmp_home):
-        """A `kanibako/` directory without project.toml is NOT a marker."""
+        """A `kanibako/` directory without project.yaml is NOT a marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -524,12 +524,12 @@ class TestDetectProjectMode:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / "kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -548,13 +548,13 @@ class TestDetectProjectMode:
         assert result.mode is ProjectMode.local
 
     def test_dotless_marker_found_from_subdirectory(self, config_file, tmp_home):
-        """Ancestor walk finds dotless kanibako/ with project.toml in parent."""
+        """Ancestor walk finds dotless kanibako/ with project.yaml in parent."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / "kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         subdir = project_dir / "src"
@@ -567,7 +567,7 @@ class TestDetectProjectMode:
     # --- Bare-marker rejection tests (regression: empty ~/.kanibako) ---
 
     def test_empty_dot_kanibako_dir_is_local(self, config_file, tmp_home):
-        """An empty .kanibako/ (no project.toml) is NOT a standalone marker."""
+        """An empty .kanibako/ (no project.yaml) is NOT a standalone marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -587,7 +587,7 @@ class TestDetectProjectMode:
         config = load_config(config_file)
         std = load_std_paths(config)
         home = Path.home().resolve()
-        # Simulate the baked-in runtime dir at $HOME (no project.toml).
+        # Simulate the baked-in runtime dir at $HOME (no project.yaml).
         (home / ".kanibako").mkdir(parents=True, exist_ok=True)
         (home / ".kanibako" / "helper.sock").write_text("")
 
@@ -601,25 +601,25 @@ class TestDetectProjectMode:
     def test_malformed_project_toml_is_local_and_does_not_raise(
         self, config_file, tmp_home
     ):
-        """A malformed .kanibako/project.toml must not raise; falls to local."""
+        """A malformed .kanibako/project.yaml must not raise; falls to local."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text("not valid toml {{{")
+        (project_dir / ".kanibako" / "project.yaml").write_text("not valid yaml: {{{")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is ProjectMode.local
         assert result.project_root == project_dir.resolve()
 
     def test_local_mode_project_toml_is_not_standalone(self, config_file, tmp_home):
-        """A .kanibako/project.toml declaring mode=local is not a standalone marker."""
+        """A .kanibako/project.yaml declaring mode=local is not a standalone marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "local"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "local"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -751,19 +751,19 @@ class TestResolveProjectHomeGuard:
         std = load_std_paths(config)
         home = tmp_home / "home"
 
-        # Pre-create the project via direct names.toml write (simulates
+        # Pre-create the project via direct names.yaml write (simulates
         # a project registered before the $HOME guard existed).
-        names_path = std.data_path / "names.toml"
+        names_path = std.data_path / "names.yaml"
         names_path.write_text(
-            f'[projects]\nhome = "{home.resolve()}"\n\n[worksets]\n'
+            f'projects:\n  home: "{home.resolve()}"\nworksets: {{}}\n'
         )
         boxes_dir = std.data_path / "boxes" / "home"
         boxes_dir.mkdir(parents=True)
         (boxes_dir / "shell").mkdir()
-        # Write a minimal project.toml so resolve_project reads stored paths.
+        # Write a minimal project.yaml so resolve_project reads stored paths.
         from kanibako.config import write_project_meta
         write_project_meta(
-            boxes_dir / "project.toml",
+            boxes_dir / "project.yaml",
             mode="local",
             layout="default",
             workspace=str(home.resolve()),
@@ -808,8 +808,8 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
@@ -910,8 +910,8 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         subdir = project_dir / "src"

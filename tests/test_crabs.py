@@ -1,4 +1,4 @@
-"""Tests for kanibako.crabs: CrabConfig, load/write crab TOML."""
+"""Tests for kanibako.crabs: CrabConfig, load/write crab YAML."""
 
 from __future__ import annotations
 
@@ -55,41 +55,39 @@ class TestCrabsDir:
 class TestCrabTomlPath:
     def test_path(self, tmp_path):
         result = crab_toml_path(tmp_path, "claude")
-        assert result == tmp_path / "crabs" / "claude.toml"
+        assert result == tmp_path / "crabs" / "claude.yaml"
 
     def test_custom_crabs_dir(self, tmp_path):
         result = crab_toml_path(tmp_path, "claude", "my-crabs")
-        assert result == tmp_path / "my-crabs" / "claude.toml"
+        assert result == tmp_path / "my-crabs" / "claude.yaml"
 
     def test_general_agent(self, tmp_path):
         result = crab_toml_path(tmp_path, "general")
-        assert result == tmp_path / "crabs" / "general.toml"
+        assert result == tmp_path / "crabs" / "general.yaml"
 
 
 class TestLoadCrabConfig:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
-        cfg = load_crab_config(tmp_path / "missing.toml")
+        cfg = load_crab_config(tmp_path / "missing.yaml")
         assert cfg.name == ""
         assert cfg.shell == "standard"
         assert cfg.run_args == []
 
     def test_load_all_sections(self, tmp_path):
-        toml_path = tmp_path / "test.toml"
-        toml_path.write_text(
-            '[crab]\n'
-            'name = "Claude Code"\n'
-            'shell = "minimal"\n'
-            'run_args = ["--verbose", "--debug"]\n'
-            'model = "opus"\n'
-            'access = "permissive"\n'
-            '\n'
-            '[env]\n'
-            'MY_VAR = "hello"\n'
-            '\n'
-            '[shared]\n'
-            'plugins = ".claude/plugins"\n'
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'crab:\n'
+            '  name: "Claude Code"\n'
+            '  shell: "minimal"\n'
+            '  run_args: ["--verbose", "--debug"]\n'
+            '  model: "opus"\n'
+            '  access: "permissive"\n'
+            'env:\n'
+            '  MY_VAR: "hello"\n'
+            'shared:\n'
+            '  plugins: ".claude/plugins"\n'
         )
-        cfg = load_crab_config(toml_path)
+        cfg = load_crab_config(cfg_path)
         assert cfg.name == "Claude Code"
         assert cfg.shell == "minimal"
         assert cfg.run_args == ["--verbose", "--debug"]
@@ -98,12 +96,12 @@ class TestLoadCrabConfig:
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
 
     def test_load_crab_section_only(self, tmp_path):
-        toml_path = tmp_path / "test.toml"
-        toml_path.write_text(
-            '[crab]\n'
-            'name = "Shell"\n'
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'crab:\n'
+            '  name: "Shell"\n'
         )
-        cfg = load_crab_config(toml_path)
+        cfg = load_crab_config(cfg_path)
         assert cfg.name == "Shell"
         assert cfg.shell == "standard"
         assert cfg.run_args == []
@@ -113,59 +111,58 @@ class TestLoadCrabConfig:
 
     def test_load_state_keys_without_identity(self, tmp_path):
         # [crab] with only state keys (no identity keys) → all land in state.
-        toml_path = tmp_path / "test.toml"
-        toml_path.write_text(
-            '[crab]\n'
-            'access = "safe"\n'
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'crab:\n'
+            '  access: "safe"\n'
         )
-        cfg = load_crab_config(toml_path)
+        cfg = load_crab_config(cfg_path)
         assert cfg.name == ""
         assert cfg.state == {"access": "safe"}
 
     def test_load_missing_crab_section(self, tmp_path):
-        toml_path = tmp_path / "test.toml"
-        toml_path.write_text(
-            '[env]\n'
-            'FOO = "bar"\n'
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'env:\n'
+            '  FOO: "bar"\n'
         )
-        cfg = load_crab_config(toml_path)
+        cfg = load_crab_config(cfg_path)
         assert cfg.name == ""
         assert cfg.state == {}
         assert cfg.env == {"FOO": "bar"}
 
     def test_load_empty_file(self, tmp_path):
-        toml_path = tmp_path / "test.toml"
-        toml_path.write_text("")
-        cfg = load_crab_config(toml_path)
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text("")
+        cfg = load_crab_config(cfg_path)
         assert cfg.name == ""
         assert cfg.shell == "standard"
 
     def test_run_args_must_be_list(self, tmp_path):
-        toml_path = tmp_path / "test.toml"
-        toml_path.write_text(
-            '[crab]\n'
-            'run_args = "not-a-list"\n'
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'crab:\n'
+            '  run_args: "not-a-list"\n'
         )
-        cfg = load_crab_config(toml_path)
+        cfg = load_crab_config(cfg_path)
         assert cfg.run_args == []
 
 
 class TestWriteCrabConfig:
     def test_write_defaults(self, tmp_path):
-        path = tmp_path / "crabs" / "test.toml"
+        path = tmp_path / "crabs" / "test.yaml"
         cfg = CrabConfig()
         write_crab_config(path, cfg)
 
         assert path.exists()
         content = path.read_text()
-        assert '[crab]' in content
-        assert '[state]' not in content
-        assert '[env]' in content
-        assert '[shared]' in content
-        assert '# model = "opus"' in content
+        assert 'crab:' in content
+        assert 'state:' not in content
+        assert 'env:' in content
+        assert 'shared:' in content
 
     def test_write_with_values(self, tmp_path):
-        path = tmp_path / "test.toml"
+        path = tmp_path / "test.yaml"
         cfg = CrabConfig(
             name="Claude Code",
             shell="standard",
@@ -176,44 +173,34 @@ class TestWriteCrabConfig:
         )
         write_crab_config(path, cfg)
 
-        content = path.read_text()
-        assert 'name = "Claude Code"' in content
-        assert 'shell = "standard"' in content
-        assert 'run_args = ["--verbose"]' in content
-        assert 'access = "permissive"' in content
-        assert 'FOO = "bar"' in content
-        assert 'plugins = ".claude/plugins"' in content
+        loaded = load_crab_config(path)
+        assert loaded.name == "Claude Code"
+        assert loaded.shell == "standard"
+        assert loaded.run_args == ["--verbose"]
+        assert loaded.state == {"access": "permissive"}
+        assert loaded.env == {"FOO": "bar"}
+        assert loaded.shared_caches == {"plugins": ".claude/plugins"}
 
-    def test_model_commented_when_not_in_state(self, tmp_path):
-        path = tmp_path / "test.toml"
+    def test_state_folded_into_crab_section(self, tmp_path):
+        path = tmp_path / "test.yaml"
         cfg = CrabConfig(state={"access": "permissive"})
         write_crab_config(path, cfg)
 
         content = path.read_text()
-        assert '# model = "opus"' in content
-        assert 'access = "permissive"' in content
-
-    def test_model_not_commented_when_in_state(self, tmp_path):
-        path = tmp_path / "test.toml"
-        cfg = CrabConfig(state={"model": "sonnet"})
-        write_crab_config(path, cfg)
-
-        content = path.read_text()
-        assert 'model = "sonnet"' in content
-        # Should NOT have the comment line
-        lines = content.split("\n")
-        comment_lines = [line for line in lines if line.strip() == '# model = "opus"']
-        assert len(comment_lines) == 0
+        # No separate state section; state knobs live under crab.
+        assert 'state:' not in content
+        loaded = load_crab_config(path)
+        assert loaded.state == {"access": "permissive"}
 
     def test_creates_parent_dirs(self, tmp_path):
-        path = tmp_path / "deep" / "nested" / "agent.toml"
+        path = tmp_path / "deep" / "nested" / "agent.yaml"
         write_crab_config(path, CrabConfig())
         assert path.exists()
 
 
 class TestRoundTrip:
     def test_write_then_load(self, tmp_path):
-        path = tmp_path / "test.toml"
+        path = tmp_path / "test.yaml"
         original = CrabConfig(
             name="Claude Code",
             shell="minimal",
@@ -233,7 +220,7 @@ class TestRoundTrip:
         assert loaded.shared_caches == original.shared_caches
 
     def test_round_trip_empty_config(self, tmp_path):
-        path = tmp_path / "test.toml"
+        path = tmp_path / "test.yaml"
         original = CrabConfig()
         write_crab_config(path, original)
         loaded = load_crab_config(path)
@@ -246,9 +233,9 @@ class TestRoundTrip:
         assert loaded.shared_caches == {}
 
     def test_state_folded_into_single_crab_section(self, tmp_path):
-        # Writing state must produce ONE [crab] section (identity + state),
-        # with no separate [state] section, and load back intact.
-        path = tmp_path / "test.toml"
+        # Writing state must produce ONE crab section (identity + state),
+        # with no separate state section, and load back intact.
+        path = tmp_path / "test.yaml"
         original = CrabConfig(
             name="Claude Code",
             shell="minimal",
@@ -257,12 +244,11 @@ class TestRoundTrip:
         )
         write_crab_config(path, original)
         content = path.read_text()
-        assert '[state]' not in content
-        assert content.count("[crab]") == 1
-        assert 'name = "Claude Code"' in content
-        assert 'shell = "minimal"' in content
-        assert 'run_args = ["--verbose"]' in content
-        assert 'model = "sonnet"' in content
+        assert 'state:' not in content
+        assert content.count("crab:") == 1
+        assert 'name: Claude Code' in content
+        assert 'shell: minimal' in content
+        assert 'model: sonnet' in content
 
         loaded = load_crab_config(path)
         assert loaded.state == {"model": "sonnet"}
@@ -271,7 +257,7 @@ class TestRoundTrip:
         assert loaded.run_args == ["--verbose"]
 
     def test_round_trip_multiple_run_args(self, tmp_path):
-        path = tmp_path / "test.toml"
+        path = tmp_path / "test.yaml"
         original = CrabConfig(run_args=["--foo", "--bar", "baz"])
         write_crab_config(path, original)
         loaded = load_crab_config(path)

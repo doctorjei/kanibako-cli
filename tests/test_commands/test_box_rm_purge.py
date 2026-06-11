@@ -17,7 +17,7 @@ class TestPurgeDir:
     def test_removes_normal_dir(self, tmp_path):
         d = tmp_path / "box"
         d.mkdir()
-        (d / "project.toml").write_text("x")
+        (d / "project.yaml").write_text("x")
         assert _purge_dir(d) is True
         assert not d.exists()
 

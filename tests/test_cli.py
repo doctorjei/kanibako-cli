@@ -831,7 +831,7 @@ class TestLazyInitExemptions:
 
     def test_crab_helper_skips_lazy_init(self, tmp_path, monkeypatch):
         """'crab helper' command should not trigger lazy init."""
-        # Point XDG_CONFIG_HOME to an empty dir (no kanibako.toml)
+        # Point XDG_CONFIG_HOME to an empty dir (no kanibako.yaml)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
             "kanibako.commands.helper_cmd._helpers_dir",
@@ -887,7 +887,7 @@ class TestLazyInitExemptions:
             main(["system", "info"])
         assert exc_info.value.code == 0
         # Config should have been created by lazy init
-        assert (tmp_path / "config" / "kanibako.toml").exists()
+        assert (tmp_path / "config" / "kanibako.yaml").exists()
 
 
 class TestVerboseFlag:

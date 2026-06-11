@@ -325,41 +325,40 @@ class TestResolveSpawnBudget:
 
 class TestSpawnConfigIO:
     def test_write_and_read(self, tmp_path):
-        path = tmp_path / "spawn.toml"
+        path = tmp_path / "spawn.yaml"
         budget = SpawnBudget(depth=3, breadth=5)
         write_spawn_config(path, budget)
         result = read_spawn_config(path)
         assert result == budget
 
     def test_read_missing_file(self, tmp_path):
-        assert read_spawn_config(tmp_path / "nope.toml") is None
+        assert read_spawn_config(tmp_path / "nope.yaml") is None
 
     def test_read_no_spawn_section(self, tmp_path):
-        path = tmp_path / "empty.toml"
-        path.write_text("[other]\nfoo = 1\n")
+        path = tmp_path / "empty.yaml"
+        path.write_text("other:\n  foo: 1\n")
         assert read_spawn_config(path) is None
 
     def test_preserves_other_sections(self, tmp_path):
-        path = tmp_path / "config.toml"
-        path.write_text("[other]\nfoo = 1\n")
+        path = tmp_path / "config.yaml"
+        path.write_text("other:\n  foo: 1\n")
         write_spawn_config(path, SpawnBudget(depth=2, breadth=3))
         result = read_spawn_config(path)
         assert result == SpawnBudget(depth=2, breadth=3)
         # Other section preserved
-        import tomllib as tl
-        with open(path, "rb") as f:
-            data = tl.load(f)
+        from kanibako.config_io import load_doc
+        data = load_doc(path)
         assert data["other"]["foo"] == 1
 
     def test_unlimited_values(self, tmp_path):
-        path = tmp_path / "unlimited.toml"
+        path = tmp_path / "unlimited.yaml"
         budget = SpawnBudget(depth=-1, breadth=-1)
         write_spawn_config(path, budget)
         result = read_spawn_config(path)
         assert result == budget
 
     def test_creates_parent_dirs(self, tmp_path):
-        path = tmp_path / "sub" / "dir" / "spawn.toml"
+        path = tmp_path / "sub" / "dir" / "spawn.yaml"
         write_spawn_config(path, SpawnBudget())
         assert path.exists()
 

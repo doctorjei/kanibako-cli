@@ -232,12 +232,12 @@ def _ensure_initialized() -> None:
     crabs_path = sys_paths["system.path.crabs"]
     crabs_path.mkdir(parents=True, exist_ok=True)
 
-    general_toml = crabs_path / "general.toml"
+    general_toml = crabs_path / "general.yaml"
     if not general_toml.exists():
         write_crab_config(general_toml, CrabConfig(name="Shell"))
 
     for target_name, cls in discover_targets().items():
-        target_toml = crabs_path / f"{target_name}.toml"
+        target_toml = crabs_path / f"{target_name}.yaml"
         if not target_toml.exists():
             crab_cfg = cls().generate_crab_config()
             write_crab_config(target_toml, crab_cfg)

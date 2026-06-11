@@ -307,9 +307,13 @@ class TestOrphanDetectionHint:
 
 class TestCrabConfigFirstUse:
     def test_generates_config_on_first_use(self, start_mocks):
-        """When agent TOML doesn't exist, target.generate_crab_config() is called."""
+        """When agent config doesn't exist, target.generate_crab_config() is called."""
         with start_mocks() as m:
             m.crab_toml_path.exists.return_value = False
+            # Return a real CrabConfig so the (now YAML) write path can
+            # serialize it — a bare MagicMock is not representable.
+            from kanibako.crabs import CrabConfig
+            m.target.generate_crab_config.return_value = CrabConfig(name="claude")
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -318,7 +322,7 @@ class TestCrabConfigFirstUse:
             m.target.generate_crab_config.assert_called_once()
 
     def test_does_not_generate_when_exists(self, start_mocks):
-        """When agent TOML exists, generate_crab_config() is NOT called."""
+        """When agent config exists, generate_crab_config() is NOT called."""
         with start_mocks() as m:
             m.crab_toml_path.exists.return_value = True
             _run_container(
@@ -363,7 +367,7 @@ class TestCrabConfigFirstUse:
                 c[0][0]
                 for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
             ]
-            assert "no_agent.toml" in div_args
+            assert "no_agent.yaml" in div_args
 
 
 # ---------------------------------------------------------------------------

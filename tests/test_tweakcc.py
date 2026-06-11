@@ -177,35 +177,35 @@ class TestCrabConfigTweakcc:
     def test_load_with_tweakcc(self, tmp_path):
         from kanibako.crabs import load_crab_config
 
-        toml_content = """\
-[crab]
-name = "Claude Code"
-shell = "standard"
-run_args = []
-model = "opus"
+        yaml_content = """\
+crab:
+  name: "Claude Code"
+  shell: "standard"
+  run_args: []
+  model: "opus"
 
-[env]
+env: {}
 
-[shared]
+shared: {}
 
-[tweakcc]
-enabled = true
-config = "~/.tweakcc/config.json"
+tweakcc:
+  enabled: true
+  config: "~/.tweakcc/config.json"
 """
-        path = tmp_path / "agent.toml"
-        path.write_text(toml_content)
+        path = tmp_path / "agent.yaml"
+        path.write_text(yaml_content)
         cfg = load_crab_config(path)
         assert cfg.tweakcc == {"enabled": True, "config": "~/.tweakcc/config.json"}
 
     def test_load_without_tweakcc(self, tmp_path):
         from kanibako.crabs import load_crab_config
 
-        toml_content = """\
-[crab]
-name = "Claude Code"
+        yaml_content = """\
+crab:
+  name: "Claude Code"
 """
-        path = tmp_path / "agent.toml"
-        path.write_text(toml_content)
+        path = tmp_path / "agent.yaml"
+        path.write_text(yaml_content)
         cfg = load_crab_config(path)
         assert cfg.tweakcc == {}
 
@@ -213,7 +213,7 @@ name = "Claude Code"
         from kanibako.crabs import CrabConfig, load_crab_config, write_crab_config
 
         cfg = CrabConfig(name="Test", tweakcc={"enabled": True, "config": "/path"})
-        path = tmp_path / "agent.toml"
+        path = tmp_path / "agent.yaml"
         write_crab_config(path, cfg)
 
         # Round-trip
@@ -222,14 +222,16 @@ name = "Claude Code"
         assert loaded.tweakcc["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
-        from kanibako.crabs import CrabConfig, write_crab_config
+        from kanibako.crabs import CrabConfig, load_crab_config, write_crab_config
 
         cfg = CrabConfig(name="Test")
-        path = tmp_path / "agent.toml"
+        path = tmp_path / "agent.yaml"
         write_crab_config(path, cfg)
         content = path.read_text()
-        assert "[tweakcc]" in content
-        assert "# enabled = false" in content
+        # YAML serialization always emits the (empty) tweakcc mapping.
+        assert "tweakcc:" in content
+        loaded = load_crab_config(path)
+        assert loaded.tweakcc == {}
 
 
 # ── Cache layer tests ────────────────────────────────────────────────

@@ -120,7 +120,7 @@ class TestLazyInit:
 
         _ensure_initialized()
 
-        config_file = tmp_path / "config" / "kanibako.toml"
+        config_file = tmp_path / "config" / "kanibako.yaml"
         assert config_file.exists()
         # Data directories should also be created
         assert (tmp_path / "data" / "kanibako" / "containers").is_dir()
@@ -137,7 +137,7 @@ class TestLazyInit:
         (tmp_path / "home").mkdir(parents=True, exist_ok=True)
 
         # Write custom config first
-        config_file = tmp_path / "config" / "kanibako.toml"
+        config_file = tmp_path / "config" / "kanibako.yaml"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         write_global_config(config_file, KanibakoConfig(box_image="custom:v1"))
 

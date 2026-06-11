@@ -271,9 +271,9 @@ class TestBoxMigrate:
         assert new_project.is_dir()
         assert (new_project / "marker.txt").read_text() == "hello"
 
-        # Workspace path stored in project.toml (no more project-path.txt).
+        # Workspace path stored in project.yaml (no more project-path.txt).
         from kanibako.config import read_project_meta
-        meta = read_project_meta(new_project / "project.toml")
+        meta = read_project_meta(new_project / "project.yaml")
         assert meta is not None
         assert meta["workspace"] == str(new_dir.resolve())
 
@@ -898,12 +898,12 @@ class TestBoxConvert:
         rc = run_migrate(args)
         assert rc == 0
 
-        # Workspace should be stored in project.toml, not project-path.txt.
+        # Workspace should be stored in project.yaml, not project-path.txt.
         from kanibako.config import read_project_meta
         projects_base = std.data_path / "boxes"
         ac_dir = projects_base / "conv_bc_ac"
         assert not (ac_dir / "project-path.txt").exists()
-        meta = read_project_meta(ac_dir / "project.toml")
+        meta = read_project_meta(ac_dir / "project.yaml")
         assert meta is not None
 
     def test_convert_excludes_lock_file(self, config_file, tmp_home, credentials_dir):
@@ -1517,7 +1517,7 @@ class TestBoxConvertFromWorkset:
         ac_project = projects_base / "ws-proj_src"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-marker"
-        # No breadcrumb file (workspace stored in project.toml).
+        # No breadcrumb file (workspace stored in project.yaml).
         assert not (ac_project / "project-path.txt").exists()
 
     def test_convert_workset_to_standalone(self, config_file, tmp_home, credentials_dir):

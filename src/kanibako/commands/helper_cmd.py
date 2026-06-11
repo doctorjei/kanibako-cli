@@ -165,7 +165,7 @@ def _check_helpers_enabled() -> bool:
 
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
     """Return the path to a helper's RO spawn config."""
-    return helpers_dir / str(helper_num) / "spawn.toml"
+    return helpers_dir / str(helper_num) / "spawn.yaml"
 
 
 def _state_path(helpers_dir: Path, helper_num: int) -> Path:
@@ -223,7 +223,7 @@ def run_spawn(args: argparse.Namespace) -> int:
     ro_budget = None
 
     # Check for RO spawn config (set by parent, if we are a helper)
-    own_ro_config = Path.home() / "spawn.toml"
+    own_ro_config = Path.home() / "spawn.yaml"
     if own_ro_config.is_file():
         ro_budget = read_spawn_config(own_ro_config)
 

@@ -66,7 +66,7 @@ class TestBoxConfigShow:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Write a project override
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         write_project_config(project_toml, "custom:v1")
 
         args = argparse.Namespace(
@@ -81,7 +81,7 @@ class TestBoxConfigShow:
     def test_show_effective_reflects_workset_tier(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
-        """A value set ONLY in the workset config.toml shows in --effective.
+        """A value set ONLY in the workset config.yaml shows in --effective.
 
         This is the P3.7 parity fix: ``box config --effective`` must reflect
         the workset tier that ``start`` resolves (previously it skipped it).
@@ -99,7 +99,7 @@ class TestBoxConfigShow:
         add_project(ws, "myproj", src)
 
         # Set a box.* value ONLY at the workset level.
-        (ws.root / "config.toml").write_text('[box]\nimage = "ws-tier-img:1"\n')
+        (ws.root / "config.yaml").write_text('box:\n  image: "ws-tier-img:1"\n')
 
         # Resolve via cwd inside the project's workspace dir.
         monkeypatch.chdir(ws.workspaces_dir / "myproj")
@@ -261,7 +261,7 @@ class TestBoxConfigReset:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Set first
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         write_project_config(project_toml, "to-reset:v1")
 
         # Reset
@@ -284,7 +284,7 @@ class TestBoxConfigReset:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Set a value first
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         write_project_config(project_toml, "override:v1")
 
         # Reset all with --force (skip confirmation)
@@ -432,35 +432,35 @@ class TestBoxConfigTooManyArgs:
 
 class TestWriteProjectConfigKey:
     def test_write_paths_key(self, tmp_path):
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "paths_shell", "custom_shell")
         loaded = load_config(p)
         assert loaded.paths_shell == "custom_shell"
         text = p.read_text()
-        assert "[paths]" in text
-        assert 'shell = "custom_shell"' in text
+        assert "paths:" in text
+        assert 'shell: custom_shell' in text
 
     def test_write_box_key(self, tmp_path):
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "myimg:v1")
         loaded = load_config(p)
         assert loaded.box_image == "myimg:v1"
         text = p.read_text()
-        assert "[box]" in text
-        assert 'image = "myimg:v1"' in text
+        assert "box:" in text
+        assert 'image: myimg:v1' in text
 
     def test_write_crab_key(self, tmp_path):
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_crab", "my-target")
         loaded = load_config(p)
         assert loaded.box_crab == "my-target"
         text = p.read_text()
-        assert "[box]" in text
-        assert 'crab = "my-target"' in text
+        assert "box:" in text
+        assert 'crab: my-target' in text
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "multi:v1")
         write_project_config_key(p, "paths_shell", "multi_shell")
         loaded = load_config(p)
@@ -468,7 +468,7 @@ class TestWriteProjectConfigKey:
         assert loaded.paths_shell == "multi_shell"
 
     def test_update_existing_key(self, tmp_path):
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "old:v1")
         write_project_config_key(p, "box_image", "new:v2")
         loaded = load_config(p)
@@ -478,7 +478,7 @@ class TestWriteProjectConfigKey:
 
     def test_backward_compat_with_write_project_config(self, tmp_path):
         """write_project_config (old API) should still work."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config(p, "compat:v1")
         loaded = load_config(p)
         assert loaded.box_image == "compat:v1"
@@ -487,7 +487,7 @@ class TestWriteProjectConfigKey:
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "remove-me:v1")
         assert unset_project_config_key(p, "box_image") is True
         loaded = load_config(p)
@@ -496,7 +496,7 @@ class TestUnsetProjectConfigKey:
 
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "keep:v1")
         assert unset_project_config_key(p, "paths_shell") is False
         # Original key should still be there
@@ -505,12 +505,12 @@ class TestUnsetProjectConfigKey:
 
     def test_unset_no_file(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "nonexistent.toml"
+        p = tmp_path / "nonexistent.yaml"
         assert unset_project_config_key(p, "box_image") is False
 
     def test_unset_preserves_other_keys(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "img:v1")
         write_project_config_key(p, "paths_shell", "my_shell")
         assert unset_project_config_key(p, "box_image") is True
@@ -521,11 +521,11 @@ class TestUnsetProjectConfigKey:
 
 class TestLoadProjectOverrides:
     def test_empty_when_no_file(self, tmp_path):
-        p = tmp_path / "nonexistent.toml"
+        p = tmp_path / "nonexistent.yaml"
         assert load_project_overrides(p) == {}
 
     def test_returns_only_overrides(self, tmp_path):
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config_key(p, "box_image", "override:v1")
         overrides = load_project_overrides(p)
         assert "box_image" in overrides
@@ -553,7 +553,7 @@ class TestSplitConfigKey:
 
     def test_unknown_prefix_raises(self):
         from kanibako.config import _split_config_key
-        with pytest.raises(ValueError, match="Cannot determine TOML section"):
+        with pytest.raises(ValueError, match="Cannot determine config section"):
             _split_config_key("unknown_prefix_key")
 
 

@@ -210,8 +210,8 @@ def _stub_project(metadata_path, project_path, config):
     from kanibako.config import read_project_meta
     from kanibako.paths import ProjectPaths
 
-    # Read hash and name from project.toml when available.
-    meta = read_project_meta(metadata_path / "project.toml")
+    # Read hash and name from project.yaml when available.
+    meta = read_project_meta(metadata_path / "project.yaml")
     phash = (meta.get("project_hash") or metadata_path.name) if meta else metadata_path.name
     name = (meta.get("name") or "") if meta else ""
 

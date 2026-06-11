@@ -14,7 +14,7 @@ class TestInstall:
     def test_writes_config(self, tmp_home):
         from kanibako.commands.install import run
 
-        config_file = tmp_home / "config" / "kanibako.toml"
+        config_file = tmp_home / "config" / "kanibako.yaml"
         assert not config_file.exists()
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no runtime")):
@@ -45,7 +45,7 @@ class TestInstallExtended:
         from kanibako.commands.install import run
 
         self._base_setup(tmp_home)
-        config_file = tmp_home / "config" / "kanibako.toml"
+        config_file = tmp_home / "config" / "kanibako.yaml"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         custom_cfg = KanibakoConfig(box_image="custom:v1")
         write_global_config(config_file, custom_cfg)
@@ -61,7 +61,7 @@ class TestInstallExtended:
         from kanibako.commands.install import run
 
         self._base_setup(tmp_home)
-        config_file = tmp_home / "config" / "kanibako.toml"
+        config_file = tmp_home / "config" / "kanibako.yaml"
         assert not config_file.exists()
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
@@ -91,7 +91,7 @@ class TestInstallAgentTomls:
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
-        general_toml = self._data_path(tmp_home) / "crabs" / "general.toml"
+        general_toml = self._data_path(tmp_home) / "crabs" / "general.yaml"
         assert general_toml.is_file()
         cfg = load_crab_config(general_toml)
         assert cfg.name == "Shell"
@@ -102,8 +102,8 @@ class TestInstallAgentTomls:
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
-        # The claude target is registered via entry points, so claude.toml should exist
-        claude_toml = self._data_path(tmp_home) / "crabs" / "claude.toml"
+        # The claude target is registered via entry points, so claude.yaml should exist
+        claude_toml = self._data_path(tmp_home) / "crabs" / "claude.yaml"
         assert claude_toml.is_file()
         cfg = load_crab_config(claude_toml)
         assert cfg.name == "Claude Code"
@@ -117,9 +117,9 @@ class TestInstallAgentTomls:
         crabs_dir = data_path / "crabs"
         crabs_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write a custom general.toml before setup
-        general_toml = crabs_dir / "general.toml"
-        general_toml.write_text('[crab]\nname = "Custom Shell"\n')
+        # Write a custom general.yaml before setup
+        general_toml = crabs_dir / "general.yaml"
+        general_toml.write_text('crab:\n  name: "Custom Shell"\n')
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())

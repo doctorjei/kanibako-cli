@@ -301,8 +301,8 @@ class TestWorksetAuthOverrideChain:
 
     So the workset's distinct setting (``group_auth=False``) wins UNLESS it is
     the default ``True`` (shared), in which case the resolver falls back to the
-    project's stored ``group_auth`` from project.toml.  The resolved value
-    surfaces on ``ProjectPaths.group_auth`` and is persisted into project.toml
+    project's stored ``group_auth`` from project.yaml.  The resolved value
+    surfaces on ``ProjectPaths.group_auth`` and is persisted into project.yaml
     on initialize.
     """
 
@@ -316,8 +316,8 @@ class TestWorksetAuthOverrideChain:
         )
 
         assert proj.group_auth is False
-        # And it is persisted into project.toml.
-        meta = read_project_meta(proj.metadata_path / "project.toml")
+        # And it is persisted into project.yaml.
+        meta = read_project_meta(proj.metadata_path / "project.yaml")
         assert meta is not None
         assert meta["group_auth"] is False
 
@@ -327,7 +327,7 @@ class TestWorksetAuthOverrideChain:
         """workset group_auth=True + project stored group_auth=False -> resolved False.
 
         The workset's group_auth is the default True (shared), so the resolver
-        reads the project's persisted group_auth from project.toml and uses
+        reads the project's persisted group_auth from project.yaml and uses
         that instead.
         """
         ws, name = workset_env
@@ -339,9 +339,9 @@ class TestWorksetAuthOverrideChain:
         )
         assert proj.group_auth is True
 
-        # Adjust the project's stored group_auth to False in project.toml,
+        # Adjust the project's stored group_auth to False in project.yaml,
         # preserving the rest of the resolved metadata.
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         meta = read_project_meta(project_toml)
         assert meta is not None
         write_project_meta(

@@ -42,9 +42,9 @@ def tmp_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def config_file(tmp_home):
-    """Write a default kanibako.toml and return its path."""
+    """Write a default kanibako.yaml and return its path."""
     config_home = tmp_home / "config"
-    cf = config_home / "kanibako.toml"
+    cf = config_home / "kanibako.yaml"
     write_global_config(cf)
     return cf
 
@@ -57,7 +57,7 @@ def sample_config():
 
 @pytest.fixture
 def config(config_file):
-    """Load config from the default kanibako.toml."""
+    """Load config from the default kanibako.yaml."""
     return load_config(config_file)
 
 
@@ -252,7 +252,7 @@ def start_mocks():
             # Crab config mock: empty defaults (no run_args, no state, no env)
             agent_cfg = CrabConfig()
             m_load_agent_cfg.return_value = agent_cfg
-            # start.py now derives the crab TOML path as std.crabs / "<id>.toml".
+            # start.py now derives the crab config path as std.crabs / "<id>.yaml".
             # std is a MagicMock, so the derived path's .exists() is truthy by
             # default — which keeps the "config already present" branch.
             mock_crab_path = m_load_std.return_value.crabs.__truediv__.return_value

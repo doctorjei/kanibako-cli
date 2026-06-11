@@ -374,7 +374,7 @@ class HelperHub:
         except Exception as e:
             return {"status": "error", "message": f"workspace copy failed: {e}"}
 
-        # Resolve source metadata dir via names.toml reverse lookup
+        # Resolve source metadata dir via names.yaml reverse lookup
         from kanibako.names import assign_name, read_names
 
         boxes_base = ctx.boxes or (ctx.data_path / "boxes")
@@ -502,9 +502,9 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
         mounts.append(Mount(all_link, "/home/agent/all", "Z,U"))
 
     # Spawn config (read-only)
-    spawn_toml = helper_root / "spawn.toml"
+    spawn_toml = helper_root / "spawn.yaml"
     if spawn_toml.is_file():
-        mounts.append(Mount(spawn_toml, "/home/agent/spawn.toml", "ro"))
+        mounts.append(Mount(spawn_toml, "/home/agent/spawn.yaml", "ro"))
 
     # Helper socket — mount the hub socket into the helper
     if ctx.socket_path.exists():

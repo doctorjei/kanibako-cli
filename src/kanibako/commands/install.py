@@ -34,7 +34,7 @@ def run(args: argparse.Namespace) -> int:
         print("Configuration file already exists, loading.")
         config = load_config(config_file)
     else:
-        print("Writing general configuration file (kanibako.toml)... ", end="", flush=True)
+        print("Writing general configuration file (kanibako.yaml)... ", end="", flush=True)
         config = KanibakoConfig()
         write_global_config(config_file, config)
         print("done!")
@@ -71,14 +71,14 @@ def run(args: argparse.Namespace) -> int:
     crabs_path = sys_paths["system.path.crabs"]
     crabs_path.mkdir(parents=True, exist_ok=True)
 
-    # general.toml (no-agent default)
-    general_toml = crabs_path / "general.toml"
+    # general.yaml (no-agent default)
+    general_toml = crabs_path / "general.yaml"
     if not general_toml.exists():
         write_crab_config(general_toml, CrabConfig(name="Shell"))
 
     # Each discovered target plugin
     for target_name, cls in discover_targets().items():
-        target_toml = crabs_path / f"{target_name}.toml"
+        target_toml = crabs_path / f"{target_name}.yaml"
         if not target_toml.exists():
             agent_cfg = cls().generate_crab_config()
             write_crab_config(target_toml, agent_cfg)

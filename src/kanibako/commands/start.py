@@ -406,8 +406,8 @@ def _run_container(
                 break
 
     # Load merged config (global + workset + project)
-    project_toml = proj.metadata_path / "project.toml"
-    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
+    project_toml = proj.metadata_path / "project.yaml"
+    workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml,
@@ -507,7 +507,7 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    crab_cfg_path = std.crabs / f"{agent_id}.toml"
+    crab_cfg_path = std.crabs / f"{agent_id}.yaml"
     if target and not crab_cfg_path.exists():
         # First-use: generate default crab config from target plugin
         crab_cfg = target.generate_crab_config()
@@ -1153,10 +1153,10 @@ def _build_effective_state(
     with the target's declared defaults as a FLOOR (the system level's declared
     defaults).  Sources for each level's ``[crab]`` table:
 
-      * **box**     — ``[crab]`` in project.toml
-      * **workset** — ``[crab]`` in the workset's config.toml (if any)
+      * **box**     — ``[crab]`` in project.yaml
+      * **workset** — ``[crab]`` in the workset's config.yaml (if any)
       * **crab**    — the crab config's own state dict
-      * **system**  — ``[crab]`` in the global kanibako.toml
+      * **system**  — ``[crab]`` in the global kanibako.yaml
       * **floor**   — target ``setting_descriptors()`` defaults
 
     Explicit set values beat all declared defaults; the most-specific level
@@ -1471,7 +1471,7 @@ def _build_resource_mounts(proj, target, agent_id: str):
 
     config_dir = target.config_dir_name
 
-    project_toml = proj.metadata_path / "project.toml"
+    project_toml = proj.metadata_path / "project.yaml"
     try:
         overrides = read_resource_overrides(project_toml)
     except Exception:

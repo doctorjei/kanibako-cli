@@ -190,8 +190,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         aliases=["delete"],
         help="Unregister a project (optionally purge its metadata)",
         description=(
-            "Remove a project from names.toml without touching the workspace.\n"
-            "With --purge, also delete kanibako metadata (shell config, project.toml, vault symlinks, logs)."
+            "Remove a project from names.yaml without touching the workspace.\n"
+            "With --purge, also delete kanibako metadata (shell config, project.yaml, vault symlinks, logs)."
         ),
     )
     rm_p.add_argument(
@@ -288,7 +288,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Relocate a project workspace to a new directory",
         description=(
             "Move a project's workspace directory to a new location.\n"
-            "Updates names.toml and recreates vault symlinks.\n"
+            "Updates names.yaml and recreates vault symlinks.\n"
             "Cannot move projects that are inside a workset."
         ),
     )
@@ -402,7 +402,7 @@ def run_create(args: argparse.Namespace) -> int:
 
     # Persist image setting.
     image = args.image or config.box_image
-    project_toml = proj.metadata_path / "project.toml"
+    project_toml = proj.metadata_path / "project.yaml"
     write_project_config(project_toml, image)
 
     # Write .gitignore for standalone projects only.
@@ -458,7 +458,7 @@ def run_list(args: argparse.Namespace) -> int:
             print("No known projects.")
         return 0
 
-    # Build reverse lookup from path → name using names.toml.
+    # Build reverse lookup from path → name using names.yaml.
     names_data = read_names(std.data_path)
     path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
@@ -640,7 +640,7 @@ def _purge_dir(target: Path) -> bool:
 
 
 def run_rm(args: argparse.Namespace) -> int:
-    """Unregister a project from names.toml, optionally purging metadata."""
+    """Unregister a project from names.yaml, optionally purging metadata."""
     from kanibako.names import lookup_by_path
     from kanibako.paths import (
         _remove_human_vault_symlink,
@@ -681,9 +681,9 @@ def run_rm(args: argparse.Namespace) -> int:
     kind = "workset" if section == "worksets" else "project"
     print(f"Removing {kind}: {name} ({path})")
 
-    # Unregister from names.toml.
+    # Unregister from names.yaml.
     unregister_name(std.data_path, name, section=section)
-    print(f"Removed '{name}' from names.toml")
+    print(f"Removed '{name}' from names.yaml")
 
     if args.purge:
         metadata_dir = std.boxes / name
@@ -823,16 +823,16 @@ def run_move(args: argparse.Namespace) -> int:
         print(f"Error: failed to move workspace: {e}", file=sys.stderr)
         return 1
 
-    # 2. Update names.toml path.
+    # 2. Update names.yaml path.
     result = lookup_by_path(std.data_path, str(source_path))
     if result is not None:
         name, section = result
         update_name_path(std.data_path, name, str(dest_path), section=section)
-        print(f"Updated names.toml: {name} -> {dest_path}")
+        print(f"Updated names.yaml: {name} -> {dest_path}")
     elif proj.name:
         # Try by name directly.
         update_name_path(std.data_path, proj.name, str(dest_path))
-        print(f"Updated names.toml: {proj.name} -> {dest_path}")
+        print(f"Updated names.yaml: {proj.name} -> {dest_path}")
 
     # 3. Recreate vault symlinks (remove old, create new).
     _remove_project_vault_symlink(dest_path)
@@ -933,8 +933,8 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     # Load merged config for image info.
-    project_toml = proj.metadata_path / "project.toml"
-    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
+    project_toml = proj.metadata_path / "project.yaml"
+    workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
@@ -1039,7 +1039,7 @@ def run_config(args: argparse.Namespace) -> int:
             except ProjectError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
-            project_toml = proj.metadata_path / "project.toml"
+            project_toml = proj.metadata_path / "project.yaml"
             env_path = proj.metadata_path / "env"
             msg = reset_all(
                 config_path=project_toml,
@@ -1056,7 +1056,7 @@ def run_config(args: argparse.Namespace) -> int:
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         env_path = proj.metadata_path / "env"
         msg = reset_config_value(
             reset_key,
@@ -1080,13 +1080,13 @@ def run_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    project_toml = proj.metadata_path / "project.toml"
+    project_toml = proj.metadata_path / "project.yaml"
     env_global = std.data_path / "env"
     env_project = proj.metadata_path / "env"
 
     if action == ConfigAction.show:
         workset_path = (
-            (proj.group.root / "config.toml") if proj.group is not None else None
+            (proj.group.root / "config.yaml") if proj.group is not None else None
         )
         crab_state = None
         env_resolved = None
@@ -1107,7 +1107,7 @@ def run_config(args: argparse.Namespace) -> int:
             except (KeyError, Exception):
                 target = None
             agent_id = target.name if target else "general"
-            crab_cfg_path = std.crabs / f"{agent_id}.toml"
+            crab_cfg_path = std.crabs / f"{agent_id}.yaml"
             if target and not crab_cfg_path.exists():
                 crab_cfg = target.generate_crab_config()
             elif crab_cfg_path.exists():

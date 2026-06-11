@@ -9,6 +9,8 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol
 
+import yaml
+
 from kanibako.config import (
     KanibakoConfig,
     config_file_path,
@@ -17,6 +19,7 @@ from kanibako.config import (
     read_project_meta,
     write_project_meta,
 )
+from kanibako.config_io import load_doc
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings_resolve import (
     LevelView,
@@ -124,7 +127,7 @@ class ProjectPaths:
 
     project_path: Path
     project_hash: str
-    metadata_path: Path      # host-only: project.toml, breadcrumb, lock
+    metadata_path: Path      # host-only: project.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
     vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/share-ro)
     vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
@@ -234,7 +237,7 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.path.share_ro": "@system.path.data/share_ro",
     "system.path.share_rw": "@system.path.data/share_rw",
     "system.path.templates": "@system.path.data/templates",
-    "system.path.ws_hints": "@system.path.data/worksets.toml",
+    "system.path.ws_hints": "@system.path.data/worksets.yaml",
 }
 
 
@@ -380,10 +383,10 @@ def resolve_project(
     subcommands like ``archive``/``purge``), the paths are merely computed.
 
     *layout* overrides the default layout for new projects.  Existing projects
-    read their layout from ``project.toml``.
+    read their layout from ``project.yaml``.
 
     *enable_vault* controls whether vault directories are created and mounted.
-    Defaults to True for new projects; existing projects read from ``project.toml``.
+    Defaults to True for new projects; existing projects read from ``project.yaml``.
     """
     raw = project_dir or os.getcwd()
     # If the user passed a bare token (no path separator) and no file/dir of
@@ -412,8 +415,8 @@ def resolve_project(
 
     metadata_path = project_dir_path
 
-    # Check for stored paths in project.toml (enables user overrides).
-    project_toml = metadata_path / "project.toml"
+    # Check for stored paths in project.yaml (enables user overrides).
+    project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.local]
@@ -430,7 +433,7 @@ def resolve_project(
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Auth mode for the account (default group): the default workset's
-    # group_auth (from {data_path}/config.toml) is the base; a project may
+    # group_auth (from {data_path}/config.yaml) is the base; a project may
     # narrow shared→distinct via its own meta — mirroring the named-workset
     # logic in resolve_workset_project.  No-op on upgrade: default_workset's
     # group_auth is True until a user runs `workset config default group_auth`,
@@ -465,7 +468,7 @@ def resolve_project(
             actual_layout, metadata_path, project_path,
             vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
         )
-        project_toml = metadata_path / "project.toml"
+        project_toml = metadata_path / "project.yaml"
 
         _init_project(
             std, metadata_path, shell_path,
@@ -498,14 +501,14 @@ def resolve_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Backfill project.toml for old-format projects (pre-v0.8).
-        if metadata_path.is_dir() and read_project_meta(metadata_path / "project.toml") is None:
+        # Backfill project.yaml for old-format projects (pre-v0.8).
+        if metadata_path.is_dir() and read_project_meta(metadata_path / "project.yaml") is None:
             _global_shared_bf = std.data_path / config.paths_shared / "global"
             _local_shared_bf = std.data_path / config.paths_shared
             # Use directory name as project name (name-based dirs).
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
-                metadata_path / "project.toml",
+                metadata_path / "project.yaml",
                 mode="local",
                 layout=actual_layout.value,
                 workspace=str(project_path),
@@ -577,10 +580,10 @@ def _resolve_local_dir(
 ) -> tuple[str, Path]:
     """Find the boxes directory for a local project.
 
-    Looks up the project name via names.toml reverse lookup and returns
+    Looks up the project name via names.yaml reverse lookup and returns
     ``(project_name, boxes_dir/{name}/)`` path.  *boxes_dir* is the resolved
     ``system.path.boxes`` directory (``std.boxes``); *data_path* is still
-    needed to read ``names.toml``.
+    needed to read ``names.yaml``.
 
     Returns ``("", empty_path)`` when no name is registered — the caller
     (``resolve_project``) will assign a name during initialization.
@@ -885,7 +888,7 @@ def _init_project(
 def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path | None:
     """Find the deepest registered local project that is an ancestor of *target*.
 
-    Reads ``names.toml`` and, for each entry whose registered path is a
+    Reads ``names.yaml`` and, for each entry whose registered path is a
     prefix of *target*, checks that ``boxes_dir/{name}/`` actually exists on
     disk.  Among all valid matches, the deepest (most path components)
     wins.  Returns the matched path or ``None``.  *boxes_dir* is the resolved
@@ -916,15 +919,15 @@ def _is_standalone_meta_dir(meta_dir: Path) -> bool:
     A bare directory named ``.kanibako``/``kanibako`` is NOT sufficient: the
     kanibako container image bakes an empty ``~/.kanibako`` runtime/IPC dir into
     every container home (helper socket + log), which must never be mistaken for
-    a standalone project marker.  Require a parseable ``project.toml`` that
+    a standalone project marker.  Require a parseable ``project.yaml`` that
     declares ``mode = "standalone"``.
     """
-    toml = meta_dir / "project.toml"
+    toml = meta_dir / "project.yaml"
     if not meta_dir.is_dir() or not toml.is_file():
         return False
     try:
         meta = read_project_meta(toml)
-    except (OSError, ValueError):  # ValueError covers tomllib.TOMLDecodeError
+    except (OSError, ValueError, yaml.YAMLError):  # malformed/unreadable file
         return False
     return bool(meta and meta.get("mode") == "standalone")
 
@@ -943,7 +946,7 @@ def detect_project_mode(
     Detection order:
     1. Workset — *project_dir* lives inside a registered workset root
        (``workspaces/`` subdirectory first, then the root itself).
-    2. Local (name-based) — one-pass scan of ``names.toml``;
+    2. Local (name-based) — one-pass scan of ``names.yaml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
     3. Walk ancestors for standalone markers — a ``.kanibako`` or
@@ -968,7 +971,7 @@ def detect_project_mode(
     current = resolved
     while True:
         # Standalone check: .kanibako/ or kanibako/ directory with a real
-        # standalone project.toml.  A bare directory is not enough (the
+        # standalone project.yaml.  A bare directory is not enough (the
         # container image bakes an empty ~/.kanibako runtime/IPC dir).
         if _is_standalone_meta_dir(current / ".kanibako"):
             return DetectionResult(ProjectMode.standalone, current)
@@ -1001,10 +1004,7 @@ def _check_workset(
     if not worksets_toml.is_file():
         return None
 
-    import tomllib as _tomllib
-
-    with open(worksets_toml, "rb") as _f:
-        _data = _tomllib.load(_f)
+    _data = load_doc(worksets_toml)
 
     for _root_str in _data.get("worksets", {}).values():
         ws_root = Path(_root_str).resolve()
@@ -1054,8 +1054,8 @@ def resolve_workset_project(
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
-    # Check for stored paths in project.toml (enables user overrides).
-    project_toml = metadata_path / "project.toml"
+    # Check for stored paths in project.yaml (enables user overrides).
+    project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.workset]
@@ -1175,7 +1175,7 @@ def _init_workset_project(
 def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project.
 
-    *project_path* is read from ``project.toml`` (``workspace`` field) when
+    *project_path* is read from ``project.yaml`` (``workspace`` field) when
     available, falling back to ``project-path.txt`` for backward compat.
     """
     projects_dir = std.boxes
@@ -1186,8 +1186,8 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
         if not entry.is_dir():
             continue
         project_path: Path | None = None
-        # Prefer project.toml workspace field.
-        meta = read_project_meta(entry / "project.toml")
+        # Prefer project.yaml workspace field.
+        meta = read_project_meta(entry / "project.yaml")
         if meta and meta.get("workspace"):
             project_path = Path(meta["workspace"])
         else:
@@ -1375,10 +1375,10 @@ def resolve_standalone_project(
     meta = None
     actual_layout = None
     if dot_meta.is_dir():
-        meta = read_project_meta(dot_meta / "project.toml")
+        meta = read_project_meta(dot_meta / "project.yaml")
         metadata_path = dot_meta
     elif nodot_meta.is_dir():
-        meta = read_project_meta(nodot_meta / "project.toml")
+        meta = read_project_meta(nodot_meta / "project.yaml")
         metadata_path = nodot_meta
     else:
         # New project — determine layout and metadata_path.
@@ -1402,11 +1402,11 @@ def resolve_standalone_project(
         )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    project_toml = metadata_path / "project.toml"
+    project_toml = metadata_path / "project.yaml"
 
     # Auth mode for standalone: explicit param > meta > default.
     # Standalone projects are NOT in the account/default group, so they do
-    # not consult the default workset config.toml.
+    # not consult the default workset config.yaml.
     actual_group_auth = (
         group_auth
         if group_auth is not None

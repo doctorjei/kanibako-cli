@@ -118,7 +118,7 @@ def run_migrate(args: argparse.Namespace) -> int:
     human_vault_dir = std.data_path / config.paths_vault
     _remove_human_vault_symlink(human_vault_dir, old_project_dir / "vault")
 
-    # Update names.toml: unregister old name, assign new name.
+    # Update names.yaml: unregister old name, assign new name.
     if old_name:
         unregister_name(std.data_path, old_name)
     new_name = assign_name(std.data_path, str(new_path))
@@ -127,9 +127,9 @@ def run_migrate(args: argparse.Namespace) -> int:
     # Rename project directory (includes home/ inside it).
     old_project_dir.rename(new_project_dir)
 
-    # Update workspace path in project.toml.
+    # Update workspace path in project.yaml.
     from kanibako.config import read_project_meta, write_project_meta
-    project_toml = new_project_dir / "project.toml"
+    project_toml = new_project_dir / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
         write_project_meta(

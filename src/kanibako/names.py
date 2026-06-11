@@ -1,24 +1,24 @@
-"""Project name registry (names.toml).
+"""Project name registry (names.yaml).
 
-Central index at ``{data_path}/names.toml`` mapping human-readable names to
+Central index at ``{data_path}/names.yaml`` mapping human-readable names to
 project paths (for local projects) and workset roots (for worksets).
 Standalone projects are intentionally excluded — they have no central
 registration.
 
 The file has two sections::
 
-    [projects]
-    myapp = "/home/user/projects/myapp"
+    projects:
+      myapp: /home/user/projects/myapp
 
-    [worksets]
-    clientwork = "/home/user/worksets/client"
+    worksets:
+      clientwork: /home/user/worksets/client
 """
 
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 
+from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import ProjectError
 
 
@@ -27,16 +27,15 @@ from kanibako.errors import ProjectError
 # ---------------------------------------------------------------------------
 
 def _names_path(data_path: Path) -> Path:
-    return data_path / "names.toml"
+    return data_path / "names.yaml"
 
 
 def _load(data_path: Path) -> dict[str, dict[str, str]]:
-    """Load names.toml and return raw sections."""
+    """Load names.yaml and return raw sections."""
     path = _names_path(data_path)
     if not path.is_file():
         return {"projects": {}, "worksets": {}}
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
     return {
         "projects": {k: str(v) for k, v in data.get("projects", {}).items()},
         "worksets": {k: str(v) for k, v in data.get("worksets", {}).items()},
@@ -44,21 +43,13 @@ def _load(data_path: Path) -> dict[str, dict[str, str]]:
 
 
 def _save(data_path: Path, names: dict[str, dict[str, str]]) -> None:
-    """Write names.toml from sections dict."""
+    """Write names.yaml from sections dict."""
     path = _names_path(data_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines: list[str] = []
+    data: dict = {}
     for section in ("projects", "worksets"):
         entries = names.get(section, {})
-        if lines:
-            lines.append("")
-        lines.append(f"[{section}]")
-        for name in sorted(entries):
-            # Quote keys that contain dots or other TOML special characters
-            key = f'"{name}"' if "." in name or "/" in name else name
-            lines.append(f'{key} = "{entries[name]}"')
-    lines.append("")
-    path.write_text("\n".join(lines))
+        data[section] = {name: entries[name] for name in sorted(entries)}
+    dump_doc(path, data)
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +57,7 @@ def _save(data_path: Path, names: dict[str, dict[str, str]]) -> None:
 # ---------------------------------------------------------------------------
 
 def read_names(data_path: Path) -> dict[str, dict[str, str]]:
-    """Load names.toml.
+    """Load names.yaml.
 
     Returns ``{"projects": {name: path, ...}, "worksets": {name: path, ...}}``.
     """

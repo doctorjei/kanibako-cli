@@ -21,14 +21,14 @@ class TestBuildResourceMounts:
         (shell / ".claude").mkdir()
         global_shared = tmp_path / "shared" / "global"
         global_shared.mkdir(parents=True)
-        # Write an empty project.toml so read_resource_overrides finds it.
-        (metadata / "project.toml").write_text(
-            '[project]\nmode = "local"\nlayout = "default"\n'
-            'enable_vault = true\ngroup_auth = true\n\n'
-            '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
-            'vault_ro = "/ro"\nvault_rw = "/rw"\n'
-            'metadata = ""\nproject_hash = ""\n'
-            'global_shared = ""\nlocal_shared = ""\n'
+        # Write an empty project.yaml so read_resource_overrides finds it.
+        (metadata / "project.yaml").write_text(
+            'project:\n  mode: "local"\n  layout: "default"\n'
+            '  enable_vault: true\n  group_auth: true\n'
+            'resolved:\n  workspace: "/w"\n  shell: "/s"\n'
+            '  vault_ro: "/ro"\n  vault_rw: "/rw"\n'
+            '  metadata: ""\n  project_hash: ""\n'
+            '  global_shared: ""\n  local_shared: ""\n'
         )
         return SimpleNamespace(
             metadata_path=metadata,
@@ -164,7 +164,7 @@ class TestResourceOverrideInMounts:
         from kanibako.config import write_project_meta, write_resource_override
 
         proj = self._make_proj(tmp_path)
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         write_project_meta(
             project_toml,
             mode="local", layout="default",
@@ -186,7 +186,7 @@ class TestResourceOverrideInMounts:
         from kanibako.config import write_project_meta, write_resource_override
 
         proj = self._make_proj(tmp_path)
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         write_project_meta(
             project_toml,
             mode="local", layout="default",
@@ -208,14 +208,14 @@ class TestResourceOverrideInMounts:
         # This tests the CLI validation in #12B — just verify read_resource_overrides works.
         from kanibako.config import read_resource_overrides, write_resource_override
 
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         project_toml.write_text(
-            '[project]\nmode = "local"\nlayout = "default"\n'
-            'enable_vault = true\ngroup_auth = true\n\n'
-            '[resolved]\nworkspace = "/w"\nshell = "/s"\n'
-            'vault_ro = "/ro"\nvault_rw = "/rw"\n'
-            'metadata = ""\nproject_hash = ""\n'
-            'global_shared = ""\nlocal_shared = ""\n'
+            'project:\n  mode: "local"\n  layout: "default"\n'
+            '  enable_vault: true\n  group_auth: true\n'
+            'resolved:\n  workspace: "/w"\n  shell: "/s"\n'
+            '  vault_ro: "/ro"\n  vault_rw: "/rw"\n'
+            '  metadata: ""\n  project_hash: ""\n'
+            '  global_shared: ""\n  local_shared: ""\n'
         )
         write_resource_override(project_toml, "nonexistent/", "shared")
         overrides = read_resource_overrides(project_toml)
@@ -276,10 +276,10 @@ class TestBuildEffectiveState:
         return target
 
     def _make_global_config(self, tmp_path, settings=None):
-        """Create a minimal global kanibako.toml, optionally with [crab]."""
+        """Create a minimal global kanibako.yaml, optionally with [crab]."""
         from kanibako.config import write_crab_setting
 
-        global_toml = tmp_path / "kanibako.toml"
+        global_toml = tmp_path / "kanibako.yaml"
         global_toml.write_text("")
         if settings:
             for k, v in settings.items():
@@ -287,11 +287,11 @@ class TestBuildEffectiveState:
         return global_toml
 
     def _make_workset_config(self, tmp_path, settings=None):
-        """Create a minimal workset config.toml, optionally with [crab]."""
+        """Create a minimal workset config.yaml, optionally with [crab]."""
         from kanibako.config import write_crab_setting
 
         tmp_path.mkdir(parents=True, exist_ok=True)
-        ws_toml = tmp_path / "config.toml"
+        ws_toml = tmp_path / "config.yaml"
         ws_toml.write_text("")
         if settings:
             for k, v in settings.items():
@@ -299,11 +299,11 @@ class TestBuildEffectiveState:
         return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None):
-        """Create a minimal project.toml, optionally with [crab] overrides."""
+        """Create a minimal project.yaml, optionally with [crab] overrides."""
         from kanibako.config import write_project_meta, write_crab_setting
 
         tmp_path.mkdir(parents=True, exist_ok=True)
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         write_project_meta(
             project_toml,
             mode="local", layout="default",
@@ -394,7 +394,7 @@ class TestBuildEffectiveState:
         assert result == {"model": "opus", "access": "permissive"}
 
     def test_system_level_provides_value(self, tmp_path):
-        """System [crab] (global kanibako.toml) supplies a value when nothing
+        """System [crab] (global kanibako.yaml) supplies a value when nothing
         more specific sets it."""
         from kanibako.commands.start import _build_effective_state
 

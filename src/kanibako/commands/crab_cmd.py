@@ -163,7 +163,7 @@ def run_list(args: argparse.Namespace) -> int:
             print("No crabs configured.")
         return 0
 
-    toml_files = sorted(adir.glob("*.toml"))
+    toml_files = sorted(adir.glob("*.yaml"))
     if not toml_files:
         quiet = getattr(args, "quiet", False)
         if not quiet:
@@ -197,7 +197,7 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     crab_id = args.crab_id
-    path = std.crabs / f"{crab_id}.toml"
+    path = std.crabs / f"{crab_id}.yaml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
@@ -252,7 +252,7 @@ def run_config(args: argparse.Namespace) -> int:
         return 1
 
     crab_id = args.crab_id
-    path = std.crabs / f"{crab_id}.toml"
+    path = std.crabs / f"{crab_id}.yaml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1

@@ -28,6 +28,7 @@ from kanibako.config import (
     unset_project_config_key,
     write_project_config_key,
 )
+from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import UserCancelled
 from kanibako.shellenv import (
     merge_env,
@@ -164,7 +165,7 @@ def _is_shared_key(key: str) -> bool:
 
 
 def _is_crab_setting(key: str) -> bool:
-    """Keys that belong in the [crab] section of project.toml."""
+    """Keys that belong in the crab section of project.yaml."""
     return key in {"model", "start_mode", "autonomous"}
 
 
@@ -206,13 +207,11 @@ def get_config_value(
         merged = merge_env(env_global, env_project)
         return merged.get(env_name)
 
-    # resource.* keys — read from [resource_overrides] in project.toml
+    # resource.* keys — read from resource_overrides in project.yaml
     if _is_resource_key(canonical):
         resource_name = canonical[9:]  # strip "resource."
         if project_toml and project_toml.exists():
-            import tomllib
-            with open(project_toml, "rb") as f:
-                data = tomllib.load(f)
+            data = load_doc(project_toml)
             overrides = data.get("resource_overrides", {})
             return str(overrides.get(resource_name, "")) or None
         return None
@@ -259,7 +258,7 @@ def set_config_value(
 ) -> str:
     """Write a config value to the appropriate store.
 
-    *config_path* is the project.toml (for box/workset) or kanibako.toml
+    *config_path* is the project.yaml (for box/workset) or kanibako.yaml
     (for system).  Returns a human-readable confirmation message.
     """
     canonical = _resolve_key(key)
@@ -378,9 +377,7 @@ def reset_all(
 
     # Clear target settings
     if config_path.exists():
-        import tomllib
-        with open(config_path, "rb") as f:
-            data = tomllib.load(f)
+        data = load_doc(config_path)
         if data.get("crab"):
             for k in list(data["crab"]):
                 _remove_toml_key(config_path, "crab", k)
@@ -491,88 +488,34 @@ def show_config(
 
 
 # ---------------------------------------------------------------------------
-# TOML section helpers
+# Config section helpers (load → mutate → dump as YAML)
 # ---------------------------------------------------------------------------
 
-def _serialize_toml(data: dict) -> str:
-    """Minimal TOML serializer for section→key→value dicts.
-
-    Handles one level of plain sections plus one level of nested sub-tables
-    (emitted as dotted headers, e.g. ``[system.path]``).
-    """
-    lines: list[str] = []
-    # Top-level keys first (non-dict values).
-    for k, v in data.items():
-        if not isinstance(v, dict):
-            lines.append(f'{k} = {_toml_value(v)}')
-    if lines:
-        lines.append("")
-    # Sections.
-    for k, v in data.items():
-        if not isinstance(v, dict):
-            continue
-        scalars = {sk: sv for sk, sv in v.items() if not isinstance(sv, dict)}
-        subtables = {sk: sv for sk, sv in v.items() if isinstance(sv, dict)}
-        if scalars or not subtables:
-            lines.append(f"[{k}]")
-            for sk, sv in scalars.items():
-                lines.append(f'{sk} = {_toml_value(sv)}')
-            lines.append("")
-        # Nested sub-tables → dotted headers (e.g. [system.path]).
-        for sub_name, sub_val in subtables.items():
-            lines.append(f"[{k}.{sub_name}]")
-            for sk, sv in sub_val.items():
-                lines.append(f'{sk} = {_toml_value(sv)}')
-            lines.append("")
-    return "\n".join(lines)
-
-
-def _toml_value(v: object) -> str:
-    """Format a Python value as a TOML literal."""
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, int):
-        return str(v)
-    if isinstance(v, str):
-        return f'"{v}"'
-    if isinstance(v, list):
-        items = ", ".join(_toml_value(i) for i in v)
-        return f"[{items}]"
-    return f'"{v}"'
-
-
 def _write_toml_key(path: Path, section: str, key: str, value: str | bool) -> None:
-    """Write a key to a specific TOML section, preserving other content."""
-    import tomllib
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-
-    data.setdefault(section, {})[key] = value
-    path.write_text(_serialize_toml(data))
+    """Write a key to a specific config section, preserving other content."""
+    data = load_doc(path)
+    sec = data.get(section)
+    if not isinstance(sec, dict):
+        sec = {}
+        data[section] = sec
+    sec[key] = value
+    dump_doc(path, data)
 
 
 def _remove_toml_key(path: Path, section: str, key: str) -> bool:
-    """Remove a key from a specific TOML section.  Returns True if found."""
-    import tomllib
-
+    """Remove a key from a specific config section.  Returns True if found."""
     if not path.exists():
         return False
 
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
-
+    data = load_doc(path)
     sec = data.get(section, {})
-    if key not in sec:
+    if not isinstance(sec, dict) or key not in sec:
         return False
 
     del sec[key]
     if not sec:
         del data[section]
-    path.write_text(_serialize_toml(data))
+    dump_doc(path, data)
     return True
 
 
@@ -583,19 +526,16 @@ def _write_nested_toml_key(
 
     Preserves other content; creates intermediate tables as needed.
     """
-    import tomllib
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-
+    data = load_doc(path)
     node = data
     for sec in sections:
-        node = node.setdefault(sec, {})
+        child = node.get(sec)
+        if not isinstance(child, dict):
+            child = {}
+            node[sec] = child
+        node = child
     node[key] = value
-    path.write_text(_serialize_toml(data))
+    dump_doc(path, data)
 
 
 def _remove_nested_toml_key(
@@ -605,13 +545,10 @@ def _remove_nested_toml_key(
 
     Prunes now-empty intermediate tables.
     """
-    import tomllib
-
     if not path.exists():
         return False
 
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
 
     # Walk to the innermost table, recording the chain for pruning.
     chain: list[dict] = [data]
@@ -632,5 +569,5 @@ def _remove_nested_toml_key(
             del chain[i][sections[i]]
         else:
             break
-    path.write_text(_serialize_toml(data))
+    dump_doc(path, data)
     return True

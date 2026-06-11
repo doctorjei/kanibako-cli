@@ -26,7 +26,7 @@ class TestResolveSystemPathsDefaults:
         assert resolved["system.path.crabs"] == base / "crabs"
         assert resolved["system.path.comms"] == base / "comms"
         assert resolved["system.path.templates"] == base / "templates"
-        assert resolved["system.path.ws_hints"] == base / "worksets.toml"
+        assert resolved["system.path.ws_hints"] == base / "worksets.yaml"
 
     def test_returns_every_declared_key(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
@@ -77,13 +77,13 @@ class TestResolveSystemPathsOverrides:
 
 class TestLoadConfigSystemPaths:
     def test_system_path_table_populates(self, tmp_path):
-        toml = tmp_path / "kanibako.toml"
-        toml.write_text('[system.path]\nboxes = "/x"\n')
+        toml = tmp_path / "kanibako.yaml"
+        toml.write_text('system:\n  path:\n    boxes: "/x"\n')
         cfg = load_config(toml)
         assert cfg.system_paths == {"system.path.boxes": "/x"}
 
     def test_empty_config_has_no_system_paths(self, tmp_path):
-        cfg = load_config(tmp_path / "absent.toml")
+        cfg = load_config(tmp_path / "absent.yaml")
         assert cfg.system_paths == {}
 
 
@@ -98,12 +98,12 @@ class TestLoadStdPathsParity:
         assert std.crabs == std.data_path / "crabs"
         assert std.comms == std.data_path / "comms"
         assert std.templates == std.data_path / "templates"
-        assert std.ws_hints == std.data_path / "worksets.toml"
+        assert std.ws_hints == std.data_path / "worksets.yaml"
 
 
 class TestBoxesOverrideConsumers:
     """A ``system.path.boxes`` override is honored consistently by both
-    project creation/listing AND the names.toml reverse-lookup helpers.
+    project creation/listing AND the names.yaml reverse-lookup helpers.
     """
 
     def test_boxes_override_used_by_creation_and_lookup(self, tmp_home):
@@ -122,8 +122,8 @@ class TestBoxesOverrideConsumers:
         custom_boxes = tmp_home / "srv_boxes"
 
         # Write a config that overrides system.path.boxes to the custom dir.
-        cf = tmp_home / "config" / "kanibako.toml"
-        cf.write_text(f'[system.path]\nboxes = "{custom_boxes}"\n')
+        cf = tmp_home / "config" / "kanibako.yaml"
+        cf.write_text(f'system:\n  path:\n    boxes: "{custom_boxes}"\n')
 
         config = load_config(cf)
         assert config.system_paths == {"system.path.boxes": str(custom_boxes)}
