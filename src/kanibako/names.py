@@ -1,7 +1,7 @@
 """Project name registry (names.yaml).
 
 Central index at ``{data_path}/names.yaml`` mapping human-readable names to
-project paths (for local projects) and workset roots (for worksets).
+project paths (for default-mode projects) and workset roots (for worksets).
 Standalone projects are intentionally excluded — they have no central
 registration.
 
@@ -161,7 +161,7 @@ def resolve_name(
     Resolution order:
 
     1. If *cwd* is inside a workset → check that workset's projects first
-    2. ``[projects]`` section (local projects)
+    2. ``[projects]`` section (default-mode projects)
     3. ``[worksets]`` section (workset names)
 
     *kind* is ``"project"`` or ``"workset"``.
@@ -182,7 +182,7 @@ def resolve_name(
                 if candidate.is_dir():
                     return str(candidate), "project"
 
-    # 2. Local projects.
+    # 2. Default-mode projects.
     if name in names["projects"]:
         return names["projects"][name], "project"
 

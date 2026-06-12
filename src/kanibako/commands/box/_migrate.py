@@ -188,15 +188,15 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
         return _convert_from_workset(args, project_path, std, config)
 
     # Parse target mode.
-    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.default
 
     if current_mode == target_mode:
         print(f"Error: project is already in {current_mode.value} mode.", file=sys.stderr)
         return 1
 
     # Resolve current project paths.
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if current_mode == ProjectMode.local:
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    if current_mode == ProjectMode.default:
         proj = resolve_project(std, config, project_dir=str(project_path), initialize=False)
     else:
         proj = resolve_standalone_project(std, config, project_dir=str(project_path), initialize=False)
@@ -231,7 +231,7 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Dispatch.
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.standalone:
         _convert_local_to_standalone(project_path, std, config, proj)
     else:
@@ -243,7 +243,7 @@ def _run_convert(args: argparse.Namespace, std, config) -> int:
 
 
 def _convert_local_to_standalone(project_path, std, config, proj):
-    """Convert a local project to standalone layout."""
+    """Convert a default-mode project to standalone layout."""
     from kanibako.utils import write_project_gitignore
 
     dst_metadata = project_path / ".kanibako"
@@ -269,22 +269,22 @@ def _convert_local_to_standalone(project_path, std, config, proj):
         if not vault_gitignore.exists():
             vault_gitignore.write_text("rw/\n")
 
-    # Remove vault symlinks before cleaning up old local data.
+    # Remove vault symlinks before cleaning up old default-mode data.
     human_vault_dir = std.data_path / config.paths_vault
     _remove_human_vault_symlink(human_vault_dir, proj.metadata_path / "vault")
     _remove_project_vault_symlink(project_path)
 
-    # Unregister the local project name.
+    # Unregister the default-mode project name.
     if proj.name:
         unregister_name(std.data_path, proj.name)
 
-    # Clean up old local data.
+    # Clean up old default-mode data.
     shutil.rmtree(proj.metadata_path)
 
 
 def _convert_standalone_to_local(project_path, std, config, proj):
-    """Convert a standalone project to local layout."""
-    # Assign a name for the new local project.
+    """Convert a standalone project to default-mode layout."""
+    # Assign a name for the new default-mode project.
     project_name = assign_name(std.data_path, str(project_path))
     settings_base = std.boxes
     dst_project = settings_base / project_name
@@ -350,7 +350,7 @@ def _copy_into_workset(ws, proj_name, src_proj, source_path, source_mode, copy_w
 
 
 def _convert_to_workset(args, std, config) -> int:
-    """Convert a local or standalone project into a workset."""
+    """Convert a default-mode or standalone project into a workset."""
     import os
 
     from kanibako.workset import list_worksets, load_workset
@@ -390,8 +390,8 @@ def _convert_to_workset(args, std, config) -> int:
             return 1
 
     # Resolve source paths.
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if current_mode == ProjectMode.local:
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    if current_mode == ProjectMode.default:
         src_proj = resolve_project(std, config, project_dir=str(project_path), initialize=False)
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(project_path), initialize=False)
@@ -431,10 +431,10 @@ def _convert_to_workset(args, std, config) -> int:
     _copy_into_workset(ws, proj_name, src_proj, project_path, current_mode, copy_workspace=not in_place)
 
     # Remove vault symlinks before cleaning up old metadata.
-    if current_mode == ProjectMode.local:
+    if current_mode == ProjectMode.default:
         human_vault_dir = std.data_path / config.paths_vault
         _remove_human_vault_symlink(human_vault_dir, src_proj.metadata_path / "vault")
-        # Unregister old local name.
+        # Unregister old default-mode name.
         if src_proj.name:
             unregister_name(std.data_path, src_proj.name)
     _remove_project_vault_symlink(project_path)
@@ -450,7 +450,7 @@ def _convert_to_workset(args, std, config) -> int:
 
 
 def _convert_from_workset(args, project_path, std, config) -> int:
-    """Convert a workset project to local or standalone mode."""
+    """Convert a workset project to default or standalone mode."""
     to_mode_str = args.to_mode
 
     ws, proj_name = _find_workset_for_path(project_path, std)
@@ -461,7 +461,7 @@ def _convert_from_workset(args, project_path, std, config) -> int:
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
 
-    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.default
 
     if not src_proj.metadata_path.is_dir():
         print(f"Error: no project data found for {project_path}", file=sys.stderr)
@@ -498,8 +498,8 @@ def _convert_from_workset(args, project_path, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Target layout differs per mode; local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if target_mode == ProjectMode.local:
+    # Target layout differs per mode; default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    if target_mode == ProjectMode.default:
         _convert_ws_to_local(src_proj, dest_path, std, config)
     else:
         _convert_ws_to_standalone(src_proj, dest_path)
@@ -522,8 +522,8 @@ def _convert_from_workset(args, project_path, std, config) -> int:
 
 
 def _convert_ws_to_local(src_proj, dest_path, std, config):
-    """Copy workset project metadata into local layout."""
-    # Assign a name for the new local project.
+    """Copy workset project metadata into default-mode layout."""
+    # Assign a name for the new default-mode project.
     project_name = assign_name(std.data_path, str(dest_path))
     projects_base = std.boxes
     dst_project = projects_base / project_name

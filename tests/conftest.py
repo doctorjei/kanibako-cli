@@ -209,7 +209,7 @@ def start_mocks():
         ):
             proj = MagicMock()
             proj.is_new = False
-            proj.mode = ProjectMode.local
+            proj.mode = ProjectMode.default
             proj.group = ProjectGroup(
                 name="default",
                 root=Path("/data"),

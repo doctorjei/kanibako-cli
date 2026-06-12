@@ -33,23 +33,23 @@ agent stays agent-domain). These are breaking renames with **no back-compat shim
   `ws_hints` default name (`working_sets.toml` → `worksets.toml`); dropped the unused
   `paths.workspaces` config key.
 
-### Added (v1.5.0 — workset↔account merge; Phase 2)
+### Added (v1.5.0 — default workset; Phase 2)
 
-The account / local-projects group is now modeled as a synthesized **default
-workset**, so "account-wide" settings use the same mechanism as named worksets.
+The default-mode projects group is now modeled as a synthesized **default
+workset**, so default-workset settings use the same mechanism as named worksets.
 
 - **Default workset is addressable.** It is a virtual workset (fixed id
   `__default__`, typeable alias `default`; never created or deleted, no on-disk
-  file). `kanibako workset list` shows it (root `<account-wide>`),
+  file). `kanibako workset list` shows it (root `<default workset>`),
   `kanibako workset info default` works, and `kanibako workset config default
-  <key>=<value>` sets defaults for all local/account projects. `default` /
+  <key>=<value>` sets defaults for all default-mode projects. `default` /
   `__default__` are reserved as workset names; the default workset cannot be removed.
 - **Workset config tier.** A workset's `config.toml` is now applied at box
   start/status. Precedence is now `CLI > project.toml > workset config.toml >
   crab config > kanibako.toml (system) > defaults`. For a named workset the file
   is `<workset_root>/config.toml`; for the default workset it is
   `<data_dir>/config.toml`. `group_auth` set on the default workset applies to
-  all account projects (a project may still narrow shared→distinct).
+  all default-mode projects (a project may still narrow shared→distinct).
 
 ### Changed (Phase 2; pre-broad-release)
 
@@ -123,6 +123,17 @@ Breaking config-key and format changes, **no back-compat shims** (see the
   `enable_vault`, and `layout` remain init-frozen project-identity fields in the
   `project.yaml` `[project]` meta (not moved to `box.*`); `allow_helpers` stays a
   box-level key. These may be exposed as `box.*` in a later release.
+
+### Changed (v1.5.0 — terminology; BREAKING, pre-broad-release)
+
+- **Project mode `local` → `default`** (BREAKING rename). The mode formerly
+  written as `mode: local` in `project.yaml` is now `mode: default`.
+  Existing on-disk breadcrumbs with `mode: local` are **auto-migrated** to
+  `ProjectMode.default` on read via the back-compat map — no manual conversion
+  needed for the mode field.
+- **Default workset root display label updated.** The root column shown for
+  the default workset in `kanibako workset list` is now `<default workset>`
+  (previously displayed a legacy label).
 
 ### Migration (v1.5.0 — manual, one-off; no auto-migration)
 
@@ -240,7 +251,7 @@ There is **no migration code** — convert existing installs in a single pass:
 
 ### Changed
 
-- Local and workset project modes were unified onto a single code path, carrying
+- Default and workset project modes were unified onto a single code path, carrying
   the distinction as data (a `ProjectGroup` descriptor) rather than control flow.
   Behavior-preserving; no user-visible change.
 

@@ -271,8 +271,10 @@ def read_project_meta(path: Path) -> dict | None:
     if not project_sec.get("mode"):
         return None
 
-    # Backward compat: terminology renamed in v1.0.
-    _MODE_COMPAT = {"account_centric": "local", "decentralized": "standalone"}
+    # Backward compat: terminology renamed over time. "account_centric"
+    # (v1.0) and "local" (v1.5.0 mode rename) both map to "default"; old
+    # "decentralized" maps to "standalone".
+    _MODE_COMPAT = {"account_centric": "default", "decentralized": "standalone", "local": "default"}
     raw_mode = project_sec["mode"]
     mode = _MODE_COMPAT.get(raw_mode, raw_mode)
 

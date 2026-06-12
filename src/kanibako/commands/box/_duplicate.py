@@ -52,8 +52,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if source_mode == ProjectMode.workset:
         return _duplicate_from_workset(args, source_path, new_path, std, config)
 
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if source_mode == ProjectMode.local:
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    if source_mode == ProjectMode.default:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
@@ -74,7 +74,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Confirm with user.
-    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.default
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -92,7 +92,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target mode layout.
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
@@ -137,7 +137,7 @@ def _duplicate_to_standalone(src_proj, new_path, force):
 
 
 def _duplicate_to_local(src_proj, new_path, std, config, force):
-    """Copy metadata into local layout for new_path."""
+    """Copy metadata into default-mode layout for new_path."""
     # Assign a new name for the duplicate.
     project_name = assign_name(std.data_path, str(new_path))
     projects_base = std.boxes
@@ -191,8 +191,8 @@ def _duplicate_to_workset(args, std, config) -> int:
             print(f"Error: project '{proj_name}' already exists in workset '{ws_name}'.", file=sys.stderr)
             return 1
 
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if source_mode == ProjectMode.local:
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    if source_mode == ProjectMode.default:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
@@ -234,7 +234,7 @@ def _duplicate_to_workset(args, std, config) -> int:
 
 
 def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
-    """Duplicate a workset project to local or standalone layout (source untouched)."""
+    """Duplicate a workset project to default-mode or standalone layout (source untouched)."""
     to_mode_str = args.to_mode
 
     ws, proj_name = _find_workset_for_path(source_path, std)
@@ -249,7 +249,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
         return 1
 
-    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.local
+    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.default
 
     # Lock file warning.
     lock_file = src_proj.metadata_path / ".kanibako.lock"
@@ -281,7 +281,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             shutil.copytree(ws_workspace, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target layout.
-    # local<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == ProjectMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, args.force)
     else:

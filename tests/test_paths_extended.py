@@ -88,13 +88,13 @@ class TestPathEdgeCases:
 # ---------------------------------------------------------------------------
 
 class TestProjectPathsModeDefault:
-    def test_mode_defaults_to_local(self, config_file, tmp_home, credentials_dir):
+    def test_mode_defaults_to_default(self, config_file, tmp_home, credentials_dir):
         """Existing ProjectPaths construction (without explicit mode) defaults correctly."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        assert proj.mode is ProjectMode.local
+        assert proj.mode is ProjectMode.default
 
     def test_mode_field_present_on_dataclass(self):
         """ProjectPaths has a mode field with the expected default."""
@@ -105,7 +105,7 @@ class TestProjectPathsModeDefault:
         assert "mode" in field_names
 
         mode_field = next(f for f in fields(ProjectPaths) if f.name == "mode")
-        assert mode_field.default is ProjectMode.local
+        assert mode_field.default is ProjectMode.default
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ class TestProjectPathsModeDefault:
 
 class TestVaultOptional:
     def test_local_vault_disabled_skips_dirs(self, config_file, tmp_home, credentials_dir):
-        """Local project with enable_vault=False skips vault directory creation."""
+        """Default-mode project with enable_vault=False skips vault directory creation."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -129,7 +129,7 @@ class TestVaultOptional:
         assert not proj.vault_rw_path.exists()
 
     def test_local_vault_enabled_creates_dirs(self, config_file, tmp_home, credentials_dir):
-        """Local project with default enable_vault=True creates vault dirs."""
+        """Default-mode project with default enable_vault=True creates vault dirs."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")

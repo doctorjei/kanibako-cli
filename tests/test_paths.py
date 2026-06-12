@@ -93,7 +93,7 @@ class TestResolveProject:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.mode is ProjectMode.local
+        assert proj.mode is ProjectMode.default
 
     def test_group_auth_defaults_true_without_workset_config(
         self, config_file, tmp_home, credentials_dir
@@ -125,7 +125,7 @@ class TestResolveProject:
     def test_group_auth_default_workset_applies_to_existing_project(
         self, config_file, tmp_home, credentials_dir
     ):
-        """Re-resolving an already-initialized account project still honors the
+        """Re-resolving an already-initialized default-mode project still honors the
         default workset's group_auth — init freezes group_auth=True in project
         meta, but the default-workset value is the base (mirrors named worksets)
         so `workset config default group_auth=false` reaches existing projects."""
@@ -159,7 +159,7 @@ class TestProjectMeta:
         from kanibako.config import read_project_meta
         meta = read_project_meta(project_toml)
         assert meta is not None
-        assert meta["mode"] == "local"
+        assert meta["mode"] == "default"
         assert meta["workspace"] == str(proj.project_path)
         assert meta["shell"] == str(proj.shell_path)
         assert meta["vault_ro"] == str(proj.vault_ro_path)
@@ -200,7 +200,7 @@ class TestProjectMeta:
         from kanibako.config import write_project_meta
         write_project_meta(
             proj.metadata_path / "project.yaml",
-            mode="local",
+            mode="default",
             layout="default",
             workspace=str(proj.project_path),
             shell=str(custom_shell),
@@ -269,7 +269,7 @@ class TestProjectMeta:
         from kanibako.config import read_project_meta
         meta = read_project_meta(project_toml)
         assert meta is not None
-        assert meta["mode"] == "local"
+        assert meta["mode"] == "default"
 
     def test_stored_shared_paths_used(self, config_file, tmp_home, credentials_dir):
         """Stored global_shared/local_shared in project.yaml override computed values."""
@@ -347,7 +347,7 @@ class TestDetectProjectMode:
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     def test_standalone_when_kanibako_dir_exists(self, config_file, tmp_home):
@@ -369,7 +369,7 @@ class TestDetectProjectMode:
         project_dir = tmp_home / "project"
         # No projects dir, no kanibako dir -> default
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     def test_local_takes_priority_over_standalone(
@@ -383,7 +383,7 @@ class TestDetectProjectMode:
         (project_dir / ".kanibako").mkdir(exist_ok=True)
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
 
     def test_kanibako_file_not_dir_is_not_standalone(self, config_file, tmp_home):
         """A .kanibako *file* (not directory) should not trigger standalone mode."""
@@ -393,7 +393,7 @@ class TestDetectProjectMode:
         (project_dir / ".kanibako").write_text("not a directory")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
 
     def test_workset_when_inside_workspaces_dir(self, config_file, tmp_home):
         """Project inside a registered workset's workspaces/ -> workset mode."""
@@ -422,7 +422,7 @@ class TestDetectProjectMode:
 
         proj_dir = ws_root.resolve() / "workspaces" / "my-proj"
         proj_dir.mkdir(parents=True)
-        # Also create local projects dir for the same path
+        # Also create default-mode projects dir for the same path
         resolve_project(std, config, project_dir=str(proj_dir), initialize=True)
 
         result = detect_project_mode(proj_dir, std, config)
@@ -443,7 +443,7 @@ class TestDetectProjectMode:
         subdir.mkdir(parents=True)
 
         result = detect_project_mode(subdir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     def test_ancestor_walk_finds_standalone_marker_from_subdirectory(
@@ -516,7 +516,7 @@ class TestDetectProjectMode:
         (project_dir / "kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
 
     def test_dot_kanibako_preferred_over_dotless(self, config_file, tmp_home):
         """.kanibako/ is preferred when both .kanibako/ and kanibako/ exist."""
@@ -545,7 +545,7 @@ class TestDetectProjectMode:
         (project_dir / "kanibako").write_text("not a directory")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
 
     def test_dotless_marker_found_from_subdirectory(self, config_file, tmp_home):
         """Ancestor walk finds dotless kanibako/ with project.yaml in parent."""
@@ -574,7 +574,7 @@ class TestDetectProjectMode:
         (project_dir / ".kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     def test_baked_in_home_kanibako_does_not_adopt_home(self, config_file, tmp_home):
@@ -595,7 +595,7 @@ class TestDetectProjectMode:
         seadog.mkdir(parents=True, exist_ok=True)
 
         result = detect_project_mode(seadog.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == seadog.resolve()
 
     def test_malformed_project_toml_is_local_and_does_not_raise(
@@ -609,7 +609,7 @@ class TestDetectProjectMode:
         (project_dir / ".kanibako" / "project.yaml").write_text("not valid yaml: {{{")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     def test_local_mode_project_toml_is_not_standalone(self, config_file, tmp_home):
@@ -619,11 +619,11 @@ class TestDetectProjectMode:
         project_dir = tmp_home / "project"
         (project_dir / ".kanibako").mkdir()
         (project_dir / ".kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "local"\n'
+            'project:\n  mode: "default"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     # --- Depth cap tests ---
@@ -643,7 +643,7 @@ class TestDetectProjectMode:
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         # Should NOT find the marker above $HOME
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
         assert result.project_root == project_dir.resolve()
 
     # --- Workset root detection tests ---
@@ -764,7 +764,7 @@ class TestResolveProjectHomeGuard:
         from kanibako.config import write_project_meta
         write_project_meta(
             boxes_dir / "project.yaml",
-            mode="local",
+            mode="default",
             layout="default",
             workspace=str(home.resolve()),
             shell=str(boxes_dir / "shell"),
@@ -799,7 +799,7 @@ class TestResolveAnyProject:
         project_dir = str(tmp_home / "project")
         proj = resolve_any_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.mode is ProjectMode.local
+        assert proj.mode is ProjectMode.default
         assert proj.metadata_path.is_dir()
 
     def test_resolve_any_project_standalone(self, config_file, tmp_home):
@@ -826,7 +826,7 @@ class TestResolveAnyProject:
 
         # cwd is tmp_home/project (set by tmp_home fixture)
         assert proj.project_path == (tmp_home / "project").resolve()
-        assert proj.mode is ProjectMode.local
+        assert proj.mode is ProjectMode.default
 
     def test_resolve_any_project_workset_mode(self, config_file, tmp_home):
         """Dispatches to resolve_workset_project when inside a workset workspace."""
@@ -891,7 +891,7 @@ class TestResolveAnyProject:
             resolve_any_project(std, config, project_dir=str(ws_root), initialize=False)
 
     def test_resolve_any_project_from_subdirectory_local(self, config_file, tmp_home, credentials_dir):
-        """resolve_any_project from a subdirectory finds local project root."""
+        """resolve_any_project from a subdirectory finds default-mode project root."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -901,7 +901,7 @@ class TestResolveAnyProject:
         subdir.mkdir(parents=True)
 
         proj = resolve_any_project(std, config, project_dir=str(subdir), initialize=False)
-        assert proj.mode is ProjectMode.local
+        assert proj.mode is ProjectMode.default
         assert proj.project_path == project_dir.resolve()
 
     def test_resolve_any_project_from_subdirectory_standalone(self, config_file, tmp_home):

@@ -27,7 +27,7 @@ Goose) are available as [example plugins](examples/).
 - **Session continuity** -- `kanibako start` defaults to `--continue`, picking
   up where you left off; persistent tmux sessions survive SSH disconnects
 - **Per-project isolation** -- each project gets its own shell, config, and
-  credentials (three modes: local, workset, standalone)
+  credentials (three modes: default, workset, standalone)
 - **Credential forwarding** -- host credentials are synced into the container
   and written back after each session
 - **Setup wizard** -- `kanibako setup` detects installed agents and checks
@@ -228,7 +228,7 @@ shortcuts for common operations:
 |------------|-------------|
 | `box move [project] <dest>` | Relocate project workspace |
 | `box duplicate <source> [dest]` | Copy project (`--name`, `--bare`, `--force`) |
-| `box archive [project]` | Pack session data to .txz (`--as-local`, `--as-standalone`, `--force`) |
+| `box archive [project]` | Pack session data to .txz (`--all`, `--allow-uncommitted`, `--allow-unpushed`, `--force`) |
 | `box extract <archive> [dest]` | Unpack from archive (`--name`, `--force`) |
 
 **Data:**
@@ -259,7 +259,7 @@ shortcuts for common operations:
 | `workset list` / `workset ls` | List working sets (`-q`) |
 | `workset info` / `workset inspect` | Working set details |
 | `workset rm` / `workset delete` | Remove working set (`--purge`, `--force`) |
-| `workset config` | View or modify workset configuration (use `workset config default <key>=<value>` for account-wide defaults) |
+| `workset config` | View or modify workset configuration (use `workset config default <key>=<value>` for default-workset defaults) |
 | `workset connect <workset> [source]` | Add project to working set (`--name`) |
 | `workset disconnect <workset> <project>` | Remove project from working set (`--force`) |
 
@@ -330,33 +330,33 @@ shortcuts for common operations:
 Kanibako supports three ways to organize project state.  The mode is inferred
 automatically from context.
 
-Two of those modes -- **local** and **workset** -- are flavors of the same idea:
+Two of those modes -- **default** and **workset** -- are flavors of the same idea:
 a **project group**, a shared root that holds the boxes, vaults, and a
-group-level config/auth tier that member projects inherit.  Local is simply the
-implicit default group; a workset is a *named* group rooted at a directory you
-choose.  **Standalone** is the odd one out -- its state lives inside the
-project directory rather than in a group root.
+group-level config/auth tier that member projects inherit.  The default mode is
+simply the implicit default group; a workset is a *named* group rooted at a
+directory you choose.  **Standalone** is the odd one out -- its state lives
+inside the project directory rather than in a group root.
 
-### Local (default)
+### Default workset
 
 The default project group: a centralized store keyed by project name, rooted at
 `$XDG_DATA_HOME/kanibako`.  You never name or create it -- just `cd` into any
 directory and run `kanibako`, and the project joins the default group.
 
-The local group is itself modeled as an always-present **default workset**
+The default group is itself modeled as an always-present **default workset**
 (alias `default`, id `__default__`).  It is virtual -- never created or deleted,
 with no on-disk workset file -- but it is addressable through the same `workset`
-commands as named worksets, so account-wide settings use the ordinary `workset
+commands as named worksets, so default-workset settings use the ordinary `workset
 config` mechanism (see [Configuration](#configuration)):
 
 ```bash
-kanibako workset info default                       # show the account-wide group
-kanibako workset config default model=opus          # default for ALL local projects
+kanibako workset info default                       # show the default workset
+kanibako workset config default model=opus          # default for ALL default-mode projects
 kanibako workset config default group_auth=false    # distinct credentials by default
 ```
 
 In `kanibako workset list` the default workset appears with its root displayed
-as `<account-wide>`.  The names `default` / `__default__` are reserved: they
+as `<default workset>`.  The names `default` / `__default__` are reserved: they
 cannot be used as a named-workset name, and the default workset cannot be
 removed.
 
@@ -372,11 +372,11 @@ A workset is a *named* project group rooted at a directory you pick.  It groups
 related projects under one human-readable root, with a `workset.yaml` member
 list and a group-level config/auth tier that member projects inherit (see
 [Configuration](#configuration)).  Mechanically it is the same project-group
-machinery as local mode, just with an explicit name and root instead of the
+machinery as default mode, just with an explicit name and root instead of the
 implicit default.
 
 Worksets are stable and supported but not actively receiving new features.
-For most use cases, the default local group is simpler.
+For most use cases, the default workset is simpler.
 
 ```bash
 kanibako workset create ~/worksets/research --name my-research
@@ -673,7 +673,7 @@ Each project has optional read-only and read-write shared directories:
 - **share-rw/** -- files that persist across sessions and can be modified
   (databases, build caches, generated artifacts)
 
-In local mode, vault directories live under your project and are hidden inside
+In default mode, vault directories live under your project and are hidden inside
 the container via a read-only tmpfs overlay, so the agent cannot see or modify
 vault metadata.
 
@@ -757,11 +757,10 @@ Precedence: CLI flag > project.yaml > workset config.yaml > crab config > kaniba
 
 The **workset config tier** is a workset's own `config.yaml`, applied at box
 start/status.  For a named workset it lives at `<workset_root>/config.yaml`; for
-the always-present default workset (the local/account group) it is
-`<data_dir>/config.yaml`.  Setting it on the default workset (`kanibako workset
-config default <key>=<value>`) establishes account-wide defaults inherited by
-all local projects, while an individual project (or a CLI flag) may still
-override.
+the always-present default workset it is `<data_dir>/config.yaml`.  Setting it
+on the default workset (`kanibako workset config default <key>=<value>`)
+establishes default-workset defaults inherited by all default-mode projects,
+while an individual project (or a CLI flag) may still override.
 
 All configuration levels share a unified interface:
 
@@ -775,7 +774,7 @@ kanibako box config --reset model       # remove override, back to default
 
 # Workset level (group defaults inherited by member projects)
 kanibako workset config <workset> model=opus
-kanibako workset config default model=opus   # account-wide default (local group)
+kanibako workset config default model=opus   # default-workset default
 
 # Crab level (defaults for all projects using this crab)
 kanibako crab config model=opus

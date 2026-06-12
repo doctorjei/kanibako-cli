@@ -235,7 +235,7 @@ class TestArchiveWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create a local project
+        # Create a default-mode project
         ac_dir = tmp_home / "ac_arch"
         ac_dir.mkdir()
         resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
@@ -258,7 +258,7 @@ class TestArchiveWorkset:
         rc = run(args)
         assert rc == 0
 
-        # Both local and workset archives should be created
+        # Both default and workset archives should be created
         import glob
         files = glob.glob(str(tmp_home / "kanibako-*.txz"))
         assert len(files) >= 2

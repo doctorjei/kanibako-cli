@@ -633,7 +633,7 @@ class TestBoxInfo:
             rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "local" in out
+        assert "default" in out
         assert str(tmp_home / "project") in out
         assert "Image:" in out
         assert "Container:" in out
@@ -779,7 +779,7 @@ class TestBoxConvert:
         (proj.metadata_path / "marker.txt").write_text("dec-settings")
         (proj.shell_path / "custom.sh").write_text("echo dec")
 
-        args = self._convert_args(project_dir, "local")
+        args = self._convert_args(project_dir, "default")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -807,7 +807,7 @@ class TestBoxConvert:
         project_dir.mkdir()
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
 
-        args = self._convert_args(project_dir, "local")
+        args = self._convert_args(project_dir, "default")
         rc = run_migrate(args)
         assert rc == 1
 
@@ -894,7 +894,7 @@ class TestBoxConvert:
             std, config, project_dir=str(project_dir), initialize=True,
         )
 
-        args = self._convert_args(project_dir, "local")
+        args = self._convert_args(project_dir, "default")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1070,7 +1070,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "dup_dec_dst"
 
-        args = self._make_args(src_dir, dst_dir, "local")
+        args = self._make_args(src_dir, dst_dir, "default")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1173,7 +1173,7 @@ def _make_workset(tmp_home, std, ws_name="testws"):
 
 
 def _make_local_project(tmp_home, std, config, name="myproj"):
-    """Create a local project with a marker file, return (proj, project_dir)."""
+    """Create a default-mode project with a marker file, return (proj, project_dir)."""
     project_dir = tmp_home / name
     project_dir.mkdir()
     (project_dir / "code.py").write_text("print('hello')")
@@ -1225,7 +1225,7 @@ class TestBoxListWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Local project
+        # Default-mode project
         ac_dir = tmp_home / "ac_proj"
         ac_dir.mkdir()
         resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
@@ -1508,7 +1508,7 @@ class TestBoxConvertFromWorkset:
         ws, proj = self._make_workset_proj(tmp_home, std, config)
         workspace_path = ws.workspaces_dir / "ws-proj"
 
-        args = self._convert_args(workspace_path, "local")
+        args = self._convert_args(workspace_path, "default")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1577,7 +1577,7 @@ class TestBoxConvertFromWorkset:
         ws, proj = self._make_workset_proj(tmp_home, std, config, "unreg-ws", "unreg-proj")
         workspace_path = ws.workspaces_dir / "unreg-proj"
 
-        args = self._convert_args(workspace_path, "local")
+        args = self._convert_args(workspace_path, "default")
         rc = run_migrate(args)
         assert rc == 0
 
@@ -1696,7 +1696,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "ws-proj"
         dest = tmp_home / "dup_ws_ac_dst"
 
-        args = self._make_args(workspace_path, dest, "local")
+        args = self._make_args(workspace_path, dest, "default")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1750,7 +1750,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "pres-proj"
         dest = tmp_home / "dup_ws_pres_dst"
 
-        args = self._make_args(workspace_path, dest, "local")
+        args = self._make_args(workspace_path, dest, "default")
         rc = run_duplicate(args)
         assert rc == 0
 

@@ -41,7 +41,7 @@ from kanibako.utils import project_hash
 class ProjectMode(Enum):
     """How a project's persistent state is organized on disk."""
 
-    local = "local"
+    default = "default"
     workset = "workset"
     standalone = "standalone"
 
@@ -73,7 +73,7 @@ class ProjectLayout(Enum):
 
 # Default layout per mode.
 _DEFAULT_LAYOUT = {
-    ProjectMode.local: ProjectLayout.default,
+    ProjectMode.default: ProjectLayout.default,
     ProjectMode.workset: ProjectLayout.robust,
     ProjectMode.standalone: ProjectLayout.simple,
 }
@@ -103,12 +103,13 @@ class StandardPaths:
 
 @dataclass(frozen=True)
 class ProjectGroup:
-    """Descriptor of a project's grouping (local or workset).
+    """Descriptor of a project's grouping (default workset or named workset).
 
-    Captures the local-vs-workset difference as *data* rather than control
-    flow.  The implicit local group is the *default* group (``is_default`` is
-    True); a workset forms a non-default group rooted at the workset root.
-    Standalone projects belong to no group (``ProjectPaths.group`` is None).
+    Captures the default-vs-workset difference as *data* rather than control
+    flow.  The implicit default group is the *default workset* (``is_default``
+    is True); a named workset forms a non-default group rooted at the workset
+    root.  Standalone projects belong to no group (``ProjectPaths.group`` is
+    None).
 
     *local_shared_base* is the root under which the local-shared path lives
     (``base / config.paths_shared``): the standard data path for the default
@@ -132,7 +133,7 @@ class ProjectPaths:
     vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/share-ro)
     vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
     is_new: bool = field(default=False)
-    mode: ProjectMode = field(default=ProjectMode.local)
+    mode: ProjectMode = field(default=ProjectMode.default)
     layout: ProjectLayout = field(default=ProjectLayout.default)
     enable_vault: bool = field(default=True)
     group_auth: bool = field(default=True)
@@ -419,20 +420,20 @@ def resolve_project(
     project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.local]
+        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.default]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.local]
+        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.default]
         shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
             actual_layout, metadata_path, project_path,
             vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
         )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    # Auth mode for the account (default group): the default workset's
+    # Auth mode for the default group: the default workset's
     # group_auth (from {data_path}/config.yaml) is the base; a project may
     # narrow shared→distinct via its own meta — mirroring the named-workset
     # logic in resolve_workset_project.  No-op on upgrade: default_workset's
@@ -479,7 +480,7 @@ def resolve_project(
         _local_shared = std.data_path / config.paths_shared
         write_project_meta(
             project_toml,
-            mode="local",
+            mode="default",
             layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
@@ -509,7 +510,7 @@ def resolve_project(
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
                 metadata_path / "project.yaml",
-                mode="local",
+                mode="default",
                 layout=actual_layout.value,
                 workspace=str(project_path),
                 shell=str(shell_path),
@@ -534,7 +535,7 @@ def resolve_project(
                 if is_new:
                     import sys
                     print(
-                        f"\nNOTE: In robust layout, the local-mode vault "
+                        f"\nNOTE: In robust layout, the default-workset vault "
                         f"is linked from\n{human_vault_dir}. You can create a "
                         f"symlink from your home directory with:\n"
                         f"  ln -s {human_vault_dir} $HOME/kanibako_vault",
@@ -557,7 +558,7 @@ def resolve_project(
         vault_ro_path=vault_ro_path,
         vault_rw_path=vault_rw_path,
         is_new=is_new,
-        mode=ProjectMode.local,
+        mode=ProjectMode.default,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
@@ -578,7 +579,7 @@ def _resolve_local_dir(
     project_path_str: str,
     boxes_dir: Path,
 ) -> tuple[str, Path]:
-    """Find the boxes directory for a local project.
+    """Find the boxes directory for a default-mode project.
 
     Looks up the project name via names.yaml reverse lookup and returns
     ``(project_name, boxes_dir/{name}/)`` path.  *boxes_dir* is the resolved
@@ -602,9 +603,9 @@ def _compute_project_paths(
     layout: ProjectLayout, metadata_path: Path, project_path: Path,
     *, vault_root: Path,
 ) -> tuple[Path, Path, Path]:
-    """Compute ``(shell, vault_ro, vault_rw)`` for local and workset modes.
+    """Compute ``(shell, vault_ro, vault_rw)`` for default and workset modes.
 
-    The only structural difference between local and workset is *where* the
+    The only structural difference between default and workset is *where* the
     vault lives in the non-``simple`` layouts; the caller expresses that by
     passing ``vault_root`` — the parent directory under which ``ro`` and
     ``rw`` are placed.  The ``simple`` layout always keeps shell and
@@ -612,7 +613,7 @@ def _compute_project_paths(
 
     Caller-supplied *vault_root* must reproduce the existing per-mode policy:
 
-    - **local**: ``default`` → ``project_path/"vault"``; ``robust`` →
+    - **default**: ``default`` → ``project_path/"vault"``; ``robust`` →
       ``metadata_path/"vault"``.
     - **workset**: ``default``/``robust`` → ``vault_base/project_name``.
     """
@@ -628,7 +629,7 @@ def _compute_project_paths(
 
 
 def _local_vault_root(layout: ProjectLayout, metadata_path: Path, project_path: Path) -> Path:
-    """Vault parent dir for local mode in the non-``simple`` layouts."""
+    """Vault parent dir for default mode in the non-``simple`` layouts."""
     if layout == ProjectLayout.robust:
         return metadata_path / "vault"
     return project_path / "vault"  # default
@@ -831,7 +832,7 @@ def _init_common(
 ) -> None:
     """Shared first-time project setup: create directories, bootstrap shell.
 
-    This helper is called by both ``_init_project`` (local) and
+    This helper is called by both ``_init_project`` (default) and
     ``_init_standalone_project``.  It performs every step common to both
     modes: print message, create metadata and shell dirs, bootstrap the
     shell, and set up vault directories when enabled.
@@ -886,7 +887,7 @@ def _init_project(
 
 
 def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path | None:
-    """Find the deepest registered local project that is an ancestor of *target*.
+    """Find the deepest registered default-mode project that is an ancestor of *target*.
 
     Reads ``names.yaml`` and, for each entry whose registered path is a
     prefix of *target*, checks that ``boxes_dir/{name}/`` actually exists on
@@ -946,13 +947,13 @@ def detect_project_mode(
     Detection order:
     1. Workset — *project_dir* lives inside a registered workset root
        (``workspaces/`` subdirectory first, then the root itself).
-    2. Local (name-based) — one-pass scan of ``names.yaml``;
+    2. Default (name-based) — one-pass scan of ``names.yaml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
     3. Walk ancestors for standalone markers — a ``.kanibako`` or
        ``kanibako`` **directory** exists inside the ancestor.
        ``.kanibako`` takes priority.
-    4. Default — ``local`` at the original *project_dir*.
+    4. Default — ``default`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
     home = Path.home().resolve()
@@ -962,10 +963,10 @@ def detect_project_mode(
     if ws_result is not None:
         return ws_result
 
-    # 2. Name-based local check (one-pass scan, deepest match wins).
+    # 2. Name-based default-mode check (one-pass scan, deepest match wins).
     ac_ancestor = _find_local_ancestor(resolved, std.data_path, std.boxes)
     if ac_ancestor is not None:
-        return DetectionResult(ProjectMode.local, ac_ancestor)
+        return DetectionResult(ProjectMode.default, ac_ancestor)
 
     # 3. Walk ancestors for standalone markers.
     current = resolved
@@ -986,8 +987,8 @@ def detect_project_mode(
             break
         current = parent
 
-    # 4. Default: local at the original directory.
-    return DetectionResult(ProjectMode.local, resolved)
+    # 4. Default: default mode at the original directory.
+    return DetectionResult(ProjectMode.default, resolved)
 
 
 def _check_workset(
@@ -1405,7 +1406,7 @@ def resolve_standalone_project(
     project_toml = metadata_path / "project.yaml"
 
     # Auth mode for standalone: explicit param > meta > default.
-    # Standalone projects are NOT in the account/default group, so they do
+    # Standalone projects are NOT in the default group, so they do
     # not consult the default workset config.yaml.
     actual_group_auth = (
         group_auth

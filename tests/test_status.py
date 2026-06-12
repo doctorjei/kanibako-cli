@@ -27,7 +27,7 @@ from kanibako.paths import load_std_paths, resolve_project
 
 @pytest.fixture
 def initialized_project(config_file, credentials_dir, tmp_home):
-    """Create a fully initialized local project."""
+    """Create a fully initialized default-mode project."""
     config = load_config(config_file)
     std = load_std_paths(config)
     project_dir = str(tmp_home / "project")
@@ -125,7 +125,7 @@ class TestFormatCredentialAge:
 # _check_container_running tests
 # ---------------------------------------------------------------------------
 
-def _mock_proj(*, name="", project_hash="a" * 64, mode="local",
+def _mock_proj(*, name="", project_hash="a" * 64, mode="default",
                project_path="/home/user/proj"):
     """Duck-typed ProjectPaths for _check_container_running tests."""
     return SimpleNamespace(
@@ -239,7 +239,7 @@ class TestRunInfo:
         assert "No project data found" in out
 
     def test_initialized_project(self, initialized_project, capsys):
-        """Info for an initialized local project."""
+        """Info for an initialized default-mode project."""
         args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
             "kanibako.commands.box._parser._check_container_running",
@@ -249,7 +249,7 @@ class TestRunInfo:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Name:" in out
-        assert "local" in out
+        assert "default" in out
         assert "Hash:" in out
         assert "Metadata:" in out
         assert "Shell:" in out

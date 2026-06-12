@@ -29,8 +29,8 @@ from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import StandardPaths
 
 
-# Identity of the synthesized "default" workset (a.k.a. the account / local
-# projects group).  This workset is virtual — it is never written to disk.
+# Identity of the synthesized "default" workset (the group of default-mode
+# projects).  This workset is virtual — it is never written to disk.
 DEFAULT_WORKSET_ID = "__default__"
 DEFAULT_WORKSET_ALIAS = "default"
 
@@ -222,10 +222,10 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 
 
 def default_workset(std: StandardPaths) -> Workset:
-    """Synthesize the default workset (the account / local-projects group).
+    """Synthesize the default workset (the group of default-mode projects).
 
-    The default workset is virtual: its members are the local projects in
-    ``names.yaml [projects]`` and its ``group_auth`` lives as a normal key in
+    The default workset is virtual: its members are the default-mode projects
+    in ``names.yaml [projects]`` and its ``group_auth`` lives as a normal key in
     ``{data_path}/config.yaml``.  This object is NEVER persisted to disk (no
     workset.yaml / registry write).
     """

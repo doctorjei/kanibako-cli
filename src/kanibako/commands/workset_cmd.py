@@ -261,7 +261,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     # Load each named workset to get project count.
     rows: list[tuple[str, int, str]] = [
-        (f"{DEFAULT_WORKSET_ALIAS} (default)", len(dflt.projects), "<account-wide>"),
+        (f"{DEFAULT_WORKSET_ALIAS} (default)", len(dflt.projects), "<default workset>"),
     ]
     for name in sorted(registry):
         root = registry[name]
@@ -383,7 +383,7 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    root_display = "<account-wide>" if ws.is_default else str(ws.root)
+    root_display = "<default workset>" if ws.is_default else str(ws.root)
     print(f"Name:     {ws.name}")
     print(f"Root:     {root_display}")
     print(f"Created:  {ws.created}")

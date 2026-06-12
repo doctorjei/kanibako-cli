@@ -179,7 +179,7 @@ class TestEscapePath:
 # container_name_for
 # ---------------------------------------------------------------------------
 
-def _mock_proj(*, mode="local", name="", project_path="/home/user/proj",
+def _mock_proj(*, mode="default", name="", project_path="/home/user/proj",
                project_hash="abcdef1234567890abcdef1234567890"):
     """Create a duck-typed ProjectPaths-like object for testing."""
     mode_ns = SimpleNamespace(value=mode)
