@@ -1,0 +1,112 @@
+name: Verify Templates
+
+# Build the bundled template Containerfiles against a locally-built kanibako-oci
+# base and run each template's declared smoke checks. Nothing here publishes an
+# image: it is build + smoke only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/kanibako/containers/Containerfile.template-*'
+      - 'src/kanibako/containers/Containerfile.kanibako'
+  pull_request:
+    paths:
+      - 'src/kanibako/containers/Containerfile.template-*'
+      - 'src/kanibako/containers/Containerfile.kanibako'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Discover the shipped templates so the matrix tracks them automatically:
+  # add/remove a Containerfile.template-* and the verify matrix follows.
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      templates: ${{ steps.list.outputs.templates }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: List templates
+        id: list
+        run: |
+          set -euo pipefail
+          ALL_JSON=$(find src/kanibako/containers -maxdepth 1 -name 'Containerfile.template-*' -printf '%f\n' \
+            | sed 's/^Containerfile\.template-//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0)) | sort')
+          echo "templates=$ALL_JSON" >> "$GITHUB_OUTPUT"
+          echo "Templates: $ALL_JSON"
+
+  verify-templates:
+    needs: discover
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        template: ${{ fromJson(needs.discover.outputs.templates) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # Log in to GHCR so we can pull the PRIVATE droste base image.
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Build the oci base LOCALLY so the verify is hermetic (does not depend on
+      # a published :latest). A matrix job cannot reuse a base built in another
+      # job's runner, so each matrix job builds the base before its template.
+      - name: Build kanibako-oci base
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0 \
+            --build-arg VARIANT=oci \
+            -t kanibako-oci:ci \
+            -f src/kanibako/containers/Containerfile.kanibako \
+            src/kanibako/containers/
+
+      - name: Build template ${{ matrix.template }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg BASE_IMAGE=kanibako-oci:ci \
+            -t kanibako-template-${{ matrix.template }}:ci \
+            -f src/kanibako/containers/Containerfile.template-${{ matrix.template }} \
+            src/kanibako/containers/
+
+      - name: Smoke-check template ${{ matrix.template }}
+        run: |
+          set -euo pipefail
+          FILE="src/kanibako/containers/Containerfile.template-${{ matrix.template }}"
+          # Parse ONLY the leading comment block: stop at the first non-comment,
+          # non-blank line so we never pick up checks from elsewhere in the file.
+          mapfile -t CHECKS < <(awk '
+            NF==0 { next }
+            /^#/  { if ($0 ~ /kanibako-template-check:/) { sub(/^#[[:space:]]*kanibako-template-check:[[:space:]]*/, ""); print } next }
+            { exit }
+          ' "$FILE")
+          # Every template MUST declare at least one check; zero is a hard error.
+          if [ "${#CHECKS[@]}" -eq 0 ]; then
+            echo "ERROR: no # kanibako-template-check: headers in $FILE"; exit 1
+          fi
+          IMAGE="kanibako-template-${{ matrix.template }}:ci"
+          # Use --entrypoint sh: the base image's ENTRYPOINT execs bash, which we
+          # bypass to run the check directly. Use `sh -c` NOT `sh -lc`: a login
+          # shell re-derives PATH from /etc/profile and drops the image's ENV
+          # PATH additions, defeating the "is the tool installed and runnable" check.
+          docker run --rm --entrypoint sh "$IMAGE" -c 'echo "arch=$(uname -m) sh=$(readlink -f /bin/sh)"'
+          for cmd in "${CHECKS[@]}"; do
+            echo "::group::check: $cmd"
+            docker run --rm --entrypoint sh "$IMAGE" -c "$cmd"
+            echo "::endgroup::"
+          done
