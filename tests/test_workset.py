@@ -43,8 +43,8 @@ class TestCreateWorkset:
         ws = create_workset("my-set", root, std)
 
         text = ws.toml_path.read_text()
-        assert 'name = "my-set"' in text
-        assert "created = " in text
+        assert "name: my-set" in text
+        assert "created:" in text
 
     def test_registers_globally(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"
@@ -119,16 +119,16 @@ class TestDefaultWorkset:
         assert default_workset(std).group_auth is True
 
     def test_group_auth_read_from_config(self, std):
-        config_path = std.data_path / "config.toml"
-        config_path.write_text("[project]\ngroup_auth = false\n")
+        config_path = std.data_path / "config.yaml"
+        config_path.write_text("project:\n  group_auth: false\n")
         assert default_workset(std).group_auth is False
 
     def test_not_persisted(self, std):
         # Synthesizing the default workset must not create a registry or
-        # a workset.toml.
+        # a workset.yaml.
         default_workset(std)
-        assert not (std.data_path / "worksets.toml").exists()
-        assert not (std.data_path / "workset.toml").exists()
+        assert not (std.data_path / "worksets.yaml").exists()
+        assert not (std.data_path / "workset.yaml").exists()
         assert DEFAULT_WORKSET_ID not in list_worksets(std)
         assert DEFAULT_WORKSET_ALIAS not in list_worksets(std)
 
@@ -196,13 +196,13 @@ class TestLoadWorkset:
         root = tmp_home / "worksets" / "no-toml"
         root.mkdir(parents=True)
 
-        with pytest.raises(WorksetError, match="No workset.toml"):
+        with pytest.raises(WorksetError, match="No workset.yaml"):
             load_workset(root)
 
     def test_toml_without_name_raises(self, std, tmp_home):
         root = tmp_home / "worksets" / "bad-toml"
         root.mkdir(parents=True)
-        (root / "workset.toml").write_text('created = "2026-01-01"\n')
+        (root / "workset.yaml").write_text('created: "2026-01-01"\n')
 
         with pytest.raises(WorksetError, match="no 'name' key"):
             load_workset(root)
@@ -274,8 +274,8 @@ class TestAddProject:
         resolved = root.resolve()
         assert (resolved / "boxes" / "cool-app").is_dir()
         assert (resolved / "workspaces" / "cool-app").is_dir()
-        assert (resolved / "vault" / "cool-app" / "share-ro").is_dir()
-        assert (resolved / "vault" / "cool-app" / "share-rw").is_dir()
+        assert (resolved / "vault" / "cool-app" / "ro").is_dir()
+        assert (resolved / "vault" / "cool-app" / "rw").is_dir()
 
     def test_persists_to_toml(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"
@@ -366,4 +366,4 @@ class TestWorksetProperties:
         assert ws.projects_dir == resolved / "boxes"
         assert ws.workspaces_dir == resolved / "workspaces"
         assert ws.vault_dir == resolved / "vault"
-        assert ws.toml_path == resolved / "workset.toml"
+        assert ws.toml_path == resolved / "workset.yaml"

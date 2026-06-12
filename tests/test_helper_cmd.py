@@ -37,8 +37,8 @@ def helpers_env(tmp_path, monkeypatch):
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    config_file = config_dir / "kanibako.toml"
-    config_file.write_text("[container]\nimage = \"test\"\n")
+    config_file = config_dir / "kanibako.yaml"
+    config_file.write_text('box:\n  image: "test"\n')
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     return home
 
@@ -92,13 +92,13 @@ class TestRunSpawn:
 
         # Directory structure created
         helpers = helpers_env / "helpers"
-        assert (helpers / "1" / "vault" / "share-ro").is_dir()
-        assert (helpers / "1" / "vault" / "share-rw").is_dir()
+        assert (helpers / "1" / "vault" / "ro").is_dir()
+        assert (helpers / "1" / "vault" / "rw").is_dir()
         assert (helpers / "1" / "workspace").is_dir()
         assert (helpers / "1" / "peers").is_dir()
 
         # RO spawn config written
-        ro_config = helpers / "1" / "spawn.toml"
+        ro_config = helpers / "1" / "spawn.yaml"
         assert ro_config.is_file()
 
         # Broadcast dirs created
@@ -123,7 +123,7 @@ class TestRunSpawn:
 
     def test_depth_zero_refused(self, helpers_env, capsys):
         # Write RO config with depth=0
-        own_ro = helpers_env / "spawn.toml"
+        own_ro = helpers_env / "spawn.yaml"
         write_spawn_config(own_ro, SpawnBudget(depth=0, breadth=4))
 
         args = _make_args(depth=None, breadth=None, model=None)
@@ -133,7 +133,7 @@ class TestRunSpawn:
 
     def test_breadth_exhausted(self, helpers_env, capsys):
         # Write RO config with breadth=1
-        own_ro = helpers_env / "spawn.toml"
+        own_ro = helpers_env / "spawn.yaml"
         write_spawn_config(own_ro, SpawnBudget(depth=4, breadth=1))
 
         args = _make_args(depth=None, breadth=None, model=None)
@@ -155,7 +155,7 @@ class TestRunSpawn:
 
         from kanibako.helpers import read_spawn_config
         child_config = read_spawn_config(
-            helpers_env / "helpers" / "1" / "spawn.toml"
+            helpers_env / "helpers" / "1" / "spawn.yaml"
         )
         assert child_config is not None
         assert child_config.depth == 2

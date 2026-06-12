@@ -28,6 +28,7 @@ from kanibako.config import (
     unset_project_config_key,
     write_project_config_key,
 )
+from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import UserCancelled
 from kanibako.shellenv import (
     merge_env,
@@ -61,9 +62,10 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "autonomous",
     "model",
     "persistence",
-    # Container
-    "image",
-    "container_image",
+    # Box
+    "box.image",
+    "box.crab",
+    "box.share_images",
     # Auth / project
     "group_auth",
     "layout",
@@ -72,16 +74,17 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.enabled",
     "vault.ro",
     "vault.rw",
-    # Target settings (Claude-specific)
-    "crab_name",
-    # System-level path settings
-    "paths.data_path",
-    "paths.boxes",
+    # System-level path settings (resolver-backed system.path.* tier)
+    "system.path.data",
+    "system.path.boxes",
+    "system.path.crabs",
+    "system.path.comms",
+    "system.path.templates",
+    "system.path.ws_hints",
+    # Box-level path settings (flat KanibakoConfig.paths_* fields)
     "paths.shell",
     "paths.vault",
     "paths.shared",
-    "paths.comms",
-    "paths.templates",
     # Helpers
     "allow_helpers",
 })
@@ -91,13 +94,14 @@ DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.", "shared.")
 
 # Map friendly short names to canonical flat config keys.
 _KEY_ALIASES: dict[str, str] = {
-    "image": "container_image",
+    "image": "box.image",
+    "crab": "box.crab",
 }
 
 
 def is_known_key(arg: str) -> bool:
     """Return True if *arg* looks like a config key (not a project name)."""
-    if arg in KNOWN_CONFIG_KEYS:
+    if arg in KNOWN_CONFIG_KEYS or arg in _KEY_ALIASES:
         return True
     return any(arg.startswith(p) for p in DYNAMIC_PREFIXES)
 
@@ -139,7 +143,7 @@ def parse_config_arg(arg: str | None) -> tuple[ConfigAction, str, str]:
 def _resolve_key(raw: str) -> str:
     """Map a user-supplied key name to the canonical form.
 
-    Accepts aliases (``image`` → ``container_image``), dot-notation
+    Accepts aliases (``image`` → ``box.image``), dot-notation
     (``vault.enabled``), or the raw flat key.  Returns the key unchanged
     if no alias exists.
     """
@@ -161,8 +165,13 @@ def _is_shared_key(key: str) -> bool:
 
 
 def _is_crab_setting(key: str) -> bool:
-    """Keys that belong in [crab_settings] of project.toml."""
+    """Keys that belong in the crab section of project.yaml."""
     return key in {"model", "start_mode", "autonomous"}
+
+
+def _is_system_path_key(key: str) -> bool:
+    """Keys that belong in the nested ``[system.path]`` table (system-only)."""
+    return key.startswith("system.path.")
 
 
 def _dot_to_flat(key: str) -> str:
@@ -198,13 +207,11 @@ def get_config_value(
         merged = merge_env(env_global, env_project)
         return merged.get(env_name)
 
-    # resource.* keys — read from [resource_overrides] in project.toml
+    # resource.* keys — read from resource_overrides in project.yaml
     if _is_resource_key(canonical):
         resource_name = canonical[9:]  # strip "resource."
         if project_toml and project_toml.exists():
-            import tomllib
-            with open(project_toml, "rb") as f:
-                data = tomllib.load(f)
+            data = load_doc(project_toml)
             overrides = data.get("resource_overrides", {})
             return str(overrides.get(resource_name, "")) or None
         return None
@@ -222,6 +229,12 @@ def get_config_value(
             if canonical in settings:
                 return settings[canonical]
         return None
+
+    # system.path.* keys — read the raw set-value from the global config's
+    # [system.path] table (system-only tier; not a merged-config field).
+    if _is_system_path_key(canonical):
+        cfg = load_merged_config(global_config_path, project_toml)
+        return cfg.system_paths.get(canonical)
 
     # Regular config keys — use merged config
     flat = _dot_to_flat(canonical)
@@ -245,7 +258,7 @@ def set_config_value(
 ) -> str:
     """Write a config value to the appropriate store.
 
-    *config_path* is the project.toml (for box/workset) or kanibako.toml
+    *config_path* is the project.yaml (for box/workset) or kanibako.yaml
     (for system).  Returns a human-readable confirmation message.
     """
     canonical = _resolve_key(key)
@@ -275,7 +288,13 @@ def set_config_value(
 
     # target settings
     if _is_crab_setting(canonical):
-        _write_toml_key(config_path, "crab_settings", canonical, value)
+        _write_toml_key(config_path, "crab", canonical, value)
+        return f"Set {canonical}={value}"
+
+    # system.path.* keys — write to the nested [system.path] table.
+    if _is_system_path_key(canonical):
+        leaf = canonical[len("system.path."):]
+        _write_nested_toml_key(config_path, ("system", "path"), leaf, value)
         return f"Set {canonical}={value}"
 
     # Regular config keys
@@ -316,7 +335,14 @@ def reset_config_value(
 
     # target settings
     if _is_crab_setting(canonical):
-        if _remove_toml_key(config_path, "crab_settings", canonical):
+        if _remove_toml_key(config_path, "crab", canonical):
+            return f"Reset {canonical}"
+        return f"No override for {canonical}"
+
+    # system.path.* keys — remove from the nested [system.path] table.
+    if _is_system_path_key(canonical):
+        leaf = canonical[len("system.path."):]
+        if _remove_nested_toml_key(config_path, ("system", "path"), leaf):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -351,12 +377,10 @@ def reset_all(
 
     # Clear target settings
     if config_path.exists():
-        import tomllib
-        with open(config_path, "rb") as f:
-            data = tomllib.load(f)
-        if data.get("crab_settings"):
-            for k in list(data["crab_settings"]):
-                _remove_toml_key(config_path, "crab_settings", k)
+        data = load_doc(config_path)
+        if data.get("crab"):
+            for k in list(data["crab"]):
+                _remove_toml_key(config_path, "crab", k)
                 count += 1
         if data.get("resource_overrides"):
             for k in list(data["resource_overrides"]):
@@ -381,6 +405,9 @@ def show_config(
     env_project: Path | None = None,
     effective: bool = False,
     file: Any = None,
+    workset_path: Path | None = None,
+    crab_state: dict[str, str] | None = None,
+    env_resolved: dict[str, str] | None = None,
 ) -> int:
     """Display config values.  Returns exit code.
 
@@ -391,23 +418,42 @@ def show_config(
 
     if effective:
         # Show all resolved values
-        cfg = load_merged_config(global_config_path, config_path)
+        cfg = load_merged_config(
+            global_config_path, config_path, workset_path=workset_path,
+        )
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):
             val = getattr(cfg, fld.name)
             marker = " (override)" if fld.name in overrides else ""
             print(f"  {fld.name} = {val}{marker}", file=out)
 
-        # Target settings
-        if config_path and config_path.exists():
+        # Crab settings.  When a fully-resolved crab_state is supplied (box
+        # view), render it; mark only the keys actually set at the box level.
+        # Otherwise fall back to the project-level overrides (today's behavior).
+        if crab_state is not None:
+            proj_crab = (
+                read_crab_settings(config_path)
+                if config_path and config_path.exists()
+                else {}
+            )
+            if crab_state:
+                print("", file=out)
+                for k, v in sorted(crab_state.items()):
+                    marker = " (override)" if k in proj_crab else ""
+                    print(f"  {k} = {v}{marker}", file=out)
+        elif config_path and config_path.exists():
             settings = read_crab_settings(config_path)
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
                     print(f"  {k} = {v} (override)", file=out)
 
-        # Env vars
-        merged = merge_env(env_global, env_project)
+        # Env vars.  Prefer the fully-resolved env (box view) when supplied.
+        merged = (
+            env_resolved
+            if env_resolved is not None
+            else merge_env(env_global, env_project)
+        )
         if merged:
             print("", file=out)
             for k in sorted(merged):
@@ -442,72 +488,86 @@ def show_config(
 
 
 # ---------------------------------------------------------------------------
-# TOML section helpers
+# Config section helpers (load → mutate → dump as YAML)
 # ---------------------------------------------------------------------------
 
-def _serialize_toml(data: dict) -> str:
-    """Minimal TOML serializer for flat section→key→value dicts."""
-    lines: list[str] = []
-    # Top-level keys first (non-dict values).
-    for k, v in data.items():
-        if not isinstance(v, dict):
-            lines.append(f'{k} = {_toml_value(v)}')
-    if lines:
-        lines.append("")
-    # Sections.
-    for k, v in data.items():
-        if isinstance(v, dict):
-            lines.append(f"[{k}]")
-            for sk, sv in v.items():
-                lines.append(f'{sk} = {_toml_value(sv)}')
-            lines.append("")
-    return "\n".join(lines)
-
-
-def _toml_value(v: object) -> str:
-    """Format a Python value as a TOML literal."""
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, int):
-        return str(v)
-    if isinstance(v, str):
-        return f'"{v}"'
-    if isinstance(v, list):
-        items = ", ".join(_toml_value(i) for i in v)
-        return f"[{items}]"
-    return f'"{v}"'
-
-
 def _write_toml_key(path: Path, section: str, key: str, value: str | bool) -> None:
-    """Write a key to a specific TOML section, preserving other content."""
-    import tomllib
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-
-    data.setdefault(section, {})[key] = value
-    path.write_text(_serialize_toml(data))
+    """Write a key to a specific config section, preserving other content."""
+    data = load_doc(path)
+    sec = data.get(section)
+    if not isinstance(sec, dict):
+        sec = {}
+        data[section] = sec
+    sec[key] = value
+    dump_doc(path, data)
 
 
 def _remove_toml_key(path: Path, section: str, key: str) -> bool:
-    """Remove a key from a specific TOML section.  Returns True if found."""
-    import tomllib
-
+    """Remove a key from a specific config section.  Returns True if found."""
     if not path.exists():
         return False
 
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
-
+    data = load_doc(path)
     sec = data.get(section, {})
-    if key not in sec:
+    if not isinstance(sec, dict) or key not in sec:
         return False
 
     del sec[key]
     if not sec:
         del data[section]
-    path.write_text(_serialize_toml(data))
+    dump_doc(path, data)
+    return True
+
+
+def _write_nested_toml_key(
+    path: Path, sections: tuple[str, ...], key: str, value: str | bool,
+) -> None:
+    """Write *key* into a nested table (e.g. ``("system", "path")``).
+
+    Preserves other content; creates intermediate tables as needed.
+    """
+    data = load_doc(path)
+    node = data
+    for sec in sections:
+        child = node.get(sec)
+        if not isinstance(child, dict):
+            child = {}
+            node[sec] = child
+        node = child
+    node[key] = value
+    dump_doc(path, data)
+
+
+def _remove_nested_toml_key(
+    path: Path, sections: tuple[str, ...], key: str,
+) -> bool:
+    """Remove *key* from a nested table.  Returns True if found.
+
+    Prunes now-empty intermediate tables.
+    """
+    if not path.exists():
+        return False
+
+    data = load_doc(path)
+
+    # Walk to the innermost table, recording the chain for pruning.
+    chain: list[dict] = [data]
+    node = data
+    for sec in sections:
+        if sec not in node or not isinstance(node[sec], dict):
+            return False
+        node = node[sec]
+        chain.append(node)
+
+    if key not in node:
+        return False
+    del node[key]
+
+    # Prune empty tables bottom-up.
+    for i in range(len(sections) - 1, -1, -1):
+        if not chain[i + 1]:
+            del chain[i][sections[i]]
+        else:
+            break
+    dump_doc(path, data)
     return True

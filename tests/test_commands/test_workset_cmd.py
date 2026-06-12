@@ -120,13 +120,13 @@ class TestWorksetCreate:
         rc = run_create(args)
         assert rc == 0
 
-        # Verify config.toml was written with image
-        import tomllib
-        config_toml = ws_root.resolve() / "config.toml"
-        assert config_toml.exists()
-        with open(config_toml, "rb") as f:
-            data = tomllib.load(f)
-        assert data["container_image"] == "custom:latest"
+        # Verify config.yaml was written with image
+        import yaml
+        config_yaml = ws_root.resolve() / "config.yaml"
+        assert config_yaml.exists()
+        with open(config_yaml) as f:
+            data = yaml.safe_load(f)
+        assert data["box"]["image"] == "custom:latest"
 
 
 class TestWorksetList:
@@ -484,7 +484,7 @@ class TestWorksetConfig:
         assert "no overrides" in out
 
     def test_config_get_auth(self, config_file, tmp_home, capsys):
-        """Getting group_auth key returns value from workset.toml."""
+        """Getting group_auth key returns value from workset.yaml."""
         from kanibako.commands.workset_cmd import run_config
 
         config = load_config(config_file)
@@ -502,7 +502,7 @@ class TestWorksetConfig:
         assert "True" in out
 
     def test_config_set_auth_distinct(self, config_file, tmp_home, capsys):
-        """Setting group_auth=false updates workset.toml and clears credentials."""
+        """Setting group_auth=false updates workset.yaml and clears credentials."""
         from kanibako.commands.workset_cmd import run_config
         from unittest.mock import MagicMock, patch
 
@@ -527,7 +527,7 @@ class TestWorksetConfig:
         out = capsys.readouterr().out
         assert "distinct" in out
 
-        # Verify workset.toml was updated
+        # Verify workset.yaml was updated
         from kanibako.workset import load_workset
         ws = load_workset((tmp_home / "ws_setauth").resolve())
         assert ws.group_auth is False
@@ -551,7 +551,7 @@ class TestWorksetConfig:
         assert "true" in err or "false" in err
 
     def test_config_set_regular_key(self, config_file, tmp_home, capsys):
-        """Setting a regular config key writes to config.toml."""
+        """Setting a regular config key writes to config.yaml."""
         from kanibako.commands.workset_cmd import run_config
 
         config = load_config(config_file)
@@ -559,7 +559,7 @@ class TestWorksetConfig:
         create_workset("regcfg", tmp_home / "ws_regcfg", std)
 
         args = argparse.Namespace(
-            workset="regcfg", key_value="container_image=myimage:latest",
+            workset="regcfg", key_value="box.image=myimage:latest",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -567,7 +567,7 @@ class TestWorksetConfig:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Set" in out
-        assert "container_image" in out
+        assert "box_image" in out
 
     def test_config_reset_key(self, config_file, tmp_home, capsys):
         """Resetting a config key removes the override."""
@@ -579,7 +579,7 @@ class TestWorksetConfig:
 
         # First set a value.
         set_args = argparse.Namespace(
-            workset="resetcfg", key_value="container_image=myimage:latest",
+            workset="resetcfg", key_value="box.image=myimage:latest",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -589,7 +589,7 @@ class TestWorksetConfig:
         # Then reset it.
         reset_args = argparse.Namespace(
             workset="resetcfg", key_value=None,
-            effective=False, reset="container_image", reset_all=False,
+            effective=False, reset="box.image", reset_all=False,
             force=False, local=False,
         )
         rc = run_config(reset_args)
@@ -643,7 +643,7 @@ class TestWorksetConfig:
 
         # Set a value first.
         set_args = argparse.Namespace(
-            workset="resetall", key_value="container_image=myimage:latest",
+            workset="resetall", key_value="box.image=myimage:latest",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -682,8 +682,8 @@ class TestDefaultWorksetCli:
     def test_config_set_group_auth_roundtrips_via_config_toml(
         self, config_file, tmp_home, capsys,
     ):
-        """`workset config default group_auth=false` writes config.toml, not a
-        workset.toml."""
+        """`workset config default group_auth=false` writes config.yaml, not a
+        workset.yaml."""
         from unittest.mock import MagicMock, patch
 
         from kanibako.commands.workset_cmd import run_config
@@ -699,12 +699,12 @@ class TestDefaultWorksetCli:
             rc = run_config(args)
         assert rc == 0
 
-        # No workset.toml created at the data path.
-        assert not (std.data_path / "workset.toml").exists()
-        # group_auth persisted in config.toml [project].
-        import tomllib
-        with open(std.data_path / "config.toml", "rb") as f:
-            data = tomllib.load(f)
+        # No workset.yaml created at the data path.
+        assert not (std.data_path / "workset.yaml").exists()
+        # group_auth persisted in config.yaml [project].
+        import yaml
+        with open(std.data_path / "config.yaml") as f:
+            data = yaml.safe_load(f)
         assert data["project"]["group_auth"] is False
 
         # And it reads back via the default workset.
@@ -726,7 +726,7 @@ class TestDefaultWorksetCli:
     def test_config_reset_group_auth(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_config
         std = self._std(config_file)
-        (std.data_path / "config.toml").write_text("[project]\ngroup_auth = false\n")
+        (std.data_path / "config.yaml").write_text("project:\n  group_auth: false\n")
 
         args = argparse.Namespace(
             workset="default", key_value=None,
@@ -745,17 +745,17 @@ class TestDefaultWorksetCli:
         std = self._std(config_file)
 
         args = argparse.Namespace(
-            workset="default", key_value="container_image=myimg:1",
+            workset="default", key_value="box.image=myimg:1",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         rc = run_config(args)
         assert rc == 0
-        import tomllib
-        with open(std.data_path / "config.toml", "rb") as f:
-            data = tomllib.load(f)
-        assert data["container"]["image"] == "myimg:1"
-        assert not (std.data_path / "workset.toml").exists()
+        import yaml
+        with open(std.data_path / "config.yaml") as f:
+            data = yaml.safe_load(f)
+        assert data["box"]["image"] == "myimg:1"
+        assert not (std.data_path / "workset.yaml").exists()
 
     def test_info_default(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_info

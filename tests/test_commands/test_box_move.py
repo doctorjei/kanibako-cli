@@ -29,14 +29,14 @@ class TestBoxMove:
         assert dest.is_dir()
         assert not project_dir.exists()
 
-        # Verify names.toml was updated.
+        # Verify names.yaml was updated.
         names = read_names(std.data_path)
         found = False
         for name, path in names["projects"].items():
             if path == str(dest):
                 found = True
                 break
-        assert found, "names.toml should contain the new path"
+        assert found, "names.yaml should contain the new path"
 
     def test_move_same_path_errors(self, config_file, tmp_home, credentials_dir):
         """Moving to the same location returns an error."""

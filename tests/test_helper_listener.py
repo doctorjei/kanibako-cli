@@ -111,8 +111,8 @@ class TestBuildHelperMounts:
         helper_root.mkdir(parents=True)
         (helper_root / "peers").mkdir()
         (helper_root / "workspace").mkdir()
-        spawn_toml = helper_root / "spawn.toml"
-        spawn_toml.write_text("[spawn]\ndepth = 3\n")
+        spawn_toml = helper_root / "spawn.yaml"
+        spawn_toml.write_text("spawn:\n  depth: 3\n")
 
         sock = tmp_path / "helper.sock"
         sock.touch()
@@ -129,7 +129,7 @@ class TestBuildHelperMounts:
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
         dests = [m.destination for m in mounts]
         assert "/home/agent/peers" in dests
-        assert "/home/agent/spawn.toml" in dests
+        assert "/home/agent/spawn.yaml" in dests
 
     def test_includes_binary_mounts(self, tmp_path):
         from kanibako.targets.base import Mount
@@ -251,8 +251,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -278,8 +278,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -295,8 +295,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -315,8 +315,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",
@@ -335,8 +335,8 @@ class TestHubSpawn:
         helper_root = ctx.helpers_dir / "1"
         helper_root.mkdir(parents=True)
         (helper_root / "workspace").mkdir()
-        (helper_root / "vault" / "share-ro").mkdir(parents=True)
-        (helper_root / "vault" / "share-rw").mkdir(parents=True)
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
 
         resp = _connect_and_send(sock_path, {
             "action": "spawn",

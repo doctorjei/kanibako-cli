@@ -211,7 +211,7 @@ class TestArchiveExtended:
         # Create standalone marker and some data
         kanibako_dir = project_dir / ".kanibako"
         kanibako_dir.mkdir()
-        (kanibako_dir / "project.toml").write_text('[project]\nmode = "standalone"\n')
+        (kanibako_dir / "project.yaml").write_text('project:\n  mode: "standalone"\n')
         (kanibako_dir / "data.txt").write_text("standalone-data")
 
         archive_path = str(tmp_home / "dec.txz")

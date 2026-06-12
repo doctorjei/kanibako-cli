@@ -194,7 +194,9 @@ def _ensure_initialized() -> None:
         config_file_path,
         write_global_config,
     )
-    from kanibako.paths import xdg
+    from pathlib import Path
+
+    from kanibako.paths import resolve_system_paths, xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
@@ -208,15 +210,18 @@ def _ensure_initialized() -> None:
 
     # Create data directories
     data_home = xdg("XDG_DATA_HOME", ".local/share")
-    data_path = data_home / (config.paths_data_path or "kanibako")
+    sys_paths = resolve_system_paths(
+        config.system_paths, data_home=data_home, home=Path.home(),
+    )
+    data_path = sys_paths["system.path.data"]
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
-    (data_path / "boxes").mkdir(parents=True, exist_ok=True)
+    sys_paths["system.path.boxes"].mkdir(parents=True, exist_ok=True)
 
-    templates_dir = data_path / (config.paths_templates or "templates")
+    templates_dir = sys_paths["system.path.templates"]
     (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
     (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
 
-    comms_dir = data_path / (config.paths_comms or "comms")
+    comms_dir = sys_paths["system.path.comms"]
     (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
     (comms_dir / "broadcast.log").touch(exist_ok=True)
 
@@ -224,15 +229,15 @@ def _ensure_initialized() -> None:
     from kanibako.crabs import CrabConfig, write_crab_config
     from kanibako.targets import discover_targets
 
-    crabs_path = data_path / (config.paths_crabs or "crabs")
+    crabs_path = sys_paths["system.path.crabs"]
     crabs_path.mkdir(parents=True, exist_ok=True)
 
-    general_toml = crabs_path / "general.toml"
+    general_toml = crabs_path / "general.yaml"
     if not general_toml.exists():
         write_crab_config(general_toml, CrabConfig(name="Shell"))
 
     for target_name, cls in discover_targets().items():
-        target_toml = crabs_path / f"{target_name}.toml"
+        target_toml = crabs_path / f"{target_name}.yaml"
         if not target_toml.exists():
             crab_cfg = cls().generate_crab_config()
             write_crab_config(target_toml, crab_cfg)

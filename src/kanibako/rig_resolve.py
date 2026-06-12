@@ -139,7 +139,7 @@ def resolve_rig(
             from kanibako.commands.image import resolve_image_reference
 
             img = resolve_image_reference(
-                record.source or name, runtime, merged.container_image
+                record.source or name, runtime, merged.box_image
             )
         action = "none" if runtime.image_exists(img) else "pull"
         return RigResolution(
@@ -171,7 +171,7 @@ def resolve_rig(
     # import commands.image at load time.
     from kanibako.commands.image import resolve_image_reference
 
-    resolved = resolve_image_reference(name, runtime, merged.container_image)
+    resolved = resolve_image_reference(name, runtime, merged.box_image)
     prep_action = "none" if runtime.image_exists(resolved) else "pull"
     return RigResolution(
         name=name,

@@ -105,10 +105,10 @@ class TestImageReferenceResolution:
 
     def test_bare_image_resolved_to_prefixed(self, start_mocks):
         with start_mocks() as m:
-            m.load_config.return_value.container_image = (
+            m.load_config.return_value.box_image = (
                 "ghcr.io/doctorjei/kanibako-oci:latest"
             )
-            m.merged.container_image = "kanibako-lxc"
+            m.merged.box_image = "kanibako-lxc"
             # Nothing exists locally: bare name is a prefab needing a pull.
             m.runtime.image_exists.return_value = False
             _run_container(
@@ -126,10 +126,10 @@ class TestImageReferenceResolution:
 
     def test_local_image_used_as_is(self, start_mocks):
         with start_mocks() as m:
-            m.load_config.return_value.container_image = (
+            m.load_config.return_value.box_image = (
                 "ghcr.io/doctorjei/kanibako-oci:latest"
             )
-            m.merged.container_image = "kanibako-lxc"
+            m.merged.box_image = "kanibako-lxc"
             # Only the resolved prefab reference exists locally; no
             # kanibako-template-/kanibako-rig- image does, so the resolver
             # classifies it as a prefab with prep_action="none".
@@ -168,7 +168,7 @@ class TestRigPrep:
             containerfile=cf,
         )
         with start_mocks() as m:
-            m.merged.container_image = "jvm"
+            m.merged.box_image = "jvm"
             # Template image absent → build branch.
             m.runtime.image_exists.return_value = False
             m.runtime.rebuild.return_value = 0
@@ -208,7 +208,7 @@ class TestRigPrep:
             containerfile=Path("/bundled/Containerfile.template-jvm"),
         )
         with start_mocks() as m:
-            m.merged.container_image = "jvm"
+            m.merged.box_image = "jvm"
             m.runtime.image_exists.return_value = False
             m.runtime.rebuild.return_value = 7
             with patch(
@@ -239,7 +239,7 @@ class TestRigPrep:
             source_ref="oci",
         )
         with start_mocks() as m:
-            m.merged.container_image = "oci"
+            m.merged.box_image = "oci"
             with patch(
                 "kanibako.commands.start.resolve_rig", return_value=res
             ):
@@ -268,7 +268,7 @@ class TestRigPrep:
             prep_action="none",
         )
         with start_mocks() as m:
-            m.merged.container_image = "jvm"
+            m.merged.box_image = "jvm"
             with patch(
                 "kanibako.commands.start.resolve_rig", return_value=res
             ):
@@ -525,9 +525,196 @@ class TestCrabConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # crab_toml_path should have been called with agent_id="general"
-            call_args = m.crab_toml_path.call_args
-            assert call_args[0][1] == "general"
+            # The crab config path is derived as std.crabs / "general.yaml".
+            # (std.crabs also gets a / "general" / "share" call from the scoped-
+            # share resolver, so check the full call list rather than the last.)
+            div_args = [
+                c[0][0]
+                for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
+            ]
+            assert "general.yaml" in div_args
+
+
+class TestContainerEnvPrecedence:
+    """Verify container env accumulation precedence (P3.4).
+
+    Order (low->high, later .update wins):
+        system < crab < workset < box < state < cli
+
+    This mirrors the exact ``.update`` sequence in ``_run_container``
+    (see ``src/kanibako/commands/start.py``) over real ``.env`` files plus
+    a fake crab ``[env]`` mapping, so the contract is pinned even when the
+    surrounding launch flow is heavily mocked.
+    """
+
+    @staticmethod
+    def _assemble(
+        *,
+        system_env_path,
+        project_env_path,
+        workset_env_path,
+        crab_env,
+        state_env,
+        cli_env,
+    ):
+        """Replicate the start.py env-assembly sequence verbatim."""
+        from kanibako.shellenv import read_env_file
+
+        container_env: dict[str, str] = {}
+        container_env.update(read_env_file(system_env_path))   # system
+        container_env.update(crab_env)                         # crab
+        if workset_env_path is not None:
+            container_env.update(read_env_file(workset_env_path))  # workset
+        container_env.update(read_env_file(project_env_path))  # box
+        container_env.update(state_env)                        # state
+        container_env.update(cli_env)                          # cli
+        return container_env
+
+    def test_box_overrides_crab_overrides_system(self, tmp_path):
+        """box (project/env) > crab ([env]) > system (global/env)."""
+        system = tmp_path / "global_env"
+        system.write_text("K=system\nONLY_SYSTEM=s\n")
+        box = tmp_path / "project_env"
+        box.write_text("K=box\nONLY_BOX=b\n")
+        env = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=None,
+            crab_env={"K": "crab", "ONLY_CRAB": "c"},
+            state_env={},
+            cli_env={},
+        )
+        assert env["K"] == "box"          # box wins the shared key
+        assert env["ONLY_BOX"] == "b"
+        assert env["ONLY_CRAB"] == "c"
+        assert env["ONLY_SYSTEM"] == "s"
+
+    def test_workset_sits_between_crab_and_box(self, tmp_path):
+        """workset (ws_root/env) overrides crab/system, loses to box."""
+        system = tmp_path / "global_env"
+        system.write_text("K=system\n")
+        ws = tmp_path / "ws_env"
+        ws.write_text("K=workset\nONLY_WS=w\n")
+        box = tmp_path / "project_env"
+        box.write_text("K=box\n")
+        env = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={},
+            cli_env={},
+        )
+        assert env["K"] == "box"          # box still wins overall
+        assert env["ONLY_WS"] == "w"
+        # Without a box value, the workset value should beat crab/system.
+        box.write_text("")               # box empty
+        env2 = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={},
+            cli_env={},
+        )
+        assert env2["K"] == "workset"
+
+    def test_state_and_cli_override_all_config_levels(self, tmp_path):
+        """state_env and CLI -e env both sit above every config level."""
+        system = tmp_path / "global_env"
+        system.write_text("K=system\n")
+        box = tmp_path / "project_env"
+        box.write_text("K=box\n")
+        ws = tmp_path / "ws_env"
+        ws.write_text("K=workset\n")
+        # state beats config levels
+        env_state = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={"K": "state"},
+            cli_env={},
+        )
+        assert env_state["K"] == "state"
+        # cli beats everything incl. state
+        env_cli = self._assemble(
+            system_env_path=system,
+            project_env_path=box,
+            workset_env_path=ws,
+            crab_env={"K": "crab"},
+            state_env={"K": "state"},
+            cli_env={"K": "cli"},
+        )
+        assert env_cli["K"] == "cli"
+
+
+class TestContainerEnvWorksetGating:
+    """Verify the workset env file is consulted only for named worksets.
+
+    Exercises the real ``_run_container`` flow: when ``proj.group`` is None
+    or ``is_default`` is True, no workset env path is built, so a workset
+    ``env`` file must never leak into the container env.
+    """
+
+    def test_no_workset_env_for_default_group(self, start_mocks, tmp_path):
+        """Default (local) group → workset env file is not read."""
+        with start_mocks() as m:
+            # Fixture default: proj.group.is_default is True.
+            assert m.proj.group.is_default is True
+            # Point the workset root at a dir with an env file that MUST NOT
+            # be read.  group is frozen-ish dataclass; rebuild with a real root.
+            from kanibako.paths import ProjectGroup
+            ws_root = tmp_path / "ws"
+            ws_root.mkdir()
+            (ws_root / "env").write_text("LEAKED=yes\n")
+            m.proj.group = ProjectGroup(
+                name="default",
+                root=ws_root,
+                is_default=True,
+                local_shared_base=ws_root,
+            )
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert "LEAKED" not in env
+
+    def test_no_workset_env_when_group_none(self, start_mocks, tmp_path):
+        """proj.group is None → workset env path is None (no crash)."""
+        with start_mocks() as m:
+            m.proj.group = None
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert "LEAKED" not in env
+
+    def test_named_workset_env_is_read(self, start_mocks, tmp_path):
+        """Named (non-default) workset → ws_root/env is injected."""
+        with start_mocks() as m:
+            from kanibako.paths import ProjectGroup
+            ws_root = tmp_path / "ws"
+            ws_root.mkdir()
+            (ws_root / "env").write_text("WS_VAR=present\n")
+            m.proj.group = ProjectGroup(
+                name="myws",
+                root=ws_root,
+                is_default=False,
+                local_shared_base=ws_root,
+            )
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("WS_VAR") == "present"
 
 
 class TestTweakccIntegration:
@@ -1033,3 +1220,285 @@ class TestNoAgentMessage:
             # Shell should still launch (entrypoint set → skips target resolution)
             assert rc == 0
             m.runtime.run.assert_called_once()
+
+
+class TestBuildShareMounts:
+    """Unit tests for _build_share_mounts (scoped-share wiring)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            share_ro=tmp_path / "share-ro",
+            share_rw=tmp_path / "share-rw",
+            crabs=tmp_path / "crabs",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            boxes=tmp_path / "boxes",
+            comms=tmp_path / "comms",
+            templates=tmp_path / "templates",
+            ws_hints=tmp_path / "ws_hints.yaml",
+        )
+
+    def _proj(self, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(group=group)
+
+    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
+              project_toml=None, workset_config_path=None, crab_config_path=None,
+              target=None):
+        from kanibako.commands.start import _build_share_mounts
+        return _build_share_mounts(
+            std=std or self._std(tmp_path),
+            proj=proj or self._proj(),
+            crab_name="claude",
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            crab_config_path=crab_config_path,
+            target=target,
+        )
+
+    def test_empty_config_returns_empty(self, tmp_path):
+        """No share keys anywhere → no mounts (the no-behavior-change guarantee)."""
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text('box_image: "img"\ncrab:\n  model: "sonnet"\n')
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  image: "x"\n')
+        mounts = self._call(
+            tmp_path,
+            global_config_path=glob,
+            project_toml=ptoml,
+            workset_config_path=None,
+            crab_config_path=None,
+        )
+        assert mounts == []
+
+    def test_all_paths_none_returns_empty(self, tmp_path):
+        assert self._call(tmp_path) == []
+
+    def test_system_share_rw_one_mount(self, tmp_path):
+        from pathlib import Path
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text(
+            "system:\n"
+            "  path:\n"
+            "    share_rw:\n"
+            '      data: "/host/x:~/data"\n'
+        )
+        mounts = self._call(tmp_path, global_config_path=glob)
+        assert len(mounts) == 1
+        m = mounts[0]
+        assert m.source == Path("/host/x")
+        assert m.destination == "/home/agent/data"
+        assert m.options == "Z,U"
+
+    def test_box_level_suppression(self, tmp_path):
+        """project.yaml '' for a system-scoped key suppresses the system share."""
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text(
+            'system:\n  path:\n    share_rw:\n      foo: "/a:~/foo"\n'
+        )
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('system:\n  path:\n    share_rw:\n      foo: ""\n')
+        mounts = self._call(
+            tmp_path, global_config_path=glob, project_toml=ptoml,
+        )
+        assert mounts == []
+
+    def test_crab_scope_root_join(self, tmp_path):
+        """A relative crab share joins under std.crabs/<crab>/share."""
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            'crab:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
+        )
+        std = self._std(tmp_path)
+        mounts = self._call(tmp_path, std=std, crab_config_path=crab_cfg)
+        assert len(mounts) == 1
+        m = mounts[0]
+        assert m.source == std.crabs / "claude" / "share" / "plugins"
+        assert m.destination == "/home/agent/.claude/plugins"
+
+    def test_workset_root_only_for_non_default_group(self, tmp_path):
+        from types import SimpleNamespace
+        ws_root = tmp_path / "myws"
+        group = SimpleNamespace(root=ws_root, name="myws", is_default=False)
+        ws_cfg = tmp_path / "config.yaml"
+        ws_cfg.write_text(
+            'workset:\n  path:\n    share_rw:\n      shared: "rel:~/shared"\n'
+        )
+        mounts = self._call(
+            tmp_path,
+            proj=self._proj(group=group),
+            workset_config_path=ws_cfg,
+        )
+        assert len(mounts) == 1
+        assert mounts[0].source == ws_root / "rel"
+
+    def _claude_target(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            name="claude",
+            default_shares=lambda: {
+                "crab.path.share_rw.plugins": "plugins:~/.claude/plugins"
+            },
+        )
+
+    def test_target_default_share_served(self, tmp_path):
+        """A target's declared default share mounts even with no config files."""
+        std = self._std(tmp_path)
+        mounts = self._call(tmp_path, std=std, target=self._claude_target())
+        assert len(mounts) == 1
+        m = mounts[0]
+        assert m.source == std.crabs / "claude" / "share" / "plugins"
+        assert m.destination == "/home/agent/.claude/plugins"
+        assert m.options == "Z,U"
+        # rw share source dir is created best-effort.
+        assert m.source.exists()
+        assert m.source.is_dir()
+
+    def test_target_default_share_suppressed_by_box(self, tmp_path):
+        """A box-level '' overrides/suppresses the target-declared default share."""
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('crab:\n  path:\n    share_rw:\n      plugins: ""\n')
+        mounts = self._call(
+            tmp_path, project_toml=ptoml, target=self._claude_target(),
+        )
+        assert mounts == []
+
+    def test_target_none_no_default_shares(self, tmp_path):
+        """target=None means no default shares (backward compatible)."""
+        assert self._call(tmp_path, target=None) == []
+
+
+class TestApplyInitSeeds:
+    """Unit tests for _apply_init_seeds (copy-once-at-init seed wiring)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            share_ro=tmp_path / "share-ro",
+            share_rw=tmp_path / "share-rw",
+            crabs=tmp_path / "crabs",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            boxes=tmp_path / "boxes",
+            comms=tmp_path / "comms",
+            templates=tmp_path / "templates",
+            ws_hints=tmp_path / "ws_hints.yaml",
+        )
+
+    def _proj(self, shell_path, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(shell_path=shell_path, group=group)
+
+    def _logger(self):
+        import logging
+        return logging.getLogger("test_apply_init_seeds")
+
+    def _shell(self, tmp_path):
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        return shell
+
+    def _call(self, tmp_path, *, std=None, proj=None, target=None,
+              global_config_path=None, project_toml=None,
+              workset_config_path=None, crab_config_path=None):
+        from kanibako.commands.start import _apply_init_seeds
+        _apply_init_seeds(
+            std=std or self._std(tmp_path),
+            proj=proj,
+            crab_name="claude",
+            target=target,
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            crab_config_path=crab_config_path,
+            logger=self._logger(),
+        )
+
+    def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
+        """No seed config and target=None → nothing copied (no behavior change)."""
+        shell = self._shell(tmp_path)
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text('box_image: "img"\ncrab:\n  model: "sonnet"\n')
+        self._call(
+            tmp_path,
+            proj=self._proj(shell),
+            target=None,
+            global_config_path=glob,
+        )
+        assert list(shell.iterdir()) == []
+
+    def test_configured_crab_seed_copied(self, tmp_path):
+        """A crab-config seed copies host_src dir into shell_path/<dest>."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "file.txt").write_text("hello")
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            f'crab:\n  path:\n    seeded:\n      foo: "{src}:~/foo"\n'
+        )
+        self._call(
+            tmp_path,
+            proj=self._proj(shell),
+            crab_config_path=crab_cfg,
+        )
+        assert (shell / "foo" / "file.txt").read_text() == "hello"
+
+    def test_target_default_seed_served(self, tmp_path):
+        """A target's declared default seed copies even with no config files."""
+        from types import SimpleNamespace
+        shell = self._shell(tmp_path)
+        src = tmp_path / "tsrc"
+        src.mkdir()
+        (src / "x.txt").write_text("data")
+        target = SimpleNamespace(
+            name="claude",
+            default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
+        )
+        self._call(tmp_path, proj=self._proj(shell), target=target)
+        assert (shell / "x" / "x.txt").read_text() == "data"
+
+    def test_box_suppresses_target_default_seed(self, tmp_path):
+        """A box-level '' suppresses the target-declared default seed."""
+        from types import SimpleNamespace
+        shell = self._shell(tmp_path)
+        src = tmp_path / "ssrc"
+        src.mkdir()
+        (src / "x.txt").write_text("data")
+        target = SimpleNamespace(
+            name="claude",
+            default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
+        )
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('crab:\n  path:\n    seeded:\n      x: ""\n')
+        self._call(
+            tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
+        )
+        assert not (shell / "x").exists()
+
+    def test_guest_home_dest_copies_contents_into_root(self, tmp_path):
+        """guest_dest of ~/ (== /home/agent) copies src contents into shell root."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "hsrc"
+        src.mkdir()
+        (src / "root_file.txt").write_text("top")
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            f'crab:\n  path:\n    seeded:\n      home: "{src}:~/"\n'
+        )
+        self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
+        assert (shell / "root_file.txt").read_text() == "top"
+
+    def test_missing_host_src_skipped(self, tmp_path):
+        """A seed whose host_src does not exist is skipped (no crash, no copy)."""
+        shell = self._shell(tmp_path)
+        missing = tmp_path / "does_not_exist"
+        crab_cfg = tmp_path / "claude.yaml"
+        crab_cfg.write_text(
+            f'crab:\n  path:\n    seeded:\n      gone: "{missing}:~/gone"\n'
+        )
+        self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
+        assert not (shell / "gone").exists()
+        assert list(shell.iterdir()) == []

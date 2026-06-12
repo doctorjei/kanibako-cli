@@ -120,9 +120,9 @@ def integration_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def integration_config(integration_home):
-    """Write a default ``kanibako.toml`` and return its path."""
+    """Write a default ``kanibako.yaml`` and return its path."""
     config_home = integration_home / "int_config"
-    cf = config_home / "kanibako.toml"
+    cf = config_home / "kanibako.yaml"
     write_global_config(cf)
     return cf
 
@@ -131,10 +131,13 @@ def integration_config(integration_home):
 def integration_credentials(integration_home, integration_config):
     """Set up host credentials for integration tests. Returns the data path."""
     from kanibako.config import load_config
+    from kanibako.paths import resolve_system_paths
 
     config = load_config(integration_config)
     data_home = integration_home / "int_data"
-    data_path = data_home / (config.paths_data_path or "kanibako")
+    data_path = resolve_system_paths(
+        config.system_paths, data_home=data_home, home=integration_home,
+    )["system.path.data"]
     data_path.mkdir(parents=True, exist_ok=True)
 
     # Write host credentials (used directly by init now)

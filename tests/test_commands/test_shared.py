@@ -16,7 +16,7 @@ class TestSharedViaConfigInterface:
     """Tests for shared.* keys through the unified config interface."""
 
     def test_set_shared_cache(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         msg = set_config_value(
             "shared.pip", ".cache/pip",
             config_path=project_toml,
@@ -24,8 +24,8 @@ class TestSharedViaConfigInterface:
         assert "Set shared.pip" in msg
 
     def test_get_shared_cache(self, tmp_path):
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[shared]\npip = ".cache/pip"\n')
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('shared:\n  pip: ".cache/pip"\n')
 
         val = get_config_value(
             "shared.pip",
@@ -34,7 +34,7 @@ class TestSharedViaConfigInterface:
         assert val == ".cache/pip"
 
     def test_get_shared_cache_not_set(self, tmp_path):
-        global_cfg = tmp_path / "kanibako.toml"
+        global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
 
         val = get_config_value(

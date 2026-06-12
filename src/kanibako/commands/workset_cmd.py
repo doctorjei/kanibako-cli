@@ -195,8 +195,8 @@ def _load_std():
 
 
 def _workset_config_path(ws) -> Path:
-    """Return the path to the workset-level config.toml."""
-    return ws.root / "config.toml"
+    """Return the path to the workset-level config.yaml."""
+    return ws.root / "config.yaml"
 
 
 def run_create(args: argparse.Namespace) -> int:
@@ -223,21 +223,21 @@ def run_create(args: argparse.Namespace) -> int:
         ws.group_auth = group_auth
         _write_workset_toml(ws)
 
-    # Store additional settings in workset-level config.toml.
+    # Store additional settings in workset-level config.yaml.
     image = getattr(args, "image", None)
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)
     if image or standalone or no_vault:
-        from kanibako.config_interface import _serialize_toml
+        from kanibako.config_io import dump_doc
         config_data: dict = {}
         if image:
-            config_data["container_image"] = image
+            config_data["box"] = {"image": image}
         if standalone:
             config_data["standalone"] = True
         if no_vault:
             config_data["enable_vault"] = False
         ws_config = _workset_config_path(ws)
-        ws_config.write_text(_serialize_toml(config_data))
+        dump_doc(ws_config, config_data)
 
     print(f"Created working set '{ws.name}' at {ws.root}")
     return 0
@@ -401,7 +401,7 @@ def run_config(args: argparse.Namespace) -> int:
     """Unified config interface for working set settings.
 
     Handles get, set, show, reset operations via the config_interface engine.
-    The ``group_auth`` key is special-cased to update workset.toml directly.
+    The ``group_auth`` key is special-cased to update workset.yaml directly.
     """
     from kanibako.config_interface import (
         ConfigAction,
@@ -441,8 +441,8 @@ def run_config(args: argparse.Namespace) -> int:
         if reset_key == "group_auth":
             ws.group_auth = True
             if ws.is_default:
-                # Default workset has no workset.toml — clear the key in
-                # config.toml's [project] section.
+                # Default workset has no workset.yaml — clear the key in
+                # config.yaml's [project] section.
                 from kanibako.config_interface import _remove_toml_key
                 _remove_toml_key(ws_config, "project", "group_auth")
             else:
@@ -472,7 +472,7 @@ def run_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
-        # Special case: group_auth key lives in workset.toml
+        # Special case: group_auth key lives in workset.yaml
         if key == "group_auth":
             print(ws.group_auth)
             return 0
@@ -489,7 +489,7 @@ def run_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Special case: group_auth key updates workset.toml directly
+        # Special case: group_auth key updates workset.yaml directly
         if key == "group_auth":
             normalized = value.strip().lower()
             if normalized in ("true", "1"):
@@ -506,8 +506,8 @@ def run_config(args: argparse.Namespace) -> int:
             old_group_auth = ws.group_auth
             ws.group_auth = new_group_auth
             if ws.is_default:
-                # Default workset has no workset.toml — write group_auth as a
-                # normal boolean key in config.toml's [project] section.
+                # Default workset has no workset.yaml — write group_auth as a
+                # normal boolean key in config.yaml's [project] section.
                 from kanibako.config_interface import _write_toml_key
                 _write_toml_key(ws_config, "project", "group_auth", new_group_auth)
             else:

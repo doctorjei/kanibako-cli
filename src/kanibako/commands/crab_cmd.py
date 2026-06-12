@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from kanibako.crabs import CrabConfig
+    from kanibako.paths import StandardPaths
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -136,35 +136,34 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _load_data_path() -> Path:
-    """Load config and return the data_path."""
+def _load_std() -> StandardPaths:
+    """Load config and return the resolved standard paths."""
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import xdg, load_std_paths
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
-    std = load_std_paths(config)
-    return std.data_path
+    return load_std_paths(config)
 
 
 def run_list(args: argparse.Namespace) -> int:
     """List configured crabs."""
-    from kanibako.crabs import crabs_dir, load_crab_config
+    from kanibako.crabs import load_crab_config
 
     try:
-        data_path = _load_data_path()
+        std = _load_std()
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    adir = crabs_dir(data_path)
+    adir = std.crabs
     if not adir.is_dir():
         quiet = getattr(args, "quiet", False)
         if not quiet:
             print("No crabs configured.")
         return 0
 
-    toml_files = sorted(adir.glob("*.toml"))
+    toml_files = sorted(adir.glob("*.yaml"))
     if not toml_files:
         quiet = getattr(args, "quiet", False)
         if not quiet:
@@ -189,16 +188,16 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     """Show crab configuration details."""
-    from kanibako.crabs import crab_toml_path, load_crab_config
+    from kanibako.crabs import load_crab_config
 
     try:
-        data_path = _load_data_path()
+        std = _load_std()
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
     crab_id = args.crab_id
-    path = crab_toml_path(data_path, crab_id)
+    path = std.crabs / f"{crab_id}.yaml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
@@ -239,21 +238,21 @@ def run_config(args: argparse.Namespace) -> int:
     """View or modify crab configuration.
 
     Maps config keys to crab TOML sections:
-      model, start_mode, etc. -> [state]
+      model, start_mode, etc. -> [crab] (state keys)
       env.X                   -> [env]
       shared.X                -> [shared]
-      shell, run_args         -> [crab]
+      shell, run_args, name   -> [crab] (identity keys)
     """
-    from kanibako.crabs import crab_toml_path, load_crab_config, write_crab_config
+    from kanibako.crabs import load_crab_config, write_crab_config
 
     try:
-        data_path = _load_data_path()
+        std = _load_std()
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
     crab_id = args.crab_id
-    path = crab_toml_path(data_path, crab_id)
+    path = std.crabs / f"{crab_id}.yaml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
@@ -404,7 +403,7 @@ def _show_crab_config(
         print(f"  run_args = {cfg.run_args}")
     has_output = True
 
-    # [state] section
+    # crab-state keys
     if cfg.state:
         for k, v in sorted(cfg.state.items()):
             print(f"  {k} = {v}")
@@ -444,7 +443,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     proj = resolve_any_project(std, config, getattr(args, "project", None))
 
     try:
-        target = resolve_target(config.crab_name or None)
+        target = resolve_target(config.box_crab or None)
     except KeyError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

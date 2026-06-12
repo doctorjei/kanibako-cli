@@ -65,8 +65,8 @@ class TestResolveWorksetProject:
         assert proj.project_path == ws.workspaces_dir / name
         assert proj.metadata_path == ws.projects_dir / name
         assert proj.shell_path == ws.projects_dir / name / "shell"
-        assert proj.vault_ro_path == ws.vault_dir / name / "share-ro"
-        assert proj.vault_rw_path == ws.vault_dir / name / "share-rw"
+        assert proj.vault_ro_path == ws.vault_dir / name / "ro"
+        assert proj.vault_rw_path == ws.vault_dir / name / "rw"
 
     def test_project_hash_is_sha256_of_workspace_path(self, workset_env, std, config):
         ws, name = workset_env
@@ -301,8 +301,8 @@ class TestWorksetAuthOverrideChain:
 
     So the workset's distinct setting (``group_auth=False``) wins UNLESS it is
     the default ``True`` (shared), in which case the resolver falls back to the
-    project's stored ``group_auth`` from project.toml.  The resolved value
-    surfaces on ``ProjectPaths.group_auth`` and is persisted into project.toml
+    project's stored ``group_auth`` from project.yaml.  The resolved value
+    surfaces on ``ProjectPaths.group_auth`` and is persisted into project.yaml
     on initialize.
     """
 
@@ -316,8 +316,8 @@ class TestWorksetAuthOverrideChain:
         )
 
         assert proj.group_auth is False
-        # And it is persisted into project.toml.
-        meta = read_project_meta(proj.metadata_path / "project.toml")
+        # And it is persisted into project.yaml.
+        meta = read_project_meta(proj.metadata_path / "project.yaml")
         assert meta is not None
         assert meta["group_auth"] is False
 
@@ -327,7 +327,7 @@ class TestWorksetAuthOverrideChain:
         """workset group_auth=True + project stored group_auth=False -> resolved False.
 
         The workset's group_auth is the default True (shared), so the resolver
-        reads the project's persisted group_auth from project.toml and uses
+        reads the project's persisted group_auth from project.yaml and uses
         that instead.
         """
         ws, name = workset_env
@@ -339,9 +339,9 @@ class TestWorksetAuthOverrideChain:
         )
         assert proj.group_auth is True
 
-        # Adjust the project's stored group_auth to False in project.toml,
+        # Adjust the project's stored group_auth to False in project.yaml,
         # preserving the rest of the resolved metadata.
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         meta = read_project_meta(project_toml)
         assert meta is not None
         write_project_meta(
@@ -389,5 +389,5 @@ class TestWorksetSimpleLayoutPaths:
         assert proj.metadata_path == ws.projects_dir / name
         # simple layout: shell and vault are inside the workspace.
         assert proj.shell_path == workspace / ".shell"
-        assert proj.vault_ro_path == workspace / "vault" / "share-ro"
-        assert proj.vault_rw_path == workspace / "vault" / "share-rw"
+        assert proj.vault_ro_path == workspace / "vault" / "ro"
+        assert proj.vault_rw_path == workspace / "vault" / "rw"

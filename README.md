@@ -362,14 +362,14 @@ removed.
 
 ```
 $XDG_DATA_HOME/kanibako/boxes/{name}/          metadata + shell
-{project}/vault/share-ro/                      read-only vault
-{project}/vault/share-rw/                      read-write vault
+{project}/vault/ro/                            read-only vault
+{project}/vault/rw/                            read-write vault
 ```
 
 ### Workset
 
 A workset is a *named* project group rooted at a directory you pick.  It groups
-related projects under one human-readable root, with a `workset.toml` member
+related projects under one human-readable root, with a `workset.yaml` member
 list and a group-level config/auth tier that member projects inherit (see
 [Configuration](#configuration)).  Mechanically it is the same project-group
 machinery as local mode, just with an explicit name and root instead of the
@@ -580,40 +580,36 @@ support `shell.d/` on the next launch.
 
 ## Crab Configuration
 
-Each crab (agent instance) gets a TOML configuration file at
-`$XDG_DATA_HOME/kanibako/crabs/{id}.toml`.  The file is generated
+Each crab (agent instance) gets a YAML configuration file at
+`$XDG_DATA_HOME/kanibako/crabs/{id}.yaml`.  The file is generated
 automatically on first use (via the target plugin's `generate_crab_config()`
 method) and can be edited afterwards.
 
-```toml
-[crab]
-name = "Claude Code"
-shell = "standard"          # template variant (see Shell Templates)
-run_args = []               # extra CLI args prepended on every launch
-
-[state]
-model = "opus"              # target-specific knobs (e.g. --model for Claude)
-access = "permissive"
-
-[env]
-# KEY = "value"             # raw env vars injected into the container
-
-[shared]
-# plugins = ".claude/plugins"  # agent-level shared cache paths
-
-[tweakcc]
-# enabled = false           # enable tweakcc binary patching
-# config = "~/.tweakcc/config.json"  # external tweakcc config file
+```yaml
+crab:
+  name: "Claude Code"
+  shell: "standard"         # template variant (see Shell Templates)
+  run_args: []              # extra CLI args prepended on every launch
+  model: "opus"             # target-specific state knobs (e.g. --model for Claude)
+  access: "permissive"
+env:
+  # KEY: "value"            # raw env vars injected into the container
+shared:
+  # plugins: ".claude/plugins"  # crab-level shared cache paths
+tweakcc:
+  # enabled: false          # enable tweakcc binary patching
+  # config: "~/.tweakcc/config.json"  # external tweakcc config file
 ```
 
 **Sections:**
-- `[crab]` -- identity and defaults (name, shell template variant, default CLI args)
-- `[state]` -- runtime behavior knobs translated by the target plugin into CLI
-  args and env vars (e.g. Claude maps `model` -> `--model`)
-- `[env]` -- environment variables injected into the container
-- `[shared]` -- agent-level shared cache paths (mounted from the per-agent
+- `crab:` -- identity and defaults (`name`, `shell` template variant, `run_args`)
+  plus runtime state knobs translated by the target plugin into CLI args and env
+  vars (e.g. Claude maps `model` -> `--model`). Effective state resolves across
+  `box > workset > crab > system` with the target's declared defaults as the floor.
+- `env:` -- environment variables injected into the container
+- `shared:` -- crab-level shared cache paths (mounted from the per-crab
   shared directory, independent of global shared caches)
-- `[tweakcc]` -- optional tweakcc integration for binary patching
+- `tweakcc:` -- optional tweakcc integration for binary patching
   (see [docs/tweakcc.md](docs/tweakcc.md))
 
 Manage crab settings via the CLI:
@@ -749,20 +745,20 @@ Codex CLI, Goose).
 pip install kanibako-target-aider
 
 # Use a specific target
-kanibako box config crab_name=aider
+kanibako box config box.crab=aider
 kanibako start
 ```
 
 ## Configuration
 
 ```
-Precedence: CLI flag > project.toml > workset config.toml > crab config > kanibako.toml (system) > defaults
+Precedence: CLI flag > project.yaml > workset config.yaml > crab config > kanibako.yaml (system) > defaults
 ```
 
-The **workset config tier** is a workset's own `config.toml`, applied at box
-start/status.  For a named workset it lives at `<workset_root>/config.toml`; for
+The **workset config tier** is a workset's own `config.yaml`, applied at box
+start/status.  For a named workset it lives at `<workset_root>/config.yaml`; for
 the always-present default workset (the local/account group) it is
-`<data_dir>/config.toml`.  Setting it on the default workset (`kanibako workset
+`<data_dir>/config.yaml`.  Setting it on the default workset (`kanibako workset
 config default <key>=<value>`) establishes account-wide defaults inherited by
 all local projects, while an individual project (or a CLI flag) may still
 override.
@@ -791,9 +787,11 @@ kanibako system config --reset --all    # reset all global config
 
 ### Config files
 
-- **Global**: `$XDG_CONFIG_HOME/kanibako.toml`
-- **Project**: `boxes/{name}/project.toml`
-- **Crabs**: `$XDG_DATA_HOME/kanibako/crabs/{id}.toml`
+All kanibako config files are YAML.
+
+- **Global**: `$XDG_CONFIG_HOME/kanibako.yaml`
+- **Project**: `boxes/{name}/project.yaml`
+- **Crabs**: `$XDG_DATA_HOME/kanibako/crabs/{id}.yaml`
 - **Templates**: `$XDG_DATA_HOME/kanibako/templates/`
 
 ### Configuration keys
@@ -804,30 +802,37 @@ kanibako system config --reset --all    # reset all global config
 | `model` | platform default | Agent model name |
 | `autonomous` | `true` | Enable autonomy override |
 | `persistence` | `persistent` | Session type (persistent/ephemeral) |
-| `image` | `kanibako-oci:latest` | Container rig |
+| `box.image` | `kanibako-oci:latest` | Container rig |
+| `box.crab` | (auto-detect) | Agent target plugin |
+| `box.share_images` | | Share host images into the box |
 | `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-project (`false`) |
 | `enable_vault` | `true` | Enable vault directories |
 | `env.*` | | Persistent environment variables |
 | `resource.*` | | Resource path overrides |
-| `crab_name` | (auto-detect) | Agent target plugin |
+| `{scope}.path.share_ro.*` / `.share_rw.*` | | Scoped bind-mount shares (`host_src:guest_dest`) |
 
 ### Global config file
 
-The global config supports a `[paths]` section to override data directory
-layout, and a `[shared]` section for globally shared cache mounts:
+The global config (`kanibako.yaml`) supports a `system.path` section to override
+the data-directory layout, a `box` section for box-level defaults, and a `shared`
+section for globally shared cache mounts. `system.path` values may use the
+resolver grammar — `@`-refs, `$XDG_*`, `~`:
 
-```toml
-[paths]
-data_path = ""         # override XDG_DATA_HOME/kanibako
-boxes = "boxes"        # project state subdirectory
-crabs = "crabs"        # crab TOML subdirectory
-shared = "shared"      # shared caches subdirectory
-templates = "templates"
-
-[shared]
-pip = ".cache/pip"
-cargo = ".cargo/registry"
-npm = ".npm"
+```yaml
+system:
+  path:
+    data: "$XDG_DATA_HOME/kanibako"     # data root
+    boxes: "@system.path.data/boxes"    # project state subdirectory
+    crabs: "@system.path.data/crabs"    # crab config subdirectory
+    comms: "@system.path.data/comms"
+    templates: "@system.path.data/templates"
+    ws_hints: "@system.path.data/worksets.yaml"
+box:
+  image: "kanibako-oci:latest"
+shared:
+  pip: ".cache/pip"
+  cargo: ".cargo/registry"
+  npm: ".npm"
 ```
 
 Shared caches are **lazy** -- they are only mounted if the host directory exists.
@@ -890,7 +895,7 @@ content. View the conversation in real-time with `kanibako crab helper log --fol
 **Spawn budget:** Each helper gets a depth/breadth budget controlling
 how many levels deep it can spawn and how many siblings are allowed.
 Depth decrements with each level. The budget is written as a read-only
-config (`spawn.toml`) inside the child, enforced at spawn time.
+config (`spawn.yaml`) inside the child, enforced at spawn time.
 
 **Peer channels:** Helpers communicate through shared directories.
 Each pair of siblings gets three channels (A-reads, B-reads, shared-rw).
@@ -901,12 +906,12 @@ A broadcast channel (`all/`) is available to all helpers.
 ~/helpers/
   1/                    # helper 1 root
     workspace/          # helper's working directory
-    vault/share-ro/     # read-only vault share
-    vault/share-rw/     # read-write vault share
+    vault/ro/           # read-only vault share
+    vault/rw/           # read-write vault share
     playbook/scripts/   # helper-init.sh (entrypoint wrapper)
     peers/              # symlinks to peer channels
     all -> ../all/      # broadcast channel
-    spawn.toml          # RO spawn budget
+    spawn.yaml          # RO spawn budget
     state.json          # status, model, depth, peers
   all/ro/               # broadcast read-only
   all/rw/               # broadcast read-write

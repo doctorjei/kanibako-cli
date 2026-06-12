@@ -6,8 +6,10 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol
+
+import yaml
 
 from kanibako.config import (
     KanibakoConfig,
@@ -17,7 +19,16 @@ from kanibako.config import (
     read_project_meta,
     write_project_meta,
 )
+from kanibako.config_io import load_doc
 from kanibako.errors import ConfigError, ProjectError, WorksetError
+from kanibako.settings_resolve import (
+    LevelView,
+    ResolveCtx,
+    SettingsError,
+    _Unset,
+    expand_expr,
+    resolve_value,
+)
 from kanibako.names import (
     assign_name,
     read_names,
@@ -80,6 +91,14 @@ class StandardPaths:
     data_path: Path
     state_path: Path
     cache_path: Path
+    # System-level derived directories (settings-framework "system.path.*").
+    boxes: Path
+    crabs: Path
+    comms: Path
+    share_ro: Path
+    share_rw: Path
+    templates: Path
+    ws_hints: Path
 
 
 @dataclass(frozen=True)
@@ -108,10 +127,10 @@ class ProjectPaths:
 
     project_path: Path
     project_hash: str
-    metadata_path: Path      # host-only: project.toml, breadcrumb, lock
+    metadata_path: Path      # host-only: project.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
-    vault_ro_path: Path      # {project}/vault/share-ro (→ /home/agent/share-ro)
-    vault_rw_path: Path      # {project}/vault/share-rw (→ /home/agent/share-rw)
+    vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/share-ro)
+    vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
     is_new: bool = field(default=False)
     mode: ProjectMode = field(default=ProjectMode.local)
     layout: ProjectLayout = field(default=ProjectLayout.default)
@@ -200,6 +219,68 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     return Path.home() / default_suffix
 
 
+# ---------------------------------------------------------------------------
+# System-level path tier (settings-framework "system.path.*")
+# ---------------------------------------------------------------------------
+#
+# These model the system-level derived directories as resolver-backed path
+# expressions.  Keys are the FULL dotted names so ``@``-refs (e.g.
+# ``@system.path.data``) resolve against the same table.  Defaults reproduce
+# today's flat ``KanibakoConfig.paths_*`` behavior byte-for-byte: the data path
+# is ``$XDG_DATA_HOME/kanibako`` and the other dirs (and the ``ws_hints`` file)
+# hang off it.
+SYSTEM_PATH_DEFAULTS: dict[str, str] = {
+    "system.path.data": "$XDG_DATA_HOME/kanibako",
+    "system.path.boxes": "@system.path.data/boxes",
+    "system.path.crabs": "@system.path.data/crabs",
+    "system.path.comms": "@system.path.data/comms",
+    "system.path.share_ro": "@system.path.data/share_ro",
+    "system.path.share_rw": "@system.path.data/share_rw",
+    "system.path.templates": "@system.path.data/templates",
+    "system.path.ws_hints": "@system.path.data/worksets.yaml",
+}
+
+
+def resolve_system_paths(
+    set_values: Mapping[str, str], *, data_home: Path, home: Path,
+) -> dict[str, Path]:
+    """Resolve the ``system.path.*`` tier to concrete host paths.
+
+    *set_values* holds raw user-set expressions keyed by their full dotted name
+    (``system.path.<leaf>``); typically the global config's ``system_paths``.
+    *data_home* is the already-resolved XDG data base (e.g. ``~/.local/share``)
+    exposed to expressions as ``$XDG_DATA_HOME``; *home* expands a leading
+    ``~``.  Returns ``{full_dotted_key: Path}`` for every key in
+    :data:`SYSTEM_PATH_DEFAULTS`.
+    """
+    ctx = ResolveCtx(
+        crab_name=None,
+        workset_name=None,
+        host_home=str(home),
+        xdg={"XDG_DATA_HOME": str(data_home)},
+    )
+    levels = [
+        LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)
+    ]
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):
+            raise SettingsError(f"Unknown @-reference: {ref}")
+        return expand_expr(
+            rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain,
+        )
+
+    resolved: dict[str, Path] = {}
+    for key in SYSTEM_PATH_DEFAULTS:
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):  # Unreachable: every key has a default.
+            raise SettingsError(f"Unresolvable system path: {key}")
+        expanded = expand_expr(rv.value, space="host", ctx=ctx, lookup=lookup)
+        resolved[key] = Path(expanded)
+    return resolved
+
+
 def _migrate_global_env(config_home: Path, data_path: Path) -> None:
     """Move global env file from old config_home/kanibako/env to data_path/env."""
     old = config_home / "kanibako" / "env"
@@ -212,14 +293,13 @@ def _migrate_global_env(config_home: Path, data_path: Path) -> None:
         print(f"Migrated: {old} → {new}", file=sys.stderr)
 
 
-def _migrate_settings_to_boxes(data_path: Path) -> None:
-    """Rename ``data_path/settings`` to ``data_path/boxes`` if needed."""
+def _migrate_settings_to_boxes(data_path: Path, boxes_path: Path) -> None:
+    """Rename the legacy ``data_path/settings`` dir to the resolved boxes dir."""
     old = data_path / "settings"
-    new = data_path / "boxes"
-    if old.is_dir() and not new.exists():
-        old.rename(new)
+    if old.is_dir() and not boxes_path.exists():
+        old.rename(boxes_path)
         import sys
-        print(f"Migrated: {old} → {new}", file=sys.stderr)
+        print(f"Migrated: {old} → {boxes_path}", file=sys.stderr)
 
 
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
@@ -244,13 +324,19 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
             )
         config = load_config(config_file)
 
-    rel = config.paths_data_path or "kanibako"
-    data_path = data_home / rel
+    # Resolve the system-level path tier (settings-framework "system.path.*").
+    resolved = resolve_system_paths(
+        config.system_paths, data_home=data_home, home=Path.home(),
+    )
+    data_path = resolved["system.path.data"]
+    # state/cache paths track the data dir's leaf name (unchanged behavior:
+    # default leaf "kanibako" under each XDG base).
+    rel = data_path.name
     state_path = state_home / rel
     cache_path = cache_home / rel
 
     # Migrate settings/ -> boxes/ if needed.
-    _migrate_settings_to_boxes(data_path)
+    _migrate_settings_to_boxes(data_path, resolved["system.path.boxes"])
 
     # Migrate global env file from config_home/kanibako/env to data_path/env.
     _migrate_global_env(config_home, data_path)
@@ -270,6 +356,13 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         data_path=data_path,
         state_path=state_path,
         cache_path=cache_path,
+        boxes=resolved["system.path.boxes"],
+        crabs=resolved["system.path.crabs"],
+        comms=resolved["system.path.comms"],
+        share_ro=resolved["system.path.share_ro"],
+        share_rw=resolved["system.path.share_rw"],
+        templates=resolved["system.path.templates"],
+        ws_hints=resolved["system.path.ws_hints"],
     )
 
 
@@ -290,10 +383,10 @@ def resolve_project(
     subcommands like ``archive``/``purge``), the paths are merely computed.
 
     *layout* overrides the default layout for new projects.  Existing projects
-    read their layout from ``project.toml``.
+    read their layout from ``project.yaml``.
 
     *enable_vault* controls whether vault directories are created and mounted.
-    Defaults to True for new projects; existing projects read from ``project.toml``.
+    Defaults to True for new projects; existing projects read from ``project.yaml``.
     """
     raw = project_dir or os.getcwd()
     # If the user passed a bare token (no path separator) and no file/dir of
@@ -317,19 +410,19 @@ def resolve_project(
 
     # Determine the project directory: name-based (boxes/{name}/).
     project_name, project_dir_path = _resolve_local_dir(
-        std.data_path, project_path_str,
+        std.data_path, project_path_str, std.boxes,
     )
 
     metadata_path = project_dir_path
 
-    # Check for stored paths in project.toml (enables user overrides).
-    project_toml = metadata_path / "project.toml"
+    # Check for stored paths in project.yaml (enables user overrides).
+    project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.local]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.local]
@@ -340,7 +433,7 @@ def resolve_project(
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Auth mode for the account (default group): the default workset's
-    # group_auth (from {data_path}/config.toml) is the base; a project may
+    # group_auth (from {data_path}/config.yaml) is the base; a project may
     # narrow shared→distinct via its own meta — mirroring the named-workset
     # logic in resolve_workset_project.  No-op on upgrade: default_workset's
     # group_auth is True until a user runs `workset config default group_auth`,
@@ -368,14 +461,14 @@ def resolve_project(
             project_name = name_override
         else:
             project_name = assign_name(std.data_path, project_path_str)
-        project_dir_path = std.data_path / "boxes" / project_name
+        project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
         shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
             actual_layout, metadata_path, project_path,
             vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
         )
-        project_toml = metadata_path / "project.toml"
+        project_toml = metadata_path / "project.yaml"
 
         _init_project(
             std, metadata_path, shell_path,
@@ -408,14 +501,14 @@ def resolve_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Backfill project.toml for old-format projects (pre-v0.8).
-        if metadata_path.is_dir() and read_project_meta(metadata_path / "project.toml") is None:
+        # Backfill project.yaml for old-format projects (pre-v0.8).
+        if metadata_path.is_dir() and read_project_meta(metadata_path / "project.yaml") is None:
             _global_shared_bf = std.data_path / config.paths_shared / "global"
             _local_shared_bf = std.data_path / config.paths_shared
             # Use directory name as project name (name-based dirs).
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
-                metadata_path / "project.toml",
+                metadata_path / "project.yaml",
                 mode="local",
                 layout=actual_layout.value,
                 workspace=str(project_path),
@@ -483,11 +576,14 @@ def resolve_project(
 def _resolve_local_dir(
     data_path: Path,
     project_path_str: str,
+    boxes_dir: Path,
 ) -> tuple[str, Path]:
     """Find the boxes directory for a local project.
 
-    Looks up the project name via names.toml reverse lookup and returns
-    ``(project_name, boxes/{name}/)`` path.
+    Looks up the project name via names.yaml reverse lookup and returns
+    ``(project_name, boxes_dir/{name}/)`` path.  *boxes_dir* is the resolved
+    ``system.path.boxes`` directory (``std.boxes``); *data_path* is still
+    needed to read ``names.yaml``.
 
     Returns ``("", empty_path)`` when no name is registered — the caller
     (``resolve_project``) will assign a name during initialization.
@@ -496,9 +592,9 @@ def _resolve_local_dir(
     # Reverse lookup: path → name.
     for name, path in names["projects"].items():
         if path == project_path_str:
-            return name, data_path / "boxes" / name
+            return name, boxes_dir / name
 
-    return "", data_path / "boxes" / "__unregistered__"
+    return "", boxes_dir / "__unregistered__"
 
 
 
@@ -510,8 +606,8 @@ def _compute_project_paths(
 
     The only structural difference between local and workset is *where* the
     vault lives in the non-``simple`` layouts; the caller expresses that by
-    passing ``vault_root`` — the parent directory under which ``share-ro`` and
-    ``share-rw`` are placed.  The ``simple`` layout always keeps shell and
+    passing ``vault_root`` — the parent directory under which ``ro`` and
+    ``rw`` are placed.  The ``simple`` layout always keeps shell and
     vault inside the workspace and ignores *vault_root*.
 
     Caller-supplied *vault_root* must reproduce the existing per-mode policy:
@@ -522,12 +618,12 @@ def _compute_project_paths(
     """
     if layout == ProjectLayout.simple:
         shell = project_path / ".shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = project_path / "vault" / "ro"
+        vault_rw = project_path / "vault" / "rw"
     else:  # default / robust
         shell = metadata_path / "shell"
-        vault_ro = vault_root / "share-ro"
-        vault_rw = vault_root / "share-rw"
+        vault_ro = vault_root / "ro"
+        vault_rw = vault_root / "rw"
     return shell, vault_ro, vault_rw
 
 
@@ -544,12 +640,12 @@ def _compute_standalone_paths(
     """Compute (shell, vault_ro, vault_rw) for standalone mode."""
     if layout == ProjectLayout.robust:
         shell = project_path / "shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = project_path / "vault" / "ro"
+        vault_rw = project_path / "vault" / "rw"
     else:  # simple (default for standalone)
         shell = metadata_path / "shell"
-        vault_ro = project_path / "vault" / "share-ro"
-        vault_rw = project_path / "vault" / "share-rw"
+        vault_ro = project_path / "vault" / "ro"
+        vault_rw = project_path / "vault" / "rw"
     return shell, vault_ro, vault_rw
 
 
@@ -761,11 +857,11 @@ def _init_common(
     if enable_vault:
         vault_ro_path.mkdir(parents=True, exist_ok=True)
         vault_rw_path.mkdir(parents=True, exist_ok=True)
-        # .gitignore in vault/ to exclude share-rw from version control.
+        # .gitignore in vault/ to exclude rw from version control.
         vault_dir = vault_ro_path.parent
         gitignore = vault_dir / ".gitignore"
         if not gitignore.exists():
-            gitignore.write_text("share-rw/\n")
+            gitignore.write_text("rw/\n")
 
     print("done.", file=sys.stderr)
 
@@ -789,13 +885,14 @@ def _init_project(
 
 
 
-def _find_local_ancestor(target: Path, data_path: Path) -> Path | None:
+def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path | None:
     """Find the deepest registered local project that is an ancestor of *target*.
 
-    Reads ``names.toml`` and, for each entry whose registered path is a
-    prefix of *target*, checks that ``boxes/{name}/`` actually exists on
+    Reads ``names.yaml`` and, for each entry whose registered path is a
+    prefix of *target*, checks that ``boxes_dir/{name}/`` actually exists on
     disk.  Among all valid matches, the deepest (most path components)
-    wins.  Returns the matched path or ``None``.
+    wins.  Returns the matched path or ``None``.  *boxes_dir* is the resolved
+    ``system.path.boxes`` directory (``std.boxes``).
     """
     names = read_names(data_path)
     best: Path | None = None
@@ -806,8 +903,8 @@ def _find_local_ancestor(target: Path, data_path: Path) -> Path | None:
             target.relative_to(registered)
         except ValueError:
             continue
-        # Only accept if boxes/{name}/ exists on disk.
-        if not (data_path / "boxes" / name).is_dir():
+        # Only accept if boxes_dir/{name}/ exists on disk.
+        if not (boxes_dir / name).is_dir():
             continue
         depth = len(registered.parts)
         if depth > best_depth:
@@ -822,15 +919,15 @@ def _is_standalone_meta_dir(meta_dir: Path) -> bool:
     A bare directory named ``.kanibako``/``kanibako`` is NOT sufficient: the
     kanibako container image bakes an empty ``~/.kanibako`` runtime/IPC dir into
     every container home (helper socket + log), which must never be mistaken for
-    a standalone project marker.  Require a parseable ``project.toml`` that
+    a standalone project marker.  Require a parseable ``project.yaml`` that
     declares ``mode = "standalone"``.
     """
-    toml = meta_dir / "project.toml"
+    toml = meta_dir / "project.yaml"
     if not meta_dir.is_dir() or not toml.is_file():
         return False
     try:
         meta = read_project_meta(toml)
-    except (OSError, ValueError):  # ValueError covers tomllib.TOMLDecodeError
+    except (OSError, ValueError, yaml.YAMLError):  # malformed/unreadable file
         return False
     return bool(meta and meta.get("mode") == "standalone")
 
@@ -849,7 +946,7 @@ def detect_project_mode(
     Detection order:
     1. Workset — *project_dir* lives inside a registered workset root
        (``workspaces/`` subdirectory first, then the root itself).
-    2. Local (name-based) — one-pass scan of ``names.toml``;
+    2. Local (name-based) — one-pass scan of ``names.yaml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
     3. Walk ancestors for standalone markers — a ``.kanibako`` or
@@ -866,7 +963,7 @@ def detect_project_mode(
         return ws_result
 
     # 2. Name-based local check (one-pass scan, deepest match wins).
-    ac_ancestor = _find_local_ancestor(resolved, std.data_path)
+    ac_ancestor = _find_local_ancestor(resolved, std.data_path, std.boxes)
     if ac_ancestor is not None:
         return DetectionResult(ProjectMode.local, ac_ancestor)
 
@@ -874,7 +971,7 @@ def detect_project_mode(
     current = resolved
     while True:
         # Standalone check: .kanibako/ or kanibako/ directory with a real
-        # standalone project.toml.  A bare directory is not enough (the
+        # standalone project.yaml.  A bare directory is not enough (the
         # container image bakes an empty ~/.kanibako runtime/IPC dir).
         if _is_standalone_meta_dir(current / ".kanibako"):
             return DetectionResult(ProjectMode.standalone, current)
@@ -903,14 +1000,11 @@ def _check_workset(
     Checks ``workspaces/`` first (specific project), then the workset root
     itself (inside workset but not necessarily a project workspace).
     """
-    worksets_toml = std.data_path / "worksets.toml"
+    worksets_toml = std.ws_hints
     if not worksets_toml.is_file():
         return None
 
-    import tomllib as _tomllib
-
-    with open(worksets_toml, "rb") as _f:
-        _data = _tomllib.load(_f)
+    _data = load_doc(worksets_toml)
 
     for _root_str in _data.get("worksets", {}).values():
         ws_root = Path(_root_str).resolve()
@@ -960,14 +1054,14 @@ def resolve_workset_project(
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
-    # Check for stored paths in project.toml (enables user overrides).
-    project_toml = metadata_path / "project.toml"
+    # Check for stored paths in project.yaml (enables user overrides).
+    project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.workset]
         shell_path = Path(meta["shell"]) if meta["shell"] else project_dir / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else ws.vault_dir / project_name / "share-ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else ws.vault_dir / project_name / "share-rw"
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else ws.vault_dir / project_name / "ro"
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else ws.vault_dir / project_name / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.workset]
@@ -1081,10 +1175,10 @@ def _init_workset_project(
 def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project.
 
-    *project_path* is read from ``project.toml`` (``workspace`` field) when
+    *project_path* is read from ``project.yaml`` (``workspace`` field) when
     available, falling back to ``project-path.txt`` for backward compat.
     """
-    projects_dir = std.data_path / "boxes"
+    projects_dir = std.boxes
     if not projects_dir.is_dir():
         return []
     results: list[tuple[Path, Path | None]] = []
@@ -1092,8 +1186,8 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
         if not entry.is_dir():
             continue
         project_path: Path | None = None
-        # Prefer project.toml workspace field.
-        meta = read_project_meta(entry / "project.toml")
+        # Prefer project.yaml workspace field.
+        meta = read_project_meta(entry / "project.yaml")
         if meta and meta.get("workspace"):
             project_path = Path(meta["workspace"])
         else:
@@ -1281,10 +1375,10 @@ def resolve_standalone_project(
     meta = None
     actual_layout = None
     if dot_meta.is_dir():
-        meta = read_project_meta(dot_meta / "project.toml")
+        meta = read_project_meta(dot_meta / "project.yaml")
         metadata_path = dot_meta
     elif nodot_meta.is_dir():
-        meta = read_project_meta(nodot_meta / "project.toml")
+        meta = read_project_meta(nodot_meta / "project.yaml")
         metadata_path = nodot_meta
     else:
         # New project — determine layout and metadata_path.
@@ -1297,8 +1391,8 @@ def resolve_standalone_project(
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.standalone]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "share-ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "share-rw"
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         if actual_layout is None:
@@ -1308,11 +1402,11 @@ def resolve_standalone_project(
         )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    project_toml = metadata_path / "project.toml"
+    project_toml = metadata_path / "project.yaml"
 
     # Auth mode for standalone: explicit param > meta > default.
     # Standalone projects are NOT in the account/default group, so they do
-    # not consult the default workset config.toml.
+    # not consult the default workset config.yaml.
     actual_group_auth = (
         group_auth
         if group_auth is not None

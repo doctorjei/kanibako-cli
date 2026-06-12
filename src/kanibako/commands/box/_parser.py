@@ -190,8 +190,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         aliases=["delete"],
         help="Unregister a project (optionally purge its metadata)",
         description=(
-            "Remove a project from names.toml without touching the workspace.\n"
-            "With --purge, also delete kanibako metadata (shell config, project.toml, vault symlinks, logs)."
+            "Remove a project from names.yaml without touching the workspace.\n"
+            "With --purge, also delete kanibako metadata (shell config, project.yaml, vault symlinks, logs)."
         ),
     )
     rm_p.add_argument(
@@ -288,7 +288,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Relocate a project workspace to a new directory",
         description=(
             "Move a project's workspace directory to a new location.\n"
-            "Updates names.toml and recreates vault symlinks.\n"
+            "Updates names.yaml and recreates vault symlinks.\n"
             "Cannot move projects that are inside a workset."
         ),
     )
@@ -401,8 +401,8 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     # Persist image setting.
-    image = args.image or config.container_image
-    project_toml = proj.metadata_path / "project.toml"
+    image = args.image or config.box_image
+    project_toml = proj.metadata_path / "project.yaml"
     write_project_config(project_toml, image)
 
     # Write .gitignore for standalone projects only.
@@ -458,7 +458,7 @@ def run_list(args: argparse.Namespace) -> int:
             print("No known projects.")
         return 0
 
-    # Build reverse lookup from path → name using names.toml.
+    # Build reverse lookup from path → name using names.yaml.
     names_data = read_names(std.data_path)
     path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
@@ -640,7 +640,7 @@ def _purge_dir(target: Path) -> bool:
 
 
 def run_rm(args: argparse.Namespace) -> int:
-    """Unregister a project from names.toml, optionally purging metadata."""
+    """Unregister a project from names.yaml, optionally purging metadata."""
     from kanibako.names import lookup_by_path
     from kanibako.paths import (
         _remove_human_vault_symlink,
@@ -681,12 +681,12 @@ def run_rm(args: argparse.Namespace) -> int:
     kind = "workset" if section == "worksets" else "project"
     print(f"Removing {kind}: {name} ({path})")
 
-    # Unregister from names.toml.
+    # Unregister from names.yaml.
     unregister_name(std.data_path, name, section=section)
-    print(f"Removed '{name}' from names.toml")
+    print(f"Removed '{name}' from names.yaml")
 
     if args.purge:
-        metadata_dir = std.data_path / "boxes" / name
+        metadata_dir = std.boxes / name
 
         if metadata_dir.is_dir():
             if not args.force:
@@ -726,7 +726,7 @@ def run_rm(args: argparse.Namespace) -> int:
             print(f"No metadata directory found at {metadata_dir}")
     else:
         # Hint about --purge when metadata still exists.
-        metadata_dir = std.data_path / "boxes" / name
+        metadata_dir = std.boxes / name
         if metadata_dir.is_dir():
             print(
                 f"Metadata still present at {metadata_dir}. "
@@ -823,16 +823,16 @@ def run_move(args: argparse.Namespace) -> int:
         print(f"Error: failed to move workspace: {e}", file=sys.stderr)
         return 1
 
-    # 2. Update names.toml path.
+    # 2. Update names.yaml path.
     result = lookup_by_path(std.data_path, str(source_path))
     if result is not None:
         name, section = result
         update_name_path(std.data_path, name, str(dest_path), section=section)
-        print(f"Updated names.toml: {name} -> {dest_path}")
+        print(f"Updated names.yaml: {name} -> {dest_path}")
     elif proj.name:
         # Try by name directly.
         update_name_path(std.data_path, proj.name, str(dest_path))
-        print(f"Updated names.toml: {proj.name} -> {dest_path}")
+        print(f"Updated names.yaml: {proj.name} -> {dest_path}")
 
     # 3. Recreate vault symlinks (remove old, create new).
     _remove_project_vault_symlink(dest_path)
@@ -933,8 +933,8 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     # Load merged config for image info.
-    project_toml = proj.metadata_path / "project.toml"
-    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
+    project_toml = proj.metadata_path / "project.yaml"
+    workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
@@ -949,7 +949,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Resolve target for credential check path
     try:
-        target = resolve_target(merged.crab_name or None)
+        target = resolve_target(merged.box_crab or None)
         creds_file = target.credential_check_path(proj.shell_path)
     except (KeyError, Exception):
         creds_file = None
@@ -974,7 +974,7 @@ def run_info(args: argparse.Namespace) -> int:
     if proj.local_shared_path:
         rows.append(("Local", str(proj.local_shared_path)))
     rows.extend([
-        ("Image", merged.container_image),
+        ("Image", merged.box_image),
         ("Lock", "ACTIVE" if lock_held else "none"),
         ("Container", container_detail),
         ("Credentials", cred_age),
@@ -1039,7 +1039,7 @@ def run_config(args: argparse.Namespace) -> int:
             except ProjectError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
-            project_toml = proj.metadata_path / "project.toml"
+            project_toml = proj.metadata_path / "project.yaml"
             env_path = proj.metadata_path / "env"
             msg = reset_all(
                 config_path=project_toml,
@@ -1056,7 +1056,7 @@ def run_config(args: argparse.Namespace) -> int:
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        project_toml = proj.metadata_path / "project.toml"
+        project_toml = proj.metadata_path / "project.yaml"
         env_path = proj.metadata_path / "env"
         msg = reset_config_value(
             reset_key,
@@ -1080,17 +1080,66 @@ def run_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    project_toml = proj.metadata_path / "project.toml"
+    project_toml = proj.metadata_path / "project.yaml"
     env_global = std.data_path / "env"
     env_project = proj.metadata_path / "env"
 
     if action == ConfigAction.show:
+        workset_path = (
+            (proj.group.root / "config.yaml") if proj.group is not None else None
+        )
+        crab_state = None
+        env_resolved = None
+        if args.effective:
+            from kanibako.config import load_merged_config
+            from kanibako.crabs import load_crab_config
+            from kanibako.targets import resolve_target
+            from kanibako.commands.start import (
+                _build_config_env,
+                _build_effective_state,
+            )
+            merged = load_merged_config(
+                config_file, project_toml if project_toml.exists() else None,
+                workset_path=workset_path,
+            )
+            try:
+                target = resolve_target(merged.box_crab or None)
+            except (KeyError, Exception):
+                target = None
+            agent_id = target.name if target else "general"
+            crab_cfg_path = std.crabs / f"{agent_id}.yaml"
+            if target and not crab_cfg_path.exists():
+                crab_cfg = target.generate_crab_config()
+            elif crab_cfg_path.exists():
+                crab_cfg = load_crab_config(crab_cfg_path)
+            else:
+                crab_cfg = None
+            if target is not None and crab_cfg is not None:
+                crab_state = _build_effective_state(
+                    target, crab_cfg, project_toml,
+                    global_config_path=config_file,
+                    workset_config_path=workset_path,
+                )
+            workset_env_path = (
+                proj.group.root / "env"
+                if (proj.group is not None and not proj.group.is_default)
+                else None
+            )
+            env_resolved = _build_config_env(
+                std.data_path / "env",
+                crab_cfg.env if crab_cfg is not None else {},
+                workset_env_path,
+                proj.metadata_path / "env",
+            )
         return show_config(
             global_config_path=config_file,
             config_path=project_toml,
             env_global=env_global,
             env_project=env_project,
             effective=args.effective,
+            workset_path=workset_path,
+            crab_state=crab_state,
+            env_resolved=env_resolved,
         )
 
     if action == ConfigAction.get:

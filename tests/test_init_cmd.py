@@ -64,8 +64,8 @@ class TestRunCreate:
         resolved = project_dir.resolve()
         assert (resolved / ".kanibako").is_dir()
         assert (resolved / ".kanibako" / "shell").is_dir()
-        assert (resolved / "vault" / "share-ro").is_dir()
-        assert (resolved / "vault" / "share-rw").is_dir()
+        assert (resolved / "vault" / "ro").is_dir()
+        assert (resolved / "vault" / "rw").is_dir()
 
     def test_create_standalone_cwd(
         self, config_file, credentials_dir, project_dir, monkeypatch, capsys,
@@ -287,8 +287,8 @@ class TestCreateNoVault:
         rc = run_create(args)
 
         assert rc == 0
-        assert (project / "vault" / "share-ro").is_dir()
-        assert (project / "vault" / "share-rw").is_dir()
+        assert (project / "vault" / "ro").is_dir()
+        assert (project / "vault" / "rw").is_dir()
 
 
 class TestCreateDistinctAuth:
@@ -319,7 +319,7 @@ class TestCreateDistinctAuth:
         args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
         run_create(args)
 
-        meta = read_project_meta(project / ".kanibako" / "project.toml")
+        meta = read_project_meta(project / ".kanibako" / "project.yaml")
         assert meta is not None
         assert meta["group_auth"] is False
 
@@ -356,9 +356,9 @@ class TestCreateImage:
         ])
         run_create(args)
 
-        project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
+        project_toml = project_dir.resolve() / ".kanibako" / "project.yaml"
         merged = load_merged_config(config_file, project_toml)
-        assert merged.container_image == "kanibako-template-jvm-oci"
+        assert merged.box_image == "kanibako-template-jvm-oci"
 
     def test_create_default_image_persisted(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -368,6 +368,6 @@ class TestCreateImage:
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
 
-        project_toml = project_dir.resolve() / ".kanibako" / "project.toml"
+        project_toml = project_dir.resolve() / ".kanibako" / "project.yaml"
         merged = load_merged_config(config_file, project_toml)
-        assert "kanibako" in merged.container_image
+        assert "kanibako" in merged.box_image

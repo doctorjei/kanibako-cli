@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
-from kanibako.config import KanibakoConfig, load_config
+from kanibako.config import load_config
 
 
 class TestCommsConfig:
-    def test_default_comms_path(self):
+    def test_default_comms_path(self, tmp_path):
+        from kanibako.config import KanibakoConfig
+        from kanibako.paths import resolve_system_paths
+
         cfg = KanibakoConfig()
-        assert cfg.paths_comms == "comms"
+        resolved = resolve_system_paths(
+            cfg.system_paths, data_home=tmp_path, home=tmp_path,
+        )
+        assert resolved["system.path.comms"] == tmp_path / "kanibako" / "comms"
 
     def test_comms_from_toml(self, tmp_path):
-        toml = tmp_path / "kanibako.toml"
-        toml.write_text('[paths]\ncomms = "custom-comms"\n')
+        from pathlib import Path
+
+        from kanibako.paths import resolve_system_paths
+
+        toml = tmp_path / "kanibako.yaml"
+        toml.write_text('system:\n  path:\n    comms: "/custom-comms"\n')
         cfg = load_config(toml)
-        assert cfg.paths_comms == "custom-comms"
+        resolved = resolve_system_paths(
+            cfg.system_paths, data_home=tmp_path, home=tmp_path,
+        )
+        assert resolved["system.path.comms"] == Path("/custom-comms")
 
 
 class TestCommsSetup:
@@ -48,7 +61,7 @@ class TestCommsOnStart:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        comms_path = std.data_path / config.paths_comms
+        comms_path = std.comms
         # Simulate what start.py does (without launching a container).
         comms_path.mkdir(parents=True, exist_ok=True)
         if proj.name:
@@ -88,7 +101,7 @@ class TestCommsOnStart:
         from kanibako.paths import load_std_paths
         std = load_std_paths(config)
 
-        comms_path = std.data_path / config.paths_comms
+        comms_path = std.comms
         comms_path.mkdir(parents=True, exist_ok=True)
         broadcast = comms_path / "broadcast.log"
         broadcast.write_text("existing message\n")

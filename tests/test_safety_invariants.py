@@ -44,8 +44,8 @@ def config_file(tmp_path, monkeypatch):
 
     cfg_dir = tmp_path / ".config" / "kanibako"
     cfg_dir.mkdir(parents=True)
-    cfg_file = cfg_dir / "kanibako.toml"
-    cfg_file.write_text('[kanibako]\ncontainer_image = "kanibako-oci"\n')
+    cfg_file = cfg_dir / "kanibako.yaml"
+    cfg_file.write_text('box:\n  image: "kanibako-oci"\n')
     return cfg_file
 
 
@@ -137,7 +137,7 @@ class TestDetectionFalsePositives:
         result = detect_project_mode(project_dir.resolve(), std, config)
         # Should fall through to local (default), NOT standalone.  A bare
         # directory (even ``.kanibako``) is not a marker on its own: a real
-        # standalone project.toml is required.
+        # standalone project.yaml is required.
         assert result.mode is not ProjectMode.standalone
 
     def test_ancestor_named_kanibako_no_false_positive(
@@ -158,14 +158,14 @@ class TestDetectionFalsePositives:
     def test_dotless_kanibako_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """A kanibako/ dir WITH project.toml IS a valid standalone marker."""
+        """A kanibako/ dir WITH project.yaml IS a valid standalone marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
         (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / "kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -174,14 +174,14 @@ class TestDetectionFalsePositives:
     def test_dot_kanibako_marker_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """.kanibako/ with a real standalone project.toml is a valid marker."""
+        """.kanibako/ with a real standalone project.yaml is a valid marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
         (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.toml").write_text(
-            '[project]\nmode = "standalone"\n'
+        (project_dir / ".kanibako" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -201,10 +201,10 @@ class TestDetectionFalsePositives:
         assert result.mode is not ProjectMode.standalone
 
 
-# ── Stale names.toml safety ────────────────────────────────────────────
+# ── Stale names.yaml safety ────────────────────────────────────────────
 
 class TestStaleNameSafety:
-    """Stale names.toml entries pointing at $HOME must not trigger local detection."""
+    """Stale names.yaml entries pointing at $HOME must not trigger local detection."""
 
     def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
         """Stale entry at $HOME (no boxes dir) → detection falls through to default."""

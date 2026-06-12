@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.crabs import crab_toml_path, load_crab_config, write_crab_config
+from kanibako.crabs import load_crab_config, write_crab_config
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
@@ -406,16 +406,16 @@ def _run_container(
                 break
 
     # Load merged config (global + workset + project)
-    project_toml = proj.metadata_path / "project.toml"
-    workset_path = (proj.group.root / "config.toml") if proj.group is not None else None
+    project_toml = proj.metadata_path / "project.yaml"
+    workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml,
         workset_path=workset_path,
-        cli_overrides={"container_image": image_override} if image_override else None,
+        cli_overrides={"box_image": image_override} if image_override else None,
     )
 
-    image = merged.container_image
+    image = merged.box_image
 
     # Persist image override for new projects so it becomes the default
     if proj.is_new and image_override:
@@ -481,7 +481,7 @@ def _run_container(
     install = None
     if is_agent_mode:
         try:
-            target = resolve_target(merged.crab_name or None)
+            target = resolve_target(merged.box_crab or None)
         except KeyError as e:
             print(
                 f"Error: {e}\n"
@@ -507,7 +507,7 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    crab_cfg_path = crab_toml_path(std.data_path, agent_id, merged.paths_crabs)
+    crab_cfg_path = std.crabs / f"{agent_id}.yaml"
     if target and not crab_cfg_path.exists():
         # First-use: generate default crab config from target plugin
         crab_cfg = target.generate_crab_config()
@@ -603,7 +603,7 @@ def _run_container(
         # Template application + agent init for new projects.
         if proj.is_new and target:
             from kanibako.templates import apply_shell_template
-            templates_base = std.data_path / merged.paths_templates
+            templates_base = std.templates
             # Ensure the agent-specific template variant directory exists.
             (templates_base / target.name / crab_cfg.shell).mkdir(parents=True, exist_ok=True)
             apply_shell_template(proj.shell_path, templates_base, target.name, crab_cfg.shell)
@@ -621,6 +621,16 @@ def _run_container(
                     agent_name=target.name,
                     template_name=crab_cfg.shell,
                 )
+
+        # Copy-once-at-init seeds (additive; overlays templates). target may be
+        # None (no agent) — seeds can still come from config levels.
+        if proj.is_new:
+            _apply_init_seeds(
+                std=std, proj=proj, crab_name=agent_id, target=target,
+                global_config_path=config_file, project_toml=project_toml,
+                workset_config_path=workset_path, crab_config_path=crab_cfg_path,
+                logger=logger,
+            )
 
         # Automated OAuth refresh (before interactive check_auth)
         if (
@@ -670,7 +680,13 @@ def _run_container(
 
         # Build CLI args via target, merging crab run_args and state
         if target:
-            effective_state = _build_effective_state(target, crab_cfg, project_toml)
+            effective_state = _build_effective_state(
+                target,
+                crab_cfg,
+                project_toml,
+                global_config_path=config_file,
+                workset_config_path=workset_path,
+            )
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
@@ -740,8 +756,22 @@ def _run_container(
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
             extra_mounts.extend(resource_mounts)
 
+        # Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*).
+        # Additive: empty config → no mounts → no behavior change.
+        share_mounts = _build_share_mounts(
+            std=std,
+            proj=proj,
+            crab_name=agent_id,
+            global_config_path=config_file,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            crab_config_path=crab_cfg_path,
+            target=target,
+        )
+        extra_mounts.extend(share_mounts)
+
         # Image sharing: mount host image storage read-only into child.
-        if share_images or merged.share_images:
+        if share_images or merged.box_share_images:
             from kanibako.image_sharing import build_image_sharing_mounts
             staging = proj.metadata_path / ".image-sharing"
             img_mounts = build_image_sharing_mounts(
@@ -759,9 +789,7 @@ def _run_container(
 
         # Peer communication: mount shared comms directory.
         from kanibako.targets.base import Mount as _CMount
-        comms_path = Path(merged.paths_comms)
-        if not comms_path.is_absolute():
-            comms_path = std.data_path / comms_path
+        comms_path = std.comms
         comms_path.mkdir(parents=True, exist_ok=True)
         if proj.name:
             mailbox = comms_path / "mailbox" / proj.name
@@ -774,13 +802,23 @@ def _run_container(
             _CMount(comms_path, "/home/agent/comms", "Z,U"),
         )
 
-        # Read per-project and global environment variables.
-        from kanibako.shellenv import merge_env
+        # Read environment variables, accumulating across config levels with
+        # the settings-framework precedence (low->high): system < crab <
+        # workset < box.  Target-derived state env and per-run CLI -e env stay
+        # above all config levels.
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
-        container_env: dict[str, str] = merge_env(global_env_path, project_env_path) or {}
-        container_env.update(crab_cfg.env)
-        container_env.update(state_env)
+        # Workset-level env applies only for a named (non-default) workset
+        # group; the default/local group's tier is already the system env.
+        workset_env_path = (
+            proj.group.root / "env"
+            if (proj.group is not None and not proj.group.is_default)
+            else None
+        )
+        container_env = _build_config_env(
+            global_env_path, crab_cfg.env, workset_env_path, project_env_path,
+        )
+        container_env.update(state_env)                        # target-derived state env
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
         container_env.update(_parse_cli_env(cli_env))
@@ -853,6 +891,7 @@ def _run_container(
                 default_entrypoint=target.default_entrypoint if target else None,
                 project_path=proj.project_path,
                 data_path=std.data_path,
+                boxes=std.boxes,
             )
 
             msg_log = MessageLog(log_path)
@@ -1077,37 +1116,314 @@ def _run_container(
             lock_fd.close()
 
 
-def _build_effective_state(target, crab_cfg, project_toml) -> dict[str, str]:
-    """Merge target defaults, crab config state, and project overrides.
+def _build_config_env(
+    global_env_path,
+    crab_env: dict[str, str],
+    workset_env_path,
+    project_env_path,
+) -> dict[str, str]:
+    """Layer config-level env vars, low->high: system < crab < workset < box.
 
-    Resolution order (highest wins):
-      1. Project overrides (``[crab_settings]`` in project.toml)
-      2. Crab config state (``[state]`` in crab TOML)
-      3. Target defaults (from ``setting_descriptors()``)
+    Shared between container launch (start) and ``box config --effective`` so
+    the resolved config-env matches exactly. Runtime-only layers (target state
+    env, per-run ``-e``) are applied by the caller ON TOP of this and are NOT
+    config, so they are excluded here.
+    """
+    from kanibako.shellenv import read_env_file
+    env: dict[str, str] = {}
+    env.update(read_env_file(global_env_path))   # system
+    env.update(crab_env)                         # crab
+    if workset_env_path is not None:
+        env.update(read_env_file(workset_env_path))  # workset
+    env.update(read_env_file(project_env_path))  # box (highest config level)
+    return env
 
-    Undeclared keys in crab state are passed through unchanged.
+
+def _build_effective_state(
+    target,
+    crab_cfg,
+    project_toml,
+    *,
+    global_config_path,
+    workset_config_path=None,
+) -> dict[str, str]:
+    """Resolve effective crab-state via the settings precedence walk.
+
+    Walks four levels MOST-SPECIFIC-FIRST — box > workset > crab > system —
+    with the target's declared defaults as a FLOOR (the system level's declared
+    defaults).  Sources for each level's ``[crab]`` table:
+
+      * **box**     — ``[crab]`` in project.yaml
+      * **workset** — ``[crab]`` in the workset's config.yaml (if any)
+      * **crab**    — the crab config's own state dict
+      * **system**  — ``[crab]`` in the global kanibako.yaml
+      * **floor**   — target ``setting_descriptors()`` defaults
+
+    Explicit set values beat all declared defaults; the most-specific level
+    wins; an explicit ``""`` is terminal (no fall-through to the floor).
+    Undeclared keys set anywhere (e.g. ``start_mode``) are passed through.
+
+    Values are used verbatim — no ``@``-ref / ``$var`` / ``~`` expansion.
+
+    With no system/workset ``[crab]`` config (the common case) the walk reduces
+    to box > crab > floor, i.e. project override > crab state > target default —
+    identical to the prior two-source merge.
     """
     from kanibako.config import read_crab_settings
+    from kanibako.settings_resolve import (
+        LevelView,
+        ResolveCtx,
+        SettingsError,
+        _Unset,
+        resolve_value,
+    )
 
     descriptors = target.setting_descriptors()
     if not descriptors:
         return dict(crab_cfg.state)
 
-    try:
-        project_overrides = read_crab_settings(project_toml)
-    except Exception:
-        project_overrides = {}
+    def _read(path) -> dict[str, str]:
+        if not path:
+            return {}
+        try:
+            if not path.exists():
+                return {}
+            return read_crab_settings(path)
+        except Exception:
+            return {}
 
-    # Start with target defaults.
-    effective: dict[str, str] = {d.key: d.default for d in descriptors}
+    # Gather per-level [crab] leaf values.
+    box_vals = _read(project_toml)
+    ws_vals = _read(workset_config_path)
+    crab_vals = dict(crab_cfg.state)
+    sys_vals = _read(global_config_path)
+    floor = {d.key: d.default for d in descriptors}
 
-    # Layer agent config state (all keys, including undeclared).
-    effective.update(crab_cfg.state)
+    # Most-specific first; the floor is the system level's declared defaults.
+    levels = [
+        LevelView("box", box_vals),
+        LevelView("workset", ws_vals),
+        LevelView("crab", crab_vals),
+        LevelView("system", sys_vals, defaults=floor),
+    ]
 
-    # Layer project overrides (only declared keys survive validation at CLI).
-    effective.update(project_overrides)
+    keys = (
+        set(floor)
+        | set(box_vals)
+        | set(ws_vals)
+        | set(crab_vals)
+        | set(sys_vals)
+    )
+
+    ctx = ResolveCtx(
+        crab_name=target.name,
+        workset_name=None,
+        host_home=str(Path.home()),
+        xdg={},
+    )
+
+    def _no_lookup(ref, chain):
+        raise SettingsError(f"@-refs not supported in crab settings: {ref}")
+
+    effective: dict[str, str] = {}
+    for key in keys:
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=_no_lookup)
+        if not isinstance(rv, _Unset):
+            effective[key] = rv.value
 
     return effective
+
+
+def _apply_init_seeds(
+    *,
+    std,
+    proj,
+    crab_name: str,
+    target=None,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    crab_config_path,
+    logger,
+) -> None:
+    """Copy configured copy-once-at-init seeds into the new project's shell dir.
+
+    ADDITIVE: with no seed config and no target default seeds, copies nothing.
+    Resolves {scope}.path.seeded.* across the 4 levels (target.default_seeds()
+    as the crab level's declared defaults), translates each SeedPair's
+    guest_dest (/home/agent/X) to a host path under proj.shell_path, and copies
+    host_src -> that path once (dir -> copytree dirs_exist_ok; file -> copy2).
+    """
+    import shutil
+
+    from kanibako.config import read_seeds
+    from kanibako.settings_resolve import (
+        GUEST_HOME,
+        LevelView,
+        ResolveCtx,
+        SettingsError,
+    )
+    from kanibako.settings_seeds import resolve_seeds
+
+    default_seeds = target.default_seeds() if target is not None else {}
+
+    # Four precedence levels, most-specific first; crab carries the defaults.
+    levels = [
+        LevelView("box", read_seeds(project_toml)),
+        LevelView("workset", read_seeds(workset_config_path)),
+        LevelView("crab", read_seeds(crab_config_path), defaults=default_seeds),
+        LevelView("system", read_seeds(global_config_path)),
+    ]
+
+    workset_name = (
+        proj.group.name
+        if (proj.group is not None and not proj.group.is_default)
+        else None
+    )
+    ctx = ResolveCtx(
+        crab_name=crab_name,
+        workset_name=workset_name,
+        host_home=str(Path.home()),
+        xdg={"XDG_DATA_HOME": str(std.data_home)},
+    )
+
+    resolved_sys = {
+        "system.path.data": str(std.data_path),
+        "system.path.boxes": str(std.boxes),
+        "system.path.crabs": str(std.crabs),
+        "system.path.comms": str(std.comms),
+        "system.path.templates": str(std.templates),
+        "system.path.ws_hints": str(std.ws_hints),
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+    }
+
+    def _lookup(ref, chain):
+        if ref in resolved_sys:
+            return resolved_sys[ref]
+        raise SettingsError(f"Unresolvable @-reference in seed value: {ref}")
+
+    seeds = resolve_seeds(levels=levels, ctx=ctx, lookup=_lookup)
+
+    for seed in seeds:
+        gd = seed.guest_dest.rstrip("/")
+        if gd == GUEST_HOME:
+            dest = proj.shell_path
+        elif gd.startswith(GUEST_HOME + "/"):
+            rel = gd[len(GUEST_HOME) + 1:]
+            dest = proj.shell_path / rel
+        else:
+            logger.warning(
+                "seed %s: guest_dest %r is outside %s; skipping",
+                seed.name, seed.guest_dest, GUEST_HOME,
+            )
+            continue
+        src = Path(seed.host_src)
+        if not src.exists():
+            logger.warning(
+                "seed %s: host_src %r does not exist; skipping",
+                seed.name, seed.host_src,
+            )
+            continue
+        if src.is_dir():
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dest))
+
+
+def _build_share_mounts(
+    *,
+    std,
+    proj,
+    crab_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    crab_config_path,
+    target=None,
+) -> list:
+    """Resolve scoped-share config ({scope}.path.share_{ro,rw}.*) into Mounts.
+
+    ADDITIVE: with no share keys configured (and no target default shares),
+    returns []. Reads each level's set share keys from its config file; the
+    KEY's scope sets the source root + mode, the LEVEL where set decides
+    precedence (a box can suppress an inherited system share with a terminal "").
+
+    *target*'s ``default_shares()`` (if a target is given) are injected as the
+    CRAB level's *declared defaults*: they mount unless overridden/suppressed at
+    a more-specific level. After resolution, host source directories for any
+    read-write share are created best-effort (mirrors the old SHARED-mount
+    behavior) so podman does not stub them; a bad source never crashes launch.
+    """
+    from kanibako.config import read_shares
+    from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
+    from kanibako.settings_shares import resolve_shares
+
+    default_shares = target.default_shares() if target is not None else {}
+
+    # Four precedence levels, most-specific first.
+    levels = [
+        LevelView("box", read_shares(project_toml)),
+        LevelView("workset", read_shares(workset_config_path)),
+        LevelView("crab", read_shares(crab_config_path), defaults=default_shares),
+        LevelView("system", read_shares(global_config_path)),
+    ]
+
+    # Source roots per scope group (concrete host paths → expand_expr verbatim).
+    crab_share_root = str(std.crabs / crab_name / "share")
+    scope_roots = {
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+        "crab.path.share_ro": crab_share_root,
+        "crab.path.share_rw": crab_share_root,
+    }
+    if proj.group is not None and not proj.group.is_default:
+        ws_root = str(proj.group.root)
+        scope_roots["workset.path.share_ro"] = ws_root
+        scope_roots["workset.path.share_rw"] = ws_root
+    # box scope: arbitrary host path, NO root → omit (host_src used as-is).
+
+    workset_name = (
+        proj.group.name
+        if (proj.group is not None and not proj.group.is_default)
+        else None
+    )
+    ctx = ResolveCtx(
+        crab_name=crab_name,
+        workset_name=workset_name,
+        host_home=str(Path.home()),
+        xdg={"XDG_DATA_HOME": str(std.data_home)},
+    )
+
+    # Share VALUES may reference the resolved system path tier via @-refs.
+    resolved_sys = {
+        "system.path.data": str(std.data_path),
+        "system.path.boxes": str(std.boxes),
+        "system.path.crabs": str(std.crabs),
+        "system.path.comms": str(std.comms),
+        "system.path.templates": str(std.templates),
+        "system.path.ws_hints": str(std.ws_hints),
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+    }
+
+    def _lookup(ref, chain):
+        if ref in resolved_sys:
+            return resolved_sys[ref]
+        raise SettingsError(f"Unresolvable @-reference in share value: {ref}")
+
+    mounts = resolve_shares(
+        levels=levels, ctx=ctx, lookup=_lookup, scope_roots=scope_roots
+    )
+    for m in mounts:
+        if m.options != "ro":  # rw share: create the host source dir if absent
+            try:
+                m.source.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass  # best-effort; podman will surface a genuinely bad source
+    return mounts
 
 
 def _kanibako_mounts():
@@ -1155,7 +1471,7 @@ def _build_resource_mounts(proj, target, agent_id: str):
 
     config_dir = target.config_dir_name
 
-    project_toml = proj.metadata_path / "project.toml"
+    project_toml = proj.metadata_path / "project.yaml"
     try:
         overrides = read_resource_overrides(project_toml)
     except Exception:

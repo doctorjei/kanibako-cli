@@ -143,7 +143,7 @@ class TestVaultOptional:
         assert proj.vault_rw_path.is_dir()
 
     def test_vault_disabled_persists_in_metadata(self, config_file, tmp_home, credentials_dir):
-        """enable_vault=False is stored in project.toml and read back."""
+        """enable_vault=False is stored in project.yaml and read back."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")

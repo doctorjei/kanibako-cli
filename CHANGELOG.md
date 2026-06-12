@@ -59,6 +59,97 @@ workset**, so "account-wide" settings use the same mechanism as named worksets.
   participates in the precedence chain above. No-op for installs without a
   workset `config.toml`.
 
+### Added (v1.5.0 — settings resolver; Phase 3)
+
+A general configuration **resolver** now underlies all settings. Config keys use
+a uniform `level.group.key` scheme resolved across the precedence stack
+(`box > workset > crab > system > built-in/target defaults`), with a small grammar
+in path-like values:
+
+- **Value grammar.** `@level.group.key` references another resolved value
+  (cycle-guarded); `$CRAB` / `$WORKSET` / `$XDG_*` and `~` expand (host `~` vs the
+  guest `/home/agent`); `\@ \$ \\ \:` escape. An explicitly-set empty string
+  (`key: ""`) is **terminal** — it suppresses an inherited value rather than
+  falling through to a default (distinct from "unset").
+- **Scoped shares (the dir-sharing mechanism).** `{scope}.path.share_ro.{name}` /
+  `{scope}.path.share_rw.{name}` (scopes `system` / `crab` / `workset` / `box`)
+  declare `host_src:guest_dest` bind mounts, accumulated `system→crab→workset→box`
+  (later wins; per-`(scope,name)` identity). Source roots: `system` →
+  `system.path.share_ro|rw`; `crab` → `crabs/{crab}/share`; `workset` → workset
+  root; `box` → an arbitrary host path. (This ships the mechanism only; a
+  user-facing "share a directory" command is a separate follow-on.)
+- **Init seeds.** `{level}.path.seeded.{name}` declares `host_src:guest_dest`
+  pairs copied **once** into a new box at init.
+- **`kanibako box config --effective`** now resolves through the exact same stack
+  `start` uses (workset tier + 4-level crab walk + layered env), so it matches
+  what a real launch produces.
+
+### Changed (v1.5.0 — settings resolver; Phase 3; BREAKING, pre-broad-release)
+
+Breaking config-key and format changes, **no back-compat shims** (see the
+**Migration** section below for the one-off conversion):
+
+- **Box scalars move under `box.*`:** `container_image` → `box.image`,
+  `crab_name` → `box.crab`, `share_images` → `box.share_images` (per-file section
+  `[box]`).
+- **System paths move under `system.path.*`:** the former `paths_*` config keys
+  become `system.path.{data,boxes,crabs,comms,templates,ws_hints}` (section
+  `[system.path]`), each defaulting to an `@`-ref expression (e.g.
+  `boxes: "@system.path.data/boxes"`). The `KanibakoConfig.paths_*` fields are
+  removed.
+- **Crab config is one section.** The crab file's `[state]` table is folded into
+  `[crab]` (identity keys `name`/`shell`/`run_args` plus the state knobs), and a
+  project's `[crab_settings]` table becomes `[crab]`. Effective crab state is now
+  resolved by a 4-level walk (`box > workset > crab > system`) with the target
+  plugin's declared defaults as the floor.
+- **Env layering.** Environment variables now accumulate across config levels
+  `system < crab < workset < box` (box wins on collision), with target-derived
+  state env and per-run `-e` on top. A named workset may contribute an `env`
+  file.
+- **Claude plugins relocated.** The Claude `plugins/` directory is now served via
+  a crab-scoped share at `crabs/claude/share/plugins` (declared through the new
+  `Target.default_shares()` API) instead of the old global SHARED mapping. No
+  migration: the old plugins dir is orphaned and repopulates on next launch.
+- **Vault host-side subdirs renamed** `share-ro`/`share-rw` → `ro`/`rw` (the
+  in-guest mountpoints `/home/agent/share-ro` and `/home/agent/share-rw` are
+  **unchanged**). See Migration for the on-disk move.
+- **Config file format is now YAML.** All kanibako-owned config files are written
+  and read as YAML (`*.toml` → `*.yaml`): `kanibako.yaml`, `project.yaml`,
+  `config.yaml`, `workset.yaml`, `worksets.yaml`, `names.yaml`, `spawn.yaml`,
+  `general.yaml`, and the crab configs. Keys and structure are identical to the
+  former TOML — only the serialization changed. (`pyproject.toml` is Python
+  packaging and is unaffected.)
+- **Deferred (intentionally unchanged this release):** `group_auth`,
+  `enable_vault`, and `layout` remain init-frozen project-identity fields in the
+  `project.yaml` `[project]` meta (not moved to `box.*`); `allow_helpers` stays a
+  box-level key. These may be exposed as `box.*` in a later release.
+
+### Migration (v1.5.0 — manual, one-off; no auto-migration)
+
+There is **no migration code** — convert existing installs in a single pass:
+
+1. **Rename config files** `*.toml` → `*.yaml` and **convert their contents to
+   YAML** (same keys/sections; `[section]` → `section:` mapping, `k = "v"` →
+   `k: "v"`; keep an explicit empty string as `k: ""`, never bare `k:`).
+2. **Apply the key map** (old → new):
+
+   | Old key | New key |
+   |---------|---------|
+   | `container_image` | `box.image` |
+   | `crab_name` | `box.crab` |
+   | `share_images` | `box.share_images` |
+   | `paths_{data_path,boxes,crabs,comms,templates,ws_hints}` | `system.path.{data,boxes,crabs,comms,templates,ws_hints}` |
+   | crab file `[state].X` | `[crab].X` |
+   | project `[crab_settings].X` | `[crab].X` |
+
+   (The Part-1 renames — `vault_enabled`→`enable_vault`,
+   `helpers_disabled`→`allow_helpers` inverted, `default_args`→`run_args`,
+   `auth`→`group_auth` boolean, the `agents/`→`crabs/` data dir, `[agent]`→`[crab]`
+   — are already documented above and applied if migrating from pre-Part-1.)
+3. **Rename vault subdirs** in every project/helper vault: `vault/share-ro` →
+   `vault/ro` and `vault/share-rw` → `vault/rw` (`mv` by hand so the share-rw
+   **data** is preserved, not orphaned). Guest mountpoints are unchanged.
+
 ## [1.4.0] - 2026-06-04
 
 ### Changed

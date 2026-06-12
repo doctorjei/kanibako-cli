@@ -1,22 +1,25 @@
-"""Crab TOML configuration: load, write, and resolve per-crab settings."""
+"""Crab YAML configuration: load, write, and resolve per-crab settings."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import tomllib
+from kanibako.config_io import dump_doc, load_doc
+
+# Keys that live directly in [crab] as crab identity (not crab state).
+IDENTITY_KEYS = frozenset({"name", "shell", "run_args"})
 
 
 @dataclass
 class CrabConfig:
-    """Per-crab configuration loaded from a crab TOML file.
+    """Per-crab configuration loaded from a crab YAML file.
 
     Sections:
-      [crab]   — identity and defaults (name, shell, run_args)
-      [state]  — runtime behavior knobs (model, access, etc.)
-      [env]    — raw env vars injected into container
-      [shared] — crab-level shared cache paths
+      crab   — identity (name, shell, run_args) plus crab-state knobs
+               (model, access, start_mode, autonomous, …)
+      env    — raw env vars injected into container
+      shared — crab-level shared cache paths
     """
 
     name: str = ""
@@ -36,12 +39,12 @@ def crabs_dir(data_path: Path, paths_crabs: str = "crabs") -> Path:
 def crab_toml_path(
     data_path: Path, crab_id: str, paths_crabs: str = "crabs",
 ) -> Path:
-    """Return the path to a crab's TOML file."""
-    return crabs_dir(data_path, paths_crabs) / f"{crab_id}.toml"
+    """Return the path to a crab's config file."""
+    return crabs_dir(data_path, paths_crabs) / f"{crab_id}.yaml"
 
 
 def load_crab_config(path: Path) -> CrabConfig:
-    """Read a crab TOML file and return a CrabConfig.
+    """Read a crab config file and return a CrabConfig.
 
     Returns defaults if the file does not exist.
     """
@@ -49,8 +52,7 @@ def load_crab_config(path: Path) -> CrabConfig:
     if not path.exists():
         return cfg
 
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
 
     crab_sec = data.get("crab", {})
     cfg.name = str(crab_sec.get("name", ""))
@@ -58,7 +60,9 @@ def load_crab_config(path: Path) -> CrabConfig:
     raw_args = crab_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
-    cfg.state = {k: str(v) for k, v in data.get("state", {}).items()}
+    cfg.state = {
+        k: str(v) for k, v in crab_sec.items() if k not in IDENTITY_KEYS
+    }
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
     cfg.shared_caches = {k: str(v) for k, v in data.get("shared", {}).items()}
     cfg.tweakcc = dict(data.get("tweakcc", {}))
@@ -67,55 +71,19 @@ def load_crab_config(path: Path) -> CrabConfig:
 
 
 def write_crab_config(path: Path, cfg: CrabConfig) -> None:
-    """Write a CrabConfig to a TOML file.
+    """Write a CrabConfig to a YAML file."""
+    crab_sec: dict = {
+        "name": cfg.name,
+        "shell": cfg.shell,
+        "run_args": list(cfg.run_args),
+    }
+    for k, v in cfg.state.items():
+        crab_sec[k] = v
 
-    Uses a custom serializer since config._write_toml() cannot handle lists.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines: list[str] = []
-
-    # [crab] section
-    lines.append("[crab]")
-    lines.append(f'name = "{cfg.name}"')
-    lines.append(f'shell = "{cfg.shell}"')
-    args_str = ", ".join(f'"{a}"' for a in cfg.run_args)
-    lines.append(f"run_args = [{args_str}]")
-    lines.append("")
-
-    # [state] section
-    lines.append("[state]")
-    if not cfg.state:
-        lines.append("# model = \"opus\"")
-    else:
-        # Always emit model as comment if not present
-        if "model" not in cfg.state:
-            lines.append("# model = \"opus\"")
-        for k, v in cfg.state.items():
-            lines.append(f'{k} = "{v}"')
-    lines.append("")
-
-    # [env] section
-    lines.append("[env]")
-    for k, v in cfg.env.items():
-        lines.append(f'{k} = "{v}"')
-    lines.append("")
-
-    # [shared] section
-    lines.append("[shared]")
-    for k, v in cfg.shared_caches.items():
-        lines.append(f'{k} = "{v}"')
-    lines.append("")
-
-    # [tweakcc] section
-    lines.append("[tweakcc]")
-    if not cfg.tweakcc:
-        lines.append("# enabled = false")
-    else:
-        for k, v in cfg.tweakcc.items():
-            if isinstance(v, bool):
-                lines.append(f"{k} = {str(v).lower()}")
-            else:
-                lines.append(f'{k} = "{v}"')
-    lines.append("")
-
-    path.write_text("\n".join(lines))
+    data: dict = {
+        "crab": crab_sec,
+        "env": dict(cfg.env),
+        "shared": dict(cfg.shared_caches),
+        "tweakcc": dict(cfg.tweakcc),
+    }
+    dump_doc(path, data)

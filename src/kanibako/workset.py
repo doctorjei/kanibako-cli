@@ -4,26 +4,26 @@ A *workset* is a named group of projects whose persistent state lives under a
 single root directory chosen by the user.  The layout is:
 
     {root}/
-        workset.toml              ← workset metadata + project list
+        workset.yaml              ← workset metadata + project list
         projects/{name}/          ← per-project metadata + home
             home/                 ← agent home (mounted as /home/agent)
-            project.toml          ← per-project config
+            project.yaml          ← per-project config
             .kanibako.lock        ← concurrency lock
         workspaces/{name}/        ← per-project workspace (source tree)
-        vault/{name}/share-ro/    ← per-project read-only vault
-        vault/{name}/share-rw/    ← per-project read-write vault
+        vault/{name}/ro/    ← per-project read-only vault
+        vault/{name}/rw/    ← per-project read-write vault
 
-A global registry at ``$XDG_DATA_HOME/kanibako/worksets.toml`` maps workset
+A global registry at ``$XDG_DATA_HOME/kanibako/worksets.yaml`` maps workset
 names to root paths so they can be discovered from anywhere.
 """
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import WorksetError
 from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import StandardPaths
@@ -74,39 +74,36 @@ class Workset:
 
     @property
     def toml_path(self) -> Path:
-        return self.root / "workset.toml"
+        return self.root / "workset.yaml"
 
 
 # ---------------------------------------------------------------------------
-# workset.toml (at workset root)
+# workset.yaml (at workset root)
 # ---------------------------------------------------------------------------
 
 def _write_workset_toml(ws: Workset) -> None:
-    """Serialize *ws* to ``workset.toml`` at the workset root."""
-    lines = [
-        f'name = "{ws.name}"',
-        f'created = "{ws.created}"',
-        f'group_auth = {str(ws.group_auth).lower()}',
-        "",
-    ]
-    for proj in ws.projects:
-        lines.append("[[projects]]")
-        lines.append(f'name = "{proj.name}"')
-        lines.append(f'source_path = "{proj.source_path}"')
-        lines.append("")
-    ws.toml_path.write_text("\n".join(lines))
+    """Serialize *ws* to ``workset.yaml`` at the workset root."""
+    data: dict = {
+        "name": ws.name,
+        "created": ws.created,
+        "group_auth": ws.group_auth,
+        "projects": [
+            {"name": proj.name, "source_path": str(proj.source_path)}
+            for proj in ws.projects
+        ],
+    }
+    dump_doc(ws.toml_path, data)
 
 
 def _load_workset_toml(root: Path) -> Workset:
-    """Read ``workset.toml`` from *root* and return a ``Workset``."""
-    toml_path = root / "workset.toml"
+    """Read ``workset.yaml`` from *root* and return a ``Workset``."""
+    toml_path = root / "workset.yaml"
     if not toml_path.is_file():
-        raise WorksetError(f"No workset.toml in {root}")
-    with open(toml_path, "rb") as f:
-        data = tomllib.load(f)
+        raise WorksetError(f"No workset.yaml in {root}")
+    data = load_doc(toml_path)
     name = data.get("name")
     if not name:
-        raise WorksetError(f"workset.toml in {root} has no 'name' key")
+        raise WorksetError(f"workset.yaml in {root} has no 'name' key")
     created = data.get("created", "")
     group_auth = bool(data.get("group_auth", True))
     projects = []
@@ -121,11 +118,11 @@ def _load_workset_toml(root: Path) -> Workset:
 
 
 # ---------------------------------------------------------------------------
-# Global registry: $XDG_DATA_HOME/kanibako/worksets.toml
+# Global registry: $XDG_DATA_HOME/kanibako/worksets.yaml
 # ---------------------------------------------------------------------------
 
 def _registry_path(std: StandardPaths) -> Path:
-    return std.data_path / "worksets.toml"
+    return std.ws_hints
 
 
 def _load_registry(std: StandardPaths) -> dict[str, Path]:
@@ -133,8 +130,7 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
     path = _registry_path(std)
     if not path.is_file():
         return {}
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
     return {
         name: Path(root)
         for name, root in data.get("worksets", {}).items()
@@ -144,12 +140,10 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 def _write_registry(std: StandardPaths, registry: dict[str, Path]) -> None:
     """Overwrite the global worksets registry."""
     path = _registry_path(std)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["[worksets]"]
-    for name in sorted(registry):
-        lines.append(f'"{name}" = "{registry[name]}"')
-    lines.append("")
-    path.write_text("\n".join(lines))
+    data: dict = {
+        "worksets": {name: str(registry[name]) for name in sorted(registry)},
+    }
+    dump_doc(path, data)
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +197,7 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
 def load_workset(root: Path) -> Workset:
     """Load a workset from its root directory.
 
-    Raises ``WorksetError`` if the directory or ``workset.toml`` is missing.
+    Raises ``WorksetError`` if the directory or ``workset.yaml`` is missing.
     """
     root = root.resolve()
     if not root.is_dir():
@@ -231,9 +225,9 @@ def default_workset(std: StandardPaths) -> Workset:
     """Synthesize the default workset (the account / local-projects group).
 
     The default workset is virtual: its members are the local projects in
-    ``names.toml [projects]`` and its ``group_auth`` lives as a normal key in
-    ``{data_path}/config.toml``.  This object is NEVER persisted to disk (no
-    workset.toml / registry write).
+    ``names.yaml [projects]`` and its ``group_auth`` lives as a normal key in
+    ``{data_path}/config.yaml``.  This object is NEVER persisted to disk (no
+    workset.yaml / registry write).
     """
     projects_map = read_names(std.data_path).get("projects", {})
     projects = [
@@ -242,10 +236,9 @@ def default_workset(std: StandardPaths) -> Workset:
     ]
 
     group_auth = True
-    config_path = std.data_path / "config.toml"
+    config_path = std.data_path / "config.yaml"
     if config_path.is_file():
-        with open(config_path, "rb") as f:
-            data = tomllib.load(f)
+        data = load_doc(config_path)
         # group_auth lives in the [project] section (see config.py loader);
         # tolerate a top-level key too for robustness.
         if "group_auth" in data.get("project", {}):
@@ -315,8 +308,8 @@ def add_project(ws: Workset, name: str, source_path: Path) -> WorksetProject:
     for parent in (ws.projects_dir, ws.workspaces_dir):
         (parent / name).mkdir(parents=True, exist_ok=True)
     vault_proj = ws.vault_dir / name
-    (vault_proj / "share-ro").mkdir(parents=True, exist_ok=True)
-    (vault_proj / "share-rw").mkdir(parents=True, exist_ok=True)
+    (vault_proj / "ro").mkdir(parents=True, exist_ok=True)
+    (vault_proj / "rw").mkdir(parents=True, exist_ok=True)
 
     proj = WorksetProject(name=name, source_path=source_path.resolve())
     ws.projects.append(proj)

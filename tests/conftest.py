@@ -42,9 +42,9 @@ def tmp_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def config_file(tmp_home):
-    """Write a default kanibako.toml and return its path."""
+    """Write a default kanibako.yaml and return its path."""
     config_home = tmp_home / "config"
-    cf = config_home / "kanibako.toml"
+    cf = config_home / "kanibako.yaml"
     write_global_config(cf)
     return cf
 
@@ -57,7 +57,7 @@ def sample_config():
 
 @pytest.fixture
 def config(config_file):
-    """Load config from the default kanibako.toml."""
+    """Load config from the default kanibako.yaml."""
     return load_config(config_file)
 
 
@@ -79,9 +79,12 @@ def project_dir(tmp_home):
 def credentials_dir(tmp_home, config_file):
     """Set up host credentials and return the data path."""
     from kanibako.config import load_config
+    from kanibako.paths import resolve_system_paths
     config = load_config(config_file)
     data_home = tmp_home / "data"
-    data_path = data_home / (config.paths_data_path or "kanibako")
+    data_path = resolve_system_paths(
+        config.system_paths, data_home=data_home, home=tmp_home,
+    )["system.path.data"]
     data_path.mkdir(parents=True, exist_ok=True)
 
     # Write host credentials (used directly by init now)
@@ -198,7 +201,6 @@ def start_mocks():
             patch("kanibako.commands.start._upgrade_shell"),
             patch("kanibako.templates.apply_shell_template"),
             patch("kanibako.commands.start.load_crab_config") as m_load_agent_cfg,
-            patch("kanibako.commands.start.crab_toml_path") as m_crab_toml_path,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),
             patch("builtins.open", MagicMock()) as m_open,
@@ -224,10 +226,9 @@ def start_mocks():
             m_resolve_any.return_value = proj
 
             merged = MagicMock()
-            merged.container_image = "test:latest"
-            merged.crab_name = ""
-            merged.paths_crabs = "crabs"
-            merged.share_images = False
+            merged.box_image = "test:latest"
+            merged.box_crab = ""
+            merged.box_share_images = False
             # Helpers off by default in the mock (MagicMock attrs are truthy);
             # individual tests opt in by setting merged.allow_helpers = True.
             merged.allow_helpers = False
@@ -251,10 +252,11 @@ def start_mocks():
             # Crab config mock: empty defaults (no run_args, no state, no env)
             agent_cfg = CrabConfig()
             m_load_agent_cfg.return_value = agent_cfg
-            # crab_toml_path returns a mock Path that reports exists()=True
-            mock_crab_path = MagicMock()
+            # start.py now derives the crab config path as std.crabs / "<id>.yaml".
+            # std is a MagicMock, so the derived path's .exists() is truthy by
+            # default — which keeps the "config already present" branch.
+            mock_crab_path = m_load_std.return_value.crabs.__truediv__.return_value
             mock_crab_path.exists.return_value = True
-            m_crab_toml_path.return_value = mock_crab_path
 
             # Target mock: resolve_target returns a mock target with detect/build_cli_args/etc.
             target = MagicMock()
@@ -291,7 +293,7 @@ def start_mocks():
                 target=target,
                 agent_cfg=agent_cfg,
                 load_crab_config=m_load_agent_cfg,
-                crab_toml_path=m_crab_toml_path,
+                crab_toml_path=mock_crab_path,
                 fcntl=m_fcntl,
                 open=m_open,
                 load_registry=m_load_registry,

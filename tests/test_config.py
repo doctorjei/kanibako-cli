@@ -13,6 +13,8 @@ from kanibako.config import (
     migrate_config,
     read_project_meta,
     read_resource_overrides,
+    read_seeds,
+    read_shares,
     read_crab_settings,
     remove_resource_override,
     remove_crab_setting,
@@ -26,45 +28,43 @@ from kanibako.config import (
 
 class TestLoadConfig:
     def test_defaults(self, tmp_path):
-        cfg = load_config(tmp_path / "nonexistent.toml")
-        assert cfg.container_image == "ghcr.io/doctorjei/kanibako-oci:latest"
-        assert cfg.paths_boxes == "boxes"
+        cfg = load_config(tmp_path / "nonexistent.yaml")
+        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        assert cfg.paths_shell == "shell"
+        assert cfg.system_paths == {}
 
     def test_round_trip(self, tmp_path):
-        path = tmp_path / "test.toml"
-        cfg = KanibakoConfig(container_image="custom:latest")
+        path = tmp_path / "test.yaml"
+        cfg = KanibakoConfig(box_image="custom:latest")
         write_global_config(path, cfg)
         loaded = load_config(path)
-        assert loaded.container_image == "custom:latest"
-        assert loaded.paths_data_path == ""
+        assert loaded.box_image == "custom:latest"
+        # The written [system.path] table holds DEFAULT expressions.
+        assert loaded.system_paths["system.path.data"] == "$XDG_DATA_HOME/kanibako"
+        assert loaded.system_paths["system.path.boxes"] == "@system.path.data/boxes"
 
-    def test_loads_old_field_names_via_aliases(self, tmp_path):
-        """Old TOML files with paths_relative_std_path / paths_settings_path still load."""
-        path = tmp_path / "old.toml"
-        path.write_text(
-            '[paths]\nrelative_std_path = "kanibako"\nsettings_path = "settings"\n'
-            '[container]\nimage = "old:v1"\n'
-        )
+    def test_system_path_table_populates_system_paths(self, tmp_path):
+        """[system.path] keys land in cfg.system_paths (full dotted names)."""
+        path = tmp_path / "sys.yaml"
+        path.write_text('system:\n  path:\n    boxes: "/x"\n')
         cfg = load_config(path)
-        assert cfg.paths_data_path == "kanibako"
-        assert cfg.paths_boxes == "settings"
-        assert cfg.container_image == "old:v1"
+        assert cfg.system_paths == {"system.path.boxes": "/x"}
 
 
 class TestMergedConfig:
     def test_project_overrides_global(self, tmp_path):
-        global_path = tmp_path / "global.toml"
-        project_path = tmp_path / "project.toml"
+        global_path = tmp_path / "global.yaml"
+        project_path = tmp_path / "project.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
 
         merged = load_merged_config(global_path, project_path)
-        assert merged.container_image == "my-image:v2"
+        assert merged.box_image == "my-image:v2"
 
     def test_cli_overrides_all(self, tmp_path):
-        global_path = tmp_path / "global.toml"
-        project_path = tmp_path / "project.toml"
+        global_path = tmp_path / "global.yaml"
+        project_path = tmp_path / "project.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -72,14 +72,14 @@ class TestMergedConfig:
         merged = load_merged_config(
             global_path,
             project_path,
-            cli_overrides={"container_image": "cli-image:v3"},
+            cli_overrides={"box_image": "cli-image:v3"},
         )
-        assert merged.container_image == "cli-image:v3"
+        assert merged.box_image == "cli-image:v3"
 
     def test_workset_path_none_is_byte_identical(self, tmp_path):
         """Omitting workset_path must reproduce the pre-P2.2 global+project merge."""
-        global_path = tmp_path / "global.toml"
-        project_path = tmp_path / "project.toml"
+        global_path = tmp_path / "global.yaml"
+        project_path = tmp_path / "project.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -87,22 +87,22 @@ class TestMergedConfig:
         baseline = load_merged_config(global_path, project_path)
         with_none = load_merged_config(global_path, project_path, workset_path=None)
         assert with_none == baseline
-        assert with_none.container_image == "my-image:v2"
+        assert with_none.box_image == "my-image:v2"
 
     def test_workset_overrides_global(self, tmp_path):
-        global_path = tmp_path / "global.toml"
-        workset_path = tmp_path / "ws-config.toml"
+        global_path = tmp_path / "global.yaml"
+        workset_path = tmp_path / "ws-config.yaml"
 
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
 
         merged = load_merged_config(global_path, workset_path=workset_path)
-        assert merged.container_image == "ws-image:v1"
+        assert merged.box_image == "ws-image:v1"
 
     def test_project_overrides_workset(self, tmp_path):
-        global_path = tmp_path / "global.toml"
-        workset_path = tmp_path / "ws-config.toml"
-        project_path = tmp_path / "project.toml"
+        global_path = tmp_path / "global.yaml"
+        workset_path = tmp_path / "ws-config.yaml"
+        project_path = tmp_path / "project.yaml"
 
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
@@ -111,11 +111,11 @@ class TestMergedConfig:
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
         )
-        assert merged.container_image == "proj-image:v2"
+        assert merged.box_image == "proj-image:v2"
 
     def test_cli_overrides_workset(self, tmp_path):
-        global_path = tmp_path / "global.toml"
-        workset_path = tmp_path / "ws-config.toml"
+        global_path = tmp_path / "global.yaml"
+        workset_path = tmp_path / "ws-config.yaml"
 
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
@@ -123,15 +123,15 @@ class TestMergedConfig:
         merged = load_merged_config(
             global_path,
             workset_path=workset_path,
-            cli_overrides={"container_image": "cli-image:v3"},
+            cli_overrides={"box_image": "cli-image:v3"},
         )
-        assert merged.container_image == "cli-image:v3"
+        assert merged.box_image == "cli-image:v3"
 
     def test_account_no_op_when_no_workset_config(self, tmp_path):
-        """A local project with no workset config.toml merges exactly as before."""
-        global_path = tmp_path / "global.toml"
-        project_path = tmp_path / "project.toml"
-        missing_workset = tmp_path / "no-such-config.toml"
+        """A local project with no workset config.yaml merges exactly as before."""
+        global_path = tmp_path / "global.yaml"
+        project_path = tmp_path / "project.yaml"
+        missing_workset = tmp_path / "no-such-config.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -162,55 +162,55 @@ class TestFlattenToml:
 
 class TestWriteProjectConfig:
     def test_creates_new(self, tmp_path):
-        path = tmp_path / "project.toml"
+        path = tmp_path / "project.yaml"
         write_project_config(path, "new-image:latest")
         cfg = load_config(path)
-        assert cfg.container_image == "new-image:latest"
+        assert cfg.box_image == "new-image:latest"
 
     def test_updates_existing(self, tmp_path):
-        path = tmp_path / "project.toml"
+        path = tmp_path / "project.yaml"
         write_project_config(path, "first:latest")
         write_project_config(path, "second:latest")
         cfg = load_config(path)
-        assert cfg.container_image == "second:latest"
+        assert cfg.box_image == "second:latest"
 
     def test_update_existing_image(self, tmp_path):
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         write_project_config(p, "img:v1")
-        assert 'image = "img:v1"' in p.read_text()
+        assert "image: img:v1" in p.read_text()
         write_project_config(p, "img:v2")
         text = p.read_text()
-        assert 'image = "img:v2"' in text
+        assert "image: img:v2" in text
         assert "img:v1" not in text
 
     def test_add_image_to_container_section(self, tmp_path):
-        p = tmp_path / "project.toml"
-        p.write_text("[container]\n# empty section\n")
+        p = tmp_path / "project.yaml"
+        p.write_text("box:\n  # empty section\n")
         write_project_config(p, "new:img")
         text = p.read_text()
-        assert 'image = "new:img"' in text
+        assert "image: new:img" in text
 
     def test_create_new_file(self, tmp_path):
-        p = tmp_path / "sub" / "project.toml"
+        p = tmp_path / "sub" / "project.yaml"
         write_project_config(p, "fresh:v1")
         assert p.exists()
-        assert "[container]" in p.read_text()
-        assert 'image = "fresh:v1"' in p.read_text()
+        assert "box:" in p.read_text()
+        assert "image: fresh:v1" in p.read_text()
 
 
 class TestProjectMeta:
     """Tests for write_project_meta / read_project_meta."""
 
     def test_write_and_read(self, tmp_path):
-        toml_path = tmp_path / "project.toml"
+        toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
             mode="local",
             layout="default",
             workspace="/home/user/myproject",
             shell="/data/kanibako/settings/abc/shell",
-            vault_ro="/home/user/myproject/vault/share-ro",
-            vault_rw="/home/user/myproject/vault/share-rw",
+            vault_ro="/home/user/myproject/vault/ro",
+            vault_rw="/home/user/myproject/vault/rw",
         )
         assert toml_path.is_file()
 
@@ -219,22 +219,22 @@ class TestProjectMeta:
         assert meta["mode"] == "local"
         assert meta["workspace"] == "/home/user/myproject"
         assert meta["shell"] == "/data/kanibako/settings/abc/shell"
-        assert meta["vault_ro"] == "/home/user/myproject/vault/share-ro"
-        assert meta["vault_rw"] == "/home/user/myproject/vault/share-rw"
+        assert meta["vault_ro"] == "/home/user/myproject/vault/ro"
+        assert meta["vault_rw"] == "/home/user/myproject/vault/rw"
 
     def test_read_missing_file(self, tmp_path):
-        meta = read_project_meta(tmp_path / "nonexistent.toml")
+        meta = read_project_meta(tmp_path / "nonexistent.yaml")
         assert meta is None
 
     def test_read_no_project_section(self, tmp_path):
-        toml_path = tmp_path / "project.toml"
-        toml_path.write_text('[container]\nimage = "foo"\n')
+        toml_path = tmp_path / "project.yaml"
+        toml_path.write_text('box:\n  image: "foo"\n')
         meta = read_project_meta(toml_path)
         assert meta is None
 
     def test_preserves_existing_sections(self, tmp_path):
-        toml_path = tmp_path / "project.toml"
-        toml_path.write_text('[container]\nimage = "custom:v1"\n')
+        toml_path = tmp_path / "project.yaml"
+        toml_path.write_text('box:\n  image: "custom:v1"\n')
 
         write_project_meta(
             toml_path,
@@ -242,20 +242,20 @@ class TestProjectMeta:
             layout="default",
             workspace="/tmp/proj",
             shell="/tmp/proj/.kanibako/shell",
-            vault_ro="/tmp/proj/vault/share-ro",
-            vault_rw="/tmp/proj/vault/share-rw",
+            vault_ro="/tmp/proj/vault/ro",
+            vault_rw="/tmp/proj/vault/rw",
         )
 
         # Container section preserved
         cfg = load_config(toml_path)
-        assert cfg.container_image == "custom:v1"
+        assert cfg.box_image == "custom:v1"
 
         # Metadata also present
         meta = read_project_meta(toml_path)
         assert meta["mode"] == "standalone"
 
     def test_overwrite_existing_meta(self, tmp_path):
-        toml_path = tmp_path / "project.toml"
+        toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
             mode="local",
@@ -281,15 +281,15 @@ class TestProjectMeta:
 
     def test_new_fields_round_trip(self, tmp_path):
         """New fields (metadata, project_hash, global_shared, local_shared) round-trip."""
-        toml_path = tmp_path / "project.toml"
+        toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
             mode="local",
             layout="default",
             workspace="/home/user/proj",
             shell="/data/boxes/abc/shell",
-            vault_ro="/home/user/proj/vault/share-ro",
-            vault_rw="/home/user/proj/vault/share-rw",
+            vault_ro="/home/user/proj/vault/ro",
+            vault_rw="/home/user/proj/vault/rw",
             metadata="/data/boxes/abc",
             project_hash="abc123def456",
             global_shared="/data/shared/global",
@@ -304,14 +304,14 @@ class TestProjectMeta:
         assert meta["local_shared"] == "/data/shared"
 
     def test_backward_compat_missing_new_fields(self, tmp_path):
-        """Old project.toml without new fields returns empty strings."""
-        toml_path = tmp_path / "project.toml"
-        # Write old-style TOML without new fields.
+        """Old project.yaml without new fields returns empty strings."""
+        toml_path = tmp_path / "project.yaml"
+        # Write old-style config without new fields.
         toml_path.write_text(
-            '[project]\nmode = "local"\nlayout = "default"\n'
-            'enable_vault = true\ngroup_auth = true\n\n'
-            '[resolved]\nworkspace = "/old"\nshell = "/old/shell"\n'
-            'vault_ro = "/old/ro"\nvault_rw = "/old/rw"\n'
+            'project:\n  mode: "local"\n  layout: "default"\n'
+            '  enable_vault: true\n  group_auth: true\n\n'
+            'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
+            '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
         )
 
         meta = read_project_meta(toml_path)
@@ -323,15 +323,15 @@ class TestProjectMeta:
 
     def test_partial_new_fields(self, tmp_path):
         """Only some new fields present — missing ones default to empty string."""
-        toml_path = tmp_path / "project.toml"
+        toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
             mode="workset",
             layout="robust",
             workspace="/ws/proj",
             shell="/ws/proj/shell",
-            vault_ro="/ws/vault/proj/share-ro",
-            vault_rw="/ws/vault/proj/share-rw",
+            vault_ro="/ws/vault/proj/ro",
+            vault_rw="/ws/vault/proj/rw",
             metadata="/ws/data/proj",
             # project_hash, global_shared, local_shared not passed → default ""
         )
@@ -346,50 +346,50 @@ class TestProjectMeta:
 class TestConfigFilePath:
     def test_returns_new_path_when_neither_exists(self, tmp_path):
         result = config_file_path(tmp_path)
-        assert result == tmp_path / "kanibako.toml"
+        assert result == tmp_path / "kanibako.yaml"
 
     def test_returns_new_path_when_new_exists(self, tmp_path):
-        new = tmp_path / "kanibako.toml"
-        new.write_text("[paths]\n")
+        new = tmp_path / "kanibako.yaml"
+        new.write_text("paths:\n")
         result = config_file_path(tmp_path)
         assert result == new
 
     def test_returns_old_path_when_only_old_exists(self, tmp_path):
-        old = tmp_path / "kanibako" / "kanibako.toml"
+        old = tmp_path / "kanibako" / "kanibako.yaml"
         old.parent.mkdir()
-        old.write_text("[paths]\n")
+        old.write_text("paths:\n")
         result = config_file_path(tmp_path)
         assert result == old
 
     def test_prefers_new_path_over_old(self, tmp_path):
-        new = tmp_path / "kanibako.toml"
-        new.write_text("[paths]\n")
-        old = tmp_path / "kanibako" / "kanibako.toml"
+        new = tmp_path / "kanibako.yaml"
+        new.write_text("paths:\n")
+        old = tmp_path / "kanibako" / "kanibako.yaml"
         old.parent.mkdir()
-        old.write_text("[paths]\n")
+        old.write_text("paths:\n")
         result = config_file_path(tmp_path)
         assert result == new
 
 
 class TestMigrateConfig:
     def test_migrates_old_to_new(self, tmp_path):
-        old = tmp_path / "kanibako" / "kanibako.toml"
+        old = tmp_path / "kanibako" / "kanibako.yaml"
         old.parent.mkdir()
-        old.write_text('[paths]\nboxes = "boxes"\n')
+        old.write_text('paths:\n  boxes: "boxes"\n')
 
         result = migrate_config(tmp_path)
-        new = tmp_path / "kanibako.toml"
+        new = tmp_path / "kanibako.yaml"
         assert result == new
         assert new.exists()
         assert not old.exists()
         assert "boxes" in new.read_text()
 
     def test_no_op_when_new_exists(self, tmp_path):
-        new = tmp_path / "kanibako.toml"
-        new.write_text('[paths]\nboxes = "new"\n')
-        old = tmp_path / "kanibako" / "kanibako.toml"
+        new = tmp_path / "kanibako.yaml"
+        new.write_text('paths:\n  boxes: "new"\n')
+        old = tmp_path / "kanibako" / "kanibako.yaml"
         old.parent.mkdir()
-        old.write_text('[paths]\nboxes = "old"\n')
+        old.write_text('paths:\n  boxes: "old"\n')
 
         result = migrate_config(tmp_path)
         assert result == new
@@ -398,12 +398,12 @@ class TestMigrateConfig:
 
     def test_no_op_when_neither_exists(self, tmp_path):
         result = migrate_config(tmp_path)
-        assert result == tmp_path / "kanibako.toml"
+        assert result == tmp_path / "kanibako.yaml"
 
     def test_removes_empty_old_dir(self, tmp_path):
-        old = tmp_path / "kanibako" / "kanibako.toml"
+        old = tmp_path / "kanibako" / "kanibako.yaml"
         old.parent.mkdir()
-        old.write_text("[paths]\n")
+        old.write_text("paths:\n")
 
         migrate_config(tmp_path)
         assert not old.parent.exists()
@@ -411,8 +411,8 @@ class TestMigrateConfig:
     def test_keeps_old_dir_if_not_empty(self, tmp_path):
         old_dir = tmp_path / "kanibako"
         old_dir.mkdir()
-        old = old_dir / "kanibako.toml"
-        old.write_text("[paths]\n")
+        old = old_dir / "kanibako.yaml"
+        old.write_text("paths:\n")
         (old_dir / "other.txt").write_text("keep me\n")
 
         migrate_config(tmp_path)
@@ -423,20 +423,20 @@ class TestMigrateConfig:
 class TestSharedCaches:
     def test_shared_section_parsed(self, tmp_path):
         """[shared] entries populate shared_caches dict."""
-        path = tmp_path / "kanibako.toml"
+        path = tmp_path / "kanibako.yaml"
         path.write_text(
-            '[paths]\ndata_path = ""\n\n'
-            '[container]\nimage = "test:latest"\n\n'
-            '[shared]\ncargo-git = ".cargo/git"\npip = ".cache/pip"\n'
+            'paths:\n  data_path: ""\n\n'
+            'box:\n  image: "test:latest"\n\n'
+            'shared:\n  cargo-git: ".cargo/git"\n  pip: ".cache/pip"\n'
         )
         cfg = load_config(path)
         assert cfg.shared_caches == {"cargo-git": ".cargo/git", "pip": ".cache/pip"}
 
     def test_shared_section_not_flattened(self, tmp_path):
         """[shared] keys don't produce shared_* flat keys on KanibakoConfig."""
-        path = tmp_path / "kanibako.toml"
+        path = tmp_path / "kanibako.yaml"
         path.write_text(
-            '[shared]\ncargo-git = ".cargo/git"\n'
+            'shared:\n  cargo-git: ".cargo/git"\n'
         )
         cfg = load_config(path)
         # shared_caches is populated correctly
@@ -445,46 +445,46 @@ class TestSharedCaches:
         assert not hasattr(cfg, "shared_cargo-git")
 
     def test_no_shared_section(self, tmp_path):
-        """shared_caches defaults to empty dict when [shared] is absent."""
-        path = tmp_path / "kanibako.toml"
-        path.write_text('[paths]\ndata_path = ""\n')
+        """shared_caches defaults to empty dict when shared is absent."""
+        path = tmp_path / "kanibako.yaml"
+        path.write_text('paths:\n  data_path: ""\n')
         cfg = load_config(path)
         assert cfg.shared_caches == {}
 
     def test_nonexistent_file(self):
         """shared_caches defaults to empty dict for missing config file."""
         from pathlib import Path
-        cfg = load_config(Path("/nonexistent/kanibako.toml"))
+        cfg = load_config(Path("/nonexistent/kanibako.yaml"))
         assert cfg.shared_caches == {}
 
     def test_write_global_config_includes_shared(self, tmp_path):
-        """write_global_config includes a [shared] section."""
-        path = tmp_path / "kanibako.toml"
+        """write_global_config includes a shared section."""
+        path = tmp_path / "kanibako.yaml"
         write_global_config(path)
         text = path.read_text()
-        assert "[shared]" in text
+        assert "shared:" in text
 
     def test_merged_config_preserves_shared_caches(self, tmp_path):
         """load_merged_config preserves shared_caches from global config."""
-        global_path = tmp_path / "global.toml"
+        global_path = tmp_path / "global.yaml"
         global_path.write_text(
-            '[paths]\ndata_path = ""\n\n'
-            '[container]\nimage = "test:latest"\n\n'
-            '[shared]\npip = ".cache/pip"\n'
+            'paths:\n  data_path: ""\n\n'
+            'box:\n  image: "test:latest"\n\n'
+            'shared:\n  pip: ".cache/pip"\n'
         )
-        project_path = tmp_path / "project.toml"
-        project_path.write_text('[container]\nimage = "proj:v1"\n')
+        project_path = tmp_path / "project.yaml"
+        project_path.write_text('box:\n  image: "proj:v1"\n')
 
         merged = load_merged_config(global_path, project_path)
         assert merged.shared_caches == {"pip": ".cache/pip"}
-        assert merged.container_image == "proj:v1"
+        assert merged.box_image == "proj:v1"
 
 
 class TestResourceOverrides:
-    """Tests for resource scope override storage in project.toml."""
+    """Tests for resource scope override storage in project.yaml."""
 
     def _write_base_toml(self, path):
-        """Write a minimal project.toml for testing."""
+        """Write a minimal project.yaml for testing."""
         write_project_meta(
             path,
             mode="local", layout="default",
@@ -493,7 +493,7 @@ class TestResourceOverrides:
 
     def test_round_trip(self, tmp_path):
         """Write and read back resource overrides."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
         write_resource_override(p, "settings.json", "shared")
@@ -502,8 +502,8 @@ class TestResourceOverrides:
         assert overrides == {"plugins/": "project", "settings.json": "shared"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """Old project.toml without [resource_overrides] returns empty dict."""
-        p = tmp_path / "project.toml"
+        """Old project.yaml without [resource_overrides] returns empty dict."""
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
         overrides = read_resource_overrides(p)
@@ -511,7 +511,7 @@ class TestResourceOverrides:
 
     def test_remove_override(self, tmp_path):
         """remove_resource_override removes a single override."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
         write_resource_override(p, "cache/", "project")
@@ -523,14 +523,14 @@ class TestResourceOverrides:
 
     def test_remove_nonexistent(self, tmp_path):
         """remove_resource_override returns False for missing key."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
         assert remove_resource_override(p, "nonexistent/") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing resource overrides doesn't clobber other sections."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
 
@@ -541,10 +541,10 @@ class TestResourceOverrides:
 
 
 class TestTargetSettings:
-    """Tests for target setting override storage in project.toml."""
+    """Tests for target setting override storage in project.yaml."""
 
     def _write_base_toml(self, path):
-        """Write a minimal project.toml for testing."""
+        """Write a minimal project.yaml for testing."""
         write_project_meta(
             path,
             mode="local", layout="default",
@@ -553,7 +553,7 @@ class TestTargetSettings:
 
     def test_round_trip(self, tmp_path):
         """Write and read back target settings."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         write_crab_setting(p, "model", "sonnet")
         write_crab_setting(p, "access", "default")
@@ -562,8 +562,8 @@ class TestTargetSettings:
         assert settings == {"model": "sonnet", "access": "default"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """Old project.toml without [crab_settings] returns empty dict."""
-        p = tmp_path / "project.toml"
+        """project.yaml without a [crab] section returns empty dict."""
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
         settings = read_crab_settings(p)
@@ -571,7 +571,7 @@ class TestTargetSettings:
 
     def test_remove_setting(self, tmp_path):
         """remove_crab_setting removes a single setting."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         write_crab_setting(p, "model", "sonnet")
         write_crab_setting(p, "access", "default")
@@ -583,14 +583,14 @@ class TestTargetSettings:
 
     def test_remove_nonexistent(self, tmp_path):
         """remove_crab_setting returns False for missing key."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
         assert remove_crab_setting(p, "nonexistent") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
-        p = tmp_path / "project.toml"
+        p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         write_crab_setting(p, "model", "haiku")
 
@@ -598,3 +598,108 @@ class TestTargetSettings:
         meta = read_project_meta(p)
         assert meta is not None
         assert meta["mode"] == "local"
+
+
+class TestReadShares:
+    def test_reads_dotted_share_keys(self, tmp_path):
+        p = tmp_path / "kanibako.yaml"
+        p.write_text(
+            "system:\n  path:\n    share_rw:\n"
+            '      foo: "h:g"\n'
+            '      bar: "/abs:~/bar"\n'
+        )
+        shares = read_shares(p)
+        assert shares == {
+            "system.path.share_rw.foo": "h:g",
+            "system.path.share_rw.bar": "/abs:~/bar",
+        }
+
+    def test_no_share_keys_returns_empty(self, tmp_path):
+        p = tmp_path / "kanibako.yaml"
+        p.write_text('box_image: "x"\ncrab:\n  model: "sonnet"\n')
+        assert read_shares(p) == {}
+
+    def test_none_path_returns_empty(self):
+        assert read_shares(None) == {}
+
+    def test_missing_path_returns_empty(self, tmp_path):
+        assert read_shares(tmp_path / "nope.yaml") == {}
+
+    def test_only_share_keys_returned_when_mixed(self, tmp_path):
+        p = tmp_path / "kanibako.yaml"
+        p.write_text(
+            'box_image: "img"\n'
+            "crab:\n"
+            '  model: "haiku"\n'
+            "  path:\n    share_ro:\n"
+            '      docs: "/host/docs:/srv/docs"\n'
+            "system:\n  path:\n"
+            '    data: "/d"\n'
+        )
+        assert read_shares(p) == {
+            "crab.path.share_ro.docs": "/host/docs:/srv/docs",
+        }
+
+    def test_suppression_empty_value_returned(self, tmp_path):
+        """An explicit '' is preserved so the resolver can see the suppression."""
+        p = tmp_path / "project.yaml"
+        p.write_text('system:\n  path:\n    share_rw:\n      foo: ""\n')
+        assert read_shares(p) == {"system.path.share_rw.foo": ""}
+
+    def test_unreadable_toml_returns_empty(self, tmp_path):
+        p = tmp_path / "bad.yaml"
+        p.write_text("this: is: : not valid yaml [[[\n")
+        assert read_shares(p) == {}
+
+
+class TestReadSeeds:
+    def test_reads_dotted_seed_keys(self, tmp_path):
+        p = tmp_path / "kanibako.yaml"
+        p.write_text(
+            "crab:\n  path:\n    seeded:\n"
+            '      foo: "/src:~/foo"\n'
+            '      bar: "/abs:/home/agent/bar"\n'
+        )
+        assert read_seeds(p) == {
+            "crab.path.seeded.foo": "/src:~/foo",
+            "crab.path.seeded.bar": "/abs:/home/agent/bar",
+        }
+
+    def test_no_seed_keys_returns_empty(self, tmp_path):
+        p = tmp_path / "kanibako.yaml"
+        p.write_text('box_image: "x"\ncrab:\n  model: "sonnet"\n')
+        assert read_seeds(p) == {}
+
+    def test_none_path_returns_empty(self):
+        assert read_seeds(None) == {}
+
+    def test_missing_path_returns_empty(self, tmp_path):
+        assert read_seeds(tmp_path / "nope.yaml") == {}
+
+    def test_only_seed_keys_returned_when_mixed(self, tmp_path):
+        p = tmp_path / "kanibako.yaml"
+        p.write_text(
+            'box_image: "img"\n'
+            "crab:\n"
+            '  model: "haiku"\n'
+            "  path:\n    share_ro:\n"
+            '      docs: "/host/docs:/srv/docs"\n'
+            "system:\n  path:\n"
+            '    data: "/d"\n'
+            "box:\n  path:\n    seeded:\n"
+            '      init: "/host/init:~/init"\n'
+        )
+        assert read_seeds(p) == {
+            "box.path.seeded.init": "/host/init:~/init",
+        }
+
+    def test_suppression_empty_value_returned(self, tmp_path):
+        """An explicit '' is preserved so the resolver can see the suppression."""
+        p = tmp_path / "project.yaml"
+        p.write_text('crab:\n  path:\n    seeded:\n      foo: ""\n')
+        assert read_seeds(p) == {"crab.path.seeded.foo": ""}
+
+    def test_unreadable_toml_returns_empty(self, tmp_path):
+        p = tmp_path / "bad.yaml"
+        p.write_text("this: is: : not valid yaml [[[\n")
+        assert read_seeds(p) == {}

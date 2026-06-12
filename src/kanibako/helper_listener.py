@@ -33,6 +33,7 @@ class HelperContext:
     default_entrypoint: str | None = None  # from target.default_entrypoint
     project_path: Path | None = None   # host-side workspace directory
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
+    boxes: Path | None = None          # resolved system.path.boxes (std.boxes)
 
 
 class HelperHub:
@@ -294,8 +295,8 @@ class HelperHub:
                 ctx.image,
                 shell_path=helpers_dir_host / str(helper_num),
                 project_path=helpers_dir_host / str(helper_num) / "workspace",
-                vault_ro_path=helpers_dir_host / str(helper_num) / "vault" / "share-ro",
-                vault_rw_path=helpers_dir_host / str(helper_num) / "vault" / "share-rw",
+                vault_ro_path=helpers_dir_host / str(helper_num) / "vault" / "ro",
+                vault_rw_path=helpers_dir_host / str(helper_num) / "vault" / "rw",
                 extra_mounts=mounts or None,
                 enable_vault=True,
                 env=ctx.env,
@@ -373,14 +374,15 @@ class HelperHub:
         except Exception as e:
             return {"status": "error", "message": f"workspace copy failed: {e}"}
 
-        # Resolve source metadata dir via names.toml reverse lookup
+        # Resolve source metadata dir via names.yaml reverse lookup
         from kanibako.names import assign_name, read_names
 
+        boxes_base = ctx.boxes or (ctx.data_path / "boxes")
         source_meta_dir: Path | None = None
         names = read_names(ctx.data_path)
         for rname, rpath in names["projects"].items():
             if rpath == str(ctx.project_path):
-                candidate = ctx.data_path / "boxes" / rname
+                candidate = boxes_base / rname
                 if candidate.is_dir():
                     source_meta_dir = candidate
                 break
@@ -399,7 +401,7 @@ class HelperHub:
 
         # Copy metadata if we found the source
         if source_meta_dir is not None:
-            new_meta_dir = ctx.data_path / "boxes" / new_name
+            new_meta_dir = boxes_base / new_name
             try:
                 if not new_meta_dir.exists():
                     shutil.copytree(
@@ -500,9 +502,9 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
         mounts.append(Mount(all_link, "/home/agent/all", "Z,U"))
 
     # Spawn config (read-only)
-    spawn_toml = helper_root / "spawn.toml"
+    spawn_toml = helper_root / "spawn.yaml"
     if spawn_toml.is_file():
-        mounts.append(Mount(spawn_toml, "/home/agent/spawn.toml", "ro"))
+        mounts.append(Mount(spawn_toml, "/home/agent/spawn.yaml", "ro"))
 
     # Helper socket — mount the hub socket into the helper
     if ctx.socket_path.exists():

@@ -343,14 +343,14 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     (claude_config_dir / ".credentials.json").write_text(json.dumps(creds))
 
     # Build kanibako config
-    kanibako_config = config_home / "kanibako.toml"
+    kanibako_config = config_home / "kanibako.yaml"
     kanibako_config.write_text(
-        f'[kanibako]\nimage = "{E2E_IMAGE}"\n'
+        f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
 
     # Create a name file so container_name_for() gives a predictable name
     # We register via kanibako create later, but for name computation we
-    # need the names.toml to exist.
+    # need the names.yaml to exist.
     names_dir = data_home / "kanibako"
     names_dir.mkdir(parents=True)
 

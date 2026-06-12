@@ -36,7 +36,7 @@ def agent_env(config_file, tmp_home):
         env={"EDITOR": "vim"},
         shared_caches={"npm": "/home/agent/.npm"},
     )
-    write_crab_config(adir / "claude.toml", cfg)
+    write_crab_config(adir / "claude.yaml", cfg)
 
     return std.data_path
 
@@ -102,7 +102,7 @@ class TestRunList:
 
         adir = crabs_dir(agent_env)
         cfg2 = CrabConfig(name="aider", shell="bash", state={"model": "sonnet"})
-        write_crab_config(adir / "aider.toml", cfg2)
+        write_crab_config(adir / "aider.yaml", cfg2)
 
         args = argparse.Namespace(quiet=False)
         rc = run_list(args)

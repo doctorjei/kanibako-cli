@@ -312,7 +312,7 @@ class TestImageSharingInRunContainer:
         from kanibako.commands.start import _run_container
 
         with start_mocks() as m:
-            m.merged.share_images = True
+            m.merged.box_share_images = True
             with patch(
                 "kanibako.image_sharing.build_image_sharing_mounts",
             ) as mock_build:
@@ -359,33 +359,33 @@ class TestImageSharingConfig:
     """Tests for share_images config option."""
 
     def test_default_is_false(self):
-        """share_images defaults to False in KanibakoConfig."""
+        """box_share_images defaults to False in KanibakoConfig."""
         from kanibako.config import KanibakoConfig
         cfg = KanibakoConfig()
-        assert cfg.share_images is False
+        assert cfg.box_share_images is False
 
     def test_loaded_from_toml(self, tmp_path):
-        """share_images can be set in kanibako.toml (top-level key)."""
+        """share_images can be set in kanibako.yaml ([box] section)."""
         from kanibako.config import load_config
-        toml_path = tmp_path / "kanibako.toml"
-        toml_path.write_text("share_images = true\n")
+        toml_path = tmp_path / "kanibako.yaml"
+        toml_path.write_text("box:\n  share_images: true\n")
         cfg = load_config(toml_path)
-        assert cfg.share_images is True
+        assert cfg.box_share_images is True
 
     def test_false_in_toml(self, tmp_path):
         """share_images = false is loaded correctly."""
         from kanibako.config import load_config
-        toml_path = tmp_path / "kanibako.toml"
-        toml_path.write_text("share_images = false\n")
+        toml_path = tmp_path / "kanibako.yaml"
+        toml_path.write_text("box:\n  share_images: false\n")
         cfg = load_config(toml_path)
-        assert cfg.share_images is False
+        assert cfg.box_share_images is False
 
     def test_merged_config_project_override(self, tmp_path):
-        """Project-level share_images overrides global config."""
+        """Project-level box.share_images overrides global config."""
         from kanibako.config import load_merged_config
-        global_toml = tmp_path / "global.toml"
-        global_toml.write_text("share_images = false\n")
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text("share_images = true\n")
+        global_toml = tmp_path / "global.yaml"
+        global_toml.write_text("box:\n  share_images: false\n")
+        project_toml = tmp_path / "project.yaml"
+        project_toml.write_text("box:\n  share_images: true\n")
         cfg = load_merged_config(global_toml, project_toml)
-        assert cfg.share_images is True
+        assert cfg.box_share_images is True

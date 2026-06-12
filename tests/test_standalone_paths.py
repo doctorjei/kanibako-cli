@@ -34,8 +34,8 @@ class TestResolveStandaloneProject:
         assert proj.project_path == resolved
         assert proj.metadata_path == resolved / ".kanibako"
         assert proj.shell_path == resolved / ".kanibako" / "shell"
-        assert proj.vault_ro_path == resolved / "vault" / "share-ro"
-        assert proj.vault_rw_path == resolved / "vault" / "share-rw"
+        assert proj.vault_ro_path == resolved / "vault" / "ro"
+        assert proj.vault_rw_path == resolved / "vault" / "rw"
 
     def test_project_hash_is_sha256_of_resolved_path(
         self, std, config, project_dir,
@@ -99,7 +99,7 @@ class TestResolveStandaloneProject:
         )
         gitignore = project_dir.resolve() / "vault" / ".gitignore"
         assert gitignore.is_file()
-        assert "share-rw/" in gitignore.read_text()
+        assert "rw/" in gitignore.read_text()
 
     def test_no_initialize_skips_creation(self, std, config, project_dir):
         proj = resolve_standalone_project(
@@ -249,8 +249,8 @@ class TestStandaloneLayoutPaths:
         # default layout uses the dotted metadata dir and shell under it.
         assert proj.metadata_path == resolved / ".kanibako"
         assert proj.shell_path == resolved / ".kanibako" / "shell"
-        assert proj.vault_ro_path == resolved / "vault" / "share-ro"
-        assert proj.vault_rw_path == resolved / "vault" / "share-rw"
+        assert proj.vault_ro_path == resolved / "vault" / "ro"
+        assert proj.vault_rw_path == resolved / "vault" / "rw"
 
     def test_robust_layout_paths(self, std, config, project_dir, credentials_dir):
         proj = resolve_standalone_project(
@@ -263,5 +263,5 @@ class TestStandaloneLayoutPaths:
         # robust layout uses the DOTLESS metadata dir and top-level shell.
         assert proj.metadata_path == resolved / "kanibako"
         assert proj.shell_path == resolved / "shell"
-        assert proj.vault_ro_path == resolved / "vault" / "share-ro"
-        assert proj.vault_rw_path == resolved / "vault" / "share-rw"
+        assert proj.vault_ro_path == resolved / "vault" / "ro"
+        assert proj.vault_rw_path == resolved / "vault" / "rw"

@@ -136,6 +136,28 @@ class Target(ABC):
         """
         return []
 
+    def default_shares(self) -> dict[str, str]:
+        """Declare default scoped shares for this agent's crab.
+
+        Returns a mapping of full scoped-share keys
+        ({scope}.path.share_{ro,rw}.{name}) to host_src:guest_dest bind
+        expressions. These become the CRAB level's *declared defaults* in the
+        share resolver — a user can override or suppress (terminal "") any of
+        them at a more-specific level. The default returns {} (no shares).
+        """
+        return {}
+
+    def default_seeds(self) -> dict[str, str]:
+        """Declare default copy-once-at-init seeds for this agent's crab.
+
+        Returns a mapping of full seed keys ({scope}.path.seeded.{name}) to
+        host_src:guest_dest expressions, injected as the CRAB level's declared
+        defaults in the seed resolver. A user can override or suppress (terminal
+        "" or the "empty" sentinel) any of them at a more-specific level. The
+        default returns {} (no seeds). No target ships a default seed yet.
+        """
+        return {}
+
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare what runtime settings this target supports.
 
@@ -157,7 +179,7 @@ class Target(ABC):
         return _CrabConfig(name=self.display_name)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Translate ``[state]`` values into CLI args and env vars.
+        """Translate crab-state values into CLI args and env vars.
 
         Returns ``(cli_args, env_vars)``.  Base implementation ignores all
         state keys.  Subclasses override to handle known keys.

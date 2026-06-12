@@ -153,7 +153,7 @@ class TestFlagCombinations:
             )
             # load_merged_config should have been called with cli_overrides
             call_kwargs = m.load_merged_config.call_args
-            assert call_kwargs.kwargs["cli_overrides"] == {"container_image": "custom:v1"}
+            assert call_kwargs.kwargs["cli_overrides"] == {"box_image": "custom:v1"}
 
     def test_runtime_not_found_returns_1(self, start_mocks):
         with start_mocks() as m:
@@ -307,10 +307,13 @@ class TestOrphanDetectionHint:
 
 class TestCrabConfigFirstUse:
     def test_generates_config_on_first_use(self, start_mocks):
-        """When agent TOML doesn't exist, target.generate_crab_config() is called."""
+        """When agent config doesn't exist, target.generate_crab_config() is called."""
         with start_mocks() as m:
-            mock_path = m.crab_toml_path.return_value
-            mock_path.exists.return_value = False
+            m.crab_toml_path.exists.return_value = False
+            # Return a real CrabConfig so the (now YAML) write path can
+            # serialize it — a bare MagicMock is not representable.
+            from kanibako.crabs import CrabConfig
+            m.target.generate_crab_config.return_value = CrabConfig(name="claude")
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -319,10 +322,9 @@ class TestCrabConfigFirstUse:
             m.target.generate_crab_config.assert_called_once()
 
     def test_does_not_generate_when_exists(self, start_mocks):
-        """When agent TOML exists, generate_crab_config() is NOT called."""
+        """When agent config exists, generate_crab_config() is NOT called."""
         with start_mocks() as m:
-            mock_path = m.crab_toml_path.return_value
-            mock_path.exists.return_value = True
+            m.crab_toml_path.exists.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -359,8 +361,13 @@ class TestCrabConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            call_args = m.crab_toml_path.call_args[0]
-            assert call_args[1] == "no_agent"
+            # std.crabs also gets a / "no_agent" / "share" call from the
+            # scoped-share resolver, so check the full call list.
+            div_args = [
+                c[0][0]
+                for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
+            ]
+            assert "no_agent.yaml" in div_args
 
 
 # ---------------------------------------------------------------------------

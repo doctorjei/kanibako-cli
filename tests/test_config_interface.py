@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import tomllib
-
+from kanibako.config_io import dump_doc, load_doc
 from kanibako.config_interface import (
     ConfigAction,
     ConfigLevel,
-    _serialize_toml,
     is_known_key,
     get_config_value,
     parse_config_arg,
@@ -75,7 +73,9 @@ class TestIsKnownKey:
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
-        assert is_known_key("paths.data_path") is True
+        assert is_known_key("paths.shell") is True
+        assert is_known_key("system.path.data") is True
+        assert is_known_key("system.path.boxes") is True
 
     def test_dynamic_env_prefix(self):
         assert is_known_key("env.MY_VAR") is True
@@ -100,9 +100,9 @@ class TestRegularConfigKeys:
 
     def test_get_default_image(self, tmp_path):
         """Reading image with no overrides returns the global default."""
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "my-image:latest"\n')
-        project_toml = tmp_path / "project.toml"
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "my-image:latest"\n')
+        project_toml = tmp_path / "project.yaml"
 
         val = get_config_value(
             "image",
@@ -113,9 +113,9 @@ class TestRegularConfigKeys:
 
     def test_set_and_get_image(self, tmp_path):
         """Setting a config key writes it and subsequent get returns it."""
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "default:latest"\n')
-        project_toml = tmp_path / "project.toml"
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "default:latest"\n')
+        project_toml = tmp_path / "project.yaml"
 
         msg = set_config_value(
             "image", "custom:v2",
@@ -133,9 +133,9 @@ class TestRegularConfigKeys:
 
     def test_reset_image(self, tmp_path):
         """Resetting a key removes the project-level override."""
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "default:latest"\n')
-        project_toml = tmp_path / "project.toml"
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "default:latest"\n')
+        project_toml = tmp_path / "project.yaml"
 
         set_config_value("image", "custom:v2", config_path=project_toml)
         msg = reset_config_value("image", config_path=project_toml)
@@ -143,7 +143,7 @@ class TestRegularConfigKeys:
 
     def test_reset_nonexistent_key(self, tmp_path):
         """Resetting a key that has no override returns informative message."""
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         msg = reset_config_value("image", config_path=project_toml)
         assert "No override" in msg
 
@@ -159,7 +159,7 @@ class TestEnvKeys:
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.MY_VAR", "hello",
-            config_path=tmp_path / "project.toml",
+            config_path=tmp_path / "project.yaml",
             env_path=env_path,
         )
         assert "Set MY_VAR=hello" in msg
@@ -170,7 +170,7 @@ class TestEnvKeys:
         env_path.write_text("FOO=bar\n")
         val = get_config_value(
             "env.FOO",
-            global_config_path=tmp_path / "kanibako.toml",
+            global_config_path=tmp_path / "kanibako.yaml",
             env_project=env_path,
         )
         assert val == "bar"
@@ -178,20 +178,20 @@ class TestEnvKeys:
     def test_get_env_var_not_set(self, tmp_path):
         val = get_config_value(
             "env.MISSING",
-            global_config_path=tmp_path / "kanibako.toml",
+            global_config_path=tmp_path / "kanibako.yaml",
         )
         assert val is None
 
     def test_reset_env_var(self, tmp_path):
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
-        msg = reset_config_value("env.FOO", config_path=tmp_path / "p.toml", env_path=env_path)
+        msg = reset_config_value("env.FOO", config_path=tmp_path / "p.yaml", env_path=env_path)
         assert "Unset" in msg
 
     def test_reset_env_var_missing(self, tmp_path):
         msg = reset_config_value(
             "env.MISSING",
-            config_path=tmp_path / "p.toml",
+            config_path=tmp_path / "p.yaml",
             env_path=tmp_path / "env",
         )
         assert "No override" in msg
@@ -205,38 +205,36 @@ class TestResourceKeys:
     """Tests for resource.* config keys."""
 
     def test_set_resource(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         msg = set_config_value(
             "resource.plugins", "/my/plugins",
             config_path=project_toml,
         )
         assert "Set resource.plugins=/my/plugins" in msg
 
-        # Verify TOML structure
-        with open(project_toml, "rb") as f:
-            data = tomllib.load(f)
+        # Verify YAML structure
+        data = load_doc(project_toml)
         assert data["resource_overrides"]["plugins"] == "/my/plugins"
 
     def test_get_resource(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"resource_overrides": {"plugins": "/a/b"}}))
+        project_toml = tmp_path / "project.yaml"
+        dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
 
         val = get_config_value(
             "resource.plugins",
-            global_config_path=tmp_path / "kanibako.toml",
+            global_config_path=tmp_path / "kanibako.yaml",
             project_toml=project_toml,
         )
         assert val == "/a/b"
 
     def test_reset_resource(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"resource_overrides": {"plugins": "/a/b"}}))
+        project_toml = tmp_path / "project.yaml"
+        dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
 
         msg = reset_config_value("resource.plugins", config_path=project_toml)
         assert "Reset" in msg
 
-        with open(project_toml, "rb") as f:
-            data = tomllib.load(f)
+        data = load_doc(project_toml)
         assert "resource_overrides" not in data  # section removed when empty
 
 
@@ -248,7 +246,7 @@ class TestSharedKeys:
     """Tests for shared.* config keys."""
 
     def test_set_shared(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         msg = set_config_value(
             "shared.cargo-git", ".cargo/git",
             config_path=project_toml,
@@ -256,8 +254,8 @@ class TestSharedKeys:
         assert "Set shared.cargo-git" in msg
 
     def test_get_shared(self, tmp_path):
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[shared]\ncargo-git = ".cargo/git"\n')
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('shared:\n  cargo-git: ".cargo/git"\n')
 
         val = get_config_value(
             "shared.cargo-git",
@@ -274,28 +272,27 @@ class TestTargetSettings:
     """Tests for target settings keys."""
 
     def test_set_model(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         msg = set_config_value("model", "sonnet", config_path=project_toml)
         assert "Set model=sonnet" in msg
 
-        with open(project_toml, "rb") as f:
-            data = tomllib.load(f)
-        assert data["crab_settings"]["model"] == "sonnet"
+        data = load_doc(project_toml)
+        assert data["crab"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"crab_settings": {"model": "opus"}}))
+        project_toml = tmp_path / "project.yaml"
+        dump_doc(project_toml, {"crab": {"model": "opus"}})
 
         val = get_config_value(
             "model",
-            global_config_path=tmp_path / "kanibako.toml",
+            global_config_path=tmp_path / "kanibako.yaml",
             project_toml=project_toml,
         )
         assert val == "opus"
 
     def test_reset_model(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text(_serialize_toml({"crab_settings": {"model": "opus"}}))
+        project_toml = tmp_path / "project.yaml"
+        dump_doc(project_toml, {"crab": {"model": "opus"}})
 
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg
@@ -309,9 +306,9 @@ class TestShowConfig:
     """Tests for the show_config display function."""
 
     def test_show_no_overrides(self, tmp_path, capsys):
-        global_cfg = tmp_path / "kanibako.toml"
+        global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
 
         show_config(
             global_config_path=global_cfg,
@@ -321,9 +318,9 @@ class TestShowConfig:
         assert "no overrides" in captured.out
 
     def test_show_effective(self, tmp_path, capsys):
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "my:img"\n')
-        project_toml = tmp_path / "project.toml"
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "my:img"\n')
+        project_toml = tmp_path / "project.yaml"
 
         show_config(
             global_config_path=global_cfg,
@@ -331,22 +328,105 @@ class TestShowConfig:
             effective=True,
         )
         captured = capsys.readouterr()
-        assert "container_image" in captured.out
+        assert "box_image" in captured.out
         assert "my:img" in captured.out
 
     def test_show_with_override(self, tmp_path, capsys):
-        global_cfg = tmp_path / "kanibako.toml"
-        global_cfg.write_text('[container]\nimage = "default"\n')
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text('[container]\nimage = "custom"\n')
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "default"\n')
+        project_toml = tmp_path / "project.yaml"
+        project_toml.write_text('box:\n  image: "custom"\n')
 
         show_config(
             global_config_path=global_cfg,
             config_path=project_toml,
         )
         captured = capsys.readouterr()
-        assert "container_image" in captured.out
+        assert "box_image" in captured.out
         assert "custom" in captured.out
+
+    def test_effective_new_params_default_none_is_byte_identical(
+        self, tmp_path, capsys,
+    ):
+        """With workset_path/crab_state/env_resolved=None, output is unchanged."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "my:img"\n')
+        project_toml = tmp_path / "project.yaml"
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+        )
+        baseline = capsys.readouterr().out
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            workset_path=None,
+            crab_state=None,
+            env_resolved=None,
+        )
+        with_none = capsys.readouterr().out
+
+        assert with_none == baseline
+
+    def test_effective_workset_path_overlays(self, tmp_path, capsys):
+        """A value set only at the workset level is reflected when supplied."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text('box:\n  image: "sys:img"\n')
+        project_toml = tmp_path / "project.yaml"
+        workset_cfg = tmp_path / "config.yaml"
+        workset_cfg.write_text('box:\n  image: "ws:img"\n')
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            workset_path=workset_cfg,
+        )
+        captured = capsys.readouterr()
+        assert "box_image" in captured.out
+        assert "ws:img" in captured.out
+        assert "sys:img" not in captured.out
+
+    def test_effective_crab_state_renders_with_override_marker(
+        self, tmp_path, capsys,
+    ):
+        """crab_state is rendered; only box-level keys get the override marker."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("")
+        project_toml = tmp_path / "project.yaml"
+        project_toml.write_text('crab:\n  model: "sonnet"\n')
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            crab_state={"model": "sonnet", "start_mode": "default"},
+        )
+        captured = capsys.readouterr()
+        # model is set at box level -> marked override
+        assert "model = sonnet (override)" in captured.out
+        # start_mode comes from a lower level -> no marker
+        assert "start_mode = default\n" in captured.out
+        assert "start_mode = default (override)" not in captured.out
+
+    def test_effective_env_resolved_used_when_supplied(self, tmp_path, capsys):
+        """env_resolved is the source dict for the env section when given."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("")
+        project_toml = tmp_path / "project.yaml"
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+            env_resolved={"RESOLVED_VAR": "yes"},
+        )
+        captured = capsys.readouterr()
+        assert "env.RESOLVED_VAR = yes" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +437,8 @@ class TestResetAll:
     """Tests for the reset-all operation."""
 
     def test_reset_all_with_force(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
-        project_toml.write_text('[container]\nimage = "custom"\n')
+        project_toml = tmp_path / "project.yaml"
+        project_toml.write_text('box:\n  image: "custom"\n')
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
 
@@ -366,7 +446,7 @@ class TestResetAll:
         assert "Reset" in msg
 
     def test_reset_all_nothing_to_reset(self, tmp_path):
-        project_toml = tmp_path / "project.toml"
+        project_toml = tmp_path / "project.yaml"
         msg = reset_all(config_path=project_toml, force=True)
         assert "No overrides" in msg
 

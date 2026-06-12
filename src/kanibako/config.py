@@ -1,14 +1,12 @@
-"""TOML config loading, writing, defaults, and merge logic."""
+"""YAML config loading, writing, defaults, and merge logic."""
 
 from __future__ import annotations
 
-import re
 import sys
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-# Python 3.11+ stdlib
-import tomllib
+from kanibako.config_io import dump_doc, load_doc
 
 
 # ---------------------------------------------------------------------------
@@ -16,51 +14,40 @@ import tomllib
 # ---------------------------------------------------------------------------
 
 _DEFAULTS = {
-    "paths_data_path": "",
-    "paths_crabs": "crabs",
-    "paths_boxes": "boxes",
-    "paths_project_toml": "project.toml",
+    "paths_project_toml": "project.yaml",
     "paths_shared": "shared",
     "paths_shell": "shell",
-    "paths_templates": "templates",
     "paths_vault": "vault",
-    "paths_comms": "comms",
-    "paths_ws_hints": "worksets.toml",
-    "container_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "crab_name": "",
+    "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
+    "box_crab": "",
 }
 
 # Backward-compat aliases: old field name -> new field name.
-# Applied during load_config() so old TOML files still work.
-_FIELD_ALIASES: dict[str, str] = {
-    "paths_relative_std_path": "paths_data_path",
-    "paths_settings_path": "paths_boxes",
-}
+# Applied during load_config() so old config files still work.
+_FIELD_ALIASES: dict[str, str] = {}
 
 
 @dataclass
 class KanibakoConfig:
-    """Merged configuration (hardcoded defaults < kanibako.toml < project.toml < CLI)."""
+    """Merged configuration (hardcoded defaults < kanibako.yaml < project.yaml < CLI)."""
 
-    paths_data_path: str = _DEFAULTS["paths_data_path"]
-    paths_crabs: str = _DEFAULTS["paths_crabs"]
-    paths_boxes: str = _DEFAULTS["paths_boxes"]
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]
     paths_shell: str = _DEFAULTS["paths_shell"]
-    paths_templates: str = _DEFAULTS["paths_templates"]
     paths_vault: str = _DEFAULTS["paths_vault"]
-    paths_comms: str = _DEFAULTS["paths_comms"]
-    paths_ws_hints: str = _DEFAULTS["paths_ws_hints"]
-    container_image: str = _DEFAULTS["container_image"]
-    crab_name: str = _DEFAULTS["crab_name"]
+    box_image: str = _DEFAULTS["box_image"]
+    box_crab: str = _DEFAULTS["box_crab"]
     allow_helpers: bool = True
-    share_images: bool = False
+    box_share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
+    # System-level path tier: raw set-values keyed by full dotted name
+    # ("system.path.<leaf>"), read from the file's [system][path] table.
+    # System-only (never supplied by project/workset configs).
+    system_paths: dict[str, str] = field(default_factory=dict)
 
 
 def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
-    """Flatten nested TOML dict into underscore-joined keys.
+    """Flatten nested config dict into underscore-joined keys.
 
     ``{"paths": {"boxes": "x"}}`` → ``{"paths_boxes": "x"}``
     Booleans are preserved; other scalars are stringified.
@@ -78,17 +65,17 @@ def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
 
 
 def config_file_path(config_home: Path) -> Path:
-    """Return the path to kanibako.toml, checking new then old location.
+    """Return the path to kanibako.yaml, checking new then old location.
 
-    New: ``$XDG_CONFIG_HOME/kanibako.toml``
-    Old: ``$XDG_CONFIG_HOME/kanibako/kanibako.toml``
+    New: ``$XDG_CONFIG_HOME/kanibako.yaml``
+    Old: ``$XDG_CONFIG_HOME/kanibako/kanibako.yaml``
 
     Returns the new path if neither exists (for first-time setup).
     """
-    new_path = config_home / "kanibako.toml"
+    new_path = config_home / "kanibako.yaml"
     if new_path.exists():
         return new_path
-    old_path = config_home / "kanibako" / "kanibako.toml"
+    old_path = config_home / "kanibako" / "kanibako.yaml"
     if old_path.exists():
         return old_path
     return new_path
@@ -100,8 +87,8 @@ def migrate_config(config_home: Path) -> Path:
     Returns the final config file path (new location).
     Prints a notice to stderr when migration occurs.
     """
-    new_path = config_home / "kanibako.toml"
-    old_path = config_home / "kanibako" / "kanibako.toml"
+    new_path = config_home / "kanibako.yaml"
+    old_path = config_home / "kanibako" / "kanibako.yaml"
     if old_path.exists() and not new_path.exists():
         import shutil
         shutil.move(str(old_path), str(new_path))
@@ -120,14 +107,21 @@ def migrate_config(config_home: Path) -> Path:
 
 
 def load_config(path: Path) -> KanibakoConfig:
-    """Read a single TOML file and return a KanibakoConfig with defaults filled in."""
+    """Read a single config file and return a KanibakoConfig with defaults filled in."""
     cfg = KanibakoConfig()
     if path.exists():
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
+        data = load_doc(path)
         # Extract [shared] section before flattening (it's a key-value dict,
         # not nested config fields).
         shared = data.pop("shared", {})
+        # Extract the [system][path] table before flattening: these are the
+        # system-level path tier (resolver expressions), not flat fields.
+        system_path = data.get("system", {}).pop("path", {})
+        if "system" in data and not data["system"]:
+            data.pop("system")
+        cfg.system_paths = {
+            f"system.path.{k}": str(v) for k, v in system_path.items()
+        }
         flat = _flatten_toml(data)
         valid_keys = {fld.name for fld in fields(cfg)}
         for k, v in flat.items():
@@ -148,14 +142,20 @@ def load_merged_config(
 ) -> KanibakoConfig:
     """Load global config, overlay workset config, project config, then CLI overrides.
 
-    Precedence: CLI flags > project.toml > workset config.toml > kanibako.toml > hardcoded defaults.
+    Precedence: CLI flags > project.yaml > workset config.yaml > kanibako.yaml > hardcoded defaults.
     """
     cfg = load_config(global_path)
     defaults = KanibakoConfig()
+    # system_paths is SYSTEM-ONLY: only the global config supplies it.  Skip it
+    # in the project/workset overlay so a non-global file never clobbers the
+    # global's resolved system path tier (its default {} would otherwise be a
+    # no-op, but skipping makes the system-only invariant explicit).
     if workset_path and workset_path.exists():
         ws = load_config(workset_path)
         # Only override non-default values from workset config.
         for fld in fields(ws):
+            if fld.name == "system_paths":
+                continue
             val = getattr(ws, fld.name)
             if val != getattr(defaults, fld.name):
                 setattr(cfg, fld.name, val)
@@ -163,6 +163,8 @@ def load_merged_config(
         proj = load_config(project_path)
         # Only override non-default values from project config.
         for fld in fields(proj):
+            if fld.name == "system_paths":
+                continue
             val = getattr(proj, fld.name)
             if val != getattr(defaults, fld.name):
                 setattr(cfg, fld.name, val)
@@ -175,38 +177,41 @@ def load_merged_config(
 
 
 def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
-    """Write a TOML config file with the structured layout.
+    """Write a YAML config file with the structured layout.
 
     If *cfg* is None, writes defaults.
     """
     if cfg is None:
         cfg = KanibakoConfig()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        "[paths]",
-        f'data_path = "{cfg.paths_data_path}"',
-        f'boxes = "{cfg.paths_boxes}"',
-        f'shell = "{cfg.paths_shell}"',
-        f'vault = "{cfg.paths_vault}"',
-        "",
-        "[container]",
-        f'image = "{cfg.container_image}"',
-        "",
-        "[shared]",
-        '# Global shared caches (lazy: only mounted if dir exists on host)',
-        '# cargo-git = ".cargo/git"',
-        '# cargo-reg = ".cargo/registry"',
-        '# npm = ".cache/npm"',
-        '# pip = ".cache/pip"',
-        '# uv = ".cache/uv"',
-        "",
-    ]
-    path.write_text("\n".join(lines))
+    # System-level path tier (settings-framework "system.path.*"), written at
+    # the DEFAULT expressions.  Kept in lock-step with
+    # paths.SYSTEM_PATH_DEFAULTS (imported lazily there to avoid an import
+    # cycle); the resolver fills these in if the file omits them.
+    data: dict = {
+        "system": {
+            "path": {
+                "data": "$XDG_DATA_HOME/kanibako",
+                "boxes": "@system.path.data/boxes",
+                "crabs": "@system.path.data/crabs",
+                "comms": "@system.path.data/comms",
+                "templates": "@system.path.data/templates",
+                "ws_hints": "@system.path.data/worksets.yaml",
+            }
+        },
+        "box": {
+            "image": cfg.box_image,
+            "crab": cfg.box_crab,
+            "share_images": cfg.box_share_images,
+        },
+        # Global shared caches (lazy: only mounted if the dir exists on host).
+        "shared": {},
+    }
+    dump_doc(path, data)
 
 
 def write_project_config(path: Path, image: str) -> None:
-    """Write or update a project.toml with the given image."""
-    write_project_config_key(path, "container_image", image)
+    """Write or update a project.yaml with the given image."""
+    write_project_config_key(path, "box_image", image)
 
 
 def write_project_meta(
@@ -226,11 +231,8 @@ def write_project_meta(
     local_shared: str = "",
     name: str = "",
 ) -> None:
-    """Write resolved project metadata to project.toml, preserving other sections."""
-    existing: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            existing = tomllib.load(f)
+    """Write resolved project metadata to project.yaml, preserving other sections."""
+    existing = load_doc(path)
 
     project_sec: dict = {
         "mode": mode, "layout": layout,
@@ -249,19 +251,18 @@ def write_project_meta(
     existing["resolved"]["global_shared"] = global_shared
     existing["resolved"]["local_shared"] = local_shared
 
-    _write_toml(path, existing)
+    dump_doc(path, existing)
 
 
 def read_project_meta(path: Path) -> dict | None:
-    """Read stored project metadata from project.toml.
+    """Read stored project metadata from project.yaml.
 
     Returns a dict with 'mode', 'workspace', 'shell', 'vault_ro', 'vault_rw'
     or None if no project metadata is stored.
     """
     if not path.exists():
         return None
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
 
     project_sec = data.get("project", {})
     # Support both old ("paths") and new ("resolved") section names.
@@ -293,47 +294,18 @@ def read_project_meta(path: Path) -> dict | None:
     }
 
 
-def _toml_key(k: str) -> str:
-    """Quote a TOML key if it contains characters outside [A-Za-z0-9_-]."""
-    if re.fullmatch(r"[A-Za-z0-9_-]+", k):
-        return k
-    return f'"{k}"'
-
-
-def _write_toml(path: Path, data: dict) -> None:
-    """Write a dict as TOML. Handles one level of nesting (sections with scalar values)."""
-    lines: list[str] = []
-    for section_name, section_data in data.items():
-        if not isinstance(section_data, dict):
-            continue
-        if lines:
-            lines.append("")
-        lines.append(f"[{section_name}]")
-        for k, v in section_data.items():
-            key = _toml_key(k)
-            if isinstance(v, bool):
-                lines.append(f"{key} = {'true' if v else 'false'}")
-            elif isinstance(v, (int, float)):
-                lines.append(f"{key} = {v}")
-            else:
-                lines.append(f'{key} = "{v}"')
-    lines.append("")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines))
-
-
 def _split_config_key(flat_key: str) -> tuple[str, str]:
-    """Split a flat config key into (section, toml_key).
+    """Split a flat config key into (section, key).
 
-    ``"container_image"`` → ``("container", "image")``
+    ``"box_image"``       → ``("box", "image")``
     ``"paths_dot_path"``  → ``("paths", "dot_path")``
     """
-    for prefix in ("paths_", "container_", "crab_"):
+    for prefix in ("paths_", "box_"):
         if flat_key.startswith(prefix):
             section = prefix.rstrip("_")
-            toml_key = flat_key[len(prefix):]
-            return section, toml_key
-    raise ValueError(f"Cannot determine TOML section for key: {flat_key}")
+            key = flat_key[len(prefix):]
+            return section, key
+    raise ValueError(f"Cannot determine config section for key: {flat_key}")
 
 
 def config_keys() -> list[str]:
@@ -342,88 +314,43 @@ def config_keys() -> list[str]:
 
 
 def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
-    """Write or update a single key in a project.toml.
+    """Write or update a single key in a project.yaml.
 
-    *flat_key* is the underscore-joined config name (e.g. ``"container_image"``).
+    *flat_key* is the underscore-joined config name (e.g. ``"box_image"``).
     """
-    section, toml_key = _split_config_key(flat_key)
-    section_header = f"[{section}]"
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        text = path.read_text()
-        # NOTE: This regex approach only handles quoted-string values and
-        # assumes key names are unique across TOML sections.
-        # Replace existing key line
-        if re.search(rf'^{re.escape(toml_key)}\s*=', text, re.MULTILINE):
-            text = re.sub(
-                rf'^{re.escape(toml_key)}\s*=\s*"[^"]*"',
-                f'{toml_key} = "{value}"',
-                text,
-                flags=re.MULTILINE,
-            )
-            path.write_text(text)
-            return
-        # Has the right section but no matching key
-        if section_header in text:
-            text = text.replace(
-                section_header, f'{section_header}\n{toml_key} = "{value}"', 1
-            )
-            path.write_text(text)
-            return
-        # File exists but different section — append
-        if not text.endswith("\n"):
-            text += "\n"
-        text += f"\n{section_header}\n{toml_key} = \"{value}\"\n"
-        path.write_text(text)
-        return
-    # New file
-    lines = [
-        section_header,
-        f'{toml_key} = "{value}"',
-        "",
-    ]
-    path.write_text("\n".join(lines))
+    section, key = _split_config_key(flat_key)
+    data = load_doc(path)
+    sec = data.get(section)
+    if not isinstance(sec, dict):
+        sec = {}
+        data[section] = sec
+    sec[key] = value
+    dump_doc(path, data)
 
 
 def unset_project_config_key(path: Path, flat_key: str) -> bool:
-    """Remove a single key from a project.toml.
+    """Remove a single key from a project.yaml.
 
     Returns True if the key was found and removed, False if it was not present.
     """
     if not path.exists():
         return False
 
-    section, toml_key = _split_config_key(flat_key)
-    text = path.read_text()
-
-    # Remove the key line (including trailing newline)
-    new_text, count = re.subn(
-        rf'^{re.escape(toml_key)}\s*=\s*"[^"]*"\n?',
-        "",
-        text,
-        flags=re.MULTILINE,
-    )
-    if count == 0:
+    section, key = _split_config_key(flat_key)
+    data = load_doc(path)
+    sec = data.get(section)
+    if not isinstance(sec, dict) or key not in sec:
         return False
-
-    # Clean up empty sections: if the section header is followed by
-    # nothing (or only blank lines) before the next section or EOF, remove it.
-    new_text = re.sub(
-        r'^\[[\w]+\]\n(?=\s*(?:\[|$))',
-        "",
-        new_text,
-        flags=re.MULTILINE,
-    )
-    # Strip trailing whitespace
-    new_text = new_text.rstrip() + "\n" if new_text.strip() else ""
-
-    path.write_text(new_text)
+    del sec[key]
+    # Clean up an empty section.
+    if not sec:
+        data.pop(section, None)
+    dump_doc(path, data)
     return True
 
 
 def load_project_overrides(path: Path) -> dict[str, str]:
-    """Load only the project-level overrides from a project.toml.
+    """Load only the project-level overrides from a project.yaml.
 
     Returns a dict of flat_key → value for keys that differ from defaults.
     """
@@ -444,49 +371,99 @@ def load_project_overrides(path: Path) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def read_crab_settings(path: Path) -> dict[str, str]:
-    """Read ``[crab_settings]`` from a project.toml.
+    """Read crab-state overrides from a project.yaml ``crab`` section.
 
-    Returns a dict of setting_key → value (e.g. ``{"model": "sonnet"}``).
+    project.yaml's ``crab`` holds box-level crab-state overrides (e.g.
+    ``{"model": "sonnet"}``); identity keys live in ``box.crab``, not here.
     Returns an empty dict when the file or section is absent.
     """
     if not path.exists():
         return {}
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
-    return {k: str(v) for k, v in data.get("crab_settings", {}).items()}
+    data = load_doc(path)
+    return {k: str(v) for k, v in data.get("crab", {}).items()}
 
 
 def write_crab_setting(path: Path, key: str, value: str) -> None:
-    """Write a single target setting override to ``[crab_settings]`` in project.toml.
+    """Write a single crab-state override to ``crab`` in project.yaml.
 
     Preserves all other sections.
     """
-    existing: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            existing = tomllib.load(f)
-    existing.setdefault("crab_settings", {})
-    existing["crab_settings"][key] = value
-    _write_toml(path, existing)
+    existing = load_doc(path)
+    existing.setdefault("crab", {})
+    existing["crab"][key] = value
+    dump_doc(path, existing)
 
 
 def remove_crab_setting(path: Path, key: str) -> bool:
-    """Remove a single target setting override from ``[crab_settings]``.
+    """Remove a single crab-state override from ``crab`` in project.yaml.
 
     Returns True if the setting was found and removed, False otherwise.
     """
     if not path.exists():
         return False
-    with open(path, "rb") as f:
-        existing = tomllib.load(f)
-    settings = existing.get("crab_settings", {})
+    existing = load_doc(path)
+    settings = existing.get("crab", {})
     if key not in settings:
         return False
     del settings[key]
     if not settings:
-        existing.pop("crab_settings", None)
-    _write_toml(path, existing)
+        existing.pop("crab", None)
+    dump_doc(path, existing)
     return True
+
+
+# ---------------------------------------------------------------------------
+# Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*)
+# ---------------------------------------------------------------------------
+
+def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
+    """Flatten nested dict into DOTTED-key form, stringifying scalar leaves.
+
+    ``{"system": {"path": {"share_rw": {"foo": "h:g"}}}}`` →
+    ``{"system.path.share_rw.foo": "h:g"}``.
+    """
+    out: dict[str, str] = {}
+    for k, v in data.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            out.update(_flatten_dotted(v, key))
+        else:
+            out[key] = str(v)
+    return out
+
+
+def read_shares(path: Path | None) -> dict[str, str]:
+    """Read scoped-share keys ({scope}.path.share_{ro,rw}.{name}) from a config
+    file as a flat dotted-key dict. Missing/None/unreadable path → {}."""
+    from kanibako.settings_shares import is_share_key
+
+    if path is None:
+        return {}
+    try:
+        if not path.exists():
+            return {}
+        data = load_doc(path)
+    except Exception:
+        return {}
+    flat = _flatten_dotted(data)
+    return {k: v for k, v in flat.items() if is_share_key(k)}
+
+
+def read_seeds(path: Path | None) -> dict[str, str]:
+    """Read seed keys ({scope}.path.seeded.{name}) from a config file as a flat
+    dotted-key dict. Missing/None/unreadable path → {}."""
+    from kanibako.settings_seeds import is_seed_key
+
+    if path is None:
+        return {}
+    try:
+        if not path.exists():
+            return {}
+        data = load_doc(path)
+    except Exception:
+        return {}
+    flat = _flatten_dotted(data)
+    return {k: v for k, v in flat.items() if is_seed_key(k)}
 
 
 # ---------------------------------------------------------------------------
@@ -494,41 +471,36 @@ def remove_crab_setting(path: Path, key: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def read_resource_overrides(path: Path) -> dict[str, str]:
-    """Read ``[resource_overrides]`` from a project.toml.
+    """Read ``resource_overrides`` from a project.yaml.
 
     Returns a dict of resource_path → scope_string (e.g. ``"shared"``).
     Returns an empty dict when the file or section is absent.
     """
     if not path.exists():
         return {}
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
     return {k: str(v) for k, v in data.get("resource_overrides", {}).items()}
 
 
 def write_resource_override(path: Path, resource_path: str, scope: str) -> None:
-    """Write a single resource scope override to ``[resource_overrides]`` in project.toml.
+    """Write a single resource scope override to ``resource_overrides`` in project.yaml.
 
     Preserves all other sections.
     """
-    existing: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            existing = tomllib.load(f)
+    existing = load_doc(path)
     existing.setdefault("resource_overrides", {})
     existing["resource_overrides"][resource_path] = scope
-    _write_toml(path, existing)
+    dump_doc(path, existing)
 
 
 def remove_resource_override(path: Path, resource_path: str) -> bool:
-    """Remove a single resource scope override from ``[resource_overrides]``.
+    """Remove a single resource scope override from ``resource_overrides``.
 
     Returns True if the override was found and removed, False otherwise.
     """
     if not path.exists():
         return False
-    with open(path, "rb") as f:
-        existing = tomllib.load(f)
+    existing = load_doc(path)
     overrides = existing.get("resource_overrides", {})
     if resource_path not in overrides:
         return False
@@ -536,5 +508,5 @@ def remove_resource_override(path: Path, resource_path: str) -> bool:
     if not overrides:
         # Remove the empty section entirely.
         existing.pop("resource_overrides", None)
-    _write_toml(path, existing)
+    dump_doc(path, existing)
     return True

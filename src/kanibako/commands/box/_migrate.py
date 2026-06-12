@@ -62,7 +62,7 @@ def run_migrate(args: argparse.Namespace) -> int:
 
     # Find old project directory.
     old_name, old_project_dir = _resolve_local_dir(
-        std.data_path, str(old_path),
+        std.data_path, str(old_path), std.boxes,
     )
 
     # Validate: old project data must exist.
@@ -76,7 +76,7 @@ def run_migrate(args: argparse.Namespace) -> int:
 
     # Find or assign new project directory.
     new_name, new_project_dir = _resolve_local_dir(
-        std.data_path, str(new_path),
+        std.data_path, str(new_path), std.boxes,
     )
 
     # Validate: new project data must NOT already exist.
@@ -118,18 +118,18 @@ def run_migrate(args: argparse.Namespace) -> int:
     human_vault_dir = std.data_path / config.paths_vault
     _remove_human_vault_symlink(human_vault_dir, old_project_dir / "vault")
 
-    # Update names.toml: unregister old name, assign new name.
+    # Update names.yaml: unregister old name, assign new name.
     if old_name:
         unregister_name(std.data_path, old_name)
     new_name = assign_name(std.data_path, str(new_path))
-    new_project_dir = std.data_path / "boxes" / new_name
+    new_project_dir = std.boxes / new_name
 
     # Rename project directory (includes home/ inside it).
     old_project_dir.rename(new_project_dir)
 
-    # Update workspace path in project.toml.
+    # Update workspace path in project.yaml.
     from kanibako.config import read_project_meta, write_project_meta
-    project_toml = new_project_dir / "project.toml"
+    project_toml = new_project_dir / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
         write_project_meta(
@@ -267,7 +267,7 @@ def _convert_local_to_standalone(project_path, std, config, proj):
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"
         if not vault_gitignore.exists():
-            vault_gitignore.write_text("share-rw/\n")
+            vault_gitignore.write_text("rw/\n")
 
     # Remove vault symlinks before cleaning up old local data.
     human_vault_dir = std.data_path / config.paths_vault
@@ -286,7 +286,7 @@ def _convert_standalone_to_local(project_path, std, config, proj):
     """Convert a standalone project to local layout."""
     # Assign a name for the new local project.
     project_name = assign_name(std.data_path, str(project_path))
-    settings_base = std.data_path / "boxes"
+    settings_base = std.boxes
     dst_project = settings_base / project_name
 
     # Copy metadata (excluding lock file and shell/).
@@ -525,7 +525,7 @@ def _convert_ws_to_local(src_proj, dest_path, std, config):
     """Copy workset project metadata into local layout."""
     # Assign a name for the new local project.
     project_name = assign_name(std.data_path, str(dest_path))
-    projects_base = std.data_path / "boxes"
+    projects_base = std.boxes
     dst_project = projects_base / project_name
 
     # Copy metadata (excluding lock and home/).
@@ -571,4 +571,4 @@ def _convert_ws_to_standalone(src_proj, dest_path):
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"
         if not vault_gitignore.exists():
-            vault_gitignore.write_text("share-rw/\n")
+            vault_gitignore.write_text("rw/\n")

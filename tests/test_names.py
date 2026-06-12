@@ -1,4 +1,4 @@
-"""Tests for kanibako.names (names.toml I/O and resolution) and name wiring."""
+"""Tests for kanibako.names (names.yaml I/O and resolution) and name wiring."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from kanibako.names import (
 
 @pytest.fixture
 def data_path(tmp_path: Path) -> Path:
-    """Return a temporary data directory for names.toml."""
+    """Return a temporary data directory for names.yaml."""
     dp = tmp_path / "data"
     dp.mkdir()
     return dp
@@ -84,7 +84,7 @@ class TestRegisterName:
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         deep = tmp_path / "a" / "b" / "c"
         register_name(deep, "x", "/x")
-        assert (deep / "names.toml").is_file()
+        assert (deep / "names.yaml").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ class TestLocalNameAssignment:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        meta = read_project_meta(proj.metadata_path / "project.toml")
+        meta = read_project_meta(proj.metadata_path / "project.yaml")
         assert meta is not None
         assert meta["name"] == "project"
 
@@ -330,7 +330,7 @@ class TestLocalNameAssignment:
 
 
 class TestWorksetNameRegistration:
-    """Workset creation registers the name in names.toml."""
+    """Workset creation registers the name in names.yaml."""
 
     def test_create_workset_registers_name(self, std, tmp_home):
         from kanibako.workset import create_workset
@@ -354,7 +354,7 @@ class TestWorksetNameRegistration:
 
 
 class TestNameRegistration:
-    """Name uniqueness and update operations on names.toml."""
+    """Name uniqueness and update operations on names.yaml."""
 
     def test_register_and_read_name(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
@@ -401,7 +401,7 @@ class TestNameRegistration:
         assert "project" not in read_names(std.data_path)["projects"]
 
     def test_read_name_after_creation(self, config_file, tmp_home, credentials_dir):
-        """Project name is readable from project.toml metadata after creation."""
+        """Project name is readable from project.yaml metadata after creation."""
         from kanibako.config import load_config, read_project_meta
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -410,7 +410,7 @@ class TestNameRegistration:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        meta = read_project_meta(proj.metadata_path / "project.toml")
+        meta = read_project_meta(proj.metadata_path / "project.yaml")
         assert meta["name"] == "project"
 
 
@@ -527,7 +527,7 @@ class TestBoxRm:
         assert "project" not in names["projects"]
 
         out = capsys.readouterr().out
-        assert "Removed 'project' from names.toml" in out
+        assert "Removed 'project' from names.yaml" in out
 
     def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
         """Without --purge, rm shows a hint about metadata still present."""

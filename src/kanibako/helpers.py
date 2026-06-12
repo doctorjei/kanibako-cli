@@ -6,7 +6,7 @@ import importlib.resources
 from dataclasses import dataclass
 from pathlib import Path
 
-import tomllib
+from kanibako.config_io import dump_doc, load_doc
 
 # When breadth is unlimited (-1), use 2^16 for numbering purposes.
 # Large enough to never collide; small enough for human-readable numbers.
@@ -144,15 +144,14 @@ def resolve_spawn_budget(
 
 
 def read_spawn_config(path: Path) -> SpawnBudget | None:
-    """Read spawn limits from a TOML file (kanibako.toml or RO spawn config).
+    """Read spawn limits from a config file (kanibako.yaml or RO spawn config).
 
-    Looks for a ``[spawn]`` section with ``depth`` and ``breadth`` keys.
+    Looks for a ``spawn`` section with ``depth`` and ``breadth`` keys.
     Returns ``None`` if the file or section is absent.
     """
     if not path.exists():
         return None
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
+    data = load_doc(path)
     spawn = data.get("spawn")
     if spawn is None:
         return None
@@ -163,48 +162,14 @@ def read_spawn_config(path: Path) -> SpawnBudget | None:
 
 
 def write_spawn_config(path: Path, budget: SpawnBudget) -> None:
-    """Write spawn limits as a ``[spawn]`` section in a TOML file.
+    """Write spawn limits as a ``spawn`` section in a config file.
 
     For RO spawn configs this creates a standalone file.
-    For kanibako.toml this preserves other sections.
+    For kanibako.yaml this preserves other sections.
     """
-    existing: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            existing = tomllib.load(f)
+    existing = load_doc(path)
     existing["spawn"] = {"depth": budget.depth, "breadth": budget.breadth}
-    _write_spawn_toml(path, existing)
-
-
-def _write_spawn_toml(path: Path, data: dict) -> None:
-    """Write a dict as TOML.  Handles top-level scalars and one level of sections."""
-    lines: list[str] = []
-    # Top-level scalars first
-    for k, v in data.items():
-        if not isinstance(v, dict):
-            lines.append(f"{k} = {_format_value(v)}")
-    # Then sections
-    for section, values in data.items():
-        if not isinstance(values, dict):
-            continue
-        if lines:
-            lines.append("")
-        lines.append(f"[{section}]")
-        for k, v in values.items():
-            lines.append(f"{k} = {_format_value(v)}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n")
-
-
-def _format_value(v: object) -> str:
-    """Format a Python value as a TOML literal."""
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, int):
-        return str(v)
-    if isinstance(v, float):
-        return str(v)
-    return f'"{v}"'
+    dump_doc(path, existing)
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +180,7 @@ def _format_value(v: object) -> str:
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     """Create the directory layout for a single helper.
 
-    Creates vault (with share-ro, share-rw), workspace, playbook/scripts,
+    Creates vault (with ro, rw), workspace, playbook/scripts,
     and peers directories.  Returns the helper's root directory.
     """
     root = helpers_dir / str(helper_num)
@@ -224,8 +189,8 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     # Vault with communication channels
     vault = root / "vault"
     vault.mkdir(exist_ok=True)
-    (vault / "share-ro").mkdir(exist_ok=True)
-    (vault / "share-rw").mkdir(exist_ok=True)
+    (vault / "ro").mkdir(exist_ok=True)
+    (vault / "rw").mkdir(exist_ok=True)
 
     # Standard layout
     (root / "workspace").mkdir(exist_ok=True)

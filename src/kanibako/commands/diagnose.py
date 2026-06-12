@@ -38,7 +38,7 @@ def _check_image(config: object) -> tuple[str, str]:
         from kanibako.container import ContainerRuntime
 
         runtime = ContainerRuntime()
-        image_name: str = getattr(config, "container_image", "")
+        image_name: str = getattr(config, "box_image", "")
         data = runtime.image_inspect(image_name)
         if data is not None:
             return "ok", f"{image_name} (available locally)"
@@ -131,8 +131,11 @@ def run_system_diagnose(args: object) -> int:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)
         config = load_config(cf)
+        from kanibako.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
-        data_path = data_home / (config.paths_data_path or "kanibako")
+        data_path = resolve_system_paths(
+            config.system_paths, data_home=data_home, home=Path.home(),
+        )["system.path.data"]
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))
     except Exception:
