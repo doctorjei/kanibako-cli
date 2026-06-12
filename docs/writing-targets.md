@@ -315,7 +315,7 @@ def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]
 Returns a list of `ResourceMapping` entries, each mapping a path within
 the agent's config directory to a `ResourceScope`:
 
-- `SHARED` — shared at the workset/account level (e.g. plugin binaries)
+- `SHARED` — shared across a workset (or the default workset) (e.g. plugin binaries)
 - `PROJECT` — per-project, starts fresh (e.g. conversation history)
 - `SEEDED` — per-project, but seeded from the workset template at
   project creation (e.g. agent settings)

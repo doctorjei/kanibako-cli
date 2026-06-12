@@ -809,7 +809,7 @@ def _run_container(
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
         # Workset-level env applies only for a named (non-default) workset
-        # group; the default/local group's tier is already the system env.
+        # group; the default group's tier is already the system env.
         workset_env_path = (
             proj.group.root / "env"
             if (proj.group is not None and not proj.group.is_default)

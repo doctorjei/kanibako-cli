@@ -114,13 +114,13 @@ class TestCleanExtended:
         assert not kanibako_dir.exists()
 
     def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
-        """--all only covers local projects, not standalone."""
+        """--all only covers default-mode projects, not standalone."""
         from kanibako.commands.clean import run
 
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create a local project
+        # Create a default-mode project
         ac_dir = tmp_home / "ac_project"
         ac_dir.mkdir()
         proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
@@ -151,7 +151,7 @@ class TestCleanWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Create a local project
+        # Create a default-mode project
         ac_dir = tmp_home / "ac_purge"
         ac_dir.mkdir()
         ac_proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)

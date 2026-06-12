@@ -44,7 +44,7 @@ def fork_ctx(tmp_path):
     vault_dir = meta_dir / "vault"
     vault_dir.mkdir()
     (vault_dir / "ro").mkdir()
-    (meta_dir / "project.yaml").write_text('meta:\n  mode: "local"\n')
+    (meta_dir / "project.yaml").write_text('meta:\n  mode: "default"\n')
     (meta_dir / ".kanibako.lock").write_text("lock\n")
     helpers_dir_meta = meta_dir / "helpers"
     helpers_dir_meta.mkdir()

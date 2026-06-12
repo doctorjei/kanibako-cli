@@ -139,7 +139,7 @@ class TestWorksetList:
         out = capsys.readouterr().out
         # The synthesized default workset is always present.
         assert "default" in out
-        assert "<account-wide>" in out
+        assert "<default workset>" in out
         assert "NAME" in out
 
     def test_list_shows_worksets(self, config_file, tmp_home, capsys):
@@ -764,7 +764,7 @@ class TestDefaultWorksetCli:
         assert rc == 0
         out = capsys.readouterr().out
         assert "__default__" in out
-        assert "<account-wide>" in out
+        assert "<default workset>" in out
 
     def test_rm_default_refused(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_rm

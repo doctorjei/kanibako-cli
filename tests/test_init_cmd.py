@@ -109,7 +109,7 @@ class TestRunCreate:
     def test_create_local_mode(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        """box create without --standalone creates a local project."""
+        """box create without --standalone creates a default-mode project."""
         parser = build_parser()
         args = parser.parse_args(["box", "create", str(project_dir)])
         rc = run_create(args)
@@ -173,7 +173,7 @@ class TestRunCreate:
     def test_create_no_gitignore_for_local(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        """Local mode should not write .gitignore (state is external)."""
+        """Default mode should not write .gitignore (state is external)."""
         parser = build_parser()
         args = parser.parse_args(["box", "create", str(project_dir)])
         run_create(args)

@@ -837,22 +837,22 @@ class TestSecureAutonomousFlags:
 # ---------------------------------------------------------------------------
 
 class TestVaultTmpfsMode:
-    """Pin the current ``vault_tmpfs=(proj.mode == ProjectMode.local)`` wiring.
+    """Pin the current ``vault_tmpfs=(proj.mode == ProjectMode.default)`` wiring.
 
     start.py passes ``vault_tmpfs`` to ``runtime.run()`` derived solely from
-    the resolved project's mode: LOCAL -> tmpfs vault (True); WORKSET and
-    STANDALONE -> not tmpfs (False).  The #71 refactor unifies local/workset
+    the resolved project's mode: DEFAULT -> tmpfs vault (True); WORKSET and
+    STANDALONE -> not tmpfs (False).  The #71 refactor unifies default/workset
     resolution, so these tests lock the per-mode result at the
     ``runtime.run()`` boundary the existing start tests already mock.
     """
 
-    def test_local_mode_uses_tmpfs_vault(self, start_mocks):
+    def test_default_mode_uses_tmpfs_vault(self, start_mocks):
         from pathlib import Path
 
         from kanibako.paths import ProjectGroup, ProjectMode
 
         with start_mocks() as m:
-            m.proj.mode = ProjectMode.local
+            m.proj.mode = ProjectMode.default
             m.proj.group = ProjectGroup(
                 name="default", root=Path("/data"),
                 is_default=True, local_shared_base=Path("/data"),

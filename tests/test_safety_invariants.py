@@ -222,9 +222,9 @@ class TestStaleNameSafety:
         project_dir.mkdir(parents=True, exist_ok=True)
         result = detect_project_mode(project_dir.resolve(), std, config)
 
-        # Should fall through to default local at project_dir, NOT match $HOME.
+        # Should fall through to the default mode at project_dir, NOT match $HOME.
         assert result.project_root == project_dir.resolve()
-        assert result.mode is ProjectMode.local
+        assert result.mode is ProjectMode.default
 
 
 # ── Contract tests: mount source validation ───────────────────────────

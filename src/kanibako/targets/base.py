@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class ResourceScope(Enum):
     """How an agent resource is shared across projects."""
 
-    SHARED = "shared"    # Shared at workset/account level
+    SHARED = "shared"    # Shared across a workset (or the default workset)
     PROJECT = "project"  # Per-project, starts fresh
     SEEDED = "seeded"    # Per-project, seeded from workset template at creation
 

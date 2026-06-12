@@ -30,7 +30,7 @@ from kanibako.paths import (
 from kanibako.targets import resolve_target
 from kanibako.utils import container_name_for, short_hash, write_project_gitignore
 
-_MODE_CHOICES = ["local", "standalone", "workset"]
+_MODE_CHOICES = ["default", "standalone", "workset"]
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -118,7 +118,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Move project session data from one path hash to another.\n"
             "Use this after moving or renaming a project directory.\n"
-            "With --to, convert a project between modes (e.g. local to standalone)."
+            "With --to, convert a project between modes (e.g. default to standalone)."
         ),
     )
     migrate_p.add_argument(
@@ -409,7 +409,7 @@ def run_create(args: argparse.Namespace) -> int:
     if args.standalone:
         write_project_gitignore(proj.project_path)
 
-    mode = "standalone" if args.standalone else "local"
+    mode = "standalone" if args.standalone else "default"
     print(f"Created {mode} project in {proj.project_path}")
     return 0
 
@@ -562,7 +562,7 @@ def _list_orphans(
     quiet: bool,
 ) -> int:
     """List only orphaned projects (--orphan flag handler)."""
-    # Local mode orphans: path missing or no breadcrumb.
+    # Default-mode orphans: path missing or no breadcrumb.
     ac_orphans = []
     for metadata_path, project_path in projects:
         if project_path is None or not project_path.is_dir():

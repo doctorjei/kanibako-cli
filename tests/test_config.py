@@ -127,8 +127,8 @@ class TestMergedConfig:
         )
         assert merged.box_image == "cli-image:v3"
 
-    def test_account_no_op_when_no_workset_config(self, tmp_path):
-        """A local project with no workset config.yaml merges exactly as before."""
+    def test_default_no_op_when_no_workset_config(self, tmp_path):
+        """A default-mode project with no workset config.yaml merges exactly as before."""
         global_path = tmp_path / "global.yaml"
         project_path = tmp_path / "project.yaml"
         missing_workset = tmp_path / "no-such-config.yaml"
@@ -205,7 +205,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
-            mode="local",
+            mode="default",
             layout="default",
             workspace="/home/user/myproject",
             shell="/data/kanibako/settings/abc/shell",
@@ -216,7 +216,7 @@ class TestProjectMeta:
 
         meta = read_project_meta(toml_path)
         assert meta is not None
-        assert meta["mode"] == "local"
+        assert meta["mode"] == "default"
         assert meta["workspace"] == "/home/user/myproject"
         assert meta["shell"] == "/data/kanibako/settings/abc/shell"
         assert meta["vault_ro"] == "/home/user/myproject/vault/ro"
@@ -258,7 +258,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
-            mode="local",
+            mode="default",
             layout="default",
             workspace="/old",
             shell="/old/shell",
@@ -284,7 +284,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.yaml"
         write_project_meta(
             toml_path,
-            mode="local",
+            mode="default",
             layout="default",
             workspace="/home/user/proj",
             shell="/data/boxes/abc/shell",
@@ -308,7 +308,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "project.yaml"
         # Write old-style config without new fields.
         toml_path.write_text(
-            'project:\n  mode: "local"\n  layout: "default"\n'
+            'project:\n  mode: "default"\n  layout: "default"\n'
             '  enable_vault: true\n  group_auth: true\n\n'
             'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
             '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
@@ -320,6 +320,29 @@ class TestProjectMeta:
         assert meta["project_hash"] == ""
         assert meta["global_shared"] == ""
         assert meta["local_shared"] == ""
+
+    def test_backward_compat_mode_aliases(self, tmp_path):
+        """Old mode breadcrumbs resolve to the renamed modes on read.
+
+        ``mode: local`` (pre-v1.5.0) and ``mode: account_centric`` (pre-v1.0)
+        both resolve to ``default``; ``decentralized`` → ``standalone``.
+        """
+        cases = {
+            "local": "default",
+            "account_centric": "default",
+            "decentralized": "standalone",
+        }
+        for raw_mode, expected in cases.items():
+            toml_path = tmp_path / f"project-{raw_mode}.yaml"
+            toml_path.write_text(
+                f'project:\n  mode: "{raw_mode}"\n  layout: "default"\n'
+                '  enable_vault: true\n  group_auth: true\n\n'
+                'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
+                '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
+            )
+            meta = read_project_meta(toml_path)
+            assert meta is not None
+            assert meta["mode"] == expected, f"{raw_mode} should read as {expected}"
 
     def test_partial_new_fields(self, tmp_path):
         """Only some new fields present — missing ones default to empty string."""
@@ -487,7 +510,7 @@ class TestResourceOverrides:
         """Write a minimal project.yaml for testing."""
         write_project_meta(
             path,
-            mode="local", layout="default",
+            mode="default", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
 
@@ -537,7 +560,7 @@ class TestResourceOverrides:
         # Project metadata should still be intact.
         meta = read_project_meta(p)
         assert meta is not None
-        assert meta["mode"] == "local"
+        assert meta["mode"] == "default"
 
 
 class TestTargetSettings:
@@ -547,7 +570,7 @@ class TestTargetSettings:
         """Write a minimal project.yaml for testing."""
         write_project_meta(
             path,
-            mode="local", layout="default",
+            mode="default", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
 
@@ -597,7 +620,7 @@ class TestTargetSettings:
         # Project metadata should still be intact.
         meta = read_project_meta(p)
         assert meta is not None
-        assert meta["mode"] == "local"
+        assert meta["mode"] == "default"
 
 
 class TestReadShares:
