@@ -55,11 +55,11 @@ jobs:
         run: pip install -e '.[dev]' -e packages/agent-claude/
       - name: Pull e2e image (with build fallback)
         run: |
-          # main-push builds push both :latest and :edge; e2e tracks :edge,
-          # which reflects current main. Just pull. Fall back to a local
-          # build only if the registry is unreachable.
-          podman pull ghcr.io/doctorjei/kanibako-oci:edge \
-            && podman tag ghcr.io/doctorjei/kanibako-oci:edge kanibako-oci:latest \
+          # Base images are published as :latest from the kanibako-images repo
+          # via a manual dispatch (the only publish path). e2e pulls :latest and
+          # falls back to a local build if the registry is unreachable.
+          podman pull ghcr.io/doctorjei/kanibako-oci:latest \
+            && podman tag ghcr.io/doctorjei/kanibako-oci:latest kanibako-oci:latest \
             || podman build \
                  --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0 \
                  --build-arg VARIANT=oci \
