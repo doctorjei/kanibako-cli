@@ -57,7 +57,11 @@ jobs:
         with:
           context: containers/
           file: containers/Containerfile.kanibako
-          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
+          # Publish only on a manual dispatch with push=true. A push to main
+          # builds (verifying the image) and warms the gha layer cache but does
+          # NOT publish; the publish dispatch restores those cached layers
+          # (cache-from below) and pushes without rebuilding.
+          push: ${{ github.event_name == 'workflow_dispatch' && inputs.push }}
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:edge
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
