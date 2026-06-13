@@ -451,7 +451,9 @@ def run_disconnect(args: argparse.Namespace) -> int:
         )
 
     try:
-        proj = remove_project(ws, args.project, remove_files=args.remove_files)
+        proj = remove_project(
+            ws, args.project, remove_files=args.remove_files, std=std,
+        )
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
