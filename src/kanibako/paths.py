@@ -963,6 +963,12 @@ def detect_project_mode(
     if ws_result is not None:
         return ws_result
 
+    # 1b. Connected-external check: the path (or an ancestor) is an external
+    # directory connected to a workset.  Resolves before the default scan.
+    from kanibako.workset import _find_connected_project
+    if _find_connected_project(resolved, std) is not None:
+        return DetectionResult(ProjectMode.workset, resolved)
+
     # 2. Name-based default-mode check (one-pass scan, deepest match wins).
     ac_ancestor = _find_local_ancestor(resolved, std.data_path, std.boxes)
     if ac_ancestor is not None:
@@ -1058,6 +1064,11 @@ def resolve_workset_project(
     # Check for stored paths in project.yaml (enables user overrides).
     project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
+    # Honor a stored workspace override (set when the project was connected to
+    # an EXTERNAL directory): the external dir is the live workspace.  Mirrors
+    # the describe path (iter_projects), which already reads meta["workspace"].
+    if meta and meta.get("workspace"):
+        project_path = Path(meta["workspace"])
     if meta:
         actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.workset]
         shell_path = Path(meta["shell"]) if meta["shell"] else project_dir / "shell"
@@ -1328,7 +1339,19 @@ def resolve_any_project(
     root_str = str(detection.project_root)
 
     if detection.mode == ProjectMode.workset:
-        ws, proj_name = _find_workset_for_path(raw_dir, std)
+        try:
+            ws, proj_name = _find_workset_for_path(raw_dir, std)
+        except WorksetError:
+            ws, proj_name = None, None
+        if ws is None or proj_name is None:
+            # Tree-based lookup missed (or hit the workset root without a
+            # project): try the connected-external redirect index.
+            from kanibako.workset import _find_connected_project
+            hit = _find_connected_project(raw_dir, std)
+            if hit is not None:
+                ws, proj_name = hit
+        if ws is None:
+            raise WorksetError(f"No workset found for path: {raw_dir}")
         if proj_name is None:
             raise WorksetError(
                 f"Inside workset '{ws.name}' but not in a specific project workspace. "

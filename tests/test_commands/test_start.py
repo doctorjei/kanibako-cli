@@ -1334,6 +1334,28 @@ class TestBuildShareMounts:
         assert len(mounts) == 1
         assert mounts[0].source == ws_root / "rel"
 
+    def test_workset_root_set_for_external_connected_project(self, tmp_path):
+        """A project connected via an EXTERNAL dir resolves to its named
+        workset (group.is_default False), so workset scope roots ARE set and
+        workset shares mount — even though the workspace is the external path."""
+        from types import SimpleNamespace
+        ws_root = tmp_path / "extws"
+        # External-connect outcome: a non-default workset group whose root is
+        # the workset (NOT the external workspace path).
+        group = SimpleNamespace(root=ws_root, name="extws", is_default=False)
+        ws_cfg = tmp_path / "config.yaml"
+        ws_cfg.write_text(
+            'workset:\n  path:\n    share_rw:\n      shared: "rel:~/shared"\n'
+        )
+        mounts = self._call(
+            tmp_path,
+            proj=self._proj(group=group),
+            workset_config_path=ws_cfg,
+        )
+        # Workset share mounts, rooted under the workset root.
+        assert len(mounts) == 1
+        assert mounts[0].source == ws_root / "rel"
+
     def _claude_target(self):
         from types import SimpleNamespace
         return SimpleNamespace(

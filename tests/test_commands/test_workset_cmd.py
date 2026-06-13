@@ -355,6 +355,82 @@ class TestWorksetConnect:
         err = capsys.readouterr().err
         assert "already exists" in err
 
+    def test_connect_external_writes_override_and_symlink(
+        self, config_file, tmp_home, capsys
+    ):
+        """connect to an EXTERNAL dir → workspace override in project.yaml,
+        connected.yaml entry, and a workspaces/{name} symlink to the dir."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.config import read_project_meta
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("extws", tmp_home / "ws_ext", std)
+
+        # External source: a sibling of the workset root, outside ws.root.
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+
+        args = argparse.Namespace(
+            workset="extws", source=str(external), project_name="ext",
+        )
+        rc = run_connect(args)
+        assert rc == 0
+
+        # project.yaml carries the workspace override = external path.
+        project_toml = ws.projects_dir / "ext" / "project.yaml"
+        meta = read_project_meta(project_toml)
+        assert meta is not None
+        assert meta["workspace"] == str(external)
+
+        # connected.yaml has the redirect entry.
+        connected = _load_connected(std)
+        assert str(external) in connected
+        assert connected[str(external)] == {"workset": "extws", "project": "ext"}
+
+        # workspaces/ext is a SYMLINK to the external dir, not a real dir.
+        link = ws.workspaces_dir / "ext"
+        assert link.is_symlink()
+        assert link.resolve() == external
+
+    def test_connect_internal_no_override_no_symlink(
+        self, config_file, tmp_home, capsys
+    ):
+        """connect to a dir INSIDE the workset root → normal behavior: a real
+        workspaces/{name} dir, no override, no connected.yaml entry."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.config import read_project_meta
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("intws", tmp_home / "ws_int", std)
+
+        # Internal source: a directory inside the workset root.
+        internal = ws.root / "inside_src"
+        internal.mkdir()
+
+        args = argparse.Namespace(
+            workset="intws", source=str(internal), project_name="int",
+        )
+        rc = run_connect(args)
+        assert rc == 0
+
+        # No workspace override written (project.yaml not pre-seeded).
+        project_toml = ws.projects_dir / "int" / "project.yaml"
+        meta = read_project_meta(project_toml)
+        assert meta is None
+
+        # No connected.yaml entry for an internal source.
+        connected = _load_connected(std)
+        assert str(internal.resolve()) not in connected
+
+        # workspaces/int is a real directory, not a symlink.
+        wsdir = ws.workspaces_dir / "int"
+        assert wsdir.is_dir()
+        assert not wsdir.is_symlink()
+
 
 class TestWorksetDisconnect:
     def test_disconnect_success(self, config_file, tmp_home, capsys):
