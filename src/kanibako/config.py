@@ -52,7 +52,8 @@ def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
     """Flatten nested config dict into underscore-joined keys.
 
     ``{"paths": {"boxes": "x"}}`` → ``{"paths_boxes": "x"}``
-    Booleans are preserved; other scalars are stringified.
+    Booleans are preserved; ``None`` (YAML ``null``/empty) is preserved as the
+    "reset to built-in default" sentinel; other scalars are stringified.
     """
     out: dict[str, object] = {}
     for k, v in data.items():
@@ -61,6 +62,8 @@ def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
             out.update(_flatten_toml(v, key))
         elif isinstance(v, bool):
             out[key] = v
+        elif v is None:
+            out[key] = None
         else:
             out[key] = str(v)
     return out
@@ -118,6 +121,38 @@ def migrate_config(config_home: Path) -> Path:
     return new_path
 
 
+def _present_scalar_fields(path: Path) -> dict[str, object]:
+    """Parse a config file and return ONLY the scalar/bool fields actually
+    present in it, as a field-name → value mapping.
+
+    A value of ``None`` (YAML ``null``/``~``/empty ``foo:``) is preserved as the
+    "reset to built-in default" sentinel; callers must distinguish it from an
+    absent key (which simply won't appear in the returned dict).
+
+    The dict fields (``shared_caches``, ``system_paths``) are NOT included here;
+    they keep their own dedicated parsing/merge logic.
+    """
+    if not path.exists():
+        return {}
+    data = load_doc(path)
+    # Drop the sections handled by dedicated logic so they don't leak into the
+    # scalar field overlay.
+    data.pop("shared", None)
+    if isinstance(data.get("system"), dict):
+        data["system"].pop("path", None)
+        if not data["system"]:
+            data.pop("system")
+    flat = _flatten_toml(data)
+    valid_keys = {fld.name for fld in fields(KanibakoConfig)}
+    present: dict[str, object] = {}
+    for k, v in flat.items():
+        # Apply backward-compat aliases.
+        k = _FIELD_ALIASES.get(k, k)
+        if k in valid_keys:
+            present[k] = v
+    return present
+
+
 def load_config(path: Path) -> KanibakoConfig:
     """Read a single config file and return a KanibakoConfig with defaults filled in."""
     cfg = KanibakoConfig()
@@ -125,21 +160,19 @@ def load_config(path: Path) -> KanibakoConfig:
         data = load_doc(path)
         # Extract [shared] section before flattening (it's a key-value dict,
         # not nested config fields).
-        shared = data.pop("shared", {})
-        # Extract the [system][path] table before flattening: these are the
-        # system-level path tier (resolver expressions), not flat fields.
-        system_path = data.get("system", {}).pop("path", {})
-        if "system" in data and not data["system"]:
-            data.pop("system")
+        shared = data.get("shared", {})
+        # Extract the [system][path] table: these are the system-level path
+        # tier (resolver expressions), not flat fields.
+        system_path = data.get("system", {}).get("path", {})
         cfg.system_paths = {
             f"system.path.{k}": str(v) for k, v in system_path.items()
         }
-        flat = _flatten_toml(data)
-        valid_keys = {fld.name for fld in fields(cfg)}
-        for k, v in flat.items():
-            # Apply backward-compat aliases.
-            k = _FIELD_ALIASES.get(k, k)
-            if k in valid_keys:
+        # Scalar/bool fields: a present key sets the field; a ``None`` value
+        # (YAML null/empty) resets it to the built-in default.
+        for k, v in _present_scalar_fields(path).items():
+            if v is None:
+                setattr(cfg, k, getattr(KanibakoConfig(), k))
+            else:
                 setattr(cfg, k, v)
         cfg.shared_caches = {k: str(v) for k, v in shared.items()}
     return cfg
@@ -162,20 +195,32 @@ def load_merged_config(
     global config beats it.  A missing machine file is an empty level.
     """
     defaults = KanibakoConfig()
+
+    def _overlay_scalars(cfg: KanibakoConfig, path: Path) -> None:
+        """Overlay one file layer's PRESENT scalar/bool fields onto *cfg*.
+
+        Presence-based: a key absent from this layer leaves the underlying value
+        untouched; a present key with a ``None`` value (YAML null/empty) resets
+        the field to its built-in default; any other present value (including
+        ``""``) sets the field.  ``system_paths`` is SYSTEM-ONLY and handled
+        separately, so it never appears here.
+        """
+        for k, v in _present_scalar_fields(path).items():
+            if v is None:
+                setattr(cfg, k, getattr(defaults, k))
+            else:
+                setattr(cfg, k, v)
+
     # Start from the machine doc (least-specific file source), then overlay the
-    # user global config's non-default fields so the user wins over /etc while
-    # /etc still wins over the built-in defaults.
+    # user global, workset, and project layers in order so the most-specific
+    # present value wins (with null/empty resetting to the built-in default).
     cfg = load_config(machine_config_path())
     glob = load_config(global_path)
-    # system_paths is SYSTEM-ONLY: only the global (and machine) config supply
-    # it; skip it in the per-field overlays so a non-global file never clobbers
-    # the resolved system path tier.
-    for fld in fields(glob):
-        if fld.name == "system_paths":
-            continue
-        val = getattr(glob, fld.name)
-        if val != getattr(defaults, fld.name):
-            setattr(cfg, fld.name, val)
+    _overlay_scalars(cfg, global_path)
+    # shared_caches (DICT field): keep the existing merge — a layer that supplies
+    # a non-empty mapping wins over the underlying one (last non-empty wins).
+    if glob.shared_caches != defaults.shared_caches:
+        cfg.shared_caches = glob.shared_caches
     # system_paths: the global config wins when it supplies one (matches the
     # prior behavior where load_config(global_path) was the base); else keep
     # whatever the machine layer provided.
@@ -183,22 +228,14 @@ def load_merged_config(
         cfg.system_paths = glob.system_paths
     if workset_path and workset_path.exists():
         ws = load_config(workset_path)
-        # Only override non-default values from workset config.
-        for fld in fields(ws):
-            if fld.name == "system_paths":
-                continue
-            val = getattr(ws, fld.name)
-            if val != getattr(defaults, fld.name):
-                setattr(cfg, fld.name, val)
+        _overlay_scalars(cfg, workset_path)
+        if ws.shared_caches != defaults.shared_caches:
+            cfg.shared_caches = ws.shared_caches
     if project_path and project_path.exists():
         proj = load_config(project_path)
-        # Only override non-default values from project config.
-        for fld in fields(proj):
-            if fld.name == "system_paths":
-                continue
-            val = getattr(proj, fld.name)
-            if val != getattr(defaults, fld.name):
-                setattr(cfg, fld.name, val)
+        _overlay_scalars(cfg, project_path)
+        if proj.shared_caches != defaults.shared_caches:
+            cfg.shared_caches = proj.shared_caches
     if cli_overrides:
         valid_keys = {fld.name for fld in fields(cfg)}
         for k, v in cli_overrides.items():
