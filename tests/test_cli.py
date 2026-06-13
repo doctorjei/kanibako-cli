@@ -198,17 +198,30 @@ class TestParser:
         args = parser.parse_args(["box", "move", "/src", "/dest"])
         assert args.command == "box"
         assert args.box_command == "move"
-        assert args.args == ["/src", "/dest"]
+        assert args.old == "/src"
+        assert args.new == "/dest"
 
-    def test_box_move_single_arg(self):
+    def test_box_move_alias_mv(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "move", "/dest"])
-        assert args.args == ["/dest"]
+        args = parser.parse_args(["box", "mv", "/src", "/dest"])
+        assert args.box_command == "mv"
+        assert args.old == "/src"
+        assert args.new == "/dest"
+
+    def test_box_move_requires_both_paths(self):
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["box", "move", "/dest"])
 
     def test_box_move_force(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "move", "/dest", "--force"])
+        args = parser.parse_args(["box", "move", "/src", "/dest", "--force"])
         assert args.force is True
+
+    def test_box_move_workset_target(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "move", "/src", "/dest", "--workset", "ws"])
+        assert args.to_workset == "ws"
 
     def test_box_vault_list(self):
         parser = build_parser()
@@ -239,24 +252,29 @@ class TestParser:
         args = parser.parse_args(["box", "vault", "list", "-q"])
         assert args.quiet is True
 
-    def test_box_migrate_command(self):
+    def test_box_remap_command(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "migrate", "/old", "/new"])
+        args = parser.parse_args(["box", "remap", "/old", "/new"])
         assert args.command == "box"
-        assert args.box_command == "migrate"
-        assert args.old_path == "/old"
-        assert args.new_path == "/new"
+        assert args.box_command == "remap"
+        assert args.old == "/old"
+        assert args.new == "/new"
 
-    def test_box_migrate_defaults_new_path(self):
+    def test_box_remap_defaults_new(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "migrate", "/old"])
-        assert args.old_path == "/old"
-        assert args.new_path is None
+        args = parser.parse_args(["box", "remap", "/old"])
+        assert args.old == "/old"
+        assert args.new is None
 
-    def test_box_migrate_force(self):
+    def test_box_remap_force(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "migrate", "/old", "--force"])
+        args = parser.parse_args(["box", "remap", "/old", "--force"])
         assert args.force is True
+
+    def test_box_migrate_is_gone(self):
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["box", "migrate", "/old", "/new"])
 
     def test_box_duplicate_command(self):
         parser = build_parser()
@@ -669,17 +687,34 @@ class TestParser:
         assert args.workset == "myws"
         assert args.key_value == "model=sonnet"
 
-    def test_box_migrate_workset_flag(self):
+    def test_box_convert_workset_flag(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "migrate", "--to", "workset", "--workset", "myws", "--name", "proj"])
-        assert args.to_mode == "workset"
-        assert args.workset == "myws"
-        assert args.project_name == "proj"
+        args = parser.parse_args(["box", "convert", "--workset", "myws", "--name", "proj"])
+        assert args.box_command == "convert"
+        assert args.to_workset == "myws"
+        assert args.name == "proj"
 
-    def test_box_migrate_in_place_flag(self):
+    def test_box_convert_requires_target(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "migrate", "--to", "workset", "--workset", "myws", "--in-place"])
-        assert args.in_place is True
+        with pytest.raises(SystemExit):
+            parser.parse_args(["box", "convert"])
+
+    def test_box_convert_targets_mutually_exclusive(self):
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["box", "convert", "--default", "--standalone"])
+
+    def test_box_convert_bare_move(self):
+        parser = build_parser()
+        from kanibako.commands.box._lifecycle import _BARE_MOVE
+        args = parser.parse_args(["box", "convert", "--workset", "ws", "--move"])
+        assert args.move is _BARE_MOVE
+
+    def test_box_convert_move_path(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "convert", "--standalone", "--move", "/dest"])
+        assert args.move == "/dest"
+        assert args.to_standalone is True
 
     def test_box_duplicate_workset_flag(self):
         parser = build_parser()

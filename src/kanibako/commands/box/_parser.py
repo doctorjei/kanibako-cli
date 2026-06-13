@@ -33,14 +33,43 @@ from kanibako.utils import container_name_for, short_hash, write_project_gitigno
 _MODE_CHOICES = ["default", "standalone", "workset"]
 
 
+def _add_target_group(
+    parser: argparse.ArgumentParser, *, required: bool = False,
+) -> None:
+    """Attach the uniform ownership-target flags to *parser*.
+
+    ``--default`` / ``--standalone`` / ``--workset <ws>`` are mutually
+    exclusive.  Used identically by ``move`` (optional) and ``convert``
+    (required).
+    """
+    group = parser.add_mutually_exclusive_group(required=required)
+    group.add_argument(
+        "--default", dest="to_default", action="store_true",
+        help="Target the default workset",
+    )
+    group.add_argument(
+        "--standalone", dest="to_standalone", action="store_true",
+        help="Target standalone mode (state inside the project directory)",
+    )
+    group.add_argument(
+        "--workset", dest="to_workset", metavar="WS", default=None,
+        help="Target the named workset",
+    )
+
+
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     from kanibako.commands.box._duplicate import run_duplicate
-    from kanibako.commands.box._migrate import run_migrate
+    from kanibako.commands.box._lifecycle import (
+        _BARE_MOVE,
+        run_convert,
+        run_move,
+        run_remap,
+    )
 
     p = subparsers.add_parser(
         "box",
         help="Project lifecycle commands for boxes (containers)",
-        description="Manage per-project session data for boxes (containers): create, list, migrate, duplicate, archive, extract, purge.",
+        description="Manage per-project session data for boxes (containers): create, list, remap, move, convert, duplicate, archive, extract, purge.",
     )
     box_sub = p.add_subparsers(dest="box_command", metavar="COMMAND")
 
@@ -111,44 +140,84 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     list_p.set_defaults(func=run_list)
 
-    # kanibako box migrate
-    migrate_p = box_sub.add_parser(
-        "migrate",
-        help="Remap project data from old path to new path, or convert between modes",
+    # kanibako box remap <old> [<new>]   (records-only)
+    remap_p = box_sub.add_parser(
+        "remap",
+        help="Update a project's recorded path after you moved the folder yourself",
         description=(
-            "Move project session data from one path hash to another.\n"
-            "Use this after moving or renaming a project directory.\n"
-            "With --to, convert a project between modes (e.g. default to standalone)."
+            "Records-only relocation. Use this when you have ALREADY moved or\n"
+            "renamed a project's directory and just need kanibako to catch up.\n"
+            "Updates the recorded workspace path, hash, and markers. Does NOT\n"
+            "move files and never changes ownership."
         ),
     )
-    migrate_p.add_argument(
-        "old_path", nargs="?", default=None,
-        help="Original project directory path (for path remap), or project path (for --to)",
+    remap_p.add_argument(
+        "old", nargs="?", default=None,
+        help="Current project (name or path; default: cwd)",
     )
-    migrate_p.add_argument(
-        "new_path", nargs="?", default=None,
-        help="New project directory path (default: current working directory)",
+    remap_p.add_argument(
+        "new", nargs="?", default=None,
+        help="New workspace location (default: cwd)",
     )
-    migrate_p.add_argument(
-        "--to", dest="to_mode", choices=_MODE_CHOICES, default=None,
-        help="Convert project to a different mode",
-    )
-    migrate_p.add_argument(
+    remap_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompt",
     )
-    migrate_p.add_argument(
-        "--workset", default=None,
-        help="Target workset name (required when --to workset)",
+    remap_p.set_defaults(func=run_remap)
+
+    # kanibako box move <old> <new>   (alias: mv)   (relocate files)
+    move_p = box_sub.add_parser(
+        "move",
+        aliases=["mv"],
+        help="Physically relocate a project's workspace to a new directory",
+        description=(
+            "Move a project's workspace from <old> to <new> (both required) and\n"
+            "update its records/markers. An optional target flag also changes\n"
+            "ownership; without one the owner is unchanged.\n"
+            "Refuses external-connected projects (use `remap` or `convert`)."
+        ),
     )
-    migrate_p.add_argument(
-        "--name", dest="project_name", default=None,
-        help="Project name in workset (default: directory basename)",
+    move_p.add_argument("old", help="Current project (name or path)")
+    move_p.add_argument("new", help="Destination directory")
+    _add_target_group(move_p)
+    move_p.add_argument(
+        "--name", default=None,
+        help="Rename the project at the destination",
     )
-    migrate_p.add_argument(
-        "--in-place", action="store_true", dest="in_place",
-        help="Keep workspace at current location (don't move into workset)",
+    move_p.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation; also override the cwd-inside-project guard",
     )
-    migrate_p.set_defaults(func=run_migrate)
+    move_p.set_defaults(func=run_move)
+
+    # kanibako box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]
+    convert_p = box_sub.add_parser(
+        "convert",
+        help="Change a project's ownership/mode (default/standalone/workset)",
+        description=(
+            "Change which mode/workset owns a project. In-place by default for\n"
+            "all modes (the workspace does not move). Add `--move <path>` to\n"
+            "relocate, or a bare `--move` (only with --workset) to move into the\n"
+            "target workset. `--name` renames in the target."
+        ),
+    )
+    convert_p.add_argument(
+        "old", nargs="?", default=None,
+        help="Project to convert (name or path; default: cwd)",
+    )
+    _add_target_group(convert_p, required=True)
+    convert_p.add_argument(
+        "--move", dest="move", nargs="?", const=_BARE_MOVE, default=None,
+        metavar="PATH",
+        help="Relocate the workspace; bare --move moves into the target workset",
+    )
+    convert_p.add_argument(
+        "--name", default=None,
+        help="Rename the project in the target",
+    )
+    convert_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompt",
+    )
+    convert_p.set_defaults(func=run_convert)
 
     # kanibako box duplicate
     duplicate_p = box_sub.add_parser(
@@ -281,26 +350,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Output container names only, one per line",
     )
     ps_p.set_defaults(func=run_ps)
-
-    # kanibako box move [project] <dest>
-    move_p = box_sub.add_parser(
-        "move",
-        help="Relocate a project workspace to a new directory",
-        description=(
-            "Move a project's workspace directory to a new location.\n"
-            "Updates names.yaml and recreates vault symlinks.\n"
-            "Cannot move projects that are inside a workset."
-        ),
-    )
-    move_p.add_argument(
-        "args", nargs="+", metavar="ARG",
-        help="[project] <dest>  — project name/path (optional if cwd) and destination",
-    )
-    move_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompt",
-    )
-    move_p.set_defaults(func=run_move)
 
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
@@ -609,7 +658,7 @@ def _list_orphans(
     if not quiet:
         total = len(ac_orphans) + len(ws_orphans)
         print(f"\n{total} orphaned project(s).")
-        print("Use 'kanibako box migrate' to remap, or 'kanibako box rm' to remove.")
+        print("Use 'kanibako box remap' to update paths, or 'kanibako box rm' to remove.")
     return 0
 
 
@@ -733,119 +782,6 @@ def run_rm(args: argparse.Namespace) -> int:
                 f"Run 'kanibako box rm {name} --purge' to delete."
             )
 
-    return 0
-
-
-def run_move(args: argparse.Namespace) -> int:
-    """Move a project workspace to a new directory."""
-    import shutil as _shutil
-
-    from kanibako.names import lookup_by_path, update_name_path
-    from kanibako.paths import (
-        _remove_project_vault_symlink,
-        detect_project_mode,
-    )
-    from kanibako.utils import confirm_prompt as _confirm
-
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    positional = args.args  # 1 or 2 items: [project] <dest>
-    if len(positional) == 1:
-        project_dir = None
-        dest = positional[0]
-    elif len(positional) == 2:
-        project_dir = positional[0]
-        dest = positional[1]
-    else:
-        print("Error: expected [project] <dest>", file=sys.stderr)
-        return 1
-
-    # Resolve project.
-    try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    if not proj.metadata_path.is_dir():
-        print(f"Error: no project data found for {proj.project_path}", file=sys.stderr)
-        return 1
-
-    # Refuse if project is in a workset.
-    dm = detect_project_mode(proj.project_path, std, config)
-    if dm.mode == ProjectMode.workset:
-        print(
-            "Error: cannot move a workset project. "
-            "Use workset-level operations instead.",
-            file=sys.stderr,
-        )
-        return 1
-
-    dest_path = Path(dest).resolve()
-    source_path = proj.project_path
-
-    if dest_path == source_path:
-        print("Error: source and destination are the same.", file=sys.stderr)
-        return 1
-
-    if dest_path.exists():
-        print(f"Error: destination already exists: {dest_path}", file=sys.stderr)
-        return 1
-
-    # Check for running container.
-    lock_file = proj.metadata_path / ".kanibako.lock"
-    if lock_file.exists():
-        print(
-            "Error: lock file found — a container may be running for this project.\n"
-            "Stop the container first.",
-            file=sys.stderr,
-        )
-        return 1
-
-    # Confirm.
-    if not args.force:
-        print("Move project workspace:")
-        print(f"  from: {source_path}")
-        print(f"    to: {dest_path}")
-        print()
-        try:
-            _confirm("Type 'yes' to confirm: ")
-        except Exception:
-            print("Aborted.")
-            return 2
-
-    # 1. Move workspace directory.
-    try:
-        _shutil.move(str(source_path), str(dest_path))
-    except Exception as e:
-        print(f"Error: failed to move workspace: {e}", file=sys.stderr)
-        return 1
-
-    # 2. Update names.yaml path.
-    result = lookup_by_path(std.data_path, str(source_path))
-    if result is not None:
-        name, section = result
-        update_name_path(std.data_path, name, str(dest_path), section=section)
-        print(f"Updated names.yaml: {name} -> {dest_path}")
-    elif proj.name:
-        # Try by name directly.
-        update_name_path(std.data_path, proj.name, str(dest_path))
-        print(f"Updated names.yaml: {proj.name} -> {dest_path}")
-
-    # 3. Recreate vault symlinks (remove old, create new).
-    _remove_project_vault_symlink(dest_path)
-    vault_meta = proj.metadata_path / "vault"
-    if vault_meta.is_dir():
-        vault_link = dest_path / "vault"
-        if not vault_link.exists():
-            try:
-                vault_link.symlink_to(vault_meta)
-            except OSError:
-                print("Warning: could not recreate vault symlink.", file=sys.stderr)
-
-    print(f"Moved project to {dest_path}")
     return 0
 
 
