@@ -143,6 +143,74 @@ class TestMergedConfig:
         assert with_missing == baseline
 
 
+class TestMachineConfigLayer:
+    """The /etc machine-wide layer: below user-global, above built-in defaults."""
+
+    def _patch_machine(self, monkeypatch, path):
+        import kanibako.config as config_mod
+        monkeypatch.setattr(config_mod, "machine_config_path", lambda: path)
+
+    def test_machine_beats_builtin_defaults(self, tmp_path, monkeypatch):
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  image: machine-image:v1\n")
+        self._patch_machine(monkeypatch, machine)
+        # No user global / project: machine value wins over the built-in default.
+        merged = load_merged_config(tmp_path / "no-global.yaml")
+        assert merged.box_image == "machine-image:v1"
+
+    def test_user_global_beats_machine(self, tmp_path, monkeypatch):
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  image: machine-image:v1\n")
+        self._patch_machine(monkeypatch, machine)
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  image: user-image:v2\n")
+        merged = load_merged_config(global_path)
+        assert merged.box_image == "user-image:v2"
+
+    def test_full_precedence_machine_user_workset_project(self, tmp_path, monkeypatch):
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  image: machine:1\n  crab: claude\n")
+        self._patch_machine(monkeypatch, machine)
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  image: user:2\n")
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: ws:3\n")
+        project_path = tmp_path / "project.yaml"
+        project_path.write_text("box:\n  image: proj:4\n")
+        merged = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
+        # project wins for image; crab only set at machine so it survives.
+        assert merged.box_image == "proj:4"
+        assert merged.box_crab == "claude"
+
+    def test_missing_machine_file_is_empty_level(self, tmp_path, monkeypatch):
+        self._patch_machine(monkeypatch, tmp_path / "absent.yaml")
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  image: user:1\n")
+        merged = load_merged_config(global_path)
+        assert merged.box_image == "user:1"
+
+    def test_machine_bootstrap_program(self, tmp_path, monkeypatch):
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  bootstrap_program: zellij\n")
+        self._patch_machine(monkeypatch, machine)
+        merged = load_merged_config(tmp_path / "no-global.yaml")
+        assert merged.box_bootstrap_program == "zellij"
+        # User global overrides the machine value with a different non-default.
+        # (Like every layer here, the overlay only applies non-default fields,
+        # so the user value must differ from the built-in default to win.)
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  bootstrap_program: screen\n")
+        merged2 = load_merged_config(global_path)
+        assert merged2.box_bootstrap_program == "screen"
+
+    def test_bootstrap_program_default(self, tmp_path, monkeypatch):
+        self._patch_machine(monkeypatch, tmp_path / "absent.yaml")
+        merged = load_merged_config(tmp_path / "no-global.yaml")
+        assert merged.box_bootstrap_program == "tmux"
+
+
 class TestFlattenToml:
     def test_nested_dict(self):
         data = {"paths": {"boxes": "x", "shell": "y"}}

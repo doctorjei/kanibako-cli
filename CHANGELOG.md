@@ -88,6 +88,24 @@ in path-like values:
   `start` uses (workset tier + 4-level crab walk + layered env), so it matches
   what a real launch produces.
 
+### Added (v1.5.0 — machine config layer, configurable bootstrap, launch check)
+
+- **`/etc/kanibako/` machine-wide config layer.** A new resolver source for all
+  config, below `~/.config` user config and above built-in defaults (user wins
+  over `/etc`; `/etc` wins over defaults). `/etc/kanibako/kanibako.yaml` feeds the
+  general config stacks; `/etc/kanibako/image-baseline.yaml` overlays the baseline.
+- **Configurable bootstrap program.** The program that runs the interactive
+  session is now the `box_bootstrap_program` config key (default `tmux`),
+  resolver-backed so it is project/workset/box overridable. tmux keeps its
+  `new-session`/`attach` shape; any other program is exec'd directly.
+- **Two-tier baseline check at launch.** Before a box launches, the configured
+  image is probed once: the bootstrap program is **launch-critical** (missing →
+  hard stop, with a reminder that a shell is still reachable to investigate), and
+  the rest of the baseline is **warn-only** (never blocks; warnings are persisted
+  to `$XDG_STATE_HOME/kanibako/launch-issues.<box>` and reprinted after the
+  session closes). `kanibako diagnose` (rig) gains `--all`/`--only`/`--skip` and
+  defaults to the single configured image.
+
 ### Added (v1.5.0 — image baseline manifest + `baseline` command)
 
 The set of tools every kanibako box must provide is now declared data, decoupled

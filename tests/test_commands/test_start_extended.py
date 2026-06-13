@@ -894,3 +894,206 @@ class TestVaultTmpfsMode:
                 extra_args=[],
             )
             assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is False
+
+
+class TestConfigurableBootstrap:
+    """PART C: the persistent bootstrap program is configurable (default tmux)."""
+
+    def test_default_bootstrap_is_tmux(self, start_mocks):
+        with start_mocks() as m:
+            # merged.box_bootstrap_program defaults to "tmux" in the fixture.
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            run_kwargs = m.runtime.run.call_args.kwargs
+            assert run_kwargs["entrypoint"] == "tmux"
+            assert run_kwargs["cli_args"][:4] == [
+                "new-session", "-s", "kanibako", "--",
+            ]
+            exec_args = m.runtime.exec.call_args[0]
+            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+
+    def test_non_tmux_bootstrap_execs_program_directly(self, start_mocks):
+        with start_mocks() as m:
+            m.merged.box_bootstrap_program = "zellij"
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            run_kwargs = m.runtime.run.call_args.kwargs
+            # Non-tmux: program is exec'd with the inner command + args (no
+            # tmux new-session shape).
+            assert run_kwargs["entrypoint"] == "zellij"
+            cli_args = run_kwargs["cli_args"]
+            assert "new-session" not in cli_args
+            assert cli_args[0] == "claude"  # inner command (default entrypoint)
+            # Reattach uses the program bare (no -t kanibako session contract).
+            exec_args = m.runtime.exec.call_args[0]
+            assert exec_args[1] == ["zellij"]
+
+    def test_non_tmux_reattach_when_running(self, start_mocks):
+        with start_mocks() as m:
+            m.merged.box_bootstrap_program = "zellij"
+            m.runtime.is_running.return_value = True
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            exec_args = m.runtime.exec.call_args[0]
+            assert exec_args[1] == ["zellij"]
+
+
+class TestLaunchBaselineCheckIntegration:
+    """PART D: the two-tier launch check gates / warns in _run_container."""
+
+    def test_bootstrap_missing_hard_stops(self, start_mocks, capsys):
+        from kanibako.commands.start import _BOOTSTRAP_MISSING
+
+        with start_mocks() as m:
+            m.launch_check.return_value = _BOOTSTRAP_MISSING
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+        assert rc == 1
+        m.runtime.run.assert_not_called()
+
+    def test_baseline_missing_proceeds(self, start_mocks):
+        """Tier-2 missing baseline tools never block the launch."""
+        with start_mocks() as m:
+            m.launch_check.return_value = [("ripgrep", "rg")]
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            # Launch proceeds despite the tier-2 warning.
+            m.runtime.run.assert_called_once()
+        assert rc == 0
+
+
+class TestCheckLaunchBaselineUnit:
+    """PART D: _check_launch_baseline tiers + state-file surfacing (probe mocked)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace()  # only used for the state path via xdg
+
+    def test_tier1_missing_returns_sentinel_with_shell_reminder(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from kanibako.commands import start as start_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        # Probe: bootstrap program 'tmux' is among the missing.
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=["tmux", "rg"]
+        ):
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+            )
+        assert result is start_mod._BOOTSTRAP_MISSING
+        err = capsys.readouterr().err
+        assert "bootstrap program 'tmux'" in err
+        # Shell-availability reminder so the user can investigate.
+        assert "shell IS still available" in err
+        assert "bash" in err
+
+    def test_tier2_missing_warns_and_persists(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from kanibako.commands import start as start_mod
+        from kanibako import baseline as baseline_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+
+        # Use a known baseline so we can assert the missing exe maps to a pkg.
+        monkeypatch.setattr(
+            baseline_mod, "load_baseline",
+            lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
+        )
+        # Bootstrap present (tmux), but 'rg' missing.
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=["rg"]
+        ):
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+            )
+        assert result == [("ripgrep", "rg")]
+        # Persisted to the state file.
+        issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
+        assert issues.is_file()
+        assert "ripgrep: rg" in issues.read_text()
+        # And printed before launch (bonus).
+        assert "missing baseline tools" in capsys.readouterr().err
+
+    def test_tier2_clean_clears_stale_state(self, tmp_path, monkeypatch):
+        from kanibako.commands import start as start_mod
+        from kanibako import baseline as baseline_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        monkeypatch.setattr(
+            baseline_mod, "load_baseline", lambda: {"tmux": ["tmux"]},
+        )
+        # Pre-seed a stale issues file.
+        issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
+        issues.parent.mkdir(parents=True, exist_ok=True)
+        issues.write_text("ripgrep: rg\n")
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=[]
+        ):
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+            )
+        assert result == []
+        assert not issues.exists()
+
+    def test_print_launch_issues_reprints(self, tmp_path, monkeypatch, capsys):
+        from kanibako.commands import start as start_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
+        issues.parent.mkdir(parents=True, exist_ok=True)
+        issues.write_text("ripgrep: rg\n")
+        start_mod._print_launch_issues(self._std(tmp_path), "box1")
+        err = capsys.readouterr().err
+        assert "missing baseline tools" in err
+        assert "ripgrep: rg" in err
+
+    def test_single_probe_covers_bootstrap_and_baseline(
+        self, tmp_path, monkeypatch
+    ):
+        """Only ONE ephemeral probe runs, checking bootstrap + all baseline."""
+        from kanibako.commands import start as start_mod
+        from kanibako import baseline as baseline_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        monkeypatch.setattr(
+            baseline_mod, "load_baseline",
+            lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
+        )
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=[]
+        ) as mock_probe:
+            start_mod._check_launch_baseline(
+                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+            )
+        assert mock_probe.call_count == 1
+        probed = mock_probe.call_args[0][2]
+        # tmux appears once (bootstrap + baseline dedup), rg included.
+        assert probed[0] == "tmux"
+        assert probed.count("tmux") == 1
+        assert "rg" in probed

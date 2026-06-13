@@ -206,6 +206,13 @@ def start_mocks():
             patch("builtins.open", MagicMock()) as m_open,
             patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,
             patch("kanibako.commands.start.registry_path"),
+            # Two-tier launch baseline check: default to "all present" so the
+            # probe never spins a real container in unit tests. Individual tests
+            # override m_launch_check to exercise tier-1/tier-2 behavior.
+            patch(
+                "kanibako.commands.start._check_launch_baseline",
+                return_value=[],
+            ) as m_launch_check,
         ):
             proj = MagicMock()
             proj.is_new = False
@@ -228,6 +235,7 @@ def start_mocks():
             merged = MagicMock()
             merged.box_image = "test:latest"
             merged.box_crab = ""
+            merged.box_bootstrap_program = "tmux"
             merged.box_share_images = False
             # Helpers off by default in the mock (MagicMock attrs are truthy);
             # individual tests opt in by setting merged.allow_helpers = True.
@@ -297,6 +305,7 @@ def start_mocks():
                 fcntl=m_fcntl,
                 open=m_open,
                 load_registry=m_load_registry,
+                launch_check=m_launch_check,
             )
 
     return _make

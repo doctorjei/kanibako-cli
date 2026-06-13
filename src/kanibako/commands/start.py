@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from kanibako.crabs import load_crab_config, write_crab_config
+from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
@@ -182,8 +183,8 @@ def run_start(args: argparse.Namespace) -> int:
     elif explicit_ephemeral:
         persistent = False
     else:
-        # Default: persistent when tmux is available
-        persistent = _tmux_available()
+        # Default: persistent when the configured bootstrap program is available
+        persistent = _bootstrap_available(_resolve_bootstrap_program())
     env_vars = getattr(args, "env", None) or []
     project_dir = getattr(args, "project", None)
     agent_args = getattr(args, "agent_args", [])
@@ -266,9 +267,166 @@ def run_shell(args: argparse.Namespace) -> int:
     )
 
 
-def _tmux_available() -> bool:
-    """Check if tmux is installed."""
-    return shutil.which("tmux") is not None
+def _resolve_bootstrap_program() -> str:
+    """Resolve the configured bootstrap program for the host-side default-mode
+    heuristic (machine + user global, no project).
+
+    The authoritative per-launch value is read from the fully-merged config in
+    ``_run_container`` (which includes workset/project/CLI overrides); this is
+    only the cheap pre-resolution used to pick the default persistence mode.
+    """
+    try:
+        cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        return load_merged_config(cfg_file, None).box_bootstrap_program
+    except Exception:
+        return "tmux"
+
+
+def _bootstrap_available(program: str = "tmux") -> bool:
+    """Check if the host-side bootstrap program is installed.
+
+    Used to decide the default persistence mode (persistent only when the
+    bootstrap program is present on the host, since reattach shells out to it).
+    """
+    return shutil.which(program) is not None
+
+
+# Sentinel returned by _check_launch_baseline when the launch-critical bootstrap
+# program is missing from the image (tier-1 hard-stop).
+_BOOTSTRAP_MISSING = object()
+
+
+def _launch_issues_path(std, container_name: str) -> Path:
+    """State-file path for a box's tier-2 launch warnings.
+
+    Uses XDG_STATE (``$XDG_STATE_HOME/kanibako/launch-issues.<box>``) so the
+    warnings survive the bootstrap session and can be reprinted on exit.
+    """
+    state_home = xdg("XDG_STATE_HOME", ".local/state")
+    return state_home / "kanibako" / f"launch-issues.{container_name}"
+
+
+def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std):
+    """Run the two-tier baseline probe against *image* before launch.
+
+    Performs ONE ephemeral probe covering the bootstrap program (tier 1) plus
+    every baseline executable (tier 2).
+
+    * Tier 1 — if the bootstrap program is missing, prints a hard-stop message
+      (noting a shell is still reachable to investigate) and returns
+      :data:`_BOOTSTRAP_MISSING`.
+    * Tier 2 — returns the list of ``(package, executable)`` pairs whose
+      executable is missing.  These are WARN-only: they are persisted to the
+      box's launch-issues state file and surfaced after the session closes.
+    """
+    from kanibako import baseline as baseline_mod
+
+    pairs = baseline_mod.executables()  # [(pkg, exe), ...]
+    baseline_exes = [exe for _pkg, exe in pairs]
+    exe_to_pkg = {exe: pkg for pkg, exe in pairs}
+
+    # One probe for bootstrap + all baseline exes (dedup, bootstrap first).
+    probe_exes: list[str] = [bootstrap_program]
+    for exe in baseline_exes:
+        if exe not in probe_exes:
+            probe_exes.append(exe)
+    missing = set(probe_missing_executables(runtime, image, probe_exes))
+
+    # TIER 1: bootstrap program.
+    if bootstrap_program in missing:
+        print(
+            f"Error: the bootstrap program '{bootstrap_program}' is not "
+            f"installed in image '{image}'.\n"
+            f"  Kanibako cannot start the interactive session without it.\n"
+            f"  A shell IS still available to investigate, e.g.:\n"
+            f"      {runtime.cmd} run --rm -it {image} bash\n"
+            f"  or, once a box exists:  kanibako shell\n"
+            f"  Install it in the image or set 'box.bootstrap_program' to an "
+            f"installed program.",
+            file=sys.stderr,
+        )
+        return _BOOTSTRAP_MISSING
+
+    # TIER 2: rest of the baseline (warn only).
+    tier2 = [
+        (exe_to_pkg.get(exe, "?"), exe)
+        for exe in baseline_exes
+        if exe in missing
+    ]
+
+    issues_path = _launch_issues_path(std, container_name)
+    try:
+        if tier2:
+            issues_path.parent.mkdir(parents=True, exist_ok=True)
+            issues_path.write_text(
+                "\n".join(f"{pkg}: {exe}" for pkg, exe in tier2) + "\n"
+            )
+            # Print before launch too (bonus; the alt-screen wipes it, hence we
+            # also reprint after the session closes).
+            print(
+                "Warning: the image is missing baseline tools — the session "
+                "will still launch:",
+                file=sys.stderr,
+            )
+            for pkg, exe in tier2:
+                print(f"  - {pkg}: '{exe}'", file=sys.stderr)
+        else:
+            # Clear any stale issues from a previous launch.
+            issues_path.unlink(missing_ok=True)
+    except OSError:
+        pass  # best-effort; never block launch on the state file.
+
+    return tier2
+
+
+def _print_launch_issues(std, container_name: str) -> None:
+    """Reprint a box's persisted tier-2 launch warnings (post-session)."""
+    issues_path = _launch_issues_path(std, container_name)
+    try:
+        text = issues_path.read_text().strip()
+    except OSError:
+        return
+    if not text:
+        return
+    print(
+        "\nNote: this box's image is missing baseline tools "
+        f"(from {issues_path}):",
+        file=sys.stderr,
+    )
+    for line in text.splitlines():
+        print(f"  - {line}", file=sys.stderr)
+    print(
+        "  Run 'kanibako rig diagnose' to recheck, or rebuild/update the image.",
+        file=sys.stderr,
+    )
+
+
+def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[str, list[str]]:
+    """Build the (entrypoint, args) that launches *inner_cmd* under *program*.
+
+    For tmux (the default) this preserves the persistent-session shape
+    ``tmux new-session -s kanibako -- <inner_cmd> <cli_args...>``.  For any other
+    bootstrap program the contract is intentionally MINIMAL/best-effort: the
+    program is exec'd with the inner command and its args appended
+    (``<program> <inner_cmd> <cli_args...>``); a non-tmux program is responsible
+    for whatever session/multiplexing semantics it wants.
+    """
+    if program == "tmux":
+        args = ["new-session", "-s", "kanibako", "--", inner_cmd, *cli_args]
+        return "tmux", args
+    return program, [inner_cmd, *cli_args]
+
+
+def _bootstrap_attach(program: str) -> list[str]:
+    """Build the in-container command that re-attaches to the bootstrap session.
+
+    tmux uses ``tmux attach -t kanibako``; for a non-tmux bootstrap (which has
+    no kanibako-named session contract) we fall back to exec'ing the program
+    bare (best-effort) — non-tmux reattach is not a guaranteed feature.
+    """
+    if program == "tmux":
+        return ["tmux", "attach", "-t", "kanibako"]
+    return [program]
 
 
 def _tmux_session_name(project_name: str) -> str:
@@ -416,6 +574,7 @@ def _run_container(
     )
 
     image = merged.box_image
+    bootstrap_program = merged.box_bootstrap_program or "tmux"
 
     # Persist image override for new projects so it becomes the default
     if proj.is_new and image_override:
@@ -474,6 +633,16 @@ def _run_container(
     from kanibako.freshness import check_image_freshness
     check_image_freshness(runtime, image, std.cache_path)
 
+    # Two-tier launch verification (one ephemeral probe covers both tiers):
+    #   TIER 1 (bootstrap) — missing → HARD STOP before launch.
+    #   TIER 2 (rest of baseline) — missing → WARN only; collected for surfacing
+    #   after the bootstrap session closes (and persisted to a state file).
+    tier2_missing = _check_launch_baseline(
+        runtime, image, bootstrap_program, container_name_for(proj), std,
+    )
+    if tier2_missing is _BOOTSTRAP_MISSING:
+        return 1
+
     # Resolve target (agent plugin) and detect installation
     logger = get_logger("start")
     is_agent_mode = entrypoint is None
@@ -529,7 +698,7 @@ def _run_container(
             if target and proj.group_auth:
                 target.refresh_credentials(proj.shell_path)
             return runtime.exec(
-                container_name, ["tmux", "attach", "-t", "kanibako"]
+                container_name, _bootstrap_attach(bootstrap_program)
             )
         # Stale stopped container: remove before recreating
         if runtime.container_exists(container_name):
@@ -945,14 +1114,12 @@ def _run_container(
         if not entrypoint and target:
             entrypoint = target.default_entrypoint
 
-        # Persistent mode: wrap command with tmux
+        # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
             inner_cmd = entrypoint or "/bin/bash"
-            tmux_args = ["new-session", "-s", "kanibako", "--", inner_cmd]
-            if cli_args:
-                tmux_args.extend(cli_args)
-            entrypoint = "tmux"
-            cli_args = tmux_args
+            entrypoint, cli_args = _bootstrap_wrap(
+                bootstrap_program, inner_cmd, list(cli_args or []),
+            )
 
         try:
             # Run the container
@@ -1036,13 +1203,13 @@ def _run_container(
                 )
                 return 1
 
-            # Attach to the new tmux session.  The container may not be
+            # Attach to the new bootstrap session.  The container may not be
             # fully ready for exec even though is_running() returned True
             # (podman race: "container state improper").  Retry a few times.
             _max_exec_attempts = 5
             for _exec_attempt in range(1, _max_exec_attempts + 1):
                 rc = runtime.exec(
-                    container_name, ["tmux", "attach", "-t", "kanibako"]
+                    container_name, _bootstrap_attach(bootstrap_program)
                 )
                 if rc == 0:
                     break
@@ -1108,6 +1275,10 @@ def _run_container(
                     file=sys.stderr,
                 )
 
+        # Surface any tier-2 baseline warnings now that the bootstrap session
+        # has closed (the alt-screen has been torn down).
+        _print_launch_issues(std, container_name)
+
         return rc
 
     finally:
@@ -1169,7 +1340,7 @@ def _build_effective_state(
     to box > crab > floor, i.e. project override > crab state > target default —
     identical to the prior two-source merge.
     """
-    from kanibako.config import read_crab_settings
+    from kanibako.config import machine_config_path, read_crab_settings
     from kanibako.settings_resolve import (
         LevelView,
         ResolveCtx,
@@ -1197,14 +1368,18 @@ def _build_effective_state(
     ws_vals = _read(workset_config_path)
     crab_vals = dict(crab_cfg.state)
     sys_vals = _read(global_config_path)
+    machine_vals = _read(machine_config_path())
     floor = {d.key: d.default for d in descriptors}
 
-    # Most-specific first; the floor is the system level's declared defaults.
+    # Most-specific first; the machine (/etc) layer is least-specific and carries
+    # the declared-defaults floor (so /etc set-values beat the floor, and the
+    # floor remains the ultimate fallback).
     levels = [
         LevelView("box", box_vals),
         LevelView("workset", ws_vals),
         LevelView("crab", crab_vals),
-        LevelView("system", sys_vals, defaults=floor),
+        LevelView("system", sys_vals),
+        LevelView("machine", machine_vals, defaults=floor),
     ]
 
     keys = (
@@ -1213,6 +1388,7 @@ def _build_effective_state(
         | set(ws_vals)
         | set(crab_vals)
         | set(sys_vals)
+        | set(machine_vals)
     )
 
     ctx = ResolveCtx(
@@ -1256,7 +1432,7 @@ def _apply_init_seeds(
     """
     import shutil
 
-    from kanibako.config import read_seeds
+    from kanibako.config import machine_config_path, read_seeds
     from kanibako.settings_resolve import (
         GUEST_HOME,
         LevelView,
@@ -1267,12 +1443,15 @@ def _apply_init_seeds(
 
     default_seeds = target.default_seeds() if target is not None else {}
 
-    # Four precedence levels, most-specific first; crab carries the defaults.
+    # Five precedence levels, most-specific first; crab carries the target's
+    # declared seed defaults, and machine (/etc) is the least-specific file
+    # source below the user-global system config.
     levels = [
         LevelView("box", read_seeds(project_toml)),
         LevelView("workset", read_seeds(workset_config_path)),
         LevelView("crab", read_seeds(crab_config_path), defaults=default_seeds),
         LevelView("system", read_seeds(global_config_path)),
+        LevelView("machine", read_seeds(machine_config_path())),
     ]
 
     workset_name = (
@@ -1357,18 +1536,23 @@ def _build_share_mounts(
     read-write share are created best-effort (mirrors the old SHARED-mount
     behavior) so podman does not stub them; a bad source never crashes launch.
     """
-    from kanibako.config import read_shares
+    from kanibako.config import machine_config_path, read_shares
     from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
     from kanibako.settings_shares import resolve_shares
 
     default_shares = target.default_shares() if target is not None else {}
 
-    # Four precedence levels, most-specific first.
+    # Five precedence levels, most-specific first; crab carries the target's
+    # declared share defaults, and machine (/etc/kanibako/kanibako.yaml) is the
+    # least-specific file source below the user-global system config.  (The
+    # additive image-baseline overlay lives separately in baseline.load_baseline,
+    # which reads /etc/kanibako/image-baseline.yaml.)
     levels = [
         LevelView("box", read_shares(project_toml)),
         LevelView("workset", read_shares(workset_config_path)),
         LevelView("crab", read_shares(crab_config_path), defaults=default_shares),
         LevelView("system", read_shares(global_config_path)),
+        LevelView("machine", read_shares(machine_config_path())),
     ]
 
     # Source roots per scope group (concrete host paths → expand_expr verbatim).

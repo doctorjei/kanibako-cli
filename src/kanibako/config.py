@@ -20,6 +20,7 @@ _DEFAULTS = {
     "paths_vault": "vault",
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_crab": "",
+    "box_bootstrap_program": "tmux",
 }
 
 # Backward-compat aliases: old field name -> new field name.
@@ -37,6 +38,7 @@ class KanibakoConfig:
     paths_vault: str = _DEFAULTS["paths_vault"]
     box_image: str = _DEFAULTS["box_image"]
     box_crab: str = _DEFAULTS["box_crab"]
+    box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
     allow_helpers: bool = True
     box_share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
@@ -79,6 +81,16 @@ def config_file_path(config_home: Path) -> Path:
     if old_path.exists():
         return old_path
     return new_path
+
+
+def machine_config_path() -> Path:
+    """Return the machine-wide config path (``/etc/kanibako/kanibako.yaml``).
+
+    This sits BELOW the user's ``~/.config`` config and ABOVE the built-in
+    ``_DEFAULTS``: a site admin can set defaults for all users that an individual
+    user can still override.  Missing file → treated as an empty level.
+    """
+    return Path("/etc/kanibako/kanibako.yaml")
 
 
 def migrate_config(config_home: Path) -> Path:
@@ -140,16 +152,35 @@ def load_merged_config(
     workset_path: Path | None = None,
     cli_overrides: dict[str, str] | None = None,
 ) -> KanibakoConfig:
-    """Load global config, overlay workset config, project config, then CLI overrides.
+    """Load machine + global config, overlay workset, project, then CLI overrides.
 
-    Precedence: CLI flags > project.yaml > workset config.yaml > kanibako.yaml > hardcoded defaults.
+    Precedence: CLI flags > project.yaml > workset config.yaml > kanibako.yaml
+    (user) > /etc/kanibako/kanibako.yaml (machine) > hardcoded defaults.
+
+    The machine layer (``/etc/kanibako/kanibako.yaml``) is the least-specific
+    file source: it beats the built-in defaults but the user's ``~/.config``
+    global config beats it.  A missing machine file is an empty level.
     """
-    cfg = load_config(global_path)
     defaults = KanibakoConfig()
-    # system_paths is SYSTEM-ONLY: only the global config supplies it.  Skip it
-    # in the project/workset overlay so a non-global file never clobbers the
-    # global's resolved system path tier (its default {} would otherwise be a
-    # no-op, but skipping makes the system-only invariant explicit).
+    # Start from the machine doc (least-specific file source), then overlay the
+    # user global config's non-default fields so the user wins over /etc while
+    # /etc still wins over the built-in defaults.
+    cfg = load_config(machine_config_path())
+    glob = load_config(global_path)
+    # system_paths is SYSTEM-ONLY: only the global (and machine) config supply
+    # it; skip it in the per-field overlays so a non-global file never clobbers
+    # the resolved system path tier.
+    for fld in fields(glob):
+        if fld.name == "system_paths":
+            continue
+        val = getattr(glob, fld.name)
+        if val != getattr(defaults, fld.name):
+            setattr(cfg, fld.name, val)
+    # system_paths: the global config wins when it supplies one (matches the
+    # prior behavior where load_config(global_path) was the base); else keep
+    # whatever the machine layer provided.
+    if glob.system_paths:
+        cfg.system_paths = glob.system_paths
     if workset_path and workset_path.exists():
         ws = load_config(workset_path)
         # Only override non-default values from workset config.
