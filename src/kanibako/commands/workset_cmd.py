@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -27,7 +28,7 @@ from kanibako.workset import (
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "workset",
-        help="Working set commands (create, list, info, rm, config, connect, disconnect)",
+        help="Working set commands (create, list, info, rm, config, connect, disconnect, share)",
         description="Create and manage working sets of related projects.",
     )
     ws_sub = p.add_subparsers(dest="workset_command", metavar="COMMAND")
@@ -182,6 +183,89 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Set resource to project-isolated (resource keys only)",
     )
     config_p.set_defaults(func=run_config)
+
+    # kanibako workset share add|rm|list
+    share_p = ws_sub.add_parser(
+        "share",
+        help="Manage directories shared into a working set's boxes",
+        description=(
+            "Share host directories into every box launched in a working set.\n\n"
+            "Shares are live bind mounts decided at container creation, so they\n"
+            "take effect on the NEXT box launch (a running box is unaffected).\n"
+            "There is no content sync: 'updating' a share means re-running\n"
+            "'share add' with a new bind, which overwrites the mapping.\n\n"
+            "  workset share add myws data /host/data:/home/agent/data\n"
+            "  workset share add myws docs /host/docs:/srv/docs --mode ro\n"
+            "  workset share rm myws data\n"
+            "  workset share list myws\n"
+            "  workset share list myws --effective\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    share_sub = share_p.add_subparsers(dest="share_command", metavar="COMMAND")
+
+    # share add WORKSET NAME BIND [--mode {ro,rw}]
+    share_add_p = share_sub.add_parser(
+        "add",
+        help="Add (or overwrite) a shared directory",
+        description=(
+            "Add a shared directory to a working set. Re-running 'add' with the "
+            "same NAME overwrites the existing mapping (this is how you 'update' "
+            "a share). BIND is 'host_src:guest_dest'; a relative host_src is "
+            "resolved under the working set root."
+        ),
+    )
+    share_add_p.add_argument("workset", help="Name of the working set")
+    share_add_p.add_argument("name", help="Share name (identifier: [A-Za-z0-9._-]+)")
+    share_add_p.add_argument(
+        "bind", metavar="BIND", help="Bind mapping 'host_src:guest_dest'",
+    )
+    share_add_p.add_argument(
+        "--mode", choices=["ro", "rw"], default="rw",
+        help="Mount mode: 'rw' (read-write, default) or 'ro' (read-only)",
+    )
+    share_add_p.set_defaults(func=run_share_add)
+
+    # share rm WORKSET NAME [--mode {ro,rw}]
+    share_rm_p = share_sub.add_parser(
+        "rm",
+        aliases=["remove"],
+        help="Remove a shared directory",
+        description=(
+            "Remove a shared directory from a working set. With no --mode, the "
+            "share is removed from whichever mode (ro/rw) contains it; --mode is "
+            "required when the same NAME exists in both."
+        ),
+    )
+    share_rm_p.add_argument("workset", help="Name of the working set")
+    share_rm_p.add_argument("name", help="Share name to remove")
+    share_rm_p.add_argument(
+        "--mode", choices=["ro", "rw"], default=None,
+        help="Disambiguate when NAME exists in both ro and rw",
+    )
+    share_rm_p.set_defaults(func=run_share_remove)
+
+    # share list WORKSET [--effective]
+    share_list_p = share_sub.add_parser(
+        "list",
+        aliases=["ls"],
+        help="List a working set's shared directories (default)",
+        description=(
+            "List the shared directories configured for a working set. With "
+            "--effective, resolve each share the way a box launch would and show "
+            "the final source -> dest [mode] mounts (relative host paths joined "
+            "under the working set root)."
+        ),
+    )
+    share_list_p.add_argument("workset", help="Name of the working set")
+    share_list_p.add_argument(
+        "--effective", action="store_true",
+        help="Show resolved mounts (source -> dest [mode]) as a launch would",
+    )
+    share_list_p.set_defaults(func=run_share_list)
+
+    # Default to list if no share subcommand given.
+    share_p.set_defaults(func=run_share_list, effective=False)
 
     # Default to list if no subcommand given.
     p.set_defaults(func=run_list, quiet=False)
@@ -549,4 +633,247 @@ def run_config(args: argparse.Namespace) -> int:
         print(msg)
         return 0
 
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# workset share add | rm | list
+# ---------------------------------------------------------------------------
+
+# Share names are identifiers; the resolver lets a name contain dots, but the
+# user-facing surface keeps them simple/unambiguous.
+_SHARE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+# Reminder printed after a mutation: bind mounts are fixed at creation time.
+_NEXT_LAUNCH_REMINDER = (
+    "Shares apply on the next box launch (bind mounts are fixed at container "
+    "creation; a running box is unaffected)."
+)
+
+
+def _share_key(mode: str, name: str) -> str:
+    """Build the dotted config key for a workset-scoped share."""
+    return f"workset.path.share_{mode}.{name}"
+
+
+def _resolve_share_workset(name: str):
+    """Resolve *name* to a :class:`Workset`, printing + returning on error.
+
+    Returns ``(ws, std)`` on success or ``(None, None)`` on failure (the caller
+    returns 1).
+    """
+    std = _load_std()
+    try:
+        ws = resolve_workset_name(name, std)
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None, None
+    return ws, std
+
+
+def _load_share_doc(ws_config: Path) -> dict:
+    """Load the workset config.yaml as a nested dict (missing → {})."""
+    from kanibako.config_io import load_doc
+
+    return load_doc(ws_config)
+
+
+def run_share_add(args: argparse.Namespace) -> int:
+    """Add (or overwrite) a workset-scoped shared directory.
+
+    Writes ``workset.path.share_{mode}.{name} = host_src:guest_dest`` into the
+    working set's ``config.yaml``. Re-running with the same name overwrites the
+    mapping (this is how a share is "updated"; shares are live bind mounts and
+    no content sync exists).
+    """
+    from kanibako.config_io import dump_doc
+
+    name = args.name
+    if not _SHARE_NAME_RE.match(name):
+        print(
+            f"Error: invalid share name '{name}' "
+            "(allowed characters: letters, digits, '.', '_', '-').",
+            file=sys.stderr,
+        )
+        return 1
+
+    bind = args.bind
+    host_src, sep, guest_dest = bind.partition(":")
+    if not sep or not host_src or not guest_dest or ":" in guest_dest:
+        print(
+            f"Error: invalid bind '{bind}' "
+            "(expected exactly one ':' as 'host_src:guest_dest', non-empty halves).",
+            file=sys.stderr,
+        )
+        return 1
+
+    ws, _ = _resolve_share_workset(args.workset)
+    if ws is None:
+        return 1
+
+    ws_config = _workset_config_path(ws)
+    data = _load_share_doc(ws_config)
+    subtree = data.setdefault("workset", {}).setdefault("path", {}).setdefault(
+        f"share_{args.mode}", {}
+    )
+    existed = name in subtree
+    subtree[name] = bind
+    dump_doc(ws_config, data)
+
+    verb = "Updated" if existed else "Added"
+    print(
+        f"{verb} {args.mode} share '{name}' for working set '{ws.name}': {bind}"
+    )
+    print(_NEXT_LAUNCH_REMINDER)
+    return 0
+
+
+def run_share_remove(args: argparse.Namespace) -> int:
+    """Remove a workset-scoped shared directory from the working set config.
+
+    With ``--mode`` omitted, removes from whichever mode (ro/rw) contains the
+    name; errors if the name exists in both (ambiguous) or in neither (missing).
+    """
+    from kanibako.config_io import dump_doc
+
+    ws, _ = _resolve_share_workset(args.workset)
+    if ws is None:
+        return 1
+
+    ws_config = _workset_config_path(ws)
+    data = _load_share_doc(ws_config)
+    path_tree = data.get("workset", {}).get("path", {})
+
+    def _present(mode: str) -> bool:
+        sub = path_tree.get(f"share_{mode}", {})
+        return isinstance(sub, dict) and args.name in sub
+
+    if args.mode is not None:
+        modes = [args.mode] if _present(args.mode) else []
+    else:
+        modes = [m for m in ("ro", "rw") if _present(m)]
+
+    if not modes:
+        scope = f" ({args.mode})" if args.mode else ""
+        print(
+            f"Error: no share '{args.name}'{scope} configured for "
+            f"working set '{ws.name}'.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if len(modes) > 1:
+        print(
+            f"Error: share '{args.name}' exists in both ro and rw for "
+            f"working set '{ws.name}'; pass --mode to disambiguate.",
+            file=sys.stderr,
+        )
+        return 1
+
+    mode = modes[0]
+    del path_tree[f"share_{mode}"][args.name]
+    dump_doc(ws_config, data)
+
+    print(
+        f"Removed {mode} share '{args.name}' from working set '{ws.name}'."
+    )
+    print(_NEXT_LAUNCH_REMINDER)
+    return 0
+
+
+def run_share_list(args: argparse.Namespace) -> int:
+    """List a working set's shared directories.
+
+    Default: print the working set's own configured shares (raw NAME/MODE →
+    bind). With ``--effective``: resolve via :func:`resolve_shares` using the
+    same workset-root join a launch would apply, and print the final mounts.
+    """
+    from kanibako.config import read_shares
+
+    ws, std = _resolve_share_workset(args.workset)
+    if ws is None:
+        return 1
+
+    ws_config = _workset_config_path(ws)
+    shares = read_shares(ws_config)
+
+    if not shares:
+        print(f"No shares configured for working set '{ws.name}'.")
+        return 0
+
+    if getattr(args, "effective", False):
+        return _print_effective_shares(ws, std, ws_config)
+
+    # Raw view: NAME, MODE, BIND.
+    from kanibako.settings_shares import SHARE_KEY_RE
+
+    rows: list[tuple[str, str, str]] = []
+    for key, value in shares.items():
+        m = SHARE_KEY_RE.match(key)
+        if m is None:
+            continue
+        rows.append((m.group("name"), m.group("mode"), value))
+    rows.sort(key=lambda r: (r[1], r[0]))
+
+    print(f"Shares for working set '{ws.name}':")
+    print(f"  {'NAME':<20} {'MODE':<4}  {'BIND'}")
+    for name, mode, bind in rows:
+        print(f"  {name:<20} {mode:<4}  {bind}")
+    return 0
+
+
+def _print_effective_shares(ws, std, ws_config: Path) -> int:
+    """Resolve and print the workset's shares as launch-time mounts.
+
+    Mirrors ``start.py:_build_share_mounts`` for the workset scope: a relative
+    host_src is joined under the working set root; absolute host_src passes
+    through. The default workset has no root, so relative paths are not joined.
+    """
+    from kanibako.config import read_shares
+    from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
+    from kanibako.settings_shares import resolve_shares
+
+    levels = [LevelView("workset", read_shares(ws_config))]
+
+    scope_roots: dict[str, str] = {}
+    if not ws.is_default:
+        ws_root = str(ws.root)
+        scope_roots["workset.path.share_ro"] = ws_root
+        scope_roots["workset.path.share_rw"] = ws_root
+
+    ctx = ResolveCtx(
+        crab_name=None,
+        workset_name=None if ws.is_default else ws.name,
+        host_home=str(Path.home()),
+        xdg={"XDG_DATA_HOME": str(std.data_home)},
+    )
+
+    resolved_sys = {
+        "system.path.data": str(std.data_path),
+        "system.path.boxes": str(std.boxes),
+        "system.path.crabs": str(std.crabs),
+        "system.path.comms": str(std.comms),
+        "system.path.templates": str(std.templates),
+        "system.path.ws_hints": str(std.ws_hints),
+        "system.path.share_ro": str(std.share_ro),
+        "system.path.share_rw": str(std.share_rw),
+    }
+
+    def _lookup(ref, chain):
+        if ref in resolved_sys:
+            return resolved_sys[ref]
+        raise SettingsError(f"Unresolvable @-reference in share value: {ref}")
+
+    try:
+        mounts = resolve_shares(
+            levels=levels, ctx=ctx, lookup=_lookup, scope_roots=scope_roots,
+        )
+    except SettingsError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Effective shares for working set '{ws.name}':")
+    for m in mounts:
+        mode = "ro" if m.options == "ro" else "rw"
+        print(f"  {m.source} -> {m.destination}  [{mode}]")
     return 0

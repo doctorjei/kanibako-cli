@@ -80,13 +80,33 @@ in path-like values:
   declare `host_src:guest_dest` bind mounts, accumulated `system→crab→workset→box`
   (later wins; per-`(scope,name)` identity). Source roots: `system` →
   `system.path.share_ro|rw`; `crab` → `crabs/{crab}/share`; `workset` → workset
-  root; `box` → an arbitrary host path. (This ships the mechanism only; a
-  user-facing "share a directory" command is a separate follow-on.)
+  root; `box` → an arbitrary host path. (Mechanism only; the user-facing
+  `workset share` command — see below — drives the workset scope.)
 - **Init seeds.** `{level}.path.seeded.{name}` declares `host_src:guest_dest`
   pairs copied **once** into a new box at init.
 - **`kanibako box config --effective`** now resolves through the exact same stack
   `start` uses (workset tier + 4-level crab walk + layered env), so it matches
   what a real launch produces.
+
+### Added (v1.5.0 — workset share command)
+
+A user-facing surface for the scoped-share mechanism, scoped to a working set:
+
+- **`kanibako workset share add <workset> <name> <host_src:guest_dest> [--mode
+  {ro,rw}]`** writes a `workset.path.share_{ro,rw}.{name}` key into the working
+  set's `config.yaml` (default mode `rw`). A relative `host_src` resolves under
+  the working set root; an absolute `host_src` is used as-is. Re-running `add`
+  with the same name overwrites the mapping (this is how a share is "updated" —
+  shares are live bind mounts and no content sync exists).
+- **`kanibako workset share rm <workset> <name> [--mode {ro,rw}]`** (alias
+  `remove`) deletes a configured share. With no `--mode` it removes whichever of
+  ro/rw holds the name; `--mode` is required when the name exists in both.
+- **`kanibako workset share list <workset> [--effective]`** (alias `ls`, default)
+  lists the configured shares (raw `NAME MODE BIND`); `--effective` resolves them
+  the way a launch would and prints the final `source -> dest [mode]` mounts.
+- Shares are bind mounts fixed at container creation, so changes take effect on
+  the **next box launch** (a running box is unaffected); each mutation prints
+  this reminder. The general `kanibako share --scope …` surface is deferred.
 
 ### Changed (v1.5.0 — settings resolver; Phase 3; BREAKING, pre-broad-release)
 
