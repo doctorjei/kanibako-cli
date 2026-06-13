@@ -59,7 +59,9 @@ RUN if command -v npm >/dev/null 2>&1; then \
 
 # LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
 RUN if [ "$VARIANT" = "lxc" ]; then \
-        : > /etc/fstab \
+        apt-get update && apt-get install -y --no-install-recommends slirp4netns \
+        && rm -rf /var/lib/apt/lists/* \
+        && : > /etc/fstab \
         && systemctl mask \
             systemd-remount-fs.service systemd-growfs-root.service \
             dev-hugepages.mount dev-mqueue.mount run-lock.mount \
