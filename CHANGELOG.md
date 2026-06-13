@@ -94,6 +94,11 @@ in path-like values:
   config, below `~/.config` user config and above built-in defaults (user wins
   over `/etc`; `/etc` wins over defaults). `/etc/kanibako/kanibako.yaml` feeds the
   general config stacks; `/etc/kanibako/image-baseline.yaml` overlays the baseline.
+  Known limitation (shared by all file layers): a more-specific layer cannot
+  reset a value back to one that equals the built-in default, because the overlay
+  treats "equals default" as "unset" (e.g. `/etc` setting a non-default
+  `box_bootstrap_program` can't be reset to the default `tmux` by user config).
+  Tracked for a follow-up (explicit-set tracking).
 - **Configurable bootstrap program.** The program that runs the interactive
   session is now the `box_bootstrap_program` config key (default `tmux`),
   resolver-backed so it is project/workset/box overridable. tmux keeps its
