@@ -172,7 +172,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install tooling
-        run: pip install build twine bump2version
+        run: pip install build twine
 
       - name: Compute dev version
         # Base = repo version with any pre-release suffix stripped; serial =
@@ -185,7 +185,19 @@ jobs:
           echo "Building dev version: $DEV"
 
       - name: Stamp dev version (no commit)
-        run: bump2version --no-commit --no-tag --allow-dirty --new-version "$DEV_VERSION" patch
+        # Anchored sed on the package version lines only — NOT bump2version,
+        # whose default serialize can't represent a .devN suffix and corrupts
+        # the file. `^version = "..."` / `^__version__ = "..."` never match the
+        # indented dependency lines, so dep floors stay intact.
+        run: |
+          for f in pyproject.toml packages/agent-claude/pyproject.toml packages/meta/pyproject.toml; do
+            sed -i -E "s/^version = \"[^\"]+\"/version = \"$DEV_VERSION\"/" "$f"
+          done
+          for f in src/kanibako/__init__.py packages/agent-claude/src/kanibako/plugins/claude/__init__.py; do
+            sed -i -E "s/^__version__ = \"[^\"]+\"/__version__ = \"$DEV_VERSION\"/" "$f"
+          done
+          echo "Stamped version $DEV_VERSION:"
+          grep -n '^version = ' pyproject.toml packages/*/pyproject.toml
 
       - name: Build all distributable packages
         # Same package list as the official path; agent-goose excluded (independent).
