@@ -887,6 +887,175 @@ class TestBoxDuplicateToWorkset:
 
 
 # ---------------------------------------------------------------------------
+# TestBoxDuplicateExternal — std-aware copy + refuse-bare-external (Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestBoxDuplicateExternal:
+    """Duplicate behavior around external-connected sources.
+
+    Phase 3 repointed ``_duplicate_to_workset`` at the std-aware
+    ``copy_into_workset`` helper and added the refuse-``--bare``-external policy
+    (connected.yaml is 1:1).
+    """
+
+    def _make_external_connected(self, tmp_home, std, config,
+                                  ws_name="ext-ws", proj_name="ext-proj"):
+        """Create a workset with an EXTERNAL-connected project, return paths.
+
+        Returns ``(ws, ext_dir, proj_name)`` where *ext_dir* lives outside the
+        workset root and is registered in connected.yaml.
+        """
+        ws, _ = _make_workset(tmp_home, std, ws_name)
+        ext_dir = tmp_home / f"{proj_name}_external"
+        ext_dir.mkdir()
+        (ext_dir / "code.py").write_text("print('external')")
+        # Outside the workset root + std -> external wiring (connected.yaml etc.).
+        add_project(ws, proj_name, ext_dir, std)
+        return ws, ext_dir, proj_name
+
+    def test_copy_into_workset_lands_internal_std_aware(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The std-aware helper lands a real INTERNAL workspace, no connection.
+
+        Even when the source lives outside the workset root, a duplicate is a
+        copy (not a connection): ``workspaces/<name>`` is a real directory, not a
+        symlink, and no ``connected.yaml`` entry is written.
+        """
+        from kanibako.commands.box._lifecycle import copy_into_workset
+        from kanibako.paths import ProjectMode
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        proj, project_dir = _make_local_project(tmp_home, std, config, "int_src")
+        ws, _ = _make_workset(tmp_home, std, "marker-ws")
+
+        copy_into_workset(
+            ws, "int_src", proj.metadata_path, proj.shell_path,
+            project_dir, ProjectMode.default, copy_workspace=True, std=std,
+        )
+
+        # Real internal workspace dir with the copied tree (not a symlink).
+        dup_ws = ws.workspaces_dir / "int_src"
+        assert dup_ws.is_dir()
+        assert not dup_ws.is_symlink()
+        assert (dup_ws / "code.py").read_text() == "print('hello')"
+        # Metadata + shell copied.
+        assert (ws.projects_dir / "int_src" / "marker.txt").read_text() == "ac-marker"
+        assert (ws.projects_dir / "int_src" / "shell" / "custom.sh").exists()
+        # No external wiring — duplicate is a copy, not a connection.
+        assert _load_connected(std) == {}
+
+    def test_bare_duplicate_external_source_refused(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``--bare`` on an external-connected source is refused (1:1)."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, ext_dir, proj_name = self._make_external_connected(
+            tmp_home, std, config,
+        )
+
+        args = argparse.Namespace(
+            source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
+            to_mode="workset", bare=True, force=True,
+            workset="ext-ws", project_name="dup-proj",
+        )
+        rc = run_duplicate(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "external-connected" in err
+        # The duplicate was NOT registered.
+        assert not (ws.projects_dir / "dup-proj").exists()
+
+    def test_bare_duplicate_non_external_still_allowed(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A bare duplicate of an ordinary (non-external) source still works."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "plain_bare_src"
+        src_dir.mkdir()
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        args = argparse.Namespace(
+            source_path=str(src_dir), new_path=str(tmp_home / "plain_bare_dst"),
+            to_mode=None, bare=True, force=True,
+        )
+        rc = run_duplicate(args)
+        assert rc == 0
+        assert (std.data_path / "boxes" / "plain_bare_dst").is_dir()
+
+    def test_bare_refusal_runs_before_workset_resolution(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The bare-external refusal fires first, before the to-workset checks.
+
+        A connected external source also resolves as a workset project, but the
+        1:1 refusal gives the clearer, earlier error and never touches state.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, ext_dir, proj_name = self._make_external_connected(
+            tmp_home, std, config, ws_name="ext-ws2", proj_name="ext-proj2",
+        )
+        before = _load_connected(std)
+
+        args = argparse.Namespace(
+            source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
+            to_mode="workset", bare=True, force=True,
+            workset="ext-ws2", project_name="dup-proj",
+        )
+        rc = run_duplicate(args)
+        assert rc == 1
+        assert "external-connected" in capsys.readouterr().err
+        # No state changed by the refusal.
+        assert _load_connected(std) == before
+        assert (ext_dir / "code.py").read_text() == "print('external')"
+
+    def test_non_bare_duplicate_local_to_workset_internal(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Regression: a normal non-bare default->workset duplicate stays internal.
+
+        The std-aware helper must keep producing a real ``workspaces/<name>``
+        directory (not an external symlink) for an ordinary out-of-workset
+        source, with no connected.yaml entry.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj, project_dir = _make_local_project(tmp_home, std, config, "plain_ws_src")
+        ws, _ = _make_workset(tmp_home, std, "plain-ws")
+
+        args = argparse.Namespace(
+            source_path=str(project_dir), new_path=str(tmp_home / "unused"),
+            to_mode="workset", bare=False, force=True,
+            workset="plain-ws", project_name=None,
+        )
+        rc = run_duplicate(args)
+        assert rc == 0
+
+        dup_ws = ws.workspaces_dir / "plain_ws_src"
+        assert dup_ws.is_dir()
+        assert not dup_ws.is_symlink()
+        assert (dup_ws / "code.py").read_text() == "print('hello')"
+        # No external wiring for an internal (copied) workspace.
+        assert _load_connected(std) == {}
+
+
+# ---------------------------------------------------------------------------
 # TestBoxDuplicateFromWorkset
 # ---------------------------------------------------------------------------
 

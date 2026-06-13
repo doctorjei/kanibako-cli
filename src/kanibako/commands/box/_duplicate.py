@@ -24,6 +24,27 @@ from kanibako.paths import (
 from kanibako.utils import confirm_prompt
 
 
+# -- External-source detection --
+
+def _source_is_external(args: argparse.Namespace, std) -> bool:
+    """True when the duplicate's source resolves to an external-connected project.
+
+    An external-connected project is one whose live workspace lives outside its
+    owning workset (recorded in ``connected.yaml``).  Used to refuse a bare
+    duplicate of such a source (the connection is 1:1).
+    """
+    from kanibako.workset import _find_connected_project
+
+    raw = getattr(args, "source_path", None)
+    if not raw:
+        return False
+    try:
+        source_path = Path(raw).resolve()
+    except (OSError, ValueError):
+        return False
+    return _find_connected_project(source_path, std) is not None
+
+
 # -- Cross-mode duplicate helpers --
 
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
@@ -159,7 +180,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
 
 def _duplicate_to_workset(args, std, config) -> int:
     """Duplicate a project into a workset (source untouched)."""
-    from kanibako.commands.box._migrate import _copy_into_workset
+    from kanibako.commands.box._lifecycle import copy_into_workset
     from kanibako.workset import list_worksets, load_workset
 
     ws_name = getattr(args, "workset", None)
@@ -225,7 +246,13 @@ def _duplicate_to_workset(args, std, config) -> int:
             return 2
 
     # Re-root the project into the workset group (copy workspace unless --bare).
-    _copy_into_workset(ws, proj_name, src_proj, source_path, source_mode, copy_workspace=not args.bare)
+    # std-aware: the duplicate always lands a fresh INTERNAL workspace (a copy,
+    # never a connection); a bare duplicate of an external-connected source is
+    # refused upstream in run_duplicate per the 1:1 connected.yaml policy.
+    copy_into_workset(
+        ws, proj_name, src_proj.metadata_path, src_proj.shell_path,
+        source_path, source_mode, copy_workspace=not args.bare, std=std,
+    )
 
     print("Duplicated project to workset:")
     print(f"  from:    {source_path}")
@@ -297,6 +324,23 @@ def run_duplicate(args: argparse.Namespace) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)
+
+    # Refuse --bare on an external-connected source.  connected.yaml is a 1:1
+    # mapping (external path -> one {workset, project}); a bare duplicate has no
+    # workspace of its own, so it could only point at the SAME external dir as
+    # the original -> would violate the 1:1 mapping.
+    if getattr(args, "bare", False) and _source_is_external(args, std):
+        print(
+            "Error: cannot --bare duplicate an external-connected project "
+            "(its connection is 1:1).",
+            file=sys.stderr,
+        )
+        print(
+            "  Use a non-bare copy (lands a fresh workspace), or pass an "
+            "explicit fresh path.",
+            file=sys.stderr,
+        )
+        return 1
 
     # Cross-mode duplication.
     if getattr(args, "to_mode", None) is not None:
