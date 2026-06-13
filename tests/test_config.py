@@ -43,6 +43,20 @@ class TestLoadConfig:
         assert loaded.system_paths["system.path.data"] == "$XDG_DATA_HOME/kanibako"
         assert loaded.system_paths["system.path.boxes"] == "@system.path.data/boxes"
 
+    def test_null_value_resolves_to_default(self, tmp_path):
+        """A lone file with ``foo: null`` resolves foo to its built-in default."""
+        path = tmp_path / "n.yaml"
+        path.write_text("box:\n  bootstrap_program: null\n")
+        cfg = load_config(path)
+        assert cfg.box_bootstrap_program == "tmux"
+
+    def test_empty_value_resolves_to_default(self, tmp_path):
+        """An empty ``foo:`` (None) resolves foo to its built-in default."""
+        path = tmp_path / "e.yaml"
+        path.write_text("box:\n  bootstrap_program:\n")
+        cfg = load_config(path)
+        assert cfg.box_bootstrap_program == "tmux"
+
     def test_system_path_table_populates_system_paths(self, tmp_path):
         """[system.path] keys land in cfg.system_paths (full dotted names)."""
         path = tmp_path / "sys.yaml"
@@ -197,13 +211,79 @@ class TestMachineConfigLayer:
         self._patch_machine(monkeypatch, machine)
         merged = load_merged_config(tmp_path / "no-global.yaml")
         assert merged.box_bootstrap_program == "zellij"
-        # User global overrides the machine value with a different non-default.
-        # (Like every layer here, the overlay only applies non-default fields,
-        # so the user value must differ from the built-in default to win.)
+        # User global overrides the machine value. The overlay is presence-based:
+        # any value the user file actually sets wins over the lower layer, even
+        # one equal to the built-in default.
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  bootstrap_program: screen\n")
         merged2 = load_merged_config(global_path)
         assert merged2.box_bootstrap_program == "screen"
+
+    def test_set_to_default_value_sticks(self, tmp_path, monkeypatch):
+        """A layer setting a field to the built-in default wins over a lower
+        layer's non-default (presence beats the old ``!= default`` guard)."""
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  bootstrap_program: zellij\n")
+        self._patch_machine(monkeypatch, machine)
+        global_path = tmp_path / "global.yaml"
+        # User explicitly sets the built-in default "tmux" — must win.
+        global_path.write_text("box:\n  bootstrap_program: tmux\n")
+        merged = load_merged_config(global_path)
+        assert merged.box_bootstrap_program == "tmux"
+
+    def test_null_resets_to_default(self, tmp_path, monkeypatch):
+        """A YAML ``null`` in a more-specific layer resets to the built-in
+        default, discarding a lower layer's non-default value."""
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  bootstrap_program: zellij\n")
+        self._patch_machine(monkeypatch, machine)
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  bootstrap_program: null\n")
+        merged = load_merged_config(global_path)
+        assert merged.box_bootstrap_program == "tmux"
+
+    def test_empty_value_resets_to_default(self, tmp_path, monkeypatch):
+        """An empty ``foo:`` (parses to None) also resets to the built-in
+        default, same as an explicit ``null``."""
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  bootstrap_program: zellij\n")
+        self._patch_machine(monkeypatch, machine)
+        # Reset via a more-specific project layer using an empty value.
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  bootstrap_program: screen\n")
+        project_path = tmp_path / "project.yaml"
+        project_path.write_text("box:\n  bootstrap_program:\n")
+        merged = load_merged_config(global_path, project_path)
+        assert merged.box_bootstrap_program == "tmux"
+
+    def test_empty_string_is_a_real_value_not_unset(self, tmp_path, monkeypatch):
+        """``""`` is a real value distinct from ``null``: a lower layer sets a
+        non-empty box_crab, a higher layer sets ``""`` and that ``""`` wins
+        (it does NOT reset to box_crab's built-in default, which is also "")."""
+        machine = tmp_path / "machine.yaml"
+        machine.write_text('box:\n  crab: foo\n')
+        self._patch_machine(monkeypatch, machine)
+        global_path = tmp_path / "global.yaml"
+        # Quoted empty string is a real value, not null.
+        global_path.write_text('box:\n  crab: ""\n')
+        merged = load_merged_config(global_path)
+        assert merged.box_crab == ""
+        # Sanity: a non-empty lower value is what we are overriding away from.
+        merged_machine_only = load_merged_config(tmp_path / "no-global.yaml")
+        assert merged_machine_only.box_crab == "foo"
+
+    def test_higher_layer_overrides_after_null(self, tmp_path, monkeypatch):
+        """A null reset is not terminal: a higher layer (CLI override) can set a
+        concrete value afterward and it wins."""
+        machine = tmp_path / "machine.yaml"
+        machine.write_text("box:\n  bootstrap_program: zellij\n")
+        self._patch_machine(monkeypatch, machine)
+        global_path = tmp_path / "global.yaml"
+        global_path.write_text("box:\n  bootstrap_program: null\n")
+        merged = load_merged_config(
+            global_path, cli_overrides={"box_bootstrap_program": "screen"}
+        )
+        assert merged.box_bootstrap_program == "screen"
 
     def test_bootstrap_program_default(self, tmp_path, monkeypatch):
         self._patch_machine(monkeypatch, tmp_path / "absent.yaml")
