@@ -6,6 +6,9 @@ FROM $BASE_IMAGE
 
 ARG AGENT_USER=agent
 ARG VARIANT=oci
+# Pin the kanibako-cli release that ships in the image. Empty = latest on PyPI;
+# a release build passes the matching X.Y.Z so image version tracks cli version.
+ARG KANIBAKO_CLI_VERSION=
 
 USER root
 
@@ -22,34 +25,44 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1); \
 RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; fi \
     && if [ -f /etc/subgid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subgid; fi
 
-# Packages kanibako needs that the droste bases at our tiers don't supply.
-# nodejs/npm back MCP servers + tweakcc. cifs-utils/nfs-common/openssh-client
-# are absent from seed (min) and fiber (oci); they ship in thread/hair
-# (lxc/vm), where reinstalling them is a no-op.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    cifs-utils \
-    nfs-common \
-    nodejs \
-    npm \
-    openssh-client \
-    && rm -rf /var/lib/apt/lists/*
-
-# Lean CLI tools for the seed-based min variant only. fiber (oci) and the
-# thread/hair tiers (lxc/vm) already ship these via droste, so install them
-# only where the base lacks them. gh and uv are intentionally omitted from
-# min — add them locally if a min box ever needs them.
-RUN if [ "$VARIANT" = "min" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends \
-            fd-find \
-            inotify-tools \
-            ripgrep \
-            sshpass \
-        && rm -rf /var/lib/apt/lists/* \
-        && ln -sf /usr/bin/fdfind /usr/local/bin/fd; \
+# Install kanibako-cli first: the shared baseline apt step below derives its
+# package list from `kanibako baseline list`, so the CLI (and its Python deps)
+# must be present before that command runs. Empty KANIBAKO_CLI_VERSION = latest.
+RUN if command -v pip >/dev/null 2>&1; then \
+        pip install --break-system-packages \
+            "kanibako-cli${KANIBAKO_CLI_VERSION:+==$KANIBAKO_CLI_VERSION}" \
+            build twine; \
     fi
 
-RUN if command -v pip >/dev/null 2>&1; then \
-        pip install --break-system-packages kanibako-base build twine; \
+# Shared (all-variant) packages.
+#
+# The baseline tool set (tmux, inotify-tools, ripgrep, fd-find, openssh-client)
+# is the single source of truth kanibako expects in every box; it is derived at
+# build time from `kanibako baseline list` so the image and the CLI never drift.
+#
+# nodejs/npm (MCP servers + tweakcc) and cifs-utils/nfs-common remain explicit
+# image conveniences, NOT part of the baseline contract. They are absent from
+# seed (min) and fiber (oci); they ship in thread/hair (lxc/vm), where
+# reinstalling them is a no-op.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        $(kanibako baseline list) \
+        cifs-utils \
+        nfs-common \
+        nodejs \
+        npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && if command -v fdfind >/dev/null 2>&1; then \
+           ln -sf "$(command -v fdfind)" /usr/local/bin/fd; \
+       fi
+
+# Lean CLI tool for the seed-based min variant only. The shared baseline step
+# above now provides fd-find/inotify-tools/ripgrep for every variant; sshpass
+# stays min-only. gh and uv are intentionally omitted from min — add them
+# locally if a min box ever needs them.
+RUN if [ "$VARIANT" = "min" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            sshpass \
+        && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # tweakcc: custom Claude Code patching tool (requires node/npm)
