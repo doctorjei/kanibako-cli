@@ -1,0 +1,217 @@
+name: Release Images
+
+# rc-then-promote release pipeline for the four kanibako base images, mirroring
+# the cli's release.yml flow (tested-bits == shipped-bits).
+#
+#   * rc tag     v<ver>-rc<n>  (e.g. v1.5.0-rc1)
+#       Builds all four variants and publishes :<ver>-rc<n> rc images. Each
+#       variant is built with --build-arg KANIBAKO_CLI_VERSION=<ver> so the
+#       image bundles the matching kanibako-cli release.
+#
+#   * release tag  v<ver>       (e.g. v1.5.0)   OR   manual promote dispatch
+#       Promotes the already-built rc manifests to :<ver> AND :latest by
+#       copying them by digest (buildx imagetools create) — NO rebuild, so the
+#       promoted tags are byte-identical to the green rc.
+#
+# Triggers on all v* tags and self-gates by job `if`. The existing
+# build-images.yml (manual :latest-only) and prune-tags.yml stay as-is; this
+# workflow is additive (tag-driven rc/promote).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version X.Y.Z (rc build target, e.g. 1.5.0)'
+        type: string
+        required: false
+      rc:
+        description: 'RC number for a manual rc build (e.g. 1)'
+        type: string
+        required: false
+      promote_version:
+        description: 'Promote: version X.Y.Z to publish as :X.Y.Z + :latest'
+        type: string
+        required: false
+      promote_rc:
+        description: 'Promote: source rc number to copy from (e.g. 1)'
+        type: string
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # rc path: build all four variants and publish :<ver>-rc<n>.
+  # Gated on an rc tag push, or a workflow_dispatch supplying version + rc.
+  # ---------------------------------------------------------------------------
+  rc-build:
+    name: rc - build + publish rc images
+    if: >-
+      ${{ (github.event_name == 'push' && contains(github.ref_name, '-rc'))
+          || (github.event_name == 'workflow_dispatch'
+              && inputs.version != '' && inputs.rc != '') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - variant: min
+            base: ghcr.io/doctorjei/droste-seed:1.1.0
+          - variant: oci
+            base: ghcr.io/doctorjei/droste-fiber:1.1.0
+          - variant: lxc
+            base: ghcr.io/doctorjei/droste-thread:1.1.0
+          - variant: vm
+            base: ghcr.io/doctorjei/droste-hair:1.1.0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Resolve rc tag + cli version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+          else
+            TAG="${{ inputs.version }}-rc${{ inputs.rc }}"
+          fi
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+            echo "Tag '$TAG' is malformed; expected X.Y.Z-rcN." >&2
+            exit 1
+          fi
+          CLI_VERSION="${TAG%%-rc*}"
+          echo "rc_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "cli_version=$CLI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building rc images :$TAG with kanibako-cli==$CLI_VERSION"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push kanibako-${{ matrix.variant }} rc
+        uses: docker/build-push-action@v7
+        with:
+          context: containers/
+          file: containers/Containerfile.kanibako
+          push: true
+          # Disable provenance/SBOM attestations so the published manifest is a
+          # single-image manifest that promote can copy cleanly by digest.
+          provenance: false
+          sbom: false
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:${{ steps.ver.outputs.rc_tag }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.base }}
+            VARIANT=${{ matrix.variant }}
+            KANIBAKO_CLI_VERSION=${{ steps.ver.outputs.cli_version }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+
+  # ---------------------------------------------------------------------------
+  # promote path: copy the rc manifests to :<ver> and :latest by digest.
+  # Gated on a final v<ver> (no -rc) tag push, or a workflow_dispatch supplying
+  # promote_version + promote_rc. No rebuild — byte-identical promote.
+  # ---------------------------------------------------------------------------
+  promote:
+    name: Promote rc - :X.Y.Z + :latest (digest copy)
+    if: >-
+      ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+           && !contains(github.ref_name, '-rc'))
+          || (github.event_name == 'workflow_dispatch'
+              && inputs.promote_version != '' && inputs.promote_rc != '') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve version + source rc
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+            RC="${{ inputs.promote_rc }}"
+          else
+            VER="${{ inputs.promote_version }}"
+            RC="${{ inputs.promote_rc }}"
+          fi
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version '$VER' is malformed; expected X.Y.Z (no -rc)." >&2
+            exit 1
+          fi
+          if [ -z "$RC" ]; then
+            echo "Source rc number is required to promote (set promote_rc, or a" >&2
+            echo "vX.Y.Z tag push needs promote_rc supplied via re-dispatch)." >&2
+            exit 1
+          fi
+          if [[ ! "$RC" =~ ^[0-9]+$ ]]; then
+            echo "promote_rc '$RC' must be an integer." >&2
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "rc_tag=${VER}-rc${RC}" >> "$GITHUB_OUTPUT"
+          echo "Promoting :${VER}-rc${RC} -> :${VER} + :latest"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Verify all four rc images exist
+        env:
+          OWNER: ${{ github.repository_owner }}
+          RC_TAG: ${{ steps.ver.outputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for variant in min oci lxc vm; do
+            SRC="${REGISTRY}/${OWNER}/kanibako-${variant}:${RC_TAG}"
+            if docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then
+              echo "OK: $SRC"
+            else
+              echo "MISSING: $SRC" >&2
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more rc images are missing; aborting promote." >&2
+            exit 1
+          fi
+
+      - name: Promote rc -> :X.Y.Z + :latest (no rebuild)
+        env:
+          OWNER: ${{ github.repository_owner }}
+          VER: ${{ steps.ver.outputs.version }}
+          RC_TAG: ${{ steps.ver.outputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          for variant in min oci lxc vm; do
+            PKG="${REGISTRY}/${OWNER}/kanibako-${variant}"
+            SRC="${PKG}:${RC_TAG}"
+            echo "::group::promote kanibako-${variant}"
+            echo "+ docker buildx imagetools create -t ${PKG}:${VER} -t ${PKG}:latest ${SRC}"
+            docker buildx imagetools create \
+              -t "${PKG}:${VER}" \
+              -t "${PKG}:latest" \
+              "${SRC}"
+            echo "::endgroup::"
+          done
+          echo "Promoted all four variants to :${VER} and :latest."
