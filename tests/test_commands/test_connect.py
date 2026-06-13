@@ -10,14 +10,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from kanibako.commands.start import (
-    _tmux_available,
+    _bootstrap_available,
     _tmux_has_session,
     _tmux_session_name,
 )
 
 
 # ---------------------------------------------------------------------------
-# _tmux_available
+# _bootstrap_available
 # ---------------------------------------------------------------------------
 
 
@@ -26,11 +26,11 @@ class TestTmuxAvailable:
 
     def test_returns_true_when_tmux_found(self):
         with patch("kanibako.commands.start.shutil.which", return_value="/usr/bin/tmux"):
-            assert _tmux_available() is True
+            assert _bootstrap_available() is True
 
     def test_returns_false_when_tmux_missing(self):
         with patch("kanibako.commands.start.shutil.which", return_value=None):
-            assert _tmux_available() is False
+            assert _bootstrap_available() is False
 
 
 # ---------------------------------------------------------------------------
@@ -100,12 +100,12 @@ class TestDefaultPersistence:
         args.entrypoint = None
         return args
 
-    def test_persistent_by_default_when_tmux_available(self):
+    def test_persistent_by_default_when_bootstrap_available(self):
         """When neither --persistent nor --ephemeral is given and tmux is
         installed, _run_container receives persistent=True."""
         args = self._make_args()
         with (
-            patch("kanibako.commands.start._tmux_available", return_value=True),
+            patch("kanibako.commands.start._bootstrap_available", return_value=True),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
             patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
@@ -118,7 +118,7 @@ class TestDefaultPersistence:
         """When tmux is not installed, default to ephemeral."""
         args = self._make_args()
         with (
-            patch("kanibako.commands.start._tmux_available", return_value=False),
+            patch("kanibako.commands.start._bootstrap_available", return_value=False),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
             patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
@@ -131,7 +131,7 @@ class TestDefaultPersistence:
         """--persistent forces persistent=True even without tmux."""
         args = self._make_args(persistent=True)
         with (
-            patch("kanibako.commands.start._tmux_available", return_value=False),
+            patch("kanibako.commands.start._bootstrap_available", return_value=False),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
             patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
@@ -144,7 +144,7 @@ class TestDefaultPersistence:
         """--ephemeral forces persistent=False even with tmux."""
         args = self._make_args(ephemeral=True)
         with (
-            patch("kanibako.commands.start._tmux_available", return_value=True),
+            patch("kanibako.commands.start._bootstrap_available", return_value=True),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
             patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
         ):
