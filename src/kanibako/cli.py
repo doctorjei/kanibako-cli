@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.crab_cmd import add_parser as add_crab_parser
     from kanibako.commands.system_cmd import add_parser as add_system_parser
+    from kanibako.commands.baseline_cmd import add_parser as add_baseline_parser
 
     # Setup wizard (before management commands, works pre-init).
     from kanibako.commands.setup_cmd import run_setup
@@ -165,6 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_workset_parser(subparsers)
     add_crab_parser(subparsers)
     add_system_parser(subparsers)
+    add_baseline_parser(subparsers)
 
     return parser
 
@@ -179,7 +181,7 @@ _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
     "start", "stop", "shell", "ps", "list", "create", "rm",
     # Management commands.
-    "box", "rig", "workset", "crab", "system",
+    "box", "rig", "workset", "crab", "system", "baseline",
     # Command aliases (#62).
     "agent", "image", "container",
     # Setup wizard.

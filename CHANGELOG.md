@@ -88,6 +88,24 @@ in path-like values:
   `start` uses (workset tier + 4-level crab walk + layered env), so it matches
   what a real launch produces.
 
+### Added (v1.5.0 — image baseline manifest + `baseline` command)
+
+The set of tools every kanibako box must provide is now declared data, decoupled
+from the image build so it applies to any base (including a foreign `--image`):
+
+- **`image-baseline.yaml`** (shipped as package data) maps apt package → the
+  executables it must provide (`tmux`, `inotify-tools`, `ripgrep`, `fd-find`,
+  `openssh-client`). Install uses the package name; verify uses `command -v` on
+  the executable (package-manager-agnostic). Same-named files at `/etc/kanibako/`
+  then `~/.config/kanibako/` merge additively on top.
+- **`kanibako baseline list|verify|install`.** `list` prints the package names
+  (so an image build can `apt-get install $(kanibako baseline list)`);
+  `--executables` prints the per-package executables. `verify [IMAGE]` probes a
+  single image by default (`--all`, `--only`, `--skip`); exits non-zero if any
+  executable is missing. `install` installs the package set on a debian base.
+- Fixed a wheel packaging bug that omitted `containers/tmux.conf` from the built
+  distribution.
+
 ### Added (v1.5.0 — workset share command)
 
 A user-facing surface for the scoped-share mechanism, scoped to a working set:
