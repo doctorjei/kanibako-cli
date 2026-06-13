@@ -478,8 +478,17 @@ def add_project(
 
 def remove_project(
     ws: Workset, name: str, *, remove_files: bool = False,
+    std: StandardPaths | None = None,
 ) -> WorksetProject:
     """Remove a project from a workset.
+
+    When *std* is provided, the external-connect markers written by
+    :func:`add_project` are undone regardless of *remove_files*: any
+    ``connected.yaml`` entry pointing at this workset+project is dropped and the
+    ``workspaces/{name}`` symlink (external projects) is unlinked.  Unlinking a
+    symlink removes ONLY the link — never the user's external source directory.
+    With *remove_files* the workset-side per-project directories are removed too
+    (symlinks unlinked, real dirs rmtree'd); the external source is left intact.
 
     Raises ``WorksetError`` if no project with *name* exists.
     """
@@ -496,11 +505,37 @@ def remove_project(
     ws.projects.remove(target)
     _write_workset_toml(ws)
 
+    # Always undo the external-connect markers when we have std, so the
+    # connected.yaml redirect never outlives the project (regression from the
+    # connect-external work).
+    if std is not None:
+        mapping = _load_connected(std)
+        stale = [
+            key
+            for key, entry in mapping.items()
+            if entry.get("workset") == ws.name and entry.get("project") == name
+        ]
+        if stale:
+            for key in stale:
+                del mapping[key]
+            _write_connected(std, mapping)
+
+    import shutil
+
+    # The workspaces/{name} marker is a SYMLINK for external projects; unlink it
+    # (removes only the link, never the external target).  Do this regardless of
+    # remove_files so the discoverability symlink never dangles.
+    link = ws.workspaces_dir / name
+    if link.is_symlink():
+        link.unlink()
+
     if remove_files:
-        import shutil
         for parent in (ws.projects_dir, ws.workspaces_dir, ws.vault_dir):
             proj_dir = parent / name
-            if proj_dir.is_dir():
+            if proj_dir.is_symlink():
+                # Defensive: only the link is removed, never its target.
+                proj_dir.unlink()
+            elif proj_dir.is_dir():
                 shutil.rmtree(proj_dir)
 
     return target

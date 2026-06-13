@@ -412,6 +412,60 @@ class TestRemoveProject:
             remove_project(ws, "nonexistent")
 
 
+class TestRemoveExternalProject:
+    """disconnect symmetric cleanup for external-connected projects.
+
+    Regression guard for the connect-external work: removing an external project
+    must drop its connected.yaml entry and the workspaces/{name} symlink, and
+    must NEVER delete the user's external source directory.
+    """
+
+    def _connect_external(self, std, tmp_home):
+        from kanibako.workset import _load_connected
+
+        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+        (external / "file.txt").write_text("keep me")
+        add_project(ws, "extproj", external, std)
+
+        # Sanity: markers exist after connect.
+        assert (ws.workspaces_dir / "extproj").is_symlink()
+        assert str(external) in _load_connected(std)
+        return ws, external
+
+    def test_disconnect_clears_markers_keeps_source(self, std, tmp_home):
+        from kanibako.workset import _load_connected
+
+        ws, external = self._connect_external(std, tmp_home)
+
+        remove_project(ws, "extproj", std=std)
+
+        # connected.yaml entry gone, symlink gone, external source intact.
+        assert str(external) not in _load_connected(std)
+        assert not (ws.workspaces_dir / "extproj").is_symlink()
+        assert not (ws.workspaces_dir / "extproj").exists()
+        assert external.is_dir()
+        assert (external / "file.txt").read_text() == "keep me"
+
+    def test_disconnect_remove_files_keeps_source(self, std, tmp_home):
+        from kanibako.workset import _load_connected
+
+        ws, external = self._connect_external(std, tmp_home)
+
+        # Must not crash on the symlink (rmtree refuses symlinks) and must not
+        # delete the external source.
+        remove_project(ws, "extproj", remove_files=True, std=std)
+
+        assert str(external) not in _load_connected(std)
+        assert not (ws.workspaces_dir / "extproj").exists()
+        assert not (ws.projects_dir / "extproj").exists()
+        assert not (ws.vault_dir / "extproj").exists()
+        # External source dir survives.
+        assert external.is_dir()
+        assert (external / "file.txt").read_text() == "keep me"
+
+
 # ---------------------------------------------------------------------------
 # Workset properties
 # ---------------------------------------------------------------------------
