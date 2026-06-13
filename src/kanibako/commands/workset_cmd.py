@@ -417,7 +417,7 @@ def run_connect(args: argparse.Namespace) -> int:
     project_name = args.project_name or source.resolve().name
 
     try:
-        proj = add_project(ws, project_name, source)
+        proj = add_project(ws, project_name, source, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

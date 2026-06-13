@@ -147,6 +147,80 @@ def _write_registry(std: StandardPaths, registry: dict[str, Path]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Connected (external) redirect index: $XDG_DATA_HOME/kanibako/connected.yaml
+#
+# Maps a resolved EXTERNAL source path to its owning workset+project so that
+# launching from the external directory (or a subdir of it) resolves to the
+# workset.  Only external connects are recorded here; sources inside a workset
+# tree are resolved by ordinary location detection.  Schema:
+#
+#     connected:
+#       /abs/external/repo: {workset: myws, project: foo}
+# ---------------------------------------------------------------------------
+
+def _connected_path(std: StandardPaths) -> Path:
+    return std.data_path / "connected.yaml"
+
+
+def _load_connected(std: StandardPaths) -> dict[str, dict]:
+    """Return ``{abs_path: {"workset": ..., "project": ...}}`` from the index."""
+    path = _connected_path(std)
+    if not path.is_file():
+        return {}
+    data = load_doc(path)
+    return dict(data.get("connected", {}))
+
+
+def _write_connected(std: StandardPaths, mapping: dict[str, dict]) -> None:
+    """Overwrite the connected-external redirect index."""
+    path = _connected_path(std)
+    data: dict = {
+        "connected": {key: mapping[key] for key in sorted(mapping)},
+    }
+    dump_doc(path, data)
+
+
+def _find_connected_project(
+    path: Path, std: StandardPaths,
+) -> tuple[Workset, str] | None:
+    """Resolve *path* (or an ancestor) to its connected workset+project.
+
+    Walks *path* and its ancestors (same ancestor semantics as
+    ``_find_local_ancestor`` in paths.py): the deepest registered external
+    source path that is *path* or an ancestor of it wins.  Returns
+    ``(load_workset(root), project_name)`` on a hit, else ``None``.
+    """
+    mapping = _load_connected(std)
+    if not mapping:
+        return None
+    resolved = path.resolve()
+    best_key: str | None = None
+    best_depth = -1
+    for key in mapping:
+        registered = Path(key)
+        try:
+            resolved.relative_to(registered)
+        except ValueError:
+            continue
+        depth = len(registered.parts)
+        if depth > best_depth:
+            best_key = key
+            best_depth = depth
+    if best_key is None:
+        return None
+    entry = mapping[best_key]
+    ws_name = entry.get("workset")
+    project_name = entry.get("project")
+    if not ws_name or not project_name:
+        return None
+    registry = _load_registry(std)
+    root = registry.get(ws_name)
+    if root is None:
+        return None
+    return load_workset(root), project_name
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -293,8 +367,22 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     return root
 
 
-def add_project(ws: Workset, name: str, source_path: Path) -> WorksetProject:
+def add_project(
+    ws: Workset,
+    name: str,
+    source_path: Path,
+    std: StandardPaths | None = None,
+) -> WorksetProject:
     """Add a project to a workset.  Creates per-project subdirectories.
+
+    When *source_path* resolves OUTSIDE the workset root and *std* is provided,
+    the project is connected to that external directory: the external dir
+    becomes the live workspace.  In that case ``workspaces/{name}`` is created
+    as a SYMLINK to the external dir (discoverability only — never mounted), a
+    ``workspace`` override is written into the project's ``project.yaml``, and a
+    redirect entry is recorded in ``connected.yaml`` so launches from the
+    external path resolve back to this workset.  Sources inside the workset
+    tree keep the normal behavior (a real ``workspaces/{name}`` directory).
 
     Raises ``WorksetError`` if a project with *name* already exists.
     """
@@ -304,14 +392,53 @@ def add_project(ws: Workset, name: str, source_path: Path) -> WorksetProject:
                 f"Project '{name}' already exists in workset '{ws.name}'."
             )
 
-    # Create per-project directories.
-    for parent in (ws.projects_dir, ws.workspaces_dir):
-        (parent / name).mkdir(parents=True, exist_ok=True)
+    resolved_source = source_path.resolve()
+
+    # Determine whether the source is external (outside the workset root).
+    is_external = False
+    if std is not None:
+        try:
+            resolved_source.relative_to(ws.root.resolve())
+        except ValueError:
+            is_external = True
+
+    # Create per-project directories (boxes always real).
+    (ws.projects_dir / name).mkdir(parents=True, exist_ok=True)
     vault_proj = ws.vault_dir / name
     (vault_proj / "ro").mkdir(parents=True, exist_ok=True)
     (vault_proj / "rw").mkdir(parents=True, exist_ok=True)
 
-    proj = WorksetProject(name=name, source_path=source_path.resolve())
+    if is_external:
+        # External: workspaces/{name} is a self-documenting symlink to the
+        # external dir (never mounted — the bind-mount uses the workspace
+        # override).  Write the override + record the redirect.
+        ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
+        link = ws.workspaces_dir / name
+        if not link.exists() and not link.is_symlink():
+            link.symlink_to(resolved_source)
+
+        from kanibako.config import write_project_meta
+
+        project_toml = ws.projects_dir / name / "project.yaml"
+        write_project_meta(
+            project_toml,
+            mode="workset",
+            layout="",
+            workspace=str(resolved_source),
+            shell="",
+            vault_ro="",
+            vault_rw="",
+            name=name,
+        )
+
+        mapping = _load_connected(std)
+        mapping[str(resolved_source)] = {"workset": ws.name, "project": name}
+        _write_connected(std, mapping)
+    else:
+        # Internal (or no std): a real workspace directory.
+        (ws.workspaces_dir / name).mkdir(parents=True, exist_ok=True)
+
+    proj = WorksetProject(name=name, source_path=resolved_source)
     ws.projects.append(proj)
     _write_workset_toml(ws)
     return proj

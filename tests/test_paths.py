@@ -1506,3 +1506,63 @@ class TestPurgeVaultSymlinkCleanup:
         from kanibako.paths import _remove_project_vault_symlink
         _remove_project_vault_symlink(project_path)
         assert not (project_path / "vault").exists()
+
+
+class TestConnectedExternal:
+    """Resolution of EXTERNAL dirs connected to a workset (connected.yaml).
+
+    `add_project(ws, name, external, std)` records the redirect; launching from
+    the external path (or a subdir, or the discoverability symlink) must resolve
+    to the named workset with the external dir as the live workspace.
+    """
+
+    def _setup(self, config_file, tmp_home):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        from kanibako.workset import add_project, create_workset
+        ws_root = tmp_home / "worksets" / "ext-set"
+        ws = create_workset("ext-set", ws_root, std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+        add_project(ws, "extproj", external, std)
+        return config, std, ws, external
+
+    def test_resolve_from_external_path(self, config_file, tmp_home):
+        """Resolve from the external path → named workset, external workspace."""
+        config, std, ws, external = self._setup(config_file, tmp_home)
+
+        result = detect_project_mode(external, std, config)
+        assert result.mode is ProjectMode.workset
+
+        proj = resolve_any_project(std, config, project_dir=str(external))
+        assert proj.group is not None
+        assert proj.group.is_default is False
+        assert proj.group.name == "ext-set"
+        assert proj.project_path == external
+
+    def test_resolve_from_external_subdir(self, config_file, tmp_home):
+        """Resolve from a SUBDIR of the external repo → same workset (ancestor)."""
+        config, std, ws, external = self._setup(config_file, tmp_home)
+        subdir = external / "src" / "nested"
+        subdir.mkdir(parents=True)
+
+        result = detect_project_mode(subdir, std, config)
+        assert result.mode is ProjectMode.workset
+
+        proj = resolve_any_project(std, config, project_dir=str(subdir))
+        assert proj.group is not None
+        assert proj.group.is_default is False
+        assert proj.group.name == "ext-set"
+        assert proj.project_path == external
+
+    def test_resolve_from_symlink_matches_external(self, config_file, tmp_home):
+        """Resolve from the workspaces/{name} symlink → identical to external."""
+        config, std, ws, external = self._setup(config_file, tmp_home)
+        link = ws.workspaces_dir / "extproj"
+        assert link.is_symlink()
+
+        proj = resolve_any_project(std, config, project_dir=str(link))
+        assert proj.group is not None
+        assert proj.group.is_default is False
+        assert proj.group.name == "ext-set"
+        assert proj.project_path == external
