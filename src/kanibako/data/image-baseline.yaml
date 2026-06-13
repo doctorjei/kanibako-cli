@@ -1,0 +1,29 @@
+# kanibako image baseline — the universal in-box runtime contract.
+#
+# These are the tools kanibako itself relies on inside EVERY box variant
+# (min/oci/lxc/vm).  This file is the single source of truth consumed by:
+#   - `kanibako baseline list`      → apt package names (for the Containerfile)
+#   - `kanibako baseline verify`    → `command -v <executable>` probes
+#   - `kanibako baseline install`   → apt-get install of the package names
+#
+# Schema: a mapping of  apt-package-name -> [executables it must provide].
+#
+# The split matters: the KEY is the package name passed to `apt-get install`
+# (auto-install assumes apt/debian), while the VALUES are the executables
+# checked with `command -v`.  Verify is package-manager-agnostic — it only
+# probes executables, so it works on any distro — but auto-install is
+# debian/apt-specific.  Several packages install an executable whose name
+# differs from the package (e.g. ripgrep -> rg, fd-find -> fdfind), which is
+# exactly why the two halves are tracked separately.
+#
+# This is the LOCKED universal contract.  Image conveniences that are NOT part
+# of the baseline (cifs-utils, nfs-common, nodejs, npm, sshpass, ...) stay
+# explicit in the image's Containerfile, not here.  Site/host overlays may add
+# packages or override an existing package's executable list via
+# /etc/kanibako/image-baseline.yaml and ~/.config/kanibako/image-baseline.yaml.
+
+tmux: [tmux]
+inotify-tools: [inotifywait, inotifywatch]
+ripgrep: [rg]
+fd-find: [fdfind]
+openssh-client: [ssh]

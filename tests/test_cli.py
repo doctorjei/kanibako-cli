@@ -797,7 +797,7 @@ class TestParser:
             # Top-level aliases
             "start", "stop", "shell", "ps", "list", "create", "rm",
             # Management commands
-            "box", "rig", "workset", "crab", "system",
+            "box", "rig", "workset", "crab", "system", "baseline",
             # Command aliases (#62)
             "agent", "image", "container",
             # Setup wizard

@@ -22,8 +22,9 @@ dev = ["pytest>=7.0", "pytest-cov", "mypy", "ruff", "bump2version"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"kanibako.containers" = ["Containerfile.*"]
+"kanibako.containers" = ["Containerfile.*", "tmux.conf"]
 "kanibako.scripts" = ["*.sh", "kanibako-entry"]
+"kanibako.data" = ["*.yaml"]
 
 [tool.ruff]
 target-version = "py311"
