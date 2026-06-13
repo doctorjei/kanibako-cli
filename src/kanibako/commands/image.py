@@ -214,6 +214,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "diagnose",
         help="Check rig (image) status",
     )
+    diagnose_p.add_argument(
+        "--all", action="store_true", dest="all_images",
+        help="Probe the baseline in every local kanibako image (default: configured image)",
+    )
+    diagnose_p.add_argument(
+        "--only", nargs="+", default=None, metavar="PKG",
+        help="Only probe these baseline packages",
+    )
+    diagnose_p.add_argument(
+        "--skip", nargs="+", default=None, metavar="PKG",
+        help="Skip these baseline packages",
+    )
     diagnose_p.set_defaults(func=run_rig_diagnose)
 
     # Default to list if no subcommand given

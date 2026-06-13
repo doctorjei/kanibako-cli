@@ -11,7 +11,9 @@ from kanibako.commands.diagnose import (
     _check_image,
     _check_runtime,
     _check_storage,
+    _diagnose_baseline,
     _format_check,
+    probe_missing_executables,
     run_box_diagnose,
     run_crab_diagnose,
     run_rig_diagnose,
@@ -215,8 +217,167 @@ class TestRunRigDiagnose:
         assert "Rig (Image) Diagnostics" in captured.out
 
 
+class TestProbeMissingExecutables:
+    """probe_missing_executables: one ephemeral run, partition the result."""
+
+    def test_single_run_partitions_present_and_missing(self) -> None:
+        from kanibako.commands.diagnose import _PROBE_HIT_PREFIX
+
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        # The probe reports tmux + rg present, fdfind missing.
+        out = f"{_PROBE_HIT_PREFIX}tmux\n{_PROBE_HIT_PREFIX}rg\n"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=out, stderr="")
+            missing = probe_missing_executables(
+                mock_runtime, "img:latest", ["tmux", "rg", "fdfind"]
+            )
+        assert missing == ["fdfind"]
+        # Exactly ONE container spin-up for all three executables.
+        assert mock_run.call_count == 1
+
+    def test_empty_list_no_run(self) -> None:
+        mock_runtime = MagicMock()
+        with patch("subprocess.run") as mock_run:
+            assert probe_missing_executables(mock_runtime, "img", []) == []
+        mock_run.assert_not_called()
+
+    def test_runtime_failure_all_missing(self) -> None:
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        with patch("subprocess.run", side_effect=OSError("boom")):
+            missing = probe_missing_executables(mock_runtime, "img", ["a", "b"])
+        assert missing == ["a", "b"]
+
+
+class TestDiagnoseBaseline:
+    """_diagnose_baseline filtering (--only/--skip) and single-vs-all images."""
+
+    def _patch_baseline(self):
+        # Three packages with one executable each.
+        return patch(
+            "kanibako.baseline.load_baseline",
+            return_value={"tmux": ["tmux"], "ripgrep": ["rg"], "fd-find": ["fdfind"]},
+        )
+
+    def test_only_filters_packages(self, capsys) -> None:
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        args = argparse.Namespace(only=["ripgrep"], skip=None, all_images=False)
+        with (
+            self._patch_baseline(),
+            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch(
+                "kanibako.config.load_merged_config",
+                return_value=MagicMock(box_image="img:latest"),
+            ),
+            patch(
+                "kanibako.commands.diagnose.probe_missing_executables",
+                return_value=[],
+            ) as mock_probe,
+        ):
+            _diagnose_baseline(args)
+        # Only ripgrep's exe (rg) should be probed.
+        assert mock_probe.call_args[0][2] == ["rg"]
+
+    def test_skip_filters_packages(self, capsys) -> None:
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        args = argparse.Namespace(only=None, skip=["fd-find"], all_images=False)
+        with (
+            self._patch_baseline(),
+            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch(
+                "kanibako.config.load_merged_config",
+                return_value=MagicMock(box_image="img:latest"),
+            ),
+            patch(
+                "kanibako.commands.diagnose.probe_missing_executables",
+                return_value=[],
+            ) as mock_probe,
+        ):
+            _diagnose_baseline(args)
+        probed = mock_probe.call_args[0][2]
+        assert "fdfind" not in probed
+        assert set(probed) == {"tmux", "rg"}
+
+    def test_default_single_configured_image(self, capsys) -> None:
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        args = argparse.Namespace(only=None, skip=None, all_images=False)
+        with (
+            self._patch_baseline(),
+            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch(
+                "kanibako.config.load_merged_config",
+                return_value=MagicMock(box_image="configured:latest"),
+            ),
+            patch(
+                "kanibako.commands.diagnose.probe_missing_executables",
+                return_value=[],
+            ) as mock_probe,
+        ):
+            _diagnose_baseline(args)
+        # Single configured image probed.
+        assert mock_probe.call_count == 1
+        assert mock_probe.call_args[0][1] == "configured:latest"
+        mock_runtime.list_local_images.assert_not_called()
+
+    def test_all_images_probes_each(self, capsys) -> None:
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        mock_runtime.list_local_images.return_value = [
+            ("kanibako-oci:latest", "1GB"),
+            ("kanibako-min:latest", "0.5GB"),
+        ]
+        args = argparse.Namespace(only=None, skip=None, all_images=True)
+        with (
+            self._patch_baseline(),
+            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch(
+                "kanibako.commands.diagnose.probe_missing_executables",
+                return_value=[],
+            ) as mock_probe,
+        ):
+            _diagnose_baseline(args)
+        assert mock_probe.call_count == 2
+
+    def test_missing_executable_reported(self, capsys) -> None:
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        args = argparse.Namespace(only=None, skip=None, all_images=False)
+        with (
+            self._patch_baseline(),
+            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch(
+                "kanibako.config.load_merged_config",
+                return_value=MagicMock(box_image="img:latest"),
+            ),
+            patch(
+                "kanibako.commands.diagnose.probe_missing_executables",
+                return_value=["rg"],
+            ),
+        ):
+            _diagnose_baseline(args)
+        out = capsys.readouterr().out
+        assert "[!!]" in out
+        assert "ripgrep:rg" in out
+
+
 class TestParsers:
     """Verify that diagnose subcommands are parseable."""
+
+    def test_rig_diagnose_baseline_flags(self) -> None:
+        from kanibako.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            ["rig", "diagnose", "--all", "--only", "ripgrep", "--skip", "fd-find"]
+        )
+        assert args.func == run_rig_diagnose
+        assert args.all_images is True
+        assert args.only == ["ripgrep"]
+        assert args.skip == ["fd-find"]
 
     def test_system_diagnose_parser(self) -> None:
         from kanibako.cli import build_parser
