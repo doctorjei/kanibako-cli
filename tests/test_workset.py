@@ -311,6 +311,65 @@ class TestAddProject:
         assert names == {"alpha", "beta"}
 
 
+class TestAddProjectConnectGuard:
+    """add_project refuses external sources that would mis-resolve."""
+
+    def test_refuses_source_inside_another_workset(self, std, tmp_home):
+        # other-set lives at tmp_home/worksets/other-set; a dir inside it must
+        # not be connectable to a different workset (would be shadowed).
+        other = create_workset("other-set", tmp_home / "worksets" / "other-set", std)
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        inside_other = other.root.resolve() / "some" / "repo"
+        inside_other.mkdir(parents=True)
+
+        with pytest.raises(WorksetError, match="inside workset 'other-set'"):
+            add_project(ws, "x", inside_other, std)
+
+        # No partial state: nothing created for the project.
+        assert not (ws.projects_dir / "x").exists()
+        assert not (ws.workspaces_dir / "x").exists()
+        assert len(ws.projects) == 0
+
+    def test_refuses_already_connected_source(self, std, tmp_home):
+        ws_a = create_workset("set-a", tmp_home / "worksets" / "set-a", std)
+        ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
+        external = (tmp_home / "ext_repo").resolve()
+        external.mkdir()
+        add_project(ws_a, "proj", external, std)
+
+        with pytest.raises(WorksetError, match="already connected"):
+            add_project(ws_b, "proj2", external, std)
+
+    def test_refuses_source_nested_under_connected(self, std, tmp_home):
+        ws_a = create_workset("set-a", tmp_home / "worksets" / "set-a", std)
+        ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
+        external = (tmp_home / "ext_repo").resolve()
+        external.mkdir()
+        add_project(ws_a, "proj", external, std)
+        nested = external / "sub"
+        nested.mkdir()
+
+        with pytest.raises(WorksetError, match="already connected"):
+            add_project(ws_b, "proj2", nested, std)
+
+    def test_internal_source_unaffected(self, std, tmp_home):
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        internal = ws.root.resolve() / "workspaces" / "in-tree"
+        # A source inside the target workset is fine even though it is "inside a
+        # workset" — it is the target's own tree.
+        add_project(ws, "in-tree", internal, std)
+        assert len(ws.projects) == 1
+
+    def test_no_std_caller_unaffected(self, std, tmp_home):
+        # std=None callers (e.g. migrate) bypass the guard entirely.
+        other = create_workset("other-set", tmp_home / "worksets" / "other-set", std)
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        inside_other = other.root.resolve() / "repo"
+        inside_other.mkdir(parents=True)
+        add_project(ws, "x", inside_other)  # no std → no guard
+        assert len(ws.projects) == 1
+
+
 class TestRemoveProject:
     def test_removes_from_toml(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"

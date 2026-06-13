@@ -402,6 +402,38 @@ def add_project(
         except ValueError:
             is_external = True
 
+    # Validate up front (failure-consistency): for an EXTERNAL source, refuse
+    # BEFORE creating any directories if connecting it would mis-resolve.  An
+    # external dir that is itself inside another registered workset's tree would
+    # be shadowed by ordinary in-tree location detection; an already-connected
+    # dir (or a dir nested under one) is a 1:1-mapping conflict.  Internal
+    # sources and std-less callers (e.g. migrate) are unaffected.
+    if std is not None and is_external:
+        target_root = ws.root.resolve()
+        for other_name, other_root in _load_registry(std).items():
+            other_root = Path(other_root).resolve()
+            if other_root == target_root:
+                continue
+            try:
+                resolved_source.relative_to(other_root)
+            except ValueError:
+                continue
+            raise WorksetError(
+                f"Cannot connect '{resolved_source}': it lives inside workset "
+                f"'{other_name}' ({other_root}). It would be shadowed by "
+                "in-tree detection and mis-resolve. Move it outside that "
+                "workset, or connect it to that workset instead."
+            )
+
+        existing = _find_connected_project(resolved_source, std)
+        if existing is not None:
+            other_ws, other_proj = existing
+            raise WorksetError(
+                f"Cannot connect '{resolved_source}': it is already connected "
+                f"as project '{other_proj}' in workset '{other_ws.name}'. "
+                "Disconnect it first."
+            )
+
     # Create per-project directories (boxes always real).
     (ws.projects_dir / name).mkdir(parents=True, exist_ok=True)
     vault_proj = ws.vault_dir / name
