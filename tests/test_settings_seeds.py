@@ -221,6 +221,64 @@ class TestDiscovery:
 
 
 # ---------------------------------------------------------------------------
+# Five-level stack including the /etc machine layer
+# ---------------------------------------------------------------------------
+
+
+class TestMachineLevel:
+    """A 5-level stack [box, workset, crab, system, machine] (machine least-specific)."""
+
+    def _levels(self, box=None, system=None, machine=None, floor=None):
+        return [
+            LevelView("box", box or {}),
+            LevelView("workset", {}),
+            LevelView("crab", {}),
+            LevelView("system", system or {}),
+            LevelView("machine", machine or {}, defaults=floor or {}),
+        ]
+
+    def test_machine_seed_emitted_when_only_set_there(self):
+        ctx = make_ctx()
+        levels = self._levels(machine={"system.path.seeded.etc": "/etc/src:/g/etc"})
+        seeds = _resolve(levels, ctx)
+        assert len(seeds) == 1
+        assert seeds[0].host_src == "/etc/src"
+        assert seeds[0].guest_dest == "/g/etc"
+
+    def test_system_overrides_machine(self):
+        ctx = make_ctx()
+        levels = self._levels(
+            system={"system.path.seeded.foo": "/sys/src:/g"},
+            machine={"system.path.seeded.foo": "/etc/src:/g"},
+        )
+        seeds = _resolve(levels, ctx)
+        assert len(seeds) == 1
+        assert seeds[0].host_src == "/sys/src"
+
+    def test_box_suppresses_machine_seed(self):
+        ctx = make_ctx()
+        levels = self._levels(
+            box={"system.path.seeded.foo": ""},
+            machine={
+                "system.path.seeded.foo": "/etc/foo:/g/foo",
+                "system.path.seeded.bar": "/etc/bar:/g/bar",
+            },
+        )
+        seeds = _resolve(levels, ctx)
+        assert len(seeds) == 1
+        assert seeds[0].guest_dest == "/g/bar"
+
+    def test_machine_floor_default_discovered(self):
+        ctx = make_ctx()
+        levels = self._levels(
+            floor={"system.path.seeded.base": "/host/base:/g/base"},
+        )
+        seeds = _resolve(levels, ctx)
+        assert len(seeds) == 1
+        assert seeds[0].host_src == "/host/base"
+
+
+# ---------------------------------------------------------------------------
 # Errors and edge cases
 # ---------------------------------------------------------------------------
 

@@ -301,6 +301,70 @@ class TestOrdering:
 
 
 # ---------------------------------------------------------------------------
+# Five-level stack including the /etc machine layer
+# ---------------------------------------------------------------------------
+
+
+class TestMachineLevel:
+    """A 5-level stack [box, workset, crab, system, machine] (machine least-specific)."""
+
+    def _levels(self, box=None, system=None, machine=None, floor=None):
+        return [
+            LevelView("box", box or {}),
+            LevelView("workset", {}),
+            LevelView("crab", {}),
+            LevelView("system", system or {}),
+            LevelView("machine", machine or {}, defaults=floor or {}),
+        ]
+
+    def test_machine_share_mounts_when_only_set_there(self):
+        ctx = make_ctx()
+        levels = self._levels(
+            machine={"system.path.share_rw.etc": "/etc/src:/g/etc"},
+        )
+        mounts = _resolve(levels, ctx)
+        assert len(mounts) == 1
+        assert mounts[0].source == Path("/etc/src")
+        assert mounts[0].destination == "/g/etc"
+
+    def test_system_overrides_machine(self):
+        ctx = make_ctx()
+        levels = self._levels(
+            system={"system.path.share_rw.foo": "/sys/src:/g"},
+            machine={"system.path.share_rw.foo": "/etc/src:/g"},
+        )
+        mounts = _resolve(levels, ctx)
+        assert len(mounts) == 1
+        # system is more-specific than machine → system value wins.
+        assert mounts[0].source == Path("/sys/src")
+
+    def test_box_suppresses_machine_value(self):
+        """A terminal '' at box suppresses an /etc share; a machine sibling survives."""
+        ctx = make_ctx()
+        levels = self._levels(
+            box={"system.path.share_rw.foo": ""},
+            machine={
+                "system.path.share_rw.foo": "/etc/foo:/g/foo",
+                "system.path.share_rw.bar": "/etc/bar:/g/bar",
+            },
+        )
+        mounts = _resolve(levels, ctx)
+        assert len(mounts) == 1
+        assert mounts[0].destination == "/g/bar"
+
+    def test_machine_does_not_override_floor_when_unset(self):
+        """A default-only share on the machine level still mounts (discovery)."""
+        ctx = make_ctx()
+        levels = self._levels(
+            floor={"system.path.share_ro.base": "/host/base:/g/base"},
+        )
+        mounts = _resolve(levels, ctx)
+        assert len(mounts) == 1
+        assert mounts[0].source == Path("/host/base")
+        assert mounts[0].options == "ro"
+
+
+# ---------------------------------------------------------------------------
 # is_share_key
 # ---------------------------------------------------------------------------
 
