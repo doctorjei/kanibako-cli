@@ -32,6 +32,10 @@ agent stays agent-domain). These are breaking renames with **no back-compat shim
 - **Cleanup:** removed the dead `kanibako-plugin-claude` wrapper package; fixed the
   `ws_hints` default name (`working_sets.toml` → `worksets.toml`); dropped the unused
   `paths.workspaces` config key.
+- **Core package renamed:** the core distribution `kanibako-base` → `kanibako-cli`
+  (matches the post-split repo name). `pip install kanibako` (the meta package) is
+  unchanged; the Python import module stays `kanibako`. Old `kanibako-base` (≤1.4.0)
+  remains on PyPI but is no longer updated.
 
 ### Added (v1.5.0 — default workset; Phase 2)
 

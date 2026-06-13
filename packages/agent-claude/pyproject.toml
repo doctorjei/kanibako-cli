@@ -7,7 +7,7 @@ name = "kanibako-agent-claude"
 version = "1.4.0"
 description = "Claude Code target plugin for kanibako"
 requires-python = ">=3.11"
-dependencies = ["kanibako-base"]
+dependencies = ["kanibako-cli"]
 
 [project.entry-points."kanibako.agents"]
 claude = "kanibako.plugins.claude:ClaudeTarget"

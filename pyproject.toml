@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kanibako-base"
+name = "kanibako-cli"
 version = "1.4.0"
 description = "Run AI coding agents in rootless containers with per-project isolation"
 requires-python = ">=3.11"

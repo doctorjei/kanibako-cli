@@ -13,7 +13,7 @@ Most users install the `kanibako` meta-package, which includes this plugin:
 pip install kanibako
 ```
 
-To install the plugin separately (e.g. adding Claude support to a `kanibako-base`
+To install the plugin separately (e.g. adding Claude support to a `kanibako-cli`
 install):
 
 ```bash
@@ -33,4 +33,4 @@ pip install kanibako-agent-claude
 
 Registered as `claude` in the `kanibako.agents` entry point group.
 
-Requires `kanibako-base` (the core package).
+Requires `kanibako-cli` (the core package).

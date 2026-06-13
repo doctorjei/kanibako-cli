@@ -49,7 +49,7 @@ for a narrower permission set.
 Install Kanibako and plugins inside the host container:
 
 ```bash
-pip install kanibako    # installs kanibako-base + kanibako-agent-claude
+pip install kanibako    # installs kanibako-cli + kanibako-agent-claude
 ```
 
 ## Persistent state

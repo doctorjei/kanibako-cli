@@ -46,7 +46,7 @@ Goose) are available as [example plugins](examples/).
   setting overrides via `box config`
 - **Shared caches** -- global download caches (pip, cargo, npm, etc.)
   shared across projects; agent-level caches via crab TOML
-- **Plugin system** -- agent-agnostic core (`kanibako-base`); Claude Code
+- **Plugin system** -- agent-agnostic core (`kanibako-cli`); Claude Code
   plugin (`kanibako-agent-claude`) ships by default; three-tier discovery
   (entry points, user directory, project directory)
 - **Rig freshness checks** -- non-blocking digest comparison against GHCR
@@ -73,7 +73,7 @@ uv tool install kanibako
 pip install kanibako
 
 # Base only (no agent plugins -- agent-agnostic shell mode)
-pip install kanibako-base
+pip install kanibako-cli
 
 # Development install
 git clone https://github.com/doctorjei/kanibako.git
@@ -704,7 +704,7 @@ Kanibako is agent-agnostic.  All agent-specific logic lives in **target
 plugins** -- Python classes that implement the `Target` abstract base class.
 Claude Code is supported via `kanibako-agent-claude` (installed by the
 `kanibako` meta-package); other agents can be added as pip packages.
-Install `kanibako-base` for agent-agnostic operation.
+Install `kanibako-cli` for agent-agnostic operation.
 If no agent is detected, Kanibako falls back to `no_agent` -- a plain shell
 with no agent binary or credentials.
 
@@ -1018,7 +1018,7 @@ git push && git push --tags
 For the full module-by-module breakdown, see
 [docs/architecture.md](docs/architecture.md).
 
-**Overview:** Kanibako's core (`kanibako-base`) handles container lifecycle,
+**Overview:** Kanibako's core (`kanibako-cli`) handles container lifecycle,
 project state, configuration, and plugin discovery.  Agent-specific logic
 lives in target plugins (e.g. `kanibako-agent-claude`).  The CLI is an
 argparse tree in `cli.py` that delegates to command modules in `commands/`.

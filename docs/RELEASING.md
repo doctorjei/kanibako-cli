@@ -80,7 +80,7 @@ bumped together by `.bumpversion.cfg`:
 
 | Package | Source dir |
 | --- | --- |
-| `kanibako-base` | `.` (repo root) |
+| `kanibako-cli` | `.` (repo root) |
 | `kanibako-agent-claude` | `packages/agent-claude` |
 | `kanibako` (meta) | `packages/meta` |
 
@@ -217,7 +217,7 @@ So a stray `v<ver>` tag with no green rc behind it cannot ship.
 Each of the **three** PyPI projects must have a Trusted Publisher configured so
 the `promote` job can publish via OIDC:
 
-- `kanibako-base`
+- `kanibako-cli`
 - `kanibako-agent-claude`
 - `kanibako`
 
