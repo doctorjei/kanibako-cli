@@ -557,7 +557,7 @@ def _run_container(
             if _ppath is not None and not _ppath.is_dir():
                 print(
                     "hint: orphaned project data detected — "
-                    "run 'kanibako box list' or use 'kanibako box migrate' "
+                    "run 'kanibako box list' or use 'kanibako box remap' "
                     "if you moved a project.",
                     file=sys.stderr,
                 )

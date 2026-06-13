@@ -132,6 +132,10 @@ class TargetSpec:
     location: Path | _Sentinel = INPLACE
     ownership: str | _Sentinel = UNCHANGED
     name: str | None = None
+    #: ``remap`` semantics — the workspace has ALREADY moved on disk; record the
+    #: new ``location`` (path + hash + markers) WITHOUT copying or deleting any
+    #: files.  Only meaningful with a concrete ``Path`` location.
+    records_only: bool = False
 
 
 def owner_token(mode: ProjectMode, ws_name: str | None = None) -> str:
@@ -182,6 +186,18 @@ def resolve_lifecycle_target(
         config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
 
     raw = old or os.getcwd()
+    # Front-door (mirrors resolve_any_project): a bare token (no path separator)
+    # that doesn't exist in cwd may be a registered project/workset name.  This
+    # is essential for ``remap``/``convert`` when the folder has already moved,
+    # so the on-disk path is stale but the name still resolves.
+    if raw and "/" not in raw and not Path(raw).exists():
+        from kanibako.paths import resolve_name
+        try:
+            resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
+            if kind == "project":
+                raw = resolved
+        except ProjectError:
+            pass
     raw_path = Path(raw).resolve()
 
     detection = detect_project_mode(raw_path, std, config)
@@ -195,12 +211,58 @@ def resolve_lifecycle_target(
         return _state_from_paths("standalone", proj, ws=None)
 
     # default mode
+    root = detection.project_root
+    if not root.is_dir():
+        # The workspace dir is gone (e.g. the user moved the folder before
+        # running `remap`).  resolve_project requires the dir to exist, so fall
+        # back to building the state from the registered metadata alone.
+        fallback = _default_state_from_meta(root, std)
+        if fallback is not None:
+            return fallback
     proj = resolve_project(
-        std, config, project_dir=str(detection.project_root), initialize=False,
+        std, config, project_dir=str(root), initialize=False,
     )
     if not proj.metadata_path.is_dir():
-        raise ProjectError(f"No project data found for {detection.project_root}")
+        raise ProjectError(f"No project data found for {root}")
     return _state_from_paths("default", proj, ws=None)
+
+
+def _default_state_from_meta(
+    workspace: Path, std: StandardPaths,
+) -> ProjectState | None:
+    """Build a default-mode :class:`ProjectState` from registered metadata.
+
+    Used by ``remap`` when the recorded workspace directory no longer exists on
+    disk: the project is still registered in ``names.yaml`` (path -> name) and
+    its metadata lives in ``boxes/<name>``.  Returns ``None`` when no such
+    registration is found, so the caller can raise the normal error.
+    """
+    from kanibako.names import read_names
+
+    names = read_names(std.data_path)
+    name: str | None = None
+    for n, p in names["projects"].items():
+        if Path(p).resolve() == workspace.resolve():
+            name = n
+            break
+    if name is None:
+        return None
+    metadata_path = std.boxes / name
+    meta = read_project_meta(metadata_path / "project.yaml")
+    if not meta:
+        return None
+    layout = ProjectLayout(meta["layout"]) if meta.get("layout") else ProjectLayout.default
+    shell_path = Path(meta["shell"]) if meta.get("shell") else metadata_path / "shell"
+    vault_ro = Path(meta["vault_ro"]) if meta.get("vault_ro") else metadata_path / "vault" / "ro"
+    vault_rw = Path(meta["vault_rw"]) if meta.get("vault_rw") else metadata_path / "vault" / "rw"
+    return ProjectState(
+        owner="default", mode=ProjectMode.default, name=name,
+        workspace_path=workspace.resolve(), metadata_path=metadata_path,
+        shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
+        is_external=False, ws=None, layout=layout,
+        enable_vault=bool(meta.get("enable_vault", True)),
+        group_auth=bool(meta.get("group_auth", True)),
+    )
 
 
 def _resolve_workset_state(
@@ -449,7 +511,9 @@ def _validate(
         raise ProjectError(STUBBORN_INPLACE_MSG)
 
     # --- destination not already occupied ---
-    if relocating and dest is not None:
+    # ``remap`` is records-only: the files are presumed ALREADY at *dest*, so we
+    # do not require it to be empty (and a no-op same-path remap is fine).
+    if relocating and dest is not None and not spec.records_only:
         if dest.resolve() == state.workspace_path.resolve():
             raise ProjectError(
                 f"Destination is the project's current location: {dest}"
@@ -479,7 +543,8 @@ def _validate(
         )
 
     # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
-    if relocating and not state.is_external:
+    # ``remap`` removes nothing, so it cannot strand the shell — skip the guard.
+    if relocating and not state.is_external and not spec.records_only:
         old = state.workspace_path.resolve()
         cwd_r = cwd.resolve()
         inside = cwd_r == old
@@ -595,8 +660,13 @@ def _run_steps(
     # here when external; for internal ws->ws the move IS required and was
     # validated.  Standard moves copytree the workspace to dest.
     # ------------------------------------------------------------------
+    records_only: bool = spec.records_only
     new_workspace = state.workspace_path
-    if relocating and dest is not None and not state.is_external:
+    if records_only and dest is not None:
+        # ``remap``: the files are presumed already at *dest*; record the new
+        # location without copying or removing anything.
+        new_workspace = dest
+    elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
         shutil.copytree(src, dest)
         unwind.push(lambda d=dest: shutil.rmtree(d, ignore_errors=True))
@@ -630,7 +700,7 @@ def _run_steps(
     # STEP 5 — Clean up old workspace (only for a real, internal move).
     # NEVER delete a user's external source directory.
     # ------------------------------------------------------------------
-    if relocating and dest is not None and not state.is_external:
+    if not records_only and relocating and dest is not None and not state.is_external:
         old_ws = state.workspace_path
         if old_ws.resolve() != dest.resolve() and old_ws.is_dir():
             # Irreversible-ish; but we copied first and recorded everything, so
@@ -1038,3 +1108,237 @@ def _safe_remove_project(ws: Workset, name: str, std: StandardPaths) -> None:
         remove_project(ws, name, remove_files=True, std=std)
     except Exception:  # noqa: BLE001
         pass
+
+
+# ---------------------------------------------------------------------------
+# CLI entry points: run_remap / run_move / run_convert
+# ---------------------------------------------------------------------------
+
+def _ownership_from_args(args) -> str | _Sentinel:
+    """Map the uniform target flags (--default/--standalone/--workset) to an
+    ownership value, or :data:`UNCHANGED` when none is given.
+
+    The three flags are mutually exclusive (enforced by an argparse mutually
+    exclusive group); ``--workset`` carries the workset name.
+    """
+    if getattr(args, "to_default", False):
+        return "default"
+    if getattr(args, "to_standalone", False):
+        return "standalone"
+    ws = getattr(args, "to_workset", None)
+    if ws:
+        return ws
+    return UNCHANGED
+
+
+def _make_confirm(force: bool, summary: str):
+    """Return a ``Callable[[], bool]`` for ``execute_lifecycle``'s *confirm*.
+
+    With *force* the op proceeds without prompting.  Otherwise it prints
+    *summary* and prompts; a non-``yes`` answer returns False (engine aborts).
+    """
+    if force:
+        return None
+
+    from kanibako.errors import UserCancelled
+    from kanibako.utils import confirm_prompt
+
+    def _confirm() -> bool:
+        print(summary)
+        print()
+        try:
+            confirm_prompt("Type 'yes' to confirm: ")
+        except UserCancelled:
+            return False
+        return True
+
+    return _confirm
+
+
+def _load_env():
+    from kanibako.config import config_file_path, load_config
+    from kanibako.paths import load_std_paths, xdg
+
+    config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+    std = load_std_paths(config)
+    return config, std
+
+
+def run_remap(args) -> int:
+    """``box remap <old> [<new>]`` — records-only relocation.
+
+    The folder has already moved on disk; update kanibako's recorded path,
+    hash, and markers to reflect the new location.  Does NOT move files and
+    never changes ownership.
+    """
+    import sys
+
+    config, std = _load_env()
+
+    old = getattr(args, "old", None)
+    new = getattr(args, "new", None) or "./"
+    new_path = Path(new).resolve()
+
+    try:
+        state = resolve_lifecycle_target(old, std, config)
+    except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    spec = TargetSpec(location=new_path, ownership=UNCHANGED, records_only=True)
+    summary = (
+        "Remap project records (no files moved):\n"
+        f"  project: {state.name}\n"
+        f"     from: {state.workspace_path}\n"
+        f"       to: {new_path}"
+    )
+    try:
+        new_state = execute_lifecycle(
+            state, spec, std, config,
+            force=getattr(args, "force", False),
+            confirm=_make_confirm(getattr(args, "force", False), summary),
+        )
+    except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Remapped '{new_state.name}' to {new_state.workspace_path}")
+    return 0
+
+
+def run_move(args) -> int:
+    """``box move <old> <new>`` (alias ``mv``) — physically relocate files.
+
+    Both paths are required.  An optional target flag
+    (--default/--standalone/--workset) also changes ownership.  Refuses an
+    external-connected project (its workspace is the user's own directory).
+    """
+    import sys
+
+    config, std = _load_env()
+
+    old = getattr(args, "old", None)
+    new = getattr(args, "new", None)
+    if not old or not new:
+        print("Error: move requires both <old> and <new>.", file=sys.stderr)
+        return 1
+    new_path = Path(new).resolve()
+
+    try:
+        state = resolve_lifecycle_target(old, std, config)
+    except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if state.is_external:
+        print(
+            f"Error: '{state.name}' is an external-connected project; its "
+            "workspace is your own directory, not managed by kanibako.\n"
+            "Use `box remap <old> <new>` to update records if you moved it, "
+            "or `box convert` to change ownership.",
+            file=sys.stderr,
+        )
+        return 1
+
+    ownership = _ownership_from_args(args)
+    spec = TargetSpec(
+        location=new_path, ownership=ownership, name=getattr(args, "name", None),
+    )
+    summary = (
+        "Move project workspace:\n"
+        f"  project: {state.name}\n"
+        f"     from: {state.workspace_path}\n"
+        f"       to: {new_path}"
+    )
+    try:
+        new_state = execute_lifecycle(
+            state, spec, std, config,
+            force=getattr(args, "force", False),
+            confirm=_make_confirm(getattr(args, "force", False), summary),
+        )
+    except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Moved '{new_state.name}' to {new_state.workspace_path}")
+    return 0
+
+
+def run_convert(args) -> int:
+    """``box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]``.
+
+    Change a project's ownership/mode.  In-place by default for all modes;
+    ``--move <path>`` relocates, bare ``--move`` moves into the target workset
+    (only valid with ``--workset``).  ``--name`` renames in the target.
+    """
+    import sys
+
+    config, std = _load_env()
+
+    ownership = _ownership_from_args(args)
+    if ownership is UNCHANGED:
+        print(
+            "Error: convert requires a target "
+            "(--default, --standalone, or --workset <ws>).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # --move handling: argparse stores _BARE_MOVE sentinel for bare --move,
+    # a path string for --move <path>, and None when absent.
+    move_val = getattr(args, "move", None)
+    if move_val is None:
+        location: Path | _Sentinel = INPLACE
+    elif move_val is _BARE_MOVE:
+        # Bare --move is only valid with a workset target.
+        if not getattr(args, "to_workset", None):
+            print(
+                "Error: bare `--move` (into the workset) requires "
+                "`--workset <ws>`. Use `--move <path>` to relocate elsewhere.",
+                file=sys.stderr,
+            )
+            return 1
+        location = BARE_INTO_WS
+    else:
+        location = Path(move_val).resolve()
+
+    try:
+        state = resolve_lifecycle_target(getattr(args, "old", None), std, config)
+    except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    spec = TargetSpec(
+        location=location, ownership=ownership, name=getattr(args, "name", None),
+    )
+    if location is INPLACE:
+        loc_desc = "in place"
+    elif location is BARE_INTO_WS:
+        loc_desc = "into the workset"
+    else:
+        loc_desc = f"to {location}"
+    summary = (
+        "Convert project:\n"
+        f"  project: {state.name}\n"
+        f"    owner: {state.owner} -> {ownership}\n"
+        f" location: {loc_desc}"
+    )
+    try:
+        new_state = execute_lifecycle(
+            state, spec, std, config,
+            force=getattr(args, "force", False),
+            confirm=_make_confirm(getattr(args, "force", False), summary),
+        )
+    except (ProjectError, WorksetError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Converted '{new_state.name}' to {new_state.owner} "
+        f"({new_state.workspace_path})"
+    )
+    return 0
+
+
+#: argparse ``const`` sentinel for a bare ``--move`` (no path argument).
+_BARE_MOVE = _Sentinel("BARE_MOVE")
