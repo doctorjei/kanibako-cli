@@ -26,10 +26,15 @@ def probe_missing_executables(
 ) -> list[str]:
     """Return the subset of *executables* missing from *image*.
 
-    Runs ONE ephemeral container (``<runtime> run --rm <image> sh -lc ...``)
-    that loops over every executable and prints a hit marker for each present
-    one; the misses are whatever wasn't reported.  This keeps the cost to a
-    single container spin-up regardless of how many executables are checked.
+    Runs ONE ephemeral container
+    (``<runtime> run --rm --entrypoint sh <image> -lc ...``) that loops over
+    every executable and prints a hit marker for each present one; the misses
+    are whatever wasn't reported.  This keeps the cost to a single container
+    spin-up regardless of how many executables are checked.
+
+    The ``--entrypoint sh`` override is essential: kanibako images set an
+    ENTRYPOINT (``kanibako-entrypoint``) that would otherwise swallow the probe
+    script, making every executable look missing.
 
     On any runtime failure (image missing, runtime broken) every executable is
     reported as missing — the caller decides whether that is fatal.
@@ -47,7 +52,7 @@ def probe_missing_executables(
     )
     try:
         result = subprocess.run(
-            [runtime.cmd, "run", "--rm", image, "sh", "-lc", checks],
+            [runtime.cmd, "run", "--rm", "--entrypoint", "sh", image, "-lc", checks],
             capture_output=True,
             text=True,
         )
