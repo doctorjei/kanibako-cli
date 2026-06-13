@@ -19,6 +19,12 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Upload the dev build to PyPI (else build + twine-check only)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write    # gh release
@@ -87,7 +93,7 @@ jobs:
   # Container images are built and published by the kanibako-images repo.
   #
   # NOTE: the PyPI publish step requires a Trusted Publisher configured per
-  # project on PyPI with: owner=doctorjei, repo=kanibako, workflow=release.yml,
+  # project on PyPI with: owner=doctorjei, repo=kanibako-cli, workflow=release.yml,
   # environment=pypi. Without it, the OIDC publish fails with invalid-publisher.
   # ---------------------------------------------------------------------------
 
@@ -143,3 +149,55 @@ jobs:
                 ".[] | select(.tagName | startswith(\"${GITHUB_REF_NAME}-rc\")) | .tagName"); do
             gh release delete "$rc" --yes || true
           done
+
+  # ---------------------------------------------------------------------------
+  # dev path: on-demand (workflow_dispatch) .dev pre-release of the three PyPI
+  # packages. Build + twine-check always; upload only when `publish` is true.
+  # Shares this workflow file (and its env `pypi`) so the existing Trusted
+  # Publisher applies. The official tag-driven rc->promote flow is untouched.
+  # ---------------------------------------------------------------------------
+
+  dev:
+    name: dev - build (+ optional publish) a .dev pre-release
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install tooling
+        run: pip install build twine bump2version
+
+      - name: Compute dev version
+        # Base = repo version with any pre-release suffix stripped; serial =
+        # the run number (monotonic, unique on PyPI).
+        run: |
+          BASE=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          BASE=${BASE%%.dev*}
+          DEV="${BASE}.dev${{ github.run_number }}"
+          echo "DEV_VERSION=$DEV" >> "$GITHUB_ENV"
+          echo "Building dev version: $DEV"
+
+      - name: Stamp dev version (no commit)
+        run: bump2version --no-commit --no-tag --allow-dirty --new-version "$DEV_VERSION" patch
+
+      - name: Build all distributable packages
+        # Same package list as the official path; agent-goose excluded (independent).
+        run: |
+          for pkg in . packages/agent-claude packages/meta; do
+            python -m build "$pkg" --outdir "$PWD/dist"
+          done
+
+      - name: Check distributions
+        run: twine check dist/*
+
+      - name: Publish to PyPI (dev pre-release)
+        # OIDC trusted publishing via the same release.yml Trusted Publisher.
+        if: ${{ inputs.publish }}
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -100,7 +100,7 @@ Example throughout: cutting **v1.2.5** from a `v1.2.5-rc1` candidate.
 
 - A clean `main` (no modified tracked files; untracked files are fine).
 - The **one-time** PyPI Trusted Publisher config from
-  [section 6](#6-prerequisites-one-time-operatoradmin) must already be in
+  [section 7](#7-prerequisites-one-time-operatoradmin) must already be in
   place, or the promote PyPI publish will fail.
 
 ### 4.1 Mint the release candidate
@@ -193,7 +193,38 @@ Pushing `v1.2.5` triggers `release.yml`'s `promote` job, which:
 
 ---
 
-## 5. The wait-for-green / rc-discipline rule
+## 5. Development builds
+
+Alongside the official tag-driven flow, `release.yml` exposes an **on-demand
+development channel** for publishing `.dev` pre-releases of the three PyPI
+packages — useful for smoke-testing a build (or a new Trusted Publisher) before
+cutting a final release.
+
+- **Trigger:** GitHub → **Actions** → **Release** → **Run workflow**
+  (`workflow_dispatch`). This is decoupled from any git tag.
+- **`publish` input** (boolean, default `false`):
+  - `false` — build all three packages and run `twine check` only; **nothing**
+    is uploaded.
+  - `true` — additionally upload to **prod PyPI** via the same OIDC Trusted
+    Publisher used by `promote` (`environment: pypi`).
+- **Versioning:** the build is stamped `X.Y.Z.dev<run_number>`, where `X.Y.Z`
+  is the repo version (`pyproject.toml`, pre-release suffix stripped) and
+  `<run_number>` is the workflow run number — monotonic, so each upload is
+  unique on PyPI. The stamp is ephemeral (no commit, no tag); `main` keeps its
+  plain `X.Y.Z` baseline.
+- **Pre-release semantics:** per PEP 440, `X.Y.Z.devN < X.Y.Z`, so dev builds
+  are **not** installed by default. Install one explicitly with `--pre`:
+
+  ```bash
+  pip install --pre kanibako-cli      # or: pip install --pre kanibako
+  ```
+
+The official rc→promote flow ([section 4](#4-step-by-step-release-procedure))
+is unaffected by this channel.
+
+---
+
+## 6. The wait-for-green / rc-discipline rule
 
 **NEVER push the rc tag and the release tag back-to-back.**
 
@@ -210,7 +241,7 @@ So a stray `v<ver>` tag with no green rc behind it cannot ship.
 
 ---
 
-## 6. Prerequisites (one-time, operator/admin)
+## 7. Prerequisites (one-time, operator/admin)
 
 ### PyPI Trusted Publishers
 
@@ -243,7 +274,7 @@ built-in `GITHUB_TOKEN`. **No extra secret is required.**
 
 ---
 
-## 7. Deferred / out of scope
+## 8. Deferred / out of scope
 
 - **Templates** — bundled templates (one per `Containerfile.template-*`) are
   built locally and CI-verified (build + toolchain smoke checks) by
