@@ -976,6 +976,24 @@ class TestLaunchBaselineCheckIntegration:
             m.runtime.run.assert_called_once()
         assert rc == 0
 
+    def test_check_skipped_when_ephemeral(self, start_mocks):
+        """Ephemeral launches don't use the bootstrap program, so the launch
+        check (and its hard stop) is skipped entirely — even if the image lacks
+        the bootstrap program."""
+        from kanibako.commands.start import _BOOTSTRAP_MISSING
+
+        with start_mocks() as m:
+            m.launch_check.return_value = _BOOTSTRAP_MISSING
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False,
+            )
+            # Check never runs; launch proceeds despite the bootstrap sentinel.
+            m.launch_check.assert_not_called()
+            m.runtime.run.assert_called_once()
+        assert rc == 0
+
 
 class TestCheckLaunchBaselineUnit:
     """PART D: _check_launch_baseline tiers + state-file surfacing (probe mocked)."""

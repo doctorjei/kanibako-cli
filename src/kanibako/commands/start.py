@@ -633,15 +633,19 @@ def _run_container(
     from kanibako.freshness import check_image_freshness
     check_image_freshness(runtime, image, std.cache_path)
 
-    # Two-tier launch verification (one ephemeral probe covers both tiers):
+    # Two-tier launch verification (one ephemeral probe covers both tiers).
+    # Only meaningful for a persistent, bootstrap-wrapped session: the bootstrap
+    # program is launch-critical only when we actually run it. Ephemeral and
+    # one-shot launches don't use it, so skip the probe (and its hard stop)
+    # entirely — otherwise a minimal --image (no tmux) couldn't run ephemerally.
     #   TIER 1 (bootstrap) — missing → HARD STOP before launch.
-    #   TIER 2 (rest of baseline) — missing → WARN only; collected for surfacing
-    #   after the bootstrap session closes (and persisted to a state file).
-    tier2_missing = _check_launch_baseline(
-        runtime, image, bootstrap_program, container_name_for(proj), std,
-    )
-    if tier2_missing is _BOOTSTRAP_MISSING:
-        return 1
+    #   TIER 2 (rest of baseline) — missing → WARN only; persisted + surfaced
+    #   after the bootstrap session closes.
+    if persistent:
+        if _check_launch_baseline(
+            runtime, image, bootstrap_program, container_name_for(proj), std,
+        ) is _BOOTSTRAP_MISSING:
+            return 1
 
     # Resolve target (agent plugin) and detect installation
     logger = get_logger("start")
