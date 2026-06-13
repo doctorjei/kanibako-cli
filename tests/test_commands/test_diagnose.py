@@ -235,6 +235,11 @@ class TestProbeMissingExecutables:
         assert missing == ["fdfind"]
         # Exactly ONE container spin-up for all three executables.
         assert mock_run.call_count == 1
+        # Must override the image ENTRYPOINT, else kanibako-entrypoint swallows
+        # the probe script and every executable looks missing.
+        argv = mock_run.call_args[0][0]
+        assert argv[:5] == ["podman", "run", "--rm", "--entrypoint", "sh"]
+        assert argv[5] == "img:latest"
 
     def test_empty_list_no_run(self) -> None:
         mock_runtime = MagicMock()
