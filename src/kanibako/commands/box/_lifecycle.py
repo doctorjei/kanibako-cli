@@ -15,9 +15,9 @@ The public surface is:
 - :func:`execute_lifecycle` — apply a ``TargetSpec`` to a ``ProjectState``
   transactionally (canonical 5-step order with an unwind stack).
 
-Phase 1 builds the engine only; the CLI parsers / ``run_*`` entry points are
-added in Phase 2.  The legacy ``_migrate.py`` helpers stay in place until
-Phase 3; this module ports the std-aware logic the engine needs.
+This module also houses the ``run_remap`` / ``run_move`` / ``run_convert`` CLI
+entry points and the std-aware :func:`copy_into_workset` helper used by
+``box duplicate``.
 """
 
 from __future__ import annotations
@@ -323,8 +323,7 @@ def _state_from_paths(
 
 
 # ---------------------------------------------------------------------------
-# Std-aware workset copy helper (ported from _migrate._copy_into_workset,
-# now threading std so external wiring runs)
+# Std-aware workset copy helper for ``box duplicate``
 # ---------------------------------------------------------------------------
 
 def copy_into_workset(
@@ -338,20 +337,30 @@ def copy_into_workset(
     copy_workspace: bool,
     std: StandardPaths,
 ) -> None:
-    """Re-root a project into *ws* (register std-aware + copy non-/workspace).
+    """Re-root a project into *ws* — the std-aware copy path for ``duplicate``.
 
-    Unlike the legacy ``_migrate._copy_into_workset``, this passes *std* to
-    :func:`kanibako.workset.add_project` so that an EXTERNAL source (one outside
-    the workset root) gets the full external wiring: a ``workspace`` override in
-    ``project.yaml``, a ``connected.yaml`` redirect, and a discoverability
-    symlink at ``workspaces/<name>``.  Internal sources keep a real
-    ``workspaces/<name>`` directory.
+    The duplicate is always an INTERNAL workset project: it gets a real
+    ``workspaces/<name>`` directory, never an external symlink/redirect back to
+    the source.  Duplicate makes a *copy*, not a *connection*; an external
+    connection (1:1 in ``connected.yaml``) is what ``connect`` is for, and a bare
+    duplicate of an already-connected source is refused up front in
+    ``run_duplicate``.
 
-    *metadata_path* / *shell_path* are the SOURCE project's dirs to copy from.
-    *copy_workspace* controls whether the workspace tree is copied into the
-    workset (False for ``--in-place`` / external / bare).
+    *std* is threaded to :func:`kanibako.workset.add_project` so its up-front
+    guards run (and to keep a single std-aware registration path); because the
+    registration target is the in-tree workspace dir, ``add_project`` always
+    creates a real directory and writes no external markers — which also avoids
+    the source-into-symlink ``copytree`` collision that registering the external
+    *source* path would cause.
+
+    *copy_workspace* controls whether the source tree is copied into the new
+    internal workspace (``True``) or it is left as an empty skeleton dir (a
+    *bare* duplicate, ``False``).  *metadata_path* / *shell_path* are the SOURCE
+    project's dirs to copy from.
     """
-    add_project(ws, proj_name, source_path, std)
+    # Register the in-tree workspace dir (INTERNAL): add_project then makes a real
+    # directory rather than connecting to (and symlinking at) the source.
+    add_project(ws, proj_name, ws.workspaces_dir / proj_name, std)
 
     dst_project = ws.projects_dir / proj_name
     shutil.copytree(
