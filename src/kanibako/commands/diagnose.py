@@ -11,6 +11,59 @@ def _format_check(status: str, label: str, detail: str) -> str:
     return f"[{status}] {label}: {detail}"
 
 
+# ---------------------------------------------------------------------------
+# Baseline probing (shared by `kanibako rig diagnose` and the launch path)
+# ---------------------------------------------------------------------------
+
+# Sentinel emitted (one per line) for each present executable in the probe
+# script, so the result can be partitioned without spinning one container per
+# executable.
+_PROBE_HIT_PREFIX = "KANIBAKO_HAS:"
+
+
+def probe_missing_executables(
+    runtime, image: str, executables: list[str],
+) -> list[str]:
+    """Return the subset of *executables* missing from *image*.
+
+    Runs ONE ephemeral container (``<runtime> run --rm <image> sh -lc ...``)
+    that loops over every executable and prints a hit marker for each present
+    one; the misses are whatever wasn't reported.  This keeps the cost to a
+    single container spin-up regardless of how many executables are checked.
+
+    On any runtime failure (image missing, runtime broken) every executable is
+    reported as missing — the caller decides whether that is fatal.
+    """
+    import subprocess
+
+    if not executables:
+        return []
+    # Build a portable POSIX-sh loop: for each exe, emit the hit marker iff
+    # `command -v` succeeds. Executable names are baseline-controlled (no shell
+    # metacharacters), so plain interpolation is safe here.
+    checks = "; ".join(
+        f'command -v "{exe}" >/dev/null 2>&1 && echo "{_PROBE_HIT_PREFIX}{exe}"'
+        for exe in executables
+    )
+    try:
+        result = subprocess.run(
+            [runtime.cmd, "run", "--rm", image, "sh", "-lc", checks],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return list(executables)
+    if result.returncode != 0 and not result.stdout:
+        # Container could not start at all → treat everything as missing.
+        return list(executables)
+    present = {
+        line[len(_PROBE_HIT_PREFIX):]
+        for line in result.stdout.splitlines()
+        if line.startswith(_PROBE_HIT_PREFIX)
+    }
+    return [exe for exe in executables if exe not in present]
+
+
 def _check_runtime() -> tuple[str, str]:
     """Check container runtime availability. Returns (status, detail)."""
     try:
@@ -235,5 +288,70 @@ def run_rig_diagnose(args: object) -> int:
     except Exception:
         print(_format_check("--", "Local images", "cannot check"))
 
+    # Baseline executable probe (one ephemeral run per image).
+    print()
+    _diagnose_baseline(args)
+
     print()
     return 0
+
+
+def _diagnose_baseline(args: object) -> None:
+    """Probe the image baseline executables and print the result.
+
+    Honors ``--all`` (every local kanibako image), ``--only PKG`` and
+    ``--skip PKG`` (default = the single configured ``box_image``, mirroring
+    ``rig rebuild``'s default-is-configured-image behavior).  Reuses
+    :func:`probe_missing_executables` so a single ephemeral container checks all
+    baseline executables per image.
+    """
+    from kanibako import baseline as baseline_mod
+    from kanibako.config import config_file_path, load_merged_config
+    from kanibako.container import ContainerRuntime
+    from kanibako.paths import xdg
+
+    only = getattr(args, "only", None)
+    skip = getattr(args, "skip", None)
+    all_images = getattr(args, "all_images", False)
+
+    baseline = baseline_mod.load_baseline()
+    pkgs = sorted(baseline)
+    if only:
+        only_set = set(only)
+        pkgs = [p for p in pkgs if p in only_set]
+    if skip:
+        skip_set = set(skip)
+        pkgs = [p for p in pkgs if p not in skip_set]
+    wanted_exes: list[str] = [exe for p in pkgs for exe in baseline[p]]
+    exe_to_pkg = {exe: p for p in pkgs for exe in baseline[p]}
+
+    print("Baseline:")
+    try:
+        runtime = ContainerRuntime()
+    except Exception:
+        print(_format_check("--", "  Baseline", "cannot check (no runtime)"))
+        return
+
+    if all_images:
+        images = [repo for repo, _size in runtime.list_local_images()]
+        if not images:
+            print(_format_check("!!", "  Baseline", "no local images to probe"))
+            return
+    else:
+        try:
+            config_home = xdg("XDG_CONFIG_HOME", ".config")
+            merged = load_merged_config(config_file_path(config_home), None)
+            images = [merged.box_image]
+        except Exception:
+            print(_format_check("--", "  Baseline", "cannot check (not configured)"))
+            return
+
+    for image in images:
+        missing = probe_missing_executables(runtime, image, wanted_exes)
+        if not missing:
+            print(_format_check("ok", f"  {image}", "all baseline executables present"))
+        else:
+            detail = ", ".join(
+                f"{exe_to_pkg.get(exe, '?')}:{exe}" for exe in missing
+            )
+            print(_format_check("!!", f"  {image}", f"missing {detail}"))
