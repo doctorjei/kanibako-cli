@@ -149,6 +149,57 @@ A user-facing surface for the scoped-share mechanism, scoped to a working set:
   the **next box launch** (a running box is unaffected); each mutation prints
   this reminder. The general `kanibako share --scope …` surface is deferred.
 
+### Added (v1.5.0 — project lifecycle commands; location/ownership split)
+
+The project-lifecycle commands are redesigned around two explicit axes —
+*where the files live* and *which mode/workset owns the project* — built on one
+shared transactional routine that unwinds partial changes on error (it never
+deletes a user's external source directory). A uniform target vocabulary
+`--default` / `--standalone` / `--workset <ws>` (mutually exclusive) appears on
+both `move` and `convert`; the target flag itself is the trigger (there is no
+`--convert` flag).
+
+- **`kanibako box remap <old> [<new>]`** (new) records-only relocation: after you
+  have moved the folder yourself, update kanibako's recorded path, hash, and
+  markers (workspace override / `connected.yaml` / `workspaces/<name>` symlink) to
+  match the new location's inside/outside-workset status. It does not move files
+  and never changes ownership. `<new>` defaults to `./`.
+- **`kanibako box convert [<old>] (--default | --standalone | --workset <ws>)
+  [--move [path]]`** (new) changes a project's ownership/mode. `<old>` defaults to
+  `./`. In-place by default for all modes (the workspace does not move). `--move
+  <path>` relocates to that path; bare `--move` moves the workspace into the target
+  working set (`<ws>/workspaces/<name>`) and is only valid with `--workset`.
+  `--name` renames. New capability: **workset → workset re-rooting**.
+- **`kanibako box move`** gains the target vocabulary too — `move <old> <new>
+  --workset <ws>` relocates and changes ownership in one step.
+
+### Changed (v1.5.0 — project lifecycle commands; BREAKING, pre-broad-release)
+
+- **`kanibako box move <old> <new>`** (alias `mv`) now requires **both** paths
+  explicitly (previously `box move [project] <dest>`). It physically relocates the
+  workspace; an optional target flag (`--default` / `--standalone` / `--workset
+  <ws>`) also changes ownership (none = pure move, owner unchanged). It now also
+  rewrites the project record (mode/paths/hash) and reconciles external/internal
+  markers. It refuses external-connected projects — use `remap` or `convert`
+  instead.
+- **`kanibako box duplicate --bare`** now refuses an external-connected source
+  (the connected-directory mapping is 1:1, so a bare copy cannot share the same
+  external workspace). Use a non-bare copy, which lands a fresh workspace.
+- **`kanibako workset connect`** now refuses a source that is inside another
+  registered working set's tree or already connected, and **`kanibako workset
+  disconnect`** now cleans up the `connected.yaml` entry, the `workspaces/<name>`
+  symlink, and the workspace override; `disconnect --remove-files` never deletes
+  the user's external source directory.
+
+### Removed (v1.5.0 — project lifecycle commands; BREAKING, pre-broad-release)
+
+- **`kanibako box migrate` is removed** (clean break, no aliases). It overloaded
+  path-remapping and mode-conversion onto one command; those axes are now the
+  separate `box remap` / `box move` (location) and `box convert` (ownership)
+  commands above. Note that `convert` is **in-place by default for all modes**,
+  whereas the old `migrate --to` moved the project into the target workset unless
+  `--in-place` was given.
+
 ### Changed (v1.5.0 — settings resolver; Phase 3; BREAKING, pre-broad-release)
 
 Breaking config-key and format changes, **no back-compat shims** (see the

@@ -222,11 +222,13 @@ shortcuts for common operations:
 | `box config` | View or modify project configuration |
 | `box diagnose [project]` | Check project box health |
 
-**Relocation:**
+**Relocation & conversion:**
 
 | Subcommand | Description |
 |------------|-------------|
-| `box move [project] <dest>` | Relocate project workspace |
+| `box remap <old> [<new>]` | Update kanibako's recorded path after you moved the folder yourself (records only, no file move; `<new>` defaults to `./`) |
+| `box move <old> <new>` / `box mv` | Physically relocate the workspace (both paths required; a target flag also changes ownership) |
+| `box convert [<old>] (--default \| --standalone \| --workset <ws>)` | Change ownership/mode (in-place by default; `--move [path]` relocates, bare `--move` moves into the target workset; `--name` renames) |
 | `box duplicate <source> [dest]` | Copy project (`--name`, `--bare`, `--force`) |
 | `box archive [project]` | Pack session data to .txz (`--all`, `--allow-uncommitted`, `--allow-unpushed`, `--force`) |
 | `box extract <archive> [dest]` | Unpack from archive (`--name`, `--force`) |
