@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (pre-broad-release)
 
+- **`box diagnose <name>` / lifecycle commands by bare workset name.** A bare
+  registered *workset* name passed to `box diagnose` (or to `remap`/`move`/
+  `convert`) is no longer path-ified relative to the current directory (which
+  failed with a misleading `path … does not exist`); it now reports clearly that
+  the token names a workset, not a single project box. The shared name resolvers
+  (`resolve_any_project`, `resolve_lifecycle_target`) now honor a resolved
+  workset name as well as a project name. Resolving a bare *project* name from
+  any directory already worked and is unchanged.
 - **`box diagnose` outside a registered project.** Running it on a moved/copied
   workspace or a plain non-project directory no longer prints a false
   `[ok] Project directory` + `[!!] Shell directory: missing`; it now reports

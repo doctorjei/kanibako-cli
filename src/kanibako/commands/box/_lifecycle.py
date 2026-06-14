@@ -190,14 +190,29 @@ def resolve_lifecycle_target(
     # that doesn't exist in cwd may be a registered project/workset name.  This
     # is essential for ``remap``/``convert`` when the folder has already moved,
     # so the on-disk path is stale but the name still resolves.
+    raw_name = raw
+    named_workset = False
     if raw and "/" not in raw and not Path(raw).exists():
         from kanibako.paths import resolve_name
         try:
             resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
-            if kind == "project":
+            if kind in ("project", "workset"):
+                # Update `raw` for BOTH kinds (mirrors resolve_any_project): a
+                # bare workset name resolves to the workset ROOT, which
+                # detect_project_mode must see -- without this the name
+                # path-ifies to cwd/<name> and resolution fails misleadingly.
                 raw = resolved
+                named_workset = kind == "workset"
         except ProjectError:
             pass
+    if named_workset:
+        # Lifecycle ops (remap/move/convert) act on a single project box; a
+        # workset is not one.  Reject with an actionable message.
+        raise WorksetError(
+            f"'{raw_name}' is a workset, not a single project box. "
+            f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
+            f"command from a project workspace under that workset."
+        )
     raw_path = Path(raw).resolve()
 
     detection = detect_project_mode(raw_path, std, config)
