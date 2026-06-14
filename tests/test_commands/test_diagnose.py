@@ -80,13 +80,17 @@ class TestCheckAgents:
         assert results[0][1] == "Agents"
         assert "no agent plugins" in results[0][2]
 
-    def test_check_agents_found(self) -> None:
-        """Discovered agent with detect() returning install shows ok."""
+    def test_check_agents_found(self, tmp_path: Path) -> None:
+        """Discovered agent with detect() returning install (existing binary) -> ok."""
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\n")
+
         mock_install = MagicMock()
-        mock_install.binary = Path("/usr/bin/claude")
+        mock_install.binary = binary
 
         mock_target = MagicMock()
         mock_target.display_name = "Claude Code"
+        mock_target.has_binary = True
         mock_target.detect.return_value = mock_install
 
         mock_cls = MagicMock(return_value=mock_target)
@@ -98,10 +102,13 @@ class TestCheckAgents:
         assert len(results) == 1
         assert results[0][0] == "ok"
         assert "Claude Code" in results[0][1]
-        assert "/usr/bin/claude" in results[0][2]
+        assert str(binary) in results[0][2]
 
-    def test_check_agents_not_detected(self) -> None:
-        """A real agent (has_binary True) whose binary isn't found -> [!!]."""
+    def test_check_agents_not_installed_is_optional(self) -> None:
+        """A real agent (has_binary True) that isn't installed -> [--] optional.
+
+        A not-installed optional agent is informational, NOT an error.
+        """
         mock_target = MagicMock()
         mock_target.display_name = "Claude Code"
         mock_target.has_binary = True
@@ -114,48 +121,126 @@ class TestCheckAgents:
         ):
             results = _check_agents()
         assert len(results) == 1
-        assert results[0][0] == "!!"
-        assert "not found" in results[0][2]
+        assert results[0][0] == "--"
+        assert "not installed (optional)" in results[0][2]
 
-    def test_no_agent_fallback_is_ok_not_error(self) -> None:
-        """The built-in Shell fallback (has_binary False, detect() None) is OK.
+    def test_detected_agent_existing_binary_ok(self, tmp_path: Path) -> None:
+        """A detected agent whose binary exists on disk -> [ok] with the path."""
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\n")
 
-        It needs no host binary and is always available, so diagnose must NOT
-        report it as a missing agent.
-        """
-        from kanibako.targets.no_agent import NoAgentTarget
+        mock_install = MagicMock()
+        mock_install.binary = binary
 
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"no_agent": NoAgentTarget},
-        ):
-            results = _check_agents()
-        assert len(results) == 1
-        status, label, detail = results[0]
-        assert status == "ok"
-        assert "Shell" in label
-        assert "not found" not in detail
-
-    def test_has_binary_target_undetected_still_errors(self) -> None:
-        """Guard against over-broad suppression: has_binary True + detect None -> [!!].
-
-        Mirrors test_check_agents_not_detected with an explicit stub to ensure
-        the new has_binary branch only spares the no-binary fallback.
-        """
         mock_target = MagicMock()
-        mock_target.display_name = "goose"
+        mock_target.display_name = "Claude Code"
         mock_target.has_binary = True
-        mock_target.detect.return_value = None
+        mock_target.detect.return_value = mock_install
 
         mock_cls = MagicMock(return_value=mock_target)
         with patch(
             "kanibako.targets.discover_targets",
-            return_value={"goose": mock_cls},
+            return_value={"claude": mock_cls},
+        ):
+            results = _check_agents()
+        assert len(results) == 1
+        assert results[0][0] == "ok"
+        assert str(binary) in results[0][2]
+        assert "not found" not in results[0][2]
+
+    def test_detected_agent_missing_binary_errors(self) -> None:
+        """A detected agent whose recorded binary is dangling -> [!!]."""
+        mock_install = MagicMock()
+        mock_install.binary = Path("/nonexistent/x")
+
+        mock_target = MagicMock()
+        mock_target.display_name = "Claude Code"
+        mock_target.has_binary = True
+        mock_target.detect.return_value = mock_install
+
+        mock_cls = MagicMock(return_value=mock_target)
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"claude": mock_cls},
         ):
             results = _check_agents()
         assert len(results) == 1
         assert results[0][0] == "!!"
-        assert "not found" in results[0][2]
+        assert "binary not found at" in results[0][2]
+        assert "/nonexistent/x" in results[0][2]
+
+    def test_no_agent_fallback_shows_resolved_shell(self) -> None:
+        """The no-binary Shell fallback is OK and shows the resolved box.shell.
+
+        It needs no host binary and is always available, so diagnose must NOT
+        report it as a missing agent; instead it shows the resolved launch shell
+        and its source.
+        """
+        mock_target = MagicMock()
+        mock_target.display_name = "Shell"
+        mock_target.has_binary = False
+
+        mock_cls = MagicMock(return_value=mock_target)
+        with (
+            patch(
+                "kanibako.targets.discover_targets",
+                return_value={"no_agent": mock_cls},
+            ),
+            patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ),
+        ):
+            results = _check_agents(config=MagicMock(), std=MagicMock())
+        assert len(results) == 1
+        status, label, detail = results[0]
+        assert status == "ok"
+        assert "Shell" in label
+        assert "/bin/bash" in detail
+        assert "image default" in detail
+        assert "not found" not in detail
+
+    def test_no_agent_fallback_source_labels(self) -> None:
+        """Each resolver source token maps to the right friendly label."""
+        cases = {
+            "box.shell": ("/bin/zsh", "box.shell"),
+            "$KANIBAKO_SHELL": ("/usr/bin/fish", "$KANIBAKO_SHELL"),
+            "image": ("/bin/bash", "image default"),
+            "sh": ("sh", "fallback"),
+        }
+        for source, (shell, label) in cases.items():
+            mock_target = MagicMock()
+            mock_target.display_name = "Shell"
+            mock_target.has_binary = False
+            mock_cls = MagicMock(return_value=mock_target)
+            with (
+                patch(
+                    "kanibako.targets.discover_targets",
+                    return_value={"no_agent": mock_cls},
+                ),
+                patch(
+                    "kanibako.shells.resolve_box_shell",
+                    return_value=(shell, source),
+                ),
+            ):
+                results = _check_agents(config=MagicMock(), std=MagicMock())
+            detail = results[0][2]
+            assert detail == f"{shell} ({label})", (source, detail)
+
+    def test_no_agent_fallback_without_config_is_safe(self) -> None:
+        """Without config/std the Shell line falls back to sh, never crashing."""
+        mock_target = MagicMock()
+        mock_target.display_name = "Shell"
+        mock_target.has_binary = False
+        mock_cls = MagicMock(return_value=mock_target)
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"no_agent": mock_cls},
+        ):
+            results = _check_agents()
+        assert len(results) == 1
+        assert results[0][0] == "ok"
+        assert results[0][2] == "sh (fallback)"
 
 
 class TestCheckStorage:
@@ -240,12 +325,18 @@ class TestRunCrabDiagnose:
         assert "no agent plugins" in captured.out
 
     def test_crab_diagnose_no_shell_not_found(self, capsys) -> None:
-        """The Shell fallback must never print as [!!] Agent: Shell: not found."""
+        """The Shell fallback prints as [ok] with the resolved box.shell, not [!!]."""
         from kanibako.targets.no_agent import NoAgentTarget
 
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"no_agent": NoAgentTarget},
+        with (
+            patch(
+                "kanibako.targets.discover_targets",
+                return_value={"no_agent": NoAgentTarget},
+            ),
+            patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ),
         ):
             args = argparse.Namespace()
             rc = run_crab_diagnose(args)
@@ -253,6 +344,7 @@ class TestRunCrabDiagnose:
         out = capsys.readouterr().out
         assert "[!!] Agent: Shell: not found" not in out
         assert "[ok] Agent: Shell" in out
+        assert "/bin/bash (image default)" in out
 
 
 class TestRunRigDiagnose:

@@ -108,10 +108,42 @@ def _check_image(config: object) -> tuple[str, str]:
         return "--", "cannot check (no container runtime)"
 
 
-def _check_agents() -> list[tuple[str, str, str]]:
+# Friendly labels for the box.shell resolver's source token (see
+# kanibako.shells.resolve_box_shell), used in the no-agent "Shell" detail line.
+_SHELL_SOURCE_LABELS = {
+    "box.shell": "box.shell",
+    "$KANIBAKO_SHELL": "$KANIBAKO_SHELL",
+    "image": "image default",
+    "sh": "fallback",
+}
+
+
+def _resolved_shell_detail(config, std, runtime, image) -> str:
+    """Return the no-agent "Shell" detail (resolved box.shell + friendly source).
+
+    Defensive: diagnose must NEVER crash on shell resolution.  Without enough
+    context (no config/std) or on any failure, falls back to ``sh (fallback)``.
+    """
+    if config is None or std is None:
+        return "sh (fallback)"
+    try:
+        from kanibako.shells import resolve_box_shell
+
+        shell, source = resolve_box_shell(config, std, runtime=runtime, image=image)
+        label = _SHELL_SOURCE_LABELS.get(source, source)
+        return f"{shell} ({label})"
+    except Exception:
+        return "sh (fallback)"
+
+
+def _check_agents(
+    config=None, std=None, runtime=None, image=None,
+) -> list[tuple[str, str, str]]:
     """Check all discovered agent targets.
 
-    Returns list of (status, label, detail).
+    Returns list of (status, label, detail).  *config*/*std* (and optionally
+    *runtime*/*image*) are used only to resolve the no-agent "Shell" target's
+    launch shell via :func:`kanibako.shells.resolve_box_shell`.
     """
     from kanibako.targets import discover_targets
 
@@ -123,26 +155,39 @@ def _check_agents() -> list[tuple[str, str, str]]:
     for name, cls in targets.items():
         try:
             instance = cls()
+            if not getattr(instance, "has_binary", True):
+                # No-binary fallback (the "Shell" no-agent target): it needs no
+                # host binary, so it is ALWAYS available -- never flag it.  Show
+                # the resolved launch shell and where it came from.
+                detail = _resolved_shell_detail(config, std, runtime, image)
+                results.append(("ok", f"Agent: {instance.display_name}", detail))
+                continue
             install = instance.detect()
             if install is not None:
-                detail_parts: list[str] = []
                 binary = getattr(install, "binary", None)
-                if binary:
-                    detail_parts.append(f"({binary})")
-                detail = " ".join(detail_parts) if detail_parts else "detected"
-                results.append(("ok", f"Agent: {instance.display_name}", detail))
-            elif not getattr(instance, "has_binary", True):
-                # Built-in fallback (e.g. the "Shell" no-agent target): it needs
-                # no host binary, so it is ALWAYS available -- never flag it.
+                if binary and not Path(binary).exists():
+                    # A real, detected agent whose recorded executable path is
+                    # dangling -- the legitimate error case.
+                    results.append(
+                        (
+                            "!!",
+                            f"Agent: {instance.display_name}",
+                            f"binary not found at {binary}",
+                        )
+                    )
+                else:
+                    detail = f"({binary})" if binary else "detected"
+                    results.append(("ok", f"Agent: {instance.display_name}", detail))
+            else:
+                # A real agent that simply isn't installed -- optional, not an
+                # error.
                 results.append(
                     (
-                        "ok",
+                        "--",
                         f"Agent: {instance.display_name}",
-                        "built-in (no agent binary required)",
+                        "not installed (optional)",
                     )
                 )
-            else:
-                results.append(("!!", f"Agent: {instance.display_name}", "not found"))
         except Exception as e:
             results.append(("!!", f"Agent: {name}", str(e)))
     return results
@@ -170,7 +215,7 @@ def _check_storage(data_path: Path) -> tuple[str, str]:
 def run_system_diagnose(args: object) -> int:
     """Run full system diagnostics."""
     from kanibako.config import config_file_path, load_config, load_merged_config
-    from kanibako.paths import xdg
+    from kanibako.paths import load_std_paths, xdg
 
     print("Kanibako System Diagnostics")
     print("=" * 40)
@@ -181,6 +226,7 @@ def run_system_diagnose(args: object) -> int:
     print(_format_check(status, "Container runtime", detail))
 
     # Image
+    merged = None
     try:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)
@@ -190,8 +236,29 @@ def run_system_diagnose(args: object) -> int:
     except Exception:
         print(_format_check("--", "Image", "cannot check (not configured)"))
 
-    # Agents
-    for status, label, detail in _check_agents():
+    # Agents -- resolve the no-agent Shell line with full box.shell precedence
+    # (config + std + the configured image; the resolver reads the image-shell
+    # store and only probes a container when nothing is stored yet).
+    std = None
+    runtime = None
+    image = None
+    try:
+        config_home = xdg("XDG_CONFIG_HOME", ".config")
+        cf = config_file_path(config_home)
+        std = load_std_paths(load_config(cf))
+    except Exception:
+        std = None
+    if merged is not None:
+        image = getattr(merged, "box_image", None)
+        try:
+            from kanibako.container import ContainerRuntime
+
+            runtime = ContainerRuntime()
+        except Exception:
+            runtime = None
+    for status, label, detail in _check_agents(
+        config=merged, std=std, runtime=runtime, image=image,
+    ):
         print(_format_check(status, label, detail))
 
     # Storage
@@ -279,11 +346,39 @@ def run_box_diagnose(args: object) -> int:
 
 def run_crab_diagnose(args: object) -> int:
     """Run diagnostics for agent/crab configuration."""
+    from kanibako.config import config_file_path, load_config, load_merged_config
+    from kanibako.paths import load_std_paths, xdg
+
     print("Crab (Agent) Diagnostics")
     print("=" * 40)
     print()
 
-    for status, label, detail in _check_agents():
+    # Resolve config/std (and, cheaply, a runtime + configured image) so the
+    # no-agent "Shell" line reports its resolved box.shell.  Each step is
+    # guarded so a missing config or absent podman never crashes diagnose.
+    merged = None
+    std = None
+    runtime = None
+    image = None
+    try:
+        config_home = xdg("XDG_CONFIG_HOME", ".config")
+        cf = config_file_path(config_home)
+        std = load_std_paths(load_config(cf))
+        merged = load_merged_config(cf, None)
+        image = getattr(merged, "box_image", None)
+    except Exception:
+        pass
+    if image is not None:
+        try:
+            from kanibako.container import ContainerRuntime
+
+            runtime = ContainerRuntime()
+        except Exception:
+            runtime = None
+
+    for status, label, detail in _check_agents(
+        config=merged, std=std, runtime=runtime, image=image,
+    ):
         print(_format_check(status, label, detail))
 
     print()
