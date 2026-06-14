@@ -101,15 +101,56 @@ class TestCheckAgents:
         assert "/usr/bin/claude" in results[0][2]
 
     def test_check_agents_not_detected(self) -> None:
-        """Agent plugin installed but binary not found."""
+        """A real agent (has_binary True) whose binary isn't found -> [!!]."""
         mock_target = MagicMock()
         mock_target.display_name = "Claude Code"
+        mock_target.has_binary = True
         mock_target.detect.return_value = None
 
         mock_cls = MagicMock(return_value=mock_target)
         with patch(
             "kanibako.targets.discover_targets",
             return_value={"claude": mock_cls},
+        ):
+            results = _check_agents()
+        assert len(results) == 1
+        assert results[0][0] == "!!"
+        assert "not found" in results[0][2]
+
+    def test_no_agent_fallback_is_ok_not_error(self) -> None:
+        """The built-in Shell fallback (has_binary False, detect() None) is OK.
+
+        It needs no host binary and is always available, so diagnose must NOT
+        report it as a missing agent.
+        """
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"no_agent": NoAgentTarget},
+        ):
+            results = _check_agents()
+        assert len(results) == 1
+        status, label, detail = results[0]
+        assert status == "ok"
+        assert "Shell" in label
+        assert "not found" not in detail
+
+    def test_has_binary_target_undetected_still_errors(self) -> None:
+        """Guard against over-broad suppression: has_binary True + detect None -> [!!].
+
+        Mirrors test_check_agents_not_detected with an explicit stub to ensure
+        the new has_binary branch only spares the no-binary fallback.
+        """
+        mock_target = MagicMock()
+        mock_target.display_name = "goose"
+        mock_target.has_binary = True
+        mock_target.detect.return_value = None
+
+        mock_cls = MagicMock(return_value=mock_target)
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"goose": mock_cls},
         ):
             results = _check_agents()
         assert len(results) == 1
@@ -197,6 +238,21 @@ class TestRunCrabDiagnose:
         captured = capsys.readouterr()
         assert "Crab (Agent) Diagnostics" in captured.out
         assert "no agent plugins" in captured.out
+
+    def test_crab_diagnose_no_shell_not_found(self, capsys) -> None:
+        """The Shell fallback must never print as [!!] Agent: Shell: not found."""
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"no_agent": NoAgentTarget},
+        ):
+            args = argparse.Namespace()
+            rc = run_crab_diagnose(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[!!] Agent: Shell: not found" not in out
+        assert "[ok] Agent: Shell" in out
 
 
 class TestRunRigDiagnose:
