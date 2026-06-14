@@ -21,6 +21,7 @@ _DEFAULTS = {
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_crab": "",
     "box_bootstrap_program": "tmux",
+    "box_shell": "",
 }
 
 # Backward-compat aliases: old field name -> new field name.
@@ -39,6 +40,7 @@ class KanibakoConfig:
     box_image: str = _DEFAULTS["box_image"]
     box_crab: str = _DEFAULTS["box_crab"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
+    box_shell: str = _DEFAULTS["box_shell"]
     allow_helpers: bool = True
     box_share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
