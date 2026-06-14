@@ -504,6 +504,92 @@ class TestRunBoxDiagnose:
         assert "is a workset" in out
         assert "does not exist" not in out
 
+    def test_qualified_workset_project_resolves(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """`box diagnose ws/proj` resolves to that project box from any cwd."""
+        from kanibako.config import load_config
+        from kanibako.errors import ContainerError
+        from kanibako.paths import (
+            WorksetSpec,
+            load_std_paths,
+            resolve_workset_project,
+        )
+        from kanibako.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("qdiag", tmp_home / "qdiag_root", std)
+        internal = ws.workspaces_dir / "api"
+        internal.mkdir(parents=True)
+        add_project(ws, "api", internal, std)
+        # Initialize the box so project.yaml is persisted (the registration the
+        # diagnose guard requires).
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            resolve_workset_project(
+                WorksetSpec.from_workset(ws), "api", std, config, initialize=True,
+            )
+
+        elsewhere = tmp_home / "qdiag_elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project="qdiag/api", path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "[ok] Project directory" in out
+        # Resolved to the real workset project, not path-ified relative to cwd.
+        assert "no kanibako project registered" not in out
+        assert "is a workset" not in out
+
+    def test_qualified_unknown_project_errors_clearly(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """`box diagnose ws/missing` errors -- never a silent wrong path."""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+        from kanibako.workset import create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("qdiag2", tmp_home / "qdiag2_root", std)
+
+        elsewhere = tmp_home / "qdiag2_elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        args = argparse.Namespace(project="qdiag2/nope", path=None)
+        rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        # Must not have silently reported a registered project for a wrong path.
+        assert "[ok] Project directory" not in out
+
+    def test_slash_token_not_qualified_unchanged(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """A non-qualified slash token still behaves as before (no regression)."""
+        elsewhere = tmp_home / "slash_elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        args = argparse.Namespace(project="no/such/path", path=None)
+        rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "[ok] Project directory" not in out
+
     def test_registered_project_missing_shell_is_informational(
         self, config_file, tmp_home, credentials_dir, capsys
     ) -> None:
