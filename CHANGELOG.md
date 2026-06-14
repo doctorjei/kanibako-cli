@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (configurable no-agent box shell)
+
+- **`box.shell` setting.** Selects the shell launched for a **no-agent** box
+  (`kanibako start` with no agent, and `kanibako shell`); it does not affect agent
+  launches (agents keep their own entrypoint). Resolved first-defined-wins:
+  `box.shell` (explicit path or name) → `$KANIBAKO_SHELL` (the default of
+  `box.shell`) → the image's recorded login shell → `sh`. The image's login shell
+  is captured at image install/prep time (via `getent passwd` for the box user)
+  and stored keyed by image digest, so launch and diagnose read the recorded value
+  rather than probing on the hot path.
+
+### Changed (diagnose: resolved shell + re-graded agent checks)
+
+- **`system diagnose` / `crab diagnose` agent checks.** The "Shell" line now shows
+  the resolved no-agent shell and which step won (e.g. `Shell: /bin/bash (image
+  default)`). Agent severities were re-graded: an optional agent that is simply not
+  installed is now informational (`[--] not installed (optional)`) rather than an
+  error; a detected agent whose binary path is missing is reported as an error
+  (`[!!] binary not found at <path>`); and the built-in no-agent Shell fallback is
+  no longer flagged as "not found".
+
+### Fixed (pre-broad-release)
+
+- **`box diagnose` outside a registered project.** Running it on a moved/copied
+  workspace or a plain non-project directory no longer prints a false
+  `[ok] Project directory` + `[!!] Shell directory: missing`; it now reports
+  clearly that no kanibako project is registered for the path.
+- **`box duplicate --to default` / `--to standalone` of an external-connected
+  project** now works instead of raising an uncaught `WorksetError`.
+
 ### Changed (base images are now pull-only; pre-broad-release)
 
 - Base images (`kanibako-{min,oci,lxc,vm}`) are now **pull-only**: the cli no
