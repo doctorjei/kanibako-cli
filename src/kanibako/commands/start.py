@@ -233,7 +233,22 @@ def run_shell(args: argparse.Namespace) -> int:
 
     entrypoint = getattr(args, "entrypoint", None)
     if not entrypoint:
-        entrypoint = "/bin/sh" if shell_args else "/bin/bash"
+        if shell_args:
+            # One-off command exec: /bin/sh -c "<cmd>" (not the interactive shell).
+            entrypoint = "/bin/sh"
+        else:
+            # Interactive shell: resolve the configured box.shell.  No runtime/
+            # image handle here, so the image-default step is skipped (box.shell
+            # -> $KANIBAKO_SHELL -> sh); _run_container's launch path performs
+            # the full image-aware resolution for `kanibako start`.
+            from kanibako.shells import resolve_box_shell
+            try:
+                cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+                _cfg = load_merged_config(cfg_file, None)
+                _std = load_std_paths(_cfg)
+                entrypoint, _src = resolve_box_shell(_cfg, _std)
+            except Exception:
+                entrypoint = "sh"
     # Wrap shell_args as -c "cmd" so /bin/sh executes them as a command
     if shell_args and not getattr(args, "entrypoint", None):
         shell_args = ["-c", " ".join(shell_args)]
@@ -1123,12 +1138,28 @@ def _run_container(
         if not entrypoint and target:
             entrypoint = target.default_entrypoint
 
+        # No-agent box: launch the configured box.shell (resolver is the single
+        # source of truth — box.shell -> $KANIBAKO_SHELL -> stored image shell
+        # -> sh).  A real agent sets a non-None default_entrypoint and is left
+        # untouched.
+        if not entrypoint:
+            from kanibako.shells import resolve_box_shell
+            box_shell, _box_shell_source = resolve_box_shell(
+                merged, std, runtime=runtime, image=image,
+            )
+        else:
+            box_shell = None
+
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
-            inner_cmd = entrypoint or "/bin/bash"
+            inner_cmd = entrypoint or box_shell
             entrypoint, cli_args = _bootstrap_wrap(
                 bootstrap_program, inner_cmd, list(cli_args or []),
             )
+        elif not entrypoint:
+            # Non-persistent no-agent launch: run box.shell explicitly instead
+            # of deferring to the image's default entrypoint.
+            entrypoint = box_shell
 
         try:
             # Run the container
