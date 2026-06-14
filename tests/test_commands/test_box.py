@@ -1054,6 +1054,133 @@ class TestBoxDuplicateExternal:
         # No external wiring for an internal (copied) workspace.
         assert _load_connected(std) == {}
 
+    def test_duplicate_external_to_default(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``--to default`` of an external-connected source succeeds.
+
+        The destination gets the EXTERNAL dir's contents (copied from the live
+        workspace, not the discoverability symlink) plus default-mode metadata.
+        The source dir and its connection are untouched.  No WorksetError
+        escapes.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, ext_dir, proj_name = self._make_external_connected(
+            tmp_home, std, config, ws_name="ext2def-ws", proj_name="e2d",
+        )
+        before = _load_connected(std)
+        dest = tmp_home / "e2d_dst"
+
+        args = argparse.Namespace(
+            source_path=str(ext_dir), new_path=str(dest),
+            to_mode="default", bare=False, force=True,
+            workset=None, project_name=None,
+        )
+        rc = run_duplicate(args)
+        assert rc == 0
+
+        # Destination has the external dir's CONTENTS + default-mode metadata.
+        assert (dest / "code.py").read_text() == "print('external')"
+        ac_project = std.data_path / "boxes" / "e2d_dst"
+        assert ac_project.is_dir()
+        # Source + connection untouched.
+        assert (ext_dir / "code.py").read_text() == "print('external')"
+        assert _load_connected(std) == before
+        assert (ws.projects_dir / proj_name).is_dir()
+
+    def test_duplicate_external_to_standalone(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``--to standalone`` of an external-connected source succeeds."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, ext_dir, proj_name = self._make_external_connected(
+            tmp_home, std, config, ws_name="ext2sa-ws", proj_name="e2s",
+        )
+        before = _load_connected(std)
+        dest = tmp_home / "e2s_dst"
+
+        args = argparse.Namespace(
+            source_path=str(ext_dir), new_path=str(dest),
+            to_mode="standalone", bare=False, force=True,
+            workset=None, project_name=None,
+        )
+        rc = run_duplicate(args)
+        assert rc == 0
+
+        # Standalone layout at destination with the external contents.
+        assert (dest / ".kanibako").is_dir()
+        assert (dest / "code.py").read_text() == "print('external')"
+        # Source + connection untouched.
+        assert (ext_dir / "code.py").read_text() == "print('external')"
+        assert _load_connected(std) == before
+
+    def test_bare_duplicate_external_to_default_allowed(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``--bare --to default`` of an external source succeeds (no aliasing).
+
+        The bare result makes ``new_path`` itself the workspace, so the 1:1
+        connected.yaml refusal does NOT apply.  Metadata only, no crash, no
+        WorksetError.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, ext_dir, proj_name = self._make_external_connected(
+            tmp_home, std, config, ws_name="extbare-ws", proj_name="eb",
+        )
+        before = _load_connected(std)
+        dest = tmp_home / "eb_dst"
+
+        args = argparse.Namespace(
+            source_path=str(ext_dir), new_path=str(dest),
+            to_mode="default", bare=True, force=True,
+            workset=None, project_name=None,
+        )
+        rc = run_duplicate(args)
+        assert rc == 0
+
+        # Metadata exists; workspace content NOT copied (bare).
+        assert (std.data_path / "boxes" / "eb_dst").is_dir()
+        assert not (dest / "code.py").exists()
+        # Source + connection untouched.
+        assert (ext_dir / "code.py").read_text() == "print('external')"
+        assert _load_connected(std) == before
+
+    def test_bare_duplicate_external_to_workset_still_refused(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The narrowed guard still refuses ``--bare --to workset`` (aliasing case)."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import _load_connected
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, ext_dir, proj_name = self._make_external_connected(
+            tmp_home, std, config, ws_name="extbarews-ws", proj_name="ebw",
+        )
+        before = _load_connected(std)
+
+        args = argparse.Namespace(
+            source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
+            to_mode="workset", bare=True, force=True,
+            workset="extbarews-ws", project_name="dup-proj",
+        )
+        rc = run_duplicate(args)
+        assert rc == 1
+        assert "external-connected" in capsys.readouterr().err
+        assert _load_connected(std) == before
+
 
 # ---------------------------------------------------------------------------
 # TestBoxDuplicateFromWorkset

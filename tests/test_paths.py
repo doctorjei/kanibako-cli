@@ -19,6 +19,7 @@ from kanibako.paths import (
     _find_workset_for_path,
     _remove_human_vault_symlink,
     _remove_project_vault_symlink,
+    _resolve_workset_or_connected,
     _upgrade_shell,
     detect_project_mode,
     load_std_paths,
@@ -975,6 +976,49 @@ class TestFindWorksetForPath:
         found_ws, found_name = _find_workset_for_path(subdir.resolve(), std)
         assert found_ws.name == "my-set"
         assert found_name is None
+
+
+class TestResolveWorksetOrConnected:
+    """The shared workset-or-connected fallback resolver."""
+
+    def test_internal_path_resolves_in_tree(self, config_file, tmp_home):
+        """An in-tree workspace path resolves directly (no fallback needed)."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import add_project, create_workset
+        ws_root = tmp_home / "worksets" / "in-set"
+        ws = create_workset("in-set", ws_root, std)
+        add_project(ws, "myproj", tmp_home / "project")
+
+        proj_dir = (ws.workspaces_dir / "myproj").resolve()
+        found_ws, found_name = _resolve_workset_or_connected(proj_dir, std)
+        assert found_ws.name == "in-set"
+        assert found_name == "myproj"
+
+    def test_external_connected_path_resolves_via_fallback(self, config_file, tmp_home):
+        """An external-connected source (outside any tree) resolves to (ws, proj)."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        from kanibako.workset import add_project, create_workset
+        ws_root = tmp_home / "worksets" / "ext-set"
+        ws = create_workset("ext-set", ws_root, std)
+        external = tmp_home / "external_repo"
+        external.mkdir()
+        add_project(ws, "extproj", external, std)
+
+        found_ws, found_name = _resolve_workset_or_connected(external.resolve(), std)
+        assert found_ws.name == "ext-set"
+        assert found_name == "extproj"
+
+    def test_unknown_path_raises(self, config_file, tmp_home):
+        """A path belonging to no workset (in-tree or connected) raises."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        with pytest.raises(WorksetError, match="No workset found"):
+            _resolve_workset_or_connected(tmp_home / "nowhere", std)
 
 
 class TestEnsureVaultSymlink:
