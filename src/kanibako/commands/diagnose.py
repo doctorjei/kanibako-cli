@@ -131,6 +131,16 @@ def _check_agents() -> list[tuple[str, str, str]]:
                     detail_parts.append(f"({binary})")
                 detail = " ".join(detail_parts) if detail_parts else "detected"
                 results.append(("ok", f"Agent: {instance.display_name}", detail))
+            elif not getattr(instance, "has_binary", True):
+                # Built-in fallback (e.g. the "Shell" no-agent target): it needs
+                # no host binary, so it is ALWAYS available -- never flag it.
+                results.append(
+                    (
+                        "ok",
+                        f"Agent: {instance.display_name}",
+                        "built-in (no agent binary required)",
+                    )
+                )
             else:
                 results.append(("!!", f"Agent: {instance.display_name}", "not found"))
         except Exception as e:
