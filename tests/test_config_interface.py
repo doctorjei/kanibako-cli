@@ -81,6 +81,10 @@ class TestIsKnownKey:
         """box.shell must be a known GET key (set/--reset bypass is_known_key)."""
         assert is_known_key("box.shell") is True
 
+    def test_box_bootstrap_program_is_known(self):
+        """box.bootstrap_program must be a known GET key (set/--reset bypass it)."""
+        assert is_known_key("box.bootstrap_program") is True
+
     def test_dynamic_env_prefix(self):
         assert is_known_key("env.MY_VAR") is True
 
@@ -177,6 +181,36 @@ class TestRegularConfigKeys:
             project_toml=project_toml,
         )
         assert val == "/bin/zsh"
+
+    def test_get_box_bootstrap_program_unset_returns_default(self, tmp_path):
+        """box.bootstrap_program is unset → get returns the built-in default."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("box:\n  image: \"default:latest\"\n")
+        project_toml = tmp_path / "project.yaml"
+
+        # No "unknown config key" error; falls back to the merged default.
+        val = get_config_value(
+            "box.bootstrap_program",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val == "tmux"
+
+    def test_set_and_get_box_bootstrap_program(self, tmp_path):
+        """Setting box.bootstrap_program and reading it back returns the value."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("box:\n  image: \"default:latest\"\n")
+        project_toml = tmp_path / "project.yaml"
+
+        set_config_value(
+            "box.bootstrap_program", "screen", config_path=project_toml
+        )
+        val = get_config_value(
+            "box.bootstrap_program",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val == "screen"
 
 
 # ---------------------------------------------------------------------------
