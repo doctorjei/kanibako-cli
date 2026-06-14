@@ -1524,3 +1524,206 @@ class TestApplyInitSeeds:
         self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
         assert not (shell / "gone").exists()
         assert list(shell.iterdir()) == []
+
+
+class TestBoxShellLaunch:
+    """Verify the no-agent launch shell comes from resolve_box_shell (Phase 3).
+
+    The no-agent case is when ``target.default_entrypoint`` is None (NoAgentTarget):
+    ``_run_container`` then resolves the shell via ``resolve_box_shell`` instead of
+    a hardcoded ``/bin/bash``.  A real agent (non-None default_entrypoint) keeps
+    using its own entrypoint.
+    """
+
+    def test_no_agent_persistent_uses_resolved_shell(self, start_mocks):
+        """No-agent persistent launch wraps the resolved shell, not /bin/bash."""
+        with start_mocks() as m:
+            m.target.default_entrypoint = None  # NoAgentTarget
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ) as m_resolve:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                )
+            m_resolve.assert_called_once()
+            call = m.runtime.run.call_args
+            # Persistent tmux wrap: entrypoint=tmux, resolved shell is the
+            # inner_cmd after the "--" separator in cli_args.
+            assert call.kwargs.get("entrypoint") == "tmux"
+            cli_args = call.kwargs.get("cli_args") or []
+            assert "--" in cli_args
+            assert cli_args[cli_args.index("--") + 1] == "/bin/bash"
+
+    def test_no_agent_persistent_uses_resolved_zsh(self, start_mocks):
+        """box.shell=/bin/zsh (resolver result) is the launched inner command."""
+        with start_mocks() as m:
+            m.target.default_entrypoint = None
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ):
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args[cli_args.index("--") + 1] == "/bin/zsh"
+
+    def test_no_agent_nonpersistent_uses_resolved_shell_as_entrypoint(self, start_mocks):
+        """No-agent ephemeral launch passes the resolved shell as entrypoint."""
+        with start_mocks() as m:
+            m.target.default_entrypoint = None
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ):
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=False,
+                )
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/zsh"
+
+    def test_no_agent_passes_runtime_and_image_to_resolver(self, start_mocks):
+        """The resolver is given runtime+image so lazy image-shell backfill works."""
+        with start_mocks() as m:
+            m.target.default_entrypoint = None
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("sh", "sh"),
+            ) as m_resolve:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=False,
+                )
+            kwargs = m_resolve.call_args.kwargs
+            assert kwargs.get("runtime") is m.runtime
+            assert kwargs.get("image") == "test:latest"
+
+    def test_real_agent_persistent_uses_agent_entrypoint_not_shell(self, start_mocks):
+        """A real agent (default_entrypoint set) keeps its entrypoint; resolver unused."""
+        with start_mocks() as m:
+            # Default fixture target has default_entrypoint == "claude".
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                )
+            m_resolve.assert_not_called()
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            # Agent binary "claude" is the inner_cmd, not /bin/zsh.
+            assert cli_args[cli_args.index("--") + 1] == "claude"
+            assert "/bin/zsh" not in cli_args
+
+    def test_real_agent_nonpersistent_uses_agent_entrypoint(self, start_mocks):
+        """A real agent ephemeral launch passes the agent entrypoint, not box.shell."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=False,
+                )
+            m_resolve.assert_not_called()
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "claude"
+
+
+class TestRunShellBoxShell:
+    """Verify run_shell uses resolve_box_shell for its interactive default."""
+
+    def _args(self, **over):
+        ns = argparse.Namespace(
+            project=None,
+            shell_args=[],
+            entrypoint=None,
+            image=None,
+            no_helpers=False,
+            share_images=False,
+            env=None,
+            persistent=False,
+            ephemeral=False,
+        )
+        for k, v in over.items():
+            setattr(ns, k, v)
+        return ns
+
+    def test_default_interactive_shell_uses_resolver(self, start_mocks):
+        """`kanibako shell` (no args) launches the resolved box.shell, not /bin/bash."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                run_shell(self._args())
+            m_resolve.assert_called_once()
+            # Non-persistent shell: resolved shell is the entrypoint.
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/zsh"
+
+    def test_explicit_entrypoint_wins(self, start_mocks):
+        """An explicit --entrypoint overrides the resolver."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                run_shell(self._args(entrypoint="/usr/bin/fish"))
+            m_resolve.assert_not_called()
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/usr/bin/fish"
+
+    def test_shell_args_use_one_off_sh_path(self, start_mocks):
+        """`kanibako shell -- <cmd>` still uses /bin/sh -c, not the resolver."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                run_shell(self._args(shell_args=["echo", "hi"]))
+            m_resolve.assert_not_called()
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/sh"
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args == ["-c", "echo hi"]
