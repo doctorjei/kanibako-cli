@@ -357,6 +357,93 @@ class TestCheckAuth:
             m.target.check_auth.assert_not_called()
 
 
+class TestAgentBinaryValidation:
+    """Verify the launch path fails fast on a corrupt/empty host binary."""
+
+    def test_zero_byte_binary_fails_fast(self, start_mocks, capsys, tmp_path):
+        """A detected agent whose host binary is 0 bytes -> return 1, no run.
+
+        Routes a real 0-byte tmp file through the real validation helper to
+        exercise the guard end-to-end (a 0-byte file passes is_file() yet
+        would be exec'd into a brick).
+        """
+        from kanibako.targets.base import _validate_agent_binary
+
+        binary = tmp_path / "claude"
+        binary.touch()  # 0 bytes
+        binary.chmod(0o755)
+        with start_mocks() as m:
+            m.target.detect.return_value.binary = binary
+            # Drive the guard through the real helper for fidelity.
+            m.validate_binary.side_effect = _validate_agent_binary
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "host binary is unusable" in captured.err
+        assert "0 bytes" in captured.err
+        assert str(binary) in captured.err
+        assert "diagnose" in captured.err
+
+    def test_nonexecutable_binary_fails_fast(
+        self, start_mocks, capsys, tmp_path
+    ):
+        """A detected agent whose host binary lacks the exec bit -> return 1."""
+        from kanibako.targets.base import _validate_agent_binary
+
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o644)  # not executable
+        with start_mocks() as m:
+            m.target.detect.return_value.binary = binary
+            m.validate_binary.side_effect = _validate_agent_binary
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "not executable" in captured.err
+
+    def test_valid_binary_launches(self, start_mocks, tmp_path):
+        """A detected agent with a valid non-zero executable binary -> launches."""
+        from kanibako.targets.base import _validate_agent_binary
+
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\nexec claude-real \"$@\"\n")
+        binary.chmod(0o755)
+        with start_mocks() as m:
+            m.target.detect.return_value.binary = binary
+            m.validate_binary.side_effect = _validate_agent_binary
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m.runtime.run.assert_called_once()
+
+
 class TestDistinctAuth:
     """Verify distinct auth skips host credential sync."""
 

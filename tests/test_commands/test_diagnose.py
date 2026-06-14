@@ -84,6 +84,7 @@ class TestCheckAgents:
         """Discovered agent with detect() returning install (existing binary) -> ok."""
         binary = tmp_path / "claude"
         binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
 
         mock_install = MagicMock()
         mock_install.binary = binary
@@ -128,6 +129,7 @@ class TestCheckAgents:
         """A detected agent whose binary exists on disk -> [ok] with the path."""
         binary = tmp_path / "claude"
         binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
 
         mock_install = MagicMock()
         mock_install.binary = binary
@@ -168,6 +170,62 @@ class TestCheckAgents:
         assert results[0][0] == "!!"
         assert "binary not found at" in results[0][2]
         assert "/nonexistent/x" in results[0][2]
+
+    def test_detected_agent_empty_binary_errors(self, tmp_path: Path) -> None:
+        """A detected agent whose binary exists but is 0 bytes -> [!!].
+
+        A 0-byte file passes a bare exists() check yet bricks the box at
+        launch; diagnose must flag it.
+        """
+        binary = tmp_path / "claude"
+        binary.touch()  # 0 bytes
+        binary.chmod(0o755)
+
+        mock_install = MagicMock()
+        mock_install.binary = binary
+
+        mock_target = MagicMock()
+        mock_target.display_name = "Claude Code"
+        mock_target.has_binary = True
+        mock_target.detect.return_value = mock_install
+
+        mock_cls = MagicMock(return_value=mock_target)
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"claude": mock_cls},
+        ):
+            results = _check_agents()
+        assert len(results) == 1
+        assert results[0][0] == "!!"
+        assert "0 bytes" in results[0][2]
+        assert str(binary) in results[0][2]
+
+    def test_detected_agent_nonexecutable_binary_errors(
+        self, tmp_path: Path
+    ) -> None:
+        """A detected agent whose binary exists but lacks the exec bit -> [!!]."""
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o644)  # not executable
+
+        mock_install = MagicMock()
+        mock_install.binary = binary
+
+        mock_target = MagicMock()
+        mock_target.display_name = "Claude Code"
+        mock_target.has_binary = True
+        mock_target.detect.return_value = mock_install
+
+        mock_cls = MagicMock(return_value=mock_target)
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"claude": mock_cls},
+        ):
+            results = _check_agents()
+        assert len(results) == 1
+        assert results[0][0] == "!!"
+        assert "not executable" in results[0][2]
+        assert str(binary) in results[0][2]
 
     def test_no_agent_fallback_shows_resolved_shell(self) -> None:
         """The no-binary Shell fallback is OK and shows the resolved box.shell.

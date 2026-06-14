@@ -33,6 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (pre-broad-release)
 
+- **Corrupt/empty host agent binary now fails fast with an actionable error.**
+  A 0-byte or non-executable host agent binary previously passed the mount check
+  (`is_file()` is true for a 0-byte file) and was exec'd into a brick — in
+  persistent/detached mode the user saw only the generic "Container exited before
+  session could attach", with no clue it was a binary problem. The launch path now
+  validates the resolved host binary (must exist, be non-zero, and be executable)
+  before mounting/launching, and on failure prints a clear remediation (reinstall
+  the host agent / prune stale 0-byte versions; run `kanibako system diagnose`)
+  and aborts instead of launching. `system diagnose` mirrors the same check: a
+  detected agent whose binary is empty or non-executable is now flagged `[!!]`
+  (previously only a fully *missing* path was flagged). The validation is lenient
+  (no ELF/shebang requirement) so legitimate native binaries and wrapper scripts
+  are not false-flagged.
 - **`box diagnose <name>` / lifecycle commands by bare workset name.** A bare
   registered *workset* name passed to `box diagnose` (or to `remap`/`move`/
   `convert`) is no longer path-ified relative to the current directory (which

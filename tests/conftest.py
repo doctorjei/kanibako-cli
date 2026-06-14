@@ -213,6 +213,14 @@ def start_mocks():
                 "kanibako.commands.start._check_launch_baseline",
                 return_value=[],
             ) as m_launch_check,
+            # Launch-path agent-binary validation runs on install.binary
+            # (a MagicMock here); default it to "valid" so the fail-fast
+            # guard never trips. Tests exercising the guard override
+            # m_validate_binary.return_value with a reason string.
+            patch(
+                "kanibako.targets.base._validate_agent_binary",
+                return_value=None,
+            ) as m_validate_binary,
         ):
             proj = MagicMock()
             proj.is_new = False
@@ -306,6 +314,7 @@ def start_mocks():
                 open=m_open,
                 load_registry=m_load_registry,
                 launch_check=m_launch_check,
+                validate_binary=m_validate_binary,
             )
 
     return _make

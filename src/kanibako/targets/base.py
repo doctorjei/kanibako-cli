@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -64,6 +65,59 @@ class AgentInstall:
     name: str  # e.g. "claude"
     binary: Path  # host symlink/path to agent binary
     install_dir: Path  # root of agent installation
+
+
+def _validate_agent_binary(binary: Path) -> str | None:
+    """Validate that *binary* is a usable host agent executable.
+
+    Returns a short, human-readable REASON string when the binary is
+    unusable, or ``None`` when it looks fine.  The check runs on the HOST
+    path (``AgentInstall.binary``) at launch time, before the container is
+    mounted/run.
+
+    Deliberately LENIENT to avoid false positives on legitimate native
+    binaries OR shebang wrappers — it fails only when the path is:
+
+    * missing,
+    * zero bytes (the documented 0-byte/corrupt-binary incident), or
+    * not marked executable (``os.access(..., os.X_OK)`` is False).
+
+    An optional extra guard rejects a file whose first bytes are all-NUL
+    (a clear sign of a truncated/corrupt download) without requiring ELF
+    magic — so native binaries and ``#!`` wrappers both pass.
+    """
+    try:
+        path = Path(binary)
+    except TypeError:
+        return f"invalid binary path: {binary!r}"
+
+    if not path.exists():
+        return f"binary not found at {path}"
+    if not path.is_file():
+        return f"binary path is not a regular file at {path}"
+
+    try:
+        size = path.stat().st_size
+    except OSError as e:
+        return f"cannot stat binary at {path}: {e}"
+    if size == 0:
+        return f"binary is empty (0 bytes) at {path}"
+
+    if not os.access(path, os.X_OK):
+        return f"binary present but not executable at {path}"
+
+    # Lenient corruption check: a non-empty file whose leading bytes are all
+    # NUL is not a valid native binary or shebang wrapper.  We read only a
+    # few bytes and never reject on read failure (stay lenient).
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(4)
+        if head and set(head) == {0}:
+            return f"binary appears corrupt (leading bytes are all NUL) at {path}"
+    except OSError:
+        pass
+
+    return None
 
 
 class Target(ABC):

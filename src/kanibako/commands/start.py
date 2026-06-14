@@ -905,6 +905,28 @@ def _run_container(
         # Build extra mounts from target binary detection
         extra_mounts = []
         if target and install:
+            # Validate the resolved HOST binary before mounting/launching.  A
+            # 0-byte or non-executable file passes binary_mounts()' is_file()
+            # check and would be exec'd into a brick -- in persistent/detached
+            # mode the user only ever sees the generic "Container exited before
+            # session could attach", with no clue it's a binary problem.
+            from kanibako.targets.base import _validate_agent_binary
+
+            reason = _validate_agent_binary(install.binary)
+            if reason:
+                print(
+                    f"Error: {target.display_name} host binary is unusable: "
+                    f"{reason}.\n"
+                    f"  binary: {install.binary}\n"
+                    f"The host agent binary appears corrupt or empty; the "
+                    f"container would launch into a non-executable file.\n"
+                    f"Reinstall the host {target.display_name} (and prune any "
+                    f"stale 0-byte versions in {install.install_dir}), then "
+                    f"retry.\n"
+                    f"Run 'kanibako system diagnose' for a full health check.",
+                    file=sys.stderr,
+                )
+                return 1
             binary_mnts = target.binary_mounts(install)
             if not binary_mnts:
                 print(
