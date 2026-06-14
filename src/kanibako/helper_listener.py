@@ -31,6 +31,7 @@ class HelperContext:
     env: dict[str, str] | None = None
     entrypoint: str | None = None
     default_entrypoint: str | None = None  # from target.default_entrypoint
+    box_shell: str | None = None       # resolved box.shell (no-agent fallback)
     project_path: Path | None = None   # host-side workspace directory
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
     boxes: Path | None = None          # resolved system.path.boxes (std.boxes)
@@ -284,7 +285,16 @@ class HelperHub:
         # Use helper-init.sh as entrypoint wrapper — it registers with the
         # hub, sources broadcast scripts, then execs the agent command.
         init_script = "/home/agent/playbook/scripts/helper-init.sh"
-        agent_cmd = ctx.entrypoint or ctx.default_entrypoint or "/bin/bash"
+        # Fall back to the resolved box.shell (box.shell -> $KANIBAKO_SHELL ->
+        # image's recorded login shell -> sh) rather than a hardcoded /bin/bash,
+        # so a no-agent helper honors the same shell-resolution chain as the
+        # main launch path.  A real-agent helper keeps winning on entrypoint /
+        # default_entrypoint; box_shell only covers the no-agent case.  The
+        # final "sh" is a last-ditch floor (box_shell itself already falls back
+        # to sh, so it is rarely reached).
+        agent_cmd = (
+            ctx.entrypoint or ctx.default_entrypoint or ctx.box_shell or "sh"
+        )
         cli_args = [str(helper_num), agent_cmd]
         model = request.get("model")
         if model:
