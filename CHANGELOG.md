@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clearly that no kanibako project is registered for the path.
 - **`box duplicate --to default` / `--to standalone` of an external-connected
   project** now works instead of raising an uncaught `WorksetError`.
+- **`kanibako shell` is now image-aware.** An interactive no-agent shell now
+  resolves `box.shell` *with* the box's runtime/image, so the image's recorded
+  login shell participates (previously `kanibako shell` resolved without an image
+  handle and always landed on the `sh` floor when nothing was configured, even
+  though `diagnose` advertised the image default). The plain-shell guarantee is
+  unchanged: `kanibako shell` never launches an agent even when one is installed.
+- **`kanibako system config box.shell`** (read-back) no longer reports an unknown
+  config key; `box.shell` is now a recognized GET key (set / `--reset` already
+  worked).
 
 ### Changed (base images are now pull-only; pre-broad-release)
 

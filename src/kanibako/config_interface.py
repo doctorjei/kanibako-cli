@@ -66,6 +66,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "box.image",
     "box.crab",
     "box.share_images",
+    "box.shell",
     # Auth / project
     "group_auth",
     "layout",

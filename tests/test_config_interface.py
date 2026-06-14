@@ -77,6 +77,10 @@ class TestIsKnownKey:
         assert is_known_key("system.path.data") is True
         assert is_known_key("system.path.boxes") is True
 
+    def test_box_shell_is_known(self):
+        """box.shell must be a known GET key (set/--reset bypass is_known_key)."""
+        assert is_known_key("box.shell") is True
+
     def test_dynamic_env_prefix(self):
         assert is_known_key("env.MY_VAR") is True
 
@@ -146,6 +150,33 @@ class TestRegularConfigKeys:
         project_toml = tmp_path / "project.yaml"
         msg = reset_config_value("image", config_path=project_toml)
         assert "No override" in msg
+
+    def test_get_box_shell_unset_returns_none(self, tmp_path):
+        """box.shell defaults to empty → get returns None (rendered as not set)."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("box:\n  image: \"default:latest\"\n")
+        project_toml = tmp_path / "project.yaml"
+
+        val = get_config_value(
+            "box.shell",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val is None
+
+    def test_set_and_get_box_shell(self, tmp_path):
+        """Setting box.shell and reading it back returns the value (no error)."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("box:\n  image: \"default:latest\"\n")
+        project_toml = tmp_path / "project.yaml"
+
+        set_config_value("box.shell", "/bin/zsh", config_path=project_toml)
+        val = get_config_value(
+            "box.shell",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val == "/bin/zsh"
 
 
 # ---------------------------------------------------------------------------
