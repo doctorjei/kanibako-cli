@@ -12,8 +12,8 @@ from kanibako.names import assign_name
 from kanibako.paths import (
     ProjectMode,
     WorksetSpec,
-    _find_workset_for_path,
     _resolve_local_dir,
+    _resolve_workset_or_connected,
     xdg,
     detect_project_mode,
     load_std_paths,
@@ -264,7 +264,10 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     """Duplicate a workset project to default-mode or standalone layout (source untouched)."""
     to_mode_str = args.to_mode
 
-    ws, proj_name = _find_workset_for_path(source_path, std)
+    # Resolve via workset-or-connected fallback: an external-connected source
+    # lives outside any workset tree, so the in-tree lookup alone would miss it
+    # and raise an uncaught WorksetError.
+    ws, proj_name = _resolve_workset_or_connected(source_path, std)
     if proj_name is None:
         print("Error: not inside a specific project workspace.", file=sys.stderr)
         return 1
@@ -301,9 +304,13 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Copy workspace (unless --bare).
+    # Copy workspace (unless --bare).  Copy from the RESOLVED workspace, not a
+    # hardcoded ws.workspaces_dir/proj_name -- for an external-connected source
+    # the latter is only the discoverability symlink, while project_path (set
+    # via resolve_workset_project's meta["workspace"] override) is the live
+    # workspace.  No-op difference for ordinary internal workset sources.
     if not args.bare:
-        ws_workspace = ws.workspaces_dir / proj_name
+        ws_workspace = src_proj.project_path
         if ws_workspace.is_dir():
             shutil.copytree(ws_workspace, new_path, dirs_exist_ok=args.force)
 
@@ -325,11 +332,19 @@ def run_duplicate(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    # Refuse --bare on an external-connected source.  connected.yaml is a 1:1
-    # mapping (external path -> one {workset, project}); a bare duplicate has no
+    # Refuse --bare on an external-connected source ONLY when the bare copy
+    # would alias the same external dir.  connected.yaml is a 1:1 mapping
+    # (external path -> one {workset, project}); a bare duplicate has no
     # workspace of its own, so it could only point at the SAME external dir as
-    # the original -> would violate the 1:1 mapping.
-    if getattr(args, "bare", False) and _source_is_external(args, std):
+    # the original -> would violate the 1:1 mapping.  This does NOT apply when
+    # duplicating --to default/standalone: there the bare result makes new_path
+    # itself the workspace (no aliasing), so it is allowed.
+    _to_mode = getattr(args, "to_mode", None)
+    if (
+        _to_mode not in ("default", "standalone")
+        and getattr(args, "bare", False)
+        and _source_is_external(args, std)
+    ):
         print(
             "Error: cannot --bare duplicate an external-connected project "
             "(its connection is 1:1).",

@@ -1308,6 +1308,40 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
     raise WorksetError(f"No workset found for path: {project_dir}")
 
 
+def _resolve_workset_or_connected(
+    project_dir: Path, std: StandardPaths,
+) -> tuple[_WorksetLike, str | None]:
+    """Resolve *project_dir* to its owning workset, honoring external connects.
+
+    Tries the in-tree lookup first (:func:`_find_workset_for_path`).  When that
+    misses (raises ``WorksetError``) or lands on the workset root without a
+    specific project (``proj_name is None``), falls back to the
+    connected-external redirect index so that a path living *outside* any
+    workset tree -- e.g. an externally connected workspace -- still resolves to
+    its ``(workset, project_name)``.
+
+    Raises ``WorksetError`` if neither lookup resolves a workset at all.  When a
+    workset is found but no specific project is (``proj_name is None``), that is
+    returned to the caller rather than raised -- callers preserve their own
+    distinct "inside workset but not in a project" error.
+    """
+    try:
+        ws, proj_name = _find_workset_for_path(project_dir, std)
+    except WorksetError:
+        ws, proj_name = None, None
+    if ws is None or proj_name is None:
+        # Tree-based lookup missed (or hit the workset root without a project):
+        # try the connected-external redirect index.  Lazy import avoids a
+        # paths <-> workset import cycle (mirrors resolve_any_project).
+        from kanibako.workset import _find_connected_project
+        hit = _find_connected_project(project_dir.resolve(), std)
+        if hit is not None:
+            ws, proj_name = hit
+    if ws is None:
+        raise WorksetError(f"No workset found for path: {project_dir}")
+    return ws, proj_name
+
+
 def resolve_any_project(
     std: StandardPaths,
     config: KanibakoConfig,
@@ -1339,19 +1373,7 @@ def resolve_any_project(
     root_str = str(detection.project_root)
 
     if detection.mode == ProjectMode.workset:
-        try:
-            ws, proj_name = _find_workset_for_path(raw_dir, std)
-        except WorksetError:
-            ws, proj_name = None, None
-        if ws is None or proj_name is None:
-            # Tree-based lookup missed (or hit the workset root without a
-            # project): try the connected-external redirect index.
-            from kanibako.workset import _find_connected_project
-            hit = _find_connected_project(raw_dir, std)
-            if hit is not None:
-                ws, proj_name = hit
-        if ws is None:
-            raise WorksetError(f"No workset found for path: {raw_dir}")
+        ws, proj_name = _resolve_workset_or_connected(raw_dir, std)
         if proj_name is None:
             raise WorksetError(
                 f"Inside workset '{ws.name}' but not in a specific project workspace. "
