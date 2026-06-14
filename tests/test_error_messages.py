@@ -55,28 +55,10 @@ class TestRuntimeNotFoundMessages:
 
 
 class TestImagePullFailureMessages:
-    """Verify that image pull failure suggests rig rebuild."""
+    """Verify that base-image pull failure gives actionable, build-free guidance."""
 
-    def test_ensure_image_failure_suggests_rig_rebuild(self):
-        """When image can't be pulled or built, error mentions rig rebuild."""
-        from kanibako.container import ContainerRuntime
-
-        rt = MagicMock(spec=ContainerRuntime)
-        rt.cmd = "podman"
-        real_rt = ContainerRuntime.__new__(ContainerRuntime)
-        real_rt.cmd = "podman"
-
-        with patch.object(ContainerRuntime, "image_exists", return_value=False), \
-             patch.object(ContainerRuntime, "pull", return_value=False), \
-             patch.object(ContainerRuntime, "_guess_containerfile", return_value=None):
-            with pytest.raises(ContainerError) as exc_info:
-                real_rt.ensure_image("kanibako-custom:v1", MagicMock())
-            msg = str(exc_info.value)
-            assert "rig" in msg.lower()
-            assert "kanibako rig rebuild" in msg
-
-    def test_ensure_image_no_containerfile_suggests_rebuild(self):
-        """When Containerfile is missing, error suggests rig rebuild."""
+    def test_ensure_image_failure_is_actionable_no_build(self):
+        """When the image can't be pulled, the error guides building a custom base."""
         from kanibako.container import ContainerRuntime
 
         real_rt = ContainerRuntime.__new__(ContainerRuntime)
@@ -84,12 +66,28 @@ class TestImagePullFailureMessages:
 
         with patch.object(ContainerRuntime, "image_exists", return_value=False), \
              patch.object(ContainerRuntime, "pull", return_value=False), \
-             patch.object(ContainerRuntime, "_guess_containerfile", return_value="kanibako"), \
-             patch("kanibako.container.get_containerfile", return_value=None):
+             patch.object(ContainerRuntime, "build") as m_build:
             with pytest.raises(ContainerError) as exc_info:
-                real_rt.ensure_image("kanibako-oci:latest", MagicMock())
+                real_rt.ensure_image("kanibako-custom:v1")
             msg = str(exc_info.value)
-            assert "kanibako rig rebuild" in msg
+            assert "kanibako-custom:v1" in msg
+            assert "kanibako-images" in msg
+            assert "--image" in msg
+            # Pull-only: no build is ever attempted.
+            m_build.assert_not_called()
+
+    def test_ensure_image_failure_no_rebuild_guidance(self):
+        """The old 'kanibako rig rebuild' build guidance is gone."""
+        from kanibako.container import ContainerRuntime
+
+        real_rt = ContainerRuntime.__new__(ContainerRuntime)
+        real_rt.cmd = "podman"
+
+        with patch.object(ContainerRuntime, "image_exists", return_value=False), \
+             patch.object(ContainerRuntime, "pull", return_value=False):
+            with pytest.raises(ContainerError) as exc_info:
+                real_rt.ensure_image("kanibako-oci:latest")
+            assert "rig rebuild" not in str(exc_info.value)
 
 
 class TestLockConflictMessages:

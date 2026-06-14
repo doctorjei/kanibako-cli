@@ -19,7 +19,6 @@ from kanibako.config import (
     write_global_config,
 )
 from kanibako.container import ContainerRuntime
-from kanibako.containerfiles import get_containerfile
 from kanibako.paths import xdg
 
 
@@ -111,13 +110,13 @@ def run(args: argparse.Namespace) -> int:
         elif runtime.pull(image):
             print("Rig pulled from registry!")
         else:
-            print("Pull failed; building locally...")
-            base_cf = get_containerfile("base", containers_dest)
-            if base_cf is not None:
-                runtime.build(image, base_cf, base_cf.parent)
-                print("Base rig built!")
-            else:
-                print("Warning: No Containerfile.base found; skipping build.", file=sys.stderr)
+            print(
+                f"Warning: failed to pull rig '{image}'. Check your "
+                "network/registry access. To use a custom base image, build it "
+                "yourself (see github.com/doctorjei/kanibako-images) and pass "
+                "it via --image or set box_image in your config.",
+                file=sys.stderr,
+            )
     except Exception as e:
         print(f"Warning: {e}", file=sys.stderr)
         print("Skipping rig setup.")

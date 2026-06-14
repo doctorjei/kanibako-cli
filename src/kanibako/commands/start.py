@@ -593,8 +593,8 @@ def _run_container(
         return 1
 
     # Resolve the rig name to a kind + prep action, then materialize it.
-    # Templates BUILD their Containerfile; prefabs keep the existing
-    # inspect->pull->build behavior via ensure_image (non-regression).
+    # Templates BUILD their Containerfile; prefabs/bases are pull-only via
+    # ensure_image (inspect -> pull; no local base build).
     containers_dir = std.data_path / "containers"
     registry = load_registry(registry_path(std))
     res = resolve_rig(image, runtime, std, merged, registry=registry)
@@ -622,8 +622,8 @@ def _run_container(
                 )
                 return 1
         else:
-            # Prefab (or already-local template/extended): preserve the
-            # existing inspect->pull->build-fallback behavior exactly.
+            # Prefab/base (or already-local template/extended): inspect, then
+            # pull if missing. Base images are pull-only (no local build).
             runtime.ensure_image(res.image, containers_dir)
     except ContainerError as e:
         print(f"Error: {e}", file=sys.stderr)

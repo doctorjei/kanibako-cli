@@ -9,36 +9,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
 
 logger = get_logger("container")
-
-
-# Map image name patterns to Containerfile suffixes.
-_IMAGE_CONTAINERFILE_MAP = {
-    "kanibako-min": "kanibako",
-    "kanibako-oci": "kanibako",
-    "kanibako-lxc": "kanibako",
-    "kanibako-vm": "kanibako",
-}
-
-# Map image name patterns to build variants (for VARIANT build arg).
-_IMAGE_VARIANT_MAP = {
-    "kanibako-min": "min",
-    "kanibako-oci": "oci",
-    "kanibako-lxc": "lxc",
-    "kanibako-vm": "vm",
-}
-
-# Map image variants to their droste base image for local builds.
-_IMAGE_BASE_MAP = {
-    "kanibako-min": "ghcr.io/doctorjei/droste-seed:1.1.0",
-    "kanibako-oci": "ghcr.io/doctorjei/droste-fiber:1.1.0",
-    "kanibako-lxc": "ghcr.io/doctorjei/droste-thread:1.1.0",
-    "kanibako-vm": "ghcr.io/doctorjei/droste-hair:1.1.0",
-}
 
 
 class ContainerRuntime:
@@ -154,22 +128,6 @@ class ContainerRuntime:
         result = subprocess.run(cmd)
         return result.returncode
 
-    @staticmethod
-    def get_base_image(image: str) -> str | None:
-        """Return the droste base image for a kanibako variant, or None."""
-        for pattern, base in _IMAGE_BASE_MAP.items():
-            if pattern in image:
-                return base
-        return None
-
-    @staticmethod
-    def get_variant(image: str) -> str | None:
-        """Return the build variant (min/oci/lxc/vm) for a kanibako image, or None."""
-        for pattern, variant in _IMAGE_VARIANT_MAP.items():
-            if pattern in image:
-                return variant
-        return None
-
     def run_interactive(self, image: str, *, container_name: str | None = None) -> int:
         """Run an interactive container. Returns exit code."""
         cmd = [self.cmd, "run", "-it"]
@@ -247,12 +205,14 @@ class ContainerRuntime:
             return []
         return [line for line in result.stdout.splitlines() if line]
 
-    def guess_containerfile(self, image: str) -> str | None:
-        """Return the Containerfile suffix for a known image pattern, or None."""
-        return self._guess_containerfile(image)
+    def ensure_image(self, image: str, containers_dir: Path | None = None) -> None:
+        """Make sure *image* is available locally: inspect, then pull.
 
-    def ensure_image(self, image: str, containers_dir: Path) -> None:
-        """Make sure *image* is available locally: inspect → pull → build fallback."""
+        Base images are pull-only -- the cli no longer bundles or builds a base
+        Containerfile. On pull failure raise an actionable :class:`ContainerError`
+        directing the user to build a custom base themselves. *containers_dir* is
+        accepted for call-site compatibility but unused.
+        """
         if self.image_exists(image):
             return
 
@@ -264,40 +224,12 @@ class ContainerRuntime:
             print("Rig pulled successfully.", file=sys.stderr)
             return
 
-        print("Pull failed. Attempting local build...", file=sys.stderr)
-        suffix = self._guess_containerfile(image)
-        if suffix is None:
-            raise ContainerError(
-                f"Failed to pull rig '{image}' and no local Containerfile found.\n"
-                f"Check your network connection, or run 'kanibako rig rebuild' "
-                f"to build locally."
-            )
-        containerfile = get_containerfile(suffix, containers_dir)
-        if containerfile is None:
-            raise ContainerError(
-                f"Failed to pull rig '{image}' and no local Containerfile found.\n"
-                f"Check your network connection, or run 'kanibako rig rebuild' "
-                f"to build locally."
-            )
-        self.build(image, containerfile, containerfile.parent)
-        print("Rig built successfully.", file=sys.stderr)
-
-    @staticmethod
-    def _guess_containerfile(image: str) -> str | None:
-        for pattern, suffix in _IMAGE_CONTAINERFILE_MAP.items():
-            if pattern in image:
-                return suffix
-        return None
-
-    @staticmethod
-    def buildable_containerfile_suffixes() -> set[str]:
-        """Containerfile suffixes a build command can resolve to an image.
-
-        Suffixes outside this set (e.g. ``jvm``, ``systems``) are example
-        templates that layer on a base image via ``ARG BASE_IMAGE`` and are
-        not built directly by ``rig rebuild``.
-        """
-        return set(_IMAGE_CONTAINERFILE_MAP.values())
+        raise ContainerError(
+            f"Failed to pull rig '{image}'.\n"
+            "Check your network/registry access. To use a custom base image, build it\n"
+            "yourself (see github.com/doctorjei/kanibako-images) and pass it via --image\n"
+            "or set box_image in your config."
+        )
 
     # ------------------------------------------------------------------
     # Run

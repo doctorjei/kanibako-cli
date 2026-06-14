@@ -32,55 +32,36 @@ class TestEnsureImage:
             rt.ensure_image("test:latest", Path("/containers"))
             m_pull.assert_called_once_with("test:latest")
 
-    def test_pull_fails_build_fallback(self, tmp_path):
+    def test_pull_fails_raises_actionable_no_build(self):
+        """A pull failure is fatal and actionable -- no local build fallback."""
         rt = ContainerRuntime(command="echo")
-        containers_dir = tmp_path / "containers"
-        containers_dir.mkdir()
-        (containers_dir / "Containerfile.oci").write_text("FROM ubuntu\n")
-
         with (
             patch.object(rt, "image_exists", return_value=False),
             patch.object(rt, "pull", return_value=False),
             patch.object(rt, "build") as m_build,
         ):
-            rt.ensure_image("kanibako-oci:latest", containers_dir)
-            m_build.assert_called_once()
+            with pytest.raises(ContainerError, match="kanibako-images"):
+                rt.ensure_image("kanibako-oci:latest", Path("/containers"))
+            m_build.assert_not_called()
 
-    def test_no_containerfile_raises(self, tmp_path):
+    def test_pull_failure_message_mentions_image(self):
         rt = ContainerRuntime(command="echo")
         with (
             patch.object(rt, "image_exists", return_value=False),
             patch.object(rt, "pull", return_value=False),
         ):
-            with pytest.raises(ContainerError, match="no local Containerfile"):
-                rt.ensure_image("unknown-image:latest", tmp_path)
+            with pytest.raises(ContainerError, match="kanibako-oci:latest"):
+                rt.ensure_image("kanibako-oci:latest")
 
-    def test_unknown_image_no_file_raises(self, tmp_path):
+    def test_no_containers_dir_arg(self):
+        """containers_dir is optional now (pull-only)."""
         rt = ContainerRuntime(command="echo")
-        containers_dir = tmp_path / "containers"
-        containers_dir.mkdir()
-        # No matching Containerfile for kanibako-oci (mock bundled to return None too)
         with (
             patch.object(rt, "image_exists", return_value=False),
-            patch.object(rt, "pull", return_value=False),
-            patch("kanibako.container.get_containerfile", return_value=None),
+            patch.object(rt, "pull", return_value=True) as m_pull,
         ):
-            with pytest.raises(ContainerError, match="no local Containerfile"):
-                rt.ensure_image("kanibako-oci:latest", containers_dir)
-
-    def test_build_fails_raises(self, tmp_path):
-        rt = ContainerRuntime(command="echo")
-        containers_dir = tmp_path / "containers"
-        containers_dir.mkdir()
-        (containers_dir / "Containerfile.oci").write_text("FROM ubuntu\n")
-
-        with (
-            patch.object(rt, "image_exists", return_value=False),
-            patch.object(rt, "pull", return_value=False),
-            patch.object(rt, "build", side_effect=ContainerError("build failed")),
-        ):
-            with pytest.raises(ContainerError, match="build failed"):
-                rt.ensure_image("kanibako-oci:latest", containers_dir)
+            rt.ensure_image("test:latest")
+            m_pull.assert_called_once_with("test:latest")
 
 
 # ---------------------------------------------------------------------------

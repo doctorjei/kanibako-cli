@@ -27,12 +27,6 @@ class TestContainerRuntime:
         rt = ContainerRuntime(command="/usr/bin/podman")
         assert rt.cmd == "/usr/bin/podman"
 
-    def test_guess_containerfile(self):
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-oci:latest") == "kanibako"
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-min:v1") == "kanibako"
-        assert ContainerRuntime._guess_containerfile("ghcr.io/x/kanibako-lxc:latest") == "kanibako"
-        assert ContainerRuntime._guess_containerfile("totally-unrelated:latest") is None
-
 
 class TestGetLocalDigest:
     def test_success_podman_format(self):
@@ -468,22 +462,6 @@ class TestCpSaveLoadDiff:
         with patch("kanibako.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.diff("img") == []
-
-
-class TestGetBaseImage:
-    """Test get_base_image() variant-to-droste mapping."""
-
-    def test_known_variants(self):
-        assert ContainerRuntime.get_base_image("kanibako-min") == "ghcr.io/doctorjei/droste-seed:1.1.0"
-        assert ContainerRuntime.get_base_image("kanibako-oci") == "ghcr.io/doctorjei/droste-fiber:1.1.0"
-        assert ContainerRuntime.get_base_image("kanibako-lxc") == "ghcr.io/doctorjei/droste-thread:1.1.0"
-        assert ContainerRuntime.get_base_image("kanibako-vm") == "ghcr.io/doctorjei/droste-hair:1.1.0"
-
-    def test_qualified_image_name(self):
-        assert ContainerRuntime.get_base_image("ghcr.io/x/kanibako-oci:latest") == "ghcr.io/doctorjei/droste-fiber:1.1.0"
-
-    def test_unknown_returns_none(self):
-        assert ContainerRuntime.get_base_image("totally-unrelated:latest") is None
 
 
 class TestRebuildBuildArgs:

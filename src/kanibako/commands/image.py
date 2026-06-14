@@ -308,9 +308,9 @@ def run_extend(args: argparse.Namespace) -> int:
                 )
                 return rc
         else:
-            # prefab: build-or-pull.
+            # prefab: pull.
             print(f"Preparing foundation '{args.from_}'...")
-            rc = _update_one(runtime, res.image, containers_dir)
+            rc = _update_one(runtime, res.image)
             if rc != 0:
                 print(
                     f"Error: failed to prep foundation '{args.from_}'.",
@@ -799,17 +799,19 @@ def resolve_image_reference(
        resolve them as before. Only kanibako-branded names — a known suffix
        (``min``/``oci``/``lxc``/``vm``) or a ``kanibako-`` prefix — are
        expanded and prefixed.
-    3. Local-first: if the local image store already has the (suffix-expanded)
-       bare reference, use it as-is — lets a locally built or bare-tagged
-       kanibako image win without contacting the registry.
-    4. Otherwise prefix it with the ``registry/owner`` derived from
-       *configured_image* (falling back to :data:`_FALLBACK_REGISTRY`) so the
-       runtime can pull it without relying on ``unqualified-search-registries``.
+    3. Precedence for a branded name (local over remote; official over
+       non-official, where "official" is the ``registry/owner`` qualified ref
+       derived from *configured_image* / :data:`_FALLBACK_REGISTRY`):
 
-    Unlike :func:`resolve_image_name`, this consults the local store first.
-    The branding restriction is deliberate: we cannot safely assume an
-    arbitrary bare name (a public Docker Hub image) belongs to the kanibako
-    registry, so only names we actually publish are rewritten.
+       a. official-and-local — the qualified ref is present locally -> use it.
+       b. non-official local — the bare/``localhost`` ref is present -> use it.
+       c. neither present -> return the official qualified ref for the runtime
+          to pull (without relying on ``unqualified-search-registries``).
+
+    Unlike :func:`resolve_image_name`, this consults the local store. The
+    branding restriction is deliberate: we cannot safely assume an arbitrary
+    bare name (a public Docker Hub image) belongs to the kanibako registry, so
+    only names we actually publish are rewritten.
     """
     if "/" in name:
         return name
@@ -822,12 +824,15 @@ def resolve_image_reference(
         return name
 
     bare = candidate if ":" in candidate else f"{candidate}:latest"
-
-    if runtime.image_exists(bare):
-        return bare
-
     prefix = _extract_registry_prefix(configured_image) or _FALLBACK_REGISTRY
-    return f"{prefix}/{bare}"
+    official = f"{prefix}/{bare}"
+
+    # Precedence: local-over-remote, official-over-non-official.
+    if runtime.image_exists(official):   # official, locally present — top priority
+        return official
+    if runtime.image_exists(bare):       # local non-official build (e.g. localhost/...)
+        return bare
+    return official                      # neither local — official ref for the runtime to pull
 
 
 def resolve_image_name(name: str, configured_image: str) -> str:
@@ -874,7 +879,7 @@ def run_prep(args: argparse.Namespace) -> int:
         return 1
 
     if args.all_images:
-        return _update_all(runtime, containers_dir)
+        return _update_all(runtime)
 
     if args.name is None:
         print("error: rig name required (or use --all)", file=sys.stderr)
@@ -924,8 +929,8 @@ def run_prep(args: argparse.Namespace) -> int:
             print(f"Build failed with exit code {rc}", file=sys.stderr)
         return rc
 
-    # prefab: build-if-Containerfile-else-pull (same as rebuild).
-    return _update_one(runtime, res.image, containers_dir)
+    # prefab: pull (same as rebuild).
+    return _update_one(runtime, res.image)
 
 
 def run_add(args: argparse.Namespace) -> int:
@@ -1049,7 +1054,6 @@ def run_rebuild(args: argparse.Namespace) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)
-    containers_dir = std.data_path / "containers"
 
     try:
         runtime = ContainerRuntime()
@@ -1058,7 +1062,7 @@ def run_rebuild(args: argparse.Namespace) -> int:
         return 1
 
     if args.all_images:
-        return _update_all(runtime, containers_dir)
+        return _update_all(runtime)
 
     # Determine which image to update
     merged = load_merged_config(config_file, None)
@@ -1068,7 +1072,7 @@ def run_rebuild(args: argparse.Namespace) -> int:
     else:
         image = resolve_image_name(image, merged.box_image)
 
-    return _update_one(runtime, image, containers_dir)
+    return _update_one(runtime, image)
 
 
 def _pull_one(runtime: ContainerRuntime, image: str) -> int:
@@ -1085,62 +1089,17 @@ def _pull_one(runtime: ContainerRuntime, image: str) -> int:
         return 1
 
 
-def _build_one(runtime: ContainerRuntime, image: str, containers_dir: Path) -> int:
-    """Build a single image locally from its Containerfile."""
-    suffix = runtime.guess_containerfile(image)
-    if suffix is None:
-        print(f"Error: cannot determine Containerfile for rig: {image}", file=sys.stderr)
-        print("Known patterns: " + ", ".join(
-            f"{p} -> Containerfile.{s}"
-            for p, s in sorted(set(
-                (p, runtime.guess_containerfile(p))
-                for p in ["kanibako-min", "kanibako-oci", "kanibako-lxc",
-                          "kanibako-vm"]
-            ))
-        ), file=sys.stderr)
-        return 1
+def _update_one(runtime: ContainerRuntime, image: str) -> int:
+    """Update a single prefab/base image by pulling it from the registry.
 
-    containerfile = get_containerfile(suffix, containers_dir)
-    if containerfile is None:
-        print(f"Error: Containerfile not found for variant: {suffix}", file=sys.stderr)
-        return 1
-
-    build_args: dict[str, str] = {}
-    base = runtime.get_base_image(image)
-    if base:
-        build_args["BASE_IMAGE"] = base
-    variant = runtime.get_variant(image)
-    if variant:
-        build_args["VARIANT"] = variant
-
-    print(f"Building {image} from Containerfile.{suffix}...")
-    print()
-    rc = runtime.rebuild(image, containerfile, containerfile.parent, build_args=build_args)
-    if rc == 0:
-        print()
-        print(f"Successfully built {image}")
-    else:
-        print()
-        print(f"Build failed with exit code {rc}", file=sys.stderr)
-    return rc
-
-
-def _update_one(
-    runtime: ContainerRuntime, image: str, containers_dir: Path,
-) -> int:
-    """Update a single image: build locally if Containerfile exists, else pull."""
-    suffix = runtime.guess_containerfile(image)
-    if suffix is not None and containers_dir.is_dir():
-        containerfile = get_containerfile(suffix, containers_dir)
-        if containerfile is not None:
-            return _build_one(runtime, image, containers_dir)
+    Base images are pull-only; templates are built elsewhere (via
+    ``runtime.rebuild``), not through this helper.
+    """
     return _pull_one(runtime, image)
 
 
-def _update_all(
-    runtime: ContainerRuntime, containers_dir: Path,
-) -> int:
-    """Update all local kanibako images."""
+def _update_all(runtime: ContainerRuntime) -> int:
+    """Update all local kanibako images by pulling them."""
     images = runtime.list_local_images()
     if not images:
         print("No local kanibako rigs to update.")
@@ -1151,7 +1110,7 @@ def _update_all(
         print(f"\n{'=' * 60}")
         print(f"Updating {repo}")
         print('=' * 60)
-        rc = _update_one(runtime, repo, containers_dir)
+        rc = _update_one(runtime, repo)
         if rc != 0:
             failed += 1
 
