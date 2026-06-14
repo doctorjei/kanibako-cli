@@ -213,6 +213,21 @@ def resolve_lifecycle_target(
             f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
             f"command from a project workspace under that workset."
         )
+    # Qualified ``workset/project`` addressing (mirrors resolve_any_project): a
+    # token with a separator that is NOT an existing path may be a qualified
+    # name -- the form the bare-workset rejection above suggests.  Resolve it to
+    # the project's workspace so detect_project_mode sees a single box.  A real
+    # relative path that happens not to exist is left untouched (falls through
+    # to the path-ify below, failing exactly as before).
+    if raw and "/" in raw and not Path(raw).exists():
+        from kanibako.names import resolve_qualified_name
+        try:
+            project_workspace, _ws_name = resolve_qualified_name(
+                std.data_path, raw,
+            )
+            raw = project_workspace
+        except ProjectError:
+            pass
     raw_path = Path(raw).resolve()
 
     detection = detect_project_mode(raw_path, std, config)

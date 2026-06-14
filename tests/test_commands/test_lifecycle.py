@@ -143,6 +143,40 @@ class TestResolveTarget:
         with pytest.raises(WorksetError, match="is a workset"):
             resolve_lifecycle_target("lcw", std, config)
 
+    def test_qualified_workset_project(self, env):
+        """A qualified ``workset/project`` token resolves to that project box."""
+        config, std, tmp_home = env
+        ws = _make_workset(env, ws_name="qw", root_name="qw_root")
+        internal_src = ws.workspaces_dir / "api"
+        internal_src.mkdir(parents=True)
+        add_project(ws, "api", internal_src, std)
+        # cwd is elsewhere; address the project by its qualified name.
+        state = resolve_lifecycle_target("qw/api", std, config)
+        assert state.owner == "workset:qw"
+        assert state.mode == ProjectMode.workset
+        assert state.workspace_path == internal_src.resolve()
+
+    def test_qualified_unknown_project_errors(self, env):
+        """``workset/project`` for a missing project surfaces a ProjectError.
+
+        The qualified resolver raises ProjectError (caught internally), so the
+        token path-ifies and detection fails -- never a silent wrong path.
+        """
+        config, std, tmp_home = env
+        _make_workset(env, ws_name="qw2", root_name="qw2_root")
+        with pytest.raises((ProjectError, WorksetError)):
+            resolve_lifecycle_target("qw2/nope", std, config)
+
+    def test_slash_token_not_qualified_unchanged(self, env):
+        """A slash token that isn't a qualified name behaves as before.
+
+        A nonexistent relative path falls through to path-ify and fails at
+        detection -- the qualified branch must not change this.
+        """
+        config, std, tmp_home = env
+        with pytest.raises((ProjectError, WorksetError)):
+            resolve_lifecycle_target("no/such/path", std, config)
+
 
 # ---------------------------------------------------------------------------
 # In-place convert each direction

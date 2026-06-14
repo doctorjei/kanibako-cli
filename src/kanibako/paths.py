@@ -34,6 +34,7 @@ from kanibako.names import (
     read_names,
     register_name,
     resolve_name,
+    resolve_qualified_name,
 )
 from kanibako.utils import project_hash
 
@@ -1386,6 +1387,18 @@ def resolve_any_project(
             f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
             f"command from a project workspace under that workset."
         )
+    # Qualified ``workset/project`` addressing: a token containing a separator
+    # that is NOT an existing path may be a qualified name (the form the bare-
+    # workset rejection above suggests).  Resolve it to the project's workspace
+    # so detect_project_mode sees a single project box.  A real relative path
+    # like ``src/foo`` that happens not to exist is left untouched -- it falls
+    # through to the path-ify behavior below and fails exactly as before.
+    if "/" in raw and not Path(raw).exists():
+        try:
+            project_workspace, _ws_name = resolve_qualified_name(std.data_path, raw)
+            raw = project_workspace
+        except ProjectError:
+            pass
     raw_dir = Path(raw).resolve()
     detection = detect_project_mode(raw_dir, std, config)
     root_str = str(detection.project_root)
