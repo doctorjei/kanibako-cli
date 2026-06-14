@@ -511,7 +511,6 @@ class TestImagePrep:
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
                 patch("kanibako.commands.image.resolve_rig", return_value=res):
             runtime = MagicMock()
-            runtime.guess_containerfile.return_value = None
             runtime.pull.return_value = True
             MockRT.return_value = runtime
 
@@ -581,7 +580,6 @@ class TestImagePrep:
                 ("ghcr.io/foo/kanibako-oci:latest", "1GB"),
                 ("ghcr.io/foo/kanibako-lxc:latest", "2GB"),
             ]
-            runtime.guess_containerfile.return_value = None
             runtime.pull.return_value = True
             MockRT.return_value = runtime
 
@@ -1096,7 +1094,6 @@ class TestRebuildWithShorthand:
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
             runtime.pull.return_value = True
-            runtime.guess_containerfile.return_value = None
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
