@@ -8,6 +8,7 @@ import pytest
 
 from kanibako.config import KanibakoConfig
 from kanibako.shells import (
+    capture_image_shell,
     image_store_key,
     load_image_shells,
     probe_image_user_shell,
@@ -125,6 +126,79 @@ class TestProbe:
     def test_whitespace_stdout(self, monkeypatch):
         monkeypatch.setattr(subprocess, "run", self._fake_run(stdout="  \n  "))
         assert probe_image_user_shell(_Runtime(), "img") is None
+
+
+# ---------------------------------------------------------------------------
+# capture_image_shell (install-time probe + persist)
+# ---------------------------------------------------------------------------
+
+
+class TestCaptureImageShell:
+    def test_probes_once_and_persists(self, std, monkeypatch):
+        rt = _Runtime(digest="sha256:aaa")
+        calls: list = []
+
+        def _run(cmd, capture_output=False, text=False):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="/bin/bash\n", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", _run)
+        capture_image_shell(rt, "img:latest", std)
+        assert load_image_shells(std) == {"sha256:aaa": "/bin/bash"}
+        assert len(calls) == 1
+
+    def test_skips_when_already_stored(self, std, monkeypatch):
+        rt = _Runtime(digest="sha256:aaa")
+        save_image_shell(std, "sha256:aaa", "/bin/zsh")
+
+        def _boom(*a, **k):
+            raise AssertionError("must not probe when key already stored")
+
+        monkeypatch.setattr(subprocess, "run", _boom)
+        capture_image_shell(rt, "img:latest", std)
+        # Existing value untouched.
+        assert load_image_shells(std) == {"sha256:aaa": "/bin/zsh"}
+
+    def test_probe_none_stores_nothing(self, std, monkeypatch):
+        rt = _Runtime(digest="sha256:aaa")
+
+        def _run(cmd, capture_output=False, text=False):
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", _run)
+        capture_image_shell(rt, "img:latest", std)  # no exception
+        assert load_image_shells(std) == {}
+
+    def test_probe_exception_is_swallowed(self, std, monkeypatch):
+        rt = _Runtime(digest="sha256:aaa")
+
+        def _run(*a, **k):
+            raise OSError("boom")
+
+        monkeypatch.setattr(subprocess, "run", _run)
+        capture_image_shell(rt, "img:latest", std)  # no exception
+        assert load_image_shells(std) == {}
+
+    def test_digest_failure_is_swallowed(self, std, monkeypatch):
+        class _BadRuntime:
+            cmd = "podman"
+
+            def get_local_digest(self, image):
+                raise RuntimeError("inspect failed")
+
+        # Must not raise even though image_store_key blows up.
+        capture_image_shell(_BadRuntime(), "img:latest", std)
+        assert load_image_shells(std) == {}
+
+    def test_falls_back_to_reference_key(self, std, monkeypatch):
+        rt = _Runtime(digest=None)  # no digest → reference used as key
+
+        def _run(cmd, capture_output=False, text=False):
+            return subprocess.CompletedProcess(cmd, 0, stdout="/bin/sh\n", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", _run)
+        capture_image_shell(rt, "img:latest", std)
+        assert load_image_shells(std) == {"img:latest": "/bin/sh"}
 
 
 # ---------------------------------------------------------------------------

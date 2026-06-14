@@ -630,6 +630,11 @@ def _run_container(
         return 1
     image = res.image
 
+    # Capture the image's login shell (idempotent, never fatal) so the
+    # box-shell resolver reads a stored value instead of probing in the hot path.
+    from kanibako.shells import capture_image_shell
+    capture_image_shell(runtime, image, std)
+
     from kanibako.freshness import check_image_freshness
     check_image_freshness(runtime, image, std.cache_path)
 
