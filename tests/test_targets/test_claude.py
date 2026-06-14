@@ -351,6 +351,21 @@ class TestCheckAuth:
             with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
                 assert t.check_auth() is True
 
+    def test_exec_format_error_returns_true(self):
+        """A corrupt/0-byte binary raising OSError must not crash check_auth.
+
+        Defense-in-depth: even if the launch-path guard ever fails to run
+        first, the auth probe must never bubble an OSError (Exec format error)
+        as an uncaught traceback -- treat it as auth-unknown and return True.
+        """
+        t = ClaudeTarget()
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch(
+                "kanibako.plugins.claude.target.subprocess.run",
+                side_effect=OSError(8, "Exec format error"),
+            ):
+                assert t.check_auth() is True
+
 
 class TestRefreshCredentials:
     def test_calls_credential_function(self, tmp_path, monkeypatch):

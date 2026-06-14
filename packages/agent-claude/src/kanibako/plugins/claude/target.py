@@ -194,7 +194,10 @@ class ClaudeTarget(Target):
                 text=True,
                 timeout=30,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.TimeoutExpired):
+            # OSError covers FileNotFoundError and, critically, an
+            # "Exec format error" from a corrupt/0-byte binary -- never crash
+            # the launch with a traceback; treat auth status as unknown.
             return True
 
         if result.returncode != 0:

@@ -851,6 +851,33 @@ def _run_container(
             except Exception as exc:
                 logger.debug("Auto-auth failed: %s", exc)
 
+        # Validate the resolved HOST binary BEFORE anything execs it.  A 0-byte
+        # or non-executable file passes binary_mounts()' is_file() check and
+        # would be exec'd into a brick.  This MUST run before the auth check
+        # below: target.check_auth() shells out to the host agent binary, so a
+        # corrupt/empty binary there raises an uncaught OSError (Exec format
+        # error) and the user sees a Python traceback instead of the actionable
+        # message.  Scoped to the real-agent path (entrypoint is None and not a
+        # plain box shell launch).
+        if target and install and is_agent_mode:
+            from kanibako.targets.base import _validate_agent_binary
+
+            reason = _validate_agent_binary(install.binary)
+            if reason:
+                print(
+                    f"Error: {target.display_name} host binary is unusable: "
+                    f"{reason}.\n"
+                    f"  binary: {install.binary}\n"
+                    f"The host agent binary appears corrupt or empty; the "
+                    f"container would launch into a non-executable file.\n"
+                    f"Reinstall the host {target.display_name} (and prune any "
+                    f"stale 0-byte versions in {install.install_dir}), then "
+                    f"retry.\n"
+                    f"Run 'kanibako system diagnose' for a full health check.",
+                    file=sys.stderr,
+                )
+                return 1
+
         # Pre-launch auth check (skip for distinct auth — creds live in project)
         if target and install and proj.group_auth:
             if not target.check_auth():
@@ -905,28 +932,11 @@ def _run_container(
         # Build extra mounts from target binary detection
         extra_mounts = []
         if target and install:
-            # Validate the resolved HOST binary before mounting/launching.  A
-            # 0-byte or non-executable file passes binary_mounts()' is_file()
-            # check and would be exec'd into a brick -- in persistent/detached
-            # mode the user only ever sees the generic "Container exited before
-            # session could attach", with no clue it's a binary problem.
-            from kanibako.targets.base import _validate_agent_binary
-
-            reason = _validate_agent_binary(install.binary)
-            if reason:
-                print(
-                    f"Error: {target.display_name} host binary is unusable: "
-                    f"{reason}.\n"
-                    f"  binary: {install.binary}\n"
-                    f"The host agent binary appears corrupt or empty; the "
-                    f"container would launch into a non-executable file.\n"
-                    f"Reinstall the host {target.display_name} (and prune any "
-                    f"stale 0-byte versions in {install.install_dir}), then "
-                    f"retry.\n"
-                    f"Run 'kanibako system diagnose' for a full health check.",
-                    file=sys.stderr,
-                )
-                return 1
+            # NOTE: the resolved HOST binary is validated earlier (before the
+            # auth check) via _validate_agent_binary, so a 0-byte /
+            # non-executable file fails fast with an actionable message before
+            # anything execs it.  Here we only guard against missing mount
+            # sources.
             binary_mnts = target.binary_mounts(install)
             if not binary_mnts:
                 print(
