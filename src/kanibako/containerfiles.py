@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def get_containerfile(suffix: str, data_containers_dir: Path | None = None) -> Path | None:
-    """Return the path to a Containerfile for *suffix* (e.g. ``"base"``).
+    """Return the path to a Containerfile for *suffix* (e.g. ``"template-jvm"``).
 
     Checks user-override directory first, then the bundled package data.
     Returns ``None`` if no matching file exists in either location.

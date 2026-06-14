@@ -374,13 +374,12 @@ class TestImageRm:
 
 class TestImageRebuild:
     def test_pull_one_success(self, tmp_home, config_file, credentials_dir, capsys):
-        """Default rebuild pulls from registry when no Containerfile matches."""
+        """Default rebuild pulls a base/prefab from the registry."""
         from kanibako.commands.image import run_rebuild
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
             runtime.pull.return_value = True
-            runtime.guess_containerfile.return_value = None
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
@@ -395,8 +394,10 @@ class TestImageRebuild:
         # rebuild still works but emits a deprecation notice.
         assert "note: 'rig rebuild' is deprecated" in capsys.readouterr().err
 
-    def test_local_build_one_success(self, tmp_home, config_file, credentials_dir, capsys):
-        """Auto-detect triggers local build when Containerfile matches."""
+    def test_base_image_is_pull_only_even_with_local_containerfile(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A base image always pulls -- never builds, even if a Containerfile exists."""
         from kanibako.commands.image import run_rebuild
 
         config = load_config(config_file)
@@ -407,10 +408,7 @@ class TestImageRebuild:
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
-            runtime.guess_containerfile.return_value = "kanibako"
-            runtime.get_base_image.return_value = "ghcr.io/doctorjei/droste-fiber:latest"
-            runtime.get_variant.return_value = "oci"
-            runtime.rebuild.return_value = 0
+            runtime.pull.return_value = True
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
@@ -419,35 +417,11 @@ class TestImageRebuild:
             )
             rc = run_rebuild(args)
             assert rc == 0
-            runtime.rebuild.assert_called_once()
-            # Verify build_args passed
-            call_kwargs = runtime.rebuild.call_args
-            assert call_kwargs[1]["build_args"] == {
-                "BASE_IMAGE": "ghcr.io/doctorjei/droste-fiber:latest",
-                "VARIANT": "oci",
-            }
-
-    def test_local_build_unknown_image(self, tmp_home, config_file, credentials_dir, capsys):
-        """Unknown image pattern falls back to pull."""
-        from kanibako.commands.image import run_rebuild
-
-        with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
-            runtime = MagicMock()
-            runtime.guess_containerfile.return_value = None
-            runtime.pull.return_value = True
-            MockRT.return_value = runtime
-
-            args = argparse.Namespace(
-                image="unknown:latest",
-                all_images=False,
-            )
-            rc = run_rebuild(args)
-            assert rc == 0
-            # Should fall back to pull since no Containerfile found
             runtime.pull.assert_called_once()
+            runtime.rebuild.assert_not_called()
 
     def test_pull_all(self, tmp_home, config_file, credentials_dir, capsys):
-        """--all updates all local images."""
+        """--all pulls all local images."""
         from kanibako.commands.image import run_rebuild
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
@@ -457,7 +431,6 @@ class TestImageRebuild:
                 ("ghcr.io/foo/kanibako-lxc:latest", "2GB"),
             ]
             runtime.pull.return_value = True
-            runtime.guess_containerfile.return_value = None
             MockRT.return_value = runtime
 
             args = argparse.Namespace(
@@ -466,6 +439,7 @@ class TestImageRebuild:
             rc = run_rebuild(args)
             assert rc == 0
             assert runtime.pull.call_count == 2
+            runtime.rebuild.assert_not_called()
 
 
 class TestImagePrep:
@@ -1040,6 +1014,41 @@ class TestResolveImageReference:
         result = resolve_image_reference("oci", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
         assert result == "kanibako-oci:latest"
 
+    def test_official_local_wins_over_bare(self):
+        """Both official-qualified AND bare present locally -> official wins."""
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime(has=[
+            "ghcr.io/doctorjei/kanibako-lxc:latest",
+            "kanibako-lxc:latest",
+        ])
+        result = resolve_image_reference("lxc", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
+    def test_official_local_present_only(self):
+        """Only the official-qualified image present locally -> official."""
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime(has=["ghcr.io/doctorjei/kanibako-lxc:latest"])
+        result = resolve_image_reference("lxc", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
+    def test_only_bare_present_returns_bare(self):
+        """Only the bare/non-official image present locally -> bare."""
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime(has=["kanibako-lxc:latest"])
+        result = resolve_image_reference("lxc", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "kanibako-lxc:latest"
+
+    def test_neither_present_returns_official_pull_target(self):
+        """Neither present locally -> the official qualified ref (pull target)."""
+        from kanibako.commands.image import resolve_image_reference
+
+        rt = self._runtime()
+        result = resolve_image_reference("lxc", rt, "ghcr.io/doctorjei/kanibako-oci:latest")
+        assert result == "ghcr.io/doctorjei/kanibako-lxc:latest"
+
     def test_explicit_tag_preserved(self):
         from kanibako.commands.image import resolve_image_reference
 
@@ -1200,10 +1209,14 @@ class TestImageCreate:
 
     def _runtime(self):
         runtime = MagicMock()
-        # Only the resolved prefab ref (kanibako-<base>:latest) exists, so the
-        # foundation resolves to prep_action "none"; the template/extended local
+        # Only the bare (non-official) prefab ref (kanibako-<base>:latest) is
+        # present locally, so the foundation resolves to prep_action "none" and
+        # the resolver returns the bare ref (local non-official beats a pull, but
+        # no official ghcr.io/... copy exists). The template/extended local
         # probes (no ':latest') stay False.
-        runtime.image_exists.side_effect = lambda img: img.endswith(":latest")
+        runtime.image_exists.side_effect = (
+            lambda img: img.endswith(":latest") and "/" not in img
+        )
         runtime.list_local_images.return_value = []
         runtime.run_interactive.return_value = 0
         runtime.cp.return_value = True
@@ -1443,7 +1456,9 @@ class TestImageCreateTemplate:
 
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
             runtime = MagicMock()
-            runtime.image_exists.side_effect = lambda img: img.endswith(":latest")
+            runtime.image_exists.side_effect = (
+                lambda img: img.endswith(":latest") and "/" not in img
+            )
             runtime.list_local_images.return_value = []
             runtime.run_interactive.return_value = 0
             runtime.cp.return_value = True

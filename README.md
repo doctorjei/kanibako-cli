@@ -250,7 +250,7 @@ shortcuts for common operations:
 | `rig list` / `rig ls` | List available rigs (`-q`) |
 | `rig info` / `rig inspect` | Rig details (source, size, recoverability) |
 | `rig rm` / `rig delete` | Remove rig (`--force`) |
-| `rig rebuild [rig]` | Rebuild from registry or stored Containerfile (`--all`) |
+| `rig rebuild [rig]` | Rebuild a template, or pull a prefab/base from the registry (`--all`) |
 | `rig diagnose` | Check rig (image) status |
 
 ### `workset` Subcommands
@@ -439,13 +439,17 @@ Container rigs are built on [Droste](https://github.com/doctorjei/droste), a
 layered OCI image builder.
 [Kento](https://github.com/doctorjei/kento) converts them to LXC/VM hosts.
 
-Rigs are pulled automatically from GHCR on first use.  If the pull fails,
-Kanibako falls back to a local build from the bundled Containerfiles.
+Base rigs are pulled automatically from GHCR on first use; they are
+**pull-only** (Kanibako does not build them locally). If a pull fails, Kanibako
+reports an actionable error. To use a custom base, build it yourself from the
+[kanibako-images](https://github.com/doctorjei/kanibako-images) repo and point
+Kanibako at the resulting local image via `--image` / `box_image`. Toolchain
+*templates* still build locally (they layer on a pulled base).
 
 ```bash
 kanibako rig list                     # show local rigs
-kanibako rig rebuild                  # rebuild current project's rig
-kanibako rig rebuild --all            # rebuild all known rigs
+kanibako rig rebuild                  # build the current template / pull the current base
+kanibako rig rebuild --all            # update all known rigs
 ```
 
 ### Custom Rigs

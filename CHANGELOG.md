@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (base images are now pull-only; pre-broad-release)
+
+- Base images (`kanibako-{min,oci,lxc,vm}`) are now **pull-only**: the cli no
+  longer bundles or builds the base `Containerfile.kanibako`. A pull failure
+  reports an actionable error instead of falling back to a local build
+  (`rig prep`/`rig rebuild`/box launch all pull, never build, a base image).
+  Templates (`Containerfile.template-*`) and `tmux.conf` still ship and still
+  build, layering on a *pulled* base. To use a custom base, build it yourself
+  from the [kanibako-images](https://github.com/doctorjei/kanibako-images) repo
+  and pass it via `--image` / `box_image`.
+- Image resolution now prefers a locally present **official** ref
+  (`{registry}/{owner}/kanibako-<variant>`) over a non-official local build
+  (e.g. `localhost/kanibako-<variant>`); a non-official local build is still
+  used when no official image is present locally, and the official ref is the
+  pull target when neither is local.
+
 ### Changed (v1.5.0 settings-framework rewrite — Part 1; BREAKING, pre-broad-release)
 
 The configured-agent-in-a-box is now consistently called a **crab** (the external

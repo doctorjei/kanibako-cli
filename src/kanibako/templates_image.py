@@ -16,8 +16,9 @@ _VALID_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # Bundled template Containerfiles follow this naming convention. Only files
 # named exactly ``Containerfile.template-<name>`` (with a valid <name>) are
-# treated as shipped templates -- this excludes ``Containerfile.kanibako``
-# (the buildable base) and any non-matching files for free.
+# treated as shipped templates -- any non-matching files are excluded for free.
+# (The cli no longer bundles a base ``Containerfile.kanibako``; base images are
+# pull-only.)
 _TEMPLATE_FILE_PREFIX = "Containerfile.template-"
 
 # Optional description header inside a template Containerfile, e.g.
