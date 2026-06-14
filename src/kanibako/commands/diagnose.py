@@ -205,7 +205,7 @@ def run_system_diagnose(args: object) -> int:
 
 def run_box_diagnose(args: object) -> int:
     """Run diagnostics for a specific project box."""
-    from kanibako.config import config_file_path, load_config
+    from kanibako.config import config_file_path, load_config, read_project_meta
     from kanibako.paths import load_std_paths, resolve_any_project, xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
@@ -220,6 +220,23 @@ def run_box_diagnose(args: object) -> int:
         print(f"Error: {e}")
         return 1
 
+    # `resolve_any_project` fabricates a default-mode resolution for ANY
+    # existing directory, so a successful return does NOT mean a kanibako
+    # project is actually registered at the target.  A real, registered
+    # project always has persisted metadata (project.yaml) at its
+    # metadata_path; a fabricated one does not.  Without this guard, diagnose
+    # would report a meaningless `[ok] Project directory` followed by a false
+    # `[!!] Shell directory: missing` for moved/copied/plain directories.
+    is_registered = read_project_meta(proj.metadata_path / "project.yaml") is not None
+    if not is_registered:
+        target = proj.project_path if proj.project_path else project_dir
+        print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
+        print(
+            "        Run 'kanibako create' to initialize a project here, "
+            "or pass a project name/path."
+        )
+        return 1
+
     print(f"Box Diagnostics: {proj.project_path}")
     print("=" * 40)
     print()
@@ -230,11 +247,17 @@ def run_box_diagnose(args: object) -> int:
     else:
         print(_format_check("!!", "Project directory", "missing"))
 
-    # Shell directory
+    # Shell directory: for a registered project, an absent shell is NORMAL
+    # before the first launch (it is created on first run / initialize=True),
+    # so report it informationally rather than as an error.
     if proj.shell_path and proj.shell_path.is_dir():
         print(_format_check("ok", "Shell directory", str(proj.shell_path)))
     else:
-        print(_format_check("!!", "Shell directory", "missing or not initialized"))
+        print(
+            _format_check(
+                "--", "Shell directory", "not yet initialized (created on first run)",
+            )
+        )
 
     # Runtime check
     status, detail = _check_runtime()

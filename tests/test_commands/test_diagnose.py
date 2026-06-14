@@ -217,6 +217,121 @@ class TestRunRigDiagnose:
         assert "Rig (Image) Diagnostics" in captured.out
 
 
+class TestRunBoxDiagnose:
+    """run_box_diagnose: only report internals for a real, registered project.
+
+    `resolve_any_project` fabricates a default-mode resolution for ANY
+    existing directory, so diagnose must verify a project is actually
+    registered (persisted project.yaml) before reporting on its shell/etc.
+    """
+
+    def _register_default_project(self, config_file, tmp_home, credentials_dir):
+        """Initialize a registered default project at the cwd; return its paths."""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=Exception("no runtime"),
+        ):
+            proj = resolve_project(
+                std, config, project_dir=project_dir, initialize=True,
+            )
+        return proj
+
+    def test_registered_project_all_ok(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A registered project with its shell present reports all [ok]."""
+        from kanibako.errors import ContainerError
+
+        proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+        assert proj.shell_path.is_dir()
+
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=None, path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "[ok] Project directory" in out
+        assert "[ok] Shell directory" in out
+        # The shell/project checks must not be errors (the runtime line may be
+        # [!!] here because no runtime is mocked-present -- unrelated to the fix).
+        assert "[!!] Project directory" not in out
+        assert "[!!] Shell directory" not in out
+        assert "missing or not initialized" not in out
+
+    def test_unregistered_dir_reports_no_project(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A plain (non-project) directory reports no project, not a false shell error."""
+        # cwd is tmp_home/project; nothing was ever registered there.
+        args = argparse.Namespace(project=None, path=None)
+        rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+        # Must NOT emit the misleading [ok] dir + [!!] shell pair.
+        assert "[ok] Project directory" not in out
+        assert "Shell directory" not in out
+        assert "missing or not initialized" not in out
+
+    def test_moved_workspace_reports_no_project(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A copied/moved workspace not registered at its new path reports no project."""
+        import shutil
+
+        self._register_default_project(config_file, tmp_home, credentials_dir)
+        moved = tmp_home / "moved"
+        shutil.copytree(tmp_home / "project", moved)
+
+        args = argparse.Namespace(project=str(moved), path=None)
+        rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+        assert "missing or not initialized" not in out
+
+    def test_registered_project_missing_shell_is_informational(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A registered project whose shell dir is absent -> informational, not error."""
+        import shutil
+
+        from kanibako.errors import ContainerError
+
+        proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+        # Simulate a valid-but-not-yet-launched project: remove the shell dir.
+        shutil.rmtree(proj.shell_path)
+        assert not proj.shell_path.is_dir()
+
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=None, path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        # Shell reported informationally ([--]), NOT as an error ([!!]).
+        assert "[--] Shell directory" in out
+        assert "not yet initialized" in out
+        assert "[!!] Shell directory" not in out
+        # Project directory still meaningfully [ok].
+        assert "[ok] Project directory" in out
+
+
 class TestProbeMissingExecutables:
     """probe_missing_executables: one ephemeral run, partition the result."""
 
