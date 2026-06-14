@@ -480,3 +480,207 @@ class TestWorksetProperties:
         assert ws.workspaces_dir == resolved / "workspaces"
         assert ws.vault_dir == resolved / "vault"
         assert ws.toml_path == resolved / "workset.yaml"
+
+
+# ---------------------------------------------------------------------------
+# Failure-consistency: multi-step mutations must leave NO half-applied state.
+#
+# Each test injects a failure at a mid-sequence write/operation and asserts the
+# op either fully applied or fully rolled back (no orphan dirs, no dangling
+# connected.yaml redirect / symlink, no registry-vs-index mismatch, external
+# path never locked out).  Mirrors the lifecycle family's failure-injection
+# style (patch a forward step to raise; assert consistent state).
+# ---------------------------------------------------------------------------
+
+class _Boom(Exception):
+    """Sentinel for injected mid-sequence failures."""
+
+
+class TestCreateWorksetFailConsistent:
+    def test_name_index_write_failure_unwinds(self, std, tmp_home, monkeypatch):
+        import kanibako.workset as ws_mod
+
+        root = tmp_home / "worksets" / "my-set"
+
+        # register_name is the LAST step (after dirs + worksets.yaml).  If it
+        # blows up, the whole create must roll back: no orphan dirs, nothing in
+        # the global registry, nothing in the name index.
+        def boom(*a, **k):
+            raise _Boom("register_name failed")
+
+        monkeypatch.setattr(ws_mod, "register_name", boom)
+
+        with pytest.raises(_Boom):
+            create_workset("my-set", root, std)
+
+        assert not root.exists(), "orphan dirs left behind"
+        assert "my-set" not in list_worksets(std), "stale worksets.yaml entry"
+        from kanibako.names import read_names
+        assert "my-set" not in read_names(std.data_path).get("worksets", {})
+
+    def test_registry_write_failure_unwinds_dirs(self, std, tmp_home, monkeypatch):
+        import kanibako.workset as ws_mod
+
+        root = tmp_home / "worksets" / "my-set"
+
+        def boom(*a, **k):
+            raise _Boom("worksets.yaml write failed")
+
+        monkeypatch.setattr(ws_mod, "_write_registry", boom)
+
+        with pytest.raises(_Boom):
+            create_workset("my-set", root, std)
+
+        # Dirs were created before the registry write — must be cleaned up.
+        assert not root.exists()
+        from kanibako.names import read_names
+        assert "my-set" not in read_names(std.data_path).get("worksets", {})
+
+
+class TestDeleteWorksetSelfHealing:
+    def test_stale_name_index_recleaned_on_rerun(self, std, tmp_home):
+        # Simulate a prior delete that crashed after the worksets.yaml write but
+        # before unregister_name: the workset survives ONLY in names.yaml.  A
+        # re-run of delete must recognize + fully clean it (not raise "not
+        # registered").
+        from kanibako.names import read_names, register_name
+
+        root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", root, std)
+        # Drop only the worksets.yaml half (the crash-between state).
+        from kanibako.workset import _unregister_workset
+        _unregister_workset(std, "my-set")
+        assert "my-set" not in list_worksets(std)
+        assert "my-set" in read_names(std.data_path).get("worksets", {})
+
+        # Re-run delete: must succeed and clean the stale name-index entry.
+        ret = delete_workset("my-set", std)
+        assert ret == root.resolve()
+        assert "my-set" not in read_names(std.data_path).get("worksets", {})
+
+    def test_irreversible_rmtree_after_registries_clean(self, std, tmp_home, monkeypatch):
+        import kanibako.workset as ws_mod
+
+        root = tmp_home / "worksets" / "my-set"
+        create_workset("my-set", root, std)
+
+        # If unregister_name (a registry step) fails, rmtree (irreversible) must
+        # NOT have run — the dir survives, so nothing is lost.
+        def boom(*a, **k):
+            raise _Boom("name index write failed")
+
+        monkeypatch.setattr(ws_mod, "unregister_name", boom)
+        with pytest.raises(_Boom):
+            delete_workset("my-set", std, remove_files=True)
+
+        assert root.resolve().is_dir(), "rmtree ran before registries were clean"
+
+
+class TestAddProjectFailConsistent:
+    def test_internal_workset_write_failure_unwinds(self, std, tmp_home, monkeypatch):
+        import kanibako.workset as ws_mod
+
+        root = tmp_home / "worksets" / "my-set"
+        ws = create_workset("my-set", root, std)
+        proj_src = tmp_home / "project"
+
+        # workset.yaml write is the LAST step; failing it must roll back the
+        # per-project dirs and leave no project in the in-memory list / on disk.
+        def boom(*a, **k):
+            raise _Boom("workset.yaml write failed")
+
+        monkeypatch.setattr(ws_mod, "_write_workset_toml", boom)
+        with pytest.raises(_Boom):
+            add_project(ws, "proj", proj_src)
+
+        resolved = root.resolve()
+        assert not (resolved / "boxes" / "proj").exists()
+        assert not (resolved / "workspaces" / "proj").exists()
+        assert not (resolved / "vault" / "proj").exists()
+        assert all(p.name != "proj" for p in ws.projects)
+        assert all(p.name != "proj" for p in load_workset(root).projects)
+
+    def test_external_workset_write_failure_unwinds_redirect(
+        self, std, tmp_home, monkeypatch
+    ):
+        import kanibako.workset as ws_mod
+        from kanibako.workset import _load_connected
+
+        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+        (external / "keep.txt").write_text("keep me")
+
+        # The connected.yaml redirect is written BEFORE the final workset.yaml
+        # write.  If that final write fails, the redirect + symlink must be
+        # rolled back so the external path is NOT locked out.
+        def boom(*a, **k):
+            raise _Boom("workset.yaml write failed")
+
+        monkeypatch.setattr(ws_mod, "_write_workset_toml", boom)
+        with pytest.raises(_Boom):
+            add_project(ws, "extproj", external, std)
+
+        # No dangling redirect, no orphan symlink, external source untouched.
+        assert str(external) not in _load_connected(std)
+        assert not (ws.workspaces_dir / "extproj").is_symlink()
+        assert not (ws.workspaces_dir / "extproj").exists()
+        assert all(p.name != "extproj" for p in ws.projects)
+        assert external.is_dir()
+        assert (external / "keep.txt").read_text() == "keep me"
+
+    def test_external_connected_write_failure_unwinds_symlink(
+        self, std, tmp_home, monkeypatch
+    ):
+        import kanibako.workset as ws_mod
+        from kanibako.workset import _load_connected
+
+        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+
+        # Fail the connected.yaml write (after the symlink is created).  The
+        # symlink must be rolled back so no orphan link survives.
+        def boom(*a, **k):
+            raise _Boom("connected.yaml write failed")
+
+        monkeypatch.setattr(ws_mod, "_write_connected", boom)
+        with pytest.raises(_Boom):
+            add_project(ws, "extproj", external, std)
+
+        assert not (ws.workspaces_dir / "extproj").is_symlink()
+        assert not (ws.workspaces_dir / "extproj").exists()
+        assert str(external) not in _load_connected(std)
+        assert all(p.name != "extproj" for p in ws.projects)
+        assert external.is_dir()
+
+
+class TestRemoveProjectFailConsistent:
+    def test_registry_removal_is_last_durable_step(self, std, tmp_home, monkeypatch):
+        # If the final workset.yaml write fails during removal, the project must
+        # remain registered (re-runnable) rather than being dropped from the
+        # registry while leaving a dangling connected.yaml redirect.
+        import kanibako.workset as ws_mod
+        from kanibako.workset import _load_connected, remove_project
+
+        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+        add_project(ws, "extproj", external, std)
+        assert str(external) in _load_connected(std)
+
+        def boom(*a, **k):
+            raise _Boom("workset.yaml write failed")
+
+        monkeypatch.setattr(ws_mod, "_write_workset_toml", boom)
+        with pytest.raises(_Boom):
+            remove_project(ws, "extproj", std=std)
+
+        # connected.yaml + symlink were cleaned (idempotent re-run safe), but the
+        # registry still lists the project — so it is NOT half-gone with a
+        # dangling redirect (the external path is never locked out).
+        assert "extproj" in {p.name for p in load_workset(ws.root).projects}
+        # The redirect was cleared before the failed registry write; a re-run of
+        # remove_project will complete the removal cleanly.
+        assert str(external) not in _load_connected(std)
+        assert external.is_dir()
