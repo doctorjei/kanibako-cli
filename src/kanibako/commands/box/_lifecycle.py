@@ -392,23 +392,36 @@ def copy_into_workset(
     # directory rather than connecting to (and symlinking at) the source.
     add_project(ws, proj_name, ws.workspaces_dir / proj_name, std)
 
-    dst_project = ws.projects_dir / proj_name
-    shutil.copytree(
-        metadata_path, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
-        dirs_exist_ok=True,
-    )
+    # Failure-consistency: a crash AFTER add_project (which registers the project
+    # in workset.yaml + creates per-project dirs) but DURING the copies below
+    # would otherwise strand a registered-but-incomplete project.  Roll the
+    # registration + partial dirs back on any failure, then re-raise.
+    # remove_project(remove_files=True, std=...) is idempotent and removes only
+    # workset-side dirs (never the user's external source).
+    try:
+        dst_project = ws.projects_dir / proj_name
+        shutil.copytree(
+            metadata_path, dst_project,
+            ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
+            dirs_exist_ok=True,
+        )
 
-    if shell_path.is_dir():
-        dst_shell = dst_project / "shell"
-        shutil.copytree(shell_path, dst_shell, dirs_exist_ok=True)
+        if shell_path.is_dir():
+            dst_shell = dst_project / "shell"
+            shutil.copytree(shell_path, dst_shell, dirs_exist_ok=True)
 
-    if copy_workspace:
-        dst_workspace = ws.workspaces_dir / proj_name
-        ignore = None
-        if source_mode == ProjectMode.standalone:
-            ignore = shutil.ignore_patterns(".kanibako", "kanibako")
-        shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+        if copy_workspace:
+            dst_workspace = ws.workspaces_dir / proj_name
+            ignore = None
+            if source_mode == ProjectMode.standalone:
+                ignore = shutil.ignore_patterns(".kanibako", "kanibako")
+            shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+    except BaseException:
+        try:
+            remove_project(ws, proj_name, remove_files=True, std=std)
+        except Exception:  # noqa: BLE001 - best-effort rollback
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------
