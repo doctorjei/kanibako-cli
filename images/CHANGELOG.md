@@ -26,6 +26,10 @@ bundles `kanibako-cli==X.Y.Z` (passed as the `KANIBAKO_CLI_VERSION` build-arg).
   `KANIBAKO_CLI_VERSION` build-arg. fd-find/inotify-tools/ripgrep dropped from
   the min-only block (now baseline-provided for all variants); sshpass stays
   min-only. The all-variant block comment was reworded "general" -> "shared".
+- `build-images.yml`: the manual `:latest` build now pins `KANIBAKO_CLI_VERSION`
+  to the repo's `VERSION` file (a new "Resolve cli version" step) instead of
+  building against an unpinned `kanibako-cli`, so push-to-main and dispatch
+  builds track a known cli release.
 
 ## [1.4.0] - 2026-06-13
 
