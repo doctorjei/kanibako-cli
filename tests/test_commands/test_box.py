@@ -450,6 +450,47 @@ class TestBoxDuplicate:
         # Existing file preserved (dirs_exist_ok merges).
         assert (dst_dir / "existing.txt").read_text() == "keep"
 
+    def test_duplicate_metadata_copy_failure_leaves_no_orphan(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A crash during the metadata copy must NOT strand a registered name.
+
+        Failure-injection (A2): ``run_duplicate`` registers a name via
+        ``assign_name`` before copying metadata.  If the copy raises, the name
+        must be unregistered and no partial dest dir left behind — duplicate
+        either fully succeeds or leaves no trace.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.names import read_names
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "orphan_src"
+        src_dir.mkdir()
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        dst_dir = tmp_home / "orphan_dst"
+
+        names_before = read_names(std.data_path)["projects"]
+
+        # bare=True so only the metadata copytree runs (no prior workspace copy).
+        with patch(
+            "kanibako.commands.box._duplicate.shutil.copytree",
+            side_effect=RuntimeError("boom"),
+        ):
+            try:
+                run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
+            except RuntimeError:
+                pass
+
+        # Name NOT left registered.
+        names_after = read_names(std.data_path)["projects"]
+        assert names_after == names_before
+        assert "orphan_dst" not in names_after
+        # No partial dest metadata dir.
+        assert not (std.data_path / "boxes" / "orphan_dst").exists()
+
 
 class TestBoxInfo:
     def test_info_local(self, config_file, tmp_home, credentials_dir, capsys):
@@ -588,6 +629,48 @@ class TestBoxDuplicateCrossMode:
         assert (ac_project / "marker.txt").read_text() == "dec-data"
         assert not (ac_project / "project-path.txt").exists()
         assert (dst_dir / "code.py").read_text() == "print('dec')"
+
+    def test_duplicate_to_local_copy_failure_leaves_no_orphan(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A crash inside ``_duplicate_to_local`` must not strand a name.
+
+        Failure-injection (A2): the cross-mode standalone->default path routes
+        through ``_duplicate_to_local``, which calls ``assign_name`` (registers)
+        before copying metadata.  A copy failure must unwind the registration +
+        any partial dest dir.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.names import read_names
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "tlfail_src"
+        src_dir.mkdir()
+        proj = resolve_standalone_project(
+            std, config, project_dir=str(src_dir), initialize=True,
+        )
+        (proj.metadata_path / "marker.txt").write_text("data")
+
+        dst_dir = tmp_home / "tlfail_dst"
+
+        names_before = read_names(std.data_path)["projects"]
+
+        # bare=True isolates the metadata copytree inside _duplicate_to_local.
+        with patch(
+            "kanibako.commands.box._duplicate.shutil.copytree",
+            side_effect=RuntimeError("boom"),
+        ):
+            try:
+                run_duplicate(self._make_args(src_dir, dst_dir, "default", bare=True))
+            except RuntimeError:
+                pass
+
+        names_after = read_names(std.data_path)["projects"]
+        assert names_after == names_before
+        assert "tlfail_dst" not in names_after
+        assert not (std.data_path / "boxes" / "tlfail_dst").exists()
 
     def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -947,6 +1030,47 @@ class TestBoxDuplicateExternal:
         assert (ws.projects_dir / "int_src" / "shell" / "custom.sh").exists()
         # No external wiring — duplicate is a copy, not a connection.
         assert _load_connected(std) == {}
+
+    def test_copy_into_workset_copy_failure_leaves_no_orphan(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A crash during the copies must roll back the add_project registration.
+
+        Failure-injection (Tier B): ``copy_into_workset`` calls ``add_project``
+        (registers in workset.yaml + creates per-project dirs) before the
+        metadata/shell/workspace copytrees.  A copy failure must call
+        ``remove_project`` to undo the registration + partial dirs, then re-raise
+        — no registered-but-incomplete project is left behind.
+        """
+        from kanibako.commands.box._lifecycle import copy_into_workset
+        from kanibako.paths import ProjectMode
+        from kanibako.workset import load_workset, list_worksets
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        proj, project_dir = _make_local_project(tmp_home, std, config, "cf_src")
+        ws, ws_root = _make_workset(tmp_home, std, "cf-ws")
+
+        with patch(
+            "kanibako.commands.box._lifecycle.shutil.copytree",
+            side_effect=RuntimeError("boom"),
+        ):
+            try:
+                copy_into_workset(
+                    ws, "cf_proj", proj.metadata_path, proj.shell_path,
+                    project_dir, ProjectMode.default, copy_workspace=True, std=std,
+                )
+            except RuntimeError:
+                pass
+
+        # Project NOT left registered in the workset (reload from disk).
+        registry = list_worksets(std)
+        reloaded = load_workset(registry["cf-ws"])
+        assert all(p.name != "cf_proj" for p in reloaded.projects)
+        # No partial per-project dirs left behind.
+        assert not (ws.projects_dir / "cf_proj").exists()
+        assert not (ws.workspaces_dir / "cf_proj").exists()
 
     def test_bare_duplicate_external_source_refused(
         self, config_file, tmp_home, credentials_dir, capsys,

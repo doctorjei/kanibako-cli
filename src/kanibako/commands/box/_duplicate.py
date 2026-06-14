@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
-from kanibako.names import assign_name
+from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
     ProjectMode,
     WorksetSpec,
@@ -157,25 +157,54 @@ def _duplicate_to_standalone(src_proj, new_path, force):
             vault_gitignore.write_text("rw/\n")
 
 
+def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
+    """Best-effort rollback of a default-mode name registration + partial dir.
+
+    Used when a copy fails after :func:`assign_name` has already registered the
+    duplicate's name (and possibly created a partial metadata dir), to avoid
+    leaving a "registered but no metadata" orphan.  Each step is independently
+    guarded so one failure does not mask the rest.
+    """
+    try:
+        unregister_name(std.data_path, project_name)
+    except Exception:  # noqa: BLE001 - best-effort restore
+        pass
+    try:
+        if dst_project.exists():
+            shutil.rmtree(dst_project)
+    except Exception:  # noqa: BLE001 - best-effort restore
+        pass
+
+
 def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into default-mode layout for new_path."""
-    # Assign a new name for the duplicate.
+    # Assign a new name for the duplicate.  The name MUST be registered first
+    # because the destination metadata dir is derived from it (std.boxes/<name>).
     project_name = assign_name(std.data_path, str(new_path))
     projects_base = std.boxes
     dst_project = projects_base / project_name
 
-    if force and dst_project.is_dir():
-        shutil.rmtree(dst_project)
-    shutil.copytree(
-        src_proj.metadata_path, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock"),
-    )
+    # Failure-consistency: a crash AFTER assign_name (which registers the name)
+    # but DURING the metadata/shell copy below would otherwise strand a
+    # "registered but no metadata" orphan.  Unwind the registration + any partial
+    # dest dir on failure, then re-raise — duplicate either fully succeeds or
+    # leaves no trace.
+    try:
+        if force and dst_project.is_dir():
+            shutil.rmtree(dst_project)
+        shutil.copytree(
+            src_proj.metadata_path, dst_project,
+            ignore=shutil.ignore_patterns(".kanibako.lock"),
+        )
 
-    # Ensure home is inside the project dir.
-    if src_proj.shell_path.is_dir():
-        dst_home = dst_project / "shell"
-        if not dst_home.is_dir():
-            shutil.copytree(src_proj.shell_path, dst_home)
+        # Ensure home is inside the project dir.
+        if src_proj.shell_path.is_dir():
+            dst_home = dst_project / "shell"
+            if not dst_home.is_dir():
+                shutil.copytree(src_proj.shell_path, dst_home)
+    except BaseException:
+        _unwind_local_name(std, project_name, dst_project)
+        raise
 
 
 def _duplicate_to_workset(args, std, config) -> int:
@@ -436,17 +465,27 @@ def run_duplicate(args: argparse.Namespace) -> int:
     if not args.bare:
         shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
 
-    # Assign a new name for the duplicate.
+    # Assign a new name for the duplicate.  The name MUST be registered first
+    # because the destination metadata dir is derived from it (std.boxes/<name>).
     dup_name = assign_name(std.data_path, str(new_path))
     new_project_dir = std.boxes / dup_name
 
-    # Copy metadata (entire project dir including home/).
-    if args.force and new_project_dir.is_dir():
-        shutil.rmtree(new_project_dir)
-    shutil.copytree(
-        source_project_dir, new_project_dir,
-        ignore=shutil.ignore_patterns(".kanibako.lock"),
-    )
+    # Failure-consistency: a crash AFTER assign_name but DURING the metadata copy
+    # would otherwise strand a "registered but no metadata" orphan.  Unwind the
+    # registration + any partial dest dir on failure, then re-raise.  (The
+    # workspace copytree above runs BEFORE registration, so it is intentionally
+    # outside this unwind.)
+    try:
+        # Copy metadata (entire project dir including home/).
+        if args.force and new_project_dir.is_dir():
+            shutil.rmtree(new_project_dir)
+        shutil.copytree(
+            source_project_dir, new_project_dir,
+            ignore=shutil.ignore_patterns(".kanibako.lock"),
+        )
+    except BaseException:
+        _unwind_local_name(std, dup_name, new_project_dir)
+        raise
 
     print("Duplicated project:")
     print(f"  from: {source_path} ({source_name})")
