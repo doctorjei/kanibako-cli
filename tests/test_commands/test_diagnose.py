@@ -450,6 +450,60 @@ class TestRunBoxDiagnose:
         assert "no kanibako project registered" in out
         assert "missing or not initialized" not in out
 
+    def test_bare_project_name_from_other_cwd(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """`box diagnose <projname>` resolves a REGISTERED project from any cwd."""
+        from kanibako.errors import ContainerError
+
+        proj = self._register_default_project(config_file, tmp_home, credentials_dir)
+        name = proj.name
+        # Move cwd OUT of the project so the token can only resolve by name.
+        elsewhere = tmp_home / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=name, path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "[ok] Project directory" in out
+        # Must NOT have path-ified the bare name relative to cwd.
+        assert "no kanibako project registered" not in out
+
+    def test_bare_workset_name_errors_clearly(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """`box diagnose <worksetname>` errors clearly (a workset isn't a box)."""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+        from kanibako.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("diagws", tmp_home / "ws_diag", std)
+        src = tmp_home / "diag_src"
+        src.mkdir()
+        add_project(ws, "diagproj", src)
+
+        elsewhere = tmp_home / "elsewhere2"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        args = argparse.Namespace(project="diagws", path=None)
+        rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        # Clear, actionable message -- not the misleading "path does not exist".
+        assert "is a workset" in out
+        assert "does not exist" not in out
+
     def test_registered_project_missing_shell_is_informational(
         self, config_file, tmp_home, credentials_dir, capsys
     ) -> None:

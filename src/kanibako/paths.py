@@ -1361,13 +1361,31 @@ def resolve_any_project(
     # this lookup, but resolve_any_project must do it FIRST -- otherwise
     # Path(raw).resolve() below path-ifies the name before detect_project_mode
     # sees it.
+    named_workset = False
+    raw_name = raw
     if raw and "/" not in raw and not Path(raw).exists():
         try:
             resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
-            if kind == "project":
+            if kind in ("project", "workset"):
+                # Update `raw` for BOTH kinds: a bare workset name resolves to
+                # the workset ROOT, which detect_project_mode must see (without
+                # this, the name path-ifies to cwd/<name> and resolution fails
+                # with a misleading "does not exist").  A workset is not a single
+                # box, so we still reject it below -- but with a clear message.
                 raw = resolved
+                named_workset = kind == "workset"
         except ProjectError:
             pass
+    if named_workset:
+        # The token named a workset, not a project.  `box`/diagnose operate on a
+        # single project box, and a workset may contain zero or many; there is no
+        # unambiguous representative.  Fail with an actionable message instead of
+        # the generic "inside a workset, cd to a project" error.
+        raise WorksetError(
+            f"'{raw_name}' is a workset, not a single project box. "
+            f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
+            f"command from a project workspace under that workset."
+        )
     raw_dir = Path(raw).resolve()
     detection = detect_project_mode(raw_dir, std, config)
     root_str = str(detection.project_root)

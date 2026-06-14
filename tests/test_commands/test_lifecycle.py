@@ -21,7 +21,7 @@ from kanibako.commands.box._lifecycle import (
     resolve_lifecycle_target,
 )
 from kanibako.config import load_config, read_project_meta
-from kanibako.errors import ProjectError
+from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import read_names
 from kanibako.paths import (
     ProjectMode,
@@ -126,6 +126,22 @@ class TestResolveTarget:
         assert state.owner == "workset:ws"
         assert state.is_external
         assert state.workspace_path == external.resolve()
+
+    def test_bare_project_name(self, env):
+        """A bare REGISTERED project name resolves (cwd is elsewhere)."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="namedproj")
+        # cwd is tmp_path/project (set by tmp_home), not pdir; resolve by name.
+        state = resolve_lifecycle_target("namedproj", std, config)
+        assert state.owner == "default"
+        assert state.workspace_path == pdir.resolve()
+
+    def test_bare_workset_name_errors(self, env):
+        """A bare workset name is rejected (a workset is not a single box)."""
+        config, std, tmp_home = env
+        _make_workset(env, ws_name="lcw", root_name="lcw_root")
+        with pytest.raises(WorksetError, match="is a workset"):
+            resolve_lifecycle_target("lcw", std, config)
 
 
 # ---------------------------------------------------------------------------
