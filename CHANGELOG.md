@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-14
+
 ### Added (configurable no-agent box shell)
 
 - **`box.shell` setting.** Selects the shell launched for a **no-agent** box
