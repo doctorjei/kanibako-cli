@@ -366,6 +366,15 @@ class TestAgentBinaryValidation:
         Routes a real 0-byte tmp file through the real validation helper to
         exercise the guard end-to-end (a 0-byte file passes is_file() yet
         would be exec'd into a brick).
+
+        IMPORTANT: this test does NOT mock check_auth.  In the real launch
+        path target.check_auth() shells out to the host agent binary, so a
+        0-byte/corrupt binary there raises an uncaught OSError (Exec format
+        error) -> Python traceback.  The validation guard MUST run *before*
+        check_auth so the user gets the actionable message instead.  We make
+        check_auth raise OSError to mimic the real crash; if the guard runs
+        first (as it must), check_auth is never reached and the OSError never
+        surfaces.
         """
         from kanibako.targets.base import _validate_agent_binary
 
@@ -376,6 +385,11 @@ class TestAgentBinaryValidation:
             m.target.detect.return_value.binary = binary
             # Drive the guard through the real helper for fidelity.
             m.validate_binary.side_effect = _validate_agent_binary
+            # Mimic the real check_auth crashing on a corrupt binary.  The guard
+            # must short-circuit before this is ever called.
+            m.target.check_auth.side_effect = OSError(
+                8, "Exec format error"
+            )
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -387,12 +401,17 @@ class TestAgentBinaryValidation:
             )
             assert rc == 1
             m.runtime.run.assert_not_called()
+            # Proof the guard ran first: the crashing auth probe was skipped.
+            m.target.check_auth.assert_not_called()
 
         captured = capsys.readouterr()
         assert "host binary is unusable" in captured.err
         assert "0 bytes" in captured.err
         assert str(binary) in captured.err
         assert "diagnose" in captured.err
+        # No traceback leaked to stderr.
+        assert "Traceback" not in captured.err
+        assert "Exec format error" not in captured.err
 
     def test_nonexecutable_binary_fails_fast(
         self, start_mocks, capsys, tmp_path
