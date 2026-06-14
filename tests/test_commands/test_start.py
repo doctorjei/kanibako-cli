@@ -1727,3 +1727,72 @@ class TestRunShellBoxShell:
             assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/sh"
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert cli_args == ["-c", "echo hi"]
+
+    def test_interactive_resolver_gets_runtime_and_image(self, start_mocks):
+        """`kanibako shell` resolves the box.shell IMAGE-AWARE (runtime+image)."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ) as m_resolve:
+                run_shell(self._args())
+            m_resolve.assert_called_once()
+            kwargs = m_resolve.call_args.kwargs
+            assert kwargs.get("runtime") is m.runtime
+            assert kwargs.get("image") == "test:latest"
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/bash"
+
+    def test_plain_shell_even_when_agent_installed(self, start_mocks):
+        """`kanibako shell` gives a PLAIN shell even when an agent is installed.
+
+        box_shell_mode must bypass agent resolution entirely: no resolve_target,
+        the launched entrypoint is the resolved shell (not the agent binary), and
+        the agent's default_entrypoint ('claude') never appears.
+        """
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            # Fixture target is a detectable agent (default_entrypoint='claude').
+            # If box_shell_mode leaked into agent mode, resolve_target would run.
+            m.resolve_target.side_effect = AssertionError(
+                "agent must not be resolved in box_shell_mode"
+            )
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                run_shell(self._args())
+            m_resolve.assert_called_once()
+            m.resolve_target.assert_not_called()
+            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/zsh"
+
+    def test_persistent_wraps_resolved_shell(self, start_mocks):
+        """`kanibako shell --persistent` bootstrap-wraps the resolved shell."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                run_shell(self._args(persistent=True))
+            m_resolve.assert_called_once()
+            call = m.runtime.run.call_args
+            assert call.kwargs.get("entrypoint") == "tmux"
+            cli_args = call.kwargs.get("cli_args") or []
+            assert cli_args[cli_args.index("--") + 1] == "/bin/zsh"
+
+    def test_interactive_execs_into_running_box(self, start_mocks):
+        """An already-running box: `kanibako shell` execs the resolved shell in."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ) as m_resolve:
+                run_shell(self._args())
+            m_resolve.assert_called_once()
+            # Exec path: no fresh run(), exec the concrete resolved shell.
+            m.runtime.run.assert_not_called()
+            exec_cmd = m.runtime.exec.call_args.args[1]
+            assert exec_cmd == ["/bin/zsh"]

@@ -232,23 +232,18 @@ def run_shell(args: argparse.Namespace) -> int:
     shell_args = getattr(args, "shell_args", [])
 
     entrypoint = getattr(args, "entrypoint", None)
+    box_shell_mode = False
     if not entrypoint:
         if shell_args:
             # One-off command exec: /bin/sh -c "<cmd>" (not the interactive shell).
             entrypoint = "/bin/sh"
         else:
-            # Interactive shell: resolve the configured box.shell.  No runtime/
-            # image handle here, so the image-default step is skipped (box.shell
-            # -> $KANIBAKO_SHELL -> sh); _run_container's launch path performs
-            # the full image-aware resolution for `kanibako start`.
-            from kanibako.shells import resolve_box_shell
-            try:
-                cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-                _cfg = load_merged_config(cfg_file, None)
-                _std = load_std_paths(_cfg)
-                entrypoint, _src = resolve_box_shell(_cfg, _std)
-            except Exception:
-                entrypoint = "sh"
+            # Interactive shell: defer to _run_container's image-aware box.shell
+            # resolution.  We leave entrypoint=None and flag box_shell_mode so
+            # _run_container resolves the shell *with* the runtime/image handle
+            # (box.shell -> $KANIBAKO_SHELL -> stored image login shell -> sh)
+            # without engaging an agent.
+            box_shell_mode = True
     # Wrap shell_args as -c "cmd" so /bin/sh executes them as a command
     if shell_args and not getattr(args, "entrypoint", None):
         shell_args = ["-c", " ".join(shell_args)]
@@ -279,6 +274,7 @@ def run_shell(args: argparse.Namespace) -> int:
         share_images=share_images,
         persistent=persistent,
         cli_env=env_vars,
+        box_shell_mode=box_shell_mode,
     )
 
 
@@ -556,6 +552,7 @@ def _run_container(
     persistent: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
+    box_shell_mode: bool = False,
     _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -650,6 +647,14 @@ def _run_container(
     from kanibako.shells import capture_image_shell
     capture_image_shell(runtime, image, std)
 
+    # `kanibako shell` (interactive, no agent): resolve the box.shell now, with
+    # the runtime/image handle, so the image-default tier participates.  This
+    # makes entrypoint concrete *before* the agent-vs-shell decision (line ~672)
+    # and the exec-into-running check (line ~737), so neither regresses.
+    if box_shell_mode and entrypoint is None:
+        from kanibako.shells import resolve_box_shell
+        entrypoint, _src = resolve_box_shell(merged, std, runtime=runtime, image=image)
+
     from kanibako.freshness import check_image_freshness
     check_image_freshness(runtime, image, std.cache_path)
 
@@ -669,7 +674,7 @@ def _run_container(
 
     # Resolve target (agent plugin) and detect installation
     logger = get_logger("start")
-    is_agent_mode = entrypoint is None
+    is_agent_mode = entrypoint is None and not box_shell_mode
     target = None
     install = None
     if is_agent_mode:
