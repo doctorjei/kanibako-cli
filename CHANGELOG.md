@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`kanibako system config box.shell`** (read-back) no longer reports an unknown
   config key; `box.shell` is now a recognized GET key (set / `--reset` already
   worked).
+- **`kanibako system config box.bootstrap_program`** (read-back) no longer reports
+  an unknown config key; `box.bootstrap_program` is now a recognized GET key (set /
+  `--reset` already worked).
 
 ### Changed (base images are now pull-only; pre-broad-release)
 
