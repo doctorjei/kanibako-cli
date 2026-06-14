@@ -2010,3 +2010,105 @@ class TestRigExportImport:
 
         assert "failed to load" in capsys.readouterr().err
         assert "mydev" not in load_registry(registry_path(std))
+
+
+class TestImageShellCapture:
+    """Phase 2: a successful pull/prep captures the image's login shell."""
+
+    def _resolution(self, **kw):
+        from kanibako.rig_resolve import RigResolution
+
+        return RigResolution(**kw)
+
+    def test_prefab_pull_captures_shell(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """prep on a prefab pull invokes capture_image_shell once on success."""
+        from kanibako.commands.image import run_prep
+
+        res = self._resolution(
+            name="oci", kind="prefab",
+            image="ghcr.io/doctorjei/kanibako-oci:latest",
+            prep_action="pull", source_ref="oci",
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res), \
+                patch("kanibako.commands.image.capture_image_shell") as cap:
+            runtime = MagicMock()
+            runtime.pull.return_value = True
+            MockRT.return_value = runtime
+
+            rc = run_prep(argparse.Namespace(name="oci", force=False, all_images=False))
+            assert rc == 0
+            cap.assert_called_once()
+            # called as (runtime, image, std)
+            call_args, _ = cap.call_args
+            assert call_args[0] is runtime
+            assert call_args[1] == "ghcr.io/doctorjei/kanibako-oci:latest"
+
+    def test_failed_pull_does_not_capture(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A failed pull never captures a shell."""
+        from kanibako.commands.image import run_prep
+
+        res = self._resolution(
+            name="oci", kind="prefab",
+            image="ghcr.io/doctorjei/kanibako-oci:latest",
+            prep_action="pull", source_ref="oci",
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res), \
+                patch("kanibako.commands.image.capture_image_shell") as cap:
+            runtime = MagicMock()
+            runtime.pull.return_value = False
+            MockRT.return_value = runtime
+
+            rc = run_prep(argparse.Namespace(name="oci", force=False, all_images=False))
+            assert rc == 1
+            cap.assert_not_called()
+
+    def test_template_build_captures_shell(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """A successful template build also captures the image's shell."""
+        from kanibako.commands.image import run_prep
+        from pathlib import Path
+
+        cf = Path("/somewhere/Containerfile.template-jvm")
+        res = self._resolution(
+            name="jvm", kind="template", image="kanibako-template-jvm",
+            prep_action="build", containerfile=cf,
+        )
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.resolve_rig", return_value=res), \
+                patch("kanibako.commands.image.capture_image_shell") as cap:
+            runtime = MagicMock()
+            runtime.rebuild.return_value = 0
+            MockRT.return_value = runtime
+
+            rc = run_prep(argparse.Namespace(name="jvm", force=False, all_images=False))
+            assert rc == 0
+            cap.assert_called_once()
+            call_args, _ = cap.call_args
+            assert call_args[1] == "kanibako-template-jvm"
+
+    def test_update_all_captures_each(
+        self, tmp_home, config_file, credentials_dir, capsys,
+    ):
+        """--all captures the shell for each successfully pulled image."""
+        from kanibako.commands.image import run_prep
+
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, \
+                patch("kanibako.commands.image.capture_image_shell") as cap:
+            runtime = MagicMock()
+            runtime.list_local_images.return_value = [
+                ("ghcr.io/foo/kanibako-oci:latest", "1GB"),
+                ("ghcr.io/foo/kanibako-lxc:latest", "2GB"),
+            ]
+            runtime.pull.return_value = True
+            MockRT.return_value = runtime
+
+            rc = run_prep(argparse.Namespace(name=None, force=False, all_images=True))
+            assert rc == 0
+            assert cap.call_count == 2

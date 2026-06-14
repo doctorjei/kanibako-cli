@@ -35,6 +35,7 @@ from kanibako.rig_registry import (
 )
 from kanibako.rig_resolve import resolve_rig
 from kanibako.rig_source import derive_name, detect_source_kind, fetch_to_temp
+from kanibako.shells import capture_image_shell
 from kanibako.templates_image import (
     list_bundled_templates,
     read_template_checks,
@@ -310,7 +311,7 @@ def run_extend(args: argparse.Namespace) -> int:
         else:
             # prefab: pull.
             print(f"Preparing foundation '{args.from_}'...")
-            rc = _update_one(runtime, res.image)
+            rc = _update_one(runtime, res.image, std)
             if rc != 0:
                 print(
                     f"Error: failed to prep foundation '{args.from_}'.",
@@ -879,7 +880,7 @@ def run_prep(args: argparse.Namespace) -> int:
         return 1
 
     if args.all_images:
-        return _update_all(runtime)
+        return _update_all(runtime, std)
 
     if args.name is None:
         print("error: rig name required (or use --all)", file=sys.stderr)
@@ -925,12 +926,13 @@ def run_prep(args: argparse.Namespace) -> int:
         rc = runtime.rebuild(res.image, cf, cf.parent, build_args=None)
         if rc == 0:
             print(f"Rig '{args.name}' prepped as {res.image}")
+            capture_image_shell(runtime, res.image, std)
         else:
             print(f"Build failed with exit code {rc}", file=sys.stderr)
         return rc
 
     # prefab: pull (same as rebuild).
-    return _update_one(runtime, res.image)
+    return _update_one(runtime, res.image, std)
 
 
 def run_add(args: argparse.Namespace) -> int:
@@ -1062,7 +1064,7 @@ def run_rebuild(args: argparse.Namespace) -> int:
         return 1
 
     if args.all_images:
-        return _update_all(runtime)
+        return _update_all(runtime, std)
 
     # Determine which image to update
     merged = load_merged_config(config_file, None)
@@ -1072,16 +1074,23 @@ def run_rebuild(args: argparse.Namespace) -> int:
     else:
         image = resolve_image_name(image, merged.box_image)
 
-    return _update_one(runtime, image)
+    return _update_one(runtime, image, std)
 
 
-def _pull_one(runtime: ContainerRuntime, image: str) -> int:
-    """Pull a single image from the registry."""
+def _pull_one(runtime: ContainerRuntime, image: str, std=None) -> int:
+    """Pull a single image from the registry.
+
+    On success, capture the image's login shell into the image-shell store (when
+    *std* is given) so the launch/diagnose resolver reads a stored value instead
+    of probing in the hot path. The capture is idempotent and never fatal.
+    """
     print(f"Pulling {image}...")
     print()
     if runtime.pull(image, quiet=False):
         print()
         print(f"Successfully pulled {image}")
+        if std is not None:
+            capture_image_shell(runtime, image, std)
         return 0
     else:
         print()
@@ -1089,16 +1098,16 @@ def _pull_one(runtime: ContainerRuntime, image: str) -> int:
         return 1
 
 
-def _update_one(runtime: ContainerRuntime, image: str) -> int:
+def _update_one(runtime: ContainerRuntime, image: str, std=None) -> int:
     """Update a single prefab/base image by pulling it from the registry.
 
     Base images are pull-only; templates are built elsewhere (via
     ``runtime.rebuild``), not through this helper.
     """
-    return _pull_one(runtime, image)
+    return _pull_one(runtime, image, std)
 
 
-def _update_all(runtime: ContainerRuntime) -> int:
+def _update_all(runtime: ContainerRuntime, std=None) -> int:
     """Update all local kanibako images by pulling them."""
     images = runtime.list_local_images()
     if not images:
@@ -1110,7 +1119,7 @@ def _update_all(runtime: ContainerRuntime) -> int:
         print(f"\n{'=' * 60}")
         print(f"Updating {repo}")
         print('=' * 60)
-        rc = _update_one(runtime, repo)
+        rc = _update_one(runtime, repo, std)
         if rc != 0:
             failed += 1
 

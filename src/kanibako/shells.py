@@ -113,6 +113,35 @@ def probe_image_user_shell(runtime, image: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Install-time capture (probe + persist)
+# ---------------------------------------------------------------------------
+
+
+def capture_image_shell(runtime, image: str, std) -> None:
+    """Probe *image*'s login shell and persist it, idempotently and safely.
+
+    Called from the command layer after a successful pull/prep so the resolver
+    reads a stored value instead of probing in the hot path.  This routine MUST
+    NEVER raise or meaningfully slow the install flow:
+
+    - if the image's store key already has a recorded shell, do nothing (no
+      re-probe -- the digest-keyed store yields a fresh key for a changed image);
+    - probe failures (no shell, runtime error) are swallowed -- nothing stored,
+      leaving the resolver's lazy backfill to cover the miss later;
+    - any unexpected exception is swallowed.
+    """
+    try:
+        key = image_store_key(runtime, image)
+        if key in load_image_shells(std):
+            return
+        shell = probe_image_user_shell(runtime, image)
+        if shell:
+            save_image_shell(std, key, shell)
+    except Exception:
+        return
+
+
+# ---------------------------------------------------------------------------
 # Resolver (single source of truth)
 # ---------------------------------------------------------------------------
 
