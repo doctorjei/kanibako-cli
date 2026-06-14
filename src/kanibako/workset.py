@@ -22,11 +22,47 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import WorksetError
 from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import StandardPaths
+
+
+# ---------------------------------------------------------------------------
+# Failure-consistency: a tiny LIFO unwind stack for multi-step mutations.
+#
+# Several public mutators below touch more than one file (a workset.yaml plus
+# the global worksets.yaml/names.yaml registries, or a symlink + project.yaml +
+# connected.yaml redirect).  Individual writes are torn-file-safe (atomic temp +
+# os.replace via config_io.dump_doc), but a crash *between* steps could strand a
+# half-applied cross-file state: registry says X while disk says Y, an orphan
+# symlink, or an external path locked out by a dangling connected.yaml redirect.
+#
+# The unwind stack mirrors the lifecycle family's pattern (_lifecycle._Unwind):
+# each forward step pushes a compensating action; on any exception we run them
+# in reverse (best-effort, swallowing secondary failures) and re-raise, leaving
+# the op either fully applied or fully rolled back.  These sequences are short
+# (2-5 steps), so this stays deliberately small rather than a generic framework.
+# ---------------------------------------------------------------------------
+
+class _Unwind:
+    """LIFO stack of compensating actions for fail-consistent mutations."""
+
+    def __init__(self) -> None:
+        self._actions: list[Callable[[], None]] = []
+
+    def push(self, action: Callable[[], None]) -> None:
+        self._actions.append(action)
+
+    def run(self) -> None:
+        while self._actions:
+            action = self._actions.pop()
+            try:
+                action()
+            except Exception:  # noqa: BLE001 - best-effort restore
+                pass
 
 
 # Identity of the synthesized "default" workset (the group of default-mode
@@ -246,26 +282,49 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
     if root.exists():
         raise WorksetError(f"Workset root already exists: {root}")
 
-    # Create directory skeleton.
-    root.mkdir(parents=True)
-    for subdir in ("boxes", "workspaces", "vault"):
-        (root / subdir).mkdir()
+    # Multi-step: create disk skeleton + workset.yaml, then the global
+    # worksets.yaml registry, then the names.yaml index.  A crash between any two
+    # would leave orphan dirs (not in the registry) or a worksets.yaml entry with
+    # no names.yaml index (bare-name resolution fails while `workset list`
+    # works).  Track forward effects and unwind in reverse on any failure so the
+    # create is all-or-nothing.
+    import shutil
 
-    ws = Workset(
-        name=name,
-        root=root,
-        created=datetime.now(timezone.utc).isoformat(),
-    )
-    _write_workset_toml(ws)
+    unwind = _Unwind()
+    try:
+        # Create directory skeleton.
+        root.mkdir(parents=True)
+        unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
+        for subdir in ("boxes", "workspaces", "vault"):
+            (root / subdir).mkdir()
 
-    # Register globally.
-    registry[name] = root
-    _write_registry(std, registry)
+        ws = Workset(
+            name=name,
+            root=root,
+            created=datetime.now(timezone.utc).isoformat(),
+        )
+        _write_workset_toml(ws)
 
-    # Register in the name index for name-based lookups.
-    register_name(std.data_path, name, str(root), section="worksets")
+        # Register globally.
+        registry[name] = root
+        _write_registry(std, registry)
+        unwind.push(lambda: _unregister_workset(std, name))
+
+        # Register in the name index for name-based lookups.
+        register_name(std.data_path, name, str(root), section="worksets")
+    except Exception:
+        unwind.run()
+        raise
 
     return ws
+
+
+def _unregister_workset(std: StandardPaths, name: str) -> None:
+    """Drop *name* from the global worksets.yaml registry (compensating action)."""
+    registry = _load_registry(std)
+    if name in registry:
+        del registry[name]
+        _write_registry(std, registry)
 
 
 def load_workset(root: Path) -> Workset:
@@ -352,14 +411,25 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     Raises ``WorksetError`` if the name is not registered.
     """
     registry = _load_registry(std)
-    if name not in registry:
+    name_index = read_names(std.data_path).get("worksets", {})
+    in_registry = name in registry
+    # Self-healing: also recognize a workset that survives ONLY in the name
+    # index (e.g. a prior delete that crashed after the worksets.yaml write but
+    # before unregister_name).  Re-running delete then cleans BOTH halves rather
+    # than raising "not registered" and stranding the stale name-index entry.
+    if not in_registry and name not in name_index:
         raise WorksetError(f"Workset '{name}' is not registered.")
-    root = registry.pop(name)
-    _write_registry(std, registry)
 
-    # Unregister from the name index.
+    root = registry.pop(name) if in_registry else Path(name_index[name])
+
+    # Drop both registry halves (both writes are idempotent: a missing entry is
+    # a no-op, so a partially-cleaned prior state heals on re-run).  The two
+    # removes leave a transient list-vs-index mismatch on a crash between them,
+    # but that state is recognized + fully cleaned by the next delete.
+    _write_registry(std, registry)
     unregister_name(std.data_path, name, section="worksets")
 
+    # Irreversible step LAST: only after both registry halves are clean.
     if remove_files and root.is_dir():
         import shutil
         shutil.rmtree(root)
@@ -434,46 +504,96 @@ def add_project(
                 "Disconnect it first."
             )
 
-    # Create per-project directories (boxes always real).
-    (ws.projects_dir / name).mkdir(parents=True, exist_ok=True)
-    vault_proj = ws.vault_dir / name
-    (vault_proj / "ro").mkdir(parents=True, exist_ok=True)
-    (vault_proj / "rw").mkdir(parents=True, exist_ok=True)
+    # Multi-step mutation (external case touches a symlink + project.yaml +
+    # connected.yaml redirect + the durable workset.yaml registry write).  A
+    # crash between steps could strand a symlink/redirect with no workset.yaml
+    # entry (external path locked out by a dangling connected.yaml redirect) or
+    # vice-versa.  Track forward effects on an unwind stack; on any failure undo
+    # in reverse + re-raise so the connect is all-or-nothing.  Success behavior
+    # is identical to before (same final state).
+    import shutil
 
-    if is_external:
-        # External: workspaces/{name} is a self-documenting symlink to the
-        # external dir (never mounted — the bind-mount uses the workspace
-        # override).  Write the override + record the redirect.
-        ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
-        link = ws.workspaces_dir / name
-        if not link.exists() and not link.is_symlink():
-            link.symlink_to(resolved_source)
+    unwind = _Unwind()
+    try:
+        # Create per-project directories (boxes always real).  exist_ok=True keeps
+        # this idempotent; only rmtree on unwind dirs we (may have) created.
+        proj_box = ws.projects_dir / name
+        existed_box = proj_box.exists()
+        proj_box.mkdir(parents=True, exist_ok=True)
+        if not existed_box:
+            unwind.push(lambda: shutil.rmtree(proj_box, ignore_errors=True))
 
-        from kanibako.config import write_project_meta
+        vault_proj = ws.vault_dir / name
+        existed_vault = vault_proj.exists()
+        (vault_proj / "ro").mkdir(parents=True, exist_ok=True)
+        (vault_proj / "rw").mkdir(parents=True, exist_ok=True)
+        if not existed_vault:
+            unwind.push(lambda: shutil.rmtree(vault_proj, ignore_errors=True))
 
-        project_toml = ws.projects_dir / name / "project.yaml"
-        write_project_meta(
-            project_toml,
-            mode="workset",
-            layout="",
-            workspace=str(resolved_source),
-            shell="",
-            vault_ro="",
-            vault_rw="",
-            name=name,
-        )
+        if is_external:
+            # External: workspaces/{name} is a self-documenting symlink to the
+            # external dir (never mounted — the bind-mount uses the workspace
+            # override).  Write the override + record the redirect.
+            ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
+            link = ws.workspaces_dir / name
+            if not link.exists() and not link.is_symlink():
+                link.symlink_to(resolved_source)
+                unwind.push(
+                    lambda lk=link: lk.unlink() if lk.is_symlink() else None
+                )
 
-        mapping = _load_connected(std)
-        mapping[str(resolved_source)] = {"workset": ws.name, "project": name}
-        _write_connected(std, mapping)
-    else:
-        # Internal (or no std): a real workspace directory.
-        (ws.workspaces_dir / name).mkdir(parents=True, exist_ok=True)
+            from kanibako.config import write_project_meta
 
-    proj = WorksetProject(name=name, source_path=resolved_source)
-    ws.projects.append(proj)
-    _write_workset_toml(ws)
+            project_toml = ws.projects_dir / name / "project.yaml"
+            write_project_meta(
+                project_toml,
+                mode="workset",
+                layout="",
+                workspace=str(resolved_source),
+                shell="",
+                vault_ro="",
+                vault_rw="",
+                name=name,
+            )
+
+            mapping = _load_connected(std)
+            mapping[str(resolved_source)] = {"workset": ws.name, "project": name}
+            _write_connected(std, mapping)
+            unwind.push(
+                lambda key=str(resolved_source): _drop_connected(std, key)
+            )
+        else:
+            # Internal (or no std): a real workspace directory.
+            ws_dir = ws.workspaces_dir / name
+            existed_ws = ws_dir.exists()
+            ws_dir.mkdir(parents=True, exist_ok=True)
+            if not existed_ws:
+                unwind.push(lambda: shutil.rmtree(ws_dir, ignore_errors=True))
+
+        # Durable registry write LAST.  If it fails the unwind removes the
+        # symlink/redirect/dirs above, leaving no orphaned connected.yaml entry.
+        proj = WorksetProject(name=name, source_path=resolved_source)
+        ws.projects.append(proj)
+        unwind.push(lambda: _detach_project(ws, name))
+        _write_workset_toml(ws)
+    except Exception:
+        unwind.run()
+        raise
+
     return proj
+
+
+def _drop_connected(std: StandardPaths, key: str) -> None:
+    """Drop a connected.yaml redirect entry by source path (compensating action)."""
+    mapping = _load_connected(std)
+    if key in mapping:
+        del mapping[key]
+        _write_connected(std, mapping)
+
+
+def _detach_project(ws: Workset, name: str) -> None:
+    """Drop *name* from the in-memory project list (compensating action)."""
+    ws.projects[:] = [p for p in ws.projects if p.name != name]
 
 
 def remove_project(
@@ -502,8 +622,14 @@ def remove_project(
             f"Project '{name}' not found in workset '{ws.name}'."
         )
 
-    ws.projects.remove(target)
-    _write_workset_toml(ws)
+    # Failure-consistency ordering: clean the connected.yaml redirect + the
+    # discoverability symlink BEFORE the durable workset.yaml registry write, so
+    # the registry removal (which makes the project "gone") is the LAST durable
+    # step.  A crash mid-cleanup then leaves the project still in workset.yaml —
+    # a re-runnable state — instead of removing it from the registry while the
+    # connected.yaml redirect still points at it (which would lock out the
+    # external path).  The cleanups are idempotent: a re-run finds nothing to do.
+    import shutil
 
     # Always undo the external-connect markers when we have std, so the
     # connected.yaml redirect never outlives the project (regression from the
@@ -520,14 +646,16 @@ def remove_project(
                 del mapping[key]
             _write_connected(std, mapping)
 
-    import shutil
-
     # The workspaces/{name} marker is a SYMLINK for external projects; unlink it
     # (removes only the link, never the external target).  Do this regardless of
     # remove_files so the discoverability symlink never dangles.
     link = ws.workspaces_dir / name
     if link.is_symlink():
         link.unlink()
+
+    # Durable registry removal LAST (after redirect + symlink are clean).
+    ws.projects.remove(target)
+    _write_workset_toml(ws)
 
     if remove_files:
         for parent in (ws.projects_dir, ws.workspaces_dir, ws.vault_dir):
