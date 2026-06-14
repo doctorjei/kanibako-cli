@@ -1056,6 +1056,27 @@ def _run_container(
         # Helper hub: start listener before director, mount socket
         hub = None
         helpers_enabled = not no_helpers and merged.allow_helpers
+
+        # Resolve the no-agent box.shell once, up front, so it can be threaded
+        # into both the helper context (below) and the main launch decision
+        # (further down).  The resolver is cheap/idempotent (reads the stored
+        # image shell; no container spin-up once captured) and follows the
+        # single-source-of-truth chain: box.shell -> $KANIBAKO_SHELL -> image's
+        # recorded login shell -> sh.  Resolve it whenever it could be used: a
+        # no-agent launch (the main entrypoint), or any helper spawn (helpers
+        # need a shell fallback even under a real-agent director).  A real-agent
+        # launch with helpers off never needs it, so skip the resolve there.
+        no_agent_launch = not entrypoint and (
+            target is None or target.default_entrypoint is None
+        )
+        if no_agent_launch or helpers_enabled:
+            from kanibako.shells import resolve_box_shell
+            box_shell, _box_shell_source = resolve_box_shell(
+                merged, std, runtime=runtime, image=image,
+            )
+        else:
+            box_shell = None
+
         if helpers_enabled:
             from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
             from kanibako.targets.base import Mount as _HMount
@@ -1109,6 +1130,7 @@ def _run_container(
                 env=container_env,
                 entrypoint=entrypoint,
                 default_entrypoint=target.default_entrypoint if target else None,
+                box_shell=box_shell,
                 project_path=proj.project_path,
                 data_path=std.data_path,
                 boxes=std.boxes,
@@ -1165,17 +1187,11 @@ def _run_container(
         if not entrypoint and target:
             entrypoint = target.default_entrypoint
 
-        # No-agent box: launch the configured box.shell (resolver is the single
-        # source of truth — box.shell -> $KANIBAKO_SHELL -> stored image shell
-        # -> sh).  A real agent sets a non-None default_entrypoint and is left
-        # untouched.
-        if not entrypoint:
-            from kanibako.shells import resolve_box_shell
-            box_shell, _box_shell_source = resolve_box_shell(
-                merged, std, runtime=runtime, image=image,
-            )
-        else:
-            box_shell = None
+        # No-agent box: launch the configured box.shell (already resolved above
+        # via the single-source-of-truth chain box.shell -> $KANIBAKO_SHELL ->
+        # stored image shell -> sh, and threaded into the helper context).  A
+        # real agent sets a non-None entrypoint here and is left untouched —
+        # box_shell only feeds the no-agent launch below.
 
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
