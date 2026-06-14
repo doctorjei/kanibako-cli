@@ -20,6 +20,8 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]
 
+from kanibako._atomic import atomic_write_text
+
 
 @dataclass
 class RigMeta:
@@ -67,8 +69,7 @@ def dump_rig_meta(meta: RigMeta) -> str:
 
 def write_rig_meta(meta: RigMeta, path: Path) -> None:
     """Write *meta* to *path*, creating the parent directory if needed."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_rig_meta(meta))
+    atomic_write_text(path, dump_rig_meta(meta))
 
 
 def load_rig_meta(source: str | Path) -> RigMeta:

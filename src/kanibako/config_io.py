@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from kanibako._atomic import atomic_write_text
+
 
 def load_doc(path: Path | None) -> dict:
     """Load a config document → dict. Missing/empty/non-mapping → {}."""
@@ -27,10 +29,12 @@ def load_doc(path: Path | None) -> dict:
 
 
 def dump_doc(path: Path, data: dict) -> None:
-    """Serialize *data* to *path* as YAML (creates parent dirs)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(
-            data, sort_keys=False, default_flow_style=False, allow_unicode=True,
-        )
+    """Serialize *data* to *path* as YAML (creates parent dirs).
+
+    The write is atomic (temp file in the same dir + ``os.replace``) so a crash
+    mid-write can never leave a torn/corrupt config document on disk.
+    """
+    text = yaml.safe_dump(
+        data, sort_keys=False, default_flow_style=False, allow_unicode=True,
     )
+    atomic_write_text(path, text)

@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
+from kanibako._atomic import atomic_write_text
+
 if TYPE_CHECKING:
     from kanibako.paths import StandardPaths
 
@@ -104,7 +106,7 @@ def save_registry(path: Path, records: dict[str, RigRecord]) -> None:
         rigs[name] = table
 
     data = {"rigs": rigs}
-    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    atomic_write_text(path, yaml.safe_dump(data, sort_keys=False))
 
 
 def upsert(path: Path, record: RigRecord) -> None:
