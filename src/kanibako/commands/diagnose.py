@@ -5,6 +5,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from kanibako.targets.base import _validate_agent_binary
+
 
 def _format_check(status: str, label: str, detail: str) -> str:
     """Format a single diagnostic check line."""
@@ -165,14 +167,19 @@ def _check_agents(
             install = instance.detect()
             if install is not None:
                 binary = getattr(install, "binary", None)
-                if binary and not Path(binary).exists():
-                    # A real, detected agent whose recorded executable path is
-                    # dangling -- the legitimate error case.
+                # Validate the detected host binary the SAME way the launch
+                # path does: a dangling path, a 0-byte file, or a
+                # non-executable file are all real errors (a 0-byte binary
+                # passes a bare exists() check yet bricks the box at launch).
+                reason = (
+                    _validate_agent_binary(Path(binary)) if binary else None
+                )
+                if reason:
                     results.append(
                         (
                             "!!",
                             f"Agent: {instance.display_name}",
-                            f"binary not found at {binary}",
+                            reason,
                         )
                     )
                 else:

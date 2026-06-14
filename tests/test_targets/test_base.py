@@ -6,7 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target
+from kanibako.targets.base import (
+    AgentInstall,
+    Mount,
+    ResourceMapping,
+    ResourceScope,
+    Target,
+    _validate_agent_binary,
+)
 
 
 class TestResourceScope:
@@ -70,6 +77,56 @@ class TestAgentInstall:
         assert ai.name == "claude"
         assert ai.binary == Path("/usr/bin/claude")
         assert ai.install_dir == Path("/opt/claude")
+
+
+class TestValidateAgentBinary:
+    """Tests for the shared _validate_agent_binary launch/diagnose helper."""
+
+    def test_valid_executable_returns_none(self, tmp_path):
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\nexec real \"$@\"\n")
+        binary.chmod(0o755)
+        assert _validate_agent_binary(binary) is None
+
+    def test_native_binary_returns_none(self, tmp_path):
+        """A non-zero executable with ELF-like (non-NUL) leading bytes is fine."""
+        binary = tmp_path / "claude"
+        binary.write_bytes(b"\x7fELF\x02\x01\x01\x00rest-of-binary")
+        binary.chmod(0o755)
+        assert _validate_agent_binary(binary) is None
+
+    def test_zero_byte_returns_reason(self, tmp_path):
+        binary = tmp_path / "claude"
+        binary.touch()  # 0 bytes
+        binary.chmod(0o755)
+        reason = _validate_agent_binary(binary)
+        assert reason is not None
+        assert "0 bytes" in reason
+        assert str(binary) in reason
+
+    def test_non_executable_returns_reason(self, tmp_path):
+        binary = tmp_path / "claude"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o644)  # no exec bit
+        reason = _validate_agent_binary(binary)
+        assert reason is not None
+        assert "not executable" in reason
+        assert str(binary) in reason
+
+    def test_missing_returns_reason(self, tmp_path):
+        binary = tmp_path / "nope"
+        reason = _validate_agent_binary(binary)
+        assert reason is not None
+        assert "not found" in reason
+
+    def test_all_nul_leading_bytes_returns_reason(self, tmp_path):
+        """Non-empty but truncated/corrupt (all-NUL head) -> rejected, no ELF needed."""
+        binary = tmp_path / "claude"
+        binary.write_bytes(b"\x00\x00\x00\x00")
+        binary.chmod(0o755)
+        reason = _validate_agent_binary(binary)
+        assert reason is not None
+        assert "corrupt" in reason
 
 
 class TestTargetABC:
