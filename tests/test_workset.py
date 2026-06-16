@@ -543,7 +543,7 @@ class TestDeleteWorksetSelfHealing:
         # before unregister_name: the workset survives ONLY in names.yaml.  A
         # re-run of delete must recognize + fully clean it (not raise "not
         # registered").
-        from kanibako.names import read_names, register_name
+        from kanibako.names import read_names
 
         root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", root, std)

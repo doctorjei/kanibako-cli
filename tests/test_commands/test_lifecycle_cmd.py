@@ -20,7 +20,6 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.config import load_config, read_project_meta
 from kanibako.names import read_names
 from kanibako.paths import (
-    ProjectMode,
     load_std_paths,
     resolve_project,
     resolve_standalone_project,

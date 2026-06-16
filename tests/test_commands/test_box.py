@@ -1044,7 +1044,7 @@ class TestBoxDuplicateExternal:
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
         from kanibako.paths import ProjectMode
-        from kanibako.workset import load_workset, list_worksets
+        from kanibako.workset import list_worksets
 
         config = load_config(config_file)
         std = load_std_paths(config)
