@@ -68,6 +68,103 @@ class TestGetLocalDigest:
             result = rt.get_local_digest("img:latest")
         assert result is None
 
+    def test_returns_first_of_multiple(self):
+        """With multiple RepoDigests, get_local_digest returns the first."""
+        import json
+        rt = ContainerRuntime(command="echo")
+        inspect_output = json.dumps([{
+            "RepoDigests": [
+                "ghcr.io/x/kanibako-oci@sha256:3de8",
+                "ghcr.io/x/kanibako-oci@sha256:4f49",
+            ]
+        }])
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=inspect_output)
+            assert rt.get_local_digest("ghcr.io/x/kanibako-oci:latest") == "sha256:3de8"
+
+
+class TestGetLocalDigests:
+    def test_returns_full_list(self):
+        """All RepoDigests are returned with the repo@ prefix stripped."""
+        import json
+        rt = ContainerRuntime(command="echo")
+        inspect_output = json.dumps([{
+            "RepoDigests": [
+                "ghcr.io/x/kanibako-oci@sha256:3de8",
+                "ghcr.io/x/kanibako-oci@sha256:4f49",
+            ]
+        }])
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=inspect_output)
+            result = rt.get_local_digests("ghcr.io/x/kanibako-oci:latest")
+        assert result == ["sha256:3de8", "sha256:4f49"]
+
+    def test_empty_repo_digests(self):
+        import json
+        rt = ContainerRuntime(command="echo")
+        inspect_output = json.dumps([{"RepoDigests": []}])
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=inspect_output)
+            assert rt.get_local_digests("local:latest") == []
+
+    def test_failure_returns_empty(self):
+        rt = ContainerRuntime(command="echo")
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stdout="")
+            assert rt.get_local_digests("nonexistent:latest") == []
+
+    def test_exception_returns_empty(self):
+        rt = ContainerRuntime(command="echo")
+        with patch("kanibako.container.subprocess.run", side_effect=OSError("fail")):
+            assert rt.get_local_digests("img:latest") == []
+
+
+class TestGetLocalPlatform:
+    def test_parses_os_arch(self):
+        import json
+        rt = ContainerRuntime(command="echo")
+        inspect_output = json.dumps([{"Os": "linux", "Architecture": "amd64"}])
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=inspect_output)
+            assert rt.get_local_platform("img:latest") == "linux/amd64"
+
+    def test_parses_os_arch_variant(self):
+        import json
+        rt = ContainerRuntime(command="echo")
+        inspect_output = json.dumps([{
+            "Os": "linux", "Architecture": "arm", "Variant": "v7",
+        }])
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=inspect_output)
+            assert rt.get_local_platform("img:latest") == "linux/arm/v7"
+
+    def test_missing_fields_returns_none(self):
+        import json
+        rt = ContainerRuntime(command="echo")
+        inspect_output = json.dumps([{"Os": "linux"}])
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=inspect_output)
+            assert rt.get_local_platform("img:latest") is None
+
+    def test_failure_returns_none(self):
+        rt = ContainerRuntime(command="echo")
+        from unittest.mock import MagicMock
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stdout="")
+            assert rt.get_local_platform("img:latest") is None
+
+    def test_exception_returns_none(self):
+        rt = ContainerRuntime(command="echo")
+        with patch("kanibako.container.subprocess.run", side_effect=OSError("fail")):
+            assert rt.get_local_platform("img:latest") is None
+
 
 class TestUnshareRm:
     """Test ContainerRuntime.unshare_rm()."""

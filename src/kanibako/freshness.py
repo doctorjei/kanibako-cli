@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from kanibako.container import ContainerRuntime
-from kanibako.registry import get_remote_digest
+from kanibako.registry import get_remote_digests
 
 _CACHE_TTL = 86400  # 24 hours
 
@@ -26,15 +26,19 @@ def check_image_freshness(runtime: ContainerRuntime, image: str, cache_path: Pat
 
 
 def _check(runtime: ContainerRuntime, image: str, cache_path: Path) -> None:
-    local_digest = runtime.get_local_digest(image)
-    if local_digest is None:
+    local_digests = runtime.get_local_digests(image)
+    if not local_digests:
         return
 
-    remote_digest = _cached_remote_digest(image, cache_path)
-    if remote_digest is None:
+    platform = runtime.get_local_platform(image)
+
+    remote_acceptable = _cached_remote_digests(image, platform, cache_path)
+    if not remote_acceptable:
         return
 
-    if local_digest != remote_digest:
+    # Warn only when the local image shares no digest with the set that means
+    # "current" for our platform (per-arch child and/or index digest).
+    if set(local_digests).isdisjoint(remote_acceptable):
         print(
             f"Note: A newer version of {image} is available. "
             f"Run 'kanibako rig rebuild' to update.",
@@ -42,26 +46,46 @@ def _check(runtime: ContainerRuntime, image: str, cache_path: Path) -> None:
         )
 
 
-def _cached_remote_digest(image: str, cache_path: Path) -> str | None:
-    """Return the remote digest, using a 24h file cache."""
+def _cache_key(image: str, platform: str | None) -> str:
+    """Cache key combining the image reference and the local platform."""
+    return f"{image}\t{platform or ''}"
+
+
+def _cached_remote_digests(
+    image: str, platform: str | None, cache_path: Path,
+) -> set[str]:
+    """Return the acceptable remote digest set, using a 24h file cache.
+
+    The cache stores a list of digests per ``image+platform`` key. Any legacy
+    or otherwise-incompatible entry shape is treated as a miss and overwritten.
+    """
     cache_file = cache_path / "digest-cache.json"
     now = time.time()
 
     cache: dict = {}
     if cache_file.is_file():
         try:
-            cache = json.loads(cache_file.read_text())
+            loaded = json.loads(cache_file.read_text())
+            if isinstance(loaded, dict):
+                cache = loaded
         except (json.JSONDecodeError, OSError):
             cache = {}
 
-    entry = cache.get(image)
-    if entry and now - entry.get("ts", 0) < _CACHE_TTL:
-        return entry.get("digest")
+    key = _cache_key(image, platform)
+    entry = cache.get(key)
+    if isinstance(entry, dict) and now - entry.get("ts", 0) < _CACHE_TTL:
+        digests = entry.get("digests")
+        if isinstance(digests, list):
+            return set(digests)
+        # Incompatible/old shape: fall through to refetch and overwrite.
 
-    digest = get_remote_digest(image)
-    if digest is not None:
-        cache[image] = {"digest": digest, "ts": now}
-        cache_path.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps(cache))
+    digests = get_remote_digests(image, platform)
+    if digests:
+        cache[key] = {"digests": sorted(digests), "ts": now}
+        try:
+            cache_path.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps(cache))
+        except OSError:
+            pass
 
-    return digest
+    return digests

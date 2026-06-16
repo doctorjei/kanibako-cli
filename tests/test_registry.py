@@ -12,7 +12,23 @@ from kanibako.registry import (
     _get_anonymous_token,
     _parse_image_ref,
     get_remote_digest,
+    get_remote_digests,
 )
+
+
+def _resp(headers=None, body=None):
+    """Build a context-manager mock urlopen response."""
+    r = MagicMock()
+    r.headers = headers or {}
+    if body is not None:
+        r.read.return_value = json.dumps(body).encode()
+    r.__enter__ = MagicMock(return_value=r)
+    r.__exit__ = MagicMock(return_value=False)
+    return r
+
+
+_OCI_INDEX = "application/vnd.oci.image.index.v1+json"
+_OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 
 
 class TestParseImageRef:
@@ -117,3 +133,95 @@ class TestGetRemoteDigest:
 
     def test_parse_error(self):
         assert get_remote_digest("localimage") is None
+
+
+class TestGetRemoteDigests:
+    """get_remote_digests resolves the acceptable per-arch digest set."""
+
+    def test_index_returns_tag_and_matching_child(self):
+        """Index tag -> {index digest, matching-arch child}; attestation skipped."""
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:4f49", "Content-Type": _OCI_INDEX},
+        )
+        index_body = {
+            "manifests": [
+                {"digest": "sha256:3de8",
+                 "platform": {"os": "linux", "architecture": "amd64"}},
+                {"digest": "sha256:arm",
+                 "platform": {"os": "linux", "architecture": "arm64"}},
+                {"digest": "sha256:attest",
+                 "platform": {"os": "unknown", "architecture": "unknown"}},
+            ]
+        }
+        get_body = _resp(body=index_body)
+
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch("kanibako.registry.urllib.request.urlopen",
+                  side_effect=[head, get_body]) as m,
+        ):
+            result = get_remote_digests("ghcr.io/o/r:latest", "linux/amd64")
+        assert result == {"sha256:4f49", "sha256:3de8"}
+
+        # Broadened Accept header on both the HEAD and the GET.
+        for call in m.call_args_list:
+            req = call[0][0]
+            accept = req.headers["Accept"]
+            assert "oci.image.index.v1+json" in accept
+            assert "oci.image.manifest.v1+json" in accept
+            assert "docker.distribution.manifest.list.v2+json" in accept
+            assert "docker.distribution.manifest.v2+json" in accept
+
+    def test_plain_manifest_returns_tag_only(self):
+        """Plain manifest tag -> {tag digest}; no index GET performed."""
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:plain",
+                     "Content-Type": _OCI_MANIFEST},
+        )
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value=None),
+            patch("kanibako.registry.urllib.request.urlopen",
+                  side_effect=[head]) as m,
+        ):
+            result = get_remote_digests("ghcr.io/o/r:latest", "linux/amd64")
+        assert result == {"sha256:plain"}
+        # Only the HEAD request was made (no index GET).
+        assert m.call_count == 1
+
+    def test_index_no_matching_child_returns_tag_only(self):
+        """Arch with no matching child -> {tag digest} only, no crash."""
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:4f49", "Content-Type": _OCI_INDEX},
+        )
+        index_body = {
+            "manifests": [
+                {"digest": "sha256:arm",
+                 "platform": {"os": "linux", "architecture": "arm64"}},
+            ]
+        }
+        get_body = _resp(body=index_body)
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch("kanibako.registry.urllib.request.urlopen",
+                  side_effect=[head, get_body]),
+        ):
+            result = get_remote_digests("ghcr.io/o/r:latest", "linux/amd64")
+        assert result == {"sha256:4f49"}
+
+    def test_index_no_platform_skips_child_resolution(self):
+        """Unknown local platform -> only the tag/index digest, no GET."""
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:4f49", "Content-Type": _OCI_INDEX},
+        )
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch("kanibako.registry.urllib.request.urlopen",
+                  side_effect=[head]) as m,
+        ):
+            result = get_remote_digests("ghcr.io/o/r:latest", None)
+        assert result == {"sha256:4f49"}
+        assert m.call_count == 1
+
+    def test_failure_returns_empty_set(self):
+        with patch("kanibako.registry._parse_image_ref", side_effect=OSError("boom")):
+            assert get_remote_digests("ghcr.io/o/r:latest", "linux/amd64") == set()

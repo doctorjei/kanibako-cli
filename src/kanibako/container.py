@@ -415,8 +415,52 @@ class ContainerRuntime:
     # Digest
     # ------------------------------------------------------------------
 
+    def get_local_digests(self, image: str) -> list[str]:
+        """Return all repo digests (``sha256:...``) for a local image.
+
+        Parses ``RepoDigests`` from ``image inspect`` and strips the
+        ``repo@`` prefix from each entry. A pulled multi-arch image typically
+        records BOTH the per-platform manifest digest and the index digest;
+        callers that need to decide freshness want the full set, not just the
+        first entry. Returns an empty list on any failure or when the image
+        has no repo digests (e.g. locally-built images).
+        """
+        try:
+            result = subprocess.run(
+                [self.cmd, "image", "inspect", image, "--format", "json"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                return []
+            import json
+            data = json.loads(result.stdout)
+            # podman returns a list, docker returns an object
+            if isinstance(data, list):
+                data = data[0] if data else {}
+            digests = data.get("RepoDigests", []) or []
+            out: list[str] = []
+            for entry in digests:
+                # e.g. "ghcr.io/x/img@sha256:abc..." -> "sha256:abc..."
+                out.append(entry.split("@", 1)[1] if "@" in entry else entry)
+            return out
+        except Exception:
+            return []
+
     def get_local_digest(self, image: str) -> str | None:
-        """Return the repo digest (``sha256:...``) for a local image, or None."""
+        """Return the first repo digest (``sha256:...``) for a local image, or None.
+
+        Kept for callers that need a single stable image key (e.g.
+        ``shells.image_store_key``). Delegates to :meth:`get_local_digests`.
+        """
+        return (self.get_local_digests(image) or [None])[0]
+
+    def get_local_platform(self, image: str) -> str | None:
+        """Return the local image platform as ``os/arch[/variant]``, or None.
+
+        This is the platform we actually run; freshness matches it against the
+        per-arch child of a remote image index.
+        """
         try:
             result = subprocess.run(
                 [self.cmd, "image", "inspect", image, "--format", "json"],
@@ -427,17 +471,17 @@ class ContainerRuntime:
                 return None
             import json
             data = json.loads(result.stdout)
-            # podman returns a list, docker returns an object
             if isinstance(data, list):
                 data = data[0] if data else {}
-            digests = data.get("RepoDigests", [])
-            if not digests:
+            os_ = data.get("Os")
+            arch = data.get("Architecture")
+            if not os_ or not arch:
                 return None
-            # Extract the sha256:... portion from e.g. "ghcr.io/x/img@sha256:abc..."
-            digest = digests[0]
-            if "@" in digest:
-                return digest.split("@", 1)[1]
-            return digest
+            platform = f"{os_}/{arch}"
+            variant = data.get("Variant")
+            if variant:
+                platform = f"{platform}/{variant}"
+            return platform
         except Exception:
             return None
 
