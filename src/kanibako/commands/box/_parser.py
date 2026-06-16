@@ -18,7 +18,6 @@ from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError, ProjectError
 from kanibako.names import read_names, unregister_name
 from kanibako.paths import (
-    ProjectMode,
     xdg,
     iter_projects,
     iter_workset_projects,

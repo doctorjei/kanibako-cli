@@ -703,7 +703,6 @@ def _run_steps(
     target_ws: Workset | None = plan["target_ws"]
     dest: Path | None = plan["dest"]
     relocating: bool = plan["relocating"]
-    no_owner_change: bool = plan["no_owner_change"]
     new_name: str = plan["new_name"]
 
     # ------------------------------------------------------------------

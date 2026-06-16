@@ -6,7 +6,6 @@ remap / move / convert commands (Phase 1 — no CLI wiring yet).
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
@@ -15,7 +14,6 @@ from kanibako.commands.box._lifecycle import (
     BARE_INTO_WS,
     INPLACE,
     UNCHANGED,
-    ProjectState,
     TargetSpec,
     execute_lifecycle,
     resolve_lifecycle_target,
@@ -32,7 +30,6 @@ from kanibako.paths import (
 from kanibako.workset import (
     add_project,
     create_workset,
-    list_worksets,
     load_workset,
 )
 
@@ -238,7 +235,7 @@ class TestConvertInPlace:
 
     def test_standalone_to_workset_external(self, env):
         config, std, tmp_home = env
-        ws = _make_workset(env)
+        _make_workset(env)
         pdir = _make_standalone(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
         new = execute_lifecycle(
@@ -468,8 +465,6 @@ class TestUnwind:
 
         # Force the standalone ownership step to raise AFTER file move + name
         # work has begun.
-        orig = lc._to_standalone
-
         def boom(*a, **kw):
             raise RuntimeError("injected failure")
 
@@ -497,7 +492,6 @@ class TestUnwind:
 
         # Patch write_project_meta inside _lifecycle to raise after add_project
         # + copytree have run.
-        real_write = lc.write_project_meta
         calls = {"n": 0}
 
         def flaky_write(*a, **kw):
