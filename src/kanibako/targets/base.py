@@ -65,6 +65,11 @@ class AgentInstall:
     name: str  # e.g. "claude"
     binary: Path  # host symlink/path to agent binary
     install_dir: Path  # root of agent installation
+    # Optional host launcher path (the on-disk entrypoint the plugin owns and
+    # binds into the box AS-IS, e.g. ~/.local/bin/claude).  Anchored to the
+    # agent's contract path by the plugin rather than resolved via $PATH.
+    # Defaults to None so agents that don't set it are unaffected.
+    launcher: Path | None = None
 
 
 def _validate_agent_binary(binary: Path) -> str | None:
@@ -174,6 +179,25 @@ class Target(ABC):
     def check_auth(self) -> bool:
         """Check if the agent is authenticated. Returns True if ok."""
         return True
+
+    def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None:
+        """Plugin-owned pre-launch host preparation.
+
+        Called by core ``start.py`` once a host install is detected, BEFORE
+        mounts are built, so the plugin can own everything agent-specific that
+        must touch the host before launch (e.g. updating the host binary to a
+        stable version, refreshing host auth with the right environment).
+
+        Core stays agent-agnostic: it just invokes this hook.  Implementations
+        MUST NOT crash the launch — a failure here should be logged and
+        swallowed; a hard auth/binary failure is surfaced separately via
+        ``check_auth`` / ``_validate_agent_binary``.
+
+        *install* is the detected :class:`AgentInstall`; *auto_auth* indicates
+        whether automated browser auth should be attempted; *data_path* is the
+        kanibako data dir (for auth cookie storage).  Default: no-op.
+        """
+        return None
 
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare how agent resources are shared across projects.

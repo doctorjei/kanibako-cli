@@ -927,6 +927,48 @@ class TestTweakccIntegration:
             # User's -e override takes priority (set after setdefault)
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "0"
 
+    def test_apply_state_env_reaches_container(self, start_mocks):
+        """env_vars from target.apply_state() flow into the container env.
+
+        The Claude plugin returns DISABLE_AUTOUPDATER=1 here so the in-container
+        agent cannot self-update mid-session; verify core threads apply_state's
+        env into the launched container.
+        """
+        with start_mocks() as m:
+            m.target.name = "claude"
+            m.target.apply_state.return_value = ([], {"DISABLE_AUTOUPDATER": "1"})
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("DISABLE_AUTOUPDATER") == "1"
+
+
+class TestBinaryMountSafeFail:
+    """A binary mount source missing at mount time -> clean kanibako error."""
+
+    def test_missing_bind_source_fails_clean(self, start_mocks, capsys, tmp_path):
+        """A returned bind whose source vanished aborts with a clean error."""
+        from kanibako.targets.base import Mount
+        with start_mocks() as m:
+            m.target.name = "claude"
+            gone = tmp_path / "pruned" / "claude"  # never created
+            m.target.binary_mounts.return_value = [
+                Mount(source=gone, destination="/home/agent/.local/bin/claude", options="ro"),
+            ]
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert "mount source disappeared" in err
+            # Clean kanibako error, not a crun crash -> container never run.
+            m.runtime.run.assert_not_called()
+
 
 class TestApplyTweakcc:
     """Unit tests for the _apply_tweakcc helper."""
@@ -1052,129 +1094,123 @@ class TestApplyTweakcc:
             assert cache_obj is cache_instance
 
 
-class TestAutoAuth:
-    """Verify automated OAuth refresh integration in _run_container."""
+class TestPrepareHostHook:
+    """Core invokes the agent-agnostic prepare_host() hook before mounts.
 
-    def test_auto_auth_attempted_for_claude_target(self, start_mocks):
-        """Auto-auth is attempted when target is claude and auto_auth not disabled."""
-        from kanibako.auth_browser import AuthResult
+    The hook is plugin-owned: the Claude plugin runs the synchronous update
+    gate + host auth refresh inside it (covered in test_claude.py).  Core's
+    only contract is *that it calls the hook* with the right auto_auth flag and
+    install — it never reaches into auto_refresh_auth itself anymore.
+    """
 
+    def test_hook_invoked_with_auto_auth_true(self, start_mocks):
+        """prepare_host is called once; auto_auth=True for the default path."""
         with start_mocks() as m:
-            m.target.name = "claude"
-            with patch(
-                "kanibako.auth_browser.auto_refresh_auth",
-                return_value=AuthResult(success=True),
-            ) as mock_auto:
-                _run_container(
-                    project_dir=None,
-                    entrypoint=None,
-                    image_override=None,
-                    new_session=False,
-                    safe_mode=False,
-                    resume_mode=False,
-                    extra_args=[],
-                )
-                mock_auto.assert_called_once()
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            m.target.prepare_host.assert_called_once()
+            assert m.target.prepare_host.call_args.kwargs["auto_auth"] is True
 
-    def test_auto_auth_skipped_with_no_auto_auth(self, start_mocks):
-        """Auto-auth is skipped when no_auto_auth=True."""
+    def test_hook_auto_auth_false_with_no_auto_auth(self, start_mocks):
+        """no_auto_auth=True -> hook is still called, but auto_auth=False."""
         with start_mocks() as m:
-            m.target.name = "claude"
-            with patch(
-                "kanibako.auth_browser.auto_refresh_auth",
-            ) as mock_auto:
-                _run_container(
-                    project_dir=None,
-                    entrypoint=None,
-                    image_override=None,
-                    new_session=False,
-                    safe_mode=False,
-                    resume_mode=False,
-                    extra_args=[],
-                    no_auto_auth=True,
-                )
-                mock_auto.assert_not_called()
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+                no_auto_auth=True,
+            )
+            m.target.prepare_host.assert_called_once()
+            assert m.target.prepare_host.call_args.kwargs["auto_auth"] is False
 
-    def test_auto_auth_skipped_for_distinct_auth(self, start_mocks):
-        """Auto-auth is skipped when auth mode is distinct."""
+    def test_hook_auto_auth_false_for_distinct_auth(self, start_mocks):
+        """Distinct auth (group_auth False) -> auto_auth=False."""
         with start_mocks() as m:
-            m.target.name = "claude"
             m.proj.group_auth = False
-            with patch(
-                "kanibako.auth_browser.auto_refresh_auth",
-            ) as mock_auto:
-                _run_container(
-                    project_dir=None,
-                    entrypoint=None,
-                    image_override=None,
-                    new_session=False,
-                    safe_mode=False,
-                    resume_mode=False,
-                    extra_args=[],
-                )
-                mock_auto.assert_not_called()
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            m.target.prepare_host.assert_called_once()
+            assert m.target.prepare_host.call_args.kwargs["auto_auth"] is False
 
-    def test_auto_auth_failure_falls_through(self, start_mocks):
-        """Auto-auth failure falls through to interactive check_auth."""
-        from kanibako.auth_browser import AuthResult
+    def test_hook_skipped_in_shell_mode(self, start_mocks):
+        """In shell mode (entrypoint set), prepare_host is not called."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None,
+                entrypoint="bash",
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            m.target.prepare_host.assert_not_called()
+
+    def test_redetect_after_update_feeds_validate_print_bind(self, start_mocks, capsys):
+        """The post-update re-detect feeds validate, the print, and the bind.
+
+        prepare_host()'s update gate can repoint/prune the host version, so
+        start.py re-detects AFTER it; the ONE fresh install must be what
+        _validate_agent_binary, the "Using host ...:" line, and binary_mounts
+        all consume — never the stale first detect.
+        """
+        from pathlib import Path
+        from kanibako.targets.base import Mount
+
+        stale = MagicMock()
+        stale.binary = Path("/home/agent/.local/share/claude/versions/STALE")
+        stale.install_dir.exists.return_value = True
+
+        fresh = MagicMock()
+        fresh.binary = Path("/home/agent/.local/share/claude/versions/FRESH")
+        fresh.install_dir.exists.return_value = True
 
         with start_mocks() as m:
-            m.target.name = "claude"
-            m.target.check_auth.return_value = True
-            with patch(
-                "kanibako.auth_browser.auto_refresh_auth",
-                return_value=AuthResult(success=False, error="no playwright"),
-            ):
-                rc = _run_container(
-                    project_dir=None,
-                    entrypoint=None,
-                    image_override=None,
-                    new_session=False,
-                    safe_mode=False,
-                    resume_mode=False,
-                    extra_args=[],
-                )
-                assert rc == 0
-                m.target.check_auth.assert_called_once()
-
-    def test_auto_auth_exception_falls_through(self, start_mocks):
-        """Exception in auto-auth is caught and falls through."""
-        with start_mocks() as m:
-            m.target.name = "claude"
-            m.target.check_auth.return_value = True
-            with patch(
-                "kanibako.auth_browser.auto_refresh_auth",
-                side_effect=RuntimeError("boom"),
-            ):
-                rc = _run_container(
-                    project_dir=None,
-                    entrypoint=None,
-                    image_override=None,
-                    new_session=False,
-                    safe_mode=False,
-                    resume_mode=False,
-                    extra_args=[],
-                )
-                assert rc == 0
-                m.target.check_auth.assert_called_once()
-
-    def test_auto_auth_skipped_for_non_claude_target(self, start_mocks):
-        """Auto-auth is not attempted for non-claude targets."""
-        with start_mocks() as m:
-            m.target.name = "other_agent"
-            with patch(
-                "kanibako.auth_browser.auto_refresh_auth",
-            ) as mock_auto:
-                _run_container(
-                    project_dir=None,
-                    entrypoint=None,
-                    image_override=None,
-                    new_session=False,
-                    safe_mode=False,
-                    resume_mode=False,
-                    extra_args=[],
-                )
-                mock_auto.assert_not_called()
+            # First detect (early-out) returns stale; the re-detect after the
+            # update gate returns fresh.
+            m.target.detect.side_effect = [stale, fresh]
+            # binary_mounts returns valid mounts so the launch proceeds.
+            m.target.binary_mounts.return_value = [
+                Mount(source=Path("/dev/null"), destination="/home/agent/.local/bin/claude", options="ro"),
+            ]
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            # detect called at least twice (early-out + re-detect).
+            assert m.target.detect.call_count >= 2
+            # prepare_host got the FIRST (stale) install.
+            assert m.target.prepare_host.call_args.args[0] is stale
+            # validate + binary_mounts both ran on the FRESH (post-update) one.
+            m.validate_binary.assert_called_with(fresh.binary)
+            m.target.binary_mounts.assert_called_once_with(fresh)
+            # The "Using host ...:" line names the fresh version, not the stale.
+            err = capsys.readouterr().err
+            assert "FRESH" in err
+            assert "STALE" not in err
 
 
 class TestBrowserSidecar:
