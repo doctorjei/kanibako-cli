@@ -453,7 +453,8 @@ class ContainerRuntime:
         Kept for callers that need a single stable image key (e.g.
         ``shells.image_store_key``). Delegates to :meth:`get_local_digests`.
         """
-        return (self.get_local_digests(image) or [None])[0]
+        digests = self.get_local_digests(image)
+        return digests[0] if digests else None
 
     def get_local_platform(self, image: str) -> str | None:
         """Return the local image platform as ``os/arch[/variant]``, or None.

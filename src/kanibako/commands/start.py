@@ -1229,7 +1229,11 @@ def _run_container(
 
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
+            # box_shell is None only on a real-agent launch, but that path
+            # guarantees a non-None entrypoint (set above), so inner_cmd is
+            # always a str; mypy can't track that cross-variable invariant.
             inner_cmd = entrypoint or box_shell
+            assert inner_cmd is not None
             entrypoint, cli_args = _bootstrap_wrap(
                 bootstrap_program, inner_cmd, list(cli_args or []),
             )

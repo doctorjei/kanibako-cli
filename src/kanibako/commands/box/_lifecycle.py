@@ -575,7 +575,9 @@ def _validate(
 
     # --- membership guard: refuse landing inside a workset the project is
     #     not (becoming) a member of ---
-    landing = dest if relocating else state.workspace_path
+    # ``relocating`` is exactly ``dest is not None`` (set above); test dest
+    # directly so mypy narrows away the None for the .resolve() below.
+    landing = dest if dest is not None else state.workspace_path
     owning_ws_root: Path | None = None
     if target_mode == ProjectMode.workset and target_ws is not None:
         owning_ws_root = target_ws.root.resolve()
@@ -720,7 +722,7 @@ def _run_steps(
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
         shutil.copytree(src, dest)
-        unwind.push(lambda d=dest: shutil.rmtree(d, ignore_errors=True))
+        unwind.push(lambda: shutil.rmtree(dest, ignore_errors=True))
         new_workspace = dest
     elif relocating and dest is not None and state.is_external:
         # External source: the "workspace" is the user's external dir; we never
@@ -821,7 +823,7 @@ def _copy_metadata(
         ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
         dirs_exist_ok=True,
     )
-    unwind.push(lambda d=dst_metadata: shutil.rmtree(d, ignore_errors=True))
+    unwind.push(lambda: shutil.rmtree(dst_metadata, ignore_errors=True))
 
     if shell_into_metadata:
         dst_shell = dst_metadata / "shell"
@@ -882,7 +884,7 @@ def _to_default(
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
     project_name = assign_name(std.data_path, str(new_workspace))
-    unwind.push(lambda n=project_name: _safe_unregister(std, n))
+    unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
     dst_shell = _copy_metadata(
@@ -1072,7 +1074,7 @@ def _to_workset(
 
         unwind.push(_restore_source)
         # Discard the stash on success (kept intact while unwind may need it).
-        unwind.on_success(lambda s=stash: shutil.rmtree(s, ignore_errors=True))
+        unwind.on_success(lambda: shutil.rmtree(stash, ignore_errors=True))
 
     # add_project (std-aware) registers + creates skeleton + (external) markers.
     add_project(target_ws, new_name, source_for_add, std)
