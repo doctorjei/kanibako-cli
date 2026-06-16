@@ -175,6 +175,25 @@ class Target(ABC):
         """Check if the agent is authenticated. Returns True if ok."""
         return True
 
+    def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None:
+        """Plugin-owned pre-launch host preparation.
+
+        Called by core ``start.py`` once a host install is detected, BEFORE
+        mounts are built, so the plugin can own everything agent-specific that
+        must touch the host before launch (e.g. updating the host binary to a
+        stable version, refreshing host auth with the right environment).
+
+        Core stays agent-agnostic: it just invokes this hook.  Implementations
+        MUST NOT crash the launch — a failure here should be logged and
+        swallowed; a hard auth/binary failure is surfaced separately via
+        ``check_auth`` / ``_validate_agent_binary``.
+
+        *install* is the detected :class:`AgentInstall`; *auto_auth* indicates
+        whether automated browser auth should be attempted; *data_path* is the
+        kanibako data dir (for auth cookie storage).  Default: no-op.
+        """
+        return None
+
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare how agent resources are shared across projects.
 

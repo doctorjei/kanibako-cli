@@ -830,26 +830,19 @@ def _run_container(
                 logger=logger,
             )
 
-        # Automated OAuth refresh (before interactive check_auth)
-        if (
-            target
-            and install
-            and proj.group_auth
-            and not no_auto_auth
-            and target.name == "claude"
-        ):
-            try:
-                from kanibako.auth_browser import auto_refresh_auth
-
-                auto_result = auto_refresh_auth(
-                    str(install.binary), std.data_path
-                )
-                if auto_result.success:
-                    logger.info("Auto-auth succeeded")
-                else:
-                    logger.debug("Auto-auth skipped: %s", auto_result.error)
-            except Exception as exc:
-                logger.debug("Auto-auth failed: %s", exc)
+        # Plugin-owned pre-launch host preparation (agent-agnostic call).
+        # The plugin owns everything agent-specific that must touch the host
+        # before mounts: e.g. the Claude plugin runs a synchronous `claude
+        # update` gate so the host binary/symlink are stable before we bind
+        # them, then refreshes host auth with the auto-updater disabled.  This
+        # runs BEFORE the binary validation below because the update step can
+        # repoint the resolved binary.  The hook never raises.
+        if target and install and is_agent_mode:
+            target.prepare_host(
+                install,
+                auto_auth=bool(proj.group_auth and not no_auto_auth),
+                data_path=std.data_path,
+            )
 
         # Validate the resolved HOST binary BEFORE anything execs it.  A 0-byte
         # or non-executable file passes binary_mounts()' is_file() check and

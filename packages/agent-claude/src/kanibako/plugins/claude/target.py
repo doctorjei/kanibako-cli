@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,24 @@ if TYPE_CHECKING:
     from kanibako.crabs import CrabConfig
 
 logger = get_logger("targets.claude")
+
+# Timeout (seconds) for the synchronous ``claude update`` gate run before
+# launch.  Generous: an update may download + install a new version.
+_UPDATE_TIMEOUT = 300
+
+
+def _autoupdater_disabled_env() -> dict[str, str]:
+    """Return a copy of os.environ with the Claude auto-updater disabled.
+
+    Every host exec of the ``claude`` binary that kanibako owns runs with
+    ``DISABLE_AUTOUPDATER=1`` so we never wake Claude's async background
+    auto-updater mid-launch (it would prune/repoint the version we are about
+    to bind, racing the mount).  The only update in our window is the explicit
+    synchronous ``claude update`` gate.
+    """
+    env = dict(os.environ)
+    env["DISABLE_AUTOUPDATER"] = "1"
+    return env
 
 
 class ClaudeTarget(Target):
@@ -191,7 +210,10 @@ class ClaudeTarget(Target):
         Unknown keys are silently ignored.
         """
         cli_args: list[str] = []
-        env_vars: dict[str, str] = {}
+        # Disable the in-container agent's self-updater: a mid-session update
+        # would repoint the writable ~/.local/bin/claude to a version the
+        # read-only host bind cannot have, breaking the running session.
+        env_vars: dict[str, str] = {"DISABLE_AUTOUPDATER": "1"}
 
         model = state.get("model")
         if model:
@@ -213,6 +235,10 @@ class ClaudeTarget(Target):
         if not claude_path:
             return True
 
+        # Every host exec of the binary runs with the auto-updater disabled so
+        # this auth probe doesn't wake the async updater mid-launch.
+        host_env = _autoupdater_disabled_env()
+
         # Check current auth status.
         try:
             result = subprocess.run(
@@ -220,6 +246,7 @@ class ClaudeTarget(Target):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=host_env,
             )
         except (OSError, subprocess.TimeoutExpired):
             # OSError covers FileNotFoundError and, critically, an
@@ -248,6 +275,7 @@ class ClaudeTarget(Target):
             login_result = subprocess.run(
                 [claude_path, "auth", "login"],
                 timeout=120,
+                env=host_env,
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
@@ -262,11 +290,79 @@ class ClaudeTarget(Target):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=host_env,
             )
             recheck_status = json.loads(recheck.stdout)
             return bool(recheck_status.get("loggedIn"))
         except Exception:
             return False
+
+    def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None:
+        """Update the host Claude binary, then refresh host auth.
+
+        Owns all the Claude-specific host work that must happen before mounts
+        are built:
+
+        1. **Synchronous update gate.** Run ``claude update`` and wait for it,
+           so the host binary + ``~/.local/bin/claude`` symlink are at a stable
+           version BEFORE we bind them.  With the background auto-updater
+           disabled (``DISABLE_AUTOUPDATER=1`` on every exec we own + in the
+           container), this is the only update in our launch window — no async
+           race.  A foreground ``claude update`` is expected to block until the
+           install + symlink repoint complete.
+        2. **Auto auth refresh** (when *auto_auth* is set) with the updater
+           disabled, so this host exec doesn't wake the background updater.
+
+        This method MUST NOT crash the launch: every step is best-effort and
+        failures are logged, not raised.
+        """
+        claude_path = shutil.which("claude")
+        if not claude_path:
+            return
+
+        host_env = _autoupdater_disabled_env()
+
+        # 1. Synchronous update gate.  DISABLE_AUTOUPDATER does not disable an
+        # *explicit* update; it only suppresses the async background updater.
+        try:
+            result = subprocess.run(
+                [claude_path, "update"],
+                capture_output=True,
+                text=True,
+                timeout=_UPDATE_TIMEOUT,
+                env=host_env,
+            )
+            if result.returncode != 0:
+                logger.debug(
+                    "claude update returned %s: %s",
+                    result.returncode,
+                    (result.stderr or result.stdout or "").strip(),
+                )
+            else:
+                logger.debug("claude update completed")
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "claude update timed out after %ss; proceeding with current "
+                "host binary.", _UPDATE_TIMEOUT,
+            )
+        except OSError as exc:
+            # FileNotFoundError / Exec format error on a corrupt binary, etc.
+            logger.debug("claude update could not run: %s", exc)
+
+        # 2. Automated OAuth refresh (best-effort), with the updater disabled.
+        if auto_auth:
+            try:
+                from kanibako.auth_browser import auto_refresh_auth
+
+                auto_result = auto_refresh_auth(
+                    str(install.binary), data_path, env=host_env,
+                )
+                if auto_result.success:
+                    logger.info("Auto-auth succeeded")
+                else:
+                    logger.debug("Auto-auth skipped: %s", auto_result.error)
+            except Exception as exc:
+                logger.debug("Auto-auth failed: %s", exc)
 
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare Claude Code resource sharing scopes.
