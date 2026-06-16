@@ -178,6 +178,9 @@ def resolve_box_shell(config, std, *, runtime=None, image=None) -> tuple[str, st
         # No digest-keyed hit; if we couldn't compute a key (no runtime) there is
         # nothing more to read.  With a runtime, lazily probe and persist.
         if runtime is not None:
+            # key was computed from this same non-None runtime above (it is
+            # only None when runtime is None), so it is a str here.
+            assert key is not None
             shell = probe_image_user_shell(runtime, image)
             if shell:
                 save_image_shell(std, key, shell)

@@ -534,12 +534,15 @@ def add_project(
             # External: workspaces/{name} is a self-documenting symlink to the
             # external dir (never mounted — the bind-mount uses the workspace
             # override).  Write the override + record the redirect.
+            # is_external can only be True when std is not None (set above),
+            # but mypy can't track that cross-variable invariant.
+            assert std is not None
             ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
             link = ws.workspaces_dir / name
             if not link.exists() and not link.is_symlink():
                 link.symlink_to(resolved_source)
                 unwind.push(
-                    lambda lk=link: lk.unlink() if lk.is_symlink() else None
+                    lambda: link.unlink() if link.is_symlink() else None
                 )
 
             from kanibako.config import write_project_meta
@@ -560,7 +563,7 @@ def add_project(
             mapping[str(resolved_source)] = {"workset": ws.name, "project": name}
             _write_connected(std, mapping)
             unwind.push(
-                lambda key=str(resolved_source): _drop_connected(std, key)
+                lambda: _drop_connected(std, str(resolved_source))
             )
         else:
             # Internal (or no std): a real workspace directory.
