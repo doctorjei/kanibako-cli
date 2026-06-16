@@ -185,6 +185,7 @@ def auto_refresh_auth(
     *,
     headless: bool = True,
     login_timeout: float = 60,
+    env: dict[str, str] | None = None,
 ) -> AuthResult:
     """Orchestrate fully automated OAuth: start login, parse URL, automate browser.
 
@@ -193,6 +194,11 @@ def auto_refresh_auth(
     3. Use :func:`refresh_auth` to navigate with stored cookies
     4. If the browser clicks "Authorize", the redirect completes the login
     5. Wait for ``claude auth login`` to finish
+
+    *env*, when supplied, fully replaces the environment of the spawned
+    ``claude auth login`` process.  Callers pass it to inject
+    ``DISABLE_AUTOUPDATER=1`` so this host exec does not wake Claude's async
+    background auto-updater mid-launch.
 
     Returns :class:`AuthResult` indicating success or failure.
     """
@@ -215,6 +221,7 @@ def auto_refresh_auth(
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE,
             text=True,
+            env=env,
         )
     except (FileNotFoundError, OSError) as exc:
         return AuthResult(success=False, error=f"Failed to start auth: {exc}")

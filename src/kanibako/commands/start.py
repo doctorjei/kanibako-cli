@@ -689,13 +689,12 @@ def _run_container(
             )
             return 1
         logger.debug("Resolved target: %s", target.display_name)
+        # First detect: early-out / "is the agent present on the host". The
+        # "Using host ...:" line is deferred until after prepare_host() (the
+        # update gate) so it names the real, post-update version — see the
+        # re-detect below.
         install = target.detect()
-        if install:
-            print(
-                f"Using host {target.display_name}: {install.binary}",
-                file=sys.stderr,
-            )
-        elif target.has_binary:
+        if not install and target.has_binary:
             print(
                 f"Warning: {target.display_name} binary not found on host. "
                 f"Launching without agent.",
@@ -830,26 +829,34 @@ def _run_container(
                 logger=logger,
             )
 
-        # Automated OAuth refresh (before interactive check_auth)
-        if (
-            target
-            and install
-            and proj.group_auth
-            and not no_auto_auth
-            and target.name == "claude"
-        ):
-            try:
-                from kanibako.auth_browser import auto_refresh_auth
+        # Plugin-owned pre-launch host preparation (agent-agnostic call).
+        # The plugin owns everything agent-specific that must touch the host
+        # before mounts: e.g. the Claude plugin runs a synchronous `claude
+        # update` gate so the host binary/symlink are stable before we bind
+        # them, then refreshes host auth with the auto-updater disabled.  This
+        # runs BEFORE the binary validation below because the update step can
+        # repoint the resolved binary.  The hook never raises.
+        if target and install and is_agent_mode:
+            target.prepare_host(
+                install,
+                auto_auth=bool(proj.group_auth and not no_auto_auth),
+                data_path=std.data_path,
+            )
+            # Re-detect after the update gate.  prepare_host() can repoint /
+            # prune the host version (the synchronous `claude update`), so the
+            # first `install` (frozen before that) is stale.  Re-detecting here
+            # — agent-agnostic — yields ONE fresh install that validate, the
+            # "Using host ...:" print, and binary_mounts all consume, so they
+            # describe and bind the real post-update version.  With the
+            # auto-updater disabled the version is then stable detect→mount.
+            install = target.detect() or install
 
-                auto_result = auto_refresh_auth(
-                    str(install.binary), std.data_path
-                )
-                if auto_result.success:
-                    logger.info("Auto-auth succeeded")
-                else:
-                    logger.debug("Auto-auth skipped: %s", auto_result.error)
-            except Exception as exc:
-                logger.debug("Auto-auth failed: %s", exc)
+        # Announce the (post-update) host agent now that prepare_host has run.
+        if target and install and is_agent_mode:
+            print(
+                f"Using host {target.display_name}: {install.binary}",
+                file=sys.stderr,
+            )
 
         # Validate the resolved HOST binary BEFORE anything execs it.  A 0-byte
         # or non-executable file passes binary_mounts()' is_file() check and
@@ -950,7 +957,24 @@ def _run_container(
                     file=sys.stderr,
                 )
                 return 1
-            _sync_binary_symlink(proj.shell_path, install, binary_mnts, logger)
+            # Safe-fail: every agent bind source must still exist at mount
+            # time.  If the host churned (prune/repoint mid-flight) between
+            # detection and here, fail with a clean, actionable kanibako error
+            # instead of letting crun crash on a dangling bind source.
+            missing = [m for m in binary_mnts if not m.source.exists()]
+            if missing:
+                detail = "\n".join(
+                    f"  {m.source} → {m.destination}" for m in missing
+                )
+                print(
+                    f"Error: {target.display_name} mount source disappeared "
+                    f"before launch:\n{detail}\n"
+                    f"The host agent install changed while starting (e.g. an "
+                    f"update pruned a version). Retry the launch.\n"
+                    f"Run 'kanibako system diagnose' for a full health check.",
+                    file=sys.stderr,
+                )
+                return 1
             extra_mounts.extend(binary_mnts)
 
         # kanibako CLI bind-mount (package + entry script)
@@ -1800,39 +1824,6 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str:
         capture_output=True, text=True,
     )
     return (result.stdout + result.stderr).strip() if result.returncode == 0 else ""
-
-
-def _sync_binary_symlink(shell_path, install, mounts, log) -> None:
-    """Update a stale binary symlink in the shell dir to match the detected version.
-
-    When ``binary_mounts()`` returns both an install-dir mount and a binary
-    mount, podman follows the destination symlink, landing the binary mount
-    inside the install-dir subtree where the directory mount shadows it.
-    Keeping the symlink current ensures the install-dir mount serves the
-    correct binary version.
-    """
-    link = shell_path / ".local" / "bin" / install.name
-    if not link.is_symlink():
-        return
-    # Find the install-dir mount destination (e.g. /home/agent/.local/share/claude).
-    install_dir_dest = None
-    for m in mounts:
-        if m.source == install.install_dir:
-            install_dir_dest = m.destination
-            break
-    if not install_dir_dest:
-        return  # No install-dir mount; no shadowing risk.
-    try:
-        relative = install.binary.relative_to(install.install_dir)
-    except ValueError:
-        return
-    expected = str(Path(install_dir_dest) / relative)
-    current = os.readlink(str(link))
-    if current == expected:
-        return
-    link.unlink()
-    link.symlink_to(expected)
-    log.info("Updated %s symlink: %s → %s", install.name, current, expected)
 
 
 def _validate_mounts(mounts: list, logger) -> None:

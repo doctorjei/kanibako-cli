@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,33 @@ if TYPE_CHECKING:
     from kanibako.crabs import CrabConfig
 
 logger = get_logger("targets.claude")
+
+# Timeout (seconds) for the synchronous ``claude update`` gate run before
+# launch.  Generous: an update may download + install a new version.
+_UPDATE_TIMEOUT = 300
+
+# Per-agent contract paths.  We anchor every host exec + bind to these known
+# install locations instead of ``shutil.which("claude")``.  ``which`` trusts
+# ``$PATH`` to locate a binary we then execute on the host (``claude update``,
+# ``auth status``) AND bind into the box — a PATH-injection vector (an earlier-
+# PATH planted ``claude`` would mean host code-exec + a malicious agent in the
+# container).  Anchoring confines trust to the user's home dir.
+_LAUNCHER = Path.home() / ".local" / "bin" / "claude"
+_INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
+
+
+def _autoupdater_disabled_env() -> dict[str, str]:
+    """Return a copy of os.environ with the Claude auto-updater disabled.
+
+    Every host exec of the ``claude`` binary that kanibako owns runs with
+    ``DISABLE_AUTOUPDATER=1`` so we never wake Claude's async background
+    auto-updater mid-launch (it would prune/repoint the version we are about
+    to bind, racing the mount).  The only update in our window is the explicit
+    synchronous ``claude update`` gate.
+    """
+    env = dict(os.environ)
+    env["DISABLE_AUTOUPDATER"] = "1"
+    return env
 
 
 class ClaudeTarget(Target):
@@ -60,59 +88,89 @@ class ClaudeTarget(Target):
     def detect(self) -> AgentInstall | None:
         """Detect Claude Code installation on the host.
 
-        Resolves the ``claude`` symlink to find the real binary, then walks up
-        the directory tree to locate the ``claude/`` installation root.
-        """
-        claude_path = shutil.which("claude")
-        logger.debug("shutil.which('claude') = %s", claude_path)
-        if not claude_path:
-            return None
+        Anchors to the per-agent contract paths (``_LAUNCHER`` /
+        ``_INSTALL_DIR``) rather than ``shutil.which`` — we never let ``$PATH``
+        choose a binary we execute on the host and bind into the box.
 
-        binary = Path(claude_path)
+        Claude is treated as installed iff the contract launcher exists *or* is
+        a (possibly dangling) symlink: a present-but-dangling launcher still
+        counts here — the synchronous update gate / binary validation handles a
+        broken install downstream.  ``binary`` is the resolved (symlink-free)
+        path so nested-container mount sources are real files; ``launcher`` is
+        the contract launcher recorded as-is for the bind.
+        """
+        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+            logger.debug("claude launcher not present at %s", _LAUNCHER)
+            return None
 
         try:
-            resolved = binary.resolve()
+            resolved = _LAUNCHER.resolve()
         except OSError:
-            logger.debug("Failed to resolve symlink: %s", binary)
-            return None
+            logger.debug("Failed to resolve launcher: %s", _LAUNCHER)
+            # Dangling/broken launcher: still "installed" per the contract; the
+            # update gate / validation surfaces the real problem.  Fall back to
+            # the launcher path itself as the binary.
+            resolved = _LAUNCHER
 
-        logger.debug("Resolved binary: %s (from %s)", resolved, binary)
-
-        # Walk up from the resolved binary to find the 'claude' directory.
-        install_dir = resolved.parent
-        while install_dir.name != "claude" and install_dir != install_dir.parent:
-            install_dir = install_dir.parent
-
-        # Sanity check: if we hit the filesystem root without finding 'claude',
-        # fall back to the immediate parent of the binary.
-        if install_dir.name != "claude":
-            install_dir = resolved.parent
-
-        logger.debug("Install dir: %s", install_dir)
-        # Use the resolved (symlink-free) binary path so that mount sources
-        # are real files, avoiding symlink resolution issues in nested
-        # containers (e.g. podman inside LXC).
-        return AgentInstall(name="claude", binary=resolved, install_dir=install_dir)
+        logger.debug(
+            "Resolved binary: %s (from %s); install_dir: %s",
+            resolved, _LAUNCHER, _INSTALL_DIR,
+        )
+        return AgentInstall(
+            name="claude",
+            binary=resolved,
+            install_dir=_INSTALL_DIR,
+            launcher=_LAUNCHER,
+        )
 
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Return mounts for Claude install dir and binary.
+        """Return the two AS-IS host binds that deliver Claude to the box.
 
-        Validates that mount sources exist to avoid Podman creating
-        empty stubs at mount destinations.
+        Host owns the binary + its update lifecycle; the container reflects it
+        faithfully via two binds and never freezes a resolved version:
+
+        1. ``~/.local/bin/claude`` bound **as-is** (the launcher symlink).  The
+           bind dereferences the source symlink itself and grabs the inode at
+           mount time, so the file is *pinned*: later host churn (prune /
+           repoint after a self-update) cannot pull it out from under the
+           running container.  One path, no ``lstat``, no link-vs-real-binary
+           branch.
+        2. ``~/.local/share/claude`` bound **whole** (the install dir / data
+           files — we do not assume the binary is self-contained).
+
+        The destinations are cleared to clean non-symlink mountpoints every
+        launch by the cli (``_precreate_mount_stubs``) so these binds actually
+        take instead of following a dest symlink into the share subtree.
+
+        Sources are validated to exist so a missing source produces a clean,
+        catchable kanibako error at mount-build time rather than a cryptic crun
+        dangling-exec crash.
         """
         mounts: list[Mount] = []
+
+        # Install-dir / data files: bind whole.
         if install.install_dir.is_dir():
             mounts.append(Mount(
                 source=install.install_dir,
                 destination="/home/agent/.local/share/claude",
                 options="ro",
             ))
-        if install.binary.is_file():
+
+        # The host launcher (the recorded contract path ~/.local/bin/claude)
+        # bound AS-IS — never re-resolved via $PATH/``which``.  The bind
+        # dereferences the source symlink and grabs the inode at mount time, so
+        # later host churn (prune/repoint after a self-update) cannot pull it
+        # out from under the running container.  Source-exists validation gives
+        # a clean safe-fail (start.py aborts on a vanished bind source) instead
+        # of a cryptic crun dangling-exec crash.
+        bin_source = install.launcher or install.binary
+        if bin_source.exists():
             mounts.append(Mount(
-                source=install.binary,
+                source=bin_source,
                 destination="/home/agent/.local/bin/claude",
                 options="ro",
             ))
+
         return mounts
 
     def init_home(self, home: Path, *, group_auth: bool = True) -> None:
@@ -164,7 +222,10 @@ class ClaudeTarget(Target):
         Unknown keys are silently ignored.
         """
         cli_args: list[str] = []
-        env_vars: dict[str, str] = {}
+        # Disable the in-container agent's self-updater: a mid-session update
+        # would repoint the writable ~/.local/bin/claude to a version the
+        # read-only host bind cannot have, breaking the running session.
+        env_vars: dict[str, str] = {"DISABLE_AUTOUPDATER": "1"}
 
         model = state.get("model")
         if model:
@@ -182,9 +243,15 @@ class ClaudeTarget(Target):
         Returns True if authentication is confirmed (or if the claude binary
         is not found — the missing-binary warning already covers that case).
         """
-        claude_path = shutil.which("claude")
-        if not claude_path:
+        # Anchor to the contract launcher; never let $PATH choose the binary we
+        # exec on the host.
+        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
             return True
+        claude_path = str(_LAUNCHER)
+
+        # Every host exec of the binary runs with the auto-updater disabled so
+        # this auth probe doesn't wake the async updater mid-launch.
+        host_env = _autoupdater_disabled_env()
 
         # Check current auth status.
         try:
@@ -193,6 +260,7 @@ class ClaudeTarget(Target):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=host_env,
             )
         except (OSError, subprocess.TimeoutExpired):
             # OSError covers FileNotFoundError and, critically, an
@@ -221,6 +289,7 @@ class ClaudeTarget(Target):
             login_result = subprocess.run(
                 [claude_path, "auth", "login"],
                 timeout=120,
+                env=host_env,
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
@@ -235,11 +304,81 @@ class ClaudeTarget(Target):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=host_env,
             )
             recheck_status = json.loads(recheck.stdout)
             return bool(recheck_status.get("loggedIn"))
         except Exception:
             return False
+
+    def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None:
+        """Update the host Claude binary, then refresh host auth.
+
+        Owns all the Claude-specific host work that must happen before mounts
+        are built:
+
+        1. **Synchronous update gate.** Run ``claude update`` and wait for it,
+           so the host binary + ``~/.local/bin/claude`` symlink are at a stable
+           version BEFORE we bind them.  With the background auto-updater
+           disabled (``DISABLE_AUTOUPDATER=1`` on every exec we own + in the
+           container), this is the only update in our launch window — no async
+           race.  A foreground ``claude update`` is expected to block until the
+           install + symlink repoint complete.
+        2. **Auto auth refresh** (when *auto_auth* is set) with the updater
+           disabled, so this host exec doesn't wake the background updater.
+
+        This method MUST NOT crash the launch: every step is best-effort and
+        failures are logged, not raised.
+        """
+        # Anchor to the contract launcher; never let $PATH choose the binary we
+        # exec on the host.
+        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+            return
+        claude_path = str(_LAUNCHER)
+
+        host_env = _autoupdater_disabled_env()
+
+        # 1. Synchronous update gate.  DISABLE_AUTOUPDATER does not disable an
+        # *explicit* update; it only suppresses the async background updater.
+        try:
+            result = subprocess.run(
+                [claude_path, "update"],
+                capture_output=True,
+                text=True,
+                timeout=_UPDATE_TIMEOUT,
+                env=host_env,
+            )
+            if result.returncode != 0:
+                logger.debug(
+                    "claude update returned %s: %s",
+                    result.returncode,
+                    (result.stderr or result.stdout or "").strip(),
+                )
+            else:
+                logger.debug("claude update completed")
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "claude update timed out after %ss; proceeding with current "
+                "host binary.", _UPDATE_TIMEOUT,
+            )
+        except OSError as exc:
+            # FileNotFoundError / Exec format error on a corrupt binary, etc.
+            logger.debug("claude update could not run: %s", exc)
+
+        # 2. Automated OAuth refresh (best-effort), with the updater disabled.
+        if auto_auth:
+            try:
+                from kanibako.auth_browser import auto_refresh_auth
+
+                auto_result = auto_refresh_auth(
+                    str(install.binary), data_path, env=host_env,
+                )
+                if auto_result.success:
+                    logger.info("Auto-auth succeeded")
+                else:
+                    logger.debug("Auto-auth skipped: %s", auto_result.error)
+            except Exception as exc:
+                logger.debug("Auto-auth failed: %s", exc)
 
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare Claude Code resource sharing scopes.
