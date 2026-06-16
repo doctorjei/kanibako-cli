@@ -28,6 +28,15 @@ logger = get_logger("targets.claude")
 # launch.  Generous: an update may download + install a new version.
 _UPDATE_TIMEOUT = 300
 
+# Per-agent contract paths.  We anchor every host exec + bind to these known
+# install locations instead of ``shutil.which("claude")``.  ``which`` trusts
+# ``$PATH`` to locate a binary we then execute on the host (``claude update``,
+# ``auth status``) AND bind into the box — a PATH-injection vector (an earlier-
+# PATH planted ``claude`` would mean host code-exec + a malicious agent in the
+# container).  Anchoring confines trust to the user's home dir.
+_LAUNCHER = Path.home() / ".local" / "bin" / "claude"
+_INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
+
 
 def _autoupdater_disabled_env() -> dict[str, str]:
     """Return a copy of os.environ with the Claude auto-updater disabled.
@@ -79,39 +88,40 @@ class ClaudeTarget(Target):
     def detect(self) -> AgentInstall | None:
         """Detect Claude Code installation on the host.
 
-        Resolves the ``claude`` symlink to find the real binary, then walks up
-        the directory tree to locate the ``claude/`` installation root.
-        """
-        claude_path = shutil.which("claude")
-        logger.debug("shutil.which('claude') = %s", claude_path)
-        if not claude_path:
-            return None
+        Anchors to the per-agent contract paths (``_LAUNCHER`` /
+        ``_INSTALL_DIR``) rather than ``shutil.which`` — we never let ``$PATH``
+        choose a binary we execute on the host and bind into the box.
 
-        binary = Path(claude_path)
+        Claude is treated as installed iff the contract launcher exists *or* is
+        a (possibly dangling) symlink: a present-but-dangling launcher still
+        counts here — the synchronous update gate / binary validation handles a
+        broken install downstream.  ``binary`` is the resolved (symlink-free)
+        path so nested-container mount sources are real files; ``launcher`` is
+        the contract launcher recorded as-is for the bind.
+        """
+        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
+            logger.debug("claude launcher not present at %s", _LAUNCHER)
+            return None
 
         try:
-            resolved = binary.resolve()
+            resolved = _LAUNCHER.resolve()
         except OSError:
-            logger.debug("Failed to resolve symlink: %s", binary)
-            return None
+            logger.debug("Failed to resolve launcher: %s", _LAUNCHER)
+            # Dangling/broken launcher: still "installed" per the contract; the
+            # update gate / validation surfaces the real problem.  Fall back to
+            # the launcher path itself as the binary.
+            resolved = _LAUNCHER
 
-        logger.debug("Resolved binary: %s (from %s)", resolved, binary)
-
-        # Walk up from the resolved binary to find the 'claude' directory.
-        install_dir = resolved.parent
-        while install_dir.name != "claude" and install_dir != install_dir.parent:
-            install_dir = install_dir.parent
-
-        # Sanity check: if we hit the filesystem root without finding 'claude',
-        # fall back to the immediate parent of the binary.
-        if install_dir.name != "claude":
-            install_dir = resolved.parent
-
-        logger.debug("Install dir: %s", install_dir)
-        # Use the resolved (symlink-free) binary path so that mount sources
-        # are real files, avoiding symlink resolution issues in nested
-        # containers (e.g. podman inside LXC).
-        return AgentInstall(name="claude", binary=resolved, install_dir=install_dir)
+        logger.debug(
+            "Resolved binary: %s (from %s); install_dir: %s",
+            resolved, _LAUNCHER, _INSTALL_DIR,
+        )
+        return AgentInstall(
+            name="claude",
+            binary=resolved,
+            install_dir=_INSTALL_DIR,
+            launcher=_LAUNCHER,
+        )
 
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
         """Return the two AS-IS host binds that deliver Claude to the box.
@@ -146,12 +156,14 @@ class ClaudeTarget(Target):
                 options="ro",
             ))
 
-        # The host launcher (~/.local/bin/claude) bound AS-IS.  Prefer the
-        # launcher path on $PATH (a symlink whose target the bind resolves at
-        # mount time); fall back to the resolved binary if the launcher is
-        # gone.  Either way the bind pins the inode at mount time.
-        launcher = shutil.which("claude")
-        bin_source = Path(launcher) if launcher else install.binary
+        # The host launcher (the recorded contract path ~/.local/bin/claude)
+        # bound AS-IS — never re-resolved via $PATH/``which``.  The bind
+        # dereferences the source symlink and grabs the inode at mount time, so
+        # later host churn (prune/repoint after a self-update) cannot pull it
+        # out from under the running container.  Source-exists validation gives
+        # a clean safe-fail (start.py aborts on a vanished bind source) instead
+        # of a cryptic crun dangling-exec crash.
+        bin_source = install.launcher or install.binary
         if bin_source.exists():
             mounts.append(Mount(
                 source=bin_source,
@@ -231,9 +243,11 @@ class ClaudeTarget(Target):
         Returns True if authentication is confirmed (or if the claude binary
         is not found — the missing-binary warning already covers that case).
         """
-        claude_path = shutil.which("claude")
-        if not claude_path:
+        # Anchor to the contract launcher; never let $PATH choose the binary we
+        # exec on the host.
+        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
             return True
+        claude_path = str(_LAUNCHER)
 
         # Every host exec of the binary runs with the auto-updater disabled so
         # this auth probe doesn't wake the async updater mid-launch.
@@ -316,9 +330,11 @@ class ClaudeTarget(Target):
         This method MUST NOT crash the launch: every step is best-effort and
         failures are logged, not raised.
         """
-        claude_path = shutil.which("claude")
-        if not claude_path:
+        # Anchor to the contract launcher; never let $PATH choose the binary we
+        # exec on the host.
+        if not (_LAUNCHER.exists() or _LAUNCHER.is_symlink()):
             return
+        claude_path = str(_LAUNCHER)
 
         host_env = _autoupdater_disabled_env()
 

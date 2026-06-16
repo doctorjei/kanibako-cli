@@ -65,6 +65,11 @@ class AgentInstall:
     name: str  # e.g. "claude"
     binary: Path  # host symlink/path to agent binary
     install_dir: Path  # root of agent installation
+    # Optional host launcher path (the on-disk entrypoint the plugin owns and
+    # binds into the box AS-IS, e.g. ~/.local/bin/claude).  Anchored to the
+    # agent's contract path by the plugin rather than resolved via $PATH.
+    # Defaults to None so agents that don't set it are unaffected.
+    launcher: Path | None = None
 
 
 def _validate_agent_binary(binary: Path) -> str | None:
