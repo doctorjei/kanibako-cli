@@ -10,6 +10,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-16
+
+### Fixed
+
+- **Recurring Claude Code launch crash (`crun: … No such file or directory`).**
+  Launching the Claude agent could fail with a cryptic OCI runtime error while
+  `system diagnose` still reported the agent `[ok]`. Root cause: kanibako mounted
+  the host's live `~/.local/share/claude` read-only and froze the container's
+  launcher symlink to the version resolved at detect time; kanibako's own
+  host-side auth probes woke Claude's background auto-updater, which repointed and
+  pruned that version mid-launch, leaving the frozen pointer dangling. The Claude
+  agent binary is now delivered **host-owned and inode-pinned**: kanibako runs a
+  synchronous update gate, disables the auto-updater on every Claude invocation it
+  owns and inside the box (`DISABLE_AUTOUPDATER=1`), clears the mount
+  destinations, and bind-mounts the launcher and install dir **as-is** (podman
+  dereferences the symlink and pins the inode at mount, so later host churn —
+  prune/repoint — can't pull the file out from under a running box). If a bind
+  source is missing at mount time it now fails with a clean, actionable error
+  instead of a crun crash. Hardening: the Claude plugin no longer uses `$PATH`
+  (`shutil.which`) to locate the binary it execs on the host and mounts into the
+  box — it anchors to the contract paths (`~/.local/bin/claude`,
+  `~/.local/share/claude`) and re-detects after the update gate, so validation,
+  the "Using host Claude Code" line, and the bind all consume one fresh install.
+- **Perpetual "a newer version is available" banner for buildx-built images.**
+  Image-freshness checks compared the local **amd64 platform-manifest** digest
+  against the remote **OCI index** digest — which never match for multi-arch
+  buildx images (index + attestation) — so the update banner fired on every run
+  even when the local image was already current. Freshness now compares a
+  canonical **per-architecture** digest set for the platform actually run: it
+  intersects the full set of local digests (including the index digest, which the
+  old code never inspected) with the remote index plus its matching per-arch child
+  manifest (skipping the `unknown/unknown` attestation entry), and warns only when
+  the two sets are genuinely disjoint.
+
 ## [1.5.0] - 2026-06-14
 
 ### Added (configurable no-agent box shell)
