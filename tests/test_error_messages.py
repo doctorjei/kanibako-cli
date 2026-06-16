@@ -193,10 +193,14 @@ class TestFreshnessTerminology:
         from kanibako.freshness import _check
 
         mock_runtime = MagicMock()
-        mock_runtime.get_local_digest.return_value = "sha256:old"
+        mock_runtime.get_local_digests.return_value = ["sha256:old"]
+        mock_runtime.get_local_platform.return_value = "linux/amd64"
         cache_path = MagicMock()
 
-        with patch("kanibako.freshness._cached_remote_digest", return_value="sha256:new"):
+        with patch(
+            "kanibako.freshness._cached_remote_digests",
+            return_value={"sha256:new"},
+        ):
             _check(mock_runtime, "kanibako-oci:latest", cache_path)
 
         err = capsys.readouterr().err
