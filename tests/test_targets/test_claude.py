@@ -82,30 +82,39 @@ class TestDetect:
 
 
 class TestBinaryMounts:
-    def test_mounts(self, tmp_path):
+    def test_mounts(self, tmp_path, monkeypatch):
+        """Returns the two AS-IS host binds: share dir + launcher symlink."""
+        import kanibako.plugins.claude.target as claude_mod
         t = ClaudeTarget()
         install_dir = tmp_path / "share" / "claude"
         install_dir.mkdir(parents=True)
-        binary = tmp_path / "bin" / "claude"
-        binary.parent.mkdir(parents=True)
-        binary.write_bytes(b"fake-binary")
+        # The launcher (~/.local/bin/claude) is the bin bind source, bound
+        # as-is.  detect() resolves a real version for install.binary, but the
+        # bind uses the launcher path.
+        launcher = tmp_path / "bin" / "claude"
+        launcher.parent.mkdir(parents=True)
+        launcher.write_bytes(b"fake-binary")
+        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: str(launcher))
         install = AgentInstall(
             name="claude",
-            binary=binary,
+            binary=launcher,
             install_dir=install_dir,
         )
         mounts = t.binary_mounts(install)
         assert len(mounts) == 2
+        # No resolved-file entry: the bin bind is the launcher path as-is.
         assert mounts[0].source == install_dir
         assert mounts[0].destination == "/home/agent/.local/share/claude"
         assert mounts[0].options == "ro"
-        assert mounts[1].source == binary
+        assert mounts[1].source == launcher
         assert mounts[1].destination == "/home/agent/.local/bin/claude"
         assert mounts[1].options == "ro"
 
-    def test_missing_source_skipped(self, tmp_path):
+    def test_missing_source_skipped(self, tmp_path, monkeypatch):
         """Mounts with non-existent sources are not added."""
+        import kanibako.plugins.claude.target as claude_mod
         t = ClaudeTarget()
+        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: None)
         install = AgentInstall(
             name="claude",
             binary=tmp_path / "nonexistent" / "claude",

@@ -927,6 +927,29 @@ class TestTweakccIntegration:
             # User's -e override takes priority (set after setdefault)
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "0"
 
+class TestBinaryMountSafeFail:
+    """A binary mount source missing at mount time -> clean kanibako error."""
+
+    def test_missing_bind_source_fails_clean(self, start_mocks, capsys, tmp_path):
+        """A returned bind whose source vanished aborts with a clean error."""
+        from kanibako.targets.base import Mount
+        with start_mocks() as m:
+            m.target.name = "claude"
+            gone = tmp_path / "pruned" / "claude"  # never created
+            m.target.binary_mounts.return_value = [
+                Mount(source=gone, destination="/home/agent/.local/bin/claude", options="ro"),
+            ]
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert "mount source disappeared" in err
+            # Clean kanibako error, not a crun crash -> container never run.
+            m.runtime.run.assert_not_called()
+
 
 class TestApplyTweakcc:
     """Unit tests for the _apply_tweakcc helper."""

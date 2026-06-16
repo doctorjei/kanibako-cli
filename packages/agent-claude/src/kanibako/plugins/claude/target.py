@@ -95,24 +95,51 @@ class ClaudeTarget(Target):
         return AgentInstall(name="claude", binary=resolved, install_dir=install_dir)
 
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Return mounts for Claude install dir and binary.
+        """Return the two AS-IS host binds that deliver Claude to the box.
 
-        Validates that mount sources exist to avoid Podman creating
-        empty stubs at mount destinations.
+        Host owns the binary + its update lifecycle; the container reflects it
+        faithfully via two binds and never freezes a resolved version:
+
+        1. ``~/.local/bin/claude`` bound **as-is** (the launcher symlink).  The
+           bind dereferences the source symlink itself and grabs the inode at
+           mount time, so the file is *pinned*: later host churn (prune /
+           repoint after a self-update) cannot pull it out from under the
+           running container.  One path, no ``lstat``, no link-vs-real-binary
+           branch.
+        2. ``~/.local/share/claude`` bound **whole** (the install dir / data
+           files — we do not assume the binary is self-contained).
+
+        The destinations are cleared to clean non-symlink mountpoints every
+        launch by the cli (``_precreate_mount_stubs``) so these binds actually
+        take instead of following a dest symlink into the share subtree.
+
+        Sources are validated to exist so a missing source produces a clean,
+        catchable kanibako error at mount-build time rather than a cryptic crun
+        dangling-exec crash.
         """
         mounts: list[Mount] = []
+
+        # Install-dir / data files: bind whole.
         if install.install_dir.is_dir():
             mounts.append(Mount(
                 source=install.install_dir,
                 destination="/home/agent/.local/share/claude",
                 options="ro",
             ))
-        if install.binary.is_file():
+
+        # The host launcher (~/.local/bin/claude) bound AS-IS.  Prefer the
+        # launcher path on $PATH (a symlink whose target the bind resolves at
+        # mount time); fall back to the resolved binary if the launcher is
+        # gone.  Either way the bind pins the inode at mount time.
+        launcher = shutil.which("claude")
+        bin_source = Path(launcher) if launcher else install.binary
+        if bin_source.exists():
             mounts.append(Mount(
-                source=install.binary,
+                source=bin_source,
                 destination="/home/agent/.local/bin/claude",
                 options="ro",
             ))
+
         return mounts
 
     def init_home(self, home: Path, *, group_auth: bool = True) -> None:
