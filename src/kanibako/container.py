@@ -485,7 +485,25 @@ def _precreate_mount_stubs(
     AGENT_HOME = "/home/agent/"
     WORKSPACE = "/home/agent/workspace/"
 
+    def _clear_symlink(p: Path) -> None:
+        """Remove *p* if it is a symlink so a bind lands on a clean mountpoint.
+
+        A baked/dirty image may ship ``~/.local/bin/claude`` (or
+        ``~/.local/share/claude``) as a symlink into the install-dir subtree.
+        If the destination is a symlink, the OCI runtime follows it and the
+        bind lands somewhere it gets shadowed ("the bind isn't taking").
+        Clearing the symlink first guarantees the bind takes on a real,
+        non-symlink mountpoint that we own.
+        """
+        try:
+            if p.is_symlink():
+                p.unlink()
+                logger.debug("stub cleared symlink: %s", p)
+        except OSError as exc:
+            logger.debug("stub clear-symlink FAILED: %s (%s)", p, exc)
+
     def _ensure_dir(p: Path) -> None:
+        _clear_symlink(p)
         try:
             p.mkdir(parents=True, exist_ok=True)
             logger.debug("stub mkdir: %s", p)
@@ -493,6 +511,7 @@ def _precreate_mount_stubs(
             logger.debug("stub mkdir FAILED: %s (%s)", p, exc)
 
     def _ensure_file(p: Path) -> None:
+        _clear_symlink(p)
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             if not p.exists():

@@ -719,3 +719,80 @@ class TestPrecreateMountStubs:
             )
         finally:
             shell.chmod(0o755)
+
+    def test_symlink_file_dest_cleared_to_real_mountpoint(self, tmp_path):
+        """A baked symlink at a file dest is cleared so the bind lands clean.
+
+        Mirrors a dirty image where ~/.local/bin/claude is a symlink into the
+        install-dir subtree; the destination must become a real, non-symlink
+        mountpoint before the bind.
+        """
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # Pre-existing dest symlink (as a baked image would ship).
+        bin_dir = shell / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        link = bin_dir / "claude"
+        link.symlink_to("/home/agent/.local/share/claude/versions/2.1.177")
+        assert link.is_symlink()
+
+        src_file = tmp_path / "claude-launcher"
+        src_file.touch()
+        mounts = [FakeMount(source=src_file, destination="/home/agent/.local/bin/claude")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        # Symlink cleared; dest is now a real, non-symlink file mountpoint.
+        assert not link.is_symlink()
+        assert link.is_file()
+
+    def test_symlink_dir_dest_cleared_to_real_mountpoint(self, tmp_path):
+        """A baked symlink at a dir dest is cleared to a real directory."""
+        from dataclasses import dataclass
+        from kanibako.container import _precreate_mount_stubs
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        share_parent = shell / ".local" / "share"
+        share_parent.mkdir(parents=True)
+        link = share_parent / "claude"
+        target_dir = tmp_path / "real-elsewhere"
+        target_dir.mkdir()
+        link.symlink_to(target_dir)
+        assert link.is_symlink()
+
+        src_dir = tmp_path / "share-src"
+        src_dir.mkdir()
+        mounts = [FakeMount(source=src_dir, destination="/home/agent/.local/share/claude")]
+        _precreate_mount_stubs(
+            shell, project, mounts,
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            vault_tmpfs=False,
+        )
+        assert not link.is_symlink()
+        assert link.is_dir()
