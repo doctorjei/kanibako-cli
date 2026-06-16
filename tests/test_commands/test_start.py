@@ -1164,6 +1164,54 @@ class TestPrepareHostHook:
             )
             m.target.prepare_host.assert_not_called()
 
+    def test_redetect_after_update_feeds_validate_print_bind(self, start_mocks, capsys):
+        """The post-update re-detect feeds validate, the print, and the bind.
+
+        prepare_host()'s update gate can repoint/prune the host version, so
+        start.py re-detects AFTER it; the ONE fresh install must be what
+        _validate_agent_binary, the "Using host ...:" line, and binary_mounts
+        all consume — never the stale first detect.
+        """
+        from pathlib import Path
+        from kanibako.targets.base import Mount
+
+        stale = MagicMock()
+        stale.binary = Path("/home/agent/.local/share/claude/versions/STALE")
+        stale.install_dir.exists.return_value = True
+
+        fresh = MagicMock()
+        fresh.binary = Path("/home/agent/.local/share/claude/versions/FRESH")
+        fresh.install_dir.exists.return_value = True
+
+        with start_mocks() as m:
+            # First detect (early-out) returns stale; the re-detect after the
+            # update gate returns fresh.
+            m.target.detect.side_effect = [stale, fresh]
+            # binary_mounts returns valid mounts so the launch proceeds.
+            m.target.binary_mounts.return_value = [
+                Mount(source=Path("/dev/null"), destination="/home/agent/.local/bin/claude", options="ro"),
+            ]
+            _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            # detect called at least twice (early-out + re-detect).
+            assert m.target.detect.call_count >= 2
+            # prepare_host got the FIRST (stale) install.
+            assert m.target.prepare_host.call_args.args[0] is stale
+            # validate + binary_mounts both ran on the FRESH (post-update) one.
+            m.validate_binary.assert_called_with(fresh.binary)
+            m.target.binary_mounts.assert_called_once_with(fresh)
+            # The "Using host ...:" line names the fresh version, not the stale.
+            err = capsys.readouterr().err
+            assert "FRESH" in err
+            assert "STALE" not in err
+
 
 class TestBrowserSidecar:
     """Verify browser sidecar integration in _run_container."""

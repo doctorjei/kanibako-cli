@@ -689,13 +689,12 @@ def _run_container(
             )
             return 1
         logger.debug("Resolved target: %s", target.display_name)
+        # First detect: early-out / "is the agent present on the host". The
+        # "Using host ...:" line is deferred until after prepare_host() (the
+        # update gate) so it names the real, post-update version — see the
+        # re-detect below.
         install = target.detect()
-        if install:
-            print(
-                f"Using host {target.display_name}: {install.binary}",
-                file=sys.stderr,
-            )
-        elif target.has_binary:
+        if not install and target.has_binary:
             print(
                 f"Warning: {target.display_name} binary not found on host. "
                 f"Launching without agent.",
@@ -842,6 +841,21 @@ def _run_container(
                 install,
                 auto_auth=bool(proj.group_auth and not no_auto_auth),
                 data_path=std.data_path,
+            )
+            # Re-detect after the update gate.  prepare_host() can repoint /
+            # prune the host version (the synchronous `claude update`), so the
+            # first `install` (frozen before that) is stale.  Re-detecting here
+            # — agent-agnostic — yields ONE fresh install that validate, the
+            # "Using host ...:" print, and binary_mounts all consume, so they
+            # describe and bind the real post-update version.  With the
+            # auto-updater disabled the version is then stable detect→mount.
+            install = target.detect() or install
+
+        # Announce the (post-update) host agent now that prepare_host has run.
+        if target and install and is_agent_mode:
+            print(
+                f"Using host {target.display_name}: {install.binary}",
+                file=sys.stderr,
             )
 
         # Validate the resolved HOST binary BEFORE anything execs it.  A 0-byte

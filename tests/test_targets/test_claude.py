@@ -32,77 +32,105 @@ class TestCredentialCheckPath:
         assert t.config_dir_name == ".claude"
 
 
+def _anchor_contract(monkeypatch, launcher, install_dir):
+    """Point the claude plugin's contract constants at a tmp install.
+
+    detect / check_auth / prepare_host all anchor to ``_LAUNCHER`` /
+    ``_INSTALL_DIR`` instead of ``shutil.which`` — tests override those module
+    constants rather than mocking PATH.
+    """
+    import kanibako.plugins.claude.target as claude_mod
+    monkeypatch.setattr(claude_mod, "_LAUNCHER", Path(launcher))
+    monkeypatch.setattr(claude_mod, "_INSTALL_DIR", Path(install_dir))
+
+
 class TestDetect:
-    def test_found(self, tmp_path):
-        """Detect returns AgentInstall when claude binary exists."""
-        # Create a fake claude installation.
-        install_dir = tmp_path / "claude"
-        install_dir.mkdir()
+    def test_found(self, tmp_path, monkeypatch):
+        """Detect anchors to the contract paths (no shutil.which)."""
+        # Real install rooted at the contract install_dir.
+        install_dir = tmp_path / "share" / "claude"
         versions = install_dir / "versions" / "1.0"
         versions.mkdir(parents=True)
         binary = versions / "claude-bin"
         binary.write_text("#!/bin/sh\n")
         binary.chmod(0o755)
 
-        symlink = tmp_path / "claude-link"
-        symlink.symlink_to(binary)
+        launcher = tmp_path / "bin" / "claude"
+        launcher.parent.mkdir(parents=True)
+        launcher.symlink_to(binary)
+
+        _anchor_contract(monkeypatch, launcher, install_dir)
 
         t = ClaudeTarget()
-        with patch("shutil.which", return_value=str(symlink)):
+        # No shutil.which involved: assert it is never consulted.
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
             result = t.detect()
+        m_which.assert_not_called()
 
         assert result is not None
         assert isinstance(result, AgentInstall)
         assert result.name == "claude"
-        # binary is the resolved (symlink-free) path
+        # binary is the resolved (symlink-free) launcher target.
         assert result.binary == binary.resolve()
+        # install_dir + launcher anchor to the contract paths.
         assert result.install_dir == install_dir
+        assert result.launcher == launcher
 
-    def test_not_found(self):
-        """Detect returns None when claude is not installed."""
+    def test_not_found(self, tmp_path, monkeypatch):
+        """Detect returns None when the contract launcher is absent."""
+        launcher = tmp_path / "bin" / "claude"  # never created
+        install_dir = tmp_path / "share" / "claude"
+        _anchor_contract(monkeypatch, launcher, install_dir)
+
         t = ClaudeTarget()
-        with patch("shutil.which", return_value=None):
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
             result = t.detect()
+        m_which.assert_not_called()
         assert result is None
 
-    def test_fallback_when_no_claude_dir(self, tmp_path):
-        """When no 'claude' directory is found walking up, falls back to parent."""
-        binary = tmp_path / "some" / "path" / "binary"
-        binary.parent.mkdir(parents=True)
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
+    def test_dangling_launcher_still_installed(self, tmp_path, monkeypatch):
+        """A present-but-dangling launcher symlink still counts as installed.
+
+        The update gate / binary validation handles a broken install
+        downstream; detect must not silently drop the agent.
+        """
+        target_path = tmp_path / "versions" / "gone"  # does not exist
+        launcher = tmp_path / "bin" / "claude"
+        launcher.parent.mkdir(parents=True)
+        launcher.symlink_to(target_path)  # dangling
+        install_dir = tmp_path / "share" / "claude"
+        _anchor_contract(monkeypatch, launcher, install_dir)
 
         t = ClaudeTarget()
-        with patch("shutil.which", return_value=str(binary)):
-            result = t.detect()
-
+        result = t.detect()
         assert result is not None
-        # Falls back to binary's parent (resolved)
-        assert result.install_dir == binary.resolve().parent
+        assert result.launcher == launcher
+        assert result.install_dir == install_dir
 
 
 class TestBinaryMounts:
-    def test_mounts(self, tmp_path, monkeypatch):
-        """Returns the two AS-IS host binds: share dir + launcher symlink."""
-        import kanibako.plugins.claude.target as claude_mod
+    def test_mounts(self, tmp_path):
+        """Returns the two AS-IS host binds: share dir + launcher (no which)."""
         t = ClaudeTarget()
         install_dir = tmp_path / "share" / "claude"
         install_dir.mkdir(parents=True)
         # The launcher (~/.local/bin/claude) is the bin bind source, bound
-        # as-is.  detect() resolves a real version for install.binary, but the
-        # bind uses the launcher path.
+        # as-is from the recorded contract path on the install.
         launcher = tmp_path / "bin" / "claude"
         launcher.parent.mkdir(parents=True)
         launcher.write_bytes(b"fake-binary")
-        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: str(launcher))
         install = AgentInstall(
             name="claude",
-            binary=launcher,
+            binary=tmp_path / "versions" / "1.0" / "claude-bin",
             install_dir=install_dir,
+            launcher=launcher,
         )
-        mounts = t.binary_mounts(install)
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+            mounts = t.binary_mounts(install)
+        # No PATH resolution: which is never called.
+        m_which.assert_not_called()
         assert len(mounts) == 2
-        # No resolved-file entry: the bin bind is the launcher path as-is.
+        # No resolved-file entry: the bin bind is the recorded launcher as-is.
         assert mounts[0].source == install_dir
         assert mounts[0].destination == "/home/agent/.local/share/claude"
         assert mounts[0].options == "ro"
@@ -110,17 +138,18 @@ class TestBinaryMounts:
         assert mounts[1].destination == "/home/agent/.local/bin/claude"
         assert mounts[1].options == "ro"
 
-    def test_missing_source_skipped(self, tmp_path, monkeypatch):
-        """Mounts with non-existent sources are not added."""
-        import kanibako.plugins.claude.target as claude_mod
+    def test_missing_source_skipped(self, tmp_path):
+        """Mounts with non-existent sources are not added (clean safe-fail)."""
         t = ClaudeTarget()
-        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: None)
         install = AgentInstall(
             name="claude",
             binary=tmp_path / "nonexistent" / "claude",
             install_dir=tmp_path / "nonexistent" / "share",
+            launcher=tmp_path / "nonexistent" / "bin" / "claude",
         )
-        mounts = t.binary_mounts(install)
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+            mounts = t.binary_mounts(install)
+        m_which.assert_not_called()
         assert len(mounts) == 0
 
 
@@ -304,20 +333,30 @@ class TestBuildCliArgs:
         assert "--continue" not in args
 
 
+def _real_launcher(tmp_path):
+    """Create a real (existing) contract launcher file under tmp_path."""
+    launcher = tmp_path / "bin" / "claude"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_bytes(b"#!/bin/sh\n")
+    launcher.chmod(0o755)
+    return launcher
+
+
 class TestCheckAuth:
-    def test_logged_in_returns_true(self):
+    def test_logged_in_returns_true(self, tmp_path, monkeypatch):
         """check_auth returns True when status shows loggedIn."""
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
         t = ClaudeTarget()
         status_result = MagicMock(
             returncode=0,
             stdout=json.dumps({"loggedIn": True}),
         )
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
-                assert t.check_auth() is True
+        with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
+            assert t.check_auth() is True
 
-    def test_not_logged_in_triggers_login(self):
+    def test_not_logged_in_triggers_login(self, tmp_path, monkeypatch):
         """check_auth runs login when status shows not loggedIn."""
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
         t = ClaudeTarget()
         status_not_logged = MagicMock(
             returncode=0,
@@ -328,68 +367,82 @@ class TestCheckAuth:
             returncode=0,
             stdout=json.dumps({"loggedIn": True}),
         )
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       side_effect=[status_not_logged, login_result, status_after_login]):
-                assert t.check_auth() is True
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   side_effect=[status_not_logged, login_result, status_after_login]):
+            assert t.check_auth() is True
 
-    def test_login_fails_returns_false(self):
+    def test_login_fails_returns_false(self, tmp_path, monkeypatch):
         """check_auth returns False when login fails."""
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
         t = ClaudeTarget()
         status_not_logged = MagicMock(
             returncode=0,
             stdout=json.dumps({"loggedIn": False}),
         )
         login_result = MagicMock(returncode=1)
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       side_effect=[status_not_logged, login_result]):
-                assert t.check_auth() is False
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   side_effect=[status_not_logged, login_result]):
+            assert t.check_auth() is False
 
-    def test_binary_not_found_returns_true(self):
-        """check_auth returns True when claude binary is not found."""
+    def test_binary_not_found_returns_true(self, tmp_path, monkeypatch):
+        """check_auth returns True when the contract launcher is absent."""
+        _anchor_contract(monkeypatch, tmp_path / "bin" / "claude", tmp_path / "share")
         t = ClaudeTarget()
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value=None):
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
             assert t.check_auth() is True
+        m_which.assert_not_called()
 
-    def test_status_command_fails_returns_true(self):
+    def test_status_command_fails_returns_true(self, tmp_path, monkeypatch):
         """check_auth returns True when auth status command fails."""
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
         t = ClaudeTarget()
         status_result = MagicMock(returncode=1, stdout="")
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
-                assert t.check_auth() is True
+        with patch("kanibako.plugins.claude.target.subprocess.run", return_value=status_result):
+            assert t.check_auth() is True
 
-    def test_exec_format_error_returns_true(self):
+    def test_exec_format_error_returns_true(self, tmp_path, monkeypatch):
         """A corrupt/0-byte binary raising OSError must not crash check_auth.
 
         Defense-in-depth: even if the launch-path guard ever fails to run
         first, the auth probe must never bubble an OSError (Exec format error)
         as an uncaught traceback -- treat it as auth-unknown and return True.
         """
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
         t = ClaudeTarget()
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch(
-                "kanibako.plugins.claude.target.subprocess.run",
-                side_effect=OSError(8, "Exec format error"),
-            ):
-                assert t.check_auth() is True
+        with patch(
+            "kanibako.plugins.claude.target.subprocess.run",
+            side_effect=OSError(8, "Exec format error"),
+        ):
+            assert t.check_auth() is True
 
-    def test_host_execs_disable_autoupdater(self):
+    def test_anchors_to_contract_launcher(self, tmp_path, monkeypatch):
+        """check_auth execs the contract launcher path, never shutil.which."""
+        launcher = _real_launcher(tmp_path)
+        _anchor_contract(monkeypatch, launcher, tmp_path / "share")
+        t = ClaudeTarget()
+        status_result = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": True}))
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       return_value=status_result) as m_run:
+                t.check_auth()
+        m_which.assert_not_called()
+        assert m_run.call_args.args[0][0] == str(launcher)
+
+    def test_host_execs_disable_autoupdater(self, tmp_path, monkeypatch):
         """check_auth's host execs run with DISABLE_AUTOUPDATER=1 in env.
 
         Probing host auth must not wake Claude's async background updater
         mid-launch, which would prune/repoint the version we are about to bind.
         """
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
         t = ClaudeTarget()
         status_result = MagicMock(
             returncode=0,
             stdout=json.dumps({"loggedIn": True}),
         )
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       return_value=status_result) as m_run:
-                t.check_auth()
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   return_value=status_result) as m_run:
+            t.check_auth()
         env = m_run.call_args.kwargs.get("env")
         assert env is not None
         assert env.get("DISABLE_AUTOUPDATER") == "1"
@@ -398,87 +451,96 @@ class TestCheckAuth:
 class TestPrepareHost:
     """prepare_host runs the synchronous update gate + host auth, safely."""
 
-    def _install(self, tmp_path):
-        binary = tmp_path / "bin" / "claude"
-        binary.parent.mkdir(parents=True)
-        binary.write_bytes(b"binary")
+    def _install(self, tmp_path, *, anchor=True, monkeypatch=None):
+        """Build an AgentInstall and (by default) anchor the contract launcher
+        to a real file so prepare_host runs (it gates on _LAUNCHER, not which)."""
+        launcher = tmp_path / "bin" / "claude"
+        launcher.parent.mkdir(parents=True, exist_ok=True)
+        launcher.write_bytes(b"#!/bin/sh\n")
+        launcher.chmod(0o755)
+        install_dir = tmp_path / "share" / "claude"
+        if anchor and monkeypatch is not None:
+            _anchor_contract(monkeypatch, launcher, install_dir)
         return AgentInstall(
-            name="claude", binary=binary, install_dir=tmp_path / "share" / "claude",
+            name="claude", binary=launcher, install_dir=install_dir, launcher=launcher,
         )
 
-    def test_runs_synchronous_update_gate(self, tmp_path):
+    def test_runs_synchronous_update_gate(self, tmp_path, monkeypatch):
         """prepare_host runs `claude update` synchronously, env-disabled updater."""
         t = ClaudeTarget()
-        install = self._install(tmp_path)
+        install = self._install(tmp_path, monkeypatch=monkeypatch)
         update_result = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
             with patch("kanibako.plugins.claude.target.subprocess.run",
                        return_value=update_result) as m_run:
                 t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+        # No PATH resolution: which is never consulted.
+        m_which.assert_not_called()
         # The update gate must have been invoked synchronously.
         update_calls = [
             c for c in m_run.call_args_list if c.args and c.args[0][1:] == ["update"]
         ]
         assert len(update_calls) == 1
+        # Execs the contract launcher path.
+        assert update_calls[0].args[0][0] == str(install.launcher)
         # And with the auto-updater disabled in the exec environment.
         env = update_calls[0].kwargs.get("env")
         assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
 
-    def test_no_binary_is_noop(self, tmp_path):
-        """No host binary -> prepare_host is a no-op (never crashes)."""
+    def test_no_binary_is_noop(self, tmp_path, monkeypatch):
+        """No contract launcher -> prepare_host is a no-op (never crashes)."""
         t = ClaudeTarget()
-        install = self._install(tmp_path)
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value=None):
+        install = self._install(tmp_path, anchor=False)
+        # Anchor to a path that does NOT exist.
+        _anchor_contract(monkeypatch, tmp_path / "absent" / "claude", tmp_path / "share")
+        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
             with patch("kanibako.plugins.claude.target.subprocess.run") as m_run:
                 t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+        m_which.assert_not_called()
         m_run.assert_not_called()
 
-    def test_update_failure_does_not_raise(self, tmp_path):
+    def test_update_failure_does_not_raise(self, tmp_path, monkeypatch):
         """A failing/erroring `claude update` must not crash the launch."""
         t = ClaudeTarget()
-        install = self._install(tmp_path)
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       side_effect=OSError(8, "Exec format error")):
-                # Must return cleanly, not raise.
-                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+        install = self._install(tmp_path, monkeypatch=monkeypatch)
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   side_effect=OSError(8, "Exec format error")):
+            # Must return cleanly, not raise.
+            t.prepare_host(install, auto_auth=False, data_path=tmp_path)
 
-    def test_update_timeout_does_not_raise(self, tmp_path):
+    def test_update_timeout_does_not_raise(self, tmp_path, monkeypatch):
         """A `claude update` that times out must not crash the launch."""
         import subprocess as _sp
         t = ClaudeTarget()
-        install = self._install(tmp_path)
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       side_effect=_sp.TimeoutExpired("claude", 300)):
-                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+        install = self._install(tmp_path, monkeypatch=monkeypatch)
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   side_effect=_sp.TimeoutExpired("claude", 300)):
+            t.prepare_host(install, auto_auth=False, data_path=tmp_path)
 
-    def test_auto_auth_invokes_refresh_with_disabled_updater(self, tmp_path):
+    def test_auto_auth_invokes_refresh_with_disabled_updater(self, tmp_path, monkeypatch):
         """When auto_auth is set, auto_refresh_auth is called with disabled env."""
         t = ClaudeTarget()
-        install = self._install(tmp_path)
+        install = self._install(tmp_path, monkeypatch=monkeypatch)
         update_result = MagicMock(returncode=0, stdout="", stderr="")
         fake_auth = MagicMock(success=True, error=None)
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       return_value=update_result):
-                with patch("kanibako.auth_browser.auto_refresh_auth",
-                           return_value=fake_auth) as m_auth:
-                    t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   return_value=update_result):
+            with patch("kanibako.auth_browser.auto_refresh_auth",
+                       return_value=fake_auth) as m_auth:
+                t.prepare_host(install, auto_auth=True, data_path=tmp_path)
         m_auth.assert_called_once()
         env = m_auth.call_args.kwargs.get("env")
         assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
 
-    def test_auto_auth_skipped_when_disabled(self, tmp_path):
+    def test_auto_auth_skipped_when_disabled(self, tmp_path, monkeypatch):
         """When auto_auth is False, auto_refresh_auth is not called."""
         t = ClaudeTarget()
-        install = self._install(tmp_path)
+        install = self._install(tmp_path, monkeypatch=monkeypatch)
         update_result = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
-            with patch("kanibako.plugins.claude.target.subprocess.run",
-                       return_value=update_result):
-                with patch("kanibako.auth_browser.auto_refresh_auth") as m_auth:
-                    t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   return_value=update_result):
+            with patch("kanibako.auth_browser.auto_refresh_auth") as m_auth:
+                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
         m_auth.assert_not_called()
 
 
