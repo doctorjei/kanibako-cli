@@ -375,6 +375,112 @@ class TestCheckAuth:
             ):
                 assert t.check_auth() is True
 
+    def test_host_execs_disable_autoupdater(self):
+        """check_auth's host execs run with DISABLE_AUTOUPDATER=1 in env.
+
+        Probing host auth must not wake Claude's async background updater
+        mid-launch, which would prune/repoint the version we are about to bind.
+        """
+        t = ClaudeTarget()
+        status_result = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"loggedIn": True}),
+        )
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       return_value=status_result) as m_run:
+                t.check_auth()
+        env = m_run.call_args.kwargs.get("env")
+        assert env is not None
+        assert env.get("DISABLE_AUTOUPDATER") == "1"
+
+
+class TestPrepareHost:
+    """prepare_host runs the synchronous update gate + host auth, safely."""
+
+    def _install(self, tmp_path):
+        binary = tmp_path / "bin" / "claude"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"binary")
+        return AgentInstall(
+            name="claude", binary=binary, install_dir=tmp_path / "share" / "claude",
+        )
+
+    def test_runs_synchronous_update_gate(self, tmp_path):
+        """prepare_host runs `claude update` synchronously, env-disabled updater."""
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        update_result = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       return_value=update_result) as m_run:
+                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+        # The update gate must have been invoked synchronously.
+        update_calls = [
+            c for c in m_run.call_args_list if c.args and c.args[0][1:] == ["update"]
+        ]
+        assert len(update_calls) == 1
+        # And with the auto-updater disabled in the exec environment.
+        env = update_calls[0].kwargs.get("env")
+        assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
+
+    def test_no_binary_is_noop(self, tmp_path):
+        """No host binary -> prepare_host is a no-op (never crashes)."""
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value=None):
+            with patch("kanibako.plugins.claude.target.subprocess.run") as m_run:
+                t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+        m_run.assert_not_called()
+
+    def test_update_failure_does_not_raise(self, tmp_path):
+        """A failing/erroring `claude update` must not crash the launch."""
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       side_effect=OSError(8, "Exec format error")):
+                # Must return cleanly, not raise.
+                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+
+    def test_update_timeout_does_not_raise(self, tmp_path):
+        """A `claude update` that times out must not crash the launch."""
+        import subprocess as _sp
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       side_effect=_sp.TimeoutExpired("claude", 300)):
+                t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+
+    def test_auto_auth_invokes_refresh_with_disabled_updater(self, tmp_path):
+        """When auto_auth is set, auto_refresh_auth is called with disabled env."""
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        update_result = MagicMock(returncode=0, stdout="", stderr="")
+        fake_auth = MagicMock(success=True, error=None)
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       return_value=update_result):
+                with patch("kanibako.auth_browser.auto_refresh_auth",
+                           return_value=fake_auth) as m_auth:
+                    t.prepare_host(install, auto_auth=True, data_path=tmp_path)
+        m_auth.assert_called_once()
+        env = m_auth.call_args.kwargs.get("env")
+        assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
+
+    def test_auto_auth_skipped_when_disabled(self, tmp_path):
+        """When auto_auth is False, auto_refresh_auth is not called."""
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        update_result = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("kanibako.plugins.claude.target.shutil.which", return_value="/usr/bin/claude"):
+            with patch("kanibako.plugins.claude.target.subprocess.run",
+                       return_value=update_result):
+                with patch("kanibako.auth_browser.auto_refresh_auth") as m_auth:
+                    t.prepare_host(install, auto_auth=False, data_path=tmp_path)
+        m_auth.assert_not_called()
+
 
 class TestRefreshCredentials:
     def test_calls_credential_function(self, tmp_path, monkeypatch):
@@ -485,29 +591,41 @@ class TestGenerateCrabConfig:
 
 
 class TestApplyState:
+    # Every Claude container invocation gets DISABLE_AUTOUPDATER=1 so the
+    # in-container agent cannot self-update mid-session and repoint its
+    # writable launcher to a version the read-only host bind cannot have.
+    _BASE_ENV = {"DISABLE_AUTOUPDATER": "1"}
+
     def test_model_translated_to_cli_arg(self):
         t = ClaudeTarget()
         cli_args, env_vars = t.apply_state({"model": "opus"})
         assert cli_args == ["--model", "opus"]
-        assert env_vars == {}
+        assert env_vars == self._BASE_ENV
 
     def test_unknown_keys_ignored(self):
         t = ClaudeTarget()
         cli_args, env_vars = t.apply_state({"unknown_key": "value"})
         assert cli_args == []
-        assert env_vars == {}
+        assert env_vars == self._BASE_ENV
 
     def test_empty_state(self):
         t = ClaudeTarget()
         cli_args, env_vars = t.apply_state({})
         assert cli_args == []
-        assert env_vars == {}
+        assert env_vars == self._BASE_ENV
+
+    def test_disable_autoupdater_always_present(self):
+        """DISABLE_AUTOUPDATER=1 is set regardless of state contents."""
+        t = ClaudeTarget()
+        for state in ({}, {"model": "opus"}, {"unknown": "x"}):
+            _, env_vars = t.apply_state(state)
+            assert env_vars.get("DISABLE_AUTOUPDATER") == "1"
 
     def test_model_with_other_keys(self):
         t = ClaudeTarget()
         cli_args, env_vars = t.apply_state({"model": "sonnet", "access": "permissive"})
         assert cli_args == ["--model", "sonnet"]
-        assert env_vars == {}
+        assert env_vars == self._BASE_ENV
 
     def test_empty_model_not_added(self):
         t = ClaudeTarget()
