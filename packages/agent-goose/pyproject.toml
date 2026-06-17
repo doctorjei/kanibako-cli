@@ -16,5 +16,8 @@ goose = "kanibako.plugins.goose:GooseTarget"
 where = ["src"]
 include = ["kanibako.plugins.goose*"]
 
+[tool.setuptools.package-data]
+"kanibako.plugins.goose" = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -22,6 +22,7 @@ dev = ["pytest>=7.0", "pytest-cov", "mypy", "ruff", "bump2version"]
 where = ["src"]
 
 [tool.setuptools.package-data]
+"kanibako" = ["py.typed"]
 "kanibako.containers" = ["Containerfile.*", "tmux.conf"]
 "kanibako.scripts" = ["*.sh", "kanibako-entry"]
 "kanibako.data" = ["*.yaml"]
@@ -32,6 +33,17 @@ line-length = 99
 
 [tool.ruff.lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]
+
+[tool.mypy]
+# kanibako is a namespace package split across distributions: the core ships
+# kanibako/ (regular package) while each plugin contributes
+# kanibako/plugins/<agent>/ with no __init__.py in kanibako/plugins/. To let
+# `mypy packages/agent-<agent>/src` assign the full dotted module name (and
+# thus resolve sibling imports like kanibako.plugins.claude.target), point
+# mypy at every src base and enable explicit package bases.
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src:$MYPY_CONFIG_FILE_DIR/packages/agent-claude/src:$MYPY_CONFIG_FILE_DIR/packages/agent-goose/src:$MYPY_CONFIG_FILE_DIR/packages/agent-codex/src"
 
 [[tool.mypy.overrides]]
 module = ["yaml"]

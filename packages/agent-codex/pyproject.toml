@@ -16,5 +16,8 @@ codex = "kanibako.plugins.codex:CodexTarget"
 where = ["src"]
 include = ["kanibako.plugins.codex*"]
 
+[tool.setuptools.package-data]
+"kanibako.plugins.codex" = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
