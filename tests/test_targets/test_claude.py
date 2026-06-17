@@ -7,7 +7,19 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-from kanibako.targets.base import AgentInstall, ResourceMapping, ResourceScope, TargetSetting
+from kanibako.targets.base import (
+    AgentInstall,
+    BindKind,
+    BindScope,
+    Cadence,
+    Channel,
+    CredFileSpec,
+    HostSrcOrigin,
+    PluginDescriptor,
+    ResourceMapping,
+    ResourceScope,
+    TargetSetting,
+)
 from kanibako.plugins.claude import ClaudeTarget
 
 
@@ -631,7 +643,7 @@ class TestSettingDescriptors:
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "access" in descriptors
         assert descriptors["access"].default == "permissive"
-        assert descriptors["access"].choices == ("permissive", "default")
+        assert descriptors["access"].choices == ("permissive", "restricted")
 
 
 class TestGenerateCrabConfig:
@@ -708,3 +720,175 @@ class TestWritebackCredentials:
         m_wb.assert_called_once()
         project_creds = m_wb.call_args[0][0]
         assert project_creds == home / ".claude" / ".credentials.json"
+
+
+class TestDescriptor:
+    """The declarative PluginDescriptor (DORMANT this phase — not yet consumed)."""
+
+    def test_is_plugin_descriptor(self):
+        d = ClaudeTarget().descriptor
+        assert isinstance(d, PluginDescriptor)
+
+    def test_command(self):
+        assert ClaudeTarget().descriptor.command == ("claude",)
+
+    def test_bindings(self):
+        d = ClaudeTarget().descriptor
+        bindings = {b.key: b for b in d.bindings}
+        assert set(bindings) == {"share", "launcher", "plugins"}
+
+        share = bindings["share"]
+        assert share.origin == HostSrcOrigin.INSTALL_DIR
+        assert share.box_dest == "/home/agent/.local/share/claude"
+        assert share.kind == BindKind.DIR
+        assert share.scope == BindScope.AGENT_CRITICAL
+        assert share.ro is True
+
+        launcher = bindings["launcher"]
+        assert launcher.origin == HostSrcOrigin.LAUNCHER
+        assert launcher.box_dest == "/home/agent/.local/bin/claude"
+        assert launcher.kind == BindKind.FILE
+        assert launcher.scope == BindScope.AGENT_CRITICAL
+        assert launcher.ro is True
+
+        plugins = bindings["plugins"]
+        assert plugins.origin == HostSrcOrigin.SHARED_STORE
+        assert plugins.box_dest == "/home/agent/.claude/plugins"
+        assert plugins.kind == BindKind.DIR
+        assert plugins.scope == BindScope.AGENT
+        assert plugins.ro is False
+        assert plugins.src_rel == "plugins"
+
+    def test_mode(self):
+        d = ClaudeTarget().descriptor
+        assert d.mode["start"] == ()
+        assert d.mode["continue"] == ("--continue",)
+        assert d.mode["resume"] == ("--resume",)
+
+    def test_operations_exec(self):
+        d = ClaudeTarget().descriptor
+        assert "exec" in d.operations
+        assert d.operations["exec"].fragment == ("-p",)
+
+    def test_safe_bypass(self):
+        sb = ClaudeTarget().descriptor.safe_bypass
+        assert sb is not None
+        assert sb.channel == Channel.FLAG
+        assert sb.flag == ("--dangerously-skip-permissions",)
+        assert sb.setting_key == "access"
+
+    def test_settings_model(self):
+        d = ClaudeTarget().descriptor
+        assert len(d.settings) == 1
+        model = d.settings[0]
+        assert model.setting_key == "model"
+        assert model.channel == Channel.FLAG
+        assert model.flag == ("--model",)
+
+    def test_container_env(self):
+        env = ClaudeTarget().descriptor.container_env
+        assert env["DISABLE_AUTOUPDATER"] == "1"
+        assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+
+    def test_cred_files(self):
+        d = ClaudeTarget().descriptor
+        specs = {s.home_rel: s for s in d.cred_files}
+        assert set(specs) == {".claude/.credentials.json", ".claude.json"}
+
+        creds = specs[".claude/.credentials.json"]
+        assert creds.host_rel == ".claude/.credentials.json"
+        assert creds.cadence == Cadence.SYNC
+        assert creds.mtime_gate is True
+        assert creds.filtered is True
+
+        settings = specs[".claude.json"]
+        assert settings.host_rel == ".claude.json"
+        assert settings.cadence == Cadence.SEED_ONCE
+        assert settings.filtered is True
+
+    def test_host_prep_and_init_dirs(self):
+        d = ClaudeTarget().descriptor
+        assert d.host_prep is True
+        assert d.init_dirs == (".claude",)
+
+
+class TestTransformCred:
+    """transform_cred — PURE content op (engine owns gating)."""
+
+    _SETTINGS_SPEC = CredFileSpec(
+        ".claude.json", ".claude.json", cadence=Cadence.SEED_ONCE, filtered=True,
+    )
+    _CREDS_SPEC = CredFileSpec(
+        ".claude/.credentials.json", ".claude/.credentials.json",
+        cadence=Cadence.SYNC, mtime_gate=True, filtered=True,
+    )
+
+    def test_claude_json_with_source_filtered(self, tmp_path):
+        """.claude.json with a host source -> allowlist-filtered write."""
+        src = tmp_path / ".claude.json"
+        src.write_text(json.dumps({
+            "oauthAccount": "user@example.com",
+            "hasCompletedOnboarding": True,
+            "installMethod": "npm",
+            "dangerousKey": "should-be-removed",
+        }))
+        dst = tmp_path / "home" / ".claude.json"
+
+        ClaudeTarget().transform_cred(self._SETTINGS_SPEC, src, dst, "in")
+
+        result = json.loads(dst.read_text())
+        assert result["oauthAccount"] == "user@example.com"
+        assert result["hasCompletedOnboarding"] is True
+        assert "dangerousKey" not in result
+
+    def test_claude_json_without_source_creates_empty(self, tmp_path):
+        """.claude.json with src=None -> empty file (legacy init_home touch)."""
+        dst = tmp_path / "home" / ".claude.json"
+
+        ClaudeTarget().transform_cred(self._SETTINGS_SPEC, None, dst, "in")
+
+        assert dst.is_file()
+        assert dst.read_text() == ""
+
+    def test_credentials_in_dst_absent_wholesale_copy(self, tmp_path):
+        """.credentials.json "in" with project absent -> wholesale copy."""
+        src = tmp_path / "host" / ".credentials.json"
+        src.parent.mkdir(parents=True)
+        src.write_text(json.dumps({"claudeAiOauth": {"token": "x"}, "extra": True}))
+        dst = tmp_path / "home" / ".claude" / ".credentials.json"
+
+        ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "in")
+
+        data = json.loads(dst.read_text())
+        assert data["claudeAiOauth"]["token"] == "x"
+        assert data["extra"] is True
+
+    def test_credentials_in_dst_present_merges_oauth(self, tmp_path):
+        """.credentials.json "in" with project present -> oauth merged, other keys kept."""
+        src = tmp_path / "host" / ".credentials.json"
+        src.parent.mkdir(parents=True)
+        src.write_text(json.dumps({"claudeAiOauth": {"token": "new"}}))
+        dst = tmp_path / "home" / ".claude" / ".credentials.json"
+        dst.parent.mkdir(parents=True)
+        dst.write_text(json.dumps({
+            "claudeAiOauth": {"token": "old"},
+            "projectOnlyKey": "keep-me",
+        }))
+
+        ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "in")
+
+        data = json.loads(dst.read_text())
+        assert data["claudeAiOauth"]["token"] == "new"
+        assert data["projectOnlyKey"] == "keep-me"
+
+    def test_credentials_out_wholesale_copy(self, tmp_path):
+        """.credentials.json "out" -> wholesale project->host copy."""
+        src = tmp_path / "home" / ".claude" / ".credentials.json"
+        src.parent.mkdir(parents=True)
+        src.write_text(json.dumps({"claudeAiOauth": {"token": "wb"}}))
+        dst = tmp_path / "host" / ".claude" / ".credentials.json"
+
+        ClaudeTarget().transform_cred(self._CREDS_SPEC, src, dst, "out")
+
+        data = json.loads(dst.read_text())
+        assert data["claudeAiOauth"]["token"] == "wb"

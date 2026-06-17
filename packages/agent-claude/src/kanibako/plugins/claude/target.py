@@ -11,10 +11,29 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
-from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
+from kanibako.targets.base import (
+    AgentInstall,
+    BindKind,
+    Binding,
+    BindScope,
+    Cadence,
+    Channel,
+    CredFileSpec,
+    HostSrcOrigin,
+    Mount,
+    Operation,
+    PluginDescriptor,
+    ResourceMapping,
+    ResourceScope,
+    SafeBypass,
+    SettingArg,
+    Target,
+    TargetSetting,
+)
 
 from kanibako.plugins.claude.credentials import (
     filter_settings,
+    merge_oauth_in,
     refresh_host_to_project,
     writeback_project_to_host,
 )
@@ -36,6 +55,39 @@ _UPDATE_TIMEOUT = 300
 # container).  Anchoring confines trust to the user's home dir.
 _LAUNCHER = Path.home() / ".local" / "bin" / "claude"
 _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
+
+
+# Declarative descriptor for the new generalized plugin interface.  DORMANT this
+# phase: nothing consumes Target.descriptor yet (claude still launches via the
+# legacy build_cli_args / binary_mounts / init_home / refresh/writeback path), so
+# this constant is purely additive and changing it has no runtime effect.
+#
+# Notes on a few non-obvious fields:
+#   * mode["resume"] preserves claude's current -R/--resume picker: the legacy
+#     build_cli_args emits ``--resume`` on resume_mode, mirrored here.
+#   * container_env carries BOTH claude env vars: DISABLE_AUTOUPDATER (also set
+#     by apply_state) AND CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC (today injected
+#     by a ``target.name == "claude"`` special-case in core start.py) so a later
+#     wiring phase can drop that core leak.
+_CLAUDE_DESCRIPTOR = PluginDescriptor(
+    command=("claude",),
+    bindings=(
+        Binding("share",    HostSrcOrigin.INSTALL_DIR,  "/home/agent/.local/share/claude", BindKind.DIR,  BindScope.AGENT_CRITICAL, ro=True),
+        Binding("launcher", HostSrcOrigin.LAUNCHER,     "/home/agent/.local/bin/claude",   BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
+        Binding("plugins",  HostSrcOrigin.SHARED_STORE, "/home/agent/.claude/plugins",     BindKind.DIR,  BindScope.AGENT, ro=False, src_rel="plugins"),
+    ),
+    mode={"start": (), "continue": ("--continue",), "resume": ("--resume",)},
+    operations={"exec": Operation(("-p",))},
+    safe_bypass=SafeBypass(Channel.FLAG, flag=("--dangerously-skip-permissions",), setting_key="access"),
+    settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
+    container_env={"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+    cred_files=(
+        CredFileSpec(".claude/.credentials.json", ".claude/.credentials.json", cadence=Cadence.SYNC, mtime_gate=True, filtered=True),
+        CredFileSpec(".claude.json", ".claude.json", cadence=Cadence.SEED_ONCE, filtered=True),
+    ),
+    host_prep=True,
+    init_dirs=(".claude",),
+)
 
 
 def _autoupdater_disabled_env() -> dict[str, str]:
@@ -62,6 +114,57 @@ class ClaudeTarget(Target):
     @property
     def display_name(self) -> str:
         return "Claude Code"
+
+    @property
+    def descriptor(self) -> PluginDescriptor | None:
+        return _CLAUDE_DESCRIPTOR
+
+    def transform_cred(
+        self,
+        spec: CredFileSpec,
+        src: Path | None,
+        dst: Path,
+        direction: str,
+    ) -> None:
+        """Filter/merge a claude credential or config file (PURE content op).
+
+        Called by the credential-sync engine for ``filtered=True`` specs; the
+        engine owns all mtime/existence gating, so this hook performs NO mtime
+        checks.  It mirrors the legacy init_home / refresh / writeback content
+        ops exactly:
+
+        * ``.claude.json`` (SEED_ONCE, "in" only): a host source is allowlist-
+          filtered via :func:`filter_settings`; no source -> an empty file, the
+          legacy ``init_home`` ``.claude.json`` touch behaviour.
+        * ``.credentials.json`` "in": claudeAiOauth merge host->project via
+          :func:`merge_oauth_in` (the gate-free refresh content op).
+        * ``.credentials.json`` "out": wholesale project->host copy (the gate-
+          free writeback content op).
+
+        Defensive throughout: never raises on a malformed file (matching the
+        warn-and-skip helpers).
+        """
+        if spec.home_rel == ".claude.json":
+            # SEED_ONCE config file, seeded host->project once at init.
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if src is not None and Path(src).is_file():
+                filter_settings(src, dst)
+            else:
+                # No host source -> empty .claude.json (legacy init_home touch).
+                dst.touch()
+            return
+
+        if spec.home_rel.endswith(".credentials.json"):
+            if direction == "out":
+                # project->host writeback: wholesale copy (engine gated mtime).
+                if src is not None and Path(src).is_file():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(src), str(dst))
+                return
+            # direction "in": host->project claudeAiOauth merge.
+            if src is not None and Path(src).is_file():
+                merge_oauth_in(src, dst)
+            return
 
     @property
     def default_entrypoint(self) -> str | None:
@@ -419,7 +522,7 @@ class ClaudeTarget(Target):
         """Declare Claude Code runtime settings.
 
         - ``model``: freeform (Claude adds models regularly).
-        - ``access``: constrained to permissive/default.
+        - ``access``: constrained to permissive/restricted.
         """
         return [
             TargetSetting(
@@ -429,9 +532,9 @@ class ClaudeTarget(Target):
             ),
             TargetSetting(
                 key="access",
-                description="Permission mode",
+                description="Permission mode (permissive bypasses, restricted enforces)",
                 default="permissive",
-                choices=("permissive", "default"),
+                choices=("permissive", "restricted"),
             ),
         ]
 
