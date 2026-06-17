@@ -816,6 +816,92 @@ class TestTargetSettings:
         assert meta["mode"] == "default"
 
 
+class TestReadBindingOverrides:
+    """Phase 1h: agent-keyed descriptor binding host-source overrides
+    (crab.<agent>.binding.<key>, layered over crab.default.binding)."""
+
+    def _write(self, path, crab):
+        from kanibako.config import dump_doc
+
+        dump_doc(path, {"crab": crab})
+
+    def test_absent_returns_empty(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        assert read_binding_overrides(None, "claude") == {}
+        assert read_binding_overrides(tmp_path / "nope.yaml", "claude") == {}
+
+    def test_no_crab_or_binding_returns_empty(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        p.write_text("box:\n  foo: bar\n")
+        assert read_binding_overrides(p, "claude") == {}
+        self._write(p, {"claude": {"model": "opus"}})  # crab, but no binding
+        assert read_binding_overrides(p, "claude") == {}
+
+    def test_bare_string_host_src(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(p, {"claude": {"binding": {"plugins": "/custom/plugins"}}})
+        assert read_binding_overrides(p, "claude") == {"plugins": "/custom/plugins"}
+
+    def test_subtable_host_src(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(
+            p, {"claude": {"binding": {"plugins": {"host_src": "/custom/plugins"}}}}
+        )
+        assert read_binding_overrides(p, "claude") == {"plugins": "/custom/plugins"}
+
+    def test_subtable_without_host_src_skipped(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(p, {"claude": {"binding": {"plugins": {"ro": True}}}})
+        assert read_binding_overrides(p, "claude") == {}
+
+    def test_default_tier_applies_to_any_agent(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(p, {"default": {"binding": {"plugins": "/shared/plugins"}}})
+        assert read_binding_overrides(p, "claude") == {"plugins": "/shared/plugins"}
+        assert read_binding_overrides(p, "goose") == {"plugins": "/shared/plugins"}
+
+    def test_agent_specific_wins_over_default(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(
+            p,
+            {
+                "default": {"binding": {"plugins": "/shared/plugins"}},
+                "claude": {"binding": {"plugins": "/claude/plugins"}},
+            },
+        )
+        assert read_binding_overrides(p, "claude") == {"plugins": "/claude/plugins"}
+        # A different agent still gets the default tier.
+        assert read_binding_overrides(p, "goose") == {"plugins": "/shared/plugins"}
+
+    def test_no_bleed_across_agents(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(p, {"claude": {"binding": {"plugins": "/claude/plugins"}}})
+        assert read_binding_overrides(p, "claude") == {"plugins": "/claude/plugins"}
+        assert read_binding_overrides(p, "goose") == {}
+
+    def test_flat_legacy_crab_treated_as_unset(self, tmp_path):
+        from kanibako.config import read_binding_overrides
+
+        p = tmp_path / "project.yaml"
+        self._write(p, {"binding": {"plugins": "/x"}})  # flat under crab — old shape
+        assert read_binding_overrides(p, "claude") == {}
+
+
 class TestReadShares:
     def test_reads_dotted_share_keys(self, tmp_path):
         p = tmp_path / "kanibako.yaml"

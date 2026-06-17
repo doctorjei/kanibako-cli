@@ -645,6 +645,112 @@ class TestDescriptorLaunchPath:
             assert "/home/agent/.local/bin/claude" in dests
 
 
+class TestPluginsBinding:
+    """Phase 1h: the claude ``plugins`` share is delivered via the descriptor's
+    AGENT-scope SHARED_STORE binding from ``global_shared/<agent_id>/plugins``,
+    NOT the legacy ``default_shares`` / ``_build_share_mounts`` path.
+    """
+
+    _DEST = "/home/agent/.claude/plugins"
+
+    def _drive(self, m):
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+        m.target.name = "claude"
+        m.target.descriptor = _CLAUDE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        # Match the real ClaudeTarget after 1h: no legacy plugins default share,
+        # so the only contributor to the plugins dest is the descriptor binding.
+        m.target.default_shares.return_value = {}
+        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.load_crab_config.return_value = m.agent_cfg
+
+    def _launch(self):
+        _run_container(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[],
+        )
+
+    def _plugins_mounts(self, m):
+        mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+        return [
+            mt for mt in mounts
+            if getattr(mt, "destination", None) == self._DEST
+        ]
+
+    def test_mounted_from_global_shared(self, start_mocks, tmp_path):
+        """(a) With a global shared store, plugins mount rw from
+        global_shared/<agent_id>/plugins, and the host source is pre-created."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.proj.global_shared_path = tmp_path
+            self._launch()
+            pm = self._plugins_mounts(m)
+            assert len(pm) == 1
+            assert pm[0].source == tmp_path / "claude" / "plugins"
+            assert pm[0].options == ""  # rw
+            # Pre-created best-effort so podman binds a real, persistent dir.
+            assert (tmp_path / "claude" / "plugins").is_dir()
+
+    def test_no_double_mount(self, start_mocks, tmp_path):
+        """(d) Exactly one mount targets the plugins dest — the legacy
+        default_shares path no longer contributes one."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.proj.global_shared_path = tmp_path
+            self._launch()
+            assert len(self._plugins_mounts(m)) == 1
+
+    def test_no_shared_store_skips_plugins(self, start_mocks):
+        """No global shared store (default) -> the AGENT plugins binding is
+        skipped (preserves the pre-1h no-shared-store behavior)."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.proj.global_shared_path = None
+            self._launch()
+            assert self._plugins_mounts(m) == []
+
+    def test_agent_override_redirects_source(self, start_mocks, tmp_path):
+        """(b) crab.<name>.binding.plugins redirects the host source."""
+        from kanibako.config import dump_doc
+        with start_mocks() as m:
+            self._drive(m)
+            meta = tmp_path / "meta"
+            meta.mkdir()
+            m.proj.metadata_path = meta
+            m.proj.global_shared_path = tmp_path / "shared"
+            override = tmp_path / "custom-plugins"
+            dump_doc(
+                meta / "project.yaml",
+                {"crab": {"claude": {"binding": {"plugins": str(override)}}}},
+            )
+            self._launch()
+            pm = self._plugins_mounts(m)
+            assert len(pm) == 1
+            assert pm[0].source == override
+            assert override.is_dir()  # override source pre-created best-effort
+
+    def test_default_tier_override_applies(self, start_mocks, tmp_path):
+        """(c) crab.default.binding.plugins applies when no agent-specific
+        override is present."""
+        from kanibako.config import dump_doc
+        with start_mocks() as m:
+            self._drive(m)
+            meta = tmp_path / "meta"
+            meta.mkdir()
+            m.proj.metadata_path = meta
+            m.proj.global_shared_path = tmp_path / "shared"
+            override = tmp_path / "default-plugins"
+            dump_doc(
+                meta / "project.yaml",
+                {"crab": {"default": {"binding": {"plugins": str(override)}}}},
+            )
+            self._launch()
+            pm = self._plugins_mounts(m)
+            assert len(pm) == 1
+            assert pm[0].source == override
+
+
 class TestCredsyncRouting:
     """Step 1f: descriptor-bearing targets route their credential lifecycle
     (init / pre-launch refresh / post-session writeback) through the credsync

@@ -313,9 +313,12 @@ class ClaudeTarget(Target):
             state={"model": "opus", "access": "permissive"},
         )
 
-    def default_shares(self) -> dict[str, str]:
-        """Plugins are shared across all Claude crabs (identical binaries/registry)."""
-        return {"crab.path.share_rw.plugins": "plugins:~/.claude/plugins"}
+    # NOTE: no ``default_shares`` override.  Plugins are no longer delivered as a
+    # crab-scoped legacy share; they are an AGENT-scope SHARED_STORE ``Binding``
+    # in ``_CLAUDE_DESCRIPTOR`` (key ``plugins``), mounted by core start.py from
+    # ``global_shared/<agent_id>/plugins`` via ``descriptor_mounts`` (phase 1h).
+    # The base ``Target.default_shares()`` returns ``{}``, so ``_build_share_mounts``
+    # injects no plugins share for claude — preventing a double-mount.
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.
@@ -490,8 +493,10 @@ class ClaudeTarget(Target):
         Seeded: settings.json, CLAUDE.md (copied from workset template at creation).
         Project: everything else (caches, stats, telemetry, session data, tasks).
 
-        Plugins are served separately as a crab-scoped default share
-        (see ``default_shares``), not as a SHARED resource mapping.
+        Plugins are served separately as an AGENT-scope SHARED_STORE binding in
+        the descriptor (key ``plugins``), mounted from
+        ``global_shared/<agent_id>/plugins`` by ``descriptor_mounts`` — not as a
+        SHARED resource mapping or a legacy crab-scoped share.
         """
         return [
             ResourceMapping("cache/", ResourceScope.PROJECT, "General cache"),

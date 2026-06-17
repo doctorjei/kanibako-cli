@@ -1024,12 +1024,47 @@ def _run_container(
                 # launcher) come from the descriptor.  A missing/unresolvable
                 # source raises BindingSourceError -> clean safe-fail (replaces
                 # the legacy "mount source disappeared" check), not a crun crash.
-                # shared_store_root=None makes descriptor_mounts SKIP the AGENT
-                # `plugins` share, which stays on the legacy default_shares /
-                # _build_share_mounts path this phase.
+                #
+                # SHARED_STORE bindings (e.g. claude's AGENT-scope `plugins`
+                # share) resolve under the agent-namespaced global shared store
+                # `global_shared/<agent_id>/<src_rel>`, unifying with SHARED
+                # resources.  When the project has NO global shared store,
+                # shared_store_root stays None and descriptor_mounts SKIPS those
+                # bindings (the no-shared-store case, unchanged).
+                shared_store_root = (
+                    proj.global_shared_path / agent_id
+                    if proj.global_shared_path
+                    else None
+                )
+                # Per-agent binding host-source overrides (crab.<name>.binding.<key>
+                # layered over crab.default.binding) resolved across the config
+                # cascade; an override redirects (and always wins for) a binding's
+                # host source.
+                binding_overrides = _build_binding_overrides(
+                    project_toml=project_toml,
+                    workset_config_path=workset_path,
+                    crab_config_path=crab_cfg_path,
+                    global_config_path=config_file,
+                    agent_name=agent_id,
+                )
+                # The `plugins` binding is rw (ro=False) AGENT scope, and
+                # descriptor_mounts SKIPS a MISSING agent source.  Pre-create the
+                # resolved host source dir best-effort (mirrors the legacy
+                # rw-share behavior) so podman binds a real, PERSISTENT dir
+                # instead of stubbing it.  A bad source must never crash launch.
+                plugins_src = binding_overrides.get("plugins")
+                if not plugins_src and shared_store_root is not None:
+                    plugins_src = str(shared_store_root / "plugins")
+                if plugins_src:
+                    try:
+                        Path(plugins_src).mkdir(parents=True, exist_ok=True)
+                    except OSError:
+                        pass
                 try:
                     binary_mnts = descriptor_mounts(
-                        desc, install, shared_store_root=None,
+                        desc, install,
+                        shared_store_root=shared_store_root,
+                        overrides=binding_overrides,
                     )
                 except BindingSourceError as exc:
                     logger.error("Agent delivery binding unusable: %s", exc)
@@ -1644,6 +1679,42 @@ def _build_effective_state(
             effective[key] = rv.value
 
     return effective
+
+
+def _build_binding_overrides(
+    *,
+    project_toml,
+    workset_config_path,
+    crab_config_path,
+    global_config_path,
+    agent_name: str,
+) -> dict[str, str]:
+    """Resolve descriptor binding host-source overrides across the config cascade.
+
+    Reads each config level's ``crab.<agent_name>.binding`` sub-table (layered
+    over ``crab.default.binding`` within each file) via
+    :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
+    then overlays the levels MOST-SPECIFIC-WINS:
+
+        box (project.yaml) > workset > crab (crabs/<name>.yaml) > system > machine
+
+    Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
+    common case).  A bad/unreadable level contributes nothing (the reader
+    swallows its own errors).
+    """
+    from kanibako.config import machine_config_path, read_binding_overrides
+
+    overrides: dict[str, str] = {}
+    # Least-specific first so each more-specific level's .update() wins.
+    for path in (
+        machine_config_path(),
+        global_config_path,
+        crab_config_path,
+        workset_config_path,
+        project_toml,
+    ):
+        overrides.update(read_binding_overrides(path, agent_name))
+    return overrides
 
 
 def _apply_init_seeds(
