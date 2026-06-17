@@ -152,8 +152,14 @@ class TestDescriptorArgv:
         )
         assert "--continue" not in argv
 
-    def test_resume_mode_emits_resume(self):
-        """-R (resume_mode) emits --resume, not --continue."""
+    def test_resume_mode_falls_through_to_continue(self):
+        """-R (resume_mode) on claude falls through to --continue.
+
+        Resume was intentionally cut from claude's descriptor (user 2026-06-17:
+        nonstandard/unused; reachable from interactive mode), so the mode map is
+        {start, continue}. resolve_mode has no "resume" key to select, and -R does
+        not force a new session, so it resolves to continue-last (--continue).
+        """
         argv = _start_argv(
             self.desc,
             safe_mode=False,
@@ -163,8 +169,8 @@ class TestDescriptorArgv:
             extra_args=[],
             state=DEFAULT_STATE,
         )
-        assert "--resume" in argv
-        assert "--continue" not in argv
+        assert "--continue" in argv
+        assert "--resume" not in argv
 
     def test_extra_resume_skips_continue(self):
         """--resume passed through extra_args also skips --continue."""
@@ -198,11 +204,9 @@ class TestDescriptorArgv:
         [
             (False, False, False, False, []),
             (True, False, False, False, []),
-            (False, True, False, False, []),
             (False, False, True, False, []),
             (False, False, False, True, []),
             (False, False, False, False, ["--resume"]),
-            (True, True, False, False, ["foo"]),
             (False, False, True, False, ["bar", "baz"]),
         ],
     )
@@ -215,6 +219,11 @@ class TestDescriptorArgv:
         descriptor path emits ``[mode?, bypass?, --model, opus, *extra]``.  The
         only difference is flag ORDER (semantically irrelevant to claude's CLI),
         so we compare as multisets.
+
+        NOTE: ``resume_mode=True`` cases are intentionally excluded — resume was
+        cut from claude's descriptor (user 2026-06-17), so the descriptor emits
+        ``--continue`` where legacy emitted ``--resume``.  That deliberate
+        divergence is covered by ``test_resume_mode_falls_through_to_continue``.
         """
         target = ClaudeTarget()
         desc = target.descriptor

@@ -57,14 +57,15 @@ _LAUNCHER = Path.home() / ".local" / "bin" / "claude"
 _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 
 
-# Declarative descriptor for the new generalized plugin interface.  DORMANT this
-# phase: nothing consumes Target.descriptor yet (claude still launches via the
-# legacy build_cli_args / binary_mounts / init_home / refresh/writeback path), so
-# this constant is purely additive and changing it has no runtime effect.
+# Declarative descriptor for the generalized plugin interface.  LIVE: core
+# start.py assembles claude's launch argv / env / delivery mounts / credential
+# lifecycle from this descriptor (the legacy build_cli_args / binary_mounts /
+# init_home / refresh/writeback hooks are bypassed for claude).
 #
 # Notes on a few non-obvious fields:
-#   * mode["resume"] preserves claude's current -R/--resume picker: the legacy
-#     build_cli_args emits ``--resume`` on resume_mode, mirrored here.
+#   * mode is {start, continue} only — resume is intentionally NOT offered (user
+#     decision 2026-06-17: nonstandard, unused; claude resume is reachable from
+#     interactive mode).  -R/--resume therefore falls through to --continue.
 #   * container_env carries BOTH claude env vars: DISABLE_AUTOUPDATER (also set
 #     by apply_state) AND CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC (today injected
 #     by a ``target.name == "claude"`` special-case in core start.py) so a later
@@ -76,7 +77,7 @@ _CLAUDE_DESCRIPTOR = PluginDescriptor(
         Binding("launcher", HostSrcOrigin.LAUNCHER,     "/home/agent/.local/bin/claude",   BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
         Binding("plugins",  HostSrcOrigin.SHARED_STORE, "/home/agent/.claude/plugins",     BindKind.DIR,  BindScope.AGENT, ro=False, src_rel="plugins"),
     ),
-    mode={"start": (), "continue": ("--continue",), "resume": ("--resume",)},
+    mode={"start": (), "continue": ("--continue",)},
     operations={"exec": Operation(("-p",))},
     safe_bypass=SafeBypass(Channel.FLAG, flag=("--dangerously-skip-permissions",), setting_key="access"),
     settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),

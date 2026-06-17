@@ -615,7 +615,9 @@ class TestDescriptorLaunchPath:
             assert "--continue" not in cli_args
             assert "--resume" not in cli_args
 
-    def test_resume_mode_emits_resume(self, start_mocks):
+    def test_resume_mode_falls_through_to_continue(self, start_mocks):
+        # Resume was cut from claude's descriptor (user 2026-06-17); -R has no
+        # "resume" mode key to select, so it falls through to --continue.
         with start_mocks() as m:
             self._drive(m)
             _run_container(
@@ -624,8 +626,8 @@ class TestDescriptorLaunchPath:
                 extra_args=[],
             )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--resume" in cli_args
-            assert "--continue" not in cli_args
+            assert "--continue" in cli_args
+            assert "--resume" not in cli_args
 
     def test_descriptor_delivery_mounts_used_not_binary_mounts(self, start_mocks):
         """Descriptor path builds delivery mounts via descriptor_mounts, not
