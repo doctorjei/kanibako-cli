@@ -280,6 +280,12 @@ def start_mocks():
             target.name = "claude"
             target.default_entrypoint = "claude"
             target.config_dir_name = ".claude"
+            # Default the mock target to the LEGACY path (no descriptor) so the
+            # existing tests that drive build_cli_args / apply_state / binary_mounts
+            # stay valid.  Descriptor-path assembly is covered by
+            # tests/test_targets/test_start_descriptor_assembly.py.  A test that
+            # wants the descriptor path can set target.descriptor explicitly.
+            target.descriptor = None
             install_mock = MagicMock()
             install_mock.binary.exists.return_value = True
             install_mock.install_dir.exists.return_value = True

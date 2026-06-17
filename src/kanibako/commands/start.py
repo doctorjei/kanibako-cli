@@ -24,7 +24,8 @@ from kanibako.paths import (
     load_std_paths,
     resolve_any_project,
 )
-from kanibako.targets import resolve_target
+from kanibako.targets import assembly, resolve_target
+from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 from kanibako.utils import container_name_for, short_hash
 
 
@@ -922,17 +923,48 @@ def _run_container(
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
-            state_args, state_env = target.apply_state(effective_state)
             all_extra = list(crab_cfg.run_args) + list(extra_args)
-            cli_args = target.build_cli_args(
-                safe_mode=safe_mode,
-                resume_mode=resume_mode,
-                new_session=new_session,
-                is_new_project=proj.is_new,
-                extra_args=all_extra,
-            )
-            cli_args.extend(state_args)
+            desc = target.descriptor
+            if desc is not None:
+                # Descriptor path: assemble argv + container-env overlay
+                # declaratively from the plugin descriptor (replaces the legacy
+                # apply_state / build_cli_args hooks for descriptor-bearing
+                # targets).  safe_off = not safe_mode is behavior-preserving;
+                # the persisted-access redemption arrives in a later phase.
+                safe_off = not safe_mode
+                mode_key = assembly.resolve_mode(
+                    resume_mode=resume_mode,
+                    new_session=new_session,
+                    is_new_project=proj.is_new,
+                    extra_args=all_extra,
+                    available_modes=desc.mode.keys(),
+                )
+                cli_args = assembly.assemble_argv(
+                    desc,
+                    mode_key=mode_key,
+                    safe_mode_off=safe_off,
+                    setting_values=effective_state,
+                    op=None,
+                    extra_args=all_extra,
+                )
+                state_env = assembly.assemble_env(
+                    desc,
+                    safe_mode_off=safe_off,
+                    setting_values=effective_state,
+                )
+            else:
+                # Legacy path (unchanged): apply_state + build_cli_args.
+                state_args, state_env = target.apply_state(effective_state)
+                cli_args = target.build_cli_args(
+                    safe_mode=safe_mode,
+                    resume_mode=resume_mode,
+                    new_session=new_session,
+                    is_new_project=proj.is_new,
+                    extra_args=all_extra,
+                )
+                cli_args.extend(state_args)
         else:
+            desc = None
             state_env = {}
             cli_args = list(extra_args)
 
@@ -944,38 +976,64 @@ def _run_container(
             # non-executable file fails fast with an actionable message before
             # anything execs it.  Here we only guard against missing mount
             # sources.
-            binary_mnts = target.binary_mounts(install)
-            if not binary_mnts:
-                print(
-                    f"Error: {target.display_name} binary detected at "
-                    f"{install.binary} but mount sources are missing.\n"
-                    f"  binary:      {install.binary} "
-                    f"({'exists' if install.binary.exists() else 'MISSING'})\n"
-                    f"  install_dir: {install.install_dir} "
-                    f"({'exists' if install.install_dir.exists() else 'MISSING'})\n"
-                    f"The container would launch without the agent binary.",
-                    file=sys.stderr,
-                )
-                return 1
-            # Safe-fail: every agent bind source must still exist at mount
-            # time.  If the host churned (prune/repoint mid-flight) between
-            # detection and here, fail with a clean, actionable kanibako error
-            # instead of letting crun crash on a dangling bind source.
-            missing = [m for m in binary_mnts if not m.source.exists()]
-            if missing:
-                detail = "\n".join(
-                    f"  {m.source} → {m.destination}" for m in missing
-                )
-                print(
-                    f"Error: {target.display_name} mount source disappeared "
-                    f"before launch:\n{detail}\n"
-                    f"The host agent install changed while starting (e.g. an "
-                    f"update pruned a version). Retry the launch.\n"
-                    f"Run 'kanibako system diagnose' for a full health check.",
-                    file=sys.stderr,
-                )
-                return 1
-            extra_mounts.extend(binary_mnts)
+            if desc is not None:
+                # Descriptor path: the AGENT_CRITICAL delivery binds (binary +
+                # launcher) come from the descriptor.  A missing/unresolvable
+                # source raises BindingSourceError -> clean safe-fail (replaces
+                # the legacy "mount source disappeared" check), not a crun crash.
+                # shared_store_root=None makes descriptor_mounts SKIP the AGENT
+                # `plugins` share, which stays on the legacy default_shares /
+                # _build_share_mounts path this phase.
+                try:
+                    binary_mnts = descriptor_mounts(
+                        desc, install, shared_store_root=None,
+                    )
+                except BindingSourceError as exc:
+                    logger.error("Agent delivery binding unusable: %s", exc)
+                    print(
+                        f"Error: {target.display_name} mount source "
+                        f"disappeared before launch: {exc}\n"
+                        f"The host agent install changed while starting (e.g. "
+                        f"an update pruned a version). Retry the launch.\n"
+                        f"Run 'kanibako system diagnose' for a full health "
+                        f"check.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                extra_mounts.extend(binary_mnts)
+            else:
+                binary_mnts = target.binary_mounts(install)
+                if not binary_mnts:
+                    print(
+                        f"Error: {target.display_name} binary detected at "
+                        f"{install.binary} but mount sources are missing.\n"
+                        f"  binary:      {install.binary} "
+                        f"({'exists' if install.binary.exists() else 'MISSING'})\n"
+                        f"  install_dir: {install.install_dir} "
+                        f"({'exists' if install.install_dir.exists() else 'MISSING'})\n"
+                        f"The container would launch without the agent binary.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                # Safe-fail: every agent bind source must still exist at mount
+                # time.  If the host churned (prune/repoint mid-flight) between
+                # detection and here, fail with a clean, actionable kanibako
+                # error instead of letting crun crash on a dangling bind source.
+                missing = [m for m in binary_mnts if not m.source.exists()]
+                if missing:
+                    detail = "\n".join(
+                        f"  {m.source} → {m.destination}" for m in missing
+                    )
+                    print(
+                        f"Error: {target.display_name} mount source disappeared "
+                        f"before launch:\n{detail}\n"
+                        f"The host agent install changed while starting (e.g. an "
+                        f"update pruned a version). Retry the launch.\n"
+                        f"Run 'kanibako system diagnose' for a full health check.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                extra_mounts.extend(binary_mnts)
 
         # kanibako CLI bind-mount (package + entry script)
         kanibako_mnts = _kanibako_mounts()
@@ -1077,11 +1135,10 @@ def _run_container(
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
         container_env.update(_parse_cli_env(cli_env))
 
-        # Disable Claude Code telemetry inside containers.
-        if target and target.name == "claude":
-            container_env.setdefault(
-                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1",
-            )
+        # NOTE: Claude Code telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+        # and the auto-updater disable (DISABLE_AUTOUPDATER) are now carried by
+        # claude's descriptor.container_env, merged via state_env above.  The
+        # former core `target.name == "claude"` special-case has been removed.
 
         # Inject instance identity for peer communication.
         if proj.name:
