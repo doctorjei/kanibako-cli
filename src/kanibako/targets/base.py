@@ -151,6 +151,7 @@ class SafeBypass:
     channel: Channel
     flag: tuple[str, ...] = ()        # emitted when effective safe-mode is OFF (FLAG channel)
     env_var: str = ""                 # ENV form (e.g. goose GOOSE_MODE -> value "auto")
+    env_value: str = ""               # value to set for env_var when ENV channel + effective safe-mode is OFF (e.g. goose "auto")
     setting_key: str = ""
 
 
