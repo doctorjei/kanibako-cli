@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version stamping. Publishing uses `--skip-existing` (twine) / `skip-existing:
   true` (PyPI publish action) so a re-run whose independent version is unchanged
   is skipped rather than failing the upload.
+- A `workflow_dispatch` `agent` input now lets `kanibako-agent-goose` /
+  `kanibako-agent-codex` be published individually on demand, so either can ship
+  at its static version without releasing the whole 1.5.x train.
 
 ## [1.5.1] - 2026-06-16
 
