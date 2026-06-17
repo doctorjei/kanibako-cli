@@ -142,7 +142,18 @@ class SettingArg:
 
 @dataclass(frozen=True)
 class SafeBypass:
-    """The safe-mode TOGGLE (emitted when effective safe-mode is OFF).
+    """The safe-mode TOGGLE, with SYMMETRIC emissions for both polarities.
+
+    Two independent emissions, selected by the resolved effective safe-mode:
+
+    * safe-mode OFF (bypass ON, ``-A``/autonomous): emit the UNSAFE form —
+      ``flag`` (FLAG channel) or ``env_var=env_value`` (ENV channel).
+    * safe-mode ON (secure, ``-S``): emit the restrictive/SECURE form —
+      ``secure_flag`` (FLAG channel) or ``env_var=secure_env_value`` (ENV
+      channel).  Empty secure fields emit NOTHING on safe-ON, which is correct
+      for an agent whose UNSET default is already safe (claude/codex); an agent
+      whose unset default is UNSAFE (goose: ``GOOSE_MODE`` defaults to ``auto``)
+      MUST set the secure field so ``-S`` actually restricts it.
 
     Special vs SettingArg: it's driven by the resolved effective safe-mode, not a plain setting value.
     *setting_key* is an OPTIONAL persisted default (claude "access"); empty = per-launch -A/-S only (goose/codex).
@@ -152,6 +163,8 @@ class SafeBypass:
     flag: tuple[str, ...] = ()        # emitted when effective safe-mode is OFF (FLAG channel)
     env_var: str = ""                 # ENV form (e.g. goose GOOSE_MODE -> value "auto")
     env_value: str = ""               # value to set for env_var when ENV channel + effective safe-mode is OFF (e.g. goose "auto")
+    secure_env_value: str = ""        # value to set for env_var when ENV channel + effective safe-mode is ON (e.g. goose "approve"); empty = emit nothing on safe-ON
+    secure_flag: tuple[str, ...] = ()  # FLAG form emitted when effective safe-mode is ON; empty = emit nothing on safe-ON (claude/codex default-safe)
     setting_key: str = ""
 
 

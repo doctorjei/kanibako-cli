@@ -373,6 +373,34 @@ def test_argv_goose_op_fragment() -> None:
     assert argv == ["run", "-t", "do this"]
 
 
+def test_argv_flag_secure_emission_on_safe_on() -> None:
+    # A FLAG safe-bypass with a secure_flag emits it on safe-ON (symmetric to
+    # the OFF flag). Completes the model for a future FLAG agent whose default
+    # is unsafe; no current consumer ships secure_flag.
+    d = PluginDescriptor(
+        command=("agent",),
+        bindings=(),
+        mode={"start": ()},
+        safe_bypass=SafeBypass(
+            channel=Channel.FLAG,
+            flag=("--yolo",),
+            secure_flag=("--ask-every-time",),
+        ),
+    )
+    off = assemble_argv(d, mode_key="start", safe_mode_off=True, setting_values={}, extra_args=[])
+    on = assemble_argv(d, mode_key="start", safe_mode_off=False, setting_values={}, extra_args=[])
+    assert off == ["--yolo"]
+    assert on == ["--ask-every-time"]
+
+
+def test_argv_claude_safe_on_emits_nothing_when_secure_flag_empty() -> None:
+    # claude leaves secure_flag empty -> nothing emitted on -S (default-safe).
+    d = _claude_descriptor()
+    on = assemble_argv(d, mode_key="continue", safe_mode_off=False, setting_values={}, extra_args=[])
+    assert on == ["--continue"]
+    assert "--dangerously-skip-permissions" not in on
+
+
 def test_argv_command_tail_included_when_multi_element() -> None:
     d = PluginDescriptor(
         command=("npx", "claude"),
@@ -432,6 +460,36 @@ def test_env_goose_model_absent_when_value_falsy() -> None:
     d = _goose_descriptor()
     env = assemble_env(d, safe_mode_off=False, setting_values={"model": ""})
     assert "GOOSE_MODEL" not in env
+
+
+def test_env_goose_secure_emits_goose_mode_approve_on_safe_on() -> None:
+    # The A1 fix: an ENV safe-bypass with secure_env_value emits the restrictive
+    # value on safe-ON (goose GOOSE_MODE=approve), because goose's unset default
+    # is itself "auto" (unsafe). Safe-OFF still emits the OFF value ("auto").
+    d = PluginDescriptor(
+        command=("goose",),
+        bindings=(),
+        mode={"start": ("session",)},
+        safe_bypass=SafeBypass(
+            channel=Channel.ENV,
+            env_var="GOOSE_MODE",
+            env_value="auto",
+            secure_env_value="approve",
+        ),
+    )
+    env_off = assemble_env(d, safe_mode_off=True, setting_values={})
+    env_on = assemble_env(d, safe_mode_off=False, setting_values={})
+    assert env_off["GOOSE_MODE"] == "auto"
+    assert env_on["GOOSE_MODE"] == "approve"
+
+
+def test_env_secure_emits_nothing_when_secure_env_value_empty() -> None:
+    # claude/codex shape: ENV safe-bypass (or none) with no secure_env_value ->
+    # nothing emitted on safe-ON. The goose fixture here has empty secure value.
+    d = _goose_descriptor()  # env_value="auto", secure_env_value="" (default)
+    env_on = assemble_env(d, safe_mode_off=False, setting_values={})
+    assert "GOOSE_MODE" not in env_on
+    assert env_on == {"GOOSE_DISABLE_KEYRING": "1"}
 
 
 def test_env_safe_bypass_uses_default_auto_when_env_value_empty() -> None:
