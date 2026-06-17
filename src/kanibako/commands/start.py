@@ -193,6 +193,7 @@ def run_start(args: argparse.Namespace) -> int:
     # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
     # -S means secure (safe_mode=True). Neither means autonomous (default).
     safe_mode = secure
+    autonomous = getattr(args, "autonomous", False)
 
     # Check for agent before launching container.
     # If no agent is detected, show a helpful message instead of silently
@@ -216,6 +217,7 @@ def run_start(args: argparse.Namespace) -> int:
         image_override=image_override,
         new_session=new_session,
         safe_mode=safe_mode,
+        autonomous=autonomous,
         resume_mode=resume_session,
         extra_args=agent_args,
         no_helpers=no_helpers,
@@ -269,6 +271,7 @@ def run_shell(args: argparse.Namespace) -> int:
         image_override=image_override,
         new_session=False,
         safe_mode=False,
+        autonomous=False,
         resume_mode=False,
         extra_args=shell_args,
         no_helpers=no_helpers,
@@ -544,6 +547,7 @@ def _run_container(
     image_override: str | None,
     new_session: bool,
     safe_mode: bool,
+    autonomous: bool = False,
     resume_mode: bool,
     extra_args: list[str],
     no_helpers: bool = False,
@@ -929,9 +933,25 @@ def _run_container(
                 # Descriptor path: assemble argv + container-env overlay
                 # declaratively from the plugin descriptor (replaces the legacy
                 # apply_state / build_cli_args hooks for descriptor-bearing
-                # targets).  safe_off = not safe_mode is behavior-preserving;
-                # the persisted-access redemption arrives in a later phase.
-                safe_off = not safe_mode
+                # targets).
+                #
+                # safe_off redeems the persisted `access` setting (claude:
+                # safe_bypass.setting_key="access", default "permissive") while
+                # the per-launch -A/-S flags still win (safe_mode IS the -S
+                # `secure` bool; autonomous IS -A).  An agent whose descriptor
+                # declares no safe_bypass.setting_key (goose/codex) falls back to
+                # default-autonomous via effective_safe_mode_off.
+                sb = desc.safe_bypass
+                persisted_access = (
+                    effective_state.get(sb.setting_key, "")
+                    if sb is not None and sb.setting_key
+                    else ""
+                )
+                safe_off = assembly.effective_safe_mode_off(
+                    secure=safe_mode,
+                    autonomous=autonomous,
+                    persisted_access=persisted_access,
+                )
                 mode_key = assembly.resolve_mode(
                     resume_mode=resume_mode,
                     new_session=new_session,
@@ -1363,6 +1383,7 @@ def _run_container(
                         image_override=image_override,
                         new_session=True,
                         safe_mode=safe_mode,
+                        autonomous=autonomous,
                         resume_mode=False,
                         extra_args=extra_args,
                         no_helpers=no_helpers,
@@ -1429,6 +1450,7 @@ def _run_container(
                             image_override=image_override,
                             new_session=True,
                             safe_mode=safe_mode,
+                            autonomous=autonomous,
                             resume_mode=False,
                             extra_args=extra_args,
                             no_helpers=no_helpers,
