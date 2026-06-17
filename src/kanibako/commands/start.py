@@ -24,7 +24,7 @@ from kanibako.paths import (
     load_std_paths,
     resolve_any_project,
 )
-from kanibako.targets import assembly, resolve_target
+from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 from kanibako.utils import container_name_for, short_hash
 
@@ -724,12 +724,25 @@ def _run_container(
     logger.debug("Image: %s", image)
     logger.debug("Container: %s", container_name)
 
+    # Plugin descriptor (None for legacy/no_agent targets).  Hoisted here so the
+    # credential lifecycle sites below (init / refresh / writeback) and the
+    # launch-assembly block all branch off a single value: descriptor-bearing
+    # targets route their cred lifecycle through the credsync engine, legacy
+    # targets keep the per-plugin init_home/refresh/writeback hooks.
+    desc = target.descriptor if target else None
+
     # Persistent mode: reattach if already running, clean up stale containers
     if persistent:
         if runtime.is_running(container_name):
             # Refresh credentials before reattaching
             if target and proj.group_auth:
-                target.refresh_credentials(proj.shell_path)
+                if desc is not None:
+                    credsync.refresh_cred_files(
+                        desc, target, host_home=Path.home(),
+                        project_home=proj.shell_path, group_auth=proj.group_auth,
+                    )
+                else:
+                    target.refresh_credentials(proj.shell_path)
             return runtime.exec(
                 container_name, _bootstrap_attach(bootstrap_program)
             )
@@ -809,7 +822,13 @@ def _run_container(
             # Ensure the agent-specific template variant directory exists.
             (templates_base / target.name / crab_cfg.shell).mkdir(parents=True, exist_ok=True)
             apply_shell_template(proj.shell_path, templates_base, target.name, crab_cfg.shell)
-            target.init_home(proj.shell_path, group_auth=proj.group_auth)
+            if desc is not None:
+                credsync.seed_cred_files(
+                    desc, target, host_home=Path.home(),
+                    project_home=proj.shell_path, group_auth=proj.group_auth,
+                )
+            else:
+                target.init_home(proj.shell_path, group_auth=proj.group_auth)
 
             # Merge layered instruction files (base + template + user).
             instr_files = target.instruction_files()
@@ -903,7 +922,13 @@ def _run_container(
 
         # Credential refresh via target (skip for distinct auth)
         if target and proj.group_auth:
-            target.refresh_credentials(proj.shell_path)
+            if desc is not None:
+                credsync.refresh_cred_files(
+                    desc, target, host_home=Path.home(),
+                    project_home=proj.shell_path, group_auth=proj.group_auth,
+                )
+            else:
+                target.refresh_credentials(proj.shell_path)
 
         # tweakcc: patch agent binary if enabled
         tweakcc_entry = None
@@ -928,7 +953,6 @@ def _run_container(
             if model_override:
                 effective_state["model"] = model_override
             all_extra = list(crab_cfg.run_args) + list(extra_args)
-            desc = target.descriptor
             if desc is not None:
                 # Descriptor path: assemble argv + container-env overlay
                 # declaratively from the plugin descriptor (replaces the legacy
@@ -984,7 +1008,6 @@ def _run_container(
                 )
                 cli_args.extend(state_args)
         else:
-            desc = None
             state_env = {}
             cli_args = list(extra_args)
 
@@ -1465,7 +1488,13 @@ def _run_container(
         else:
             # Write back refreshed credentials via target (skip for distinct auth)
             if target and proj.group_auth:
-                target.writeback_credentials(proj.shell_path)
+                if desc is not None:
+                    credsync.writeback_cred_files(
+                        desc, target, host_home=Path.home(),
+                        project_home=proj.shell_path, group_auth=proj.group_auth,
+                    )
+                else:
+                    target.writeback_credentials(proj.shell_path)
 
             # Hint when agent exits non-zero and --continue/--resume was used
             if rc != 0 and is_agent_mode and not new_session:

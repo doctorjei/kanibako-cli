@@ -643,6 +643,180 @@ class TestDescriptorLaunchPath:
             assert "/home/agent/.local/bin/claude" in dests
 
 
+class TestCredsyncRouting:
+    """Step 1f: descriptor-bearing targets route their credential lifecycle
+    (init / pre-launch refresh / post-session writeback) through the credsync
+    engine; non-descriptor (legacy) targets keep the per-plugin
+    init_home / refresh_credentials / writeback_credentials hooks.
+    """
+
+    def _drive_descriptor(self, m):
+        """Configure the mock target onto claude's REAL descriptor path."""
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+        m.target.name = "claude"
+        m.target.descriptor = _CLAUDE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.load_crab_config.return_value = m.agent_cfg
+
+    # ---- descriptor path: credsync engine is used, legacy hooks bypassed ----
+
+    def test_descriptor_init_uses_seed_cred_files(self, start_mocks):
+        """New descriptor-bearing project: seed_cred_files invoked with the
+        descriptor/target/host_home/project_home/group_auth, and the legacy
+        init_home hook is NOT called."""
+        with start_mocks() as m:
+            self._drive_descriptor(m)
+            m.proj.is_new = True
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m_credsync.seed_cred_files.assert_called_once()
+            call = m_credsync.seed_cred_files.call_args
+            assert call.args[0] is m.target.descriptor
+            assert call.args[1] is m.target
+            assert call.kwargs["project_home"] is m.proj.shell_path
+            assert call.kwargs["group_auth"] is True
+            from pathlib import Path
+            assert call.kwargs["host_home"] == Path.home()
+            m.target.init_home.assert_not_called()
+
+    def test_descriptor_refresh_uses_refresh_cred_files(self, start_mocks):
+        """Pre-launch (shared auth): refresh_cred_files invoked, legacy
+        refresh_credentials NOT called."""
+        with start_mocks() as m:
+            self._drive_descriptor(m)
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m_credsync.refresh_cred_files.assert_called_once()
+            call = m_credsync.refresh_cred_files.call_args
+            assert call.args[0] is m.target.descriptor
+            assert call.kwargs["project_home"] is m.proj.shell_path
+            assert call.kwargs["group_auth"] is True
+            m.target.refresh_credentials.assert_not_called()
+
+    def test_descriptor_writeback_uses_writeback_cred_files(self, start_mocks):
+        """Post-session (non-persistent, shared auth): writeback_cred_files
+        invoked, legacy writeback_credentials NOT called."""
+        with start_mocks() as m:
+            self._drive_descriptor(m)
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=False,
+                )
+            assert rc == 0
+            m_credsync.writeback_cred_files.assert_called_once()
+            call = m_credsync.writeback_cred_files.call_args
+            assert call.args[0] is m.target.descriptor
+            assert call.kwargs["project_home"] is m.proj.shell_path
+            assert call.kwargs["group_auth"] is True
+            m.target.writeback_credentials.assert_not_called()
+
+    def test_descriptor_reattach_refresh_uses_refresh_cred_files(self, start_mocks):
+        """Persistent reattach (container already running): the short-circuit
+        refresh routes through refresh_cred_files, not refresh_credentials."""
+        with start_mocks() as m:
+            self._drive_descriptor(m)
+            m.proj.group_auth = True
+            m.runtime.is_running.return_value = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True,
+                )
+            assert rc == 0
+            m_credsync.refresh_cred_files.assert_called_once()
+            m.target.refresh_credentials.assert_not_called()
+
+    def test_descriptor_distinct_auth_still_seeds_but_skips_sync(self, start_mocks):
+        """group_auth=False: init still seeds (the seed transform creates the
+        dir / empty config), but refresh/writeback are gated out by the guard
+        (credsync.refresh/writeback never reached)."""
+        with start_mocks() as m:
+            self._drive_descriptor(m)
+            m.proj.is_new = True
+            m.proj.group_auth = False
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            # seed runs on init regardless of group_auth (it internally decides
+            # what to copy); but the group_auth guard skips refresh/writeback.
+            m_credsync.seed_cred_files.assert_called_once()
+            m_credsync.refresh_cred_files.assert_not_called()
+            m_credsync.writeback_cred_files.assert_not_called()
+            m.target.init_home.assert_not_called()
+
+    # ---- legacy path: per-plugin hooks still used, credsync untouched -------
+
+    def test_legacy_init_uses_init_home(self, start_mocks):
+        """Non-descriptor target (descriptor=None, the conftest default): init
+        calls the legacy init_home hook, credsync.seed_cred_files NOT called."""
+        with start_mocks() as m:
+            m.target.descriptor = None
+            m.proj.is_new = True
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m.target.init_home.assert_called_once()
+            m_credsync.seed_cred_files.assert_not_called()
+
+    def test_legacy_refresh_uses_refresh_credentials(self, start_mocks):
+        """Non-descriptor target: pre-launch refresh calls the legacy
+        refresh_credentials hook, credsync.refresh_cred_files NOT called."""
+        with start_mocks() as m:
+            m.target.descriptor = None
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m.target.refresh_credentials.assert_called_once()
+            m_credsync.refresh_cred_files.assert_not_called()
+
+    def test_legacy_writeback_uses_writeback_credentials(self, start_mocks):
+        """Non-descriptor target: post-session writeback calls the legacy
+        writeback_credentials hook, credsync.writeback_cred_files NOT called."""
+        with start_mocks() as m:
+            m.target.descriptor = None
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=False,
+                )
+            assert rc == 0
+            m.target.writeback_credentials.assert_called_once()
+            m_credsync.writeback_cred_files.assert_not_called()
+
+
 class TestCrabConfigIntegration:
     """Verify agent config integration in _run_container."""
 
