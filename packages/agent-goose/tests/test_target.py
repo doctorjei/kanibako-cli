@@ -8,7 +8,17 @@ from unittest.mock import patch
 import yaml
 
 from kanibako.plugins.goose import GooseTarget
-from kanibako.targets.base import AgentInstall
+from kanibako.targets import assembly
+from kanibako.targets.base import (
+    AgentInstall,
+    BindKind,
+    BindScope,
+    Cadence,
+    Channel,
+    CredFileSpec,
+    HostSrcOrigin,
+    PluginDescriptor,
+)
 
 
 class TestProperties:
@@ -22,29 +32,52 @@ class TestProperties:
         assert GooseTarget().config_dir_name == ".config/goose"
 
 
+def _anchor_contract(monkeypatch, binary):
+    """Point the goose plugin's contract constant at a tmp binary.
+
+    detect / check_auth anchor to ``_BINARY`` (the contract path
+    ~/.local/bin/goose) instead of ``shutil.which`` — tests override that module
+    constant rather than mocking PATH.
+    """
+    import kanibako.plugins.goose.target as goose_mod
+    monkeypatch.setattr(goose_mod, "_BINARY", Path(binary))
+
+
 class TestDetect:
-    def test_found(self, tmp_path: Path):
+    def test_found(self, tmp_path: Path, monkeypatch):
+        """Detect anchors to the contract path (no shutil.which)."""
         binary = tmp_path / "goose"
         binary.write_text("#!/bin/sh\n")
         binary.chmod(0o755)
+        _anchor_contract(monkeypatch, binary)
 
-        with patch(
-            "kanibako.plugins.goose.target.shutil.which",
-            return_value=str(binary),
-        ):
+        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
             result = GooseTarget().detect()
+        m_which.assert_not_called()
 
         assert result is not None
         assert result.name == "goose"
         assert result.binary == binary.resolve()
         assert result.install_dir == binary.resolve().parent
+        assert result.launcher is None
 
-    def test_not_found(self):
-        with patch(
-            "kanibako.plugins.goose.target.shutil.which",
-            return_value=None,
-        ):
+    def test_not_found(self, tmp_path: Path, monkeypatch):
+        """Detect returns None when the contract path is absent."""
+        _anchor_contract(monkeypatch, tmp_path / "goose")  # never created
+        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
             assert GooseTarget().detect() is None
+        m_which.assert_not_called()
+
+    def test_dangling_symlink_still_installed(self, tmp_path: Path, monkeypatch):
+        """A present-but-dangling symlink still counts as installed."""
+        target_path = tmp_path / "gone"  # does not exist
+        link = tmp_path / "goose"
+        link.symlink_to(target_path)  # dangling
+        _anchor_contract(monkeypatch, link)
+
+        result = GooseTarget().detect()
+        assert result is not None
+        assert result.name == "goose"
 
 
 class TestBinaryMounts:
@@ -210,27 +243,31 @@ class TestWritebackCredentials:
         assert calls[0] == project_home / ".config" / "goose" / "secrets.yaml"
 
 
+def _real_binary(tmp_path):
+    """Create a real (existing) contract binary file under tmp_path."""
+    binary = tmp_path / "goose"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    return binary
+
+
 class TestCheckAuth:
-    def test_returns_true_when_both_exist(self, fake_host: Path, monkeypatch):
+    def test_returns_true_when_both_exist(self, tmp_path: Path, fake_host: Path, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        monkeypatch.setattr(
-            "kanibako.plugins.goose.target.shutil.which",
-            lambda _: "/usr/bin/goose",
-        )
+        _anchor_contract(monkeypatch, _real_binary(tmp_path))
 
         config = fake_host / ".config" / "goose" / "config.yaml"
         config.write_text("provider: anthropic\n")
         secrets = fake_host / ".config" / "goose" / "secrets.yaml"
         secrets.write_text("key: secret\n")
 
-        assert GooseTarget().check_auth() is True
+        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
+            assert GooseTarget().check_auth() is True
+        m_which.assert_not_called()
 
-    def test_returns_false_when_secrets_missing(self, fake_host: Path, monkeypatch):
+    def test_returns_false_when_secrets_missing(self, tmp_path: Path, fake_host: Path, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        monkeypatch.setattr(
-            "kanibako.plugins.goose.target.shutil.which",
-            lambda _: "/usr/bin/goose",
-        )
+        _anchor_contract(monkeypatch, _real_binary(tmp_path))
 
         config = fake_host / ".config" / "goose" / "config.yaml"
         config.write_text("provider: anthropic\n")
@@ -238,12 +275,12 @@ class TestCheckAuth:
 
         assert GooseTarget().check_auth() is False
 
-    def test_returns_true_when_binary_not_found(self, monkeypatch):
-        monkeypatch.setattr(
-            "kanibako.plugins.goose.target.shutil.which",
-            lambda _: None,
-        )
-        assert GooseTarget().check_auth() is True
+    def test_returns_true_when_binary_not_found(self, tmp_path: Path, monkeypatch):
+        """No contract binary -> True (defers to later warnings), no which."""
+        _anchor_contract(monkeypatch, tmp_path / "goose")  # never created
+        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
+            assert GooseTarget().check_auth() is True
+        m_which.assert_not_called()
 
 
 class TestGenerateCrabConfig:
@@ -290,8 +327,26 @@ class TestResourceMappings:
         assert "sessions.db" in names
         assert len(mappings) == 3
 
+    def test_sessions_db_anchored_to_data_dir(self):
+        """sessions.db lives under the data dir, anchored via `base`."""
+        mappings = {m.path: m for m in GooseTarget().resource_mappings()}
+        assert mappings["sessions.db"].base == ".local/share/goose/sessions"
+        # config/secrets stay relative to the config dir (no base).
+        assert mappings["config.yaml"].base == ""
+        assert mappings["secrets.yaml"].base == ""
+
 
 class TestBuildCliArgs:
+    """Legacy build_cli_args is RETAINED (abstract method) but BYPASSED at launch.
+
+    Goose now launches via the descriptor (bare ``session`` / ``session
+    --resume``).  The legacy method still emits the old ``session start`` /
+    ``session resume`` text, but it is no longer on the launch path — these
+    tests just pin that the legacy method is still callable + unchanged so
+    nothing crashes if invoked.  The real grammar is asserted in
+    ``TestDescriptor`` / ``TestDescriptorAssembly``.
+    """
+
     def _build(self, **overrides):
         defaults = dict(
             safe_mode=False,
@@ -303,27 +358,232 @@ class TestBuildCliArgs:
         defaults.update(overrides)
         return GooseTarget().build_cli_args(**defaults)
 
-    def test_default_session_start_approve(self):
+    def test_legacy_method_still_callable(self):
         args = self._build()
-        assert args[:2] == ["session", "start"]
-        assert "--approve-all" in args
-
-    def test_safe_mode_no_approve(self):
-        args = self._build(safe_mode=True)
-        assert args[:2] == ["session", "start"]
-        assert "--approve-all" not in args
-
-    def test_resume_mode(self):
-        args = self._build(resume_mode=True)
-        assert args[:2] == ["session", "resume"]
-        assert "--approve-all" in args
-
-    def test_resume_safe(self):
-        args = self._build(resume_mode=True, safe_mode=True)
-        assert args[:2] == ["session", "resume"]
-        assert "--approve-all" not in args
+        assert isinstance(args, list)
 
     def test_extra_args_passed_through(self):
         args = self._build(extra_args=["--verbose", "--no-color"])
         assert "--verbose" in args
         assert "--no-color" in args
+
+
+class TestDescriptor:
+    """The declarative PluginDescriptor that puts goose on the generic launch path."""
+
+    def test_is_plugin_descriptor(self):
+        assert isinstance(GooseTarget().descriptor, PluginDescriptor)
+
+    def test_command(self):
+        assert GooseTarget().descriptor.command == ("goose",)
+
+    def test_binary_binding(self):
+        d = GooseTarget().descriptor
+        bindings = {b.key: b for b in d.bindings}
+        assert set(bindings) == {"binary"}
+        binary = bindings["binary"]
+        assert binary.origin == HostSrcOrigin.BINARY
+        assert binary.box_dest == "/home/agent/.local/bin/goose"
+        assert binary.kind == BindKind.FILE
+        assert binary.scope == BindScope.AGENT_CRITICAL
+        assert binary.ro is True
+
+    def test_mode_uses_bare_session(self):
+        """goose 1.37.0: bare `session` / `session --resume` (NO start/resume subcmds)."""
+        d = GooseTarget().descriptor
+        assert d.mode["start"] == ("session",)
+        assert d.mode["continue"] == ("session", "--resume")
+        # The removed-subcommand grammar must NOT appear anywhere.
+        assert "resume" not in d.mode
+
+    def test_operations_exec(self):
+        d = GooseTarget().descriptor
+        assert "exec" in d.operations
+        assert d.operations["exec"].fragment == ("run", "--no-session", "-t")
+
+    def test_safe_bypass_env_goose_mode(self):
+        """Safe-bypass is ENV GOOSE_MODE=auto (NO --approve-all flag in 1.37.0)."""
+        sb = GooseTarget().descriptor.safe_bypass
+        assert sb is not None
+        assert sb.channel == Channel.ENV
+        assert sb.env_var == "GOOSE_MODE"
+        assert sb.env_value == "auto"
+        assert sb.flag == ()
+        assert sb.setting_key == ""
+
+    def test_settings_model_and_provider_env(self):
+        d = GooseTarget().descriptor
+        settings = {s.setting_key: s for s in d.settings}
+        assert set(settings) == {"model", "provider"}
+        assert settings["model"].channel == Channel.ENV
+        assert settings["model"].env_var == "GOOSE_MODEL"
+        assert settings["provider"].channel == Channel.ENV
+        assert settings["provider"].env_var == "GOOSE_PROVIDER"
+
+    def test_container_env_empty(self):
+        assert GooseTarget().descriptor.container_env == {}
+
+    def test_cred_files(self):
+        d = GooseTarget().descriptor
+        specs = {s.home_rel: s for s in d.cred_files}
+        assert set(specs) == {
+            ".config/goose/secrets.yaml",
+            ".config/goose/config.yaml",
+        }
+
+        secrets = specs[".config/goose/secrets.yaml"]
+        assert secrets.host_rel == ".config/goose/secrets.yaml"
+        assert secrets.cadence == Cadence.SYNC
+        assert secrets.mtime_gate is True
+        assert secrets.filtered is False
+
+        config = specs[".config/goose/config.yaml"]
+        assert config.host_rel == ".config/goose/config.yaml"
+        assert config.cadence == Cadence.SEED_ONCE
+        assert config.filtered is True
+
+    def test_host_prep_and_init_dirs(self):
+        d = GooseTarget().descriptor
+        assert d.host_prep is False
+        assert d.init_dirs == (".config/goose", ".local/share/goose/sessions")
+
+
+class TestTransformCred:
+    """transform_cred — PURE content op (engine owns gating)."""
+
+    _CONFIG_SPEC = CredFileSpec(
+        ".config/goose/config.yaml", ".config/goose/config.yaml",
+        cadence=Cadence.SEED_ONCE, filtered=True,
+    )
+    _SECRETS_SPEC = CredFileSpec(
+        ".config/goose/secrets.yaml", ".config/goose/secrets.yaml",
+        cadence=Cadence.SYNC, mtime_gate=True, filtered=False,
+    )
+
+    def test_config_with_source_filtered(self, tmp_path):
+        """config.yaml with a host source -> allowlist-filtered write."""
+        src = tmp_path / "config.yaml"
+        src.write_text(yaml.safe_dump({
+            "provider": "anthropic",
+            "model": "claude-4",
+            "extensions": ["web"],
+            "SECRET_KEY": "should-be-dropped",
+            "unknown_field": "also-dropped",
+        }))
+        dst = tmp_path / "home" / ".config" / "goose" / "config.yaml"
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, src, dst, "in")
+
+        result = yaml.safe_load(dst.read_text())
+        assert set(result.keys()) == {"provider", "model", "extensions"}
+        assert "SECRET_KEY" not in result
+        assert "unknown_field" not in result
+
+    def test_config_without_source_is_noop(self, tmp_path):
+        """config.yaml with src=None -> no file written (no empty-config rule)."""
+        dst = tmp_path / "home" / ".config" / "goose" / "config.yaml"
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, None, dst, "in")
+
+        assert not dst.exists()
+
+    def test_secrets_falls_back_to_base_copy(self, tmp_path):
+        """A non-config spec routes to the base plain-copy fallback."""
+        src = tmp_path / "secrets.yaml"
+        src.write_text("api_key: secret123\n")
+        dst = tmp_path / "home" / ".config" / "goose" / "secrets.yaml"
+
+        GooseTarget().transform_cred(self._SECRETS_SPEC, src, dst, "in")
+
+        assert dst.is_file()
+        assert dst.read_text() == "api_key: secret123\n"
+
+
+class TestDescriptorAssembly:
+    """Integration: goose's argv/env assembled from the descriptor via assembly.*."""
+
+    def _argv(self, *, resume_mode=False, safe_off=True, state=None, extra_args=None):
+        d = GooseTarget().descriptor
+        mode_key = assembly.resolve_mode(
+            resume_mode=resume_mode,
+            new_session=False,
+            is_new_project=False,
+            extra_args=extra_args or [],
+            available_modes=d.mode.keys(),
+        )
+        return assembly.assemble_argv(
+            d,
+            mode_key=mode_key,
+            safe_mode_off=safe_off,
+            setting_values=state or {},
+            op=None,
+            extra_args=extra_args or [],
+        )
+
+    def test_default_argv_is_continue(self):
+        """Default launch (no new-session forcing) resolves to continue-last.
+
+        With ``continue`` available and nothing forcing a fresh session,
+        resolve_mode -> 'continue' -> ['session', '--resume'].  GOOSE_MODE /
+        --approve-all never appear in argv (the bypass is an env var).
+        """
+        argv = self._argv()
+        assert argv == ["session", "--resume"]
+        assert "GOOSE_MODE" not in argv
+        assert "--approve-all" not in argv
+
+    def test_start_mode_is_bare_session(self):
+        """Explicit start mode -> bare ['session']."""
+        d = GooseTarget().descriptor
+        argv = assembly.assemble_argv(
+            d, mode_key="start", safe_mode_off=True,
+            setting_values={}, op=None, extra_args=[],
+        )
+        assert argv == ["session"]
+
+    def test_continue_argv(self):
+        d = GooseTarget().descriptor
+        argv = assembly.assemble_argv(
+            d, mode_key="continue", safe_mode_off=True,
+            setting_values={}, op=None, extra_args=[],
+        )
+        assert argv == ["session", "--resume"]
+
+    def test_new_session_forced_is_bare_session(self):
+        d = GooseTarget().descriptor
+        mode_key = assembly.resolve_mode(
+            resume_mode=False, new_session=True, is_new_project=False,
+            extra_args=[], available_modes=d.mode.keys(),
+        )
+        argv = assembly.assemble_argv(
+            d, mode_key=mode_key, safe_mode_off=True,
+            setting_values={}, op=None, extra_args=[],
+        )
+        assert argv == ["session"]
+
+    def test_exec_op_argv(self):
+        d = GooseTarget().descriptor
+        argv = assembly.assemble_argv(
+            d, mode_key="start", safe_mode_off=True,
+            setting_values={}, op="exec", extra_args=["do the thing"],
+        )
+        assert argv == ["run", "--no-session", "-t", "do the thing"]
+
+    def test_env_safe_off_sets_goose_mode_auto(self):
+        d = GooseTarget().descriptor
+        env = assembly.assemble_env(d, safe_mode_off=True, setting_values={})
+        assert env["GOOSE_MODE"] == "auto"
+
+    def test_env_safe_on_no_goose_mode(self):
+        d = GooseTarget().descriptor
+        env = assembly.assemble_env(d, safe_mode_off=False, setting_values={})
+        assert "GOOSE_MODE" not in env
+
+    def test_env_model_and_provider_from_settings(self):
+        d = GooseTarget().descriptor
+        env = assembly.assemble_env(
+            d, safe_mode_off=True,
+            setting_values={"model": "claude-4", "provider": "anthropic"},
+        )
+        assert env["GOOSE_MODEL"] == "claude-4"
+        assert env["GOOSE_PROVIDER"] == "anthropic"

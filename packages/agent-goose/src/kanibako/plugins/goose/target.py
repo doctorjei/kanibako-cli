@@ -9,7 +9,25 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
-from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
+from kanibako.targets.base import (
+    AgentInstall,
+    BindKind,
+    Binding,
+    BindScope,
+    Cadence,
+    Channel,
+    CredFileSpec,
+    HostSrcOrigin,
+    Mount,
+    Operation,
+    PluginDescriptor,
+    ResourceMapping,
+    ResourceScope,
+    SafeBypass,
+    SettingArg,
+    Target,
+    TargetSetting,
+)
 
 from kanibako.plugins.goose.credentials import (
     filter_config,
@@ -22,9 +40,89 @@ if TYPE_CHECKING:
 
 logger = get_logger("targets.goose")
 
+# Per-agent contract path.  Goose is a single self-contained ELF at
+# ``~/.local/bin/goose``.  We anchor detection + the delivery bind to this known
+# install location instead of ``shutil.which("goose")``: ``which`` trusts
+# ``$PATH`` to locate a binary we then bind into the box, a PATH-injection vector
+# (an earlier-PATH planted ``goose`` would smuggle a malicious agent into the
+# container).  Anchoring confines trust to the user's home dir (mirrors claude).
+_BINARY = Path.home() / ".local" / "bin" / "goose"
+
+
+# Declarative descriptor for the generalized plugin interface.  LIVE: core
+# start.py assembles goose's launch argv / env / delivery mounts / credential
+# lifecycle from this descriptor (the legacy build_cli_args / binary_mounts /
+# init_home / refresh/writeback hooks are bypassed for goose).
+#
+# Notes on a few non-obvious fields (goose 1.37.0, empirically verified):
+#   * mode uses the BARE ``session`` subcommand (new) / ``session --resume``
+#     (continue-last).  goose 1.37.0 REMOVED the ``session start`` / ``session
+#     resume`` subcommands the legacy build_cli_args emitted — that grammar now
+#     errors out; this descriptor is the fix.
+#   * exec is the standalone headless op ``goose run --no-session -t "<prompt>"``
+#     (the prompt is the VALUE of -t; --no-session keeps automation clean).
+#   * safe-bypass is the ENV channel ``GOOSE_MODE=auto`` (there is NO --approve-all
+#     flag in 1.37.0); model/provider are likewise portable ENV vars
+#     (GOOSE_MODEL / GOOSE_PROVIDER) — the ENV form works for `session`, whereas
+#     --model/--provider exist only on `goose run`.
+#   * binary binding uses the BINARY origin (install.binary) — goose has no
+#     separate launcher symlink, so there is no LAUNCHER binding.
+#   * secrets.yaml syncs bidirectionally (SYNC); config.yaml is seeded once
+#     (SEED_ONCE) through the filter_config allowlist (filtered=True).
+_GOOSE_DESCRIPTOR = PluginDescriptor(
+    command=("goose",),
+    bindings=(
+        Binding("binary", HostSrcOrigin.BINARY, "/home/agent/.local/bin/goose", BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
+    ),
+    mode={"start": ("session",), "continue": ("session", "--resume")},
+    operations={"exec": Operation(("run", "--no-session", "-t"))},
+    safe_bypass=SafeBypass(Channel.ENV, env_var="GOOSE_MODE", env_value="auto", setting_key=""),
+    settings=(
+        SettingArg("model", Channel.ENV, env_var="GOOSE_MODEL"),
+        SettingArg("provider", Channel.ENV, env_var="GOOSE_PROVIDER"),
+    ),
+    container_env={},
+    cred_files=(
+        CredFileSpec(".config/goose/secrets.yaml", ".config/goose/secrets.yaml", cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
+        CredFileSpec(".config/goose/config.yaml", ".config/goose/config.yaml", cadence=Cadence.SEED_ONCE, filtered=True),
+    ),
+    host_prep=False,
+    init_dirs=(".config/goose", ".local/share/goose/sessions"),
+)
+
 
 class GooseTarget(Target):
     """Target for Goose (https://github.com/block/goose)."""
+
+    @property
+    def descriptor(self) -> PluginDescriptor | None:
+        return _GOOSE_DESCRIPTOR
+
+    def transform_cred(
+        self,
+        spec: CredFileSpec,
+        src: Path | None,
+        dst: Path,
+        direction: str,
+    ) -> None:
+        """Filter the goose config.yaml (PURE content op; engine owns gating).
+
+        Called by the credential-sync engine for ``filtered=True`` specs:
+
+        * ``.config/goose/config.yaml`` (SEED_ONCE, "in"): a host source is
+          allowlist-filtered to safe keys via :func:`filter_config` (mirrors the
+          legacy ``init_home`` config copy).  Unlike claude's ``.claude.json``,
+          goose has no empty-config requirement, so ``src is None`` is a no-op.
+        * ``secrets.yaml`` is ``filtered=False`` -> the engine copies it directly
+          (+ chmod 0600); this hook is never called for it.
+
+        Anything else falls back to the base plain-copy.
+        """
+        if spec.home_rel == ".config/goose/config.yaml":
+            if src is not None and Path(src).is_file():
+                filter_config(src, dst)
+            return
+        super().transform_cred(spec, src, dst, direction)
 
     @property
     def name(self) -> str:
@@ -46,22 +144,29 @@ class GooseTarget(Target):
     def detect(self) -> AgentInstall | None:
         """Detect Goose installation on the host.
 
-        Resolves the ``goose`` symlink to find the real binary.
-        """
-        goose_path = shutil.which("goose")
-        logger.debug("shutil.which('goose') = %s", goose_path)
-        if not goose_path:
-            return None
+        Anchors to the per-agent contract path (``_BINARY`` =
+        ``~/.local/bin/goose``) rather than ``shutil.which`` — we never let
+        ``$PATH`` choose a binary we bind into the box.
 
-        binary = Path(goose_path)
+        Goose is treated as installed iff the contract path exists *or* is a
+        (possibly dangling) symlink.  ``binary`` is the resolved (symlink-free)
+        path so nested-container mount sources are real files; ``install_dir`` is
+        its parent.  ``launcher`` stays ``None`` (goose has no separate launcher;
+        its binding uses the BINARY origin = ``install.binary``).
+        """
+        if not (_BINARY.exists() or _BINARY.is_symlink()):
+            logger.debug("goose binary not present at %s", _BINARY)
+            return None
 
         try:
-            resolved = binary.resolve()
+            resolved = _BINARY.resolve()
         except OSError:
-            logger.debug("Failed to resolve symlink: %s", binary)
-            return None
+            logger.debug("Failed to resolve binary: %s", _BINARY)
+            # Dangling/broken binary: still "installed" per the contract; the
+            # binary validation surfaces the real problem downstream.
+            resolved = _BINARY
 
-        logger.debug("Resolved binary: %s (from %s)", resolved, binary)
+        logger.debug("Resolved binary: %s (from %s)", resolved, _BINARY)
         return AgentInstall(
             name="goose",
             binary=resolved,
@@ -148,9 +253,11 @@ class GooseTarget(Target):
 
         Checks for the goose binary and both config.yaml and secrets.yaml.
         Returns True if binary is not found (defers to later warnings).
+
+        Anchors the binary reference to the contract path (``_BINARY``); never
+        consults ``$PATH``.
         """
-        goose_path = shutil.which("goose")
-        if not goose_path:
+        if not (_BINARY.exists() or _BINARY.is_symlink()):
             return True
 
         secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
@@ -229,8 +336,12 @@ class GooseTarget(Target):
             ResourceMapping("config.yaml", ResourceScope.SEEDED, "Goose configuration"),
             # Project-specific
             ResourceMapping("secrets.yaml", ResourceScope.PROJECT, "API keys and secrets"),
-            # Data directory resources (.local/share/Block/goose/)
-            ResourceMapping("sessions.db", ResourceScope.PROJECT, "Session history database"),
+            # Session DB lives under the data dir, NOT the config dir: anchor it
+            # via `base` to ~/.local/share/goose/sessions (goose 1.37.0 — no
+            # Block/ segment).  PROJECT-scope resources aren't core-mounted, so
+            # this is correctness/cosmetic; the dir itself is created by the
+            # descriptor's init_dirs.
+            ResourceMapping("sessions.db", ResourceScope.PROJECT, "Session history database", base=".local/share/goose/sessions"),
         ]
 
     def build_cli_args(
