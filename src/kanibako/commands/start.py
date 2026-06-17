@@ -1553,11 +1553,16 @@ def _build_effective_state(
     with the target's declared defaults as a FLOOR (the system level's declared
     defaults).  Sources for each level's ``[crab]`` table:
 
-      * **box**     — ``[crab]`` in project.yaml
-      * **workset** — ``[crab]`` in the workset's config.yaml (if any)
-      * **crab**    — the crab config's own state dict
-      * **system**  — ``[crab]`` in the global kanibako.yaml
+      * **box**     — ``crab.<name>`` (over ``crab.default``) in project.yaml
+      * **workset** — ``crab.<name>`` in the workset's config.yaml (if any)
+      * **crab**    — the crab config's own state dict (already per-agent)
+      * **system**  — ``crab.<name>`` in the global kanibako.yaml
       * **floor**   — target ``setting_descriptors()`` defaults
+
+    The box/workset/system/machine override sections are keyed per agent
+    (``crab.<target.name>`` layered over the any-agent ``crab.default`` tier) so
+    an override never bleeds across an agent switch; ``crab_cfg.state`` is
+    already per-agent (loaded from ``crabs/<name>.yaml``).
 
     Explicit set values beat all declared defaults; the most-specific level
     wins; an explicit ``""`` is terminal (no fall-through to the floor).
@@ -1588,7 +1593,9 @@ def _build_effective_state(
         try:
             if not path.exists():
                 return {}
-            return read_crab_settings(path)
+            # Agent-keyed: read crab.<agent>.* layered over crab.default.* so an
+            # override set for one agent never bleeds onto another after a switch.
+            return read_crab_settings(path, target.name)
         except Exception:
             return {}
 
