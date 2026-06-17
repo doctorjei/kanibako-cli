@@ -61,8 +61,16 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 #     errors out; this descriptor is the fix.
 #   * exec is the standalone headless op ``goose run --no-session -t "<prompt>"``
 #     (the prompt is the VALUE of -t; --no-session keeps automation clean).
-#   * safe-bypass is the ENV channel ``GOOSE_MODE=auto`` (there is NO --approve-all
-#     flag in 1.37.0); model/provider are likewise portable ENV vars
+#   * safe-bypass is the ENV channel ``GOOSE_MODE`` (there is NO --approve-all
+#     flag in 1.37.0).  It is SYMMETRIC: safe-OFF/-A emits ``GOOSE_MODE=auto``
+#     (tools auto-run); safe-ON/-S emits ``GOOSE_MODE=approve`` (confirm before
+#     running ANY tool).  The secure emission is MANDATORY here because goose's
+#     UNSET GOOSE_MODE default is itself ``auto`` (verified: goose docs + the
+#     1.37.0 binary's embedded `goose_mode TEXT NOT NULL DEFAULT 'auto'`), so
+#     emitting nothing on -S would leave goose in auto and -S would not be safe.
+#     ``approve`` is the faithful meaning of -S; ``smart_approve`` is a
+#     lighter-touch alternative (swap the secure_env_value to switch).
+#     model/provider are likewise portable ENV vars
 #     (GOOSE_MODEL / GOOSE_PROVIDER) — the ENV form works for `session`, whereas
 #     --model/--provider exist only on `goose run`.
 #   * binary binding uses the BINARY origin (install.binary) — goose has no
@@ -76,7 +84,7 @@ _GOOSE_DESCRIPTOR = PluginDescriptor(
     ),
     mode={"start": ("session",), "continue": ("session", "--resume")},
     operations={"exec": Operation(("run", "--no-session", "-t"))},
-    safe_bypass=SafeBypass(Channel.ENV, env_var="GOOSE_MODE", env_value="auto", setting_key=""),
+    safe_bypass=SafeBypass(Channel.ENV, env_var="GOOSE_MODE", env_value="auto", secure_env_value="approve", setting_key=""),
     settings=(
         SettingArg("model", Channel.ENV, env_var="GOOSE_MODEL"),
         SettingArg("provider", Channel.ENV, env_var="GOOSE_PROVIDER"),

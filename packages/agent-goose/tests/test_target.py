@@ -402,13 +402,20 @@ class TestDescriptor:
         assert d.operations["exec"].fragment == ("run", "--no-session", "-t")
 
     def test_safe_bypass_env_goose_mode(self):
-        """Safe-bypass is ENV GOOSE_MODE=auto (NO --approve-all flag in 1.37.0)."""
+        """Safe-bypass is symmetric ENV GOOSE_MODE (NO --approve-all flag in 1.37.0).
+
+        safe-OFF/-A -> ``auto``; safe-ON/-S -> ``approve``.  The secure value is
+        MANDATORY because goose's unset GOOSE_MODE default is itself ``auto``
+        (the A1 fix).
+        """
         sb = GooseTarget().descriptor.safe_bypass
         assert sb is not None
         assert sb.channel == Channel.ENV
         assert sb.env_var == "GOOSE_MODE"
         assert sb.env_value == "auto"
+        assert sb.secure_env_value == "approve"
         assert sb.flag == ()
+        assert sb.secure_flag == ()
         assert sb.setting_key == ""
 
     def test_settings_model_and_provider_env(self):
@@ -574,10 +581,15 @@ class TestDescriptorAssembly:
         env = assembly.assemble_env(d, safe_mode_off=True, setting_values={})
         assert env["GOOSE_MODE"] == "auto"
 
-    def test_env_safe_on_no_goose_mode(self):
+    def test_env_safe_on_sets_goose_mode_approve(self):
+        """The A1 fix: -S/secure emits GOOSE_MODE=approve (NOT nothing).
+
+        goose's unset GOOSE_MODE default is ``auto`` (tools auto-run), so -S must
+        emit a restrictive value or it would not actually be safe.
+        """
         d = GooseTarget().descriptor
         env = assembly.assemble_env(d, safe_mode_off=False, setting_values={})
-        assert "GOOSE_MODE" not in env
+        assert env["GOOSE_MODE"] == "approve"
 
     def test_env_model_and_provider_from_settings(self):
         d = GooseTarget().descriptor

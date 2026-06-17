@@ -150,8 +150,10 @@ def assemble_argv(
        (``descriptor.operations[op].fragment``); NO interactive mode is added.
     2. Else if *mode_key* is set: the interactive mode fragment
        (``descriptor.mode[mode_key]``).
-    3. If *safe_mode_off* and the descriptor's ``safe_bypass`` is FLAG-channel:
-       its ``flag``.
+    3. If the descriptor's ``safe_bypass`` is FLAG-channel: emit its ``flag``
+       when *safe_mode_off*, else its ``secure_flag`` (the symmetric SECURE
+       emission — empty ``secure_flag`` emits nothing on safe-ON, the
+       claude/codex default-safe behavior).
     4. For each FLAG-channel :class:`SettingArg` whose value in *setting_values*
        is truthy: ``flag + [value]``.
     5. *extra_args*, appended last.
@@ -167,8 +169,11 @@ def assemble_argv(
         argv.extend(descriptor.mode[mode_key])
 
     sb = descriptor.safe_bypass
-    if safe_mode_off and sb is not None and sb.channel is Channel.FLAG:
-        argv.extend(sb.flag)
+    if sb is not None and sb.channel is Channel.FLAG:
+        if safe_mode_off:
+            argv.extend(sb.flag)
+        elif sb.secure_flag:
+            argv.extend(sb.secure_flag)
 
     for s in descriptor.settings:
         if s.channel is Channel.FLAG:
@@ -194,6 +199,12 @@ def assemble_env(
     * If *safe_mode_off* and the descriptor's ``safe_bypass`` is ENV-channel with
       an ``env_var``: set it to ``env_value`` (falling back to ``"auto"`` when the
       descriptor left ``env_value`` empty, e.g. goose ``GOOSE_MODE=auto``).
+    * Else (NOT *safe_mode_off* — secure/``-S``) if the ENV-channel ``safe_bypass``
+      declares a non-empty ``secure_env_value``: set ``env_var`` to it (the
+      symmetric SECURE emission, e.g. goose ``GOOSE_MODE=approve``).  This is
+      REQUIRED for agents whose unset env default is unsafe (goose's ``GOOSE_MODE``
+      defaults to ``auto``); an empty ``secure_env_value`` emits nothing on
+      safe-ON, preserving agents already safe-by-default (claude/codex).
     * For each ENV-channel :class:`SettingArg` with an ``env_var`` and a truthy
       value in *setting_values*: set ``env_var`` to that value.
 
@@ -203,8 +214,11 @@ def assemble_env(
     env: dict[str, str] = dict(descriptor.container_env)
 
     sb = descriptor.safe_bypass
-    if safe_mode_off and sb is not None and sb.channel is Channel.ENV and sb.env_var:
-        env[sb.env_var] = sb.env_value or "auto"
+    if sb is not None and sb.channel is Channel.ENV and sb.env_var:
+        if safe_mode_off:
+            env[sb.env_var] = sb.env_value or "auto"
+        elif sb.secure_env_value:
+            env[sb.env_var] = sb.secure_env_value
 
     for s in descriptor.settings:
         if s.channel is Channel.ENV and s.env_var:
