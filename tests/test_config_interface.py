@@ -341,12 +341,13 @@ class TestTargetSettings:
         msg = set_config_value("model", "sonnet", config_path=project_toml)
         assert "Set model=sonnet" in msg
 
+        # The agent-agnostic CLI writes the reserved crab.default tier.
         data = load_doc(project_toml)
-        assert data["crab"]["model"] == "sonnet"
+        assert data["crab"]["default"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
         project_toml = tmp_path / "project.yaml"
-        dump_doc(project_toml, {"crab": {"model": "opus"}})
+        dump_doc(project_toml, {"crab": {"default": {"model": "opus"}}})
 
         val = get_config_value(
             "model",
@@ -357,7 +358,7 @@ class TestTargetSettings:
 
     def test_reset_model(self, tmp_path):
         project_toml = tmp_path / "project.yaml"
-        dump_doc(project_toml, {"crab": {"model": "opus"}})
+        dump_doc(project_toml, {"crab": {"default": {"model": "opus"}}})
 
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg
@@ -463,7 +464,7 @@ class TestShowConfig:
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
         project_toml = tmp_path / "project.yaml"
-        project_toml.write_text('crab:\n  model: "sonnet"\n')
+        project_toml.write_text('crab:\n  default:\n    model: "sonnet"\n')
 
         show_config(
             global_config_path=global_cfg,

@@ -723,32 +723,77 @@ class TestTargetSettings:
         )
 
     def test_round_trip(self, tmp_path):
-        """Write and read back target settings."""
+        """Write and read back agent-keyed target settings."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet")
-        write_crab_setting(p, "access", "default")
+        write_crab_setting(p, "model", "sonnet", "claude")
+        write_crab_setting(p, "access", "permissive", "claude")
 
-        settings = read_crab_settings(p)
-        assert settings == {"model": "sonnet", "access": "default"}
+        settings = read_crab_settings(p, "claude")
+        assert settings == {"model": "sonnet", "access": "permissive"}
 
     def test_backward_compat_no_section(self, tmp_path):
         """project.yaml without a [crab] section returns empty dict."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
-        settings = read_crab_settings(p)
+        settings = read_crab_settings(p, "claude")
         assert settings == {}
 
-    def test_remove_setting(self, tmp_path):
-        """remove_crab_setting removes a single setting."""
+    def test_flat_legacy_crab_treated_as_unset(self, tmp_path):
+        """A legacy FLAT [crab] table (scalars, no per-agent dicts) is ignored.
+
+        Pass 1 does NOT migrate; only nested crab.<agent>/crab.default tiers
+        are honored, so a hand-edited flat shape reads as empty.
+        """
+        from kanibako.config import dump_doc, load_doc
+
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet")
-        write_crab_setting(p, "access", "default")
+        data = load_doc(p)
+        data["crab"] = {"model": "sonnet"}  # flat scalar — old shape
+        dump_doc(p, data)
 
-        assert remove_crab_setting(p, "model") is True
-        settings = read_crab_settings(p)
+        assert read_crab_settings(p, "claude") == {}
+
+    def test_default_tier_applies_to_any_agent(self, tmp_path):
+        """crab.default values apply to every agent unless overridden."""
+        p = tmp_path / "project.yaml"
+        self._write_base_toml(p)
+        write_crab_setting(p, "model", "sonnet", "default")
+
+        assert read_crab_settings(p, "claude") == {"model": "sonnet"}
+        assert read_crab_settings(p, "goose") == {"model": "sonnet"}
+
+    def test_agent_specific_wins_over_default(self, tmp_path):
+        """crab.<agent> overrides crab.default within one file."""
+        p = tmp_path / "project.yaml"
+        self._write_base_toml(p)
+        write_crab_setting(p, "model", "sonnet", "default")
+        write_crab_setting(p, "model", "opus", "claude")
+
+        assert read_crab_settings(p, "claude") == {"model": "opus"}
+        # A different agent still gets the default tier.
+        assert read_crab_settings(p, "goose") == {"model": "sonnet"}
+
+    def test_no_bleed_across_agents(self, tmp_path):
+        """An override set for one agent does NOT bleed onto another (B3 bug)."""
+        p = tmp_path / "project.yaml"
+        self._write_base_toml(p)
+        write_crab_setting(p, "model", "sonnet", "claude")
+
+        assert read_crab_settings(p, "claude") == {"model": "sonnet"}
+        assert read_crab_settings(p, "goose") == {}
+
+    def test_remove_setting(self, tmp_path):
+        """remove_crab_setting removes a single agent-keyed setting."""
+        p = tmp_path / "project.yaml"
+        self._write_base_toml(p)
+        write_crab_setting(p, "model", "sonnet", "claude")
+        write_crab_setting(p, "access", "permissive", "claude")
+
+        assert remove_crab_setting(p, "model", "claude") is True
+        settings = read_crab_settings(p, "claude")
         assert "model" not in settings
         assert "access" in settings
 
@@ -757,13 +802,13 @@ class TestTargetSettings:
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
-        assert remove_crab_setting(p, "nonexistent") is False
+        assert remove_crab_setting(p, "nonexistent", "claude") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "haiku")
+        write_crab_setting(p, "model", "haiku", "claude")
 
         # Project metadata should still be intact.
         meta = read_project_meta(p)

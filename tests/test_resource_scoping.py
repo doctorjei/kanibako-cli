@@ -269,10 +269,10 @@ class TestKanibakoMounts:
 class TestBuildEffectiveState:
     """Tests for _build_effective_state() precedence walk in start.py."""
 
-    def _make_target(self, descriptors):
+    def _make_target(self, descriptors, name="claude"):
         target = MagicMock()
         target.setting_descriptors.return_value = descriptors
-        target.name = "claude"
+        target.name = name
         return target
 
     def _make_global_config(self, tmp_path, settings=None):
@@ -283,7 +283,7 @@ class TestBuildEffectiveState:
         global_toml.write_text("")
         if settings:
             for k, v in settings.items():
-                write_crab_setting(global_toml, k, v)
+                write_crab_setting(global_toml, k, v, "claude")
         return global_toml
 
     def _make_workset_config(self, tmp_path, settings=None):
@@ -295,7 +295,7 @@ class TestBuildEffectiveState:
         ws_toml.write_text("")
         if settings:
             for k, v in settings.items():
-                write_crab_setting(ws_toml, k, v)
+                write_crab_setting(ws_toml, k, v, "claude")
         return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None):
@@ -311,7 +311,7 @@ class TestBuildEffectiveState:
         )
         if settings:
             for k, v in settings.items():
-                write_crab_setting(project_toml, k, v)
+                write_crab_setting(project_toml, k, v, "claude")
         return project_toml
 
     def test_target_defaults_only(self, tmp_path):
@@ -483,3 +483,71 @@ class TestBuildEffectiveState:
         )
         # Terminal "" — does not fall back to the "opus" floor.
         assert result["model"] == ""
+
+    def test_box_override_does_not_bleed_across_agents(self, tmp_path):
+        """B3 regression: a box override set under crab.claude must NOT apply
+        when the effective state is resolved for agent goose (and vice-versa)."""
+        from kanibako.commands.start import _build_effective_state
+        from kanibako.config import write_crab_setting, write_project_meta
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        # An override written while the box was on claude.
+        proj_dir = tmp_path / "proj"
+        proj_dir.mkdir()
+        project_toml = proj_dir / "project.yaml"
+        write_project_meta(
+            project_toml,
+            mode="default", layout="default",
+            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
+        )
+        write_crab_setting(project_toml, "model", "sonnet", "claude")
+        agent_cfg = CrabConfig()
+
+        # claude sees its override.
+        claude = self._make_target(descriptors, name="claude")
+        res_claude = _build_effective_state(
+            claude, agent_cfg, project_toml, global_config_path=None
+        )
+        assert res_claude["model"] == "sonnet"
+
+        # goose does NOT — it falls back to its declared default floor.
+        goose = self._make_target(descriptors, name="goose")
+        res_goose = _build_effective_state(
+            goose, agent_cfg, project_toml, global_config_path=None
+        )
+        assert res_goose["model"] == "opus"
+
+    def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
+        """crab.default applies to every agent; crab.<name> overrides it."""
+        from kanibako.commands.start import _build_effective_state
+        from kanibako.config import write_crab_setting, write_project_meta
+
+        descriptors = [
+            TargetSetting(key="model", description="Model", default="opus"),
+        ]
+        proj_dir = tmp_path / "proj"
+        proj_dir.mkdir()
+        project_toml = proj_dir / "project.yaml"
+        write_project_meta(
+            project_toml,
+            mode="default", layout="default",
+            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
+        )
+        # Any-agent default, plus a claude-specific override.
+        write_crab_setting(project_toml, "model", "haiku", "default")
+        write_crab_setting(project_toml, "model", "sonnet", "claude")
+        agent_cfg = CrabConfig()
+
+        claude = self._make_target(descriptors, name="claude")
+        res_claude = _build_effective_state(
+            claude, agent_cfg, project_toml, global_config_path=None
+        )
+        assert res_claude["model"] == "sonnet"  # agent-specific wins
+
+        goose = self._make_target(descriptors, name="goose")
+        res_goose = _build_effective_state(
+            goose, agent_cfg, project_toml, global_config_path=None
+        )
+        assert res_goose["model"] == "haiku"  # default tier applies

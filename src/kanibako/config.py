@@ -442,43 +442,79 @@ def load_project_overrides(path: Path) -> dict[str, str]:
 # Target settings overrides (per-project)
 # ---------------------------------------------------------------------------
 
-def read_crab_settings(path: Path) -> dict[str, str]:
-    """Read crab-state overrides from a project.yaml ``crab`` section.
+def read_crab_settings(path: Path, agent_name: str) -> dict[str, str]:
+    """Read agent-keyed crab-state overrides from a config file's ``crab`` table.
 
-    project.yaml's ``crab`` holds box-level crab-state overrides (e.g.
-    ``{"model": "sonnet"}``); identity keys live in ``box.crab``, not here.
-    Returns an empty dict when the file or section is absent.
+    Override sections are keyed per agent under ``crab.<agent_name>``, layered
+    over the reserved any-agent ``crab.default`` tier (the agent-specific value
+    wins within a single file). This stops an override set while a box is on one
+    agent (e.g. ``model`` under ``crab.claude``) from bleeding onto another
+    agent after the box is switched (e.g. to ``goose``); identity keys live in
+    ``box.crab``, not here.
+
+    ``crab.default`` is RESERVED as the any-agent default tier; no real agent
+    may be named ``default``.
+
+    **No pass-1 migration.** A legacy FLAT ``[crab]`` table (scalar values
+    written directly under ``crab``, e.g. ``crab.model``) is treated as UNSET —
+    only nested per-agent dicts (``crab.default`` / ``crab.<agent_name>``) are
+    honored. Configs are hand-edited to the new shape. The common no-config case
+    (absent file, or absent/empty ``crab`` table) still returns ``{}`` unchanged.
     """
     if not path.exists():
         return {}
     data = load_doc(path)
-    return {k: str(v) for k, v in data.get("crab", {}).items()}
+    crab = data.get("crab", {})
+    if not isinstance(crab, dict):
+        return {}
+    out: dict[str, str] = {}
+    default_sec = crab.get("default")
+    if isinstance(default_sec, dict):
+        out.update({k: str(v) for k, v in default_sec.items()})
+    agent_sec = crab.get(agent_name)
+    if isinstance(agent_sec, dict):
+        out.update({k: str(v) for k, v in agent_sec.items()})
+    return out
 
 
-def write_crab_setting(path: Path, key: str, value: str) -> None:
-    """Write a single crab-state override to ``crab`` in project.yaml.
+def write_crab_setting(path: Path, key: str, value: str, agent_name: str) -> None:
+    """Write a single crab-state override under ``crab.<agent_name>``.
 
-    Preserves all other sections.
+    Preserves all other sections and other agents' crab subsections. Pass the
+    reserved ``"default"`` agent name to target the any-agent default tier.
     """
     existing = load_doc(path)
-    existing.setdefault("crab", {})
-    existing["crab"][key] = value
+    crab = existing.get("crab")
+    if not isinstance(crab, dict):
+        crab = {}
+        existing["crab"] = crab
+    agent_sec = crab.get(agent_name)
+    if not isinstance(agent_sec, dict):
+        agent_sec = {}
+        crab[agent_name] = agent_sec
+    agent_sec[key] = value
     dump_doc(path, existing)
 
 
-def remove_crab_setting(path: Path, key: str) -> bool:
-    """Remove a single crab-state override from ``crab`` in project.yaml.
+def remove_crab_setting(path: Path, key: str, agent_name: str) -> bool:
+    """Remove a single crab-state override from ``crab.<agent_name>``.
 
-    Returns True if the setting was found and removed, False otherwise.
+    Returns True if the setting was found and removed, False otherwise. Prunes a
+    now-empty agent subsection and a now-empty ``crab`` table.
     """
     if not path.exists():
         return False
     existing = load_doc(path)
-    settings = existing.get("crab", {})
-    if key not in settings:
+    crab = existing.get("crab")
+    if not isinstance(crab, dict):
         return False
-    del settings[key]
-    if not settings:
+    agent_sec = crab.get(agent_name)
+    if not isinstance(agent_sec, dict) or key not in agent_sec:
+        return False
+    del agent_sec[key]
+    if not agent_sec:
+        del crab[agent_name]
+    if not crab:
         existing.pop("crab", None)
     dump_doc(path, existing)
     return True

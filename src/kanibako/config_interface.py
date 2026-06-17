@@ -226,8 +226,11 @@ def get_config_value(
 
     # target settings (model, start_mode, autonomous)
     if _is_crab_setting(canonical):
+        # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
+        # ``crab.default`` tier; per-agent overrides live under ``crab.<name>``
+        # and are resolved by the launch-time effective-state cascade.
         if project_toml and project_toml.exists():
-            settings = read_crab_settings(project_toml)
+            settings = read_crab_settings(project_toml, "default")
             if canonical in settings:
                 return settings[canonical]
         return None
@@ -288,9 +291,10 @@ def set_config_value(
         _write_toml_key(config_path, "shared", cache_name, value)
         return f"Set shared.{cache_name}={value}"
 
-    # target settings
+    # target settings — the agent-agnostic CLI writes the any-agent
+    # ``crab.default`` tier (per-agent overrides live under ``crab.<name>``).
     if _is_crab_setting(canonical):
-        _write_toml_key(config_path, "crab", canonical, value)
+        _write_nested_toml_key(config_path, ("crab", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
     # system.path.* keys — write to the nested [system.path] table.
@@ -335,9 +339,9 @@ def reset_config_value(
             return f"Reset shared.{cache_name}"
         return f"No override for shared.{cache_name}"
 
-    # target settings
+    # target settings — reset the any-agent ``crab.default`` tier.
     if _is_crab_setting(canonical):
-        if _remove_toml_key(config_path, "crab", canonical):
+        if _remove_nested_toml_key(config_path, ("crab", "default"), canonical):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -380,10 +384,15 @@ def reset_all(
     # Clear target settings
     if config_path.exists():
         data = load_doc(config_path)
-        if data.get("crab"):
-            for k in list(data["crab"]):
-                _remove_toml_key(config_path, "crab", k)
-                count += 1
+        crab = data.get("crab")
+        if isinstance(crab, dict):
+            # crab is agent-keyed: {<agent>: {key: val}}; clear every agent's
+            # subsection (the reserved "default" tier included).
+            for agent, sec in list(crab.items()):
+                if isinstance(sec, dict):
+                    for k in list(sec):
+                        _remove_nested_toml_key(config_path, ("crab", agent), k)
+                        count += 1
         if data.get("resource_overrides"):
             for k in list(data["resource_overrides"]):
                 _remove_toml_key(config_path, "resource_overrides", k)
@@ -434,7 +443,7 @@ def show_config(
         # Otherwise fall back to the project-level overrides (today's behavior).
         if crab_state is not None:
             proj_crab = (
-                read_crab_settings(config_path)
+                read_crab_settings(config_path, "default")
                 if config_path and config_path.exists()
                 else {}
             )
@@ -444,7 +453,7 @@ def show_config(
                     marker = " (override)" if k in proj_crab else ""
                     print(f"  {k} = {v}{marker}", file=out)
         elif config_path and config_path.exists():
-            settings = read_crab_settings(config_path)
+            settings = read_crab_settings(config_path, "default")
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
@@ -471,7 +480,7 @@ def show_config(
             has_output = True
 
         if config_path and config_path.exists():
-            settings = read_crab_settings(config_path)
+            settings = read_crab_settings(config_path, "default")
             for k, v in sorted(settings.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True
