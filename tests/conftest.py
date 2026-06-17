@@ -206,6 +206,11 @@ def start_mocks():
             patch("builtins.open", MagicMock()) as m_open,
             patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,
             patch("kanibako.commands.start.registry_path"),
+            # Credential-sync engine (descriptor path).  Default to a no-op mock
+            # so descriptor-bearing targets driven through _run_container don't
+            # perform real filesystem credential ops against MagicMock project
+            # paths.  Tests asserting credsync routing re-patch it locally.
+            patch("kanibako.commands.start.credsync") as m_credsync,
             # Two-tier launch baseline check: default to "all present" so the
             # probe never spins a real container in unit tests. Individual tests
             # override m_launch_check to exercise tier-1/tier-2 behavior.
@@ -321,6 +326,7 @@ def start_mocks():
                 load_registry=m_load_registry,
                 launch_check=m_launch_check,
                 validate_binary=m_validate_binary,
+                credsync=m_credsync,
             )
 
     return _make
