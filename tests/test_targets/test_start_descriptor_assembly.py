@@ -32,14 +32,30 @@ def _start_argv(
     desc,
     *,
     safe_mode: bool,
+    autonomous: bool = False,
     resume_mode: bool,
     new_session: bool,
     is_new_project: bool,
     extra_args: list[str],
     state: dict[str, str],
 ) -> list[str]:
-    """Reproduce start.py's descriptor argv assembly exactly."""
-    safe_off = not safe_mode
+    """Reproduce start.py's descriptor argv assembly exactly.
+
+    Mirrors start.py: safe_off is resolved by ``effective_safe_mode_off`` from
+    the per-launch -S (safe_mode) / -A (autonomous) flags plus the persisted
+    ``access`` setting redeemed via ``safe_bypass.setting_key``.
+    """
+    sb = desc.safe_bypass
+    persisted_access = (
+        state.get(sb.setting_key, "")
+        if sb is not None and sb.setting_key
+        else ""
+    )
+    safe_off = assembly.effective_safe_mode_off(
+        secure=safe_mode,
+        autonomous=autonomous,
+        persisted_access=persisted_access,
+    )
     mode_key = assembly.resolve_mode(
         resume_mode=resume_mode,
         new_session=new_session,
@@ -225,6 +241,64 @@ class TestDescriptorArgv:
         )
 
         assert sorted(legacy) == sorted(new)
+
+
+class TestPersistedAccessSafeBypass:
+    """The persisted ``access`` setting (step 1g) is now LIVE for claude.
+
+    safe_off is resolved by ``effective_safe_mode_off`` from the per-launch
+    -S/-A flags plus the redeemed ``access`` setting; the five rows below are
+    the documented behavior contract.  ``--dangerously-skip-permissions`` is the
+    claude safe-bypass flag (FLAG-channel ``safe_bypass``).
+    """
+
+    BYPASS = "--dangerously-skip-permissions"
+
+    def setup_method(self):
+        self.desc = ClaudeTarget().descriptor
+        assert self.desc is not None
+
+    def _argv(self, *, safe_mode, autonomous, access):
+        state = {"model": "opus"}
+        if access is not None:
+            state["access"] = access
+        return _start_argv(
+            self.desc,
+            safe_mode=safe_mode,
+            autonomous=autonomous,
+            resume_mode=False,
+            new_session=False,
+            is_new_project=False,
+            extra_args=[],
+            state=state,
+        )
+
+    def test_default_permissive_includes_bypass(self):
+        """No -A/-S, access=permissive (default) -> bypass PRESENT (critical)."""
+        argv = self._argv(safe_mode=False, autonomous=False, access="permissive")
+        assert self.BYPASS in argv
+
+    def test_secure_excludes_bypass_regardless_of_access(self):
+        """-S wins: bypass ABSENT even when access=permissive."""
+        argv = self._argv(safe_mode=True, autonomous=False, access="permissive")
+        assert self.BYPASS not in argv
+
+    def test_autonomous_overrides_restricted(self):
+        """-A wins: bypass PRESENT even when access=restricted."""
+        argv = self._argv(safe_mode=False, autonomous=True, access="restricted")
+        assert self.BYPASS in argv
+
+    def test_restricted_excludes_bypass(self):
+        """No flags, access=restricted -> bypass ABSENT (new persistent-safe)."""
+        argv = self._argv(safe_mode=False, autonomous=False, access="restricted")
+        assert self.BYPASS not in argv
+
+    def test_unknown_access_defaults_autonomous(self):
+        """No flags, access unset/unknown (stale 'default') -> bypass PRESENT."""
+        argv_unset = self._argv(safe_mode=False, autonomous=False, access=None)
+        argv_stale = self._argv(safe_mode=False, autonomous=False, access="default")
+        assert self.BYPASS in argv_unset
+        assert self.BYPASS in argv_stale
 
 
 # --------------------------------------------------------------------------- #
