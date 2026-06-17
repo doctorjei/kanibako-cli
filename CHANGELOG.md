@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (release pipeline)
+
+- **`kanibako-agent-goose` and `kanibako-agent-codex` are now built and
+  published by the release pipeline.** They version independently of the 1.5.x
+  train (currently `0.1.0`) and are therefore excluded from the shared dev
+  version stamping. Publishing uses `--skip-existing` (twine) / `skip-existing:
+  true` (PyPI publish action) so a re-run whose independent version is unchanged
+  is skipped rather than failing the upload.
+
 ## [1.5.1] - 2026-06-16
 
 ### Fixed

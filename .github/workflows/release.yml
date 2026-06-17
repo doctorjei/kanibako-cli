@@ -57,10 +57,11 @@ jobs:
         run: pip install build twine
 
       - name: Build all distributable packages
-        # Mirrors scripts/build-all.sh's package list. agent-goose is
-        # intentionally excluded (it versions independently at 0.1.0).
+        # Mirrors scripts/build-all.sh's package list. agent-goose and
+        # agent-codex are built/checked here too; they version independently
+        # of the 1.5.x train (currently 0.1.0).
         run: |
-          for pkg in . packages/agent-claude packages/meta; do
+          for pkg in . packages/agent-claude packages/agent-goose packages/agent-codex packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"
           done
 
@@ -126,15 +127,22 @@ jobs:
         run: pip install build
 
       - name: Build all distributable packages
-        # Mirrors scripts/build-all.sh's package list. agent-goose excluded.
+        # Mirrors scripts/build-all.sh's package list. agent-goose and
+        # agent-codex are built/published here too; they version independently
+        # of the 1.5.x train (currently 0.1.0).
         run: |
-          for pkg in . packages/agent-claude packages/meta; do
+          for pkg in . packages/agent-claude packages/agent-goose packages/agent-codex packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"
           done
 
       - name: Publish to PyPI
         # OIDC trusted publishing — no token. Default packages-dir is dist/.
+        # skip-existing lets the independently-versioned agent packages
+        # (agent-goose, agent-codex) be skipped when their version is unchanged
+        # rather than failing the publish.
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Publish GitHub release + tidy rc draft
         env:
@@ -200,7 +208,9 @@ jobs:
           grep -n '^version = ' pyproject.toml packages/*/pyproject.toml
 
       - name: Build all distributable packages
-        # Same package list as the official path; agent-goose excluded (independent).
+        # The dev path is the 1.5.x train only: cli + agent-claude + meta.
+        # agent-goose and agent-codex version independently and are not part
+        # of the .dev pre-release stamping/build.
         run: |
           for pkg in . packages/agent-claude packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"

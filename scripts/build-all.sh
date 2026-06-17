@@ -16,6 +16,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGES=(
     "."                               # kanibako-cli
     "packages/agent-claude"           # kanibako-agent-claude
+    "packages/agent-goose"            # kanibako-agent-goose
+    "packages/agent-codex"            # kanibako-agent-codex
     "packages/meta"                   # kanibako (meta)
 )
 
@@ -96,7 +98,7 @@ if $UPLOAD; then
     echo ""
     echo "=== Uploading to PyPI ==="
     for pkg in "${PACKAGES[@]}"; do
-        twine upload "$REPO_ROOT/$pkg/dist/"*
+        twine upload --skip-existing "$REPO_ROOT/$pkg/dist/"*
     done
     echo ""
     echo "=== Upload complete ==="
