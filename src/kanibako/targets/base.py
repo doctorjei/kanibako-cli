@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,11 +23,18 @@ class ResourceScope(Enum):
 
 @dataclass(frozen=True)
 class ResourceMapping:
-    """Maps an agent resource path to its sharing scope."""
+    """Maps an agent resource path to its sharing scope.
+
+    *base* anchors *path*: empty keeps the current behavior (relative to the
+    agent config dir); non-empty roots *path* at the project home under that
+    prefix (e.g. ".local/share/goose/sessions").
+    """
 
     path: str                    # Relative path within agent home (e.g. "plugins/")
     scope: ResourceScope         # How this resource is shared
     description: str = ""        # Human-readable description
+    base: str = ""               # anchor for `path`: "" = relative to the agent config dir (current behavior);
+                                 # non-empty = relative to the project home under this prefix (e.g. ".local/share/goose/sessions")
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,122 @@ class AgentInstall:
     # agent's contract path by the plugin rather than resolved via $PATH.
     # Defaults to None so agents that don't set it are unaffected.
     launcher: Path | None = None
+
+
+class BindKind(Enum):
+    """Whether a binding mounts a single file or a directory."""
+
+    FILE = "file"
+    DIR = "dir"
+
+
+class HostSrcOrigin(Enum):
+    """Where a binding's DEFAULT host source path comes from (before any user cascade override)."""
+
+    LAUNCHER = "launcher"        # AgentInstall.launcher (detection-derived)
+    INSTALL_DIR = "install_dir"  # AgentInstall.install_dir
+    BINARY = "binary"            # AgentInstall.binary
+    SHARED_STORE = "shared_store"  # kanibako shared storage, agent-namespaced (global_shared/<agent_id>/<src_rel>)
+    LITERAL = "literal"          # a fixed Path in the descriptor (literal_src)
+
+
+class BindScope(Enum):
+    """How widely a binding applies + its failure semantics."""
+
+    AGENT_CRITICAL = "agent_critical"  # delivery essential (binary/launcher/share); source-exists SAFE-FAIL; ro
+    AGENT = "agent"                    # agent-level share (e.g. plugins): per-agent across worksets; overridable; may be rw
+
+
+@dataclass(frozen=True)
+class Binding:
+    """One bound element (delivery binary/launcher/share or an agent share).
+
+    The resolved host source = user cascade override (crab.<name>.binding.<key>) ELSE the *origin*:
+    a detection field (LAUNCHER/INSTALL_DIR/BINARY), shared-store/<agent_id>/<src_rel> (SHARED_STORE),
+    or literal_src (LITERAL).  AGENT_CRITICAL bindings keep source-exists safe-fail + bind-as-is inode-pin
+    + core dest-symlink clearing; AGENT shares are best-effort (a missing/suppressed share is fine).
+    """
+
+    key: str                          # stable override key -> crab.<name>.binding.<key>
+    origin: HostSrcOrigin
+    box_dest: str
+    kind: BindKind
+    scope: BindScope
+    ro: bool = True
+    src_rel: str = ""                 # rel path under the shared store (SHARED_STORE only); ignored otherwise
+    literal_src: Path | None = None   # only when origin == LITERAL
+
+
+class Channel(Enum):
+    """Where a value-bearing arg is emitted: an argv flag or an environment variable."""
+
+    FLAG = "flag"
+    ENV = "env"
+
+
+@dataclass(frozen=True)
+class SettingArg:
+    """A value-bearing crab setting routed to an argv flag OR an env var (e.g. model, provider)."""
+
+    setting_key: str                  # crab setting supplying the value ("model", "provider")
+    channel: Channel
+    flag: tuple[str, ...] = ()        # FLAG form, e.g. ("--model",)
+    env_var: str = ""                 # ENV form, e.g. "GOOSE_MODEL"
+
+
+@dataclass(frozen=True)
+class SafeBypass:
+    """The safe-mode TOGGLE (emitted when effective safe-mode is OFF).
+
+    Special vs SettingArg: it's driven by the resolved effective safe-mode, not a plain setting value.
+    *setting_key* is an OPTIONAL persisted default (claude "access"); empty = per-launch -A/-S only (goose/codex).
+    """
+
+    channel: Channel
+    flag: tuple[str, ...] = ()        # emitted when effective safe-mode is OFF (FLAG channel)
+    env_var: str = ""                 # ENV form (e.g. goose GOOSE_MODE -> value "auto")
+    setting_key: str = ""
+
+
+@dataclass(frozen=True)
+class Operation:
+    """A STANDALONE op invocation fragment (no session mode); e.g. exec/headless. Spliced after `command`."""
+
+    fragment: tuple[str, ...]
+
+
+class Cadence(Enum):
+    """Credential/config file sync cadence."""
+
+    SYNC = "sync"            # bidirectional, mtime-gated each launch (credentials/token files)
+    SEED_ONCE = "seed_once"  # one-way host->project at init, never written back (config files)
+
+
+@dataclass(frozen=True)
+class CredFileSpec:
+    """A credential/config file's lifecycle. The divergent filter/merge PAYLOAD stays a plugin hook (filtered=True)."""
+
+    home_rel: str                     # path under the project shell home (e.g. ".claude/.credentials.json")
+    host_rel: str                     # path under the host home (e.g. ".claude/.credentials.json")
+    cadence: Cadence = Cadence.SYNC
+    mtime_gate: bool = True           # only meaningful for SYNC
+    filtered: bool = False            # True -> plugin transform_cred hook runs
+
+
+@dataclass(frozen=True)
+class PluginDescriptor:
+    """Declarative data a plugin exposes via Target.descriptor. Divergent LOGIC stays in Target hook methods."""
+
+    command: tuple[str, ...]                       # box argv prefix (e.g. ("claude",))
+    bindings: tuple[Binding, ...]                  # ALL bound elements; ordered; >=1
+    mode: dict[str, tuple[str, ...]]               # INTERACTIVE launch ONLY: {"start": (...), "continue": (...)}
+    operations: dict[str, Operation] = field(default_factory=dict)  # pass-1: {"exec": ...}; standalone, no mode
+    safe_bypass: SafeBypass | None = None
+    settings: tuple[SettingArg, ...] = ()
+    container_env: dict[str, str] = field(default_factory=dict)
+    cred_files: tuple[CredFileSpec, ...] = ()
+    host_prep: bool = False           # True -> core calls Target.prepare_host before mounts
+    init_dirs: tuple[str, ...] = ()   # extra dirs to mkdir in the project home (home-relative), e.g. (".claude",)
 
 
 def _validate_agent_binary(binary: Path) -> str | None:
@@ -175,6 +298,17 @@ class Target(ABC):
     def has_binary(self) -> bool:
         """Whether this target requires a host-installed binary."""
         return True
+
+    @property
+    def descriptor(self) -> "PluginDescriptor | None":
+        """Declarative plugin descriptor, or None for legacy plugins.
+
+        When non-None, kanibako core assembles launch argv, bindings, container
+        env, and credential sync declaratively from this descriptor instead of
+        the legacy per-method hooks (build_cli_args / binary_mounts / ...).
+        Default None keeps every existing plugin on the legacy path unchanged.
+        """
+        return None
 
     def check_auth(self) -> bool:
         """Check if the agent is authenticated. Returns True if ok."""

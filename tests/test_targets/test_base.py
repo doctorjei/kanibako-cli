@@ -2,15 +2,27 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from kanibako.targets.base import (
     AgentInstall,
+    BindKind,
+    Binding,
+    BindScope,
+    Cadence,
+    Channel,
+    CredFileSpec,
+    HostSrcOrigin,
     Mount,
+    Operation,
+    PluginDescriptor,
     ResourceMapping,
     ResourceScope,
+    SafeBypass,
+    SettingArg,
     Target,
     _validate_agent_binary,
 )
@@ -335,3 +347,209 @@ class TestPublicExports:
         assert ResourceScope.SHARED.value == "shared"
         rm = ResourceMapping(path="x", scope=ResourceScope.PROJECT)
         assert rm.path == "x"
+
+
+class TestResourceMappingBase:
+    """The additive `base` anchor field on ResourceMapping."""
+
+    def test_base_defaults_empty(self):
+        rm = ResourceMapping(path="plugins/", scope=ResourceScope.SHARED)
+        assert rm.base == ""
+
+    def test_base_preserved_when_set(self):
+        rm = ResourceMapping(
+            path="sessions",
+            scope=ResourceScope.PROJECT,
+            base=".local/share/goose",
+        )
+        assert rm.base == ".local/share/goose"
+        assert rm.path == "sessions"
+
+
+class TestPluginDescriptorDataclasses:
+    """Construction, defaults, and frozen-ness of the declarative descriptor vocabulary."""
+
+    def test_enum_values(self):
+        assert BindKind.FILE.value == "file"
+        assert BindKind.DIR.value == "dir"
+        assert HostSrcOrigin.LAUNCHER.value == "launcher"
+        assert HostSrcOrigin.SHARED_STORE.value == "shared_store"
+        assert HostSrcOrigin.LITERAL.value == "literal"
+        assert BindScope.AGENT_CRITICAL.value == "agent_critical"
+        assert BindScope.AGENT.value == "agent"
+        assert Channel.FLAG.value == "flag"
+        assert Channel.ENV.value == "env"
+        assert Cadence.SYNC.value == "sync"
+        assert Cadence.SEED_ONCE.value == "seed_once"
+
+    def test_binding_required_fields_and_defaults(self):
+        b = Binding(
+            key="binary",
+            origin=HostSrcOrigin.BINARY,
+            box_dest="/usr/local/bin/claude",
+            kind=BindKind.FILE,
+            scope=BindScope.AGENT_CRITICAL,
+        )
+        assert b.key == "binary"
+        assert b.origin is HostSrcOrigin.BINARY
+        assert b.box_dest == "/usr/local/bin/claude"
+        assert b.kind is BindKind.FILE
+        assert b.scope is BindScope.AGENT_CRITICAL
+        # defaults
+        assert b.ro is True
+        assert b.src_rel == ""
+        assert b.literal_src is None
+
+    def test_binding_frozen(self):
+        b = Binding(
+            key="binary",
+            origin=HostSrcOrigin.BINARY,
+            box_dest="/usr/local/bin/claude",
+            kind=BindKind.FILE,
+            scope=BindScope.AGENT_CRITICAL,
+        )
+        with pytest.raises(FrozenInstanceError):
+            b.ro = False  # type: ignore[misc]
+
+    def test_setting_arg_flag_and_env(self):
+        flag = SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",))
+        assert flag.flag == ("--model",)
+        assert flag.env_var == ""
+        env = SettingArg(setting_key="model", channel=Channel.ENV, env_var="GOOSE_MODEL")
+        assert env.env_var == "GOOSE_MODEL"
+        assert env.flag == ()
+
+    def test_safe_bypass_defaults(self):
+        sb = SafeBypass(channel=Channel.FLAG, flag=("--dangerously-skip-permissions",))
+        assert sb.flag == ("--dangerously-skip-permissions",)
+        assert sb.env_var == ""
+        assert sb.setting_key == ""
+
+    def test_operation_fragment(self):
+        op = Operation(fragment=("--print",))
+        assert op.fragment == ("--print",)
+        with pytest.raises(FrozenInstanceError):
+            op.fragment = ("x",)  # type: ignore[misc]
+
+    def test_cred_file_spec_defaults(self):
+        cf = CredFileSpec(
+            home_rel=".claude/.credentials.json",
+            host_rel=".claude/.credentials.json",
+        )
+        assert cf.cadence is Cadence.SYNC
+        assert cf.mtime_gate is True
+        assert cf.filtered is False
+
+    def test_plugin_descriptor_minimal_defaults(self):
+        d = PluginDescriptor(
+            command=("claude",),
+            bindings=(
+                Binding(
+                    key="binary",
+                    origin=HostSrcOrigin.BINARY,
+                    box_dest="/usr/local/bin/claude",
+                    kind=BindKind.FILE,
+                    scope=BindScope.AGENT_CRITICAL,
+                ),
+            ),
+            mode={"start": (), "continue": ("--continue",)},
+        )
+        assert d.operations == {}
+        assert d.safe_bypass is None
+        assert d.settings == ()
+        assert d.container_env == {}
+        assert d.cred_files == ()
+        assert d.host_prep is False
+        assert d.init_dirs == ()
+
+    def test_plugin_descriptor_claude_column(self):
+        """A descriptor mirroring the validated claude column."""
+        d = PluginDescriptor(
+            command=("claude",),
+            bindings=(
+                Binding(
+                    key="launcher",
+                    origin=HostSrcOrigin.LAUNCHER,
+                    box_dest="/usr/local/bin/claude",
+                    kind=BindKind.FILE,
+                    scope=BindScope.AGENT_CRITICAL,
+                ),
+            ),
+            mode={"start": (), "continue": ("--continue",)},
+            operations={"exec": Operation(fragment=("--print",))},
+            safe_bypass=SafeBypass(
+                channel=Channel.FLAG,
+                flag=("--dangerously-skip-permissions",),
+                setting_key="access",
+            ),
+            settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
+            cred_files=(
+                CredFileSpec(
+                    home_rel=".claude/.credentials.json",
+                    host_rel=".claude/.credentials.json",
+                    cadence=Cadence.SYNC,
+                ),
+                CredFileSpec(
+                    home_rel=".claude/settings.json",
+                    host_rel=".claude/settings.json",
+                    cadence=Cadence.SEED_ONCE,
+                ),
+            ),
+            init_dirs=(".claude",),
+        )
+        assert d.command == ("claude",)
+        assert len(d.bindings) == 1
+        assert d.bindings[0].scope is BindScope.AGENT_CRITICAL
+        assert d.mode["continue"] == ("--continue",)
+        assert d.operations["exec"].fragment == ("--print",)
+        assert d.safe_bypass is not None and d.safe_bypass.setting_key == "access"
+        assert d.cred_files[0].cadence is Cadence.SYNC
+        assert d.cred_files[1].cadence is Cadence.SEED_ONCE
+        assert d.init_dirs == (".claude",)
+
+    def test_plugin_descriptor_frozen(self):
+        d = PluginDescriptor(
+            command=("claude",),
+            bindings=(
+                Binding(
+                    key="binary",
+                    origin=HostSrcOrigin.BINARY,
+                    box_dest="/usr/local/bin/claude",
+                    kind=BindKind.FILE,
+                    scope=BindScope.AGENT_CRITICAL,
+                ),
+            ),
+            mode={"start": ()},
+        )
+        with pytest.raises(FrozenInstanceError):
+            d.host_prep = True  # type: ignore[misc]
+
+    def test_default_descriptor_is_none(self):
+        class NoDescTarget(Target):
+            @property
+            def name(self) -> str:
+                return "nd"
+
+            @property
+            def display_name(self) -> str:
+                return "No Descriptor"
+
+            def detect(self):
+                return None
+
+            def binary_mounts(self, install):
+                return []
+
+            def init_home(self, home, *, group_auth=True):
+                pass
+
+            def refresh_credentials(self, home):
+                pass
+
+            def writeback_credentials(self, home):
+                pass
+
+            def build_cli_args(self, **kwargs):
+                return []
+
+        assert NoDescTarget().descriptor is None
