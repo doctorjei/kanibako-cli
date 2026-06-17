@@ -20,9 +20,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - run: pip install -e '.[dev]' -e packages/agent-claude/
+      - run: pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
       - run: ruff check src/ tests/ packages/
       - run: mypy src/kanibako/
+      - run: mypy packages/agent-claude/src packages/agent-goose/src packages/agent-codex/src
       - run: pytest tests/ -v
 
   integration:
