@@ -432,6 +432,31 @@ class Target(ABC):
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files when switching to distinct auth. Default: no-op."""
 
+    def transform_cred(
+        self,
+        spec: CredFileSpec,
+        src: Path | None,
+        dst: Path,
+        direction: str,
+    ) -> None:
+        """Transform a FILTERED credential/config file between host and project.
+
+        Called by the credential-sync engine ONLY for specs with ``filtered=True``.
+        *direction* is ``"in"`` (host->project: seed/refresh) or ``"out"``
+        (project->host: writeback).  *src* is ``None`` when no source file is
+        available (e.g. distinct auth, or the host file is absent at seed time) —
+        the plugin decides whether to write a default ``dst`` or do nothing.
+
+        Default: plain copy when *src* exists (so a plugin that flags a file
+        ``filtered`` but doesn't override gets a sensible wholesale copy).
+        Plugins override to filter/merge (claude claudeAiOauth merge + .claude.json
+        allowlist; goose config.yaml allowlist).
+        """
+        import shutil
+        if src is not None and Path(src).is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+
     @abstractmethod
     def refresh_credentials(self, home: Path) -> None:
         """Refresh agent credentials from host into the project home."""
