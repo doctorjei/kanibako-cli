@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kanibako-agent-codex"
+version = "0.1.0"
+description = "Codex (OpenAI Codex CLI) agent target plugin for kanibako"
+requires-python = ">=3.11"
+dependencies = ["kanibako-cli"]
+
+[project.entry-points."kanibako.agents"]
+codex = "kanibako.plugins.codex:CodexTarget"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["kanibako.plugins.codex*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
