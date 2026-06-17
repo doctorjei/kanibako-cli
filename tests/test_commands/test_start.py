@@ -555,6 +555,94 @@ class TestStartArgs:
             assert "--dangerously-skip-permissions" not in cli_args
 
 
+class TestDescriptorLaunchPath:
+    """Step 1e: a descriptor-bearing target assembles argv/env declaratively.
+
+    These drive _run_container with claude's REAL descriptor and assert the
+    assembled cli_args / env that reach runtime.run match the legacy behavior.
+    """
+
+    def _drive(self, m):
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+        m.target.name = "claude"
+        m.target.descriptor = _CLAUDE_DESCRIPTOR
+        # No declared setting descriptors -> effective_state = crab state verbatim.
+        m.target.setting_descriptors.return_value = []
+        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.load_crab_config.return_value = m.agent_cfg
+
+    def test_default_continue_model_and_env(self, start_mocks):
+        with start_mocks() as m:
+            self._drive(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            kw = m.runtime.run.call_args.kwargs
+            cli_args = kw.get("cli_args") or []
+            env = kw.get("env") or {}
+            assert "--continue" in cli_args
+            assert "--dangerously-skip-permissions" in cli_args
+            assert cli_args[cli_args.index("--model") + 1] == "opus"
+            assert env.get("DISABLE_AUTOUPDATER") == "1"
+            assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "1"
+            # build_cli_args / apply_state are bypassed on the descriptor path.
+            m.target.build_cli_args.assert_not_called()
+            m.target.apply_state.assert_not_called()
+
+    def test_secure_omits_bypass(self, start_mocks):
+        with start_mocks() as m:
+            self._drive(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=True, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" not in cli_args
+            assert "--continue" in cli_args
+
+    def test_new_session_drops_continue(self, start_mocks):
+        with start_mocks() as m:
+            self._drive(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=True, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" not in cli_args
+            assert "--resume" not in cli_args
+
+    def test_resume_mode_emits_resume(self, start_mocks):
+        with start_mocks() as m:
+            self._drive(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=True,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--resume" in cli_args
+            assert "--continue" not in cli_args
+
+    def test_descriptor_delivery_mounts_used_not_binary_mounts(self, start_mocks):
+        """Descriptor path builds delivery mounts via descriptor_mounts, not
+        target.binary_mounts (which stays for the helper hub only)."""
+        with start_mocks() as m:
+            self._drive(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+            dests = {getattr(mt, "destination", None) for mt in mounts}
+            assert "/home/agent/.local/share/claude" in dests
+            assert "/home/agent/.local/bin/claude" in dests
+
+
 class TestCrabConfigIntegration:
     """Verify agent config integration in _run_container."""
 
@@ -902,9 +990,17 @@ class TestTweakccIntegration:
                 m.target.binary_mounts.assert_called_once()
 
     def test_telemetry_disabled_for_claude(self, start_mocks):
-        """CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 is set for Claude target."""
+        """CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 is carried by claude's descriptor.
+
+        After step 1e, the telemetry var is no longer injected by a core
+        ``target.name == "claude"`` special-case; it lives in
+        ``descriptor.container_env`` and reaches the container via assemble_env →
+        state_env.  Drive the descriptor path with the real claude descriptor.
+        """
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
         with start_mocks() as m:
             m.target.name = "claude"
+            m.target.descriptor = _CLAUDE_DESCRIPTOR
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -914,9 +1010,11 @@ class TestTweakccIntegration:
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "1"
 
     def test_telemetry_not_overridden_by_user(self, start_mocks):
-        """User can override telemetry setting via -e flag."""
+        """User can override telemetry setting via -e flag (applied after state_env)."""
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
         with start_mocks() as m:
             m.target.name = "claude"
+            m.target.descriptor = _CLAUDE_DESCRIPTOR
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -924,7 +1022,7 @@ class TestTweakccIntegration:
                 cli_env=["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=0"],
             )
             env = m.runtime.run.call_args.kwargs.get("env") or {}
-            # User's -e override takes priority (set after setdefault)
+            # User's -e override takes priority (applied after the descriptor env)
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "0"
 
     def test_apply_state_env_reaches_container(self, start_mocks):
