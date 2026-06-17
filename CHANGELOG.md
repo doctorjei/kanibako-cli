@@ -10,17 +10,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed (release pipeline)
+## [1.6.0] - 2026-06-17
 
-- **`kanibako-agent-goose` and `kanibako-agent-codex` are now built and
-  published by the release pipeline.** They version independently of the 1.5.x
-  train (currently `0.1.0`) and are therefore excluded from the shared dev
-  version stamping. Publishing uses `--skip-existing` (twine) / `skip-existing:
-  true` (PyPI publish action) so a re-run whose independent version is unchanged
-  is skipped rather than failing the upload.
-- A `workflow_dispatch` `agent` input now lets `kanibako-agent-goose` /
-  `kanibako-agent-codex` be published individually on demand, so either can ship
-  at its static version without releasing the whole 1.5.x train.
+This release generalizes kanibako's agent-plugin interface so that any agent is
+described by one declarative contract, and ships first-class **Goose** and
+**Codex** agents alongside Claude. The `kanibako` meta-package now installs all
+three by default.
+
+### Changed (BREAKING)
+
+Two config/storage changes require a one-time manual migration — there is **no
+automatic migration**:
+
+- **Agent-specific `crab` config overrides are now keyed by agent name.** A
+  crab override section (in `project.yaml`, a workset's `config.yaml`,
+  `kanibako.yaml`, or `/etc/kanibako/kanibako.yaml`) is now read under
+  `crab.<agent-name>` (e.g. `crab.claude`, `crab.goose`), layered over a
+  reserved any-agent tier `crab.default`. The agent-specific value wins. This
+  fixes "bleed" where an override set while a box ran one agent (e.g. `model`)
+  kept applying after the box switched to a different agent. A **legacy flat
+  `[crab]` override section no longer applies** until you move its keys under
+  `crab.default` (apply to every agent) or `crab.<agent-name>` (per agent). The
+  agent-agnostic `kanibako config set <key> <value>` now writes under
+  `crab.default`. Per-agent `crabs/<name>.yaml` state files are unaffected.
+- **The plugins host-storage location moved.** Per-agent plugins now live at
+  `global_shared/<agent-id>/plugins` (a shared store under the data dir) instead
+  of the old per-crab share dir `crabs/<name>/share/plugins`. Hand-move any
+  existing plugin directories to the new location. Note: when no global shared
+  store is configured, plugins are no longer mounted at all (the old path mounted
+  them unconditionally from the crab-share dir).
+
+### Added
+
+- **First-class Goose and Codex agents.** Two new agent plugins,
+  `kanibako-agent-goose` and `kanibako-agent-codex`, join `kanibako-agent-claude`.
+  All three are now built on the generalized declarative descriptor contract.
+  They version independently of the cli (currently `0.1.0`) and are published as
+  their own PyPI packages.
+- **The `kanibako` meta-package now installs all three agents** (Claude, Goose,
+  and Codex) by default. `pip install kanibako` / `pipx install kanibako` gives
+  you the cli plus all three agent plugins.
+- **Per-agent binding host-source overrides.** A box's bound host directory for a
+  given agent resource (e.g. the plugins dir) can be redirected via the config
+  key `crab.<agent-name>.binding.<key>` (layered over `crab.default.binding.<key>`).
+  The value is a host path string, or a sub-table with a `host_src` key.
+- **Independent agent publishing in the release pipeline.** `kanibako-agent-goose`
+  and `kanibako-agent-codex` are built and published by the release pipeline at
+  their own static versions (excluded from the shared dev version stamping), using
+  skip-existing semantics so a re-run whose version is unchanged is skipped rather
+  than failing. A `workflow_dispatch` `agent` input lets a single agent package be
+  published on demand without releasing the whole train.
+
+### Changed
+
+- **The agent-plugin interface is generalized onto one declarative contract.**
+  Each agent is now described by a single `PluginDescriptor` (launch command,
+  modes, safe-mode toggle, settings/flags, bind mounts, and credential files),
+  with generic engines that assemble the launch invocation and synchronize
+  credentials. Adding or maintaining an agent is now mostly data. Claude's
+  observable behavior is preserved.
+- **Codex detection prefers a standalone native binary over the npm shim.** When
+  a directly-runnable native `codex` executable is on `PATH` it is used directly;
+  the npm-installed build (whose binary sits behind a Node shim) is the fallback.
+  This avoids depending on a working Node runtime on the host. A host with only
+  the npm install behaves as before; a host with only a standalone binary is now
+  detected.
+- **Goose secure mode (`-S`) now genuinely requires per-tool approval.** It emits
+  `GOOSE_MODE=approve` so Goose asks before running any tool. Previously `-S`
+  emitted nothing, leaving Goose in its unsafe `auto` default (tools auto-execute).
+  The default autonomous path is unchanged. (Verified honored against a real
+  provider.)
+- **CI now type-checks the plugin packages** (Claude, Goose, and Codex), closing
+  the gap where only the core was type-checked and a plugin could regress silently.
+
+### Fixed
+
+- **Goose launch on Goose 1.37.0.** The bundled Goose grammar used a `session
+  start` form that 1.37.0 removed, so launching Goose failed. The grammar is
+  rewritten to the verified 1.37.0 tokens. (The previous Goose plugin was an
+  unpublished `0.1.0`, so this is not a regression.)
+
+### Removed
+
+- **Claude `-R` / `--resume` conversation picker.** Claude's launch modes are now
+  `start` and `continue` only; `-R` / `--resume` now resolves to `--continue`.
+  The resume picker remains reachable from within an interactive Claude session.
 
 ## [1.5.1] - 2026-06-16
 
@@ -498,7 +572,11 @@ There is **no migration code** — convert existing installs in a single pass:
   the distinction as data (a `ProjectGroup` descriptor) rather than control flow.
   Behavior-preserving; no user-visible change.
 
-[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/doctorjei/kanibako/compare/v1.5.1...v1.6.0
+[1.5.1]: https://github.com/doctorjei/kanibako/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/doctorjei/kanibako/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/doctorjei/kanibako/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/doctorjei/kanibako/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/doctorjei/kanibako/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/doctorjei/kanibako/releases/tag/v1.3.0
