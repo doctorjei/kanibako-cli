@@ -763,7 +763,8 @@ class TestDescriptor:
         d = ClaudeTarget().descriptor
         assert d.mode["start"] == ()
         assert d.mode["continue"] == ("--continue",)
-        assert d.mode["resume"] == ("--resume",)
+        # resume intentionally cut (user 2026-06-17): {start, continue} only.
+        assert "resume" not in d.mode
 
     def test_operations_exec(self):
         d = ClaudeTarget().descriptor
