@@ -520,6 +520,56 @@ def remove_crab_setting(path: Path, key: str, agent_name: str) -> bool:
     return True
 
 
+def read_binding_overrides(path: Path | None, agent_name: str) -> dict[str, str]:
+    """Read agent-keyed binding host-source overrides from a config ``crab`` table.
+
+    Reads the ``binding`` sub-table under ``crab.<agent_name>`` layered over the
+    reserved any-agent ``crab.default.binding`` tier (the agent-specific value
+    wins within a single file) — the SAME agent-keying as
+    :func:`read_crab_settings`. These redirect the HOST SOURCE of a descriptor
+    :class:`~kanibako.targets.base.Binding` (e.g. ``crab.claude.binding.plugins``
+    points the claude ``plugins`` share at a custom host directory).
+
+    Returns ``{binding_key: host_src}``. Each binding VALUE may be either:
+
+    * a bare string ``host_src`` (``crab.claude.binding.plugins = "/path"``), or
+    * a sub-table carrying a ``host_src`` key
+      (``crab.claude.binding.plugins.host_src = "/path"``).
+
+    A sub-table without a string ``host_src`` (and any other non-string value)
+    is skipped. As with :func:`read_crab_settings`, a legacy FLAT ``[crab]``
+    table is treated as UNSET (no pass-1 migration); the common no-config case
+    (absent/None/unreadable path, or absent ``crab``/``binding`` table) returns
+    ``{}``.
+    """
+    if path is None or not path.exists():
+        return {}
+    try:
+        data = load_doc(path)
+    except Exception:
+        return {}
+    crab = data.get("crab", {})
+    if not isinstance(crab, dict):
+        return {}
+    out: dict[str, str] = {}
+    # Least-specific (default tier) first so the agent-specific tier wins.
+    for tier in ("default", agent_name):
+        section = crab.get(tier)
+        if not isinstance(section, dict):
+            continue
+        binding = section.get("binding")
+        if not isinstance(binding, dict):
+            continue
+        for key, val in binding.items():
+            if isinstance(val, str):
+                out[key] = val
+            elif isinstance(val, dict):
+                host_src = val.get("host_src")
+                if isinstance(host_src, str):
+                    out[key] = host_src
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*)
 # ---------------------------------------------------------------------------

@@ -598,11 +598,11 @@ class TestResourceMappings:
         assert shared == []
 
     def test_default_shares(self):
-        """Plugins are declared as a crab-scoped rw default share."""
+        """Phase 1h: plugins moved off the legacy default-share path onto the
+        descriptor's AGENT-scope SHARED_STORE ``plugins`` binding, so claude
+        declares NO default shares (inherits the base ``{}``)."""
         t = ClaudeTarget()
-        assert t.default_shares() == {
-            "crab.path.share_rw.plugins": "plugins:~/.claude/plugins"
-        }
+        assert t.default_shares() == {}
 
     def test_seeded_resources(self):
         """settings.json and CLAUDE.md are seeded from workset."""
