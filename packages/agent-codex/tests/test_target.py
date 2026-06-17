@@ -34,8 +34,31 @@ class TestProperties:
         assert CodexTarget().default_entrypoint == "codex"
 
 
+def _write_exe(path: Path, data: bytes) -> Path:
+    """Write *data* to *path*, mark it executable, and return the path."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    path.chmod(0o755)
+    return path
+
+
 class TestDetect:
-    """detect() resolves the REAL native binary behind the npm shim."""
+    """detect() prefers a standalone binary on PATH; npm is the LAST resort.
+
+    Preference order (recorded host-binary principle): machine-code-compiled
+    executable > self-contained/contained package (SEA) > runtime-dependent
+    package managers (npm/pip), last.  On Linux all three collapse to the ELF
+    discriminator — a directly-bindable ELF on PATH wins; a non-ELF Node shim
+    falls through to the npm-vendored native binary.
+    """
+
+    def _patch_path_codex(self, monkeypatch, path: Path | None):
+        """Mock `shutil.which('codex')` to return *path* (or None = absent)."""
+        import kanibako.plugins.codex.target as codex_mod
+        monkeypatch.setattr(
+            codex_mod.shutil, "which",
+            lambda name: (str(path) if path is not None else None) if name == "codex" else None,
+        )
 
     def _patch_npm_root(self, monkeypatch, root: Path | None):
         import kanibako.plugins.codex.target as codex_mod
@@ -48,8 +71,50 @@ class TestDetect:
             lambda: ("codex-linux-x64", "x86_64-unknown-linux-musl"),
         )
 
-    def test_found_hoisted(self, tmp_path: Path, monkeypatch):
-        """Hoisted layout: <root>/@openai/codex-<os>-<arch>/vendor/.../codex."""
+    # --- PRIMARY: standalone executable on PATH -------------------------------
+
+    def test_primary_standalone_elf_on_path(self, tmp_path: Path, monkeypatch):
+        """PATH `codex` -> a real-looking ELF -> bind THAT file directly.
+
+        npm is also wired up (and would resolve), proving the ELF wins.
+        """
+        standalone = _write_exe(tmp_path / "bin" / "codex", b"\x7fELF native codex\n")
+        self._patch_path_codex(monkeypatch, standalone)
+        # npm path is available too -> must NOT be used (standalone wins).
+        npm_root = tmp_path / "node_modules"
+        npm_root.mkdir()
+        make_vendored_tree(npm_root, nested=False)
+        self._force_linux_x64(monkeypatch)
+        self._patch_npm_root(monkeypatch, npm_root)
+
+        result = CodexTarget().detect()
+        assert result is not None
+        assert result.name == "codex"
+        assert result.binary == standalone
+        assert result.install_dir == standalone.parent
+        assert result.launcher is None
+
+    def test_primary_symlinked_standalone_resolves_to_real_target(self, tmp_path: Path, monkeypatch):
+        """A symlinked standalone ELF resolves (Path.resolve) to its real target."""
+        real = _write_exe(tmp_path / "opt" / "codex-0.140" / "codex", b"\x7fELF native codex\n")
+        link = tmp_path / "bin" / "codex"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(real)
+        self._patch_path_codex(monkeypatch, link)
+        # No npm fallback available -> only the PATH-resolved real binary can win.
+        self._patch_npm_root(monkeypatch, None)
+
+        result = CodexTarget().detect()
+        assert result is not None
+        assert result.binary == real.resolve()
+        assert result.install_dir == real.resolve().parent
+
+    # --- FALLBACK: npm-vendored native binary --------------------------------
+
+    def test_fallback_path_codex_is_node_shim(self, tmp_path: Path, monkeypatch):
+        """PATH `codex` -> a `#!node` JS shim (non-ELF) -> fall back to npm vendored."""
+        shim = _write_exe(tmp_path / "bin" / "codex", b"#!/usr/bin/env node\nrequire('./codex.js')\n")
+        self._patch_path_codex(monkeypatch, shim)
         npm_root = tmp_path / "node_modules"
         npm_root.mkdir()
         binary = make_vendored_tree(npm_root, nested=False)
@@ -58,13 +123,25 @@ class TestDetect:
 
         result = CodexTarget().detect()
         assert result is not None
-        assert result.name == "codex"
-        assert result.binary == binary
+        assert result.binary == binary  # the vendored native ELF, not the shim
         assert result.install_dir == binary.parent
-        assert result.launcher is None
 
-    def test_found_nested(self, tmp_path: Path, monkeypatch):
+    def test_fallback_no_path_codex(self, tmp_path: Path, monkeypatch):
+        """PATH `codex` absent -> npm fallback resolves the vendored binary."""
+        self._patch_path_codex(monkeypatch, None)
+        npm_root = tmp_path / "node_modules"
+        npm_root.mkdir()
+        binary = make_vendored_tree(npm_root, nested=False)
+        self._force_linux_x64(monkeypatch)
+        self._patch_npm_root(monkeypatch, npm_root)
+
+        result = CodexTarget().detect()
+        assert result is not None
+        assert result.binary == binary
+
+    def test_fallback_found_nested(self, tmp_path: Path, monkeypatch):
         """Nested layout: <root>/@openai/codex/node_modules/@openai/codex-...."""
+        self._patch_path_codex(monkeypatch, None)
         npm_root = tmp_path / "node_modules"
         npm_root.mkdir()
         binary = make_vendored_tree(npm_root, nested=True)
@@ -75,8 +152,9 @@ class TestDetect:
         assert result is not None
         assert result.binary == binary
 
-    def test_found_via_glob_fallback(self, tmp_path: Path, monkeypatch):
+    def test_fallback_found_via_glob(self, tmp_path: Path, monkeypatch):
         """Unrecognized platform map -> glob fallback still finds the binary."""
+        self._patch_path_codex(monkeypatch, None)
         npm_root = tmp_path / "node_modules"
         npm_root.mkdir()
         # Materialize an arbitrary-triple vendored binary the direct map misses.
@@ -93,18 +171,68 @@ class TestDetect:
         assert result is not None
         assert result.binary == binary
 
-    def test_not_found_no_npm_root(self, monkeypatch):
-        """No npm global root -> None (codex absent), never crashes."""
+    # --- Neither path resolves ------------------------------------------------
+
+    def test_not_found_no_path_no_npm_root(self, monkeypatch):
+        """No standalone on PATH and no npm global root -> None, never crashes."""
+        self._patch_path_codex(monkeypatch, None)
         self._patch_npm_root(monkeypatch, None)
         assert CodexTarget().detect() is None
 
-    def test_not_found_no_vendored_binary(self, tmp_path: Path, monkeypatch):
-        """npm root present but no codex package -> None."""
+    def test_not_found_shim_and_no_vendored_binary(self, tmp_path: Path, monkeypatch):
+        """PATH shim (non-ELF) + npm root present but no codex package -> None."""
+        shim = _write_exe(tmp_path / "bin" / "codex", b"#!/usr/bin/env node\n")
+        self._patch_path_codex(monkeypatch, shim)
         npm_root = tmp_path / "node_modules"
         npm_root.mkdir()
         self._force_linux_x64(monkeypatch)
         self._patch_npm_root(monkeypatch, npm_root)
         assert CodexTarget().detect() is None
+
+
+class TestIsElf:
+    """_is_elf discriminates a bindable native/SEA executable from a Node shim."""
+
+    def test_true_for_elf_magic(self, tmp_path: Path):
+        import kanibako.plugins.codex.target as codex_mod
+        p = _write_exe(tmp_path / "codex", b"\x7fELF\x02\x01\x01\x00rest")
+        assert codex_mod._is_elf(p) is True
+
+    def test_false_for_node_shim(self, tmp_path: Path):
+        import kanibako.plugins.codex.target as codex_mod
+        p = _write_exe(tmp_path / "codex", b"#!/usr/bin/env node\n")
+        assert codex_mod._is_elf(p) is False
+
+    def test_false_for_missing_path(self, tmp_path: Path):
+        import kanibako.plugins.codex.target as codex_mod
+        assert codex_mod._is_elf(tmp_path / "nope") is False
+
+    def test_false_for_directory(self, tmp_path: Path):
+        import kanibako.plugins.codex.target as codex_mod
+        assert codex_mod._is_elf(tmp_path) is False
+
+    def test_false_for_short_file(self, tmp_path: Path):
+        import kanibako.plugins.codex.target as codex_mod
+        p = _write_exe(tmp_path / "codex", b"\x7fEL")  # only 3 bytes
+        assert codex_mod._is_elf(p) is False
+
+
+class TestResolvePathExecutable:
+    """_resolve_path_executable follows symlinks and tolerates absence."""
+
+    def test_none_when_absent(self, monkeypatch):
+        import kanibako.plugins.codex.target as codex_mod
+        monkeypatch.setattr(codex_mod.shutil, "which", lambda name: None)
+        assert codex_mod._resolve_path_executable() is None
+
+    def test_resolves_symlink_to_real_target(self, tmp_path: Path, monkeypatch):
+        import kanibako.plugins.codex.target as codex_mod
+        real = _write_exe(tmp_path / "real" / "codex", b"\x7fELF")
+        link = tmp_path / "bin" / "codex"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(real)
+        monkeypatch.setattr(codex_mod.shutil, "which", lambda name: str(link))
+        assert codex_mod._resolve_path_executable() == real.resolve()
 
 
 class TestNpmRootGlobal:

@@ -6,7 +6,19 @@ the interface was designed.  It implements ONLY the irreducible surface:
 
 * ``name`` / ``display_name`` — identity.
 * ``detect`` — the one genuinely codex-specific bit: resolve the REAL native
-  Rust binary that the npm ``@openai/codex`` *shim* vendors (see below).
+  binary to bind into the box, honoring the host's recorded host-binary
+  preference order — **machine-code-compiled executable > self-contained /
+  contained package (SEA, AppImage — still a single bindable executable) >
+  runtime-dependent package managers (npm/pip), LAST**.  The rationale is to
+  avoid the brittleness of requiring node/python on the host.  Concretely on
+  Linux:
+
+  - PRIMARY: if ``codex`` on ``$PATH`` resolves (symlinks followed) to a
+    directly-bindable **ELF** (a Rust native build OR a Node SEA — both carry
+    the ``\x7fELF`` magic), bind THAT executable directly.
+  - FALLBACK: otherwise (PATH ``codex`` absent, or it is the npm Node *shim* — a
+    ``#!node`` text script, NOT bindable standalone) resolve THROUGH npm to the
+    native binary the shim vendors (see below).
 * ``descriptor`` — the declarative :class:`PluginDescriptor`; core ``start.py``
   assembles launch argv / env / delivery binds / credential lifecycle from it.
 * ``check_auth`` — lenient credential presence check.
@@ -19,17 +31,20 @@ inherited from the step-3a concrete :class:`Target` defaults — codex needs no
 overrides there (both its cred files are wholesale copies; the descriptor's
 ``init_dirs`` create ``.codex``).
 
-⚑ E2E-GATED: ``detect``'s npm-shim -> native-binary resolution (the exact
-vendored hoist location and target triple) is implemented best-effort against
-the documented codex 0.140.0 layout but MUST be verified on a real codex
-install — codex is not present on the dev box, so the tests mock it.  See the
-``detect`` docstring.
+⚑ E2E-GATED: ``detect``'s two paths — (1) the PRIMARY standalone-ELF-on-PATH
+bind and (2) the FALLBACK npm-shim -> native-binary resolution (the exact
+vendored hoist location and target triple) — are implemented best-effort
+against the documented codex 0.140.0 layout but MUST be verified on a real
+codex install: a standalone-extracted ELF on PATH (primary) and the npm Node
+shim that vendors a musl static-pie ELF (fallback).  codex is not present on
+the dev box, so the tests mock both.  See the ``detect`` docstring.
 """
 
 from __future__ import annotations
 
 import os
 import platform
+import shutil
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -220,6 +235,43 @@ def _resolve_vendored_binary(npm_root: Path) -> Path | None:
     return None
 
 
+def _is_elf(path: Path) -> bool:
+    """Return ``True`` iff *path* begins with the ELF magic ``\\x7fELF``.
+
+    This is the discriminator between a directly-bindable machine-code / SEA
+    executable (Rust native build OR a Node single-executable-application — both
+    are ELF on Linux) and the npm ``@openai/codex`` Node *shim* (a ``#!node``
+    text script, NOT bindable standalone).  Swallows any ``OSError``
+    (missing/unreadable/dir) -> ``False`` so detection never crashes.
+    """
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
+def _resolve_path_executable() -> Path | None:
+    """Resolve ``codex`` on ``$PATH`` to its real (symlink-followed) target.
+
+    codex's host install location is genuinely user-chosen — there is no fixed
+    contract path like claude/goose have — so a ``$PATH`` lookup is the right
+    primitive here; we follow symlinks and verify ELF magic (read-only) before
+    ever trusting/binding the result, so this is not the PATH-injection vector
+    that anchoring guards against for the fixed-path agents.
+
+    Returns the resolved real path, or ``None`` if ``codex`` is not on ``$PATH``
+    (or cannot be resolved).  Never raises.
+    """
+    found = shutil.which("codex")
+    if not found:
+        return None
+    try:
+        return Path(found).resolve()
+    except OSError:
+        return None
+
+
 class CodexTarget(Target):
     """Target for the OpenAI Codex CLI (https://github.com/openai/codex)."""
 
@@ -241,19 +293,24 @@ class CodexTarget(Target):
         return "codex"
 
     def detect(self) -> AgentInstall | None:
-        """Detect the Codex installation, resolving the REAL native binary.
+        """Detect the Codex installation, resolving a directly-bindable binary.
 
-        ⚑ This shim -> native-binary resolution is the one genuinely
-        codex-specific piece and the part that MUST be E2E-verified on a real
-        codex install — the precise vendored hoist location and target triple
-        are documented for codex 0.140.0 but not confirmed on the dev box (codex
-        is not installed here; the unit tests mock the npm root + a fake vendored
-        tree).
+        Honors the host-binary preference order (machine-code > self-contained
+        package > runtime package manager) so we bind a standalone executable
+        whenever one exists and only fall back to npm — which would otherwise
+        require node on the host — as a last resort.
 
-        ``which codex`` resolves the npm ``@openai/codex`` *Node SHIM*
-        (``/usr/local/bin/codex`` -> ``bin/codex.js``), NOT a binary we can bind
-        standalone into the box.  Binding the shim would require node in-box.  So
-        we resolve the underlying native Rust ELF that the shim vendors:
+        **PRIMARY — standalone executable on ``$PATH``.** Resolve ``codex`` on
+        ``$PATH`` (symlinks followed).  If the real target is an **ELF** (first
+        four bytes ``\\x7fELF`` — a Rust native build OR a Node single-executable
+        application, both directly bindable) bind THAT file:
+        :class:`AgentInstall` with ``binary`` = the resolved ELF and
+        ``install_dir`` = its parent.  No node in-box required.
+
+        **FALLBACK — npm vendored native binary.** If ``codex`` is absent from
+        ``$PATH``, OR it resolves to a *non*-ELF (the npm ``@openai/codex`` Node
+        *shim*, a ``#!node`` text script that is NOT bindable standalone), fall
+        through to the npm path:
 
         1. Find the npm global ``node_modules`` root via ``npm root -g``.
         2. Under it, locate the per-platform package
@@ -264,11 +321,30 @@ class CodexTarget(Target):
            The descriptor's BINARY binding uses ``install.binary``, so the
            static-pie musl ELF binds into the box and runs with no node.
 
-        Returns ``None`` (never crashes) when npm/codex is not found.
+        ⚑ Both paths are E2E-gated: the PRIMARY standalone-ELF bind and the
+        FALLBACK shim -> vendored-native resolution (the precise vendored hoist
+        location and target triple, documented for codex 0.140.0) MUST be
+        verified on a real codex install — codex is not installed on the dev box
+        (the unit tests mock ``$PATH`` + the npm root + a fake vendored tree).
+
+        Returns ``None`` (never crashes) when neither a standalone binary nor an
+        npm-vendored one is found.
         """
+        # PRIMARY: a standalone machine-code / SEA executable on $PATH.
+        path_bin = _resolve_path_executable()
+        if path_bin is not None and _is_elf(path_bin):
+            logger.debug("Detected standalone codex ELF on PATH: %s", path_bin)
+            return AgentInstall(
+                name="codex",
+                binary=path_bin,
+                install_dir=path_bin.parent,
+            )
+
+        # FALLBACK: the native binary the npm Node shim vendors (needs npm, not
+        # node-in-box, to resolve — but is the LAST resort by preference order).
         npm_root = _npm_root_global()
         if npm_root is None:
-            logger.debug("npm global root unavailable; codex not detected")
+            logger.debug("no standalone codex on PATH and npm global root unavailable; codex not detected")
             return None
 
         binary = _resolve_vendored_binary(npm_root)
@@ -276,7 +352,7 @@ class CodexTarget(Target):
             logger.debug("codex vendored binary not found under %s", npm_root)
             return None
 
-        logger.debug("Detected codex native binary: %s", binary)
+        logger.debug("Detected codex native binary via npm fallback: %s", binary)
         return AgentInstall(
             name="codex",
             binary=binary,
