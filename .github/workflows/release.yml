@@ -25,6 +25,11 @@ on:
         description: 'Upload the dev build to PyPI (else build + twine-check only)'
         type: boolean
         default: false
+      agent:
+        description: 'Publish ONLY this agent package (agent-goose | agent-codex). Empty = normal dev build.'
+        type: string
+        default: ''
+        required: false
 
 permissions:
   contents: write    # gh release
@@ -167,7 +172,7 @@ jobs:
 
   dev:
     name: dev - build (+ optional publish) a .dev pre-release
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.agent == '' }}
     runs-on: ubuntu-latest
     environment: pypi
     steps:
@@ -223,3 +228,51 @@ jobs:
         # OIDC trusted publishing via the same release.yml Trusted Publisher.
         if: ${{ inputs.publish }}
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ---------------------------------------------------------------------------
+  # publish-agent path: on-demand (workflow_dispatch with `agent` set) publish
+  # of ONE independently-versioned agent package (agent-goose | agent-codex) to
+  # prod PyPI. These agents version independently of the 1.5.x train (currently
+  # 0.1.0) — the train ships via the tag-driven rc->promote path; this job lets
+  # a single agent be published on demand at its static pyproject version, with
+  # no version stamping. Only the selected package is built into dist/, so only
+  # it is published. Shares this workflow file (env `pypi`) so the existing
+  # Trusted Publisher applies.
+  # ---------------------------------------------------------------------------
+
+  publish-agent:
+    name: publish a single agent package on demand
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.agent != '' }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate agent input
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: |
+          case "$AGENT" in
+            agent-goose|agent-codex) echo "Publishing packages/$AGENT" ;;
+            *) echo "Unknown agent '$AGENT'; expected agent-goose or agent-codex." >&2; exit 1 ;;
+          esac
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build the agent package
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: python -m build "packages/$AGENT" --outdir "$PWD/dist"
+
+      - name: Publish to PyPI
+        # OIDC trusted publishing via the per-project Trusted Publisher
+        # (workflow=release.yml, environment=pypi). skip-existing tolerates
+        # an already-present version.
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
