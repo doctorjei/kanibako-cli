@@ -278,12 +278,15 @@ class Target(ABC):
         """
         ...
 
-    @abstractmethod
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Return volume mounts needed to make the agent binary available in the container."""
-        ...
+        """Return volume mounts to make the agent binary available in the container.
 
-    @abstractmethod
+        Default: ``[]``.  Descriptor-native plugins declare their delivery binds
+        in ``descriptor.bindings`` (core builds them via ``descriptor_mounts``)
+        and need not override this; legacy plugins override it.
+        """
+        return []
+
     def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         """Initialize agent-specific files in the project home directory.
 
@@ -292,8 +295,12 @@ class Target(ABC):
 
         *group_auth* is ``True`` (copy credentials from host) or ``False``
         (skip credential copy — project manages its own credentials).
+
+        Default: no-op.  Descriptor-native plugins create dirs + seed creds via
+        ``descriptor.init_dirs``/``cred_files`` (core's credsync engine) and need
+        not override this; legacy plugins override it.
         """
-        ...
+        return None
 
     @property
     def has_binary(self) -> bool:
@@ -457,17 +464,22 @@ class Target(ABC):
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dst))
 
-    @abstractmethod
     def refresh_credentials(self, home: Path) -> None:
-        """Refresh agent credentials from host into the project home."""
-        ...
+        """Refresh agent credentials from host into the project home.
 
-    @abstractmethod
+        Default: no-op.  Descriptor-native plugins sync creds via
+        ``descriptor.cred_files`` (core's credsync engine); legacy plugins override.
+        """
+        return None
+
     def writeback_credentials(self, home: Path) -> None:
-        """Write back credentials from project home to host."""
-        ...
+        """Write back credentials from project home to host.
 
-    @abstractmethod
+        Default: no-op.  Descriptor-native plugins sync creds via
+        ``descriptor.cred_files`` (core's credsync engine); legacy plugins override.
+        """
+        return None
+
     def build_cli_args(
         self,
         *,
@@ -477,5 +489,10 @@ class Target(ABC):
         is_new_project: bool,
         extra_args: list[str],
     ) -> list[str]:
-        """Build command-line arguments for the agent entrypoint."""
-        ...
+        """Build command-line arguments for the agent entrypoint.
+
+        Default: ``list(extra_args)`` (passthrough only).  Descriptor-native
+        plugins assemble argv declaratively from ``descriptor`` (core's
+        ``assemble_argv``) and never call this; legacy plugins override it.
+        """
+        return list(extra_args)
