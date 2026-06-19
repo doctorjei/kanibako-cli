@@ -7,12 +7,18 @@ table, and ``load_std_paths`` reproducing today's default directory layout.
 
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 
 import pytest
 
 from kanibako.config import load_config
-from kanibako.paths import SYSTEM_PATH_DEFAULTS, resolve_system_paths
+from kanibako.paths import (
+    SYSTEM_PATH_DEFAULTS,
+    resolve_system_paths,
+    resolve_xdg,
+)
 from kanibako.settings_resolve import SettingsError
 
 
@@ -155,3 +161,107 @@ class TestBoxesOverrideConsumers:
         # Listing enumerates the custom boxes dir.
         listed = {p.name for p, _ in iter_projects(std, config)}
         assert proj.name in listed
+
+
+class TestResolveXdg:
+    """The hardened XDG base-directory resolver (freedesktop spec)."""
+
+    def test_absolute_env_value_honored(self, tmp_path, monkeypatch):
+        abs_dir = tmp_path / "custom_data"
+        monkeypatch.setenv("XDG_DATA_HOME", str(abs_dir))
+        assert resolve_xdg("XDG_DATA_HOME", ".local/share") == abs_dir.resolve()
+
+    def test_unset_uses_spec_default_under_home(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert resolve_xdg("XDG_CONFIG_HOME", ".config") == tmp_path / ".config"
+
+    def test_relative_env_value_ignored_for_spec_default(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """A relative XDG value is invalid → ignored → spec default used."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
+        with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
+            result = resolve_xdg("XDG_STATE_HOME", ".local/state")
+        assert result == tmp_path / ".local/state"
+        assert any("relative" in r.message.lower() for r in caplog.records)
+
+    def test_empty_env_value_uses_default(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_CACHE_HOME", "")
+        assert resolve_xdg("XDG_CACHE_HOME", ".cache") == tmp_path / ".cache"
+
+    def test_runtime_dir_absolute_honored(self, tmp_path, monkeypatch):
+        abs_dir = tmp_path / "run"
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(abs_dir))
+        assert resolve_xdg("XDG_RUNTIME_DIR", None) == abs_dir.resolve()
+
+    def test_runtime_dir_unset_falls_back_and_warns(self, monkeypatch, caplog):
+        """No spec default → must fall back to a usable 0700 dir AND warn."""
+        import kanibako.paths as paths_mod
+
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        # Clear the process cache so this test sees a fresh selection+warn.
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
+            result = resolve_xdg("XDG_RUNTIME_DIR", None)
+        # Fallback dir is real, owned, and 0700.
+        assert result.is_dir()
+        st = result.stat()
+        assert st.st_uid == os.getuid()
+        assert (st.st_mode & 0o777) == 0o700
+        # Never silent.
+        assert any(
+            "XDG_RUNTIME_DIR" in r.message and "falling back" in r.message
+            for r in caplog.records
+        )
+
+    def test_runtime_dir_relative_falls_back_and_warns(self, monkeypatch, caplog):
+        import kanibako.paths as paths_mod
+
+        monkeypatch.setenv("XDG_RUNTIME_DIR", "relative/run")
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        with caplog.at_level(logging.WARNING, logger="kanibako.paths"):
+            result = resolve_xdg("XDG_RUNTIME_DIR", None)
+        assert result.is_dir()
+        # Both the relative-ignored warning and the fallback warning fire.
+        msgs = " ".join(r.message.lower() for r in caplog.records)
+        assert "relative" in msgs
+        assert "falling back" in msgs
+
+    def test_runtime_dir_fallback_cached_within_process(self, monkeypatch):
+        """Repeated resolution returns the SAME fallback dir (no temp leak)."""
+        import kanibako.paths as paths_mod
+
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        first = resolve_xdg("XDG_RUNTIME_DIR", None)
+        second = resolve_xdg("XDG_RUNTIME_DIR", None)
+        assert first == second
+
+
+class TestResolveSystemPathsXdgCtx:
+    """``resolve_system_paths`` populates the full XDG var set into ctx."""
+
+    def test_xdg_config_state_cache_refs_resolve(self, tmp_path, monkeypatch):
+        """A system path expression referencing $XDG_CONFIG_HOME resolves."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        cfg_home = tmp_path / "cfg"
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
+        resolved = resolve_system_paths(
+            {"system.path.boxes": "$XDG_CONFIG_HOME/kani-boxes"},
+            data_home=tmp_path / "data",
+            home=tmp_path,
+        )
+        assert resolved["system.path.boxes"] == cfg_home / "kani-boxes"
+
+    def test_xdg_runtime_ref_resolves(self, tmp_path, monkeypatch):
+        run_dir = tmp_path / "run"
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
+        resolved = resolve_system_paths(
+            {"system.path.boxes": "$XDG_RUNTIME_DIR/kani"},
+            data_home=tmp_path / "data",
+            home=tmp_path,
+        )
+        assert resolved["system.path.boxes"] == run_dir / "kani"
