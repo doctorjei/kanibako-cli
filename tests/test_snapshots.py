@@ -303,6 +303,89 @@ class TestRestoreSnapshot:
         with pytest.raises(FileNotFoundError, match="Snapshot not found"):
             restore_snapshot(vault_rw, "20260101T000000Z")
 
+    def test_restore_atomic_on_failure_dir_snapshot(self, tmp_path: Path) -> None:
+        """A mid-restore failure (dir snapshot) preserves live contents."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        snap = create_snapshot(vault_rw, strategy="hardlink")
+        assert snap is not None
+
+        # Mutate live data so we can detect destruction.
+        (vault_rw / "file1.txt").write_text("live-precious")
+        (vault_rw / "live_only.txt").write_text("must-survive")
+
+        # Make the swap-in fail after the wipe point.
+        with patch(
+            "kanibako.snapshots.shutil.move",
+            side_effect=OSError("disk full"),
+        ):
+            with pytest.raises(OSError, match="disk full"):
+                restore_snapshot(vault_rw, snap.name)
+
+        # Pre-existing live contents survived (not destroyed).
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+        # No staging/backup dirs left behind.
+        leftovers = [
+            p for p in vault_rw.parent.iterdir() if p.name.startswith(".share-rw.")
+        ]
+        assert leftovers == []
+
+    def test_restore_atomic_on_failure_tarxz(self, tmp_path: Path) -> None:
+        """A mid-restore failure (tar.xz snapshot) preserves live contents."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        snap = create_snapshot(vault_rw, strategy="tarxz")
+        assert snap is not None
+
+        (vault_rw / "file1.txt").write_text("live-precious")
+        (vault_rw / "live_only.txt").write_text("must-survive")
+
+        # Fail during extraction (before live contents are touched).
+        with patch(
+            "kanibako.snapshots.tarfile.open",
+            side_effect=OSError("corrupt archive"),
+        ):
+            with pytest.raises(OSError, match="corrupt archive"):
+                restore_snapshot(vault_rw, snap.name)
+
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+
+    def test_restore_partial_swap_rolls_back(self, tmp_path: Path) -> None:
+        """A failure partway through the swap rolls back the live contents."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        snap = create_snapshot(vault_rw, strategy="hardlink")
+        assert snap is not None
+
+        (vault_rw / "file1.txt").write_text("live-precious")
+        (vault_rw / "live_only.txt").write_text("must-survive")
+
+        real_move = __import__("shutil").move
+        calls = {"n": 0}
+
+        def flaky_move(src: str, dst: str):
+            # Fail only when swapping STAGED contents in (src under staging);
+            # let the move-aside and the rollback moves succeed.
+            if ".restore.tmp" in str(src):
+                calls["n"] += 1
+                if calls["n"] >= 2:
+                    raise OSError("write error mid-swap")
+            return real_move(src, dst)
+
+        with patch("kanibako.snapshots.shutil.move", side_effect=flaky_move):
+            with pytest.raises(OSError, match="write error mid-swap"):
+                restore_snapshot(vault_rw, snap.name)
+
+        # All original live contents are restored intact.
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+
 
 # ---------------------------------------------------------------------------
 # prune_snapshots
@@ -342,6 +425,24 @@ class TestPruneSnapshots:
 
         removed = prune_snapshots(vault_rw, max_keep=5)
         assert removed == 0
+
+    def test_prune_keep_zero_removes_all(self, tmp_path: Path) -> None:
+        """max_keep=0 removes every snapshot (not none)."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        versions = tmp_path / "vault" / ".versions"
+        versions.mkdir(parents=True)
+        _populate_rw(vault_rw)
+
+        # Create a mix of tar.xz and directory snapshots.
+        with tarfile.open(versions / "20260101T000000Z.tar.xz", "w:xz") as tar:
+            tar.add(str(vault_rw / "file1.txt"), arcname="file1.txt")
+        _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
+        _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
+
+        removed = prune_snapshots(vault_rw, max_keep=0)
+
+        assert removed == 3
+        assert list(versions.iterdir()) == []
 
     def test_prune_directory_snapshots(self, tmp_path: Path) -> None:
         """Prune handles directory snapshots correctly."""

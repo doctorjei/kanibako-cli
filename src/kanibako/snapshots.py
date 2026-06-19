@@ -200,38 +200,72 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
     Handles both directory snapshots and legacy tar.xz archives.  The
     current contents of share-rw are replaced with the snapshot contents.
     Raises ``FileNotFoundError`` if the snapshot does not exist.
+
+    The restore is rollback-safe: the snapshot contents are first built in
+    a temporary staging directory, the live contents are moved aside to a
+    backup, and only then are the staged contents swapped into place.  If
+    anything fails mid-way the live contents are restored from the backup,
+    so a partial restore can never destroy pre-existing data.  ``vault_rw_path``
+    itself (which may be a mount point) is never removed -- only its contents
+    are swapped.
     """
     versions = _versions_dir(vault_rw_path)
     snapshot = versions / snapshot_name
 
-    if snapshot.is_dir():
-        # Directory snapshot (reflink or hardlink).
-        if vault_rw_path.is_dir():
-            for item in vault_rw_path.iterdir():
-                if item.is_dir():
-                    shutil.rmtree(item)
-                else:
-                    item.unlink()
-        vault_rw_path.mkdir(parents=True, exist_ok=True)
-        # Copy contents.
-        for item in snapshot.iterdir():
-            dest = vault_rw_path / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest)
-            else:
-                shutil.copy2(item, dest)
-    elif snapshot.is_file() and snapshot_name.endswith(".tar.xz"):
-        # Legacy tar.xz.
-        if vault_rw_path.is_dir():
-            for item in vault_rw_path.iterdir():
-                if item.is_dir():
-                    shutil.rmtree(item)
-                else:
-                    item.unlink()
-        with tarfile.open(snapshot, "r:xz") as tar:
-            tar.extractall(path=str(vault_rw_path), filter="data")
-    else:
+    is_dir_snapshot = snapshot.is_dir()
+    is_tarxz_snapshot = snapshot.is_file() and snapshot_name.endswith(".tar.xz")
+    if not (is_dir_snapshot or is_tarxz_snapshot):
         raise FileNotFoundError(f"Snapshot not found: {snapshot_name}")
+
+    vault_rw_path.mkdir(parents=True, exist_ok=True)
+
+    # Stage the new contents in a temp sibling of vault_rw_path so the final
+    # swap is a same-filesystem rename.
+    staging = vault_rw_path.parent / f".{vault_rw_path.name}.restore.tmp"
+    backup = vault_rw_path.parent / f".{vault_rw_path.name}.restore.bak"
+    if staging.exists():
+        shutil.rmtree(staging)
+    if backup.exists():
+        shutil.rmtree(backup)
+    staging.mkdir(parents=True)
+
+    try:
+        # Build the new contents in the staging directory.
+        if is_dir_snapshot:
+            for item in snapshot.iterdir():
+                dest = staging / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
+        else:
+            with tarfile.open(snapshot, "r:xz") as tar:
+                tar.extractall(path=str(staging), filter="data")
+
+        # Move the live contents aside (preserves the mount point itself).
+        backup.mkdir(parents=True)
+        moved: list[str] = []
+        for item in list(vault_rw_path.iterdir()):
+            shutil.move(str(item), str(backup / item.name))
+            moved.append(item.name)
+
+        # Swap the staged contents into place.
+        try:
+            for item in list(staging.iterdir()):
+                shutil.move(str(item), str(vault_rw_path / item.name))
+        except Exception:
+            # Roll back: clear whatever made it in, restore the backup.
+            for item in list(vault_rw_path.iterdir()):
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+            for name in moved:
+                shutil.move(str(backup / name), str(vault_rw_path / name))
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def prune_snapshots(
@@ -255,7 +289,10 @@ def prune_snapshots(
         ),
         key=lambda p: p.name.removesuffix(".tar.xz"),
     )
-    to_remove = all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
+    if max_keep <= 0:
+        to_remove = all_snapshots
+    else:
+        to_remove = all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
     for old in to_remove:
         if old.is_dir():
             shutil.rmtree(old)
