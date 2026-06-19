@@ -274,6 +274,73 @@ class TestConvert:
 
 
 # ---------------------------------------------------------------------------
+# lock pre-flight: refuse to move/convert (copy+rmtree) a running box (H3)
+# ---------------------------------------------------------------------------
+
+class TestLockGuard:
+    def _lock(self, env, pdir):
+        """Plant a .kanibako.lock in the project's metadata dir."""
+        config, std, _ = env
+        proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
+        lock = proj.metadata_path / ".kanibako.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("box-container\n")
+        return lock
+
+    def test_move_locked_aborts_and_keeps_source(self, env):
+        config, std, tmp_home = env
+        pdir = _default(env, contents="live")
+        self._lock(env, pdir)
+
+        dest = tmp_home / "moved_locked"
+        rc = run_move(_move_args(pdir, dest, force=False))
+        assert rc == 2
+        # Source workspace NOT deleted; dest NOT created.
+        assert pdir.is_dir() and (pdir / "file.txt").read_text() == "live"
+        assert not dest.exists()
+
+    def test_move_locked_force_proceeds(self, env):
+        config, std, tmp_home = env
+        pdir = _default(env, contents="live")
+        self._lock(env, pdir)
+
+        dest = tmp_home / "moved_forced"
+        rc = run_move(_move_args(pdir, dest, force=True))
+        assert rc == 0
+        assert dest.is_dir() and (dest / "file.txt").read_text() == "live"
+        assert not pdir.exists()
+
+    def test_convert_locked_aborts_and_keeps_source(self, env):
+        config, std, tmp_home = env
+        pdir = _default(env, contents="live")
+        self._lock(env, pdir)
+
+        dest = tmp_home / "convdest_locked"
+        rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest), force=False))
+        assert rc == 2
+        assert pdir.is_dir() and (pdir / "file.txt").read_text() == "live"
+        assert not dest.exists()
+        # Ownership unchanged (still default).
+        meta = read_project_meta(
+            resolve_project(std, config, project_dir=str(pdir),
+                            initialize=False).metadata_path / "project.yaml"
+        )
+        assert meta["mode"] == "default"
+
+    def test_convert_locked_force_proceeds(self, env):
+        config, std, tmp_home = env
+        pdir = _default(env, contents="live")
+        self._lock(env, pdir)
+
+        dest = tmp_home / "convdest_forced"
+        rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest), force=True))
+        assert rc == 0
+        assert dest.is_dir()
+        assert (dest / ".kanibako" / "project.yaml").is_file()
+        assert not pdir.exists()
+
+
+# ---------------------------------------------------------------------------
 # parser: migrate is gone
 # ---------------------------------------------------------------------------
 
