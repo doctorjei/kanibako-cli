@@ -1135,6 +1135,9 @@ def run_config(args: argparse.Namespace) -> int:
             config_path=project_toml,
             env_path=env_project,
         )
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
         print(msg)
         return 0
 

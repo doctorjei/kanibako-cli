@@ -218,6 +218,9 @@ def run_config(args: argparse.Namespace) -> int:
     # set
     if action == ConfigAction.set:
         msg = set_config_value(key, value, config_path=cf, is_system=True)
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
         print(msg)
         return 0
 

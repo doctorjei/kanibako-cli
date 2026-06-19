@@ -418,13 +418,20 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
 
     ``"box_image"``       → ``("box", "image")``
     ``"paths_dot_path"``  → ``("paths", "dot_path")``
+    ``"allow_helpers"``   → ``("", "allow_helpers")`` (top-level scalar field)
+
+    A flat key with no recognised section prefix is a TOP-LEVEL scalar field
+    (e.g. ``allow_helpers``); it returns an empty section rather than raising
+    (the typed writer in ``config_interface`` is the routed set/get/reset path —
+    this helper only serves the few remaining flat-key callers and must never
+    crash on an advertised key).
     """
     for prefix in ("paths_", "box_"):
         if flat_key.startswith(prefix):
             section = prefix.rstrip("_")
             key = flat_key[len(prefix):]
             return section, key
-    raise ValueError(f"Cannot determine config section for key: {flat_key}")
+    return "", flat_key
 
 
 def config_keys() -> list[str]:
@@ -439,6 +446,11 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
     """
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
+    if not section:
+        # Top-level scalar field (e.g. allow_helpers).
+        data[key] = value
+        dump_doc(path, data)
+        return
     sec = data.get(section)
     if not isinstance(sec, dict):
         sec = {}
@@ -457,6 +469,13 @@ def unset_project_config_key(path: Path, flat_key: str) -> bool:
 
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
+    if not section:
+        # Top-level scalar field (e.g. allow_helpers).
+        if key not in data:
+            return False
+        del data[key]
+        dump_doc(path, data)
+        return True
     sec = data.get(section)
     if not isinstance(sec, dict) or key not in sec:
         return False

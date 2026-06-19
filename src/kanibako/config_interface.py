@@ -26,7 +26,6 @@ from kanibako.config import (
     load_project_overrides,
     read_agent_settings,
     unset_project_config_key,
-    write_project_config_key,
 )
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import UserCancelled
@@ -109,6 +108,83 @@ def is_known_key(arg: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Typed writer routing table (the H1/H2 core)
+# ---------------------------------------------------------------------------
+#
+# The single source of truth for HOW every non-dynamic, non-env config key is
+# stored.  ``get``/``set``/``reset`` all consult this table so the same key set
+# is recognised on every path (no "get-validated, set-unguarded" asymmetry that
+# crashed H1).  A key absent from here (and not env./resource./shared./agent.*/
+# system.path.*) is UNKNOWN — the writer returns an error string, never raises.
+#
+# Each entry maps the canonical key → the nested config location it lands in:
+# ``(sections_tuple, leaf_name)``.  An empty ``sections`` tuple means a
+# top-level scalar field (e.g. ``allow_helpers``).  This is the *currently
+# advertised* key set; later phases (4) extend it with the new categories
+# (masks/bindings/synced/caches) without touching the routing mechanism.
+_KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
+    # Box section ([box] table).
+    "box.image": (("box",), "image"),
+    "box.agent": (("box",), "agent"),
+    "box.shell": (("box",), "shell"),
+    "box.bootstrap_program": (("box",), "bootstrap_program"),
+    "box.share_images": (("box",), "share_images"),
+    # Project section ([project] table) — group_auth/mode/layout/vault.* are read
+    # back by read_project_meta(); vault.enabled lands in its real stored key
+    # ``enable_vault`` (the H1 alias fix).
+    "group_auth": (("project",), "group_auth"),
+    "mode": (("project",), "mode"),
+    "layout": (("project",), "layout"),
+    "vault.enabled": (("project",), "enable_vault"),
+    "vault.ro": (("project",), "vault_ro"),
+    "vault.rw": (("project",), "vault_rw"),
+    # Top-level scalar fields (flat KanibakoConfig fields).
+    "allow_helpers": ((), "allow_helpers"),
+    "persistence": ((), "persistence"),
+    # Box-level path fields ([paths] table → flat paths_* KanibakoConfig fields).
+    "paths.shell": (("paths",), "shell"),
+    "paths.vault": (("paths",), "vault"),
+    "paths.shared": (("paths",), "shared"),
+}
+
+# Keys whose values must be coerced to a real type before writing (the H2 fix).
+# Boolean keys parse true/false/1/0/yes/no (case-insensitive) to a Python bool
+# so the loader reads back a real bool (``set box.share_images false`` actually
+# disables it).  Build this extensibly — later phases add box.group_auth /
+# vault_enabled / agent.*.{auto_approve,allow_helpers} etc.
+_BOOL_TRUE = frozenset({"true", "1", "yes", "on"})
+_BOOL_FALSE = frozenset({"false", "0", "no", "off"})
+
+KEY_TYPES: dict[str, str] = {
+    "box.share_images": "bool",
+    "allow_helpers": "bool",
+    "group_auth": "bool",
+    "vault.enabled": "bool",
+}
+
+
+def _coerce_value(canonical: str, value: str) -> object | str:
+    """Coerce *value* to the typed form declared for *canonical* in KEY_TYPES.
+
+    Returns the typed Python value (e.g. a real ``bool``) on success, or an
+    ``"Error: ..."`` string when a bool key is given an unparseable value.
+    Scalars (no KEY_TYPES entry) pass through unchanged as the raw string.
+    """
+    kind = KEY_TYPES.get(canonical)
+    if kind == "bool":
+        low = value.strip().lower()
+        if low in _BOOL_TRUE:
+            return True
+        if low in _BOOL_FALSE:
+            return False
+        return (
+            f"Error: {canonical} expects a boolean "
+            f"(true/false/1/0/yes/no), got {value!r}"
+        )
+    return value
+
+
+# ---------------------------------------------------------------------------
 # Config action parsing
 # ---------------------------------------------------------------------------
 
@@ -184,6 +260,22 @@ def _dot_to_flat(key: str) -> str:
     return key.replace(".", "_")
 
 
+# Reverse of _dot_to_flat for the routing table: the CLI surface (and prior
+# code) also accepts the flat underscore form of a key (``box_image``,
+# ``paths_shell``).  Normalise it to the canonical routing key so get/set/reset
+# all hit the SAME _KEY_ROUTES entry regardless of which spelling was given.
+_FLAT_TO_CANONICAL: dict[str, str] = {
+    _dot_to_flat(canonical): canonical
+    for canonical in _KEY_ROUTES
+    if _dot_to_flat(canonical) != canonical
+}
+
+
+def _route_key(canonical: str) -> str:
+    """Map a flat-underscore key spelling to its canonical routing key."""
+    return _FLAT_TO_CANONICAL.get(canonical, canonical)
+
+
 # ---------------------------------------------------------------------------
 # Get / set / reset operations
 # ---------------------------------------------------------------------------
@@ -241,8 +333,18 @@ def get_config_value(
         cfg = load_merged_config(global_config_path, project_toml)
         return cfg.system_paths.get(canonical)
 
-    # Regular config keys — use merged config
-    flat = _dot_to_flat(canonical)
+    # Regular config keys — route via the SAME known-key table that set/reset
+    # use (no get-validated/set-unguarded asymmetry).  An unknown key returns
+    # None (rendered "not set").
+    routed = _route_key(canonical)
+    route = _KEY_ROUTES.get(routed)
+    if route is None:
+        return None
+
+    # Keys backed by a flat KanibakoConfig field use the merged config so
+    # defaults + inheritance apply (box.*, paths.*, allow_helpers,
+    # box.share_images).
+    flat = _dot_to_flat(routed)
     cfg = load_merged_config(global_config_path, project_toml)
     valid = {fld.name for fld in fields(cfg)}
     if flat in valid:
@@ -250,6 +352,24 @@ def get_config_value(
         if isinstance(val, bool):
             return str(val).lower()
         return str(val) if val else None
+
+    # Keys with no flat field (group_auth, mode, layout, vault.*, persistence)
+    # land in [project]/root — read the raw set-value from the routed location.
+    sections, leaf = route
+    for src in (project_toml, global_config_path):
+        if src is None or not src.exists():
+            continue
+        node: object = load_doc(src)
+        for sec in sections:
+            if not isinstance(node, dict):
+                node = None
+                break
+            node = node.get(sec)
+        if isinstance(node, dict) and leaf in node:
+            v = node[leaf]
+            if isinstance(v, bool):
+                return str(v).lower()
+            return str(v) if v != "" else None
     return None
 
 
@@ -303,10 +423,24 @@ def set_config_value(
         _write_nested_toml_key(config_path, ("system", "path"), leaf, value)
         return f"Set {canonical}={value}"
 
-    # Regular config keys
-    flat = _dot_to_flat(canonical)
-    write_project_config_key(config_path, flat, value)
-    return f"Set {flat}={value}"
+    # Regular config keys — route via the single known-key table (the H1 fix:
+    # an unknown key returns an error string and NEVER raises).  Accept either
+    # the canonical dotted spelling or the flat underscore form.
+    routed = _route_key(canonical)
+    route = _KEY_ROUTES.get(routed)
+    if route is None:
+        return f"Error: unknown config key: {key}"
+    sections, leaf = route
+    typed = _coerce_value(routed, value)  # the H2 fix (real bool/etc.)
+    if isinstance(typed, str) and KEY_TYPES.get(routed):
+        # _coerce_value signalled a parse error (it only returns a str for a
+        # typed key when coercion failed).
+        return typed
+    if sections:
+        _write_nested_toml_key(config_path, sections, leaf, typed)
+    else:
+        _write_toml_key_root(config_path, leaf, typed)
+    return f"Set {_dot_to_flat(routed)}={value}"
 
 
 def reset_config_value(
@@ -352,9 +486,20 @@ def reset_config_value(
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
-    # Regular config keys
-    flat = _dot_to_flat(canonical)
-    if unset_project_config_key(config_path, flat):
+    # Regular config keys — route via the same known-key table as set/get
+    # (no get-validated/set-unguarded asymmetry).
+    routed = _route_key(canonical)
+    route = _KEY_ROUTES.get(routed)
+    if route is None:
+        return f"Error: unknown config key: {key}"
+    sections, leaf = route
+    removed = (
+        _remove_nested_toml_key(config_path, sections, leaf)
+        if sections
+        else _remove_toml_key_root(config_path, leaf)
+    )
+    flat = _dot_to_flat(routed)
+    if removed:
         default_val = _DEFAULTS.get(flat, "(none)")
         return f"Reset {flat} (reverts to default: {default_val})"
     return f"No override for {flat}"
@@ -502,7 +647,7 @@ def show_config(
 # Config section helpers (load → mutate → dump as YAML)
 # ---------------------------------------------------------------------------
 
-def _write_toml_key(path: Path, section: str, key: str, value: str | bool) -> None:
+def _write_toml_key(path: Path, section: str, key: str, value: object) -> None:
     """Write a key to a specific config section, preserving other content."""
     data = load_doc(path)
     sec = data.get(section)
@@ -511,6 +656,29 @@ def _write_toml_key(path: Path, section: str, key: str, value: str | bool) -> No
         data[section] = sec
     sec[key] = value
     dump_doc(path, data)
+
+
+def _write_toml_key_root(path: Path, key: str, value: object) -> None:
+    """Write a TOP-LEVEL scalar key, preserving other content.
+
+    Used for flat KanibakoConfig fields (e.g. ``allow_helpers``) that live at
+    the document root, not under a section.
+    """
+    data = load_doc(path)
+    data[key] = value
+    dump_doc(path, data)
+
+
+def _remove_toml_key_root(path: Path, key: str) -> bool:
+    """Remove a TOP-LEVEL scalar key.  Returns True if it was present."""
+    if not path.exists():
+        return False
+    data = load_doc(path)
+    if key not in data:
+        return False
+    del data[key]
+    dump_doc(path, data)
+    return True
 
 
 def _remove_toml_key(path: Path, section: str, key: str) -> bool:
@@ -531,7 +699,7 @@ def _remove_toml_key(path: Path, section: str, key: str) -> bool:
 
 
 def _write_nested_toml_key(
-    path: Path, sections: tuple[str, ...], key: str, value: str | bool,
+    path: Path, sections: tuple[str, ...], key: str, value: object,
 ) -> None:
     """Write *key* into a nested table (e.g. ``("system", "path")``).
 

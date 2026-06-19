@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import argparse
 
-import pytest
-
 from kanibako.config import (
     KanibakoConfig,
     load_config,
@@ -551,10 +549,17 @@ class TestSplitConfigKey:
         from kanibako.config import _split_config_key
         assert _split_config_key("box_agent") == ("box", "agent")
 
-    def test_unknown_prefix_raises(self):
+    def test_unprefixed_key_is_top_level_field(self):
+        """A key with no section prefix is a TOP-LEVEL scalar field.
+
+        The H1 fix removed the old ValueError raise path: ``_split_config_key``
+        now returns an empty section (the typed writer in config_interface is
+        the routed set/get/reset path; this helper must never crash on an
+        advertised key).
+        """
         from kanibako.config import _split_config_key
-        with pytest.raises(ValueError, match="Cannot determine config section"):
-            _split_config_key("unknown_prefix_key")
+        assert _split_config_key("allow_helpers") == ("", "allow_helpers")
+        assert _split_config_key("unknown_prefix_key") == ("", "unknown_prefix_key")
 
 
 class TestConfigKeys:
