@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from kanibako.crabs import CrabConfig
+    from kanibako.agent_config import AgentConfig
 
 
 class ResourceScope(Enum):
@@ -401,15 +401,15 @@ class Target(ABC):
         """
         return []
 
-    def generate_crab_config(self) -> CrabConfig:
-        """Return a default CrabConfig for this target.
+    def generate_agent_config(self) -> AgentConfig:
+        """Return a default AgentConfig for this target.
 
         Subclasses should override to provide agent-specific defaults
         (template variant, state knobs, shared caches, etc.).
         """
-        from kanibako.crabs import CrabConfig as _CrabConfig
+        from kanibako.agent_config import AgentConfig as _AgentConfig
 
-        return _CrabConfig(name=self.display_name)
+        return _AgentConfig(name=self.display_name)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate crab-state values into CLI args and env vars.

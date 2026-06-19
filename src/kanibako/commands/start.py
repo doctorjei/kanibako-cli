@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.crabs import load_crab_config, write_crab_config
+from kanibako.agent_config import load_agent_config, write_agent_config
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import config_file_path, load_config, load_merged_config
 from kanibako.container import ContainerRuntime
@@ -709,13 +709,13 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    crab_cfg_path = std.crabs / f"{agent_id}.yaml"
+    crab_cfg_path = std.agents / f"{agent_id}.yaml"
     if target and not crab_cfg_path.exists():
         # First-use: generate default crab config from target plugin
-        crab_cfg = target.generate_crab_config()
-        write_crab_config(crab_cfg_path, crab_cfg)
+        crab_cfg = target.generate_agent_config()
+        write_agent_config(crab_cfg_path, crab_cfg)
     else:
-        crab_cfg = load_crab_config(crab_cfg_path)
+        crab_cfg = load_agent_config(crab_cfg_path)
 
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
@@ -1597,7 +1597,7 @@ def _build_effective_state(
     The box/workset/system/machine override sections are keyed per agent
     (``crab.<target.name>`` layered over the any-agent ``crab.default`` tier) so
     an override never bleeds across an agent switch; ``crab_cfg.state`` is
-    already per-agent (loaded from ``crabs/<name>.yaml``).
+    already per-agent (loaded from ``agents/<name>.yaml``).
 
     Explicit set values beat all declared defaults; the most-specific level
     wins; an explicit ``""`` is terminal (no fall-through to the floor).
@@ -1696,7 +1696,7 @@ def _build_binding_overrides(
     :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
     then overlays the levels MOST-SPECIFIC-WINS:
 
-        box (project.yaml) > workset > crab (crabs/<name>.yaml) > system > machine
+        box (project.yaml) > workset > crab (agents/<name>.yaml) > system > machine
 
     Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
     common case).  A bad/unreadable level contributes nothing (the reader
@@ -1776,7 +1776,7 @@ def _apply_init_seeds(
     resolved_sys = {
         "system.path.data": str(std.data_path),
         "system.path.boxes": str(std.boxes),
-        "system.path.crabs": str(std.crabs),
+        "system.path.agents": str(std.agents),
         "system.path.comms": str(std.comms),
         "system.path.templates": str(std.templates),
         "system.path.ws_hints": str(std.ws_hints),
@@ -1863,7 +1863,7 @@ def _build_share_mounts(
     ]
 
     # Source roots per scope group (concrete host paths → expand_expr verbatim).
-    crab_share_root = str(std.crabs / crab_name / "share")
+    crab_share_root = str(std.agents / crab_name / "share")
     scope_roots = {
         "system.path.share_ro": str(std.share_ro),
         "system.path.share_rw": str(std.share_rw),
@@ -1892,7 +1892,7 @@ def _build_share_mounts(
     resolved_sys = {
         "system.path.data": str(std.data_path),
         "system.path.boxes": str(std.boxes),
-        "system.path.crabs": str(std.crabs),
+        "system.path.agents": str(std.agents),
         "system.path.comms": str(std.comms),
         "system.path.templates": str(std.templates),
         "system.path.ws_hints": str(std.ws_hints),

@@ -39,7 +39,7 @@ from kanibako.plugins.claude.credentials import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.crabs import CrabConfig
+    from kanibako.agent_config import AgentConfig
 
 logger = get_logger("targets.claude")
 
@@ -303,11 +303,11 @@ class ClaudeTarget(Target):
             # Distinct auth: create empty .claude.json
             (home / ".claude.json").touch()
 
-    def generate_crab_config(self) -> CrabConfig:
+    def generate_agent_config(self) -> AgentConfig:
         """Return default Claude Code crab configuration."""
-        from kanibako.crabs import CrabConfig as _CrabConfig
+        from kanibako.agent_config import AgentConfig as _AgentConfig
 
-        return _CrabConfig(
+        return _AgentConfig(
             name="Claude Code",
             shell="standard",
             state={"model": "opus", "access": "permissive"},

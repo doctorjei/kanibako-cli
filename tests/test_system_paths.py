@@ -23,7 +23,7 @@ class TestResolveSystemPathsDefaults:
         base = tmp_path / "kanibako"
         assert resolved["system.path.data"] == base
         assert resolved["system.path.boxes"] == base / "boxes"
-        assert resolved["system.path.crabs"] == base / "crabs"
+        assert resolved["system.path.agents"] == base / "agents"
         assert resolved["system.path.comms"] == base / "comms"
         assert resolved["system.path.templates"] == base / "templates"
         assert resolved["system.path.ws_hints"] == base / "worksets.yaml"
@@ -44,7 +44,7 @@ class TestResolveSystemPathsOverrides:
         custom = tmp_path / "custom"
         assert resolved["system.path.data"] == custom
         assert resolved["system.path.boxes"] == custom / "boxes"
-        assert resolved["system.path.crabs"] == custom / "crabs"
+        assert resolved["system.path.agents"] == custom / "agents"
 
     def test_absolute_leaf_override_isolated(self, tmp_path):
         """An absolute boxes override does not perturb the other keys."""
@@ -57,7 +57,7 @@ class TestResolveSystemPathsOverrides:
         # Others keep their defaults under $XDG_DATA_HOME/kanibako.
         base = tmp_path / "kanibako"
         assert resolved["system.path.data"] == base
-        assert resolved["system.path.crabs"] == base / "crabs"
+        assert resolved["system.path.agents"] == base / "agents"
 
     def test_tilde_expands_to_home(self, tmp_path):
         home = tmp_path / "h"
@@ -95,7 +95,7 @@ class TestLoadStdPathsParity:
         config = load_config(config_file)
         std = load_std_paths(config)
         assert std.boxes == std.data_path / "boxes"
-        assert std.crabs == std.data_path / "crabs"
+        assert std.agents == std.data_path / "agents"
         assert std.comms == std.data_path / "comms"
         assert std.templates == std.data_path / "templates"
         assert std.ws_hints == std.data_path / "worksets.yaml"

@@ -305,32 +305,32 @@ class TestOrphanDetectionHint:
 # Agent config first-use generation
 # ---------------------------------------------------------------------------
 
-class TestCrabConfigFirstUse:
+class TestAgentConfigFirstUse:
     def test_generates_config_on_first_use(self, start_mocks):
-        """When agent config doesn't exist, target.generate_crab_config() is called."""
+        """When agent config doesn't exist, target.generate_agent_config() is called."""
         with start_mocks() as m:
-            m.crab_toml_path.exists.return_value = False
-            # Return a real CrabConfig so the (now YAML) write path can
+            m.agent_config_path.exists.return_value = False
+            # Return a real AgentConfig so the (now YAML) write path can
             # serialize it — a bare MagicMock is not representable.
-            from kanibako.crabs import CrabConfig
-            m.target.generate_crab_config.return_value = CrabConfig(name="claude")
+            from kanibako.agent_config import AgentConfig
+            m.target.generate_agent_config.return_value = AgentConfig(name="claude")
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            m.target.generate_crab_config.assert_called_once()
+            m.target.generate_agent_config.assert_called_once()
 
     def test_does_not_generate_when_exists(self, start_mocks):
-        """When agent config exists, generate_crab_config() is NOT called."""
+        """When agent config exists, generate_agent_config() is NOT called."""
         with start_mocks() as m:
-            m.crab_toml_path.exists.return_value = True
+            m.agent_config_path.exists.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            m.target.generate_crab_config.assert_not_called()
+            m.target.generate_agent_config.assert_not_called()
 
     def test_agent_template_variant_used(self, start_mocks):
         """Template application uses agent_cfg.shell for template variant."""
@@ -338,7 +338,7 @@ class TestCrabConfigFirstUse:
         with start_mocks() as m:
             m.proj.is_new = True
             m.agent_cfg.shell = "minimal"
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -361,11 +361,11 @@ class TestCrabConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # std.crabs also gets a / "no_agent" / "share" call from the
+            # std.agents also gets a / "no_agent" / "share" call from the
             # scoped-share resolver, so check the full call list.
             div_args = [
                 c[0][0]
-                for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
+                for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
             ]
             assert "no_agent.yaml" in div_args
 
@@ -689,7 +689,7 @@ class TestCliEnv:
         """Per-run env vars have highest priority over agent env."""
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_KEY": "agent_val"}
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,

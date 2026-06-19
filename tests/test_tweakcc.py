@@ -171,11 +171,11 @@ class TestWriteMergedConfig:
         assert output.exists()
 
 
-class TestCrabConfigTweakcc:
-    """Test that CrabConfig round-trips the tweakcc section."""
+class TestAgentConfigTweakcc:
+    """Test that AgentConfig round-trips the tweakcc section."""
 
     def test_load_with_tweakcc(self, tmp_path):
-        from kanibako.crabs import load_crab_config
+        from kanibako.agent_config import load_agent_config
 
         yaml_content = """\
 crab:
@@ -194,11 +194,11 @@ tweakcc:
 """
         path = tmp_path / "agent.yaml"
         path.write_text(yaml_content)
-        cfg = load_crab_config(path)
+        cfg = load_agent_config(path)
         assert cfg.tweakcc == {"enabled": True, "config": "~/.tweakcc/config.json"}
 
     def test_load_without_tweakcc(self, tmp_path):
-        from kanibako.crabs import load_crab_config
+        from kanibako.agent_config import load_agent_config
 
         yaml_content = """\
 crab:
@@ -206,31 +206,31 @@ crab:
 """
         path = tmp_path / "agent.yaml"
         path.write_text(yaml_content)
-        cfg = load_crab_config(path)
+        cfg = load_agent_config(path)
         assert cfg.tweakcc == {}
 
     def test_write_with_tweakcc(self, tmp_path):
-        from kanibako.crabs import CrabConfig, load_crab_config, write_crab_config
+        from kanibako.agent_config import AgentConfig, load_agent_config, write_agent_config
 
-        cfg = CrabConfig(name="Test", tweakcc={"enabled": True, "config": "/path"})
+        cfg = AgentConfig(name="Test", tweakcc={"enabled": True, "config": "/path"})
         path = tmp_path / "agent.yaml"
-        write_crab_config(path, cfg)
+        write_agent_config(path, cfg)
 
         # Round-trip
-        loaded = load_crab_config(path)
+        loaded = load_agent_config(path)
         assert loaded.tweakcc["enabled"] is True
         assert loaded.tweakcc["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
-        from kanibako.crabs import CrabConfig, load_crab_config, write_crab_config
+        from kanibako.agent_config import AgentConfig, load_agent_config, write_agent_config
 
-        cfg = CrabConfig(name="Test")
+        cfg = AgentConfig(name="Test")
         path = tmp_path / "agent.yaml"
-        write_crab_config(path, cfg)
+        write_agent_config(path, cfg)
         content = path.read_text()
         # YAML serialization always emits the (empty) tweakcc mapping.
         assert "tweakcc:" in content
-        loaded = load_crab_config(path)
+        loaded = load_agent_config(path)
         assert loaded.tweakcc == {}
 
 

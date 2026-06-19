@@ -71,8 +71,8 @@ class TestKanibakoLazyInit:
         assert config_file.is_file(), "kanibako.yaml not created"
 
         data_path = cli_env["data_home"] / "kanibako"
-        crabs_dir = data_path / "crabs"
-        assert crabs_dir.is_dir(), "crabs dir not created"
+        agents_dir = data_path / "agents"
+        assert agents_dir.is_dir(), "agents dir not created"
 
         env_file = data_path / "env"
         assert env_file.is_file(), "env file not created"

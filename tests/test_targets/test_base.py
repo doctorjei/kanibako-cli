@@ -264,8 +264,8 @@ class TestTargetABC:
             IncompleteTarget()  # type: ignore[abstract]
 
 
-class TestGenerateCrabConfig:
-    """Tests for Target.generate_crab_config() default implementation."""
+class TestGenerateAgentConfig:
+    """Tests for Target.generate_agent_config() default implementation."""
 
     def test_default_returns_crab_config(self):
         class SimpleTarget(Target):
@@ -296,7 +296,7 @@ class TestGenerateCrabConfig:
                 return []
 
         t = SimpleTarget()
-        cfg = t.generate_crab_config()
+        cfg = t.generate_agent_config()
         assert cfg.name == "Simple Agent"
         assert cfg.shell == "standard"
         assert cfg.run_args == []

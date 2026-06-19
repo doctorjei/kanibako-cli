@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from kanibako.targets.base import AgentInstall, Mount, Target
 
 if TYPE_CHECKING:
-    from kanibako.crabs import CrabConfig
+    from kanibako.agent_config import AgentConfig
 
 
 class NoAgentTarget(Target):
@@ -52,7 +52,7 @@ class NoAgentTarget(Target):
     ) -> list[str]:
         return []
 
-    def generate_crab_config(self) -> CrabConfig:
-        from kanibako.crabs import CrabConfig as _CrabConfig
+    def generate_agent_config(self) -> AgentConfig:
+        from kanibako.agent_config import AgentConfig as _AgentConfig
 
-        return _CrabConfig(name="Shell")
+        return _AgentConfig(name="Shell")

@@ -114,7 +114,9 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     """
     targets: dict[str, type[Target]] = {}
     # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
-    # NB: distinct from the crab-domain `kanibako.crabs` module; do not "unify".
+    # NB: distinct from the `kanibako.agent_config` module (per-agent tool
+    # config object); the module was named `agent_config` (not `agents`) to
+    # avoid clashing with this entry-point registry. Do not "unify".
     eps = entry_points(group="kanibako.agents")
     for ep in eps:
         cls = ep.load()

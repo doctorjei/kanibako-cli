@@ -188,7 +188,7 @@ def start_mocks():
     def _make():
         from pathlib import Path
 
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
         from kanibako.paths import ProjectGroup, ProjectMode
 
         with (
@@ -200,7 +200,7 @@ def start_mocks():
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
             patch("kanibako.commands.start._upgrade_shell"),
             patch("kanibako.templates.apply_shell_template"),
-            patch("kanibako.commands.start.load_crab_config") as m_load_agent_cfg,
+            patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),
             patch("builtins.open", MagicMock()) as m_open,
@@ -271,12 +271,12 @@ def start_mocks():
             m_rt_cls.return_value = runtime
 
             # Crab config mock: empty defaults (no run_args, no state, no env)
-            agent_cfg = CrabConfig()
+            agent_cfg = AgentConfig()
             m_load_agent_cfg.return_value = agent_cfg
-            # start.py now derives the crab config path as std.crabs / "<id>.yaml".
+            # start.py now derives the crab config path as std.agents / "<id>.yaml".
             # std is a MagicMock, so the derived path's .exists() is truthy by
             # default — which keeps the "config already present" branch.
-            mock_crab_path = m_load_std.return_value.crabs.__truediv__.return_value
+            mock_crab_path = m_load_std.return_value.agents.__truediv__.return_value
             mock_crab_path.exists.return_value = True
 
             # Target mock: resolve_target returns a mock target with detect/build_cli_args/etc.
@@ -319,8 +319,8 @@ def start_mocks():
                 resolve_target=m_resolve_target,
                 target=target,
                 agent_cfg=agent_cfg,
-                load_crab_config=m_load_agent_cfg,
-                crab_toml_path=mock_crab_path,
+                load_agent_config=m_load_agent_cfg,
+                agent_config_path=mock_crab_path,
                 fcntl=m_fcntl,
                 open=m_open,
                 load_registry=m_load_registry,

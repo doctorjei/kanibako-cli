@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from kanibako.crabs import CrabConfig
+from kanibako.agent_config import AgentConfig
 from kanibako.targets.base import ResourceMapping, ResourceScope, TargetSetting
 
 
@@ -323,7 +323,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="access", description="Access", default="permissive"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = CrabConfig()  # empty state
+        agent_cfg = AgentConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
@@ -339,7 +339,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = CrabConfig(state={"model": "sonnet"})
+        agent_cfg = AgentConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
@@ -355,7 +355,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = CrabConfig(state={"model": "sonnet"})
+        agent_cfg = AgentConfig(state={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
 
         result = _build_effective_state(
@@ -371,7 +371,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = CrabConfig(state={"model": "sonnet", "custom_key": "custom_value"})
+        agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
@@ -385,7 +385,7 @@ class TestBuildEffectiveState:
         from kanibako.commands.start import _build_effective_state
 
         target = self._make_target([])  # no descriptors
-        agent_cfg = CrabConfig(state={"model": "opus", "access": "permissive"})
+        agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
@@ -402,7 +402,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = CrabConfig()  # empty state
+        agent_cfg = AgentConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
         global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
 
@@ -435,7 +435,7 @@ class TestBuildEffectiveState:
 
         # crab state also sets model — but workset is more specific, so workset
         # wins.  access is left for the system level only.
-        agent_cfg = CrabConfig(state={"model": "crab-model"})
+        agent_cfg = AgentConfig(state={"model": "crab-model"})
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
         project_toml = self._make_project_toml(proj_dir)
@@ -475,7 +475,7 @@ class TestBuildEffectiveState:
         ]
         target = self._make_target(descriptors)
         # crab state explicitly clears model.
-        agent_cfg = CrabConfig(state={"model": ""})
+        agent_cfg = AgentConfig(state={"model": ""})
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
@@ -503,7 +503,7 @@ class TestBuildEffectiveState:
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         write_crab_setting(project_toml, "model", "sonnet", "claude")
-        agent_cfg = CrabConfig()
+        agent_cfg = AgentConfig()
 
         # claude sees its override.
         claude = self._make_target(descriptors, name="claude")
@@ -538,7 +538,7 @@ class TestBuildEffectiveState:
         # Any-agent default, plus a claude-specific override.
         write_crab_setting(project_toml, "model", "haiku", "default")
         write_crab_setting(project_toml, "model", "sonnet", "claude")
-        agent_cfg = CrabConfig()
+        agent_cfg = AgentConfig()
 
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(

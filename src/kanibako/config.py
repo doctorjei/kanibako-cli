@@ -262,7 +262,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
             "path": {
                 "data": "$XDG_DATA_HOME/kanibako",
                 "boxes": "@system.path.data/boxes",
-                "crabs": "@system.path.data/crabs",
+                "agents": "@system.path.data/agents",
                 "comms": "@system.path.data/comms",
                 "templates": "@system.path.data/templates",
                 "ws_hints": "@system.path.data/worksets.yaml",
