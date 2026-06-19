@@ -1217,6 +1217,31 @@ def _load_env():
     return config, std
 
 
+def _abort_if_locked(state: ProjectState, force: bool) -> bool:
+    """Refuse a destructive relocation while a box may be running.
+
+    ``move`` / ``convert`` copy then ``rmtree`` the source workspace, which for a
+    running box would delete the live bind-mounted directory out from under it.
+    Mirror ``box duplicate``'s lock pre-flight (``_duplicate.py``): if the
+    project's ``.kanibako.lock`` is present, warn and abort unless *force* is set.
+    Returns True when the caller should abort (and has been warned).
+    """
+    import sys
+
+    lock_file = state.metadata_path / ".kanibako.lock"
+    if lock_file.exists():
+        print(
+            "Warning: lock file found — a container may be running for this "
+            "project. Moving/converting it would copy then DELETE the live "
+            "workspace. Stop the box first (kanibako stop), or pass --force.",
+            file=sys.stderr,
+        )
+        if not force:
+            print("Aborted.")
+            return True
+    return False
+
+
 def run_remap(args) -> int:
     """``box remap <old> [<new>]`` — records-only relocation.
 
@@ -1293,6 +1318,9 @@ def run_move(args) -> int:
         )
         return 1
 
+    if _abort_if_locked(state, getattr(args, "force", False)):
+        return 2
+
     ownership = _ownership_from_args(args)
     spec = TargetSpec(
         location=new_path, ownership=ownership, name=getattr(args, "name", None),
@@ -1360,6 +1388,12 @@ def run_convert(args) -> int:
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # Lock pre-flight: convert re-roots by copy then rmtree of the source
+    # workspace/metadata, so abort while a box may be running unless --force
+    # (mirrors move / duplicate).
+    if _abort_if_locked(state, getattr(args, "force", False)):
+        return 2
 
     spec = TargetSpec(
         location=location, ownership=ownership, name=getattr(args, "name", None),
