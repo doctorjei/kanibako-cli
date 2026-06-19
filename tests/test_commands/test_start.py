@@ -1803,8 +1803,8 @@ class TestBuildShareMounts:
         glob = tmp_path / "kanibako.yaml"
         glob.write_text(
             "system:\n"
-            "  path:\n"
-            "    share_rw:\n"
+            "  bindings:\n"
+            "    rw:\n"
             '      data: "/host/x:~/data"\n'
         )
         mounts = self._call(tmp_path, global_config_path=glob)
@@ -1818,10 +1818,10 @@ class TestBuildShareMounts:
         """project.yaml '' for a system-scoped key suppresses the system share."""
         glob = tmp_path / "kanibako.yaml"
         glob.write_text(
-            'system:\n  path:\n    share_rw:\n      foo: "/a:~/foo"\n'
+            'system:\n  bindings:\n    rw:\n      foo: "/a:~/foo"\n'
         )
         ptoml = tmp_path / "project.yaml"
-        ptoml.write_text('system:\n  path:\n    share_rw:\n      foo: ""\n')
+        ptoml.write_text('system:\n  bindings:\n    rw:\n      foo: ""\n')
         mounts = self._call(
             tmp_path, global_config_path=glob, project_toml=ptoml,
         )
@@ -1831,7 +1831,7 @@ class TestBuildShareMounts:
         """A relative agent share joins under std.agents/<agent>/share."""
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            'agent:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
+            'agent:\n  bindings:\n    rw:\n      plugins: "plugins:~/.claude/plugins"\n'
         )
         std = self._std(tmp_path)
         mounts = self._call(tmp_path, std=std, agent_config_path=agent_cfg)
@@ -1846,7 +1846,7 @@ class TestBuildShareMounts:
         group = SimpleNamespace(root=ws_root, name="myws", is_default=False)
         ws_cfg = tmp_path / "config.yaml"
         ws_cfg.write_text(
-            'workset:\n  path:\n    share_rw:\n      shared: "rel:~/shared"\n'
+            'workset:\n  bindings:\n    rw:\n      shared: "rel:~/shared"\n'
         )
         mounts = self._call(
             tmp_path,
@@ -1867,7 +1867,7 @@ class TestBuildShareMounts:
         group = SimpleNamespace(root=ws_root, name="extws", is_default=False)
         ws_cfg = tmp_path / "config.yaml"
         ws_cfg.write_text(
-            'workset:\n  path:\n    share_rw:\n      shared: "rel:~/shared"\n'
+            'workset:\n  bindings:\n    rw:\n      shared: "rel:~/shared"\n'
         )
         mounts = self._call(
             tmp_path,
@@ -1883,7 +1883,7 @@ class TestBuildShareMounts:
         return SimpleNamespace(
             name="claude",
             default_shares=lambda: {
-                "agent.path.share_rw.plugins": "plugins:~/.claude/plugins"
+                "agent.bindings.rw.plugins": "plugins:~/.claude/plugins"
             },
         )
 
@@ -1903,7 +1903,7 @@ class TestBuildShareMounts:
     def test_target_default_share_suppressed_by_box(self, tmp_path):
         """A box-level '' overrides/suppresses the target-declared default share."""
         ptoml = tmp_path / "project.yaml"
-        ptoml.write_text('agent:\n  path:\n    share_rw:\n      plugins: ""\n')
+        ptoml.write_text('agent:\n  bindings:\n    rw:\n      plugins: ""\n')
         mounts = self._call(
             tmp_path, project_toml=ptoml, target=self._claude_target(),
         )
@@ -1981,7 +1981,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  path:\n    seeded:\n      foo: "{src}:~/foo"\n'
+            f'agent:\n  seeded:\n    foo: "{src}:~/foo"\n'
         )
         self._call(
             tmp_path,
@@ -1999,7 +1999,7 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.path.seeded.x": f"{src}:~/x"},
+            default_seeds=lambda: {"agent.seeded.x": f"{src}:~/x"},
         )
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
@@ -2013,10 +2013,10 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.path.seeded.x": f"{src}:~/x"},
+            default_seeds=lambda: {"agent.seeded.x": f"{src}:~/x"},
         )
         ptoml = tmp_path / "project.yaml"
-        ptoml.write_text('agent:\n  path:\n    seeded:\n      x: ""\n')
+        ptoml.write_text('agent:\n  seeded:\n    x: ""\n')
         self._call(
             tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
         )
@@ -2030,7 +2030,7 @@ class TestApplyInitSeeds:
         (src / "root_file.txt").write_text("top")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  path:\n    seeded:\n      home: "{src}:~/"\n'
+            f'agent:\n  seeded:\n    home: "{src}:~/"\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
@@ -2041,7 +2041,7 @@ class TestApplyInitSeeds:
         missing = tmp_path / "does_not_exist"
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  path:\n    seeded:\n      gone: "{missing}:~/gone"\n'
+            f'agent:\n  seeded:\n    gone: "{missing}:~/gone"\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
