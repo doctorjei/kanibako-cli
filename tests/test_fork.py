@@ -29,9 +29,10 @@ def fork_ctx(tmp_path):
     data_path.mkdir()
     (data_path / "boxes").mkdir()
 
-    # Set up names.yaml with the project registered
-    names_toml = data_path / "names.yaml"
-    names_toml.write_text(
+    # Set up the registry with the project registered
+    registry_toml = data_path / "global" / "registry.yaml"
+    registry_toml.parent.mkdir(parents=True, exist_ok=True)
+    registry_toml.write_text(
         f'projects:\n  myapp: "{project_path}"\nworksets: {{}}\n'
     )
 

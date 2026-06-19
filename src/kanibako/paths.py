@@ -22,7 +22,6 @@ from kanibako.config import (
     read_project_meta,
     write_project_meta,
 )
-from kanibako.config_io import load_doc
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings_resolve import (
     LevelView,
@@ -145,11 +144,6 @@ class StandardPaths:
     def templates(self) -> Path:
         """OLD ``std.templates`` → the renamed/re-pointed ``base_template`` dir."""
         return self.base_template
-
-    @property
-    def ws_hints(self) -> Path:
-        """OLD ``std.ws_hints`` → the renamed/absorbed ``registry`` file."""
-        return self.registry
 
     @property
     def share_ro(self) -> Path:
@@ -1293,13 +1287,15 @@ def _check_workset(
     Checks ``workspaces/`` first (specific project), then the workset root
     itself (inside workset but not necessarily a project workspace).
     """
-    worksets_toml = std.ws_hints
-    if not worksets_toml.is_file():
+    from kanibako import registry_store
+
+    worksets_section = registry_store.load_section(
+        std.data_path, "workset_roots"
+    )
+    if not worksets_section:
         return None
 
-    _data = load_doc(worksets_toml)
-
-    for _root_str in _data.get("worksets", {}).values():
+    for _root_str in worksets_section.values():
         ws_root = Path(_root_str).resolve()
         ws_workspaces = ws_root / "workspaces"
         # Check workspaces/ first (more specific).

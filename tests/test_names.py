@@ -84,7 +84,7 @@ class TestRegisterName:
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         deep = tmp_path / "a" / "b" / "c"
         register_name(deep, "x", "/x")
-        assert (deep / "names.yaml").is_file()
+        assert (deep / "global" / "registry.yaml").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +527,7 @@ class TestBoxRm:
         assert "project" not in names["projects"]
 
         out = capsys.readouterr().out
-        assert "Removed 'project' from names.yaml" in out
+        assert "Removed 'project' from the registry" in out
 
     def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
         """Without --purge, rm shows a hint about metadata still present."""

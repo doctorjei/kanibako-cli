@@ -752,9 +752,10 @@ class TestResolveProjectHomeGuard:
         std = load_std_paths(config)
         home = tmp_home / "home"
 
-        # Pre-create the project via direct names.yaml write (simulates
+        # Pre-create the project via direct registry write (simulates
         # a project registered before the $HOME guard existed).
-        names_path = std.data_path / "names.yaml"
+        names_path = std.registry
+        names_path.parent.mkdir(parents=True, exist_ok=True)
         names_path.write_text(
             f'projects:\n  home: "{home.resolve()}"\nworksets: {{}}\n'
         )
