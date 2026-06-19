@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.errors import ConfigError
 from kanibako.settings_categories import (
     COPY,
     ENV,
     MOUNT,
     CategoryEntry,
     is_category_key,
+    reconcile_categories,
     resolve_categories,
 )
 from kanibako.settings_resolve import (
@@ -414,3 +416,225 @@ class TestIsCategoryKey:
         assert not is_category_key("system.bindings.rw")        # missing name
         assert not is_category_key("box.bindings.xx.y")         # bad mode
         assert not is_category_key("box.env")                   # missing VAR
+
+
+# ---------------------------------------------------------------------------
+# 4b — collision / precedence resolver (reconcile_categories)
+#
+# Authority order (identical box_dest, later WINS): seed < cache < binding <
+# shared < synced < masks. Ties within a category -> box scope wins. synced
+# (COPY) vs binding (MOUNT) at the same dest -> ConfigError. MOUNTs emit
+# depth-sorted (shallow first). group_auth=False suppresses synced + cred seeds.
+# ---------------------------------------------------------------------------
+
+
+def _reconcile(levels, ctx, *, group_auth=True, scope_roots=None):
+    return reconcile_categories(
+        _resolve(levels, ctx, scope_roots=scope_roots), group_auth=group_auth
+    )
+
+
+def _entry(category, *, box_dest, scope="box", host_src="/h", is_credential=False):
+    """Build a CategoryEntry directly (bypasses parsing) for precise collisions."""
+    from kanibako.settings_categories import _DELIVERY, _bind_options
+
+    delivery = _DELIVERY[category]
+    host = None if category in ("masks", "env") else host_src
+    options = _bind_options(category) if delivery == MOUNT else ""
+    return CategoryEntry(
+        category=category,
+        scope=scope,
+        box_dest=box_dest,
+        host_src=host,
+        delivery=delivery,
+        options=options,
+        name=box_dest,
+        is_credential=is_credential,
+    )
+
+
+class TestReconcileAuthorityOrder:
+    def test_identical_dest_full_authority_ladder(self):
+        # The authority ladder at one dest: each category beats every category
+        # BELOW it. synced<->binding is a hard error so it's never co-stacked;
+        # we test each rung against the rungs beneath it (excluding the
+        # synced/binding pairing, which has its own error test).
+        # seed < cache < binding < shared < synced < masks
+        D = "/g/x"
+        for top, rest in [
+            ("masks", ["shared", "bindings.rw", "caches", "seeded"]),
+            ("masks", ["synced", "shared", "caches", "seeded"]),
+            ("synced", ["shared", "caches", "seeded"]),
+            ("shared", ["bindings.rw", "caches", "seeded"]),
+            ("bindings.rw", ["caches", "seeded"]),
+            ("caches", ["seeded"]),
+        ]:
+            entries = [_entry(c, box_dest=D) for c in rest] + [
+                _entry(top, box_dest=D)
+            ]
+            rec = reconcile_categories(entries)
+            winners = rec.mounts + rec.copies
+            assert len(winners) == 1, (top, winners)
+            assert winners[0].category == top, top
+
+    def test_mask_beats_synced_beats_shared_beats_binding_beats_cache_beats_seed(
+        self,
+    ):
+        ctx = make_ctx()
+        # Five categories piled on /g/x via config; mask is highest authority.
+        levels = [
+            LevelView(
+                "box",
+                {
+                    "box.seeded.s": "/h/s:/g/x",
+                    "box.caches.c": "/h/c:/g/x",
+                    "box.bindings.rw.b": "/h/b:/g/x",
+                    "box.shared.h": "/h/h:/g/x",
+                    "box.masks": "/g/x",
+                },
+            ),
+        ]
+        rec = _reconcile(levels, ctx)
+        winners = rec.mounts + rec.copies
+        assert [w.category for w in winners] == ["masks"]
+
+    def test_seed_beats_nothing_alone_survives(self):
+        # A lone seed at a dest with no higher-authority collider survives.
+        rec = reconcile_categories([_entry("seeded", box_dest="/g/only")])
+        assert [w.category for w in rec.copies] == ["seeded"]
+        assert rec.mounts == []
+
+
+class TestReconcileTieBreak:
+    def test_tie_within_category_box_scope_wins(self):
+        # Two bindings at the same dest from different scopes -> box wins.
+        sys_e = _entry("bindings.rw", box_dest="/g/d", scope="system", host_src="/sys")
+        box_e = _entry("bindings.rw", box_dest="/g/d", scope="box", host_src="/box")
+        rec = reconcile_categories([sys_e, box_e])
+        assert len(rec.mounts) == 1
+        assert rec.mounts[0].host_src == "/box"
+
+    def test_tie_within_category_box_wins_regardless_of_input_order(self):
+        sys_e = _entry("caches", box_dest="/g/c", scope="system", host_src="/sys")
+        box_e = _entry("caches", box_dest="/g/c", scope="box", host_src="/box")
+        # box listed FIRST: still wins (scope beats input order).
+        rec = reconcile_categories([box_e, sys_e])
+        assert rec.mounts[0].host_src == "/box"
+
+
+class TestReconcileSyncedBindingError:
+    def test_synced_vs_binding_same_dest_raises(self):
+        synced = _entry("synced", box_dest="/g/clash")
+        binding = _entry("bindings.rw", box_dest="/g/clash")
+        with pytest.raises(ConfigError) as exc:
+            reconcile_categories([synced, binding])
+        assert "/g/clash" in str(exc.value)
+
+    def test_synced_vs_binding_ro_same_dest_raises(self):
+        synced = _entry("synced", box_dest="/g/clash")
+        binding = _entry("bindings.ro", box_dest="/g/clash")
+        with pytest.raises(ConfigError):
+            reconcile_categories([synced, binding])
+
+    def test_synced_and_shared_same_dest_is_not_an_error(self):
+        # Only synced<->binding is the hard error; synced beats shared cleanly.
+        synced = _entry("synced", box_dest="/g/ok")
+        shared = _entry("shared", box_dest="/g/ok")
+        rec = reconcile_categories([synced, shared])
+        assert [w.category for w in (rec.mounts + rec.copies)] == ["synced"]
+
+
+class TestReconcileDepthOrder:
+    def test_mounts_emitted_shallow_to_deep(self):
+        home = _entry("bindings.rw", box_dest="/home/agent")
+        ws = _entry("bindings.rw", box_dest="/home/agent/workspace")
+        vault = _entry("masks", box_dest="/home/agent/workspace/vault")
+        # Input deliberately scrambled.
+        rec = reconcile_categories([vault, home, ws])
+        assert [m.box_dest for m in rec.mounts] == [
+            "/home/agent",
+            "/home/agent/workspace",
+            "/home/agent/workspace/vault",
+        ]
+
+    def test_mask_inside_workspace_lands_on_top(self):
+        # mask at deeper dest emits AFTER the workspace binding (last -v wins).
+        ws = _entry("bindings.rw", box_dest="/home/agent/workspace")
+        mask = _entry("masks", box_dest="/home/agent/workspace/vault")
+        rec = reconcile_categories([mask, ws])
+        assert [m.box_dest for m in rec.mounts] == [
+            "/home/agent/workspace",
+            "/home/agent/workspace/vault",
+        ]
+        assert rec.mounts[-1].category == "masks"
+
+    def test_root_home_before_nested(self):
+        root = _entry("bindings.rw", box_dest="/")
+        nested = _entry("bindings.rw", box_dest="/home/agent/workspace/vault")
+        rec = reconcile_categories([nested, root])
+        assert [m.box_dest for m in rec.mounts] == [
+            "/",
+            "/home/agent/workspace/vault",
+        ]
+
+
+class TestReconcileGroupAuthGate:
+    def test_group_auth_false_suppresses_synced(self):
+        synced = _entry("synced", box_dest="/g/cred")
+        binding = _entry("bindings.rw", box_dest="/g/keep")
+        rec = reconcile_categories([synced, binding], group_auth=False)
+        cats = [w.category for w in (rec.mounts + rec.copies)]
+        assert "synced" not in cats
+        assert "bindings.rw" in cats
+
+    def test_group_auth_false_suppresses_credential_seed_only(self):
+        cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
+        plain_seed = _entry("seeded", box_dest="/g/plain", is_credential=False)
+        rec = reconcile_categories([cred_seed, plain_seed], group_auth=False)
+        dests = [c.box_dest for c in rec.copies]
+        assert "/g/cred" not in dests
+        assert "/g/plain" in dests
+
+    def test_group_auth_true_keeps_synced_and_cred_seed(self):
+        synced = _entry("synced", box_dest="/g/s")
+        cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
+        rec = reconcile_categories([synced, cred_seed], group_auth=True)
+        dests = {c.box_dest for c in rec.copies}
+        assert dests == {"/g/s", "/g/cred"}
+
+    def test_gate_applied_before_collision_so_no_false_synced_binding_error(self):
+        # synced suppressed by gate -> no clash with the binding at same dest.
+        synced = _entry("synced", box_dest="/g/d")
+        binding = _entry("bindings.rw", box_dest="/g/d")
+        rec = reconcile_categories([synced, binding], group_auth=False)
+        assert [m.category for m in rec.mounts] == ["bindings.rw"]
+
+
+class TestReconcilePartition:
+    def test_copy_mount_env_split(self):
+        ctx = make_ctx()
+        levels = [
+            LevelView(
+                "box",
+                {
+                    "box.seeded.s": "/h/s:/g/s",
+                    "box.synced.y": "/h/y:/g/y",
+                    "box.bindings.rw.b": "/h/b:/g/b",
+                    "box.masks": "/g/m",
+                    "box.env.FOO": "bar",
+                },
+            ),
+        ]
+        rec = _reconcile(levels, ctx)
+        assert {m.delivery for m in rec.mounts} == {MOUNT}
+        assert {c.delivery for c in rec.copies} == {COPY}
+        assert [e.box_dest for e in rec.envs] == ["FOO"]
+        assert {e.delivery for e in rec.envs} == {ENV}
+
+    def test_env_never_collides_with_path_dest(self):
+        # An env VAR name equal to a path dest must not be treated as a collision.
+        env = _entry("env", box_dest="/g/x")  # contrived VAR name
+        binding = _entry("bindings.rw", box_dest="/g/x")
+        rec = reconcile_categories([env, binding])
+        assert len(rec.mounts) == 1
+        assert len(rec.envs) == 1
