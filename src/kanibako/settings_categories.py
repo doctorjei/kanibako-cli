@@ -9,10 +9,10 @@ tagged with its *delivery* (COPY vs MOUNT).  It is **pure**: no file I/O, no
 mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
-It does NOT do cross-category collision resolution (identical-dest authority
-order, depth-order, ``synced``↔``binding`` errors, the ``group_auth`` gate) —
-that is sub-step 4b, layered on top of the entries this module produces.  Nor
-does it rewire launch (``start.py``); the compatibility wrappers
+Cross-category collision resolution (identical-dest authority order, depth-order,
+``synced``↔``binding`` errors, the ``group_auth`` gate) is :func:`reconcile_categories`
+(sub-step 4b), layered on top of the entries :func:`resolve_categories` produces.
+Neither function rewires launch (``start.py``); the compatibility wrappers
 :func:`resolve_shares` / :func:`resolve_seeds` (in their original modules) call
 :func:`resolve_categories` and adapt the subset back to the old ``Mount`` /
 ``SeedPair`` shapes, so the launch path is byte-for-byte unchanged this step.
@@ -138,6 +138,22 @@ _DISABLE_SENTINEL = "empty"
 # Apply order: REVERSE of precedence (most-specific scope lands LAST).
 _SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
+# Category AUTHORITY order for an identical ``box_dest`` (D-B1; later WINS /
+# applied-on-top): ``seed < cache < binding < shared < synced < masks``.
+# ``bindings.ro`` and ``bindings.rw`` collapse to the single ``binding`` rank;
+# ``seeded`` -> seed, ``caches`` -> cache.  ``env`` is not a path category (its
+# "dest" is a VAR name, never a guest path) so it has no authority rank and never
+# participates in box_dest collisions.
+_CATEGORY_AUTHORITY: dict[str, int] = {
+    "seeded": 0,        # seed
+    "caches": 1,        # cache
+    "bindings.ro": 2,   # binding
+    "bindings.rw": 2,   # binding
+    "shared": 3,        # shared
+    "synced": 4,        # synced
+    "masks": 5,         # masks
+}
+
 
 @dataclass(frozen=True)
 class CategoryEntry:
@@ -155,6 +171,12 @@ class CategoryEntry:
 
     For ``env`` entries, *box_dest* is the variable NAME and *options* holds the
     resolved variable VALUE (env carries no path / mount flags).
+
+    *is_credential* tags an entry whose content is an agent CREDENTIAL.  It is the
+    hook the ``group_auth`` gate (D-M4) keys off for ``seeded`` entries: a
+    credential ``seeded`` copy is suppressed when ``group_auth`` is False, exactly
+    as ``synced`` (always credential-bearing) is.  Core never sets it; the agent
+    plugin marks its cred seeds (Phase 8).  Defaults to False.
     """
 
     category: str
@@ -164,6 +186,7 @@ class CategoryEntry:
     delivery: Delivery
     options: str
     name: str
+    is_credential: bool = False
 
 
 def is_category_key(key: str) -> bool:
@@ -356,3 +379,130 @@ def resolve_categories(
 
     entries.sort(key=lambda pair: pair[0])
     return [entry for _, entry in entries]
+
+
+@dataclass(frozen=True)
+class ReconciledCategories:
+    """The reconciled, emit-ready partition of category entries (sub-step 4b).
+
+    *mounts* are the MOUNT-delivered winners (``caches``, ``bindings.{ro,rw}``,
+    ``shared``, ``masks``), depth-sorted by ``box_dest`` path-depth ASCENDING
+    (shallower first), so a later ``-v`` / podman's own depth-sort lands the most
+    specific mount on top (mask-inside-``~/workspace``, ``home``-under-everything).
+    *copies* are the COPY-delivered winners (``seeded``, ``synced``) in a
+    deterministic order.  *envs* are the ENV entries (no box_dest collision —
+    their "dest" is a VAR name), in deterministic order.
+
+    Each path ``box_dest`` appears at most once across *mounts* + *copies*
+    combined: identical-dest collisions were resolved by category authority.
+    """
+
+    mounts: list[CategoryEntry]
+    copies: list[CategoryEntry]
+    envs: list[CategoryEntry]
+
+
+def _path_depth(box_dest: str) -> int:
+    """Path-depth of a guest dest for the mount depth-sort (shallower first).
+
+    Depth = number of non-empty path components.  ``~/`` / ``/`` is shallowest;
+    ``~/workspace`` is deeper; ``~/workspace/vault`` deeper still.  Guest dests are
+    already ``@``-expanded (``~`` -> ``/home/agent``) before reaching here.
+    """
+    return len([c for c in box_dest.strip("/").split("/") if c])
+
+
+def reconcile_categories(
+    entries: list[CategoryEntry],
+    *,
+    group_auth: bool = True,
+) -> ReconciledCategories:
+    """Resolve cross-category collisions and partition for emission (4b, D-B1).
+
+    Takes the ordered ``list[CategoryEntry]`` from :func:`resolve_categories`
+    (apply order, see that function) and returns a :class:`ReconciledCategories`
+    with the per-dest winners split into MOUNT / COPY / ENV lists.
+
+    Authority order (identical ``box_dest`` -> later WINS / applied-on-top):
+    ``seed < cache < binding < shared < synced < masks`` (D-B1).  Among entries
+    sharing a resolved ``box_dest`` the HIGHEST-authority category wins; ties
+    WITHIN one authority rank are broken by :data:`_SCOPE_APPLY_ORDER` (box scope
+    wins), then by the input order (stable) for full determinism.
+
+    A ``synced`` (COPY) and a ``binding`` (MOUNT) naming the EXACT same
+    ``box_dest`` is a CONFIG ERROR (a copy cannot override a live mount) — raised
+    as :class:`~kanibako.errors.ConfigError`, never a silent no-op.
+
+    The emitted MOUNT list is sorted by ``box_dest`` path-depth ASCENDING so
+    podman's last-``-v``-wins/depth-sort resolves nested-but-different dests
+    (mask-inside-``~/workspace``, ``home``-under-everything).  COPY and ENV lists
+    keep a deterministic order.
+
+    *group_auth* gates credential delivery (D-M4): when False, every ``synced``
+    entry is SUPPRESSED, as is any ``seeded`` entry flagged
+    :attr:`CategoryEntry.is_credential` (the plugin's cred-seed hook).  When True
+    they are kept.  The gate is applied BEFORE collision resolution, so a
+    suppressed ``synced`` cannot win — or error against — a colliding binding.
+
+    Raises :class:`~kanibako.errors.ConfigError` on a ``synced``↔``binding``
+    identical-dest collision.
+    """
+    from kanibako.errors import ConfigError
+
+    # --- group_auth gate (D-M4): suppress cred deliveries up front.
+    gated: list[CategoryEntry] = []
+    for e in entries:
+        if not group_auth:
+            if e.category == "synced":
+                continue
+            if e.category == "seeded" and e.is_credential:
+                continue
+        gated.append(e)
+
+    # --- env entries never collide on a guest path; keep them aside (order kept).
+    envs = [e for e in gated if e.delivery == ENV]
+    path_entries = [e for e in gated if e.delivery != ENV]
+
+    # --- group by resolved box_dest; pick the per-dest authority winner.
+    # Preserve input order so ties beyond (authority, scope) are stable.
+    by_dest: dict[str, list[CategoryEntry]] = {}
+    for e in path_entries:
+        by_dest.setdefault(e.box_dest, []).append(e)
+
+    winners: list[CategoryEntry] = []
+    for box_dest, group in by_dest.items():
+        # synced (COPY) vs binding (MOUNT) at the EXACT same dest -> config error.
+        has_synced = any(e.category == "synced" for e in group)
+        has_binding = any(
+            e.category in ("bindings.ro", "bindings.rw") for e in group
+        )
+        if has_synced and has_binding:
+            raise ConfigError(
+                f"Category collision at '{box_dest}': a 'synced' copy and a "
+                f"'binding' mount target the same destination. A copy cannot "
+                f"override a live mount — resolve by removing one (e.g. drop the "
+                f"binding or point the synced copy elsewhere)."
+            )
+        # Highest authority wins; tie -> box scope wins (apply order); then the
+        # stable input order. ``enumerate`` index keeps the original sequence.
+        winner = max(
+            enumerate(group),
+            key=lambda pair: (
+                _CATEGORY_AUTHORITY[pair[1].category],
+                _SCOPE_APPLY_ORDER[pair[1].scope],
+                pair[0],
+            ),
+        )[1]
+        winners.append(winner)
+
+    # --- partition winners by delivery; depth-sort the mounts (shallow first).
+    mounts = [w for w in winners if w.delivery == MOUNT]
+    copies = [w for w in winners if w.delivery == COPY]
+
+    # MOUNT depth-sort: shallower box_dest first so the deepest (most specific)
+    # mount lands LAST and wins. Stable tie-break by box_dest for determinism.
+    mounts.sort(key=lambda e: (_path_depth(e.box_dest), e.box_dest))
+    # COPY: deterministic by box_dest (no depth constraint).
+    copies.sort(key=lambda e: e.box_dest)
+
+    return ReconciledCategories(mounts=mounts, copies=copies, envs=envs)
