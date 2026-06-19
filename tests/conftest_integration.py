@@ -137,7 +137,7 @@ def integration_credentials(integration_home, integration_config):
     data_home = integration_home / "int_data"
     data_path = resolve_system_paths(
         config.system_paths, data_home=data_home, home=integration_home,
-    )["system.path.data"]
+    )["system.data"]
     data_path.mkdir(parents=True, exist_ok=True)
 
     # Write host credentials (used directly by init now)

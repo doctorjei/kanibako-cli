@@ -1774,14 +1774,12 @@ def _apply_init_seeds(
     )
 
     resolved_sys = {
-        "system.path.data": str(std.data_path),
-        "system.path.boxes": str(std.boxes),
-        "system.path.agents": str(std.agents),
-        "system.path.comms": str(std.comms),
-        "system.path.templates": str(std.templates),
-        "system.path.ws_hints": str(std.ws_hints),
-        "system.path.share_ro": str(std.share_ro),
-        "system.path.share_rw": str(std.share_rw),
+        "system.data": str(std.data),
+        "system.agents": str(std.agents),
+        "system.channels": str(std.channels),
+        "system.base_template": str(std.base_template),
+        "system.registry": str(std.registry),
+        "system.primary_workset": str(std.primary_workset),
     }
 
     def _lookup(ref, chain):
@@ -1863,10 +1861,11 @@ def _build_share_mounts(
     ]
 
     # Source roots per scope group (concrete host paths → expand_expr verbatim).
+    # The system-scope share roots (system.path.share_{ro,rw}) were DELETED in
+    # the system.* reorg (subsumed by the workset vault / 'shared' category);
+    # only the agent/workset scopes remain here.
     agent_share_root = str(std.agents / agent_name / "share")
     scope_roots = {
-        "system.path.share_ro": str(std.share_ro),
-        "system.path.share_rw": str(std.share_rw),
         "agent.path.share_ro": agent_share_root,
         "agent.path.share_rw": agent_share_root,
     }
@@ -1888,16 +1887,14 @@ def _build_share_mounts(
         xdg={"XDG_DATA_HOME": str(std.data_home)},
     )
 
-    # Share VALUES may reference the resolved system path tier via @-refs.
+    # Share VALUES may reference the resolved system config tier via @-refs.
     resolved_sys = {
-        "system.path.data": str(std.data_path),
-        "system.path.boxes": str(std.boxes),
-        "system.path.agents": str(std.agents),
-        "system.path.comms": str(std.comms),
-        "system.path.templates": str(std.templates),
-        "system.path.ws_hints": str(std.ws_hints),
-        "system.path.share_ro": str(std.share_ro),
-        "system.path.share_rw": str(std.share_rw),
+        "system.data": str(std.data),
+        "system.agents": str(std.agents),
+        "system.channels": str(std.channels),
+        "system.base_template": str(std.base_template),
+        "system.registry": str(std.registry),
+        "system.primary_workset": str(std.primary_workset),
     }
 
     def _lookup(ref, chain):

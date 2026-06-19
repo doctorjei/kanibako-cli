@@ -1750,15 +1750,15 @@ class TestBuildShareMounts:
     def _std(self, tmp_path):
         from types import SimpleNamespace
         return SimpleNamespace(
-            share_ro=tmp_path / "share-ro",
-            share_rw=tmp_path / "share-rw",
             agents=tmp_path / "agents",
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
-            boxes=tmp_path / "boxes",
-            comms=tmp_path / "comms",
-            templates=tmp_path / "templates",
-            ws_hints=tmp_path / "ws_hints.yaml",
+            # New system.* fields read by resolved_sys (shares/seeds wiring).
+            data=tmp_path / "data",
+            channels=tmp_path / "channels",
+            base_template=tmp_path / "base_template",
+            registry=tmp_path / "registry.yaml",
+            primary_workset=tmp_path / "primary_workset",
         )
 
     def _proj(self, group=None):
@@ -1920,15 +1920,15 @@ class TestApplyInitSeeds:
     def _std(self, tmp_path):
         from types import SimpleNamespace
         return SimpleNamespace(
-            share_ro=tmp_path / "share-ro",
-            share_rw=tmp_path / "share-rw",
             agents=tmp_path / "agents",
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
-            boxes=tmp_path / "boxes",
-            comms=tmp_path / "comms",
-            templates=tmp_path / "templates",
-            ws_hints=tmp_path / "ws_hints.yaml",
+            # New system.* fields read by resolved_sys (shares/seeds wiring).
+            data=tmp_path / "data",
+            channels=tmp_path / "channels",
+            base_template=tmp_path / "base_template",
+            registry=tmp_path / "registry.yaml",
+            primary_workset=tmp_path / "primary_workset",
         )
 
     def _proj(self, shell_path, group=None):

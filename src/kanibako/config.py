@@ -46,8 +46,8 @@ class KanibakoConfig:
     allow_helpers: bool = True
     box_share_images: bool = False
     shared_caches: dict[str, str] = field(default_factory=dict)
-    # System-level path tier: raw set-values keyed by full dotted name
-    # ("system.path.<leaf>"), read from the file's [system][path] table.
+    # System-level config tier: raw set-values keyed by full dotted name
+    # (bare "system.<leaf>"), read from the file's flat [system] table.
     # System-only (never supplied by project/workset configs).
     system_paths: dict[str, str] = field(default_factory=dict)
 
@@ -185,12 +185,10 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
         return {}
     data = load_doc(path)
     # Drop the sections handled by dedicated logic so they don't leak into the
-    # scalar field overlay.
+    # scalar field overlay.  The whole [system] table is the config tier
+    # (handled by load_config's system_paths extraction), not flat fields.
     data.pop("shared", None)
-    if isinstance(data.get("system"), dict):
-        data["system"].pop("path", None)
-        if not data["system"]:
-            data.pop("system")
+    data.pop("system", None)
     flat = _flatten_toml(data)
     valid_keys = {fld.name for fld in fields(KanibakoConfig)}
     present: dict[str, object] = {}
@@ -210,12 +208,15 @@ def load_config(path: Path) -> KanibakoConfig:
         # Extract [shared] section before flattening (it's a key-value dict,
         # not nested config fields).
         shared = data.get("shared", {})
-        # Extract the [system][path] table: these are the system-level path
-        # tier (resolver expressions), not flat fields.
-        system_path = data.get("system", {}).get("path", {})
-        cfg.system_paths = {
-            f"system.path.{k}": str(v) for k, v in system_path.items()
-        }
+        # Extract the [system] table: the system-level config tier (resolver
+        # expressions), keyed by bare ``system.<leaf>`` dotted names.  The table
+        # is flattened so nested sub-keys (e.g. ``system.channels.commons``)
+        # become dotted keys; scalar leaves (e.g. ``system.data``) stay flat.
+        system_tbl = data.get("system", {})
+        if isinstance(system_tbl, dict):
+            cfg.system_paths = _flatten_dotted(system_tbl, "system")
+        else:
+            cfg.system_paths = {}
         # Scalar/bool fields: a present key sets the field; a ``None`` value
         # (YAML null/empty) resets it to the built-in default.
         for k, v in _present_scalar_fields(path).items():
@@ -300,20 +301,24 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
     """
     if cfg is None:
         cfg = KanibakoConfig()
-    # System-level path tier (settings-framework "system.path.*"), written at
-    # the DEFAULT expressions.  Kept in lock-step with
-    # paths.SYSTEM_PATH_DEFAULTS (imported lazily there to avoid an import
-    # cycle); the resolver fills these in if the file omits them.
+    # System-level config tier (settings-framework "system.*"), written at the
+    # DEFAULT expressions as a flat [system] table (bare ``system.<leaf>``).
+    # Kept in lock-step with paths.SYSTEM_PATH_DEFAULTS; the resolver fills
+    # these in if the file omits them, so only the most commonly-tuned roots
+    # are emitted (the channels skeleton + derived files resolve from these).
     data: dict = {
         "system": {
-            "path": {
-                "data": "$XDG_DATA_HOME/kanibako",
-                "boxes": "@system.path.data/boxes",
-                "agents": "@system.path.data/agents",
-                "comms": "@system.path.data/comms",
-                "templates": "@system.path.data/templates",
-                "ws_hints": "@system.path.data/worksets.yaml",
-            }
+            "data": "$XDG_DATA_HOME/kanibako",
+            "backup": "@system.data/backup",
+            "agents": "@system.data/agents",
+            "channels": "@system.data/channels",
+            "global": "@system.data/global",
+            "base_template": "@system.global/base_template",
+            "settings": "@system.global/settings.yaml",
+            "primary_workset": "@system.data/primary_workset",
+            "registry": "@system.global/registry.yaml",
+            "cache": "$XDG_CACHE_HOME/kanibako",
+            "runtime": "$XDG_RUNTIME_DIR/kanibako",
         },
         "box": {
             "image": cfg.box_image,

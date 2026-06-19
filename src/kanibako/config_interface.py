@@ -75,13 +75,18 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.enabled",
     "vault.ro",
     "vault.rw",
-    # System-level path settings (resolver-backed system.path.* tier)
-    "system.path.data",
-    "system.path.boxes",
-    "system.path.agents",
-    "system.path.comms",
-    "system.path.templates",
-    "system.path.ws_hints",
+    # System-level config settings (resolver-backed system.* tier)
+    "system.data",
+    "system.backup",
+    "system.agents",
+    "system.channels",
+    "system.global",
+    "system.base_template",
+    "system.settings",
+    "system.primary_workset",
+    "system.registry",
+    "system.cache",
+    "system.runtime",
     # Box-level path settings (flat KanibakoConfig.paths_* fields)
     "paths.shell",
     "paths.vault",
@@ -248,8 +253,19 @@ def _is_agent_setting(key: str) -> bool:
 
 
 def _is_system_path_key(key: str) -> bool:
-    """Keys that belong in the nested ``[system.path]`` table (system-only)."""
-    return key.startswith("system.path.")
+    """Keys that belong in the ``[system]`` config table (system-only)."""
+    return key.startswith("system.")
+
+
+def _system_key_sections(key: str) -> tuple[tuple[str, ...], str]:
+    """Split a ``system.<a>.<b>...`` key into (nested sections, leaf).
+
+    ``system.data`` → ``(("system",), "data")``;
+    ``system.channels.commons`` → ``(("system", "channels"), "commons")``.
+    """
+    parts = key.split(".")  # ["system", "<a>", ...]
+    *sections, leaf = parts
+    return tuple(sections), leaf
 
 
 def _dot_to_flat(key: str) -> str:
@@ -327,8 +343,8 @@ def get_config_value(
                 return settings[canonical]
         return None
 
-    # system.path.* keys — read the raw set-value from the global config's
-    # [system.path] table (system-only tier; not a merged-config field).
+    # system.* keys — read the raw set-value from the global config's [system]
+    # table (system-only tier; not a merged-config field).
     if _is_system_path_key(canonical):
         cfg = load_merged_config(global_config_path, project_toml)
         return cfg.system_paths.get(canonical)
@@ -417,10 +433,10 @@ def set_config_value(
         _write_nested_toml_key(config_path, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
-    # system.path.* keys — write to the nested [system.path] table.
+    # system.* keys — write into the [system] config table.
     if _is_system_path_key(canonical):
-        leaf = canonical[len("system.path."):]
-        _write_nested_toml_key(config_path, ("system", "path"), leaf, value)
+        sections, leaf = _system_key_sections(canonical)
+        _write_nested_toml_key(config_path, sections, leaf, value)
         return f"Set {canonical}={value}"
 
     # Regular config keys — route via the single known-key table (the H1 fix:
@@ -479,10 +495,10 @@ def reset_config_value(
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
-    # system.path.* keys — remove from the nested [system.path] table.
+    # system.* keys — remove from the [system] config table.
     if _is_system_path_key(canonical):
-        leaf = canonical[len("system.path."):]
-        if _remove_nested_toml_key(config_path, ("system", "path"), leaf):
+        sections, leaf = _system_key_sections(canonical)
+        if _remove_nested_toml_key(config_path, sections, leaf):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 

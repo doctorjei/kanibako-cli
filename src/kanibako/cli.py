@@ -213,15 +213,15 @@ def _ensure_initialized() -> None:
     sys_paths = resolve_system_paths(
         config.system_paths, data_home=data_home, home=Path.home(),
     )
-    data_path = sys_paths["system.path.data"]
+    data_path = sys_paths["system.data"]
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
-    sys_paths["system.path.boxes"].mkdir(parents=True, exist_ok=True)
+    sys_paths["system._boxes"].mkdir(parents=True, exist_ok=True)
 
-    templates_dir = sys_paths["system.path.templates"]
+    templates_dir = sys_paths["system.base_template"]
     (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
     (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
 
-    comms_dir = sys_paths["system.path.comms"]
+    comms_dir = sys_paths["system.channels"]
     (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
     (comms_dir / "broadcast.log").touch(exist_ok=True)
 
@@ -229,7 +229,7 @@ def _ensure_initialized() -> None:
     from kanibako.agent_config import AgentConfig, write_agent_config
     from kanibako.targets import discover_targets
 
-    agents_path = sys_paths["system.path.agents"]
+    agents_path = sys_paths["system.agents"]
     agents_path.mkdir(parents=True, exist_ok=True)
 
     general_toml = agents_path / "general.yaml"

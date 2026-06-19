@@ -95,14 +95,79 @@ class StandardPaths:
     data_path: Path
     state_path: Path
     cache_path: Path
-    # System-level derived directories (settings-framework "system.path.*").
-    boxes: Path
+    # System-level derived directories (settings-framework "system.*" config).
+    data: Path
+    backup: Path
     agents: Path
-    comms: Path
-    share_ro: Path
-    share_rw: Path
-    templates: Path
-    ws_hints: Path
+    channels: Path
+    global_dir: Path        # ``global`` is a Python keyword → ``global_dir``.
+    base_template: Path
+    settings: Path
+    primary_workset: Path
+    registry: Path
+    cache: Path
+    runtime: Path
+    # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
+    channels_commons: Path
+    channels_chat: Path
+    channels_broadcast: Path
+    channels_mailboxes: Path
+    channels_share: Path
+    # Transitional: the OLD ``boxes`` location, resolved unchanged (Phase 5
+    # moves boxes/logs/vault under the PRIMARY workset; until then disk layout
+    # is preserved).  Backs the ``boxes`` alias below.  Deleted in Phase 5.
+    _boxes: Path
+
+    # ------------------------------------------------------------------
+    # Transitional aliases (DELETED in Phase 5).
+    #
+    # The renamed/restructured fields above replace the old flat
+    # ``system.path.*``-backed fields.  Roughly 20 call sites (start.py,
+    # workset.py, install, diagnose, box lifecycle, helper_listener, …) still
+    # read the OLD field names.  These read-only ``@property`` aliases keep
+    # those non-Phase-3 call sites compiling unchanged until Phase 5 migrates
+    # them onto the new structure (boxes/logs/vault move under the PRIMARY
+    # workset; channels sub-keys get wired).  Do NOT add new uses.
+    # ------------------------------------------------------------------
+
+    @property
+    def boxes(self) -> Path:
+        """OLD ``std.boxes`` — the per-project box store (location unchanged
+        in Phase 3; Phase 5 moves it under the PRIMARY workset)."""
+        return self._boxes
+
+    @property
+    def comms(self) -> Path:
+        """OLD ``std.comms`` → the renamed ``channels`` dir."""
+        return self.channels
+
+    @property
+    def templates(self) -> Path:
+        """OLD ``std.templates`` → the renamed/re-pointed ``base_template`` dir."""
+        return self.base_template
+
+    @property
+    def ws_hints(self) -> Path:
+        """OLD ``std.ws_hints`` → the renamed/absorbed ``registry`` file."""
+        return self.registry
+
+    @property
+    def share_ro(self) -> Path:
+        """OLD ``std.share_ro`` — DELETED (subsumed by ``@workset.vault_ro`` /
+        the ``shared`` category).  No replacement dir exists → raise."""
+        raise NotImplementedError(
+            "system.path.share_ro was deleted in the system.* reorg; use the "
+            "workset vault / 'shared' category instead."
+        )
+
+    @property
+    def share_rw(self) -> Path:
+        """OLD ``std.share_rw`` — DELETED (subsumed by ``@workset.vault_rw`` /
+        the ``shared`` category)."""
+        raise NotImplementedError(
+            "system.path.share_rw was deleted in the system.* reorg; use the "
+            "workset vault / 'shared' category instead."
+        )
 
 
 @dataclass(frozen=True)
@@ -348,24 +413,38 @@ def xdg(env_var: str, default_suffix: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# System-level path tier (settings-framework "system.path.*")
+# System-level config tier (settings-framework "system.*")
 # ---------------------------------------------------------------------------
 #
-# These model the system-level derived directories as resolver-backed path
-# expressions.  Keys are the FULL dotted names so ``@``-refs (e.g.
-# ``@system.path.data``) resolve against the same table.  Defaults reproduce
-# today's flat ``KanibakoConfig.paths_*`` behavior byte-for-byte: the data path
-# is ``$XDG_DATA_HOME/kanibako`` and the other dirs (and the ``ws_hints`` file)
-# hang off it.
+# These model the system-level config directories as resolver-backed path
+# expressions.  Keys are the FULL dotted names (bare ``system.*`` — the
+# ``.path`` segment was dropped in the system.* reorg) so ``@``-refs (e.g.
+# ``@system.data``) resolve against the same table.
+#
+# The data tree (``@system.data``) holds the persistent dirs; ``cache`` and
+# ``runtime`` deliberately live under their own XDG bases (NOT under data).
+# ``global`` holds the global settings/registry files; ``channels`` carries a
+# skeleton of sub-keys (their behavior/wiring is Phase 6 — here they only need
+# to resolve).  The OLD per-leaf ``boxes`` location is resolved separately as a
+# transitional value (see :func:`resolve_system_paths`) and is NOT a key here.
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
-    "system.path.data": "$XDG_DATA_HOME/kanibako",
-    "system.path.boxes": "@system.path.data/boxes",
-    "system.path.agents": "@system.path.data/agents",
-    "system.path.comms": "@system.path.data/comms",
-    "system.path.share_ro": "@system.path.data/share_ro",
-    "system.path.share_rw": "@system.path.data/share_rw",
-    "system.path.templates": "@system.path.data/templates",
-    "system.path.ws_hints": "@system.path.data/worksets.yaml",
+    "system.data": "$XDG_DATA_HOME/kanibako",
+    "system.backup": "@system.data/backup",
+    "system.agents": "@system.data/agents",
+    "system.channels": "@system.data/channels",
+    "system.global": "@system.data/global",
+    "system.base_template": "@system.global/base_template",
+    "system.settings": "@system.global/settings.yaml",
+    "system.primary_workset": "@system.data/primary_workset",
+    "system.registry": "@system.global/registry.yaml",
+    "system.cache": "$XDG_CACHE_HOME/kanibako",
+    "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
+    # Channels skeleton (Phase 6 fills sub-key behavior).
+    "system.channels.commons": "@system.channels/commons",
+    "system.channels.chat": "@system.channels/chat",
+    "system.channels.broadcast": "@system.channels.chat/broadcast.md",
+    "system.channels.mailboxes": "@system.channels/mailboxes",
+    "system.channels.share": "@system.channels/share",
 }
 
 
@@ -375,11 +454,14 @@ def resolve_system_paths(
     """Resolve the ``system.path.*`` tier to concrete host paths.
 
     *set_values* holds raw user-set expressions keyed by their full dotted name
-    (``system.path.<leaf>``); typically the global config's ``system_paths``.
+    (bare ``system.<leaf>``); typically the global config's ``system_paths``.
     *data_home* is the already-resolved XDG data base (e.g. ``~/.local/share``)
     exposed to expressions as ``$XDG_DATA_HOME``; *home* expands a leading
     ``~``.  Returns ``{full_dotted_key: Path}`` for every key in
-    :data:`SYSTEM_PATH_DEFAULTS`.
+    :data:`SYSTEM_PATH_DEFAULTS`, plus the transitional pseudo-key
+    ``system._boxes`` (the OLD ``@system.data/boxes`` location, kept for the
+    ``StandardPaths.boxes`` alias until Phase 5 moves boxes under the PRIMARY
+    workset).
     """
     # Populate the FULL XDG var set so ``$XDG_*`` references in system path
     # expressions resolve.  ``data_home`` is passed in already-resolved (it
@@ -417,16 +499,22 @@ def resolve_system_paths(
             raise SettingsError(f"Unresolvable system path: {key}")
         expanded = expand_expr(rv.value, space="host", ctx=ctx, lookup=lookup)
         resolved[key] = Path(expanded)
+
+    # Transitional ``system._boxes``: the OLD ``@system.data/boxes`` location,
+    # resolved off the (possibly overridden) data path so disk layout is
+    # unchanged in Phase 3.  Backs the ``StandardPaths.boxes`` alias; removed
+    # in Phase 5 when boxes move under the PRIMARY workset.
+    resolved["system._boxes"] = resolved["system.data"] / "boxes"
     return resolved
 
 
 def load_system_config(
     user_config_path: Path, *, data_home: Path, home: Path,
 ) -> dict[str, Path]:
-    """Resolve the ``system.path.*`` tier from the CONFIG file set.
+    """Resolve the ``system.*`` config tier from the CONFIG file set.
 
     The CONFIG (``system.*``) set is three files, read in cascade order so the
-    most-authoritative present value of each ``system.path.<leaf>`` set-value
+    most-authoritative present value of each ``system.<leaf>`` set-value
     wins **before** expression resolution:
 
     1. ``/etc/kanibako/config_base.yaml`` — site-wide overridable defaults
@@ -441,10 +529,9 @@ def load_system_config(
     are handed to :func:`resolve_system_paths`, which fills in
     :data:`SYSTEM_PATH_DEFAULTS` and resolves ``@``-/``$XDG_*``-references.
 
-    ⚑ Key names are UNCHANGED in this step — still ``system.path.<leaf>``.  The
-    rename to bare ``system.*`` is a later phase.  This loader is purely about
-    *where* the set-values are read from (the 3-file set) and the
-    required-wins semantics.
+    Keys are the bare ``system.<leaf>`` form (the ``.path`` segment was dropped
+    in the system.* reorg); the on-disk config shape is a flat ``[system]``
+    table.
 
     Back-compat: a user with only ``~/.config/kanibako.yaml`` (no ``/etc``
     files) gets exactly the prior behavior — the base and required layers are
@@ -518,15 +605,15 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     resolved = load_system_config(
         config_file, data_home=data_home, home=Path.home(),
     )
-    data_path = resolved["system.path.data"]
+    data_path = resolved["system.data"]
     # state/cache paths track the data dir's leaf name (unchanged behavior:
     # default leaf "kanibako" under each XDG base).
     rel = data_path.name
     state_path = state_home / rel
     cache_path = cache_home / rel
 
-    # Migrate settings/ -> boxes/ if needed.
-    _migrate_settings_to_boxes(data_path, resolved["system.path.boxes"])
+    # Migrate settings/ -> boxes/ if needed (transitional box location).
+    _migrate_settings_to_boxes(data_path, resolved["system._boxes"])
 
     # Migrate global env file from config_home/kanibako/env to data_path/env.
     _migrate_global_env(config_home, data_path)
@@ -546,13 +633,23 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         data_path=data_path,
         state_path=state_path,
         cache_path=cache_path,
-        boxes=resolved["system.path.boxes"],
-        agents=resolved["system.path.agents"],
-        comms=resolved["system.path.comms"],
-        share_ro=resolved["system.path.share_ro"],
-        share_rw=resolved["system.path.share_rw"],
-        templates=resolved["system.path.templates"],
-        ws_hints=resolved["system.path.ws_hints"],
+        data=resolved["system.data"],
+        backup=resolved["system.backup"],
+        agents=resolved["system.agents"],
+        channels=resolved["system.channels"],
+        global_dir=resolved["system.global"],
+        base_template=resolved["system.base_template"],
+        settings=resolved["system.settings"],
+        primary_workset=resolved["system.primary_workset"],
+        registry=resolved["system.registry"],
+        cache=resolved["system.cache"],
+        runtime=resolved["system.runtime"],
+        channels_commons=resolved["system.channels.commons"],
+        channels_chat=resolved["system.channels.chat"],
+        channels_broadcast=resolved["system.channels.broadcast"],
+        channels_mailboxes=resolved["system.channels.mailboxes"],
+        channels_share=resolved["system.channels.share"],
+        _boxes=resolved["system._boxes"],
     )
 
 
@@ -772,7 +869,7 @@ def _resolve_local_dir(
 
     Looks up the project name via names.yaml reverse lookup and returns
     ``(project_name, boxes_dir/{name}/)`` path.  *boxes_dir* is the resolved
-    ``system.path.boxes`` directory (``std.boxes``); *data_path* is still
+    transitional ``std.boxes`` box-store directory; *data_path* is still
     needed to read ``names.yaml``.
 
     Returns ``("", empty_path)`` when no name is registered — the caller
@@ -1082,7 +1179,7 @@ def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path
     prefix of *target*, checks that ``boxes_dir/{name}/`` actually exists on
     disk.  Among all valid matches, the deepest (most path components)
     wins.  Returns the matched path or ``None``.  *boxes_dir* is the resolved
-    ``system.path.boxes`` directory (``std.boxes``).
+    transitional ``std.boxes`` box-store directory.
     """
     names = read_names(data_path)
     best: Path | None = None
