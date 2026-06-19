@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -10,6 +11,8 @@ from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol
 
 import yaml
+
+from kanibako.log import get_logger
 
 from kanibako.config import (
     KanibakoConfig,
@@ -213,12 +216,135 @@ class WorksetSpec:
         )
 
 
-def xdg(env_var: str, default_suffix: str) -> Path:
-    """Resolve an XDG directory from environment or default under $HOME."""
-    val = os.environ.get(env_var, "")
+logger = get_logger("paths")
+
+
+# Spec defaults for the XDG base directories that HAVE one (freedesktop Base
+# Directory spec).  ``XDG_RUNTIME_DIR`` is deliberately ABSENT — it has no spec
+# default and is handled specially by :func:`resolve_xdg` (fallback + warn).
+_XDG_SPEC_DEFAULTS: dict[str, str] = {
+    "XDG_DATA_HOME": ".local/share",
+    "XDG_CONFIG_HOME": ".config",
+    "XDG_STATE_HOME": ".local/state",
+    "XDG_CACHE_HOME": ".cache",
+}
+
+
+def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path:
+    """Resolve an XDG base directory per the freedesktop Base Directory spec.
+
+    The environment variable *var_name* is honored **iff it is set AND
+    absolute**; a relative value is INVALID per the spec and is ignored (we fall
+    back to the default).  When unset/invalid:
+
+    * For the dirs that have a spec default (*spec_default_suffix* is the suffix
+      under ``$HOME``, e.g. ``".local/share"``), return ``$HOME/<suffix>``.
+    * For ``XDG_RUNTIME_DIR`` (*spec_default_suffix* is ``None``) there is NO
+      spec default: fall back to a replacement dir with similar capabilities and
+      **warn** — prefer ``/run/user/<uid>/kanibako`` when it is usable
+      (writable, owned by us), else a ``0700`` temp dir.
+
+    An absolute env value is returned as-is (resolved); the runtime-dir fallback
+    is the only case that creates a directory.
+    """
+    val = os.environ.get(var_name, "")
     if val:
-        return Path(val).resolve()
-    return Path.home() / default_suffix
+        if os.path.isabs(val):
+            return Path(val).resolve()
+        # Relative value: invalid per spec → ignore and fall through to default.
+        logger.warning(
+            "%s=%r is relative (not absolute); ignoring per the XDG Base "
+            "Directory spec and using the default.",
+            var_name,
+            val,
+        )
+
+    if spec_default_suffix is not None:
+        return Path.home() / spec_default_suffix
+
+    # XDG_RUNTIME_DIR has no spec default — pick a replacement and warn.
+    return _fallback_runtime_dir(var_name)
+
+
+# Process-lifetime cache of the chosen runtime-dir fallback, keyed by var name.
+# Without this, a temp-dir fallback would leak a NEW dir (and re-warn) on every
+# ``resolve_system_paths`` call within a single process.  The cache is keyed by
+# (var_name, env value) so a test/process that later SETS the var is unaffected.
+_runtime_fallback_cache: dict[tuple[str, str], Path] = {}
+
+
+def _fallback_runtime_dir(var_name: str) -> Path:
+    """Choose a replacement for an unset/invalid ``XDG_RUNTIME_DIR`` and warn.
+
+    Prefers ``/run/user/<uid>/kanibako`` when ``/run/user/<uid>`` exists and is
+    a writable directory owned by us; otherwise a ``0700`` per-user temp dir.
+    Never substitutes silently — warns on first selection (cached per process so
+    repeated calls don't leak temp dirs or re-warn).
+    """
+    cache_key = (var_name, os.environ.get(var_name, ""))
+    cached = _runtime_fallback_cache.get(cache_key)
+    if cached is not None and cached.is_dir():
+        return cached
+
+    uid = os.getuid()
+    run_user = Path(f"/run/user/{uid}")
+    if _runtime_base_usable(run_user):
+        chosen = run_user / "kanibako"
+        chosen.mkdir(mode=0o700, parents=True, exist_ok=True)
+        logger.warning(
+            "%s is not set; falling back to %s for runtime files (helper "
+            "sockets). Set %s to a per-user runtime dir to silence this.",
+            var_name,
+            chosen,
+            var_name,
+        )
+        _runtime_fallback_cache[cache_key] = chosen
+        return chosen
+
+    # Last resort: a 0700 temp dir under the system temp root.
+    chosen = Path(tempfile.mkdtemp(prefix="kanibako-runtime-"))
+    chosen.chmod(0o700)
+    logger.warning(
+        "%s is not set and /run/user/%d is unusable; falling back to the "
+        "temp dir %s for runtime files. Set %s to a persistent per-user "
+        "runtime dir to silence this.",
+        var_name,
+        uid,
+        chosen,
+        var_name,
+    )
+    _runtime_fallback_cache[cache_key] = chosen
+    return chosen
+
+
+def _runtime_base_usable(base: Path) -> bool:
+    """True iff *base* is a directory we own and can write to.
+
+    Mirrors the freedesktop requirement that the runtime dir be owned by the
+    user and writable.  Best-effort: any OS error → not usable.
+    """
+    try:
+        st = base.stat()
+    except OSError:
+        return False
+    import stat as _stat
+
+    if not _stat.S_ISDIR(st.st_mode):
+        return False
+    if st.st_uid != os.getuid():
+        return False
+    return os.access(base, os.W_OK | os.X_OK)
+
+
+def xdg(env_var: str, default_suffix: str) -> Path:
+    """Resolve an XDG directory from environment or default under $HOME.
+
+    Backward-compatible thin wrapper over :func:`resolve_xdg`: honors the env
+    var only when set AND absolute (a relative value is now ignored per the
+    spec), else returns ``$HOME/<default_suffix>``.  Used by the many call
+    sites that just need a spec-backed XDG base dir.
+    """
+    return resolve_xdg(env_var, default_suffix)
 
 
 # ---------------------------------------------------------------------------
@@ -255,11 +381,22 @@ def resolve_system_paths(
     ``~``.  Returns ``{full_dotted_key: Path}`` for every key in
     :data:`SYSTEM_PATH_DEFAULTS`.
     """
+    # Populate the FULL XDG var set so ``$XDG_*`` references in system path
+    # expressions resolve.  ``data_home`` is passed in already-resolved (it
+    # anchors the default tree); the rest are resolved here via the hardened
+    # resolver (honor-iff-absolute; runtime-dir fallback+warn).
+    xdg_vars: dict[str, str] = {
+        "XDG_DATA_HOME": str(data_home),
+        "XDG_CONFIG_HOME": str(resolve_xdg("XDG_CONFIG_HOME", ".config")),
+        "XDG_STATE_HOME": str(resolve_xdg("XDG_STATE_HOME", ".local/state")),
+        "XDG_CACHE_HOME": str(resolve_xdg("XDG_CACHE_HOME", ".cache")),
+        "XDG_RUNTIME_DIR": str(resolve_xdg("XDG_RUNTIME_DIR", None)),
+    }
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None,
         host_home=str(home),
-        xdg={"XDG_DATA_HOME": str(data_home)},
+        xdg=xdg_vars,
     )
     levels = [
         LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)
