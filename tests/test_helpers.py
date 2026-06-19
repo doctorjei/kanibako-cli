@@ -573,6 +573,15 @@ class TestBundledInitScript:
         content = path.read_text()
         assert "set -euo pipefail" in content
 
+    def test_bundled_socket_path_matches_mount_dest(self):
+        # The hub socket is mounted at ~/.local/state/kanibako/helper.sock
+        # (start.py / helper_listener.py). The script must check that path so
+        # `kanibako helper register` actually runs and the helper joins the hub.
+        path = bundled_init_script()
+        content = path.read_text()
+        assert 'SOCKET_PATH="$HOME/.local/state/kanibako/helper.sock"' in content
+        assert "$HOME/.kanibako/helper.sock" not in content
+
 
 class TestResolveInitScript:
     def test_custom_takes_priority(self, tmp_path):
