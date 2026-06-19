@@ -851,10 +851,10 @@ class TestVaultTmpfsMode:
     def test_default_mode_uses_tmpfs_vault(self, start_mocks):
         from pathlib import Path
 
-        from kanibako.paths import ProjectGroup, ProjectMode
+        from kanibako.paths import ProjectGroup, BoxMode
 
         with start_mocks() as m:
-            m.proj.mode = ProjectMode.default
+            m.proj.mode = BoxMode.primary
             m.proj.group = ProjectGroup(
                 name="default", root=Path("/data"),
                 is_default=True, local_shared_base=Path("/data"),
@@ -869,10 +869,10 @@ class TestVaultTmpfsMode:
     def test_workset_mode_now_also_uses_tmpfs_vault(self, start_mocks):
         from pathlib import Path
 
-        from kanibako.paths import ProjectGroup, ProjectMode
+        from kanibako.paths import ProjectGroup, BoxMode
 
         with start_mocks() as m:
-            m.proj.mode = ProjectMode.workset
+            m.proj.mode = BoxMode.named
             m.proj.group = ProjectGroup(
                 name="ws", root=Path("/ws"),
                 is_default=False, local_shared_base=Path("/ws"),
@@ -886,10 +886,10 @@ class TestVaultTmpfsMode:
             assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
 
     def test_standalone_mode_now_also_uses_tmpfs_vault(self, start_mocks):
-        from kanibako.paths import ProjectMode
+        from kanibako.paths import BoxMode
 
         with start_mocks() as m:
-            m.proj.mode = ProjectMode.standalone
+            m.proj.mode = BoxMode.standalone
             m.proj.group = None
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,

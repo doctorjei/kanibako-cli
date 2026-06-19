@@ -41,23 +41,28 @@ from kanibako.names import (
 from kanibako.utils import project_hash
 
 
-class ProjectMode(Enum):
-    """How a project's persistent state is organized on disk."""
+class BoxMode(Enum):
+    """How a box's persistent state is organized on disk.
 
-    default = "default"
-    workset = "workset"
+    Surfaced as the ``box.mode`` token.  ``primary`` is the implicit PRIMARY
+    workset (formerly the synthesized default workset), ``named`` is a named
+    workset, ``standalone`` keeps all state inside the project directory.
+    """
+
+    primary = "primary"
+    named = "named"
     standalone = "standalone"
 
 
 class DetectionResult(NamedTuple):
-    """Result of project mode detection.
+    """Result of box mode detection.
 
-    *mode* is the detected project mode.  *project_root* is the ancestor
+    *mode* is the detected box mode.  *project_root* is the ancestor
     directory where the marker was found (may differ from the original
     *project_dir* when the user is in a subdirectory).
     """
 
-    mode: ProjectMode
+    mode: BoxMode
     project_root: Path
 
 
@@ -76,9 +81,9 @@ class ProjectLayout(Enum):
 
 # Default layout per mode.
 _DEFAULT_LAYOUT = {
-    ProjectMode.default: ProjectLayout.default,
-    ProjectMode.workset: ProjectLayout.robust,
-    ProjectMode.standalone: ProjectLayout.simple,
+    BoxMode.primary: ProjectLayout.default,
+    BoxMode.named: ProjectLayout.robust,
+    BoxMode.standalone: ProjectLayout.simple,
 }
 
 
@@ -196,7 +201,7 @@ class ProjectPaths:
     vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/share-ro)
     vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
     is_new: bool = field(default=False)
-    mode: ProjectMode = field(default=ProjectMode.default)
+    mode: BoxMode = field(default=BoxMode.primary)
     layout: ProjectLayout = field(default=ProjectLayout.default)
     enable_vault: bool = field(default=True)
     group_auth: bool = field(default=True)
@@ -700,13 +705,13 @@ def resolve_project(
     project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.default]
+        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[BoxMode.primary]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.default]
+        actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.primary]
         shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
             actual_layout, metadata_path, project_path,
             vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
@@ -760,7 +765,7 @@ def resolve_project(
         _local_shared = std.data_path / config.paths_shared
         write_project_meta(
             project_toml,
-            mode="default",
+            mode="primary",
             layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
@@ -790,7 +795,7 @@ def resolve_project(
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
                 metadata_path / "project.yaml",
-                mode="default",
+                mode="primary",
                 layout=actual_layout.value,
                 workspace=str(project_path),
                 shell=str(shell_path),
@@ -838,7 +843,7 @@ def resolve_project(
         vault_ro_path=vault_ro_path,
         vault_rw_path=vault_rw_path,
         is_new=is_new,
-        mode=ProjectMode.default,
+        mode=BoxMode.primary,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
@@ -1233,7 +1238,7 @@ def detect_project_mode(
     3. Walk ancestors for standalone markers — a ``.kanibako`` or
        ``kanibako`` **directory** exists inside the ancestor.
        ``.kanibako`` takes priority.
-    4. Default — ``default`` mode at the original *project_dir*.
+    4. Default — ``primary`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
     home = Path.home().resolve()
@@ -1247,12 +1252,12 @@ def detect_project_mode(
     # directory connected to a workset.  Resolves before the default scan.
     from kanibako.workset import _find_connected_project
     if _find_connected_project(resolved, std) is not None:
-        return DetectionResult(ProjectMode.workset, resolved)
+        return DetectionResult(BoxMode.named, resolved)
 
     # 2. Name-based default-mode check (one-pass scan, deepest match wins).
     ac_ancestor = _find_local_ancestor(resolved, std.data_path, std.boxes)
     if ac_ancestor is not None:
-        return DetectionResult(ProjectMode.default, ac_ancestor)
+        return DetectionResult(BoxMode.primary, ac_ancestor)
 
     # 3. Walk ancestors for standalone markers.
     current = resolved
@@ -1261,9 +1266,9 @@ def detect_project_mode(
         # standalone project.yaml.  A bare directory is not enough (the
         # container image bakes an empty ~/.kanibako runtime/IPC dir).
         if _is_standalone_meta_dir(current / ".kanibako"):
-            return DetectionResult(ProjectMode.standalone, current)
+            return DetectionResult(BoxMode.standalone, current)
         if _is_standalone_meta_dir(current / "kanibako"):
-            return DetectionResult(ProjectMode.standalone, current)
+            return DetectionResult(BoxMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
         if current == home:
@@ -1273,8 +1278,8 @@ def detect_project_mode(
             break
         current = parent
 
-    # 4. Default: default mode at the original directory.
-    return DetectionResult(ProjectMode.default, resolved)
+    # 4. Default: primary mode at the original directory.
+    return DetectionResult(BoxMode.primary, resolved)
 
 
 def _check_workset(
@@ -1301,13 +1306,13 @@ def _check_workset(
         # Check workspaces/ first (more specific).
         try:
             resolved_dir.relative_to(ws_workspaces)
-            return DetectionResult(ProjectMode.workset, resolved_dir)
+            return DetectionResult(BoxMode.named, resolved_dir)
         except ValueError:
             pass
         # Then check workset root itself.
         try:
             resolved_dir.relative_to(ws_root)
-            return DetectionResult(ProjectMode.workset, resolved_dir)
+            return DetectionResult(BoxMode.named, resolved_dir)
         except ValueError:
             continue
 
@@ -1352,13 +1357,13 @@ def resolve_workset_project(
     if meta and meta.get("workspace"):
         project_path = Path(meta["workspace"])
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.workset]
+        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[BoxMode.named]
         shell_path = Path(meta["shell"]) if meta["shell"] else project_dir / "shell"
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else ws.vault_dir / project_name / "ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else ws.vault_dir / project_name / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.workset]
+        actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.named]
         shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
             actual_layout, metadata_path, project_path,
             vault_root=ws.vault_dir / project_name,
@@ -1380,7 +1385,7 @@ def resolve_workset_project(
         _ws_local_shared = ws.root / config.paths_shared
         write_project_meta(
             project_toml,
-            mode="workset",
+            mode="named",
             layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
@@ -1420,7 +1425,7 @@ def resolve_workset_project(
         vault_ro_path=vault_ro_path,
         vault_rw_path=vault_rw_path,
         is_new=is_new,
-        mode=ProjectMode.workset,
+        mode=BoxMode.named,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
@@ -1684,7 +1689,7 @@ def resolve_any_project(
     detection = detect_project_mode(raw_dir, std, config)
     root_str = str(detection.project_root)
 
-    if detection.mode == ProjectMode.workset:
+    if detection.mode == BoxMode.named:
         ws, proj_name = _resolve_workset_or_connected(raw_dir, std)
         if proj_name is None:
             raise WorksetError(
@@ -1694,7 +1699,7 @@ def resolve_any_project(
         return resolve_workset_project(
             WorksetSpec.from_workset(ws), proj_name, std, config, initialize=initialize,
         )
-    if detection.mode == ProjectMode.standalone:
+    if detection.mode == BoxMode.standalone:
         return resolve_standalone_project(std, config, root_str, initialize=initialize)
     return resolve_project(std, config, project_dir=root_str, initialize=initialize)
 
@@ -1740,21 +1745,21 @@ def resolve_standalone_project(
         metadata_path = nodot_meta
     else:
         # New project — determine layout and metadata_path.
-        actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.standalone]
+        actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.standalone]
         if actual_layout == ProjectLayout.robust:
             metadata_path = nodot_meta
         else:
             metadata_path = dot_meta
 
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[ProjectMode.standalone]
+        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[BoxMode.standalone]
         shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
         if actual_layout is None:
-            actual_layout = layout or _DEFAULT_LAYOUT[ProjectMode.standalone]
+            actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.standalone]
         shell_path, vault_ro_path, vault_rw_path = _compute_standalone_paths(
             actual_layout, metadata_path, project_path,
         )
@@ -1807,7 +1812,7 @@ def resolve_standalone_project(
         vault_ro_path=vault_ro_path,
         vault_rw_path=vault_rw_path,
         is_new=is_new,
-        mode=ProjectMode.standalone,
+        mode=BoxMode.standalone,
         layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,

@@ -125,7 +125,7 @@ class TestFormatCredentialAge:
 # _check_container_running tests
 # ---------------------------------------------------------------------------
 
-def _mock_proj(*, name="", project_hash="a" * 64, mode="default",
+def _mock_proj(*, name="", project_hash="a" * 64, mode="primary",
                project_path="/home/user/proj"):
     """Duck-typed ProjectPaths for _check_container_running tests."""
     return SimpleNamespace(
@@ -249,7 +249,7 @@ class TestRunInfo:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Name:" in out
-        assert "default" in out
+        assert "primary" in out
         assert "Hash:" in out
         assert "Metadata:" in out
         assert "Shell:" in out

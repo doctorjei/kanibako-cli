@@ -393,12 +393,10 @@ def read_project_meta(path: Path) -> dict | None:
     if not project_sec.get("mode"):
         return None
 
-    # Backward compat: terminology renamed over time. "account_centric"
-    # (v1.0) and "local" (v1.5.0 mode rename) both map to "default"; old
-    # "decentralized" maps to "standalone".
-    _MODE_COMPAT = {"account_centric": "default", "decentralized": "standalone", "local": "default"}
-    raw_mode = project_sec["mode"]
-    mode = _MODE_COMPAT.get(raw_mode, raw_mode)
+    # No back-compat token translation: 1.6.0 is a hard break (fresh trees
+    # only).  The on-disk ``box.mode`` token is read verbatim — pre-1.6.0 dev
+    # boxes (``default``/``workset``/``account_centric``/…) are unsupported.
+    mode = project_sec["mode"]
 
     return {
         "mode": mode,

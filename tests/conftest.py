@@ -189,7 +189,7 @@ def start_mocks():
         from pathlib import Path
 
         from kanibako.agent_config import AgentConfig
-        from kanibako.paths import ProjectGroup, ProjectMode
+        from kanibako.paths import ProjectGroup, BoxMode
 
         with (
             patch("kanibako.commands.start.load_config") as m_load_config,
@@ -229,7 +229,7 @@ def start_mocks():
         ):
             proj = MagicMock()
             proj.is_new = False
-            proj.mode = ProjectMode.default
+            proj.mode = BoxMode.primary
             proj.group = ProjectGroup(
                 name="default",
                 root=Path("/data"),

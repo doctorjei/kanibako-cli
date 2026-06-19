@@ -36,7 +36,7 @@ from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
     ProjectLayout,
-    ProjectMode,
+    BoxMode,
     ProjectPaths,
     StandardPaths,
     WorksetSpec,
@@ -93,14 +93,14 @@ UNCHANGED = _Sentinel("UNCHANGED")
 class ProjectState:
     """Uniform descriptor of an existing, resolved project.
 
-    *owner* is the canonical ownership token: ``"default"``, ``"standalone"``,
+    *owner* is the canonical ownership token: ``"primary"``, ``"standalone"``,
     or ``"workset:<name>"``.  *ws* is the loaded :class:`Workset` when the owner
     is a workset (else ``None``).  *is_external* is True when the live workspace
     lives outside the owning workset's root (a connected-external project).
     """
 
     owner: str
-    mode: ProjectMode
+    mode: BoxMode
     name: str
     workspace_path: Path
     metadata_path: Path
@@ -115,7 +115,7 @@ class ProjectState:
 
     @property
     def is_workset(self) -> bool:
-        return self.mode == ProjectMode.workset
+        return self.mode == BoxMode.named
 
 
 @dataclass
@@ -138,25 +138,25 @@ class TargetSpec:
     records_only: bool = False
 
 
-def owner_token(mode: ProjectMode, ws_name: str | None = None) -> str:
+def owner_token(mode: BoxMode, ws_name: str | None = None) -> str:
     """Build a canonical owner token from a mode (+ workset name)."""
-    if mode == ProjectMode.workset:
+    if mode == BoxMode.named:
         if not ws_name:
             raise ValueError("workset owner requires a workset name")
         return f"workset:{ws_name}"
     return mode.value
 
 
-def _ownership_to_mode(ownership: str) -> tuple[ProjectMode, str | None]:
+def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
     """Map a TargetSpec ownership value to ``(mode, workset_name | None)``.
 
     A non-default/standalone string is treated as a workset name.
     """
     if ownership == "default":
-        return ProjectMode.default, None
+        return BoxMode.primary, None
     if ownership == "standalone":
-        return ProjectMode.standalone, None
-    return ProjectMode.workset, ownership
+        return BoxMode.standalone, None
+    return BoxMode.named, ownership
 
 
 # ---------------------------------------------------------------------------
@@ -232,9 +232,9 @@ def resolve_lifecycle_target(
 
     detection = detect_project_mode(raw_path, std, config)
 
-    if detection.mode == ProjectMode.workset:
+    if detection.mode == BoxMode.named:
         return _resolve_workset_state(raw_path, std, config)
-    if detection.mode == ProjectMode.standalone:
+    if detection.mode == BoxMode.standalone:
         proj = resolve_standalone_project(
             std, config, str(detection.project_root), initialize=False,
         )
@@ -254,7 +254,7 @@ def resolve_lifecycle_target(
     )
     if not proj.metadata_path.is_dir():
         raise ProjectError(f"No project data found for {root}")
-    return _state_from_paths("default", proj, ws=None)
+    return _state_from_paths("primary", proj, ws=None)
 
 
 def _default_state_from_meta(
@@ -286,7 +286,7 @@ def _default_state_from_meta(
     vault_ro = Path(meta["vault_ro"]) if meta.get("vault_ro") else metadata_path / "vault" / "ro"
     vault_rw = Path(meta["vault_rw"]) if meta.get("vault_rw") else metadata_path / "vault" / "rw"
     return ProjectState(
-        owner="default", mode=ProjectMode.default, name=name,
+        owner="primary", mode=BoxMode.primary, name=name,
         workspace_path=workspace.resolve(), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None, layout=layout,
@@ -323,7 +323,7 @@ def _resolve_workset_state(
     except ValueError:
         is_external = True
     return _state_from_paths(
-        owner_token(ProjectMode.workset, ws.name), proj, ws=ws,
+        owner_token(BoxMode.named, ws.name), proj, ws=ws,
         is_external=is_external,
     )
 
@@ -362,7 +362,7 @@ def copy_into_workset(
     metadata_path: Path,
     shell_path: Path,
     source_path: Path,
-    source_mode: ProjectMode,
+    source_mode: BoxMode,
     *,
     copy_workspace: bool,
     std: StandardPaths,
@@ -413,7 +413,7 @@ def copy_into_workset(
         if copy_workspace:
             dst_workspace = ws.workspaces_dir / proj_name
             ignore = None
-            if source_mode == ProjectMode.standalone:
+            if source_mode == BoxMode.standalone:
                 ignore = shutil.ignore_patterns(".kanibako", "kanibako")
             shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
@@ -513,7 +513,7 @@ def _validate(
         target_mode, target_ws_name = _ownership_to_mode(spec.ownership)  # type: ignore[arg-type]
 
     target_ws: Workset | None = None
-    if target_mode == ProjectMode.workset:
+    if target_mode == BoxMode.named:
         if target_ws_name is None:
             raise WorksetError("Workset target requires a workset name.")
         if spec.ownership is UNCHANGED and state.ws is not None:
@@ -522,7 +522,7 @@ def _validate(
             target_ws = _resolve_target_workset(target_ws_name, std)
 
     # --- bare-into-ws only valid with a workset target ---
-    if spec.location is BARE_INTO_WS and target_mode != ProjectMode.workset:
+    if spec.location is BARE_INTO_WS and target_mode != BoxMode.named:
         raise ProjectError(
             "bare --move (into the workset) requires a workset target."
         )
@@ -543,7 +543,7 @@ def _validate(
     no_owner_change = (
         spec.ownership is UNCHANGED
         or (target_mode == state.mode
-            and (target_mode != ProjectMode.workset
+            and (target_mode != BoxMode.named
                  or (state.ws is not None and target_ws is not None
                      and state.ws.name == target_ws.name)))
     )
@@ -555,8 +555,8 @@ def _validate(
 
     # --- workset -> workset with INTERNAL workspace requires relocation ---
     is_ws_to_ws = (
-        state.mode == ProjectMode.workset
-        and target_mode == ProjectMode.workset
+        state.mode == BoxMode.named
+        and target_mode == BoxMode.named
         and not no_owner_change
     )
     if is_ws_to_ws and not state.is_external and not relocating:
@@ -579,7 +579,7 @@ def _validate(
     # directly so mypy narrows away the None for the .resolve() below.
     landing = dest if dest is not None else state.workspace_path
     owning_ws_root: Path | None = None
-    if target_mode == ProjectMode.workset and target_ws is not None:
+    if target_mode == BoxMode.named and target_ws is not None:
         owning_ws_root = target_ws.root.resolve()
     for ws_name, ws_root in list_worksets(std).items():
         ws_root = Path(ws_root).resolve()
@@ -618,7 +618,7 @@ def _validate(
 
     # --- name not taken in target workset ---
     if (
-        target_mode == ProjectMode.workset
+        target_mode == BoxMode.named
         and target_ws is not None
         and not (state.ws is not None and target_ws.name == state.ws.name
                  and new_name == state.name)
@@ -701,7 +701,7 @@ def _run_steps(
     plan: dict,
     unwind: _Unwind,
 ) -> ProjectState:
-    target_mode: ProjectMode = plan["target_mode"]
+    target_mode: BoxMode = plan["target_mode"]
     target_ws: Workset | None = plan["target_ws"]
     dest: Path | None = plan["dest"]
     relocating: bool = plan["relocating"]
@@ -769,7 +769,7 @@ def _apply_ownership_and_markers(
     config: KanibakoConfig,
     unwind: _Unwind,
     *,
-    target_mode: ProjectMode,
+    target_mode: BoxMode,
     target_ws: Workset | None,
     new_name: str,
     new_workspace: Path,
@@ -783,7 +783,7 @@ def _apply_ownership_and_markers(
     workspace override + hash), updating registry/names, and removing the old
     owner's metadata.  Returns the resulting :class:`ProjectState`.
     """
-    if target_mode == ProjectMode.workset:
+    if target_mode == BoxMode.named:
         return _to_workset(
             state, std, config, unwind,
             target_ws=target_ws,  # type: ignore[arg-type]
@@ -792,7 +792,7 @@ def _apply_ownership_and_markers(
             relocating=relocating,
             dest=dest,
         )
-    if target_mode == ProjectMode.standalone:
+    if target_mode == BoxMode.standalone:
         return _to_standalone(
             state, std, config, unwind,
             new_name=new_name, new_workspace=new_workspace,
@@ -844,13 +844,13 @@ def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: Kaniba
     markers/symlink/connected.yaml are cleaned; the external source dir is never
     deleted.
     """
-    if state.mode == ProjectMode.standalone:
+    if state.mode == BoxMode.standalone:
         _remove_project_vault_symlink(state.workspace_path)
         if state.metadata_path.is_dir():
             shutil.rmtree(state.metadata_path, ignore_errors=True)
         return
 
-    if state.mode == ProjectMode.default:
+    if state.mode == BoxMode.primary:
         human_vault_dir = std.data_path / config.paths_vault
         _remove_human_vault_symlink(human_vault_dir, state.metadata_path / "vault")
         _remove_project_vault_symlink(state.workspace_path)
@@ -902,7 +902,7 @@ def _to_default(
     _local_shared = std.data_path / config.paths_shared
     write_project_meta(
         dst_metadata / "project.yaml",
-        mode="default",
+        mode="primary",
         layout=layout.value,
         workspace=str(new_workspace),
         shell=str(dst_shell),
@@ -926,7 +926,7 @@ def _to_default(
     _remove_old_metadata(state, std, config)
 
     return ProjectState(
-        owner="default", mode=ProjectMode.default, name=project_name,
+        owner="primary", mode=BoxMode.primary, name=project_name,
         workspace_path=new_workspace, metadata_path=dst_metadata,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None, layout=layout,
@@ -982,7 +982,7 @@ def _to_standalone(
     _remove_old_metadata(state, std, config)
 
     return ProjectState(
-        owner="standalone", mode=ProjectMode.standalone, name=new_name,
+        owner="standalone", mode=BoxMode.standalone, name=new_name,
         workspace_path=new_workspace, metadata_path=dst_metadata,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None, layout=layout,
@@ -1043,7 +1043,7 @@ def _to_workset(
     metadata_source = state.metadata_path
     shell_source = state.shell_path
 
-    source_is_workset = state.mode == ProjectMode.workset
+    source_is_workset = state.mode == BoxMode.named
     if source_is_workset and state.ws is not None:
         src_ws = state.ws
         src_name = state.name
@@ -1096,7 +1096,7 @@ def _to_workset(
     if copy_workspace:
         dst_workspace = target_ws.workspaces_dir / new_name
         ignore = None
-        if state.mode == ProjectMode.standalone:
+        if state.mode == BoxMode.standalone:
             ignore = shutil.ignore_patterns(".kanibako", "kanibako")
         shutil.copytree(state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
@@ -1117,7 +1117,7 @@ def _to_workset(
     # project.yaml with the workspace override; we overwrite with full content.
     write_project_meta(
         dst_project / "project.yaml",
-        mode="workset",
+        mode="named",
         layout=layout.value,
         workspace=str(recorded_workspace),
         shell=str(dst_shell),
@@ -1138,8 +1138,8 @@ def _to_workset(
         _remove_old_metadata(state, std, config)
 
     return ProjectState(
-        owner=owner_token(ProjectMode.workset, target_ws.name),
-        mode=ProjectMode.workset, name=new_name,
+        owner=owner_token(BoxMode.named, target_ws.name),
+        mode=BoxMode.named, name=new_name,
         workspace_path=recorded_workspace, metadata_path=dst_project,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=not internal, ws=target_ws, layout=layout,

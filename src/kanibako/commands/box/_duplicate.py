@@ -10,7 +10,7 @@ from pathlib import Path
 from kanibako.config import config_file_path, load_config
 from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
-    ProjectMode,
+    BoxMode,
     WorksetSpec,
     _resolve_local_dir,
     _resolve_workset_or_connected,
@@ -70,11 +70,11 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     source_mode = detect_project_mode(source_path, std, config).mode
 
     # Duplicate FROM workset: separate code path.
-    if source_mode == ProjectMode.workset:
+    if source_mode == BoxMode.named:
         return _duplicate_from_workset(args, source_path, new_path, std, config)
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if source_mode == ProjectMode.default:
+    if source_mode == BoxMode.primary:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
@@ -95,7 +95,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Confirm with user.
-    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.default
+    target_mode = BoxMode.standalone if to_mode_str == "standalone" else BoxMode.primary
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -114,7 +114,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # Copy metadata into target mode layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if target_mode == ProjectMode.standalone:
+    if target_mode == BoxMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
         _duplicate_to_local(src_proj, new_path, std, config, args.force)
@@ -229,7 +229,7 @@ def _duplicate_to_workset(args, std, config) -> int:
         return 1
 
     source_mode = detect_project_mode(source_path, std, config).mode
-    if source_mode == ProjectMode.workset:
+    if source_mode == BoxMode.named:
         print("Error: source is already a workset project.", file=sys.stderr)
         return 1
 
@@ -242,7 +242,7 @@ def _duplicate_to_workset(args, std, config) -> int:
             return 1
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if source_mode == ProjectMode.default:
+    if source_mode == BoxMode.primary:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
@@ -308,7 +308,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
         return 1
 
-    target_mode = ProjectMode.standalone if to_mode_str == "standalone" else ProjectMode.default
+    target_mode = BoxMode.standalone if to_mode_str == "standalone" else BoxMode.primary
 
     # Lock file warning.
     lock_file = src_proj.metadata_path / ".kanibako.lock"
@@ -345,7 +345,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
 
     # Copy metadata into target layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if target_mode == ProjectMode.standalone:
+    if target_mode == BoxMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, args.force)
     else:
         _duplicate_to_local(src_proj, new_path, std, config, args.force)

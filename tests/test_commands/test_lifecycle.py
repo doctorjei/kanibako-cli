@@ -22,7 +22,7 @@ from kanibako.config import load_config, read_project_meta
 from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import read_names
 from kanibako.paths import (
-    ProjectMode,
+    BoxMode,
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
@@ -84,8 +84,8 @@ class TestResolveTarget:
         config, std, tmp_home = env
         pdir = _make_default(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
-        assert state.owner == "default"
-        assert state.mode == ProjectMode.default
+        assert state.owner == "primary"
+        assert state.mode == BoxMode.primary
         assert state.workspace_path == pdir.resolve()
         assert state.metadata_path.is_dir()
         assert not state.is_external
@@ -96,7 +96,7 @@ class TestResolveTarget:
         pdir = _make_standalone(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
         assert state.owner == "standalone"
-        assert state.mode == ProjectMode.standalone
+        assert state.mode == BoxMode.standalone
         assert state.metadata_path == (pdir / ".kanibako").resolve() or state.metadata_path.is_dir()
         assert not state.is_external
 
@@ -109,7 +109,7 @@ class TestResolveTarget:
         add_project(ws, "wp", internal_src, std)
         state = resolve_lifecycle_target(str(internal_src), std, config)
         assert state.owner == "workset:ws"
-        assert state.mode == ProjectMode.workset
+        assert state.mode == BoxMode.named
         assert not state.is_external
         assert state.ws is not None and state.ws.name == "ws"
 
@@ -130,7 +130,7 @@ class TestResolveTarget:
         pdir = _make_default(env, name="namedproj")
         # cwd is tmp_path/project (set by tmp_home), not pdir; resolve by name.
         state = resolve_lifecycle_target("namedproj", std, config)
-        assert state.owner == "default"
+        assert state.owner == "primary"
         assert state.workspace_path == pdir.resolve()
 
     def test_bare_workset_name_errors(self, env):
@@ -150,7 +150,7 @@ class TestResolveTarget:
         # cwd is elsewhere; address the project by its qualified name.
         state = resolve_lifecycle_target("qw/api", std, config)
         assert state.owner == "workset:qw"
-        assert state.mode == ProjectMode.workset
+        assert state.mode == BoxMode.named
         assert state.workspace_path == internal_src.resolve()
 
     def test_qualified_unknown_project_errors(self, env):
@@ -188,7 +188,7 @@ class TestConvertInPlace:
             state, TargetSpec(location=INPLACE, ownership="standalone"),
             std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.standalone
+        assert new.mode == BoxMode.standalone
         assert (pdir / ".kanibako" / "project.yaml").is_file()
         meta = read_project_meta(pdir / ".kanibako" / "project.yaml")
         assert meta["mode"] == "standalone"
@@ -202,11 +202,11 @@ class TestConvertInPlace:
         new = execute_lifecycle(
             state, TargetSpec(ownership="default"), std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.default
+        assert new.mode == BoxMode.primary
         assert new.metadata_path.is_dir()
         assert new.metadata_path.parent == std.boxes
         meta = read_project_meta(new.metadata_path / "project.yaml")
-        assert meta["mode"] == "default"
+        assert meta["mode"] == "primary"
         # old in-tree metadata gone.
         assert not (pdir / ".kanibako").exists()
         # name registered.
@@ -220,7 +220,7 @@ class TestConvertInPlace:
         new = execute_lifecycle(
             state, TargetSpec(ownership="ws"), std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.workset
+        assert new.mode == BoxMode.named
         assert new.is_external  # in-place → workspace stays outside ws → external
         # workspace still where it was.
         assert pdir.is_dir() and (pdir / "file.txt").is_file()
@@ -228,7 +228,7 @@ class TestConvertInPlace:
         ws2 = load_workset(ws.root)
         assert any(p.name == "proj" for p in ws2.projects)
         meta = read_project_meta(ws.projects_dir / "proj" / "project.yaml")
-        assert meta["mode"] == "workset"
+        assert meta["mode"] == "named"
         assert meta["workspace"] == str(pdir.resolve())
         # old default name unregistered.
         assert str(pdir) not in read_names(std.data_path)["projects"].values()
@@ -241,7 +241,7 @@ class TestConvertInPlace:
         new = execute_lifecycle(
             state, TargetSpec(ownership="ws"), std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.workset
+        assert new.mode == BoxMode.named
         assert new.is_external
         assert pdir.is_dir()
         assert not (pdir / ".kanibako").exists()
@@ -257,7 +257,7 @@ class TestConvertInPlace:
         new = execute_lifecycle(
             state, TargetSpec(ownership="default"), std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.default
+        assert new.mode == BoxMode.primary
         # external dir preserved (NEVER deleted).
         assert external.is_dir() and (external / "file.txt").is_file()
         # workset registration removed.
@@ -277,7 +277,7 @@ class TestConvertInPlace:
         new = execute_lifecycle(
             state, TargetSpec(ownership="standalone"), std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.standalone
+        assert new.mode == BoxMode.standalone
         assert external.is_dir()
         assert (external / ".kanibako" / "project.yaml").is_file()
 
@@ -342,7 +342,7 @@ class TestMoveSameOwner:
             state, TargetSpec(location=dest, ownership=UNCHANGED),
             std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.default
+        assert new.mode == BoxMode.primary
         assert dest.is_dir()
         assert (dest / "file.txt").read_text() == "movecontent"
         assert not pdir.exists()
@@ -371,7 +371,7 @@ class TestCombo:
             state, TargetSpec(location=dest, ownership="standalone"),
             std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.standalone
+        assert new.mode == BoxMode.standalone
         assert dest.is_dir()
         assert (dest / "file.txt").read_text() == "combo"
         assert (dest / ".kanibako" / "project.yaml").is_file()
@@ -386,7 +386,7 @@ class TestCombo:
             state, TargetSpec(location=BARE_INTO_WS, ownership="ws"),
             std, config, confirm=_conf_yes(),
         )
-        assert new.mode == ProjectMode.workset
+        assert new.mode == BoxMode.named
         assert not new.is_external  # landed inside ws
         landed = ws.workspaces_dir / "proj"
         assert landed.is_dir() and (landed / "file.txt").read_text() == "bare"
@@ -445,7 +445,7 @@ class TestValidation:
                 std, config, confirm=lambda: False,
             )
         # nothing changed.
-        assert read_project_meta(state.metadata_path / "project.yaml")["mode"] == "default"
+        assert read_project_meta(state.metadata_path / "project.yaml")["mode"] == "primary"
 
 
 # ---------------------------------------------------------------------------
@@ -510,4 +510,4 @@ class TestUnwind:
         assert not any(p.name == "proj" for p in ws2.projects)
         # original default project intact.
         assert str(pdir) in read_names(std.data_path)["projects"].values()
-        assert read_project_meta(state.metadata_path / "project.yaml")["mode"] == "default"
+        assert read_project_meta(state.metadata_path / "project.yaml")["mode"] == "primary"

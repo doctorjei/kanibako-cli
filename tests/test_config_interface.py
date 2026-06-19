@@ -571,10 +571,10 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_mode_and_layout_no_crash(self, tmp_path):
         project_toml = tmp_path / "project.yaml"
-        assert set_config_value("mode", "default", config_path=project_toml).startswith("Set")
+        assert set_config_value("mode", "primary", config_path=project_toml).startswith("Set")
         assert set_config_value("layout", "robust", config_path=project_toml).startswith("Set")
         data = load_doc(project_toml)
-        assert data["project"]["mode"] == "default"
+        assert data["project"]["mode"] == "primary"
         assert data["project"]["layout"] == "robust"
 
     def test_set_unknown_key_returns_error_not_raise(self, tmp_path):
