@@ -64,7 +64,7 @@ class TestSingleShare:
     def test_box_scope_rw(self):
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.path.share_rw.work": "/host/data:~/data"}),
+            LevelView("box", {"box.bindings.rw.work": "/host/data:~/data"}),
             LevelView("workset", {}),
             LevelView("agent", {}),
             LevelView("system", {}),
@@ -79,7 +79,7 @@ class TestSingleShare:
     def test_ro_mode_options(self):
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.path.share_ro.docs": "/host/docs:/srv/docs"}),
+            LevelView("box", {"box.bindings.ro.docs": "/host/docs:/srv/docs"}),
         ]
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -101,11 +101,11 @@ class TestAccumulationAndPrecedence:
         """Distinct shares at different scopes accumulate; system before box."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.path.share_rw.b": "/hb:/gb"}),
+            LevelView("box", {"box.bindings.rw.b": "/hb:/gb"}),
             LevelView("workset", {}),
             LevelView("agent", {}),
             LevelView(
-                "system", {"system.path.share_rw.a": "/ha:/ga"},
+                "system", {"system.bindings.rw.a": "/ha:/ga"},
             ),
         ]
         mounts = _resolve(levels, ctx)
@@ -115,13 +115,13 @@ class TestAccumulationAndPrecedence:
         assert mounts[1].destination == "/gb"  # box.share_rw.b
 
     def test_same_key_most_specific_wins(self):
-        """system.path.share_rw.foo set at system AND box → box value mounts."""
+        """system.bindings.rw.foo set at system AND box → box value mounts."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"system.path.share_rw.foo": "/box/src:/g"}),
+            LevelView("box", {"system.bindings.rw.foo": "/box/src:/g"}),
             LevelView("workset", {}),
             LevelView("agent", {}),
-            LevelView("system", {"system.path.share_rw.foo": "/sys/src:/g"}),
+            LevelView("system", {"system.bindings.rw.foo": "/sys/src:/g"}),
         ]
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -133,14 +133,14 @@ class TestAccumulationAndPrecedence:
         """Box sets a system-scoped key to '' → suppressed; sibling survives."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"system.path.share_rw.foo": ""}),
+            LevelView("box", {"system.bindings.rw.foo": ""}),
             LevelView("workset", {}),
             LevelView("agent", {}),
             LevelView(
                 "system",
                 {
-                    "system.path.share_rw.foo": "/sys/foo:/g/foo",
-                    "system.path.share_rw.bar": "/sys/bar:/g/bar",
+                    "system.bindings.rw.foo": "/sys/foo:/g/foo",
+                    "system.bindings.rw.bar": "/sys/bar:/g/bar",
                 },
             ),
         ]
@@ -163,7 +163,7 @@ class TestRootJoin:
             LevelView("workset", {}),
             LevelView(
                 "agent",
-                {"agent.path.share_rw.plugins": "plugins:~/.claude/plugins"},
+                {"agent.bindings.rw.plugins": "plugins:~/.claude/plugins"},
             ),
             LevelView(
                 "system",
@@ -171,7 +171,7 @@ class TestRootJoin:
                 defaults={"system.path.agents": "/data/agents"},
             ),
         ]
-        scope_roots = {"agent.path.share_rw": "@system.path.agents/$AGENT/share"}
+        scope_roots = {"agent.bindings.rw": "@system.path.agents/$AGENT/share"}
         mounts = _resolve(levels, ctx, scope_roots=scope_roots)
         assert len(mounts) == 1
         m = mounts[0]
@@ -185,11 +185,11 @@ class TestRootJoin:
         levels = [
             LevelView(
                 "agent",
-                {"agent.path.share_rw.x": "/abs/path:~/x"},
+                {"agent.bindings.rw.x": "/abs/path:~/x"},
             ),
             LevelView("system", {}, defaults={"system.path.agents": "/data/agents"}),
         ]
-        scope_roots = {"agent.path.share_rw": "@system.path.agents/$AGENT/share"}
+        scope_roots = {"agent.bindings.rw": "@system.path.agents/$AGENT/share"}
         mounts = _resolve(levels, ctx, scope_roots=scope_roots)
         assert len(mounts) == 1
         assert mounts[0].source == Path("/abs/path")
@@ -198,16 +198,16 @@ class TestRootJoin:
         """A relative host_src for a group with no root is used as-is."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.path.share_rw.x": "rel/dir:~/x"}),
+            LevelView("box", {"box.bindings.rw.x": "rel/dir:~/x"}),
         ]
         # box group not in scope_roots.
-        mounts = _resolve(levels, ctx, scope_roots={"agent.path.share_rw": "/r"})
+        mounts = _resolve(levels, ctx, scope_roots={"agent.bindings.rw": "/r"})
         assert mounts[0].source == Path("rel/dir")
 
     def test_empty_root_no_join(self):
         ctx = make_ctx()
-        levels = [LevelView("agent", {"agent.path.share_rw.x": "rel:~/x"})]
-        mounts = _resolve(levels, ctx, scope_roots={"agent.path.share_rw": ""})
+        levels = [LevelView("agent", {"agent.bindings.rw.x": "rel:~/x"})]
+        mounts = _resolve(levels, ctx, scope_roots={"agent.bindings.rw": ""})
         assert mounts[0].source == Path("rel")
 
 
@@ -219,14 +219,14 @@ class TestRootJoin:
 class TestErrorsAndExpansion:
     def test_missing_colon_raises_naming_key(self):
         ctx = make_ctx()
-        levels = [LevelView("box", {"box.path.share_rw.bad": "/just/a/path"})]
+        levels = [LevelView("box", {"box.bindings.rw.bad": "/just/a/path"})]
         with pytest.raises(SettingsError) as exc:
             _resolve(levels, ctx)
-        assert "box.path.share_rw.bad" in str(exc.value)
+        assert "box.bindings.rw.bad" in str(exc.value)
 
     def test_tilde_expands_per_space(self):
         ctx = make_ctx(host_home="/home/u")
-        levels = [LevelView("box", {"box.path.share_rw.h": "~/x:~/y"})]
+        levels = [LevelView("box", {"box.bindings.rw.h": "~/x:~/y"})]
         mounts = _resolve(levels, ctx)
         assert mounts[0].source == Path("/home/u/x")
         assert mounts[0].destination == "/home/agent/y"
@@ -236,7 +236,7 @@ class TestErrorsAndExpansion:
         # host half contains a literal colon via \: ; the real split is the
         # second (unescaped) colon.
         levels = [
-            LevelView("box", {"box.path.share_rw.c": "/a\\:b:/guest"}),
+            LevelView("box", {"box.bindings.rw.c": "/a\\:b:/guest"}),
         ]
         mounts = _resolve(levels, ctx)
         assert mounts[0].source == Path("/a:b")
@@ -246,7 +246,7 @@ class TestErrorsAndExpansion:
         """A share name may contain dots (longest prefix match for scope/mode)."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.path.share_ro.a.b.c": "/h:/g"}),
+            LevelView("box", {"box.bindings.ro.a.b.c": "/h:/g"}),
         ]
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -267,7 +267,7 @@ class TestDiscovery:
             LevelView(
                 "agent",
                 {},
-                defaults={"agent.path.share_ro.cfg": "/host/cfg:/g/cfg"},
+                defaults={"agent.bindings.ro.cfg": "/host/cfg:/g/cfg"},
             ),
             LevelView("system", {}),
         ]
@@ -289,9 +289,9 @@ class TestOrdering:
             LevelView(
                 "box",
                 {
-                    "box.path.share_rw.z": "/hz:/gz",
-                    "box.path.share_rw.a": "/ha:/ga",
-                    "box.path.share_ro.m": "/hm:/gm",
+                    "box.bindings.rw.z": "/hz:/gz",
+                    "box.bindings.rw.a": "/ha:/ga",
+                    "box.bindings.ro.m": "/hm:/gm",
                 },
             ),
         ]
@@ -320,7 +320,7 @@ class TestMachineLevel:
     def test_machine_share_mounts_when_only_set_there(self):
         ctx = make_ctx()
         levels = self._levels(
-            machine={"system.path.share_rw.etc": "/etc/src:/g/etc"},
+            machine={"system.bindings.rw.etc": "/etc/src:/g/etc"},
         )
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -330,8 +330,8 @@ class TestMachineLevel:
     def test_system_overrides_machine(self):
         ctx = make_ctx()
         levels = self._levels(
-            system={"system.path.share_rw.foo": "/sys/src:/g"},
-            machine={"system.path.share_rw.foo": "/etc/src:/g"},
+            system={"system.bindings.rw.foo": "/sys/src:/g"},
+            machine={"system.bindings.rw.foo": "/etc/src:/g"},
         )
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -342,10 +342,10 @@ class TestMachineLevel:
         """A terminal '' at box suppresses an /etc share; a machine sibling survives."""
         ctx = make_ctx()
         levels = self._levels(
-            box={"system.path.share_rw.foo": ""},
+            box={"system.bindings.rw.foo": ""},
             machine={
-                "system.path.share_rw.foo": "/etc/foo:/g/foo",
-                "system.path.share_rw.bar": "/etc/bar:/g/bar",
+                "system.bindings.rw.foo": "/etc/foo:/g/foo",
+                "system.bindings.rw.bar": "/etc/bar:/g/bar",
             },
         )
         mounts = _resolve(levels, ctx)
@@ -356,7 +356,7 @@ class TestMachineLevel:
         """A default-only share on the machine level still mounts (discovery)."""
         ctx = make_ctx()
         levels = self._levels(
-            floor={"system.path.share_ro.base": "/host/base:/g/base"},
+            floor={"system.bindings.ro.base": "/host/base:/g/base"},
         )
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -371,18 +371,18 @@ class TestMachineLevel:
 
 class TestIsShareKey:
     def test_true_for_each_scope_and_mode(self):
-        assert is_share_key("system.path.share_ro.foo")
-        assert is_share_key("agent.path.share_rw.bar")
-        assert is_share_key("workset.path.share_ro.x")
-        assert is_share_key("box.path.share_rw.y")
+        assert is_share_key("system.bindings.ro.foo")
+        assert is_share_key("agent.bindings.rw.bar")
+        assert is_share_key("workset.bindings.ro.x")
+        assert is_share_key("box.bindings.rw.y")
         # Dotted name is allowed (greedy remainder).
-        assert is_share_key("system.path.share_rw.a.b.c")
+        assert is_share_key("system.bindings.rw.a.b.c")
 
     def test_false_for_non_share_keys(self):
         assert not is_share_key("system.path.data")
         assert not is_share_key("agent.model")
         assert not is_share_key("box.image")
-        assert not is_share_key("nope.path.share_rw.foo")
+        assert not is_share_key("nope.bindings.rw.foo")
         assert not is_share_key("system.path.share_xx.foo")
         # Missing the trailing name.
-        assert not is_share_key("system.path.share_rw")
+        assert not is_share_key("system.bindings.rw")

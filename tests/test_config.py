@@ -906,14 +906,14 @@ class TestReadShares:
     def test_reads_dotted_share_keys(self, tmp_path):
         p = tmp_path / "kanibako.yaml"
         p.write_text(
-            "system:\n  path:\n    share_rw:\n"
+            "system:\n  bindings:\n    rw:\n"
             '      foo: "h:g"\n'
             '      bar: "/abs:~/bar"\n'
         )
         shares = read_shares(p)
         assert shares == {
-            "system.path.share_rw.foo": "h:g",
-            "system.path.share_rw.bar": "/abs:~/bar",
+            "system.bindings.rw.foo": "h:g",
+            "system.bindings.rw.bar": "/abs:~/bar",
         }
 
     def test_no_share_keys_returns_empty(self, tmp_path):
@@ -933,20 +933,20 @@ class TestReadShares:
             'box_image: "img"\n'
             "agent:\n"
             '  model: "haiku"\n'
-            "  path:\n    share_ro:\n"
+            "  bindings:\n    ro:\n"
             '      docs: "/host/docs:/srv/docs"\n'
-            "system:\n  path:\n"
-            '    data: "/d"\n'
+            "system:\n"
+            '  data: "/d"\n'
         )
         assert read_shares(p) == {
-            "agent.path.share_ro.docs": "/host/docs:/srv/docs",
+            "agent.bindings.ro.docs": "/host/docs:/srv/docs",
         }
 
     def test_suppression_empty_value_returned(self, tmp_path):
         """An explicit '' is preserved so the resolver can see the suppression."""
         p = tmp_path / "project.yaml"
-        p.write_text('system:\n  path:\n    share_rw:\n      foo: ""\n')
-        assert read_shares(p) == {"system.path.share_rw.foo": ""}
+        p.write_text('system:\n  bindings:\n    rw:\n      foo: ""\n')
+        assert read_shares(p) == {"system.bindings.rw.foo": ""}
 
     def test_unreadable_toml_returns_empty(self, tmp_path):
         p = tmp_path / "bad.yaml"
@@ -958,13 +958,13 @@ class TestReadSeeds:
     def test_reads_dotted_seed_keys(self, tmp_path):
         p = tmp_path / "kanibako.yaml"
         p.write_text(
-            "agent:\n  path:\n    seeded:\n"
-            '      foo: "/src:~/foo"\n'
-            '      bar: "/abs:/home/agent/bar"\n'
+            "agent:\n  seeded:\n"
+            '    foo: "/src:~/foo"\n'
+            '    bar: "/abs:/home/agent/bar"\n'
         )
         assert read_seeds(p) == {
-            "agent.path.seeded.foo": "/src:~/foo",
-            "agent.path.seeded.bar": "/abs:/home/agent/bar",
+            "agent.seeded.foo": "/src:~/foo",
+            "agent.seeded.bar": "/abs:/home/agent/bar",
         }
 
     def test_no_seed_keys_returns_empty(self, tmp_path):
@@ -984,22 +984,22 @@ class TestReadSeeds:
             'box_image: "img"\n'
             "agent:\n"
             '  model: "haiku"\n'
-            "  path:\n    share_ro:\n"
+            "  bindings:\n    ro:\n"
             '      docs: "/host/docs:/srv/docs"\n'
-            "system:\n  path:\n"
-            '    data: "/d"\n'
-            "box:\n  path:\n    seeded:\n"
-            '      init: "/host/init:~/init"\n'
+            "system:\n"
+            '  data: "/d"\n'
+            "box:\n  seeded:\n"
+            '    init: "/host/init:~/init"\n'
         )
         assert read_seeds(p) == {
-            "box.path.seeded.init": "/host/init:~/init",
+            "box.seeded.init": "/host/init:~/init",
         }
 
     def test_suppression_empty_value_returned(self, tmp_path):
         """An explicit '' is preserved so the resolver can see the suppression."""
         p = tmp_path / "project.yaml"
-        p.write_text('agent:\n  path:\n    seeded:\n      foo: ""\n')
-        assert read_seeds(p) == {"agent.path.seeded.foo": ""}
+        p.write_text('agent:\n  seeded:\n    foo: ""\n')
+        assert read_seeds(p) == {"agent.seeded.foo": ""}
 
     def test_unreadable_toml_returns_empty(self, tmp_path):
         p = tmp_path / "bad.yaml"

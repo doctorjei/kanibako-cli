@@ -776,14 +776,15 @@ def read_binding_overrides(path: Path | None, agent_name: str) -> dict[str, str]
 
 
 # ---------------------------------------------------------------------------
-# Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*)
+# Scope categories (settings-framework {scope}.<category>.* — the unified
+# masks/bindings/caches/seeded/shared/synced/env primitive)
 # ---------------------------------------------------------------------------
 
 def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
     """Flatten nested dict into DOTTED-key form, stringifying scalar leaves.
 
-    ``{"system": {"path": {"share_rw": {"foo": "h:g"}}}}`` →
-    ``{"system.path.share_rw.foo": "h:g"}``.
+    ``{"system": {"bindings": {"rw": {"foo": "h:g"}}}}`` →
+    ``{"system.bindings.rw.foo": "h:g"}``.
     """
     out: dict[str, str] = {}
     for k, v in data.items():
@@ -795,10 +796,16 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
     return out
 
 
-def read_shares(path: Path | None) -> dict[str, str]:
-    """Read scoped-share keys ({scope}.path.share_{ro,rw}.{name}) from a config
-    file as a flat dotted-key dict. Missing/None/unreadable path → {}."""
-    from kanibako.settings_shares import is_share_key
+def read_categories(path: Path | None) -> dict[str, str]:
+    """Read scope-category keys (the unified primitive) from a config file as a
+    flat dotted-key dict. Missing/None/unreadable path → {}.
+
+    Recognizes all eight category shapes: ``{scope}.masks``,
+    ``{scope}.bindings.{ro,rw}.{name}``, ``{scope}.caches.{name}``,
+    ``{scope}.seeded.{name}``, ``{scope}.shared.{name}``,
+    ``{scope}.synced.{name}``, ``{scope}.env.{VAR}``.
+    """
+    from kanibako.settings_categories import is_category_key
 
     if path is None:
         return {}
@@ -809,24 +816,31 @@ def read_shares(path: Path | None) -> dict[str, str]:
     except Exception:
         return {}
     flat = _flatten_dotted(data)
-    return {k: v for k, v in flat.items() if is_share_key(k)}
+    return {k: v for k, v in flat.items() if is_category_key(k)}
+
+
+def read_shares(path: Path | None) -> dict[str, str]:
+    """Read scoped-binding keys ({scope}.bindings.{ro,rw}.{name}) from a config
+    file as a flat dotted-key dict. Missing/None/unreadable path → {}.
+
+    Compatibility filter over :func:`read_categories` for the launch path's
+    share-mount wrapper (:func:`kanibako.settings_shares.resolve_shares`).
+    """
+    from kanibako.settings_shares import is_share_key
+
+    return {k: v for k, v in read_categories(path).items() if is_share_key(k)}
 
 
 def read_seeds(path: Path | None) -> dict[str, str]:
-    """Read seed keys ({scope}.path.seeded.{name}) from a config file as a flat
-    dotted-key dict. Missing/None/unreadable path → {}."""
+    """Read seed keys ({scope}.seeded.{name}) from a config file as a flat
+    dotted-key dict. Missing/None/unreadable path → {}.
+
+    Compatibility filter over :func:`read_categories` for the launch path's
+    init-seed wrapper (:func:`kanibako.settings_seeds.resolve_seeds`).
+    """
     from kanibako.settings_seeds import is_seed_key
 
-    if path is None:
-        return {}
-    try:
-        if not path.exists():
-            return {}
-        data = load_doc(path)
-    except Exception:
-        return {}
-    flat = _flatten_dotted(data)
-    return {k: v for k, v in flat.items() if is_seed_key(k)}
+    return {k: v for k, v in read_categories(path).items() if is_seed_key(k)}
 
 
 # ---------------------------------------------------------------------------

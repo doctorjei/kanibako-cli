@@ -1156,7 +1156,7 @@ def _run_container(
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
             extra_mounts.extend(resource_mounts)
 
-        # Scoped shares (settings-framework {scope}.path.share_{ro,rw}.*).
+        # Scoped bindings (settings-framework {scope}.bindings.{ro,rw}.*).
         # Additive: empty config → no mounts → no behavior change.
         share_mounts = _build_share_mounts(
             std=std,
@@ -1742,7 +1742,7 @@ def _apply_init_seeds(
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
 
     ADDITIVE: with no seed config and no target default seeds, copies nothing.
-    Resolves {scope}.path.seeded.* across the 4 levels (target.default_seeds()
+    Resolves {scope}.seeded.* across the 4 levels (target.default_seeds()
     as the agent level's declared defaults), translates each SeedPair's
     guest_dest (/home/agent/X) to a host path under proj.shell_path, and copies
     host_src -> that path once (dir -> copytree dirs_exist_ok; file -> copy2).
@@ -1838,7 +1838,7 @@ def _build_share_mounts(
     agent_config_path,
     target=None,
 ) -> list:
-    """Resolve scoped-share config ({scope}.path.share_{ro,rw}.*) into Mounts.
+    """Resolve scoped-binding config ({scope}.bindings.{ro,rw}.*) into Mounts.
 
     ADDITIVE: with no share keys configured (and no target default shares),
     returns []. Reads each level's set share keys from its config file; the
@@ -1871,18 +1871,18 @@ def _build_share_mounts(
     ]
 
     # Source roots per scope group (concrete host paths → expand_expr verbatim).
-    # The system-scope share roots (system.path.share_{ro,rw}) were DELETED in
+    # The system-scope binding roots (system.bindings.{ro,rw}) were DELETED in
     # the system.* reorg (subsumed by the workset vault / 'shared' category);
     # only the agent/workset scopes remain here.
     agent_share_root = str(std.agents / agent_name / "share")
     scope_roots = {
-        "agent.path.share_ro": agent_share_root,
-        "agent.path.share_rw": agent_share_root,
+        "agent.bindings.ro": agent_share_root,
+        "agent.bindings.rw": agent_share_root,
     }
     if proj.group is not None and not proj.group.is_default:
         ws_root = str(proj.group.root)
-        scope_roots["workset.path.share_ro"] = ws_root
-        scope_roots["workset.path.share_rw"] = ws_root
+        scope_roots["workset.bindings.ro"] = ws_root
+        scope_roots["workset.bindings.rw"] = ws_root
     # box scope: arbitrary host path, NO root → omit (host_src used as-is).
 
     workset_name = (

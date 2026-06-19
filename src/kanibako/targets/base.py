@@ -372,8 +372,8 @@ class Target(ABC):
     def default_shares(self) -> dict[str, str]:
         """Declare default scoped shares for this agent's crab.
 
-        Returns a mapping of full scoped-share keys
-        ({scope}.path.share_{ro,rw}.{name}) to host_src:guest_dest bind
+        Returns a mapping of full scoped-binding keys
+        ({scope}.bindings.{ro,rw}.{name}) to host_src:guest_dest bind
         expressions. These become the CRAB level's *declared defaults* in the
         share resolver — a user can override or suppress (terminal "") any of
         them at a more-specific level. The default returns {} (no shares).
@@ -383,7 +383,7 @@ class Target(ABC):
     def default_seeds(self) -> dict[str, str]:
         """Declare default copy-once-at-init seeds for this agent's crab.
 
-        Returns a mapping of full seed keys ({scope}.path.seeded.{name}) to
+        Returns a mapping of full seed keys ({scope}.seeded.{name}) to
         host_src:guest_dest expressions, injected as the CRAB level's declared
         defaults in the seed resolver. A user can override or suppress (terminal
         "" or the "empty" sentinel) any of them at a more-specific level. The

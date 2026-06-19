@@ -657,8 +657,8 @@ _NEXT_LAUNCH_REMINDER = (
 
 
 def _share_key(mode: str, name: str) -> str:
-    """Build the dotted config key for a workset-scoped share."""
-    return f"workset.path.share_{mode}.{name}"
+    """Build the dotted config key for a workset-scoped share (binding)."""
+    return f"workset.bindings.{mode}.{name}"
 
 
 def _resolve_share_workset(name: str):
@@ -686,7 +686,7 @@ def _load_share_doc(ws_config: Path) -> dict:
 def run_share_add(args: argparse.Namespace) -> int:
     """Add (or overwrite) a workset-scoped shared directory.
 
-    Writes ``workset.path.share_{mode}.{name} = host_src:guest_dest`` into the
+    Writes ``workset.bindings.{mode}.{name} = host_src:guest_dest`` into the
     working set's ``config.yaml``. Re-running with the same name overwrites the
     mapping (this is how a share is "updated"; shares are live bind mounts and
     no content sync exists).
@@ -718,8 +718,8 @@ def run_share_add(args: argparse.Namespace) -> int:
 
     ws_config = _workset_config_path(ws)
     data = _load_share_doc(ws_config)
-    subtree = data.setdefault("workset", {}).setdefault("path", {}).setdefault(
-        f"share_{args.mode}", {}
+    subtree = data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
+        args.mode, {}
     )
     existed = name in subtree
     subtree[name] = bind
@@ -747,10 +747,10 @@ def run_share_remove(args: argparse.Namespace) -> int:
 
     ws_config = _workset_config_path(ws)
     data = _load_share_doc(ws_config)
-    path_tree = data.get("workset", {}).get("path", {})
+    path_tree = data.get("workset", {}).get("bindings", {})
 
     def _present(mode: str) -> bool:
-        sub = path_tree.get(f"share_{mode}", {})
+        sub = path_tree.get(mode, {})
         return isinstance(sub, dict) and args.name in sub
 
     if args.mode is not None:
@@ -776,7 +776,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
         return 1
 
     mode = modes[0]
-    del path_tree[f"share_{mode}"][args.name]
+    del path_tree[mode][args.name]
     dump_doc(ws_config, data)
 
     print(
@@ -843,8 +843,8 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     scope_roots: dict[str, str] = {}
     if not ws.is_default:
         ws_root = str(ws.root)
-        scope_roots["workset.path.share_ro"] = ws_root
-        scope_roots["workset.path.share_rw"] = ws_root
+        scope_roots["workset.bindings.ro"] = ws_root
+        scope_roots["workset.bindings.rw"] = ws_root
 
     ctx = ResolveCtx(
         agent_name=None,
