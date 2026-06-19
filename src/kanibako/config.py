@@ -19,7 +19,7 @@ _DEFAULTS = {
     "paths_shell": "shell",
     "paths_vault": "vault",
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "box_crab": "",
+    "box_agent": "",
     "box_bootstrap_program": "tmux",
     "box_shell": "",
 }
@@ -38,7 +38,7 @@ class KanibakoConfig:
     paths_shell: str = _DEFAULTS["paths_shell"]
     paths_vault: str = _DEFAULTS["paths_vault"]
     box_image: str = _DEFAULTS["box_image"]
-    box_crab: str = _DEFAULTS["box_crab"]
+    box_agent: str = _DEFAULTS["box_agent"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
     box_shell: str = _DEFAULTS["box_shell"]
     allow_helpers: bool = True
@@ -270,7 +270,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
         },
         "box": {
             "image": cfg.box_image,
-            "crab": cfg.box_crab,
+            "agent": cfg.box_agent,
             "share_images": cfg.box_share_images,
         },
         # Global shared caches (lazy: only mounted if the dir exists on host).
@@ -450,7 +450,7 @@ def read_crab_settings(path: Path, agent_name: str) -> dict[str, str]:
     wins within a single file). This stops an override set while a box is on one
     agent (e.g. ``model`` under ``crab.claude``) from bleeding onto another
     agent after the box is switched (e.g. to ``goose``); identity keys live in
-    ``box.crab``, not here.
+    ``box.agent``, not here.
 
     ``crab.default`` is RESERVED as the any-agent default tier; no real agent
     may be named ``default``.

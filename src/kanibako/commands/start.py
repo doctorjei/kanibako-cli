@@ -684,7 +684,7 @@ def _run_container(
     install = None
     if is_agent_mode:
         try:
-            target = resolve_target(merged.box_crab or None)
+            target = resolve_target(merged.box_agent or None)
         except KeyError as e:
             print(
                 f"Error: {e}\n"

@@ -64,7 +64,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "persistence",
     # Box
     "box.image",
-    "box.crab",
+    "box.agent",
     "box.share_images",
     "box.shell",
     "box.bootstrap_program",
@@ -97,7 +97,7 @@ DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.", "shared.")
 # Map friendly short names to canonical flat config keys.
 _KEY_ALIASES: dict[str, str] = {
     "image": "box.image",
-    "crab": "box.crab",
+    "agent": "box.agent",
 }
 
 
