@@ -7,7 +7,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from kanibako.crabs import CrabConfig
+    from kanibako.agent_config import AgentConfig
     from kanibako.paths import StandardPaths
 
 
@@ -148,7 +148,7 @@ def _load_std() -> StandardPaths:
 
 def run_list(args: argparse.Namespace) -> int:
     """List configured crabs."""
-    from kanibako.crabs import load_crab_config
+    from kanibako.agent_config import load_agent_config
 
     try:
         std = _load_std()
@@ -156,7 +156,7 @@ def run_list(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    adir = std.crabs
+    adir = std.agents
     if not adir.is_dir():
         quiet = getattr(args, "quiet", False)
         if not quiet:
@@ -178,7 +178,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     print(f"{'NAME':<20} {'SHELL':<12} {'MODEL'}")
     for f in toml_files:
-        cfg = load_crab_config(f)
+        cfg = load_agent_config(f)
         name = f.stem
         shell = cfg.shell or "standard"
         model = cfg.state.get("model", "-")
@@ -188,7 +188,7 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     """Show crab configuration details."""
-    from kanibako.crabs import load_crab_config
+    from kanibako.agent_config import load_agent_config
 
     try:
         std = _load_std()
@@ -197,12 +197,12 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     crab_id = args.crab_id
-    path = std.crabs / f"{crab_id}.yaml"
+    path = std.agents / f"{crab_id}.yaml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
 
-    cfg = load_crab_config(path)
+    cfg = load_agent_config(path)
     print(f"Name:         {cfg.name or crab_id}")
     print(f"Shell:        {cfg.shell}")
     if cfg.run_args:
@@ -243,7 +243,7 @@ def run_config(args: argparse.Namespace) -> int:
       shared.X                -> [shared]
       shell, run_args, name   -> [crab] (identity keys)
     """
-    from kanibako.crabs import load_crab_config, write_crab_config
+    from kanibako.agent_config import load_agent_config, write_agent_config
 
     try:
         std = _load_std()
@@ -252,12 +252,12 @@ def run_config(args: argparse.Namespace) -> int:
         return 1
 
     crab_id = args.crab_id
-    path = std.crabs / f"{crab_id}.yaml"
+    path = std.agents / f"{crab_id}.yaml"
     if not path.exists():
         print(f"Error: crab '{crab_id}' not found ({path})", file=sys.stderr)
         return 1
 
-    cfg = load_crab_config(path)
+    cfg = load_agent_config(path)
     key_value = getattr(args, "key_value", None)
 
     # Handle --reset
@@ -279,7 +279,7 @@ def run_config(args: argparse.Namespace) -> int:
             cfg.env.clear()
             cfg.shared_caches.clear()
             cfg.run_args.clear()
-            write_crab_config(path, cfg)
+            write_agent_config(path, cfg)
             print("Reset all crab config overrides.")
             return 0
 
@@ -292,7 +292,7 @@ def run_config(args: argparse.Namespace) -> int:
         key = reset_key.strip()
         changed = _reset_crab_key(cfg, key)
         if changed:
-            write_crab_config(path, cfg)
+            write_agent_config(path, cfg)
             print(f"Reset {key}")
         else:
             print(f"No override for {key}")
@@ -308,7 +308,7 @@ def run_config(args: argparse.Namespace) -> int:
         key = key.strip()
         value = value.strip()
         _set_crab_key(cfg, key, value)
-        write_crab_config(path, cfg)
+        write_agent_config(path, cfg)
         print(f"Set {key}={value}")
         return 0
 
@@ -322,7 +322,7 @@ def run_config(args: argparse.Namespace) -> int:
     return 0
 
 
-def _get_crab_key(cfg: CrabConfig, key: str) -> str | None:
+def _get_crab_key(cfg: AgentConfig, key: str) -> str | None:
     """Read a single key from crab config."""
     if key.startswith("env."):
         env_name = key[4:]
@@ -340,7 +340,7 @@ def _get_crab_key(cfg: CrabConfig, key: str) -> str | None:
     return cfg.state.get(key)
 
 
-def _set_crab_key(cfg: CrabConfig, key: str, value: str) -> None:
+def _set_crab_key(cfg: AgentConfig, key: str, value: str) -> None:
     """Set a single key in crab config."""
     if key.startswith("env."):
         env_name = key[4:]
@@ -359,7 +359,7 @@ def _set_crab_key(cfg: CrabConfig, key: str, value: str) -> None:
         cfg.state[key] = value
 
 
-def _reset_crab_key(cfg: CrabConfig, key: str) -> bool:
+def _reset_crab_key(cfg: AgentConfig, key: str) -> bool:
     """Remove a single key from crab config.  Returns True if found."""
     if key.startswith("env."):
         env_name = key[4:]
@@ -391,7 +391,7 @@ def _reset_crab_key(cfg: CrabConfig, key: str) -> bool:
 
 
 def _show_crab_config(
-    cfg: CrabConfig, crab_id: str, *, effective: bool = False,
+    cfg: AgentConfig, crab_id: str, *, effective: bool = False,
 ) -> int:
     """Display crab config."""
     has_output = False

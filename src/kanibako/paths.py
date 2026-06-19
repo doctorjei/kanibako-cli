@@ -94,7 +94,7 @@ class StandardPaths:
     cache_path: Path
     # System-level derived directories (settings-framework "system.path.*").
     boxes: Path
-    crabs: Path
+    agents: Path
     comms: Path
     share_ro: Path
     share_rw: Path
@@ -234,7 +234,7 @@ def xdg(env_var: str, default_suffix: str) -> Path:
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.path.data": "$XDG_DATA_HOME/kanibako",
     "system.path.boxes": "@system.path.data/boxes",
-    "system.path.crabs": "@system.path.data/crabs",
+    "system.path.agents": "@system.path.data/agents",
     "system.path.comms": "@system.path.data/comms",
     "system.path.share_ro": "@system.path.data/share_ro",
     "system.path.share_rw": "@system.path.data/share_rw",
@@ -359,7 +359,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         state_path=state_path,
         cache_path=cache_path,
         boxes=resolved["system.path.boxes"],
-        crabs=resolved["system.path.crabs"],
+        agents=resolved["system.path.agents"],
         comms=resolved["system.path.comms"],
         share_ro=resolved["system.path.share_ro"],
         share_rw=resolved["system.path.share_rw"],

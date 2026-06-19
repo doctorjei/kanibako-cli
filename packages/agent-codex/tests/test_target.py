@@ -345,9 +345,9 @@ class TestCheckAuth:
         assert CodexTarget().check_auth() is True
 
 
-class TestGenerateCrabConfig:
+class TestGenerateAgentConfig:
     def test_defaults(self):
-        config = CodexTarget().generate_crab_config()
+        config = CodexTarget().generate_agent_config()
         assert config.name == "OpenAI Codex CLI"
         assert config.shell == "standard"
         assert config.state["model"] == "gpt-5.5"

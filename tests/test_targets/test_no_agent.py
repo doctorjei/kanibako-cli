@@ -65,8 +65,8 @@ class TestNoAgentTarget:
         assert cli_args == []
         assert env_vars == {}
 
-    def test_generate_crab_config(self):
-        cfg = self.target.generate_crab_config()
+    def test_generate_agent_config(self):
+        cfg = self.target.generate_agent_config()
         assert cfg.name == "Shell"
         assert cfg.shell == "standard"
         assert cfg.run_args == []

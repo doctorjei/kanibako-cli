@@ -1,19 +1,19 @@
-"""Tests for kanibako.crabs: CrabConfig, load/write crab YAML."""
+"""Tests for kanibako.agent_config: AgentConfig, load/write agent YAML."""
 
 from __future__ import annotations
 
-from kanibako.crabs import (
-    CrabConfig,
-    crab_toml_path,
-    crabs_dir,
-    load_crab_config,
-    write_crab_config,
+from kanibako.agent_config import (
+    AgentConfig,
+    agent_config_path,
+    agents_dir,
+    load_agent_config,
+    write_agent_config,
 )
 
 
-class TestCrabConfigDefaults:
+class TestAgentConfigDefaults:
     def test_defaults(self):
-        cfg = CrabConfig()
+        cfg = AgentConfig()
         assert cfg.name == ""
         assert cfg.shell == "standard"
         assert cfg.run_args == []
@@ -22,7 +22,7 @@ class TestCrabConfigDefaults:
         assert cfg.shared_caches == {}
 
     def test_custom_values(self):
-        cfg = CrabConfig(
+        cfg = AgentConfig(
             name="Claude Code",
             shell="minimal",
             run_args=["--verbose"],
@@ -38,37 +38,37 @@ class TestCrabConfigDefaults:
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
 
 
-class TestCrabsDir:
+class TestAgentsDir:
     def test_default(self, tmp_path):
-        result = crabs_dir(tmp_path)
-        assert result == tmp_path / "crabs"
+        result = agents_dir(tmp_path)
+        assert result == tmp_path / "agents"
 
     def test_custom(self, tmp_path):
-        result = crabs_dir(tmp_path, "my-crabs")
+        result = agents_dir(tmp_path, "my-crabs")
         assert result == tmp_path / "my-crabs"
 
     def test_empty_fallback(self, tmp_path):
-        result = crabs_dir(tmp_path, "")
-        assert result == tmp_path / "crabs"
+        result = agents_dir(tmp_path, "")
+        assert result == tmp_path / "agents"
 
 
-class TestCrabTomlPath:
+class TestAgentConfigPath:
     def test_path(self, tmp_path):
-        result = crab_toml_path(tmp_path, "claude")
-        assert result == tmp_path / "crabs" / "claude.yaml"
+        result = agent_config_path(tmp_path, "claude")
+        assert result == tmp_path / "agents" / "claude.yaml"
 
-    def test_custom_crabs_dir(self, tmp_path):
-        result = crab_toml_path(tmp_path, "claude", "my-crabs")
+    def test_custom_agents_dir(self, tmp_path):
+        result = agent_config_path(tmp_path, "claude", "my-crabs")
         assert result == tmp_path / "my-crabs" / "claude.yaml"
 
     def test_general_agent(self, tmp_path):
-        result = crab_toml_path(tmp_path, "general")
-        assert result == tmp_path / "crabs" / "general.yaml"
+        result = agent_config_path(tmp_path, "general")
+        assert result == tmp_path / "agents" / "general.yaml"
 
 
-class TestLoadCrabConfig:
+class TestLoadAgentConfig:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
-        cfg = load_crab_config(tmp_path / "missing.yaml")
+        cfg = load_agent_config(tmp_path / "missing.yaml")
         assert cfg.name == ""
         assert cfg.shell == "standard"
         assert cfg.run_args == []
@@ -87,7 +87,7 @@ class TestLoadCrabConfig:
             'shared:\n'
             '  plugins: ".claude/plugins"\n'
         )
-        cfg = load_crab_config(cfg_path)
+        cfg = load_agent_config(cfg_path)
         assert cfg.name == "Claude Code"
         assert cfg.shell == "minimal"
         assert cfg.run_args == ["--verbose", "--debug"]
@@ -101,7 +101,7 @@ class TestLoadCrabConfig:
             'crab:\n'
             '  name: "Shell"\n'
         )
-        cfg = load_crab_config(cfg_path)
+        cfg = load_agent_config(cfg_path)
         assert cfg.name == "Shell"
         assert cfg.shell == "standard"
         assert cfg.run_args == []
@@ -116,7 +116,7 @@ class TestLoadCrabConfig:
             'crab:\n'
             '  access: "safe"\n'
         )
-        cfg = load_crab_config(cfg_path)
+        cfg = load_agent_config(cfg_path)
         assert cfg.name == ""
         assert cfg.state == {"access": "safe"}
 
@@ -126,7 +126,7 @@ class TestLoadCrabConfig:
             'env:\n'
             '  FOO: "bar"\n'
         )
-        cfg = load_crab_config(cfg_path)
+        cfg = load_agent_config(cfg_path)
         assert cfg.name == ""
         assert cfg.state == {}
         assert cfg.env == {"FOO": "bar"}
@@ -134,7 +134,7 @@ class TestLoadCrabConfig:
     def test_load_empty_file(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text("")
-        cfg = load_crab_config(cfg_path)
+        cfg = load_agent_config(cfg_path)
         assert cfg.name == ""
         assert cfg.shell == "standard"
 
@@ -144,15 +144,15 @@ class TestLoadCrabConfig:
             'crab:\n'
             '  run_args: "not-a-list"\n'
         )
-        cfg = load_crab_config(cfg_path)
+        cfg = load_agent_config(cfg_path)
         assert cfg.run_args == []
 
 
-class TestWriteCrabConfig:
+class TestWriteAgentConfig:
     def test_write_defaults(self, tmp_path):
-        path = tmp_path / "crabs" / "test.yaml"
-        cfg = CrabConfig()
-        write_crab_config(path, cfg)
+        path = tmp_path / "agents" / "test.yaml"
+        cfg = AgentConfig()
+        write_agent_config(path, cfg)
 
         assert path.exists()
         content = path.read_text()
@@ -163,7 +163,7 @@ class TestWriteCrabConfig:
 
     def test_write_with_values(self, tmp_path):
         path = tmp_path / "test.yaml"
-        cfg = CrabConfig(
+        cfg = AgentConfig(
             name="Claude Code",
             shell="standard",
             run_args=["--verbose"],
@@ -171,9 +171,9 @@ class TestWriteCrabConfig:
             env={"FOO": "bar"},
             shared_caches={"plugins": ".claude/plugins"},
         )
-        write_crab_config(path, cfg)
+        write_agent_config(path, cfg)
 
-        loaded = load_crab_config(path)
+        loaded = load_agent_config(path)
         assert loaded.name == "Claude Code"
         assert loaded.shell == "standard"
         assert loaded.run_args == ["--verbose"]
@@ -183,25 +183,25 @@ class TestWriteCrabConfig:
 
     def test_state_folded_into_crab_section(self, tmp_path):
         path = tmp_path / "test.yaml"
-        cfg = CrabConfig(state={"access": "permissive"})
-        write_crab_config(path, cfg)
+        cfg = AgentConfig(state={"access": "permissive"})
+        write_agent_config(path, cfg)
 
         content = path.read_text()
         # No separate state section; state knobs live under crab.
         assert 'state:' not in content
-        loaded = load_crab_config(path)
+        loaded = load_agent_config(path)
         assert loaded.state == {"access": "permissive"}
 
     def test_creates_parent_dirs(self, tmp_path):
         path = tmp_path / "deep" / "nested" / "agent.yaml"
-        write_crab_config(path, CrabConfig())
+        write_agent_config(path, AgentConfig())
         assert path.exists()
 
 
 class TestRoundTrip:
     def test_write_then_load(self, tmp_path):
         path = tmp_path / "test.yaml"
-        original = CrabConfig(
+        original = AgentConfig(
             name="Claude Code",
             shell="minimal",
             run_args=["--verbose", "--debug"],
@@ -209,8 +209,8 @@ class TestRoundTrip:
             env={"MY_VAR": "hello"},
             shared_caches={"plugins": ".claude/plugins"},
         )
-        write_crab_config(path, original)
-        loaded = load_crab_config(path)
+        write_agent_config(path, original)
+        loaded = load_agent_config(path)
 
         assert loaded.name == original.name
         assert loaded.shell == original.shell
@@ -221,9 +221,9 @@ class TestRoundTrip:
 
     def test_round_trip_empty_config(self, tmp_path):
         path = tmp_path / "test.yaml"
-        original = CrabConfig()
-        write_crab_config(path, original)
-        loaded = load_crab_config(path)
+        original = AgentConfig()
+        write_agent_config(path, original)
+        loaded = load_agent_config(path)
 
         assert loaded.name == ""
         assert loaded.shell == "standard"
@@ -236,13 +236,13 @@ class TestRoundTrip:
         # Writing state must produce ONE crab section (identity + state),
         # with no separate state section, and load back intact.
         path = tmp_path / "test.yaml"
-        original = CrabConfig(
+        original = AgentConfig(
             name="Claude Code",
             shell="minimal",
             run_args=["--verbose"],
             state={"model": "sonnet"},
         )
-        write_crab_config(path, original)
+        write_agent_config(path, original)
         content = path.read_text()
         assert 'state:' not in content
         assert content.count("crab:") == 1
@@ -250,7 +250,7 @@ class TestRoundTrip:
         assert 'shell: minimal' in content
         assert 'model: sonnet' in content
 
-        loaded = load_crab_config(path)
+        loaded = load_agent_config(path)
         assert loaded.state == {"model": "sonnet"}
         assert loaded.name == "Claude Code"
         assert loaded.shell == "minimal"
@@ -258,7 +258,7 @@ class TestRoundTrip:
 
     def test_round_trip_multiple_run_args(self, tmp_path):
         path = tmp_path / "test.yaml"
-        original = CrabConfig(run_args=["--foo", "--bar", "baz"])
-        write_crab_config(path, original)
-        loaded = load_crab_config(path)
+        original = AgentConfig(run_args=["--foo", "--bar", "baz"])
+        write_agent_config(path, original)
+        loaded = load_agent_config(path)
         assert loaded.run_args == ["--foo", "--bar", "baz"]

@@ -63,26 +63,26 @@ def run(args: argparse.Namespace) -> int:
     (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
     (comms_dir / "broadcast.log").touch(exist_ok=True)
 
-    # Create crabs directory and generate default crab TOMLs.
-    from kanibako.crabs import CrabConfig, write_crab_config
+    # Create agents directory and generate default agent TOMLs.
+    from kanibako.agent_config import AgentConfig, write_agent_config
     from kanibako.targets import discover_targets
 
-    crabs_path = sys_paths["system.path.crabs"]
-    crabs_path.mkdir(parents=True, exist_ok=True)
+    agents_path = sys_paths["system.path.agents"]
+    agents_path.mkdir(parents=True, exist_ok=True)
 
     # general.yaml (no-agent default)
-    general_toml = crabs_path / "general.yaml"
+    general_toml = agents_path / "general.yaml"
     if not general_toml.exists():
-        write_crab_config(general_toml, CrabConfig(name="Shell"))
+        write_agent_config(general_toml, AgentConfig(name="Shell"))
 
     # Each discovered target plugin
     for target_name, cls in discover_targets().items():
-        target_toml = crabs_path / f"{target_name}.yaml"
+        target_toml = agents_path / f"{target_name}.yaml"
         if not target_toml.exists():
-            agent_cfg = cls().generate_crab_config()
-            write_crab_config(target_toml, agent_cfg)
+            agent_cfg = cls().generate_agent_config()
+            write_agent_config(target_toml, agent_cfg)
         else:
-            agent_cfg = CrabConfig()  # just need the shell default
+            agent_cfg = AgentConfig()  # just need the shell default
         # Create the agent-specific template variant directory.
         (templates_dir / target_name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
 

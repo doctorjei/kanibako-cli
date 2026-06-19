@@ -79,7 +79,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # System-level path settings (resolver-backed system.path.* tier)
     "system.path.data",
     "system.path.boxes",
-    "system.path.crabs",
+    "system.path.agents",
     "system.path.comms",
     "system.path.templates",
     "system.path.ws_hints",

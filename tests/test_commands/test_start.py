@@ -569,7 +569,7 @@ class TestDescriptorLaunchPath:
         # No declared setting descriptors -> effective_state = crab state verbatim.
         m.target.setting_descriptors.return_value = []
         m.agent_cfg.state = {"model": "opus", "access": "permissive"}
-        m.load_crab_config.return_value = m.agent_cfg
+        m.load_agent_config.return_value = m.agent_cfg
 
     def test_default_continue_model_and_env(self, start_mocks):
         with start_mocks() as m:
@@ -662,7 +662,7 @@ class TestPluginsBinding:
         # so the only contributor to the plugins dest is the descriptor binding.
         m.target.default_shares.return_value = {}
         m.agent_cfg.state = {"model": "opus", "access": "permissive"}
-        m.load_crab_config.return_value = m.agent_cfg
+        m.load_agent_config.return_value = m.agent_cfg
 
     def _launch(self):
         _run_container(
@@ -765,7 +765,7 @@ class TestCredsyncRouting:
         m.target.descriptor = _CLAUDE_DESCRIPTOR
         m.target.setting_descriptors.return_value = []
         m.agent_cfg.state = {"model": "opus", "access": "permissive"}
-        m.load_crab_config.return_value = m.agent_cfg
+        m.load_agent_config.return_value = m.agent_cfg
 
     # ---- descriptor path: credsync engine is used, legacy hooks bypassed ----
 
@@ -925,14 +925,14 @@ class TestCredsyncRouting:
             m_credsync.writeback_cred_files.assert_not_called()
 
 
-class TestCrabConfigIntegration:
+class TestAgentConfigIntegration:
     """Verify agent config integration in _run_container."""
 
     def test_default_args_merged_into_cli(self, start_mocks):
         """Agent default_args are prepended to extra_args."""
         with start_mocks() as m:
             m.agent_cfg.run_args = ["--verbose"]
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -946,7 +946,7 @@ class TestCrabConfigIntegration:
         """target.apply_state() is called with agent_cfg.state."""
         with start_mocks() as m:
             m.agent_cfg.state = {"model": "opus"}
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -971,7 +971,7 @@ class TestCrabConfigIntegration:
         """Agent [env] section values are included in container env."""
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_VAR": "hello"}
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1001,12 +1001,12 @@ class TestCrabConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The crab config path is derived as std.crabs / "general.yaml".
-            # (std.crabs also gets a / "general" / "share" call from the scoped-
+            # The crab config path is derived as std.agents / "general.yaml".
+            # (std.agents also gets a / "general" / "share" call from the scoped-
             # share resolver, so check the full call list rather than the last.)
             div_args = [
                 c[0][0]
-                for c in m.load_std_paths.return_value.crabs.__truediv__.call_args_list
+                for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
             ]
             assert "general.yaml" in div_args
 
@@ -1212,7 +1212,7 @@ class TestTweakccIntegration:
         """When tweakcc is enabled in agent config, _apply_tweakcc is called."""
         with start_mocks() as m:
             m.agent_cfg.tweakcc = {"enabled": True}
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
 
             with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
                 mock_apply.return_value = None  # disabled/failed
@@ -1227,7 +1227,7 @@ class TestTweakccIntegration:
         """When tweakcc returns a patched install, binary_mounts uses it."""
         with start_mocks() as m:
             m.agent_cfg.tweakcc = {"enabled": True}
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
 
             from kanibako.targets.base import AgentInstall
             from kanibako.tweakcc_cache import CacheEntry
@@ -1258,7 +1258,7 @@ class TestTweakccIntegration:
         """When tweakcc fails, original binary is used (graceful fallback)."""
         with start_mocks() as m:
             m.agent_cfg.tweakcc = {"enabled": True}
-            m.load_crab_config.return_value = m.agent_cfg
+            m.load_agent_config.return_value = m.agent_cfg
 
             with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
                 mock_apply.return_value = None  # signals failure
@@ -1355,29 +1355,29 @@ class TestApplyTweakcc:
 
     def test_disabled_returns_none(self, tmp_path):
         """When tweakcc is not enabled, returns None."""
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
-        agent_cfg = CrabConfig(tweakcc={})
+        agent_cfg = AgentConfig(tweakcc={})
         result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_enabled_but_empty_returns_none(self, tmp_path):
         """Enabled=False explicitly → returns None."""
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
-        agent_cfg = CrabConfig(tweakcc={"enabled": False})
+        agent_cfg = AgentConfig(tweakcc={"enabled": False})
         result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_bun_sea_error_returns_none(self, tmp_path):
         """BunSEAError during hash → returns None (graceful fallback)."""
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
         from kanibako.bun_sea import BunSEAError
 
         install = MagicMock()
-        agent_cfg = CrabConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         with patch("kanibako.bun_sea.cli_js_hash") as mock_hash:
@@ -1388,12 +1388,12 @@ class TestApplyTweakcc:
 
     def test_cache_hit(self, tmp_path):
         """Cache hit → returns patched install without calling put."""
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
         install.name = "claude"
         install.install_dir = tmp_path / "install"
-        agent_cfg = CrabConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -1418,13 +1418,13 @@ class TestApplyTweakcc:
 
     def test_cache_miss_calls_put(self, tmp_path):
         """Cache miss → calls put with tweakcc command."""
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
         install.name = "claude"
         install.binary = tmp_path / "binary"
         install.install_dir = tmp_path / "install"
-        agent_cfg = CrabConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -1450,12 +1450,12 @@ class TestApplyTweakcc:
 
     def test_returns_cache_object(self, tmp_path):
         """Returned tuple includes the cache object for later release."""
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
         install.name = "claude"
         install.install_dir = tmp_path / "install"
-        agent_cfg = CrabConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(tweakcc={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -1752,7 +1752,7 @@ class TestBuildShareMounts:
         return SimpleNamespace(
             share_ro=tmp_path / "share-ro",
             share_rw=tmp_path / "share-rw",
-            crabs=tmp_path / "crabs",
+            agents=tmp_path / "agents",
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
             boxes=tmp_path / "boxes",
@@ -1828,7 +1828,7 @@ class TestBuildShareMounts:
         assert mounts == []
 
     def test_crab_scope_root_join(self, tmp_path):
-        """A relative crab share joins under std.crabs/<crab>/share."""
+        """A relative crab share joins under std.agents/<crab>/share."""
         crab_cfg = tmp_path / "claude.yaml"
         crab_cfg.write_text(
             'crab:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
@@ -1837,7 +1837,7 @@ class TestBuildShareMounts:
         mounts = self._call(tmp_path, std=std, crab_config_path=crab_cfg)
         assert len(mounts) == 1
         m = mounts[0]
-        assert m.source == std.crabs / "claude" / "share" / "plugins"
+        assert m.source == std.agents / "claude" / "share" / "plugins"
         assert m.destination == "/home/agent/.claude/plugins"
 
     def test_workset_root_only_for_non_default_group(self, tmp_path):
@@ -1893,7 +1893,7 @@ class TestBuildShareMounts:
         mounts = self._call(tmp_path, std=std, target=self._claude_target())
         assert len(mounts) == 1
         m = mounts[0]
-        assert m.source == std.crabs / "claude" / "share" / "plugins"
+        assert m.source == std.agents / "claude" / "share" / "plugins"
         assert m.destination == "/home/agent/.claude/plugins"
         assert m.options == "Z,U"
         # rw share source dir is created best-effort.
@@ -1922,7 +1922,7 @@ class TestApplyInitSeeds:
         return SimpleNamespace(
             share_ro=tmp_path / "share-ro",
             share_rw=tmp_path / "share-rw",
-            crabs=tmp_path / "crabs",
+            agents=tmp_path / "agents",
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
             boxes=tmp_path / "boxes",

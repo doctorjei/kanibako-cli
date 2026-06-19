@@ -853,7 +853,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     resolved_sys = {
         "system.path.data": str(std.data_path),
         "system.path.boxes": str(std.boxes),
-        "system.path.crabs": str(std.crabs),
+        "system.path.agents": str(std.agents),
         "system.path.comms": str(std.comms),
         "system.path.templates": str(std.templates),
         "system.path.ws_hints": str(std.ws_hints),

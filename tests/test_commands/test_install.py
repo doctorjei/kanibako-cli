@@ -6,7 +6,7 @@ import argparse
 import json
 from unittest.mock import patch
 
-from kanibako.crabs import load_crab_config
+from kanibako.agent_config import load_agent_config
 from kanibako.config import KanibakoConfig, load_config, write_global_config
 
 
@@ -76,14 +76,14 @@ class TestInstallAgentTomls:
     def _data_path(self, tmp_home):
         return tmp_home / "data" / "kanibako"
 
-    def test_creates_crabs_directory(self, tmp_home):
+    def test_creates_agents_directory(self, tmp_home):
         from kanibako.commands.install import run
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
-        crabs_dir = self._data_path(tmp_home) / "crabs"
-        assert crabs_dir.is_dir()
+        agents_dir = self._data_path(tmp_home) / "agents"
+        assert agents_dir.is_dir()
 
     def test_creates_general_toml(self, tmp_home):
         from kanibako.commands.install import run
@@ -91,9 +91,9 @@ class TestInstallAgentTomls:
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
-        general_toml = self._data_path(tmp_home) / "crabs" / "general.yaml"
+        general_toml = self._data_path(tmp_home) / "agents" / "general.yaml"
         assert general_toml.is_file()
-        cfg = load_crab_config(general_toml)
+        cfg = load_agent_config(general_toml)
         assert cfg.name == "Shell"
 
     def test_creates_target_toml(self, tmp_home):
@@ -103,9 +103,9 @@ class TestInstallAgentTomls:
             run(argparse.Namespace())
 
         # The claude target is registered via entry points, so claude.yaml should exist
-        claude_toml = self._data_path(tmp_home) / "crabs" / "claude.yaml"
+        claude_toml = self._data_path(tmp_home) / "agents" / "claude.yaml"
         assert claude_toml.is_file()
-        cfg = load_crab_config(claude_toml)
+        cfg = load_agent_config(claude_toml)
         assert cfg.name == "Claude Code"
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.shared_caches == {}
@@ -114,16 +114,16 @@ class TestInstallAgentTomls:
         from kanibako.commands.install import run
 
         data_path = self._data_path(tmp_home)
-        crabs_dir = data_path / "crabs"
-        crabs_dir.mkdir(parents=True, exist_ok=True)
+        agents_dir = data_path / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
 
         # Write a custom general.yaml before setup
-        general_toml = crabs_dir / "general.yaml"
+        general_toml = agents_dir / "general.yaml"
         general_toml.write_text('crab:\n  name: "Custom Shell"\n')
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
         # Custom content should be preserved
-        cfg = load_crab_config(general_toml)
+        cfg = load_agent_config(general_toml)
         assert cfg.name == "Custom Shell"

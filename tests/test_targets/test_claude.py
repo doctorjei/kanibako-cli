@@ -646,10 +646,10 @@ class TestSettingDescriptors:
         assert descriptors["access"].choices == ("permissive", "restricted")
 
 
-class TestGenerateCrabConfig:
+class TestGenerateAgentConfig:
     def test_returns_claude_defaults(self):
         t = ClaudeTarget()
-        cfg = t.generate_crab_config()
+        cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
         assert cfg.shell == "standard"
         assert cfg.state == {"model": "opus", "access": "permissive"}
@@ -658,10 +658,10 @@ class TestGenerateCrabConfig:
         assert cfg.env == {}
 
     def test_is_crab_config_instance(self):
-        from kanibako.crabs import CrabConfig
+        from kanibako.agent_config import AgentConfig
         t = ClaudeTarget()
-        cfg = t.generate_crab_config()
-        assert isinstance(cfg, CrabConfig)
+        cfg = t.generate_agent_config()
+        assert isinstance(cfg, AgentConfig)
 
 
 class TestApplyState:

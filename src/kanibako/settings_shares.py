@@ -40,7 +40,7 @@ Root-join rule
 ~~~~~~~~~~~~~~~
 *scope_roots* maps a GROUP PREFIX (the key up to and including
 ``share_ro``/``share_rw``, e.g. ``"crab.path.share_rw"``) to a host-space root
-expression (e.g. ``"@system.path.crabs/$CRAB/share"``).  When a root exists for
+expression (e.g. ``"@system.path.agents/$CRAB/share"``).  When a root exists for
 a key's group AND the resolved ``host_src`` is NOT absolute, the source becomes
 ``root / host_src``; otherwise ``host_src`` is used as-is.  A group absent from
 *scope_roots* (or mapped to ``None``/``""``) means no join — this is the ``box``

@@ -22,7 +22,7 @@ the interface was designed.  It implements ONLY the irreducible surface:
 * ``descriptor`` — the declarative :class:`PluginDescriptor`; core ``start.py``
   assembles launch argv / env / delivery binds / credential lifecycle from it.
 * ``check_auth`` — lenient credential presence check.
-* the declarative helpers ``setting_descriptors`` / ``generate_crab_config`` /
+* the declarative helpers ``setting_descriptors`` / ``generate_agent_config`` /
   ``resource_mappings``.
 
 Everything else (``build_cli_args`` / ``binary_mounts`` / ``init_home`` /
@@ -70,7 +70,7 @@ from kanibako.targets.base import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.crabs import CrabConfig
+    from kanibako.agent_config import AgentConfig
 
 logger = get_logger("targets.codex")
 
@@ -384,11 +384,11 @@ class CodexTarget(Target):
 
         return False
 
-    def generate_crab_config(self) -> CrabConfig:
+    def generate_agent_config(self) -> AgentConfig:
         """Return default Codex crab configuration."""
-        from kanibako.crabs import CrabConfig as _CrabConfig
+        from kanibako.agent_config import AgentConfig as _AgentConfig
 
-        return _CrabConfig(
+        return _AgentConfig(
             name=self.display_name,
             shell="standard",
             state={"model": "gpt-5.5"},

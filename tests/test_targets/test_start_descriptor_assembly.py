@@ -24,7 +24,7 @@ from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 from kanibako.targets.base import AgentInstall
 
 
-# Claude crab default state: model=opus, access=permissive (generate_crab_config).
+# Claude crab default state: model=opus, access=permissive (generate_agent_config).
 DEFAULT_STATE = {"model": "opus", "access": "permissive"}
 
 

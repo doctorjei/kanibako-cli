@@ -1,4 +1,4 @@
-"""Crab YAML configuration: load, write, and resolve per-crab settings."""
+"""Agent YAML configuration: load, write, and resolve per-agent settings."""
 
 from __future__ import annotations
 
@@ -12,14 +12,14 @@ IDENTITY_KEYS = frozenset({"name", "shell", "run_args"})
 
 
 @dataclass
-class CrabConfig:
-    """Per-crab configuration loaded from a crab YAML file.
+class AgentConfig:
+    """Per-agent configuration loaded from an agent YAML file.
 
     Sections:
       crab   — identity (name, shell, run_args) plus crab-state knobs
                (model, access, start_mode, autonomous, …)
       env    — raw env vars injected into container
-      shared — crab-level shared cache paths
+      shared — agent-level shared cache paths
     """
 
     name: str = ""
@@ -31,37 +31,37 @@ class CrabConfig:
     tweakcc: dict = field(default_factory=dict)
 
 
-def crabs_dir(data_path: Path, paths_crabs: str = "crabs") -> Path:
-    """Return the crabs directory under *data_path*."""
-    return data_path / (paths_crabs or "crabs")
+def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
+    """Return the agents directory under *data_path*."""
+    return data_path / (paths_agents or "agents")
 
 
-def crab_toml_path(
-    data_path: Path, crab_id: str, paths_crabs: str = "crabs",
+def agent_config_path(
+    data_path: Path, agent_id: str, paths_agents: str = "agents",
 ) -> Path:
-    """Return the path to a crab's config file."""
-    return crabs_dir(data_path, paths_crabs) / f"{crab_id}.yaml"
+    """Return the path to an agent's config file."""
+    return agents_dir(data_path, paths_agents) / f"{agent_id}.yaml"
 
 
-def load_crab_config(path: Path) -> CrabConfig:
-    """Read a crab config file and return a CrabConfig.
+def load_agent_config(path: Path) -> AgentConfig:
+    """Read an agent config file and return an AgentConfig.
 
     Returns defaults if the file does not exist.
     """
-    cfg = CrabConfig()
+    cfg = AgentConfig()
     if not path.exists():
         return cfg
 
     data = load_doc(path)
 
-    crab_sec = data.get("crab", {})
-    cfg.name = str(crab_sec.get("name", ""))
-    cfg.shell = str(crab_sec.get("shell", "standard"))
-    raw_args = crab_sec.get("run_args", [])
+    agent_sec = data.get("crab", {})
+    cfg.name = str(agent_sec.get("name", ""))
+    cfg.shell = str(agent_sec.get("shell", "standard"))
+    raw_args = agent_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
     cfg.state = {
-        k: str(v) for k, v in crab_sec.items() if k not in IDENTITY_KEYS
+        k: str(v) for k, v in agent_sec.items() if k not in IDENTITY_KEYS
     }
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
     cfg.shared_caches = {k: str(v) for k, v in data.get("shared", {}).items()}
@@ -70,18 +70,18 @@ def load_crab_config(path: Path) -> CrabConfig:
     return cfg
 
 
-def write_crab_config(path: Path, cfg: CrabConfig) -> None:
-    """Write a CrabConfig to a YAML file."""
-    crab_sec: dict = {
+def write_agent_config(path: Path, cfg: AgentConfig) -> None:
+    """Write an AgentConfig to a YAML file."""
+    agent_sec: dict = {
         "name": cfg.name,
         "shell": cfg.shell,
         "run_args": list(cfg.run_args),
     }
     for k, v in cfg.state.items():
-        crab_sec[k] = v
+        agent_sec[k] = v
 
     data: dict = {
-        "crab": crab_sec,
+        "crab": agent_sec,
         "env": dict(cfg.env),
         "shared": dict(cfg.shared_caches),
         "tweakcc": dict(cfg.tweakcc),
