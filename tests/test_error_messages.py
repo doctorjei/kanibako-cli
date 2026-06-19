@@ -123,7 +123,7 @@ class TestAuthFailureMessages:
     """Verify auth failure suggests reauth."""
 
     def test_auth_failure_suggests_reauth(self, start_mocks, capsys):
-        """Auth failure mentions kanibako crab reauth."""
+        """Auth failure mentions kanibako agent reauth."""
         with start_mocks() as m:
             m.target.check_auth.return_value = False
             rc = _run_container(
@@ -133,7 +133,7 @@ class TestAuthFailureMessages:
             )
         assert rc == 1
         err = capsys.readouterr().err
-        assert "kanibako crab reauth" in err
+        assert "kanibako agent reauth" in err
 
     def test_auth_failure_suggests_shell(self, start_mocks, capsys):
         """Auth failure also suggests kanibako shell as escape hatch."""
@@ -260,7 +260,7 @@ class TestSystemInfoOutput:
 
         out = capsys.readouterr().out
         assert "1 detected" in out
-        assert "kanibako crab list" in out
+        assert "kanibako agent list" in out
 
     def test_info_no_agents_shows_install_hint(self, capsys):
         """System info shows install hint when no agents are found."""

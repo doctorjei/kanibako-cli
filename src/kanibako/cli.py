@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
             "COMMANDS\n"
             "    rig         Manage box rigs (images)\n"
             "    box         Project lifecycle commands for boxes (containers)\n"
-            "    crab        Crab (agent) management, authentication, and settings\n"
+            "    agent       Agent management, authentication, and settings\n"
             "    workset     Project grouping\n"
             "    system      Global configuration, upgrades, and system information\n"
             "\n"
@@ -41,7 +41,6 @@ def build_parser() -> argparse.ArgumentParser:
             "    shell       Open a shell in a box\n"
             "\n"
             "ALIASES:\n"
-            "    agent       → crab\n"
             "    container   → box\n"
             "    image       → rig\n"
             "\n"
@@ -72,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.box._parser import run_create, run_list as run_list_fn, run_ps, run_rm
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
-    from kanibako.commands.crab_cmd import add_parser as add_crab_parser
+    from kanibako.commands.agent_cmd import add_parser as add_agent_parser
     from kanibako.commands.system_cmd import add_parser as add_system_parser
     from kanibako.commands.baseline_cmd import add_parser as add_baseline_parser
 
@@ -164,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_rig_parser(subparsers)
     add_box_parser(subparsers)
     add_workset_parser(subparsers)
-    add_crab_parser(subparsers)
+    add_agent_parser(subparsers)
     add_system_parser(subparsers)
     add_baseline_parser(subparsers)
 
@@ -172,7 +171,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 _COMMAND_ALIASES: dict[str, str] = {
-    "agent": "crab",
     "image": "rig",
     "container": "box",
 }
@@ -181,9 +179,9 @@ _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
     "start", "stop", "shell", "ps", "list", "create", "rm",
     # Management commands.
-    "box", "rig", "workset", "crab", "system", "baseline",
+    "box", "rig", "workset", "agent", "system", "baseline",
     # Command aliases (#62).
-    "agent", "image", "container",
+    "image", "container",
     # Setup wizard.
     "setup",
 }
@@ -241,11 +239,11 @@ def _ensure_initialized() -> None:
     for target_name, cls in discover_targets().items():
         target_toml = agents_path / f"{target_name}.yaml"
         if not target_toml.exists():
-            crab_cfg = cls().generate_agent_config()
-            write_agent_config(target_toml, crab_cfg)
+            agent_cfg = cls().generate_agent_config()
+            write_agent_config(target_toml, agent_cfg)
         else:
-            crab_cfg = AgentConfig()
-        (templates_dir / target_name / crab_cfg.shell).mkdir(
+            agent_cfg = AgentConfig()
+        (templates_dir / target_name / agent_cfg.shell).mkdir(
             parents=True, exist_ok=True,
         )
 
@@ -297,7 +295,7 @@ def main(argv: list[str] | None = None) -> None:
         # If the first arg isn't a known subcommand, default to "start".
         if not effective or effective[0] not in _SUBCOMMANDS:
             effective = ["start"] + effective
-        # Translate command aliases (e.g. agent→crab, image→rig).
+        # Translate command aliases (e.g. image→rig, container→box).
         if effective and effective[0] in _COMMAND_ALIASES:
             effective[0] = _COMMAND_ALIASES[effective[0]]
 
@@ -322,8 +320,13 @@ def main(argv: list[str] | None = None) -> None:
             args.shell_args = post_dash or []
 
         # Lazy init: create config + data dirs on first run.
-        # Skip for crab (helper/fork run inside containers).
-        if args.command not in ("crab", "setup"):
+        # Skip for agent (config-facing) and setup, and for the runtime
+        # box subcommands helper/fork (which run inside containers).
+        skip_init = args.command in ("agent", "setup") or (
+            args.command == "box"
+            and getattr(args, "box_command", None) in ("helper", "fork")
+        )
+        if not skip_init:
             _ensure_initialized()
 
     func = getattr(args, "func", None)

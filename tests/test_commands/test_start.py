@@ -1766,7 +1766,7 @@ class TestBuildShareMounts:
         return SimpleNamespace(group=group)
 
     def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
-              project_toml=None, workset_config_path=None, crab_config_path=None,
+              project_toml=None, workset_config_path=None, agent_config_path=None,
               target=None):
         from kanibako.commands.start import _build_share_mounts
         return _build_share_mounts(
@@ -1776,7 +1776,7 @@ class TestBuildShareMounts:
             global_config_path=global_config_path,
             project_toml=project_toml,
             workset_config_path=workset_config_path,
-            crab_config_path=crab_config_path,
+            agent_config_path=agent_config_path,
             target=target,
         )
 
@@ -1791,7 +1791,7 @@ class TestBuildShareMounts:
             global_config_path=glob,
             project_toml=ptoml,
             workset_config_path=None,
-            crab_config_path=None,
+            agent_config_path=None,
         )
         assert mounts == []
 
@@ -1834,7 +1834,7 @@ class TestBuildShareMounts:
             'agent:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
         )
         std = self._std(tmp_path)
-        mounts = self._call(tmp_path, std=std, crab_config_path=agent_cfg)
+        mounts = self._call(tmp_path, std=std, agent_config_path=agent_cfg)
         assert len(mounts) == 1
         m = mounts[0]
         assert m.source == std.agents / "claude" / "share" / "plugins"
@@ -1946,7 +1946,7 @@ class TestApplyInitSeeds:
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, project_toml=None,
-              workset_config_path=None, crab_config_path=None):
+              workset_config_path=None, agent_config_path=None):
         from kanibako.commands.start import _apply_init_seeds
         _apply_init_seeds(
             std=std or self._std(tmp_path),
@@ -1956,7 +1956,7 @@ class TestApplyInitSeeds:
             global_config_path=global_config_path,
             project_toml=project_toml,
             workset_config_path=workset_config_path,
-            crab_config_path=crab_config_path,
+            agent_config_path=agent_config_path,
             logger=self._logger(),
         )
 
@@ -1986,7 +1986,7 @@ class TestApplyInitSeeds:
         self._call(
             tmp_path,
             proj=self._proj(shell),
-            crab_config_path=agent_cfg,
+            agent_config_path=agent_cfg,
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
@@ -2032,7 +2032,7 @@ class TestApplyInitSeeds:
         agent_cfg.write_text(
             f'agent:\n  path:\n    seeded:\n      home: "{src}:~/"\n'
         )
-        self._call(tmp_path, proj=self._proj(shell), crab_config_path=agent_cfg)
+        self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
 
     def test_missing_host_src_skipped(self, tmp_path):
@@ -2043,7 +2043,7 @@ class TestApplyInitSeeds:
         agent_cfg.write_text(
             f'agent:\n  path:\n    seeded:\n      gone: "{missing}:~/gone"\n'
         )
-        self._call(tmp_path, proj=self._proj(shell), crab_config_path=agent_cfg)
+        self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
         assert list(shell.iterdir()) == []
 

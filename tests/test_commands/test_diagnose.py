@@ -14,8 +14,8 @@ from kanibako.commands.diagnose import (
     _diagnose_baseline,
     _format_check,
     probe_missing_executables,
+    run_agent_diagnose,
     run_box_diagnose,
-    run_crab_diagnose,
     run_rig_diagnose,
     run_system_diagnose,
 )
@@ -369,20 +369,20 @@ class TestRunSystemDiagnose:
         assert "[" in captured.out
 
 
-class TestRunCrabDiagnose:
-    def test_run_crab_diagnose(self, capsys) -> None:
-        """Crab diagnose runs and returns 0."""
+class TestRunAgentDiagnose:
+    def test_run_agent_diagnose(self, capsys) -> None:
+        """Agent diagnose runs and returns 0."""
         with patch(
             "kanibako.targets.discover_targets", return_value={}
         ):
             args = argparse.Namespace()
-            rc = run_crab_diagnose(args)
+            rc = run_agent_diagnose(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Crab (Agent) Diagnostics" in captured.out
+        assert "Agent Diagnostics" in captured.out
         assert "no agent plugins" in captured.out
 
-    def test_crab_diagnose_no_shell_not_found(self, capsys) -> None:
+    def test_agent_diagnose_no_shell_not_found(self, capsys) -> None:
         """The Shell fallback prints as [ok] with the resolved box.shell, not [!!]."""
         from kanibako.targets.no_agent import NoAgentTarget
 
@@ -397,7 +397,7 @@ class TestRunCrabDiagnose:
             ),
         ):
             args = argparse.Namespace()
-            rc = run_crab_diagnose(args)
+            rc = run_agent_diagnose(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "[!!] Agent: Shell: not found" not in out
@@ -851,13 +851,6 @@ class TestParsers:
         parser = build_parser()
         args = parser.parse_args(["system", "diagnose"])
         assert args.func == run_system_diagnose
-
-    def test_crab_diagnose_parser(self) -> None:
-        from kanibako.cli import build_parser
-
-        parser = build_parser()
-        args = parser.parse_args(["crab", "diagnose"])
-        assert args.func == run_crab_diagnose
 
     def test_rig_diagnose_parser(self) -> None:
         from kanibako.cli import build_parser

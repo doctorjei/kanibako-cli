@@ -260,37 +260,30 @@ class TestRunFork:
 # ---------------------------------------------------------------------------
 
 class TestForkCLIRegistration:
-    def test_crab_in_subcommands(self):
+    def test_box_in_subcommands(self):
         from kanibako.cli import _SUBCOMMANDS
-        assert "crab" in _SUBCOMMANDS
+        assert "box" in _SUBCOMMANDS
 
-    def test_agent_alias_in_subcommands(self):
+    def test_agent_in_subcommands(self):
         from kanibako.cli import _SUBCOMMANDS
         assert "agent" in _SUBCOMMANDS
 
-    def test_fork_parser_registered_under_crab(self):
+    def test_fork_parser_registered_under_box(self):
         from kanibako.cli import build_parser
         parser = build_parser()
-        # fork should be recognized as a crab subcommand
-        args = parser.parse_args(["crab", "fork", "testname"])
-        assert args.command == "crab"
-        assert args.crab_command == "fork"
+        # fork should be recognized as a box subcommand
+        args = parser.parse_args(["box", "fork", "testname"])
+        assert args.command == "box"
+        assert args.box_command == "fork"
         assert args.name == "testname"
 
     def test_fork_exempt_from_config_check(self):
-        """crab fork should not require kanibako.yaml to exist."""
+        """box fork should not require kanibako.yaml to exist."""
         from kanibako.cli import main
-        # Calling crab fork with a missing kanibako.yaml should not trigger
+        # Calling box fork with a missing kanibako.yaml should not trigger
         # the "kanibako is not set up" error — it should reach run_fork
         # and fail on the socket check instead.
         with pytest.raises(SystemExit) as exc_info:
-            main(["crab", "fork", "test"])
+            main(["box", "fork", "test"])
         # Should exit with 1 (no socket), not the config-check error
-        assert exc_info.value.code == 1
-
-    def test_fork_via_agent_alias_exempt_from_config_check(self):
-        """'agent fork' alias is translated to 'crab fork' and still works."""
-        from kanibako.cli import main
-        with pytest.raises(SystemExit) as exc_info:
-            main(["agent", "fork", "test"])
         assert exc_info.value.code == 1

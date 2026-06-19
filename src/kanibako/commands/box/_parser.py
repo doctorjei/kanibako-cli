@@ -375,6 +375,34 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     diagnose_p.set_defaults(func=run_box_diagnose)
 
+    # box helper -- delegate to helper_cmd
+    from kanibako.commands.helper_cmd import add_helper_subparsers
+
+    helper_p = box_sub.add_parser(
+        "helper",
+        help="Manage helper instances",
+        description="Spawn, list, stop, cleanup, and respawn helper instances.",
+    )
+    add_helper_subparsers(helper_p)
+
+    # box fork <name> -- delegate to fork_cmd
+    from kanibako.commands.fork_cmd import run_fork
+
+    fork_p = box_sub.add_parser(
+        "fork",
+        help="Fork this project into a new directory",
+        description=(
+            "Fork the current project into a sibling directory. "
+            "The fork is a full copy of the workspace and metadata, "
+            "assigned a new project name."
+        ),
+    )
+    fork_p.add_argument(
+        "name",
+        help="Fork name (appended with dot to workspace path)",
+    )
+    fork_p.set_defaults(func=run_fork)
+
     add_archive_parser(box_sub)
     add_purge_parser(box_sub)
     add_extract_parser(box_sub)

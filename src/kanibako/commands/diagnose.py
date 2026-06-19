@@ -351,12 +351,12 @@ def run_box_diagnose(args: object) -> int:
     return 0
 
 
-def run_crab_diagnose(args: object) -> int:
-    """Run diagnostics for agent/crab configuration."""
+def run_agent_diagnose(args: object) -> int:
+    """Run diagnostics for agent configuration."""
     from kanibako.config import config_file_path, load_config, load_merged_config
     from kanibako.paths import load_std_paths, xdg
 
-    print("Crab (Agent) Diagnostics")
+    print("Agent Diagnostics")
     print("=" * 40)
     print()
 
