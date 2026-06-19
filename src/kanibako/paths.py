@@ -420,6 +420,54 @@ def resolve_system_paths(
     return resolved
 
 
+def load_system_config(
+    user_config_path: Path, *, data_home: Path, home: Path,
+) -> dict[str, Path]:
+    """Resolve the ``system.path.*`` tier from the CONFIG file set.
+
+    The CONFIG (``system.*``) set is three files, read in cascade order so the
+    most-authoritative present value of each ``system.path.<leaf>`` set-value
+    wins **before** expression resolution:
+
+    1. ``/etc/kanibako/config_base.yaml`` — site-wide overridable defaults
+       (least specific).
+    2. *user_config_path* — the user's global ``~/.config/kanibako.yaml``
+       (overrides the base).
+    3. ``/etc/kanibako/config_required.yaml`` — site-wide **non-overridable**
+       values, applied LAST so they win over both the base and the user file
+       (decision D: ``*_required`` sits above everything else in the set).
+
+    Missing files are skipped (each contributes nothing).  The merged set-values
+    are handed to :func:`resolve_system_paths`, which fills in
+    :data:`SYSTEM_PATH_DEFAULTS` and resolves ``@``-/``$XDG_*``-references.
+
+    ⚑ Key names are UNCHANGED in this step — still ``system.path.<leaf>``.  The
+    rename to bare ``system.*`` is a later phase.  This loader is purely about
+    *where* the set-values are read from (the 3-file set) and the
+    required-wins semantics.
+
+    Back-compat: a user with only ``~/.config/kanibako.yaml`` (no ``/etc``
+    files) gets exactly the prior behavior — the base and required layers are
+    empty, so the user file is the sole source of set-values.
+    """
+    # Lazy import to avoid a config <-> paths import cycle at module load.
+    from kanibako.config import (
+        config_base_path,
+        config_required_path,
+        load_config,
+    )
+
+    set_values: dict[str, str] = {}
+    # base < user < required.  load_config(...).system_paths yields the file's
+    # ``system.path.<leaf>`` set-values (full dotted keys), or {} when the file
+    # is absent — so missing layers are skipped automatically.
+    set_values.update(load_config(config_base_path()).system_paths)
+    set_values.update(load_config(user_config_path).system_paths)
+    set_values.update(load_config(config_required_path()).system_paths)
+
+    return resolve_system_paths(set_values, data_home=data_home, home=home)
+
+
 def _migrate_global_env(config_home: Path, data_path: Path) -> None:
     """Move global env file from old config_home/kanibako/env to data_path/env."""
     old = config_home / "kanibako" / "env"
@@ -463,9 +511,12 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
             )
         config = load_config(config_file)
 
-    # Resolve the system-level path tier (settings-framework "system.path.*").
-    resolved = resolve_system_paths(
-        config.system_paths, data_home=data_home, home=Path.home(),
+    # Resolve the system-level path tier (settings-framework "system.path.*")
+    # from the CONFIG file set: /etc config_base < user-global < /etc
+    # config_required (required is non-overridable, applied last).  A user with
+    # only ~/.config/kanibako.yaml gets the prior behavior (empty /etc layers).
+    resolved = load_system_config(
+        config_file, data_home=data_home, home=Path.home(),
     )
     data_path = resolved["system.path.data"]
     # state/cache paths track the data dir's leaf name (unchanged behavior:

@@ -98,6 +98,28 @@ def machine_config_path() -> Path:
     return Path("/etc/kanibako/kanibako.yaml")
 
 
+def config_base_path() -> Path:
+    """Return the machine-wide CONFIG base file (``/etc/kanibako/config_base.yaml``).
+
+    The least-specific layer of the CONFIG (``system.*``) file set: a site admin
+    supplies overridable defaults that the user's ``~/.config/kanibako.yaml``
+    (and, above it, the non-overridable ``config_required.yaml``) can still beat.
+    Missing file → treated as an empty level.
+    """
+    return Path("/etc/kanibako/config_base.yaml")
+
+
+def config_required_path() -> Path:
+    """Return the machine-wide CONFIG required file (``/etc/kanibako/config_required.yaml``).
+
+    The MOST-specific layer of the CONFIG (``system.*``) file set — it is
+    **non-overridable**: applied LAST so a site admin can pin values that neither
+    the base layer nor the user's ``~/.config/kanibako.yaml`` can override.
+    Missing file → treated as an empty level.
+    """
+    return Path("/etc/kanibako/config_required.yaml")
+
+
 def migrate_config(config_home: Path) -> Path:
     """Migrate config file from old location to new, if needed.
 

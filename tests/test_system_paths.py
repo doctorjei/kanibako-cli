@@ -16,6 +16,7 @@ import pytest
 from kanibako.config import load_config
 from kanibako.paths import (
     SYSTEM_PATH_DEFAULTS,
+    load_system_config,
     resolve_system_paths,
     resolve_xdg,
 )
@@ -239,6 +240,105 @@ class TestResolveXdg:
         first = resolve_xdg("XDG_RUNTIME_DIR", None)
         second = resolve_xdg("XDG_RUNTIME_DIR", None)
         assert first == second
+
+
+class TestLoadSystemConfig:
+    """The 3-file CONFIG loader: config_base < user-global < config_required.
+
+    ``config_base_path``/``config_required_path`` point at ``/etc/kanibako`` in
+    production; tests redirect them at tmp files via monkeypatch so the cascade
+    can be exercised hermetically.
+    """
+
+    def _redirect(self, monkeypatch, base: Path, required: Path) -> None:
+        """Point the /etc base+required CONFIG paths at tmp files.
+
+        ``load_system_config`` imports these lazily from ``kanibako.config``, so
+        patching the source module catches every call.
+        """
+        import kanibako.config as cfg_mod
+
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
+        monkeypatch.setattr(cfg_mod, "config_required_path", lambda: required)
+
+    def test_only_user_global_still_works(self, tmp_path, monkeypatch):
+        """Back-compat: a user with only ~/.config/kanibako.yaml (absent /etc
+        base+required) gets exactly the prior behavior."""
+        base = tmp_path / "config_base.yaml"       # absent
+        required = tmp_path / "config_required.yaml"  # absent
+        self._redirect(monkeypatch, base, required)
+
+        user = tmp_path / "kanibako.yaml"
+        user.write_text('system:\n  path:\n    boxes: "/u/boxes"\n')
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert resolved["system.path.boxes"] == Path("/u/boxes")
+        # Unset keys fall back to defaults under $XDG_DATA_HOME/kanibako.
+        assert resolved["system.path.data"] == tmp_path / "kanibako"
+
+    def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
+        base = tmp_path / "config_base.yaml"
+        required = tmp_path / "config_required.yaml"
+        user = tmp_path / "kanibako.yaml"  # absent
+        self._redirect(monkeypatch, base, required)
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS)
+        assert resolved["system.path.data"] == tmp_path / "kanibako"
+
+    def test_user_wins_over_base(self, tmp_path, monkeypatch):
+        base = tmp_path / "config_base.yaml"
+        required = tmp_path / "config_required.yaml"  # absent
+        user = tmp_path / "kanibako.yaml"
+        base.write_text('system:\n  path:\n    boxes: "/base/boxes"\n')
+        user.write_text('system:\n  path:\n    boxes: "/user/boxes"\n')
+        self._redirect(monkeypatch, base, required)
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert resolved["system.path.boxes"] == Path("/user/boxes")
+
+    def test_required_wins_over_user_and_base(self, tmp_path, monkeypatch):
+        base = tmp_path / "config_base.yaml"
+        required = tmp_path / "config_required.yaml"
+        user = tmp_path / "kanibako.yaml"
+        base.write_text('system:\n  path:\n    boxes: "/base/boxes"\n')
+        user.write_text('system:\n  path:\n    boxes: "/user/boxes"\n')
+        required.write_text('system:\n  path:\n    boxes: "/req/boxes"\n')
+        self._redirect(monkeypatch, base, required)
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        # Required is non-overridable → wins over BOTH user and base.
+        assert resolved["system.path.boxes"] == Path("/req/boxes")
+
+    def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
+        """A base-only key is honored when the user file omits it."""
+        base = tmp_path / "config_base.yaml"
+        required = tmp_path / "config_required.yaml"  # absent
+        user = tmp_path / "kanibako.yaml"
+        base.write_text('system:\n  path:\n    agents: "/base/agents"\n')
+        user.write_text('system:\n  path:\n    boxes: "/user/boxes"\n')
+        self._redirect(monkeypatch, base, required)
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert resolved["system.path.agents"] == Path("/base/agents")
+        assert resolved["system.path.boxes"] == Path("/user/boxes")
+
+    def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
+        """Each leaf cascades independently — required pins one key while the
+        user still sets another."""
+        base = tmp_path / "config_base.yaml"
+        required = tmp_path / "config_required.yaml"
+        user = tmp_path / "kanibako.yaml"
+        base.write_text('system:\n  path:\n    data: "/base/data"\n')
+        user.write_text(
+            'system:\n  path:\n    data: "/user/data"\n    boxes: "/user/boxes"\n'
+        )
+        required.write_text('system:\n  path:\n    data: "/req/data"\n')
+        self._redirect(monkeypatch, base, required)
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert resolved["system.path.data"] == Path("/req/data")   # required wins
+        assert resolved["system.path.boxes"] == Path("/user/boxes")  # user kept
 
 
 class TestResolveSystemPathsXdgCtx:
