@@ -918,7 +918,7 @@ class TestReadShares:
 
     def test_no_share_keys_returns_empty(self, tmp_path):
         p = tmp_path / "kanibako.yaml"
-        p.write_text('box_image: "x"\ncrab:\n  model: "sonnet"\n')
+        p.write_text('box_image: "x"\nagent:\n  model: "sonnet"\n')
         assert read_shares(p) == {}
 
     def test_none_path_returns_empty(self):
@@ -931,7 +931,7 @@ class TestReadShares:
         p = tmp_path / "kanibako.yaml"
         p.write_text(
             'box_image: "img"\n'
-            "crab:\n"
+            "agent:\n"
             '  model: "haiku"\n'
             "  path:\n    share_ro:\n"
             '      docs: "/host/docs:/srv/docs"\n'
@@ -939,7 +939,7 @@ class TestReadShares:
             '    data: "/d"\n'
         )
         assert read_shares(p) == {
-            "crab.path.share_ro.docs": "/host/docs:/srv/docs",
+            "agent.path.share_ro.docs": "/host/docs:/srv/docs",
         }
 
     def test_suppression_empty_value_returned(self, tmp_path):
@@ -958,18 +958,18 @@ class TestReadSeeds:
     def test_reads_dotted_seed_keys(self, tmp_path):
         p = tmp_path / "kanibako.yaml"
         p.write_text(
-            "crab:\n  path:\n    seeded:\n"
+            "agent:\n  path:\n    seeded:\n"
             '      foo: "/src:~/foo"\n'
             '      bar: "/abs:/home/agent/bar"\n'
         )
         assert read_seeds(p) == {
-            "crab.path.seeded.foo": "/src:~/foo",
-            "crab.path.seeded.bar": "/abs:/home/agent/bar",
+            "agent.path.seeded.foo": "/src:~/foo",
+            "agent.path.seeded.bar": "/abs:/home/agent/bar",
         }
 
     def test_no_seed_keys_returns_empty(self, tmp_path):
         p = tmp_path / "kanibako.yaml"
-        p.write_text('box_image: "x"\ncrab:\n  model: "sonnet"\n')
+        p.write_text('box_image: "x"\nagent:\n  model: "sonnet"\n')
         assert read_seeds(p) == {}
 
     def test_none_path_returns_empty(self):
@@ -982,7 +982,7 @@ class TestReadSeeds:
         p = tmp_path / "kanibako.yaml"
         p.write_text(
             'box_image: "img"\n'
-            "crab:\n"
+            "agent:\n"
             '  model: "haiku"\n'
             "  path:\n    share_ro:\n"
             '      docs: "/host/docs:/srv/docs"\n'
@@ -998,8 +998,8 @@ class TestReadSeeds:
     def test_suppression_empty_value_returned(self, tmp_path):
         """An explicit '' is preserved so the resolver can see the suppression."""
         p = tmp_path / "project.yaml"
-        p.write_text('crab:\n  path:\n    seeded:\n      foo: ""\n')
-        assert read_seeds(p) == {"crab.path.seeded.foo": ""}
+        p.write_text('agent:\n  path:\n    seeded:\n      foo: ""\n')
+        assert read_seeds(p) == {"agent.path.seeded.foo": ""}
 
     def test_unreadable_toml_returns_empty(self, tmp_path):
         p = tmp_path / "bad.yaml"

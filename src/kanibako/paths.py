@@ -256,7 +256,7 @@ def resolve_system_paths(
     :data:`SYSTEM_PATH_DEFAULTS`.
     """
     ctx = ResolveCtx(
-        crab_name=None,
+        agent_name=None,
         workset_name=None,
         host_home=str(home),
         xdg={"XDG_DATA_HOME": str(data_home)},

@@ -12,7 +12,7 @@ module consumes.
 Precedence model (the design's "unset ≠ '' " distinction)
 ---------------------------------------------------------
 :func:`resolve_value` walks the levels ordered MOST-SPECIFIC-FIRST
-(``[box, workset, crab, system]``):
+(``[box, workset, agent, system]``):
 
 * **Explicit set values beat all declared defaults**, regardless of level.
 * Among set values, the **most-specific** level wins.
@@ -67,7 +67,7 @@ class ResolveCtx:
     The dataclass is frozen; do not mutate *xdg* in place.
     """
 
-    crab_name: str | None
+    agent_name: str | None
     workset_name: str | None
     host_home: str
     xdg: dict[str, str]
@@ -178,8 +178,8 @@ def expand_expr(
     * **``~``:** ONLY when it is the FIRST character of *expr*.  Expands to
       ``ctx.host_home`` (``space=="host"``) or :data:`GUEST_HOME`
       (``space=="guest"``).  A ``~`` elsewhere is literal.
-    * **``$VAR`` / ``${VAR}``:** name = ``[A-Za-z_][A-Za-z0-9_]*``.  ``CRAB`` →
-      ``ctx.crab_name``, ``WORKSET`` → ``ctx.workset_name``, ``XDG_*`` →
+    * **``$VAR`` / ``${VAR}``:** name = ``[A-Za-z_][A-Za-z0-9_]*``.  ``AGENT`` →
+      ``ctx.agent_name``, ``WORKSET`` → ``ctx.workset_name``, ``XDG_*`` →
       ``ctx.xdg[name]``.  Unknown names, or known names whose context value is
       ``None``/missing, raise :class:`SettingsError`.
     * **``@``-ref:** ``@`` then a dotted name ``[A-Za-z0-9_]+(\\.[...])*``.  The
@@ -239,10 +239,10 @@ def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]:
 
 def _resolve_var(name: str, ctx: ResolveCtx) -> str:
     """Resolve a variable name against the context namespace."""
-    if name == "CRAB":
-        if ctx.crab_name is None:
-            raise SettingsError("Variable $CRAB is not set in this context.")
-        return ctx.crab_name
+    if name == "AGENT":
+        if ctx.agent_name is None:
+            raise SettingsError("Variable $AGENT is not set in this context.")
+        return ctx.agent_name
     if name == "WORKSET":
         if ctx.workset_name is None:
             raise SettingsError("Variable $WORKSET is not set in this context.")

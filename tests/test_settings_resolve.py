@@ -22,13 +22,13 @@ HOST_HOME = "/home/u"
 
 def make_ctx(
     *,
-    crab_name: str | None = "mycrab",
+    agent_name: str | None = "myagent",
     workset_name: str | None = "myws",
     host_home: str = HOST_HOME,
     xdg: dict[str, str] | None = None,
 ) -> ResolveCtx:
     return ResolveCtx(
-        crab_name=crab_name,
+        agent_name=agent_name,
         workset_name=workset_name,
         host_home=host_home,
         xdg=xdg if xdg is not None else {"XDG_DATA_HOME": "/home/u/.local/share"},
@@ -103,8 +103,8 @@ def test_expand_xdg_var() -> None:
     )
 
 
-def test_expand_crab_var() -> None:
-    assert expand_expr("$CRAB", space="host", ctx=make_ctx(), lookup=no_lookup) == "mycrab"
+def test_expand_agent_var() -> None:
+    assert expand_expr("$AGENT", space="host", ctx=make_ctx(), lookup=no_lookup) == "myagent"
 
 
 def test_expand_braced_workset_var() -> None:
@@ -192,9 +192,9 @@ def test_expand_ref_ends_at_nonname_char() -> None:
 def test_expand_substituted_value_is_leaf() -> None:
     # A returned value containing $ / @ is NOT re-scanned.
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        return "$CRAB@b"
+        return "$AGENT@b"
 
-    assert expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup) == "$CRAB@b"
+    assert expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup) == "$AGENT@b"
 
 
 def test_expand_escaped_dollar_and_backslash() -> None:
@@ -214,9 +214,9 @@ def test_expand_unknown_var_raises() -> None:
         expand_expr("$FOO", space="host", ctx=make_ctx(), lookup=no_lookup)
 
 
-def test_expand_crab_none_raises() -> None:
-    with pytest.raises(SettingsError, match="CRAB"):
-        expand_expr("$CRAB", space="host", ctx=make_ctx(crab_name=None), lookup=no_lookup)
+def test_expand_agent_none_raises() -> None:
+    with pytest.raises(SettingsError, match="AGENT"):
+        expand_expr("$AGENT", space="host", ctx=make_ctx(agent_name=None), lookup=no_lookup)
 
 
 def test_expand_workset_none_raises() -> None:
@@ -261,8 +261,8 @@ def test_expand_depth_cap_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _levels(box=None, workset=None, crab=None, system=None):
-    """Build [box, workset, crab, system], each (values, defaults)."""
+def _levels(box=None, workset=None, agent=None, system=None):
+    """Build [box, workset, agent, system], each (values, defaults)."""
     def lv(name, spec):
         values, defaults = spec if spec else ({}, {})
         return LevelView(name=name, values=values, defaults=defaults)
@@ -270,7 +270,7 @@ def _levels(box=None, workset=None, crab=None, system=None):
     return [
         lv("box", box),
         lv("workset", workset),
-        lv("crab", crab),
+        lv("agent", agent),
         lv("system", system),
     ]
 
@@ -300,8 +300,8 @@ def test_resolve_set_value_beats_default_across_levels() -> None:
 
 
 def test_resolve_terminal_empty_at_box() -> None:
-    # box="" is terminal; does NOT fall to crab default.
-    levels = _levels(box=({"k": ""}, {}), crab=({}, {"k": "crabdefault"}))
+    # box="" is terminal; does NOT fall to agent default.
+    levels = _levels(box=({"k": ""}, {}), agent=({}, {"k": "agentdefault"}))
     res = _rv("k", levels)
     assert isinstance(res, ResolvedValue)
     assert res.value == ""

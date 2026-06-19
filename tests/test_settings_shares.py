@@ -21,13 +21,13 @@ HOST_HOME = "/home/u"
 
 def make_ctx(
     *,
-    crab_name: str | None = "claude",
+    agent_name: str | None = "claude",
     workset_name: str | None = "myws",
     host_home: str = HOST_HOME,
     xdg: dict[str, str] | None = None,
 ) -> ResolveCtx:
     return ResolveCtx(
-        crab_name=crab_name,
+        agent_name=agent_name,
         workset_name=workset_name,
         host_home=host_home,
         xdg=xdg if xdg is not None else {"XDG_DATA_HOME": "/data"},
@@ -66,7 +66,7 @@ class TestSingleShare:
         levels = [
             LevelView("box", {"box.path.share_rw.work": "/host/data:~/data"}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView("system", {}),
         ]
         mounts = _resolve(levels, ctx)
@@ -103,7 +103,7 @@ class TestAccumulationAndPrecedence:
         levels = [
             LevelView("box", {"box.path.share_rw.b": "/hb:/gb"}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView(
                 "system", {"system.path.share_rw.a": "/ha:/ga"},
             ),
@@ -120,7 +120,7 @@ class TestAccumulationAndPrecedence:
         levels = [
             LevelView("box", {"system.path.share_rw.foo": "/box/src:/g"}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView("system", {"system.path.share_rw.foo": "/sys/src:/g"}),
         ]
         mounts = _resolve(levels, ctx)
@@ -135,7 +135,7 @@ class TestAccumulationAndPrecedence:
         levels = [
             LevelView("box", {"system.path.share_rw.foo": ""}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView(
                 "system",
                 {
@@ -155,41 +155,41 @@ class TestAccumulationAndPrecedence:
 
 
 class TestRootJoin:
-    def test_crab_scope_root_join(self):
-        """The Claude-relocation shape: crab share joined under crabs/$CRAB/share."""
-        ctx = make_ctx(crab_name="claude")
+    def test_agent_scope_root_join(self):
+        """The Claude-relocation shape: agent share joined under agents/$AGENT/share."""
+        ctx = make_ctx(agent_name="claude")
         levels = [
             LevelView("box", {}),
             LevelView("workset", {}),
             LevelView(
-                "crab",
-                {"crab.path.share_rw.plugins": "plugins:~/.claude/plugins"},
+                "agent",
+                {"agent.path.share_rw.plugins": "plugins:~/.claude/plugins"},
             ),
             LevelView(
                 "system",
                 {},
-                defaults={"system.path.crabs": "/data/crabs"},
+                defaults={"system.path.agents": "/data/agents"},
             ),
         ]
-        scope_roots = {"crab.path.share_rw": "@system.path.crabs/$CRAB/share"}
+        scope_roots = {"agent.path.share_rw": "@system.path.agents/$AGENT/share"}
         mounts = _resolve(levels, ctx, scope_roots=scope_roots)
         assert len(mounts) == 1
         m = mounts[0]
-        assert m.source == Path("/data/crabs/claude/share/plugins")
+        assert m.source == Path("/data/agents/claude/share/plugins")
         assert m.destination == "/home/agent/.claude/plugins"
         assert m.options == "Z,U"
 
     def test_absolute_host_src_not_joined(self):
         """An absolute host_src bypasses the root even when one exists."""
-        ctx = make_ctx(crab_name="claude")
+        ctx = make_ctx(agent_name="claude")
         levels = [
             LevelView(
-                "crab",
-                {"crab.path.share_rw.x": "/abs/path:~/x"},
+                "agent",
+                {"agent.path.share_rw.x": "/abs/path:~/x"},
             ),
-            LevelView("system", {}, defaults={"system.path.crabs": "/data/crabs"}),
+            LevelView("system", {}, defaults={"system.path.agents": "/data/agents"}),
         ]
-        scope_roots = {"crab.path.share_rw": "@system.path.crabs/$CRAB/share"}
+        scope_roots = {"agent.path.share_rw": "@system.path.agents/$AGENT/share"}
         mounts = _resolve(levels, ctx, scope_roots=scope_roots)
         assert len(mounts) == 1
         assert mounts[0].source == Path("/abs/path")
@@ -201,13 +201,13 @@ class TestRootJoin:
             LevelView("box", {"box.path.share_rw.x": "rel/dir:~/x"}),
         ]
         # box group not in scope_roots.
-        mounts = _resolve(levels, ctx, scope_roots={"crab.path.share_rw": "/r"})
+        mounts = _resolve(levels, ctx, scope_roots={"agent.path.share_rw": "/r"})
         assert mounts[0].source == Path("rel/dir")
 
     def test_empty_root_no_join(self):
         ctx = make_ctx()
-        levels = [LevelView("crab", {"crab.path.share_rw.x": "rel:~/x"})]
-        mounts = _resolve(levels, ctx, scope_roots={"crab.path.share_rw": ""})
+        levels = [LevelView("agent", {"agent.path.share_rw.x": "rel:~/x"})]
+        mounts = _resolve(levels, ctx, scope_roots={"agent.path.share_rw": ""})
         assert mounts[0].source == Path("rel")
 
 
@@ -265,9 +265,9 @@ class TestDiscovery:
         levels = [
             LevelView("box", {}),
             LevelView(
-                "crab",
+                "agent",
                 {},
-                defaults={"crab.path.share_ro.cfg": "/host/cfg:/g/cfg"},
+                defaults={"agent.path.share_ro.cfg": "/host/cfg:/g/cfg"},
             ),
             LevelView("system", {}),
         ]
@@ -306,13 +306,13 @@ class TestOrdering:
 
 
 class TestMachineLevel:
-    """A 5-level stack [box, workset, crab, system, machine] (machine least-specific)."""
+    """A 5-level stack [box, workset, agent, system, machine] (machine least-specific)."""
 
     def _levels(self, box=None, system=None, machine=None, floor=None):
         return [
             LevelView("box", box or {}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView("system", system or {}),
             LevelView("machine", machine or {}, defaults=floor or {}),
         ]
@@ -372,7 +372,7 @@ class TestMachineLevel:
 class TestIsShareKey:
     def test_true_for_each_scope_and_mode(self):
         assert is_share_key("system.path.share_ro.foo")
-        assert is_share_key("crab.path.share_rw.bar")
+        assert is_share_key("agent.path.share_rw.bar")
         assert is_share_key("workset.path.share_ro.x")
         assert is_share_key("box.path.share_rw.y")
         # Dotted name is allowed (greedy remainder).
@@ -380,7 +380,7 @@ class TestIsShareKey:
 
     def test_false_for_non_share_keys(self):
         assert not is_share_key("system.path.data")
-        assert not is_share_key("crab.model")
+        assert not is_share_key("agent.model")
         assert not is_share_key("box.image")
         assert not is_share_key("nope.path.share_rw.foo")
         assert not is_share_key("system.path.share_xx.foo")

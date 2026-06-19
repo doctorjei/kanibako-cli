@@ -1772,7 +1772,7 @@ class TestBuildShareMounts:
         return _build_share_mounts(
             std=std or self._std(tmp_path),
             proj=proj or self._proj(),
-            crab_name="claude",
+            agent_name="claude",
             global_config_path=global_config_path,
             project_toml=project_toml,
             workset_config_path=workset_config_path,
@@ -1783,7 +1783,7 @@ class TestBuildShareMounts:
     def test_empty_config_returns_empty(self, tmp_path):
         """No share keys anywhere → no mounts (the no-behavior-change guarantee)."""
         glob = tmp_path / "kanibako.yaml"
-        glob.write_text('box_image: "img"\ncrab:\n  model: "sonnet"\n')
+        glob.write_text('box_image: "img"\nagent:\n  model: "sonnet"\n')
         ptoml = tmp_path / "project.yaml"
         ptoml.write_text('box:\n  image: "x"\n')
         mounts = self._call(
@@ -1827,14 +1827,14 @@ class TestBuildShareMounts:
         )
         assert mounts == []
 
-    def test_crab_scope_root_join(self, tmp_path):
-        """A relative crab share joins under std.agents/<crab>/share."""
-        crab_cfg = tmp_path / "claude.yaml"
-        crab_cfg.write_text(
-            'crab:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
+    def test_agent_scope_root_join(self, tmp_path):
+        """A relative agent share joins under std.agents/<agent>/share."""
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            'agent:\n  path:\n    share_rw:\n      plugins: "plugins:~/.claude/plugins"\n'
         )
         std = self._std(tmp_path)
-        mounts = self._call(tmp_path, std=std, crab_config_path=crab_cfg)
+        mounts = self._call(tmp_path, std=std, crab_config_path=agent_cfg)
         assert len(mounts) == 1
         m = mounts[0]
         assert m.source == std.agents / "claude" / "share" / "plugins"
@@ -1883,7 +1883,7 @@ class TestBuildShareMounts:
         return SimpleNamespace(
             name="claude",
             default_shares=lambda: {
-                "crab.path.share_rw.plugins": "plugins:~/.claude/plugins"
+                "agent.path.share_rw.plugins": "plugins:~/.claude/plugins"
             },
         )
 
@@ -1903,7 +1903,7 @@ class TestBuildShareMounts:
     def test_target_default_share_suppressed_by_box(self, tmp_path):
         """A box-level '' overrides/suppresses the target-declared default share."""
         ptoml = tmp_path / "project.yaml"
-        ptoml.write_text('crab:\n  path:\n    share_rw:\n      plugins: ""\n')
+        ptoml.write_text('agent:\n  path:\n    share_rw:\n      plugins: ""\n')
         mounts = self._call(
             tmp_path, project_toml=ptoml, target=self._claude_target(),
         )
@@ -1951,7 +1951,7 @@ class TestApplyInitSeeds:
         _apply_init_seeds(
             std=std or self._std(tmp_path),
             proj=proj,
-            crab_name="claude",
+            agent_name="claude",
             target=target,
             global_config_path=global_config_path,
             project_toml=project_toml,
@@ -1964,7 +1964,7 @@ class TestApplyInitSeeds:
         """No seed config and target=None → nothing copied (no behavior change)."""
         shell = self._shell(tmp_path)
         glob = tmp_path / "kanibako.yaml"
-        glob.write_text('box_image: "img"\ncrab:\n  model: "sonnet"\n')
+        glob.write_text('box_image: "img"\nagent:\n  model: "sonnet"\n')
         self._call(
             tmp_path,
             proj=self._proj(shell),
@@ -1973,20 +1973,20 @@ class TestApplyInitSeeds:
         )
         assert list(shell.iterdir()) == []
 
-    def test_configured_crab_seed_copied(self, tmp_path):
-        """A crab-config seed copies host_src dir into shell_path/<dest>."""
+    def test_configured_agent_seed_copied(self, tmp_path):
+        """An agent-config seed copies host_src dir into shell_path/<dest>."""
         shell = self._shell(tmp_path)
         src = tmp_path / "src"
         src.mkdir()
         (src / "file.txt").write_text("hello")
-        crab_cfg = tmp_path / "claude.yaml"
-        crab_cfg.write_text(
-            f'crab:\n  path:\n    seeded:\n      foo: "{src}:~/foo"\n'
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  path:\n    seeded:\n      foo: "{src}:~/foo"\n'
         )
         self._call(
             tmp_path,
             proj=self._proj(shell),
-            crab_config_path=crab_cfg,
+            crab_config_path=agent_cfg,
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
@@ -1999,7 +1999,7 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
+            default_seeds=lambda: {"agent.path.seeded.x": f"{src}:~/x"},
         )
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
@@ -2013,10 +2013,10 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"crab.path.seeded.x": f"{src}:~/x"},
+            default_seeds=lambda: {"agent.path.seeded.x": f"{src}:~/x"},
         )
         ptoml = tmp_path / "project.yaml"
-        ptoml.write_text('crab:\n  path:\n    seeded:\n      x: ""\n')
+        ptoml.write_text('agent:\n  path:\n    seeded:\n      x: ""\n')
         self._call(
             tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
         )
@@ -2028,22 +2028,22 @@ class TestApplyInitSeeds:
         src = tmp_path / "hsrc"
         src.mkdir()
         (src / "root_file.txt").write_text("top")
-        crab_cfg = tmp_path / "claude.yaml"
-        crab_cfg.write_text(
-            f'crab:\n  path:\n    seeded:\n      home: "{src}:~/"\n'
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  path:\n    seeded:\n      home: "{src}:~/"\n'
         )
-        self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
+        self._call(tmp_path, proj=self._proj(shell), crab_config_path=agent_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
 
     def test_missing_host_src_skipped(self, tmp_path):
         """A seed whose host_src does not exist is skipped (no crash, no copy)."""
         shell = self._shell(tmp_path)
         missing = tmp_path / "does_not_exist"
-        crab_cfg = tmp_path / "claude.yaml"
-        crab_cfg.write_text(
-            f'crab:\n  path:\n    seeded:\n      gone: "{missing}:~/gone"\n'
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  path:\n    seeded:\n      gone: "{missing}:~/gone"\n'
         )
-        self._call(tmp_path, proj=self._proj(shell), crab_config_path=crab_cfg)
+        self._call(tmp_path, proj=self._proj(shell), crab_config_path=agent_cfg)
         assert not (shell / "gone").exists()
         assert list(shell.iterdir()) == []
 

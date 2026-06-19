@@ -19,13 +19,13 @@ HOST_HOME = "/home/u"
 
 def make_ctx(
     *,
-    crab_name: str | None = "claude",
+    agent_name: str | None = "claude",
     workset_name: str | None = "myws",
     host_home: str = HOST_HOME,
     xdg: dict[str, str] | None = None,
 ) -> ResolveCtx:
     return ResolveCtx(
-        crab_name=crab_name,
+        agent_name=agent_name,
         workset_name=workset_name,
         host_home=host_home,
         xdg=xdg if xdg is not None else {"XDG_DATA_HOME": "/data"},
@@ -57,12 +57,12 @@ def _resolve(levels, ctx):
 
 
 class TestSingleSeed:
-    def test_crab_scope_seed(self):
+    def test_agent_scope_seed(self):
         ctx = make_ctx()
         levels = [
             LevelView("box", {}),
             LevelView("workset", {}),
-            LevelView("crab", {"crab.path.seeded.shell": "/tmpl/std:~/"}),
+            LevelView("agent", {"agent.path.seeded.shell": "/tmpl/std:~/"}),
             LevelView("system", {}),
         ]
         seeds = _resolve(levels, ctx)
@@ -72,7 +72,7 @@ class TestSingleSeed:
         # Whatever expand_expr("~/", space="guest") yields — guest home + "/".
         assert s.guest_dest == expand_expr("~/", space="guest", ctx=ctx, lookup=make_lookup(levels, ctx))
         assert s.guest_dest == "/home/agent/"
-        assert s.scope == "crab"
+        assert s.scope == "agent"
         assert s.name == "shell"
 
     def test_empty_config_returns_empty(self):
@@ -97,12 +97,12 @@ class TestExpansion:
 
     def test_ref_in_host_src(self):
         """An @-ref in host_src resolves via lookup against the levels."""
-        ctx = make_ctx(crab_name="claude")
+        ctx = make_ctx(agent_name="claude")
         levels = [
             LevelView(
                 "box",
                 {
-                    "box.path.seeded.t": "@system.path.data/templates/$CRAB/standard:~/",
+                    "box.path.seeded.t": "@system.path.data/templates/$AGENT/standard:~/",
                 },
             ),
             LevelView("system", {}, defaults={"system.path.data": "/data"}),
@@ -120,26 +120,26 @@ class TestExpansion:
 
 class TestAccumulationAndPrecedence:
     def test_two_keys_accumulate_in_apply_order(self):
-        """Distinct seeds at different scopes accumulate; system before crab."""
+        """Distinct seeds at different scopes accumulate; system before agent."""
         ctx = make_ctx()
         levels = [
             LevelView("box", {}),
             LevelView("workset", {}),
-            LevelView("crab", {"crab.path.seeded.c": "/hc:/gc"}),
+            LevelView("agent", {"agent.path.seeded.c": "/hc:/gc"}),
             LevelView("system", {"system.path.seeded.s": "/hs:/gs"}),
         ]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 2
-        # Apply order: system scope first, crab scope last.
+        # Apply order: system scope first, agent scope last.
         assert seeds[0].guest_dest == "/gs"  # system.seeded.s
-        assert seeds[1].guest_dest == "/gc"  # crab.seeded.c
+        assert seeds[1].guest_dest == "/gc"  # agent.seeded.c
 
     def test_three_scopes_apply_order(self):
         ctx = make_ctx()
         levels = [
             LevelView("box", {}),
             LevelView("workset", {"workset.path.seeded.w": "/hw:/gw"}),
-            LevelView("crab", {"crab.path.seeded.c": "/hc:/gc"}),
+            LevelView("agent", {"agent.path.seeded.c": "/hc:/gc"}),
             LevelView("system", {"system.path.seeded.s": "/hs:/gs"}),
         ]
         seeds = _resolve(levels, ctx)
@@ -151,7 +151,7 @@ class TestAccumulationAndPrecedence:
         levels = [
             LevelView("box", {"system.path.seeded.foo": "/box/src:/g"}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView("system", {"system.path.seeded.foo": "/sys/src:/g"}),
         ]
         seeds = _resolve(levels, ctx)
@@ -171,7 +171,7 @@ class TestSuppression:
         levels = [
             LevelView("box", {"system.path.seeded.foo": ""}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView(
                 "system",
                 {
@@ -189,7 +189,7 @@ class TestSuppression:
         ctx = make_ctx()
         levels = [
             LevelView("box", {"box.path.seeded.x": "empty"}),
-            LevelView("crab", {"crab.path.seeded.y": "/hy:/gy"}),
+            LevelView("agent", {"agent.path.seeded.y": "/hy:/gy"}),
         ]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
@@ -208,9 +208,9 @@ class TestDiscovery:
         levels = [
             LevelView("box", {}),
             LevelView(
-                "crab",
+                "agent",
                 {},
-                defaults={"crab.path.seeded.cfg": "/host/cfg:/g/cfg"},
+                defaults={"agent.path.seeded.cfg": "/host/cfg:/g/cfg"},
             ),
             LevelView("system", {}),
         ]
@@ -226,13 +226,13 @@ class TestDiscovery:
 
 
 class TestMachineLevel:
-    """A 5-level stack [box, workset, crab, system, machine] (machine least-specific)."""
+    """A 5-level stack [box, workset, agent, system, machine] (machine least-specific)."""
 
     def _levels(self, box=None, system=None, machine=None, floor=None):
         return [
             LevelView("box", box or {}),
             LevelView("workset", {}),
-            LevelView("crab", {}),
+            LevelView("agent", {}),
             LevelView("system", system or {}),
             LevelView("machine", machine or {}, defaults=floor or {}),
         ]
@@ -336,7 +336,7 @@ class TestOrdering:
 class TestIsSeedKey:
     def test_true_for_each_scope(self):
         assert is_seed_key("system.path.seeded.foo")
-        assert is_seed_key("crab.path.seeded.bar")
+        assert is_seed_key("agent.path.seeded.bar")
         assert is_seed_key("workset.path.seeded.x")
         assert is_seed_key("box.path.seeded.y")
         # Dotted name is allowed (greedy remainder).
@@ -344,7 +344,7 @@ class TestIsSeedKey:
 
     def test_false_for_non_seed_keys(self):
         assert not is_seed_key("system.path.data")
-        assert not is_seed_key("crab.model")
+        assert not is_seed_key("agent.model")
         assert not is_seed_key("box.image")
         assert not is_seed_key("nope.path.seeded.foo")
         assert not is_seed_key("system.path.share_rw.foo")
