@@ -1023,7 +1023,7 @@ def run_config(args: argparse.Namespace) -> int:
         workset_path = (
             (proj.group.root / "config.yaml") if proj.group is not None else None
         )
-        crab_state = None
+        agent_state = None
         env_resolved = None
         if args.effective:
             from kanibako.config import load_merged_config
@@ -1050,7 +1050,7 @@ def run_config(args: argparse.Namespace) -> int:
             else:
                 crab_cfg = None
             if target is not None and crab_cfg is not None:
-                crab_state = _build_effective_state(
+                agent_state = _build_effective_state(
                     target, crab_cfg, project_toml,
                     global_config_path=config_file,
                     workset_config_path=workset_path,
@@ -1073,7 +1073,7 @@ def run_config(args: argparse.Namespace) -> int:
             env_project=env_project,
             effective=args.effective,
             workset_path=workset_path,
-            crab_state=crab_state,
+            agent_state=agent_state,
             env_resolved=env_resolved,
         )
 

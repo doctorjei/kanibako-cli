@@ -1036,8 +1036,8 @@ def _run_container(
                     if proj.global_shared_path
                     else None
                 )
-                # Per-agent binding host-source overrides (crab.<name>.binding.<key>
-                # layered over crab.default.binding) resolved across the config
+                # Per-agent binding host-source overrides (agent.<name>.binding.<key>
+                # layered over agent.default.binding) resolved across the config
                 # cascade; an override redirects (and always wins for) a binding's
                 # host source.
                 binding_overrides = _build_binding_overrides(
@@ -1609,7 +1609,7 @@ def _build_effective_state(
     to box > crab > floor, i.e. project override > crab state > target default —
     identical to the prior two-source merge.
     """
-    from kanibako.config import machine_config_path, read_crab_settings
+    from kanibako.config import machine_config_path, read_agent_settings
     from kanibako.settings_resolve import (
         LevelView,
         ResolveCtx,
@@ -1628,9 +1628,9 @@ def _build_effective_state(
         try:
             if not path.exists():
                 return {}
-            # Agent-keyed: read crab.<agent>.* layered over crab.default.* so an
+            # Agent-keyed: read agent.<agent>.* layered over agent.default.* so an
             # override set for one agent never bleeds onto another after a switch.
-            return read_crab_settings(path, target.name)
+            return read_agent_settings(path, target.name)
         except Exception:
             return {}
 
@@ -1691,8 +1691,8 @@ def _build_binding_overrides(
 ) -> dict[str, str]:
     """Resolve descriptor binding host-source overrides across the config cascade.
 
-    Reads each config level's ``crab.<agent_name>.binding`` sub-table (layered
-    over ``crab.default.binding`` within each file) via
+    Reads each config level's ``agent.<agent_name>.binding`` sub-table (layered
+    over ``agent.default.binding`` within each file) via
     :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
     then overlays the levels MOST-SPECIFIC-WINS:
 

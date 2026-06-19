@@ -711,7 +711,7 @@ class TestPluginsBinding:
             assert self._plugins_mounts(m) == []
 
     def test_agent_override_redirects_source(self, start_mocks, tmp_path):
-        """(b) crab.<name>.binding.plugins redirects the host source."""
+        """(b) agent.<name>.binding.plugins redirects the host source."""
         from kanibako.config import dump_doc
         with start_mocks() as m:
             self._drive(m)
@@ -722,7 +722,7 @@ class TestPluginsBinding:
             override = tmp_path / "custom-plugins"
             dump_doc(
                 meta / "project.yaml",
-                {"crab": {"claude": {"binding": {"plugins": str(override)}}}},
+                {"agent": {"claude": {"binding": {"plugins": str(override)}}}},
             )
             self._launch()
             pm = self._plugins_mounts(m)
@@ -731,7 +731,7 @@ class TestPluginsBinding:
             assert override.is_dir()  # override source pre-created best-effort
 
     def test_default_tier_override_applies(self, start_mocks, tmp_path):
-        """(c) crab.default.binding.plugins applies when no agent-specific
+        """(c) agent.default.binding.plugins applies when no agent-specific
         override is present."""
         from kanibako.config import dump_doc
         with start_mocks() as m:
@@ -743,7 +743,7 @@ class TestPluginsBinding:
             override = tmp_path / "default-plugins"
             dump_doc(
                 meta / "project.yaml",
-                {"crab": {"default": {"binding": {"plugins": str(override)}}}},
+                {"agent": {"default": {"binding": {"plugins": str(override)}}}},
             )
             self._launch()
             pm = self._plugins_mounts(m)

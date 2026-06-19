@@ -238,7 +238,7 @@ def resolve_binding_source(
 ) -> Path | None:
     """Resolve a binding's host source path (no existence check here).
 
-    A non-empty *override* (a user cascade value, ``crab.<name>.binding.<key>``)
+    A non-empty *override* (a user cascade value, ``agent.<name>.binding.<key>``)
     always wins and is returned as ``Path(override)``.  Otherwise the source is
     derived from ``binding.origin``:
 

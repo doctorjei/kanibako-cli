@@ -15,14 +15,14 @@ from kanibako.config import (
     read_resource_overrides,
     read_seeds,
     read_shares,
-    read_crab_settings,
+    read_agent_settings,
     remove_resource_override,
-    remove_crab_setting,
+    remove_agent_setting,
     write_global_config,
     write_project_config,
     write_project_meta,
     write_resource_override,
-    write_crab_setting,
+    write_agent_setting,
 )
 
 
@@ -726,24 +726,24 @@ class TestTargetSettings:
         """Write and read back agent-keyed target settings."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet", "claude")
-        write_crab_setting(p, "access", "permissive", "claude")
+        write_agent_setting(p, "model", "sonnet", "claude")
+        write_agent_setting(p, "access", "permissive", "claude")
 
-        settings = read_crab_settings(p, "claude")
+        settings = read_agent_settings(p, "claude")
         assert settings == {"model": "sonnet", "access": "permissive"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """project.yaml without a [crab] section returns empty dict."""
+        """project.yaml without a [agent] section returns empty dict."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
-        settings = read_crab_settings(p, "claude")
+        settings = read_agent_settings(p, "claude")
         assert settings == {}
 
     def test_flat_legacy_crab_treated_as_unset(self, tmp_path):
-        """A legacy FLAT [crab] table (scalars, no per-agent dicts) is ignored.
+        """A legacy FLAT [agent] table (scalars, no per-agent dicts) is ignored.
 
-        Pass 1 does NOT migrate; only nested crab.<agent>/crab.default tiers
+        Pass 1 does NOT migrate; only nested agent.<agent>/agent.default tiers
         are honored, so a hand-edited flat shape reads as empty.
         """
         from kanibako.config import dump_doc, load_doc
@@ -751,64 +751,64 @@ class TestTargetSettings:
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
         data = load_doc(p)
-        data["crab"] = {"model": "sonnet"}  # flat scalar — old shape
+        data["agent"] = {"model": "sonnet"}  # flat scalar — old shape
         dump_doc(p, data)
 
-        assert read_crab_settings(p, "claude") == {}
+        assert read_agent_settings(p, "claude") == {}
 
     def test_default_tier_applies_to_any_agent(self, tmp_path):
-        """crab.default values apply to every agent unless overridden."""
+        """agent.default values apply to every agent unless overridden."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet", "default")
+        write_agent_setting(p, "model", "sonnet", "default")
 
-        assert read_crab_settings(p, "claude") == {"model": "sonnet"}
-        assert read_crab_settings(p, "goose") == {"model": "sonnet"}
+        assert read_agent_settings(p, "claude") == {"model": "sonnet"}
+        assert read_agent_settings(p, "goose") == {"model": "sonnet"}
 
     def test_agent_specific_wins_over_default(self, tmp_path):
-        """crab.<agent> overrides crab.default within one file."""
+        """agent.<agent> overrides agent.default within one file."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet", "default")
-        write_crab_setting(p, "model", "opus", "claude")
+        write_agent_setting(p, "model", "sonnet", "default")
+        write_agent_setting(p, "model", "opus", "claude")
 
-        assert read_crab_settings(p, "claude") == {"model": "opus"}
+        assert read_agent_settings(p, "claude") == {"model": "opus"}
         # A different agent still gets the default tier.
-        assert read_crab_settings(p, "goose") == {"model": "sonnet"}
+        assert read_agent_settings(p, "goose") == {"model": "sonnet"}
 
     def test_no_bleed_across_agents(self, tmp_path):
         """An override set for one agent does NOT bleed onto another (B3 bug)."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet", "claude")
+        write_agent_setting(p, "model", "sonnet", "claude")
 
-        assert read_crab_settings(p, "claude") == {"model": "sonnet"}
-        assert read_crab_settings(p, "goose") == {}
+        assert read_agent_settings(p, "claude") == {"model": "sonnet"}
+        assert read_agent_settings(p, "goose") == {}
 
     def test_remove_setting(self, tmp_path):
-        """remove_crab_setting removes a single agent-keyed setting."""
+        """remove_agent_setting removes a single agent-keyed setting."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "sonnet", "claude")
-        write_crab_setting(p, "access", "permissive", "claude")
+        write_agent_setting(p, "model", "sonnet", "claude")
+        write_agent_setting(p, "access", "permissive", "claude")
 
-        assert remove_crab_setting(p, "model", "claude") is True
-        settings = read_crab_settings(p, "claude")
+        assert remove_agent_setting(p, "model", "claude") is True
+        settings = read_agent_settings(p, "claude")
         assert "model" not in settings
         assert "access" in settings
 
     def test_remove_nonexistent(self, tmp_path):
-        """remove_crab_setting returns False for missing key."""
+        """remove_agent_setting returns False for missing key."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
 
-        assert remove_crab_setting(p, "nonexistent", "claude") is False
+        assert remove_agent_setting(p, "nonexistent", "claude") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
         p = tmp_path / "project.yaml"
         self._write_base_toml(p)
-        write_crab_setting(p, "model", "haiku", "claude")
+        write_agent_setting(p, "model", "haiku", "claude")
 
         # Project metadata should still be intact.
         meta = read_project_meta(p)
@@ -818,12 +818,12 @@ class TestTargetSettings:
 
 class TestReadBindingOverrides:
     """Phase 1h: agent-keyed descriptor binding host-source overrides
-    (crab.<agent>.binding.<key>, layered over crab.default.binding)."""
+    (agent.<agent>.binding.<key>, layered over agent.default.binding)."""
 
-    def _write(self, path, crab):
+    def _write(self, path, agent):
         from kanibako.config import dump_doc
 
-        dump_doc(path, {"crab": crab})
+        dump_doc(path, {"agent": agent})
 
     def test_absent_returns_empty(self, tmp_path):
         from kanibako.config import read_binding_overrides
