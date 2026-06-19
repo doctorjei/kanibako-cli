@@ -688,7 +688,7 @@ def _run_container(
         except KeyError as e:
             print(
                 f"Error: {e}\n"
-                f"Run 'kanibako crab list' to see available agents, or\n"
+                f"Run 'kanibako agent list' to see available agents, or\n"
                 f"'kanibako system diagnose' for a full health check.",
                 file=sys.stderr,
             )
@@ -849,7 +849,7 @@ def _run_container(
             _apply_init_seeds(
                 std=std, proj=proj, agent_name=agent_id, target=target,
                 global_config_path=config_file, project_toml=project_toml,
-                workset_config_path=workset_path, crab_config_path=agent_cfg_path,
+                workset_config_path=workset_path, agent_config_path=agent_cfg_path,
                 logger=logger,
             )
 
@@ -914,7 +914,7 @@ def _run_container(
             if not target.check_auth():
                 print(
                     "Error: Authentication failed.\n"
-                    "  Re-authenticate:  kanibako crab reauth\n"
+                    "  Re-authenticate:  kanibako agent reauth\n"
                     "  Skip agent:       kanibako shell",
                     file=sys.stderr,
                 )
@@ -1043,7 +1043,7 @@ def _run_container(
                 binding_overrides = _build_binding_overrides(
                     project_toml=project_toml,
                     workset_config_path=workset_path,
-                    crab_config_path=agent_cfg_path,
+                    agent_config_path=agent_cfg_path,
                     global_config_path=config_file,
                     agent_name=agent_id,
                 )
@@ -1155,7 +1155,7 @@ def _run_container(
             global_config_path=config_file,
             project_toml=project_toml,
             workset_config_path=workset_path,
-            crab_config_path=agent_cfg_path,
+            agent_config_path=agent_cfg_path,
             target=target,
         )
         extra_mounts.extend(share_mounts)
@@ -1685,7 +1685,7 @@ def _build_binding_overrides(
     *,
     project_toml,
     workset_config_path,
-    crab_config_path,
+    agent_config_path,
     global_config_path,
     agent_name: str,
 ) -> dict[str, str]:
@@ -1709,7 +1709,7 @@ def _build_binding_overrides(
     for path in (
         machine_config_path(),
         global_config_path,
-        crab_config_path,
+        agent_config_path,
         workset_config_path,
         project_toml,
     ):
@@ -1726,7 +1726,7 @@ def _apply_init_seeds(
     global_config_path,
     project_toml,
     workset_config_path,
-    crab_config_path,
+    agent_config_path,
     logger,
 ) -> None:
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
@@ -1756,7 +1756,7 @@ def _apply_init_seeds(
     levels = [
         LevelView("box", read_seeds(project_toml)),
         LevelView("workset", read_seeds(workset_config_path)),
-        LevelView("agent", read_seeds(crab_config_path), defaults=default_seeds),
+        LevelView("agent", read_seeds(agent_config_path), defaults=default_seeds),
         LevelView("system", read_seeds(global_config_path)),
         LevelView("machine", read_seeds(machine_config_path())),
     ]
@@ -1827,7 +1827,7 @@ def _build_share_mounts(
     global_config_path,
     project_toml,
     workset_config_path,
-    crab_config_path,
+    agent_config_path,
     target=None,
 ) -> list:
     """Resolve scoped-share config ({scope}.path.share_{ro,rw}.*) into Mounts.
@@ -1857,7 +1857,7 @@ def _build_share_mounts(
     levels = [
         LevelView("box", read_shares(project_toml)),
         LevelView("workset", read_shares(workset_config_path)),
-        LevelView("agent", read_shares(crab_config_path), defaults=default_shares),
+        LevelView("agent", read_shares(agent_config_path), defaults=default_shares),
         LevelView("system", read_shares(global_config_path)),
         LevelView("machine", read_shares(machine_config_path())),
     ]

@@ -270,14 +270,14 @@ def start_mocks():
             runtime.run.side_effect = _run_side_effect
             m_rt_cls.return_value = runtime
 
-            # Crab config mock: empty defaults (no run_args, no state, no env)
+            # Agent config mock: empty defaults (no run_args, no state, no env)
             agent_cfg = AgentConfig()
             m_load_agent_cfg.return_value = agent_cfg
-            # start.py now derives the crab config path as std.agents / "<id>.yaml".
+            # start.py now derives the agent config path as std.agents / "<id>.yaml".
             # std is a MagicMock, so the derived path's .exists() is truthy by
             # default — which keeps the "config already present" branch.
-            mock_crab_path = m_load_std.return_value.agents.__truediv__.return_value
-            mock_crab_path.exists.return_value = True
+            mock_agent_path = m_load_std.return_value.agents.__truediv__.return_value
+            mock_agent_path.exists.return_value = True
 
             # Target mock: resolve_target returns a mock target with detect/build_cli_args/etc.
             target = MagicMock()
@@ -320,7 +320,7 @@ def start_mocks():
                 target=target,
                 agent_cfg=agent_cfg,
                 load_agent_config=m_load_agent_cfg,
-                agent_config_path=mock_crab_path,
+                agent_config_path=mock_agent_path,
                 fcntl=m_fcntl,
                 open=m_open,
                 load_registry=m_load_registry,

@@ -142,7 +142,7 @@ def run_info(args: argparse.Namespace) -> int:
         count = len(targets)
         if count > 0:
             print(
-                f"Agents:    {count} detected (use 'kanibako crab list' for details)"
+                f"Agents:    {count} detected (use 'kanibako agent list' for details)"
             )
         else:
             print(

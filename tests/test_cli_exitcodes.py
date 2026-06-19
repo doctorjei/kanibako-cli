@@ -147,8 +147,8 @@ class TestLazyInit:
         loaded = load_config(config_file)
         assert loaded.box_image == "custom:v1"
 
-    def test_crab_exempt_from_lazy_init(self):
-        """'crab' command does not trigger lazy init."""
+    def test_agent_exempt_from_lazy_init(self):
+        """'agent' command does not trigger lazy init."""
         from kanibako.cli import main
 
         with (
@@ -157,27 +157,28 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
-            args.command = "crab"
-            args.func.return_value = 0
-            mock_bp.return_value.parse_args.return_value = args
-            main(["crab"])
-        assert exc_info.value.code == 0
-        mock_init.assert_not_called()
-
-    def test_agent_alias_exempt_from_lazy_init(self):
-        """'agent' alias (translated to 'crab') does not trigger lazy init."""
-        from kanibako.cli import main
-
-        with (
-            patch("kanibako.cli.build_parser") as mock_bp,
-            patch("kanibako.cli._ensure_initialized") as mock_init,
-            pytest.raises(SystemExit) as exc_info,
-        ):
-            args = MagicMock()
-            args.command = "crab"
+            args.command = "agent"
             args.func.return_value = 0
             mock_bp.return_value.parse_args.return_value = args
             main(["agent"])
+        assert exc_info.value.code == 0
+        mock_init.assert_not_called()
+
+    def test_box_helper_exempt_from_lazy_init(self):
+        """'box helper' command does not trigger lazy init."""
+        from kanibako.cli import main
+
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._ensure_initialized") as mock_init,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "helper"
+            args.func.return_value = 0
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "helper", "list"])
         assert exc_info.value.code == 0
         mock_init.assert_not_called()
 
