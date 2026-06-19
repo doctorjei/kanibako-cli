@@ -150,7 +150,6 @@ class TestLoadStdPathsParity:
         assert std.boxes == std.data_path / "boxes"
         assert std.comms == std.channels
         assert std.templates == std.base_template
-        assert std.ws_hints == std.registry
 
     def test_deleted_share_aliases_raise(self, tmp_home, config_file):
         from kanibako.paths import load_std_paths

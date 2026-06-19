@@ -1,55 +1,57 @@
-"""Project name registry (names.yaml).
+"""Project name registry (the ``projects``/``worksets`` sections of
+``system.registry``).
 
-Central index at ``{data_path}/names.yaml`` mapping human-readable names to
-project paths (for default-mode projects) and workset roots (for worksets).
-Standalone projects are intentionally excluded — they have no central
-registration.
+Central index at ``@system.registry`` (``{data_path}/global/registry.yaml``)
+mapping human-readable names to project paths (for default-mode projects) and
+workset roots (for worksets).  Standalone projects are intentionally excluded
+here — their identity lives in the registry's ``standalone`` section (later
+sub-step), not in these two sections.
 
-The file has two sections::
+The registry holds these two sections (among others — see
+:mod:`kanibako.registry_store`)::
 
     projects:
       myapp: /home/user/projects/myapp
 
     worksets:
       clientwork: /home/user/worksets/client
+
+This module reads/writes ONLY the ``projects``/``worksets`` sections; the
+``connected``/``standalone`` sections are owned by their respective callers and
+preserved across writes by :mod:`kanibako.registry_store`.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako import registry_store
 from kanibako.errors import ProjectError
 
 
 # ---------------------------------------------------------------------------
-# I/O helpers
+# I/O helpers — back the projects/worksets sections of system.registry.
 # ---------------------------------------------------------------------------
 
-def _names_path(data_path: Path) -> Path:
-    return data_path / "names.yaml"
-
-
 def _load(data_path: Path) -> dict[str, dict[str, str]]:
-    """Load names.yaml and return raw sections."""
-    path = _names_path(data_path)
-    if not path.is_file():
-        return {"projects": {}, "worksets": {}}
-    data = load_doc(path)
+    """Load the projects/worksets sections of registry.yaml."""
+    registry = registry_store.load_registry(data_path)
     return {
-        "projects": {k: str(v) for k, v in data.get("projects", {}).items()},
-        "worksets": {k: str(v) for k, v in data.get("worksets", {}).items()},
+        "projects": dict(registry["projects"]),
+        "worksets": dict(registry["worksets"]),
     }
 
 
 def _save(data_path: Path, names: dict[str, dict[str, str]]) -> None:
-    """Write names.yaml from sections dict."""
-    path = _names_path(data_path)
-    data: dict = {}
-    for section in ("projects", "worksets"):
-        entries = names.get(section, {})
-        data[section] = {name: entries[name] for name in sorted(entries)}
-    dump_doc(path, data)
+    """Write the projects/worksets sections of registry.yaml.
+
+    Reads the full registry first so the ``connected``/``standalone`` sections
+    (owned elsewhere) are preserved.
+    """
+    registry = registry_store.load_registry(data_path)
+    registry["projects"] = dict(names.get("projects", {}))
+    registry["worksets"] = dict(names.get("worksets", {}))
+    registry_store.save_registry(data_path, registry)
 
 
 # ---------------------------------------------------------------------------

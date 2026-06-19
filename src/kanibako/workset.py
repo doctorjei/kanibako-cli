@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from kanibako import registry_store
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import WorksetError
 from kanibako.names import read_names, register_name, unregister_name
@@ -154,36 +155,24 @@ def _load_workset_toml(root: Path) -> Workset:
 
 
 # ---------------------------------------------------------------------------
-# Global registry: $XDG_DATA_HOME/kanibako/worksets.yaml
+# Global worksets registry: the ``worksets`` section of ``system.registry``.
 # ---------------------------------------------------------------------------
-
-def _registry_path(std: StandardPaths) -> Path:
-    return std.ws_hints
-
 
 def _load_registry(std: StandardPaths) -> dict[str, Path]:
     """Return ``{name: root_path}`` from the global worksets registry."""
-    path = _registry_path(std)
-    if not path.is_file():
-        return {}
-    data = load_doc(path)
-    return {
-        name: Path(root)
-        for name, root in data.get("worksets", {}).items()
-    }
+    section = registry_store.load_section(std.data_path, "workset_roots")
+    return {name: Path(root) for name, root in section.items()}
 
 
 def _write_registry(std: StandardPaths, registry: dict[str, Path]) -> None:
     """Overwrite the global worksets registry."""
-    path = _registry_path(std)
-    data: dict = {
-        "worksets": {name: str(registry[name]) for name in sorted(registry)},
-    }
-    dump_doc(path, data)
+    entries = {name: str(registry[name]) for name in sorted(registry)}
+    registry_store.save_section(std.data_path, "workset_roots", entries)
 
 
 # ---------------------------------------------------------------------------
-# Connected (external) redirect index: $XDG_DATA_HOME/kanibako/connected.yaml
+# Connected (external) redirect index: the ``connected`` section of
+# ``system.registry``.
 #
 # Maps a resolved EXTERNAL source path to its owning workset+project so that
 # launching from the external directory (or a subdir of it) resolves to the
@@ -194,26 +183,15 @@ def _write_registry(std: StandardPaths, registry: dict[str, Path]) -> None:
 #       /abs/external/repo: {workset: myws, project: foo}
 # ---------------------------------------------------------------------------
 
-def _connected_path(std: StandardPaths) -> Path:
-    return std.data_path / "connected.yaml"
-
-
 def _load_connected(std: StandardPaths) -> dict[str, dict]:
     """Return ``{abs_path: {"workset": ..., "project": ...}}`` from the index."""
-    path = _connected_path(std)
-    if not path.is_file():
-        return {}
-    data = load_doc(path)
-    return dict(data.get("connected", {}))
+    return dict(registry_store.load_section(std.data_path, "connected"))
 
 
 def _write_connected(std: StandardPaths, mapping: dict[str, dict]) -> None:
     """Overwrite the connected-external redirect index."""
-    path = _connected_path(std)
-    data: dict = {
-        "connected": {key: mapping[key] for key in sorted(mapping)},
-    }
-    dump_doc(path, data)
+    entries = {key: mapping[key] for key in sorted(mapping)}
+    registry_store.save_section(std.data_path, "connected", entries)
 
 
 def _find_connected_project(

@@ -757,9 +757,9 @@ def run_rm(args: argparse.Namespace) -> int:
     kind = "workset" if section == "worksets" else "project"
     print(f"Removing {kind}: {name} ({path})")
 
-    # Unregister from names.yaml.
+    # Unregister from the registry.
     unregister_name(std.data_path, name, section=section)
-    print(f"Removed '{name}' from names.yaml")
+    print(f"Removed '{name}' from the registry")
 
     if args.purge:
         metadata_dir = std.boxes / name
