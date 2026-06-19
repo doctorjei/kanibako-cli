@@ -632,6 +632,9 @@ def run_config(args: argparse.Namespace) -> int:
             key, value,
             config_path=ws_config,
         )
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
         print(msg)
         return 0
 

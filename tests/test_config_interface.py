@@ -529,3 +529,129 @@ class TestConfigLevel:
         assert ConfigLevel.workset.value == "workset"
         assert ConfigLevel.agent.value == "agent"
         assert ConfigLevel.system.value == "system"
+
+
+# ---------------------------------------------------------------------------
+# H1 regression — typed writer routes every advertised key (never crashes)
+# ---------------------------------------------------------------------------
+
+class TestH1NoCrashOnAdvertisedKeys:
+    """H1: ``config set`` must NEVER raise for advertised keys.
+
+    Before 2d these keys fell through to ``_split_config_key`` which raised an
+    uncaught ``ValueError`` (the CLI dumped a traceback). The typed writer
+    routes every known key and returns an error string (never raises) for
+    unknown keys.
+    """
+
+    def test_set_group_auth_no_crash(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        # Must not raise; lands in [project] as a real bool.
+        msg = set_config_value("group_auth", "false", config_path=project_toml)
+        assert msg.startswith("Set")
+        data = load_doc(project_toml)
+        assert data["project"]["group_auth"] is False
+
+    def test_set_allow_helpers_no_crash(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        msg = set_config_value("allow_helpers", "false", config_path=project_toml)
+        assert msg.startswith("Set")
+        data = load_doc(project_toml)
+        # Top-level scalar field, stored as a real bool.
+        assert data["allow_helpers"] is False
+
+    def test_set_vault_enabled_lands_in_real_location(self, tmp_path):
+        """vault.enabled aliases to its real stored key enable_vault (H1 note)."""
+        project_toml = tmp_path / "project.yaml"
+        msg = set_config_value("vault.enabled", "false", config_path=project_toml)
+        assert msg.startswith("Set")
+        data = load_doc(project_toml)
+        assert data["project"]["enable_vault"] is False
+
+    def test_set_mode_and_layout_no_crash(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        assert set_config_value("mode", "default", config_path=project_toml).startswith("Set")
+        assert set_config_value("layout", "robust", config_path=project_toml).startswith("Set")
+        data = load_doc(project_toml)
+        assert data["project"]["mode"] == "default"
+        assert data["project"]["layout"] == "robust"
+
+    def test_set_unknown_key_returns_error_not_raise(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        # No exception: an UNKNOWN key returns an error string.
+        msg = set_config_value("totally-bogus-key", "x", config_path=project_toml)
+        assert msg.startswith("Error:")
+        assert "unknown config key" in msg
+        # Nothing was written.
+        assert not project_toml.exists() or "totally-bogus-key" not in load_doc(project_toml)
+
+    def test_reset_unknown_key_returns_error_not_raise(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        msg = reset_config_value("totally-bogus-key", config_path=project_toml)
+        assert msg.startswith("Error:")
+
+    def test_get_set_share_the_same_known_key_table(self, tmp_path):
+        """Every routed key set by the writer reads back (no asymmetry)."""
+        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg.write_text("")
+        project_toml = tmp_path / "project.yaml"
+        for key, val in [
+            ("group_auth", "false"),
+            ("mode", "default"),
+            ("layout", "robust"),
+            ("vault.ro", "/ro"),
+        ]:
+            set_config_value(key, val, config_path=project_toml)
+            got = get_config_value(
+                key,
+                global_config_path=global_cfg,
+                project_toml=project_toml,
+            )
+            assert got is not None, f"get returned None for {key} after set"
+
+
+# ---------------------------------------------------------------------------
+# H2 regression — boolean keys coerce to real bools (load back as bool)
+# ---------------------------------------------------------------------------
+
+class TestH2BoolCoercion:
+    """H2: bool keys must store a real bool, not the string ``'false'``."""
+
+    def test_set_box_share_images_false_loads_as_real_bool(self, tmp_path):
+        from kanibako.config import load_config
+
+        project_toml = tmp_path / "project.yaml"
+        set_config_value("box.share_images", "false", config_path=project_toml)
+
+        # On-disk: a real YAML bool, not the string 'false'.
+        data = load_doc(project_toml)
+        assert data["box"]["share_images"] is False
+
+        # Loader reads back a real bool -> a truthiness check sees it disabled.
+        cfg = load_config(project_toml)
+        assert cfg.box_share_images is False
+        assert not cfg.box_share_images  # consumer disable-check honored
+
+    def test_set_box_share_images_various_truthy_falsy(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        for raw, expected in [
+            ("true", True), ("TRUE", True), ("1", True), ("yes", True), ("on", True),
+            ("false", False), ("0", False), ("no", False), ("off", False),
+        ]:
+            set_config_value("box.share_images", raw, config_path=project_toml)
+            assert load_doc(project_toml)["box"]["share_images"] is expected
+
+    def test_set_allow_helpers_false_loads_as_real_bool(self, tmp_path):
+        from kanibako.config import load_config
+
+        project_toml = tmp_path / "project.yaml"
+        set_config_value("allow_helpers", "false", config_path=project_toml)
+        cfg = load_config(project_toml)
+        assert cfg.allow_helpers is False
+        assert not cfg.allow_helpers
+
+    def test_bool_key_rejects_garbage(self, tmp_path):
+        project_toml = tmp_path / "project.yaml"
+        msg = set_config_value("box.share_images", "maybe", config_path=project_toml)
+        assert msg.startswith("Error:")
+        assert "boolean" in msg
