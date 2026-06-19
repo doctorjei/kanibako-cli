@@ -854,14 +854,12 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     )
 
     resolved_sys = {
-        "system.path.data": str(std.data_path),
-        "system.path.boxes": str(std.boxes),
-        "system.path.agents": str(std.agents),
-        "system.path.comms": str(std.comms),
-        "system.path.templates": str(std.templates),
-        "system.path.ws_hints": str(std.ws_hints),
-        "system.path.share_ro": str(std.share_ro),
-        "system.path.share_rw": str(std.share_rw),
+        "system.data": str(std.data),
+        "system.agents": str(std.agents),
+        "system.channels": str(std.channels),
+        "system.base_template": str(std.base_template),
+        "system.registry": str(std.registry),
+        "system.primary_workset": str(std.primary_workset),
     }
 
     def _lookup(ref, chain):

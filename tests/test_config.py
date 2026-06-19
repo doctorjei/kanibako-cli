@@ -39,9 +39,9 @@ class TestLoadConfig:
         write_global_config(path, cfg)
         loaded = load_config(path)
         assert loaded.box_image == "custom:latest"
-        # The written [system.path] table holds DEFAULT expressions.
-        assert loaded.system_paths["system.path.data"] == "$XDG_DATA_HOME/kanibako"
-        assert loaded.system_paths["system.path.boxes"] == "@system.path.data/boxes"
+        # The written [system] table holds DEFAULT expressions (bare keys).
+        assert loaded.system_paths["system.data"] == "$XDG_DATA_HOME/kanibako"
+        assert loaded.system_paths["system.agents"] == "@system.data/agents"
 
     def test_null_value_resolves_to_default(self, tmp_path):
         """A lone file with ``foo: null`` resolves foo to its built-in default."""
@@ -57,12 +57,12 @@ class TestLoadConfig:
         cfg = load_config(path)
         assert cfg.box_bootstrap_program == "tmux"
 
-    def test_system_path_table_populates_system_paths(self, tmp_path):
-        """[system.path] keys land in cfg.system_paths (full dotted names)."""
+    def test_system_table_populates_system_paths(self, tmp_path):
+        """[system] keys land in cfg.system_paths (bare dotted names)."""
         path = tmp_path / "sys.yaml"
-        path.write_text('system:\n  path:\n    boxes: "/x"\n')
+        path.write_text('system:\n  agents: "/x"\n')
         cfg = load_config(path)
-        assert cfg.system_paths == {"system.path.boxes": "/x"}
+        assert cfg.system_paths == {"system.agents": "/x"}
 
 
 class TestMergedConfig:

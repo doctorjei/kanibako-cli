@@ -98,7 +98,7 @@ def run_info(args: argparse.Namespace) -> int:
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         data_path = resolve_system_paths(
             config.system_paths, data_home=data_home, home=Path.home(),
-        )["system.path.data"]
+        )["system.data"]
         print(f"Data:      {data_path}")
     else:
         print(

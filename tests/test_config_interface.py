@@ -74,8 +74,8 @@ class TestIsKnownKey:
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
         assert is_known_key("paths.shell") is True
-        assert is_known_key("system.path.data") is True
-        assert is_known_key("system.path.boxes") is True
+        assert is_known_key("system.data") is True
+        assert is_known_key("system.agents") is True
 
     def test_box_shell_is_known(self):
         """box.shell must be a known GET key (set/--reset bypass is_known_key)."""

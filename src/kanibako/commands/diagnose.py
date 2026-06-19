@@ -277,7 +277,7 @@ def run_system_diagnose(args: object) -> int:
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         data_path = resolve_system_paths(
             config.system_paths, data_home=data_home, home=Path.home(),
-        )["system.path.data"]
+        )["system.data"]
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))
     except Exception:

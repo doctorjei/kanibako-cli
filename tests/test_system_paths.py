@@ -1,8 +1,12 @@
-"""Tests for the system.path.* tier (settings-framework path resolution).
+"""Tests for the system.* config tier (settings-framework path resolution).
 
-Covers ``paths.resolve_system_paths`` (the resolver-backed system path tier),
-``config.load_config`` populating ``system_paths`` from a ``[system.path]``
+Covers ``paths.resolve_system_paths`` (the resolver-backed system config tier),
+``config.load_config`` populating ``system_paths`` from a flat ``[system]``
 table, and ``load_std_paths`` reproducing today's default directory layout.
+
+Keys are the bare ``system.<leaf>`` form (the ``.path`` segment was dropped in
+the system.* reorg).  The OLD per-project box store resolves under the
+transitional pseudo-key ``system._boxes`` (the ``StandardPaths.boxes`` alias).
 """
 
 from __future__ import annotations
@@ -24,70 +28,104 @@ from kanibako.settings_resolve import SettingsError
 
 
 class TestResolveSystemPathsDefaults:
-    def test_defaults_match_legacy_layout(self, tmp_path):
-        """Empty config → all dirs hang off $XDG_DATA_HOME/kanibako."""
+    def test_defaults_match_layout(self, tmp_path):
+        """Empty config → the data tree hangs off $XDG_DATA_HOME/kanibako."""
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
         base = tmp_path / "kanibako"
-        assert resolved["system.path.data"] == base
-        assert resolved["system.path.boxes"] == base / "boxes"
-        assert resolved["system.path.agents"] == base / "agents"
-        assert resolved["system.path.comms"] == base / "comms"
-        assert resolved["system.path.templates"] == base / "templates"
-        assert resolved["system.path.ws_hints"] == base / "worksets.yaml"
+        assert resolved["system.data"] == base
+        assert resolved["system.backup"] == base / "backup"
+        assert resolved["system.agents"] == base / "agents"
+        assert resolved["system.channels"] == base / "channels"
+        assert resolved["system.global"] == base / "global"
+        assert resolved["system.base_template"] == base / "global" / "base_template"
+        assert resolved["system.settings"] == base / "global" / "settings.yaml"
+        assert resolved["system.primary_workset"] == base / "primary_workset"
+        assert resolved["system.registry"] == base / "global" / "registry.yaml"
+        # Transitional box store (OLD std.boxes location, unchanged in Phase 3).
+        assert resolved["system._boxes"] == base / "boxes"
+
+    def test_channels_skeleton_resolves(self, tmp_path):
+        resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
+        channels = tmp_path / "kanibako" / "channels"
+        assert resolved["system.channels.commons"] == channels / "commons"
+        assert resolved["system.channels.chat"] == channels / "chat"
+        assert resolved["system.channels.broadcast"] == channels / "chat" / "broadcast.md"
+        assert resolved["system.channels.mailboxes"] == channels / "mailboxes"
+        assert resolved["system.channels.share"] == channels / "share"
+
+    def test_cache_and_runtime_not_under_data(self, tmp_path, monkeypatch):
+        """cache/runtime live under their OWN XDG bases, NOT under data."""
+        cache_home = tmp_path / "cache"
+        run_dir = tmp_path / "run"
+        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
+        resolved = resolve_system_paths(
+            {}, data_home=tmp_path / "data", home=tmp_path,
+        )
+        assert resolved["system.cache"] == cache_home / "kanibako"
+        assert resolved["system.runtime"] == run_dir / "kanibako"
 
     def test_returns_every_declared_key(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS)
+        # Every declared default key plus the transitional system._boxes.
+        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {"system._boxes"}
 
 
 class TestResolveSystemPathsOverrides:
     def test_data_override_tracks_dependents(self, tmp_path):
-        """Overriding data moves boxes (which @-refs system.path.data)."""
+        """Overriding data moves dependents (which @-ref system.data)."""
         resolved = resolve_system_paths(
-            {"system.path.data": "$XDG_DATA_HOME/custom"},
+            {"system.data": "$XDG_DATA_HOME/custom"},
             data_home=tmp_path,
             home=tmp_path,
         )
         custom = tmp_path / "custom"
-        assert resolved["system.path.data"] == custom
-        assert resolved["system.path.boxes"] == custom / "boxes"
-        assert resolved["system.path.agents"] == custom / "agents"
+        assert resolved["system.data"] == custom
+        assert resolved["system.agents"] == custom / "agents"
+        assert resolved["system._boxes"] == custom / "boxes"
+        assert resolved["system.global"] == custom / "global"
 
     def test_absolute_leaf_override_isolated(self, tmp_path):
-        """An absolute boxes override does not perturb the other keys."""
+        """An absolute agents override does not perturb the other keys."""
         resolved = resolve_system_paths(
-            {"system.path.boxes": "/srv/boxes"},
+            {"system.agents": "/srv/agents"},
             data_home=tmp_path,
             home=tmp_path,
         )
-        assert resolved["system.path.boxes"] == Path("/srv/boxes")
+        assert resolved["system.agents"] == Path("/srv/agents")
         # Others keep their defaults under $XDG_DATA_HOME/kanibako.
         base = tmp_path / "kanibako"
-        assert resolved["system.path.data"] == base
-        assert resolved["system.path.agents"] == base / "agents"
+        assert resolved["system.data"] == base
+        assert resolved["system.channels"] == base / "channels"
 
     def test_tilde_expands_to_home(self, tmp_path):
         home = tmp_path / "h"
         resolved = resolve_system_paths(
-            {"system.path.data": "~/.kani"}, data_home=tmp_path, home=home,
+            {"system.data": "~/.kani"}, data_home=tmp_path, home=home,
         )
-        assert resolved["system.path.data"] == home / ".kani"
+        assert resolved["system.data"] == home / ".kani"
 
     def test_unknown_ref_raises(self, tmp_path):
         with pytest.raises(SettingsError):
             resolve_system_paths(
-                {"system.path.boxes": "@system.path.nope/x"},
+                {"system.agents": "@system.nope/x"},
                 data_home=tmp_path,
                 home=tmp_path,
             )
 
 
 class TestLoadConfigSystemPaths:
-    def test_system_path_table_populates(self, tmp_path):
+    def test_system_table_populates(self, tmp_path):
         toml = tmp_path / "kanibako.yaml"
-        toml.write_text('system:\n  path:\n    boxes: "/x"\n')
+        toml.write_text('system:\n  agents: "/x"\n')
         cfg = load_config(toml)
-        assert cfg.system_paths == {"system.path.boxes": "/x"}
+        assert cfg.system_paths == {"system.agents": "/x"}
+
+    def test_nested_system_subkey_flattens(self, tmp_path):
+        toml = tmp_path / "kanibako.yaml"
+        toml.write_text('system:\n  channels:\n    commons: "/c"\n')
+        cfg = load_config(toml)
+        assert cfg.system_paths == {"system.channels.commons": "/c"}
 
     def test_empty_config_has_no_system_paths(self, tmp_path):
         cfg = load_config(tmp_path / "absent.yaml")
@@ -96,26 +134,44 @@ class TestLoadConfigSystemPaths:
 
 class TestLoadStdPathsParity:
     def test_default_layout_matches_data_path(self, tmp_home, config_file):
-        """load_std_paths yields std.<dir> == std.data_path / <dir> by default."""
+        """load_std_paths yields the renamed/re-pointed dirs by default."""
         from kanibako.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        assert std.boxes == std.data_path / "boxes"
+        assert std.data == std.data_path
         assert std.agents == std.data_path / "agents"
-        assert std.comms == std.data_path / "comms"
-        assert std.templates == std.data_path / "templates"
-        assert std.ws_hints == std.data_path / "worksets.yaml"
+        assert std.channels == std.data_path / "channels"
+        assert std.primary_workset == std.data_path / "primary_workset"
+        assert std.global_dir == std.data_path / "global"
+        assert std.base_template == std.data_path / "global" / "base_template"
+        assert std.registry == std.data_path / "global" / "registry.yaml"
+        # Transitional aliases (deleted in Phase 5).
+        assert std.boxes == std.data_path / "boxes"
+        assert std.comms == std.channels
+        assert std.templates == std.base_template
+        assert std.ws_hints == std.registry
+
+    def test_deleted_share_aliases_raise(self, tmp_home, config_file):
+        from kanibako.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        with pytest.raises(NotImplementedError):
+            _ = std.share_ro
+        with pytest.raises(NotImplementedError):
+            _ = std.share_rw
 
 
 class TestBoxesOverrideConsumers:
-    """A ``system.path.boxes`` override is honored consistently by both
-    project creation/listing AND the names.yaml reverse-lookup helpers.
+    """A ``system.data`` override is honored consistently by both project
+    creation/listing AND the names.yaml reverse-lookup helpers (the transitional
+    box store hangs off the resolved data dir).
     """
 
     def test_boxes_override_used_by_creation_and_lookup(self, tmp_home):
-        """Creating a project under a custom boxes dir registers it there, and
-        the reverse-lookup helpers find it at ``<custom>/<name>``.
+        """Creating a project under a custom data dir registers its box under
+        ``<custom>/boxes/<name>``, and the reverse-lookup helpers find it there.
         """
         from kanibako.config import load_config
         from kanibako.paths import (
@@ -126,14 +182,15 @@ class TestBoxesOverrideConsumers:
             resolve_project,
         )
 
-        custom_boxes = tmp_home / "srv_boxes"
+        custom_data = tmp_home / "srv_data"
+        custom_boxes = custom_data / "boxes"
 
-        # Write a config that overrides system.path.boxes to the custom dir.
+        # Write a config that overrides system.data to the custom dir.
         cf = tmp_home / "config" / "kanibako.yaml"
-        cf.write_text(f'system:\n  path:\n    boxes: "{custom_boxes}"\n')
+        cf.write_text(f'system:\n  data: "{custom_data}"\n')
 
         config = load_config(cf)
-        assert config.system_paths == {"system.path.boxes": str(custom_boxes)}
+        assert config.system_paths == {"system.data": str(custom_data)}
         std = load_std_paths(config)
         assert std.boxes == custom_boxes
 
@@ -143,8 +200,6 @@ class TestBoxesOverrideConsumers:
         proj = resolve_project(std, config, str(workspace), initialize=True)
         assert proj.metadata_path.is_dir()
         assert proj.metadata_path == custom_boxes / proj.name
-        # Nothing was created under the default data_path/boxes.
-        assert not (std.data_path / "boxes").exists()
 
         # Reverse-lookup (path -> name -> dir) resolves under the custom dir.
         name, box_dir = _resolve_local_dir(
@@ -269,12 +324,12 @@ class TestLoadSystemConfig:
         self._redirect(monkeypatch, base, required)
 
         user = tmp_path / "kanibako.yaml"
-        user.write_text('system:\n  path:\n    boxes: "/u/boxes"\n')
+        user.write_text('system:\n  agents: "/u/agents"\n')
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.path.boxes"] == Path("/u/boxes")
+        assert resolved["system.agents"] == Path("/u/agents")
         # Unset keys fall back to defaults under $XDG_DATA_HOME/kanibako.
-        assert resolved["system.path.data"] == tmp_path / "kanibako"
+        assert resolved["system.data"] == tmp_path / "kanibako"
 
     def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
@@ -283,45 +338,45 @@ class TestLoadSystemConfig:
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS)
-        assert resolved["system.path.data"] == tmp_path / "kanibako"
+        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {"system._boxes"}
+        assert resolved["system.data"] == tmp_path / "kanibako"
 
     def test_user_wins_over_base(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
         required = tmp_path / "config_required.yaml"  # absent
         user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  path:\n    boxes: "/base/boxes"\n')
-        user.write_text('system:\n  path:\n    boxes: "/user/boxes"\n')
+        base.write_text('system:\n  agents: "/base/agents"\n')
+        user.write_text('system:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.path.boxes"] == Path("/user/boxes")
+        assert resolved["system.agents"] == Path("/user/agents")
 
     def test_required_wins_over_user_and_base(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
         required = tmp_path / "config_required.yaml"
         user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  path:\n    boxes: "/base/boxes"\n')
-        user.write_text('system:\n  path:\n    boxes: "/user/boxes"\n')
-        required.write_text('system:\n  path:\n    boxes: "/req/boxes"\n')
+        base.write_text('system:\n  agents: "/base/agents"\n')
+        user.write_text('system:\n  agents: "/user/agents"\n')
+        required.write_text('system:\n  agents: "/req/agents"\n')
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
         # Required is non-overridable → wins over BOTH user and base.
-        assert resolved["system.path.boxes"] == Path("/req/boxes")
+        assert resolved["system.agents"] == Path("/req/agents")
 
     def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
         """A base-only key is honored when the user file omits it."""
         base = tmp_path / "config_base.yaml"
         required = tmp_path / "config_required.yaml"  # absent
         user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  path:\n    agents: "/base/agents"\n')
-        user.write_text('system:\n  path:\n    boxes: "/user/boxes"\n')
+        base.write_text('system:\n  channels: "/base/channels"\n')
+        user.write_text('system:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.path.agents"] == Path("/base/agents")
-        assert resolved["system.path.boxes"] == Path("/user/boxes")
+        assert resolved["system.channels"] == Path("/base/channels")
+        assert resolved["system.agents"] == Path("/user/agents")
 
     def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
         """Each leaf cascades independently — required pins one key while the
@@ -329,16 +384,16 @@ class TestLoadSystemConfig:
         base = tmp_path / "config_base.yaml"
         required = tmp_path / "config_required.yaml"
         user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  path:\n    data: "/base/data"\n')
+        base.write_text('system:\n  data: "/base/data"\n')
         user.write_text(
-            'system:\n  path:\n    data: "/user/data"\n    boxes: "/user/boxes"\n'
+            'system:\n  data: "/user/data"\n  agents: "/user/agents"\n'
         )
-        required.write_text('system:\n  path:\n    data: "/req/data"\n')
+        required.write_text('system:\n  data: "/req/data"\n')
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.path.data"] == Path("/req/data")   # required wins
-        assert resolved["system.path.boxes"] == Path("/user/boxes")  # user kept
+        assert resolved["system.data"] == Path("/req/data")    # required wins
+        assert resolved["system.agents"] == Path("/user/agents")  # user kept
 
 
 class TestResolveSystemPathsXdgCtx:
@@ -350,18 +405,18 @@ class TestResolveSystemPathsXdgCtx:
         cfg_home = tmp_path / "cfg"
         monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
         resolved = resolve_system_paths(
-            {"system.path.boxes": "$XDG_CONFIG_HOME/kani-boxes"},
+            {"system.agents": "$XDG_CONFIG_HOME/kani-agents"},
             data_home=tmp_path / "data",
             home=tmp_path,
         )
-        assert resolved["system.path.boxes"] == cfg_home / "kani-boxes"
+        assert resolved["system.agents"] == cfg_home / "kani-agents"
 
     def test_xdg_runtime_ref_resolves(self, tmp_path, monkeypatch):
         run_dir = tmp_path / "run"
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
         resolved = resolve_system_paths(
-            {"system.path.boxes": "$XDG_RUNTIME_DIR/kani"},
+            {"system.agents": "$XDG_RUNTIME_DIR/kani"},
             data_home=tmp_path / "data",
             home=tmp_path,
         )
-        assert resolved["system.path.boxes"] == run_dir / "kani"
+        assert resolved["system.agents"] == run_dir / "kani"

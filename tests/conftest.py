@@ -84,7 +84,7 @@ def credentials_dir(tmp_home, config_file):
     data_home = tmp_home / "data"
     data_path = resolve_system_paths(
         config.system_paths, data_home=data_home, home=tmp_home,
-    )["system.path.data"]
+    )["system.data"]
     data_path.mkdir(parents=True, exist_ok=True)
 
     # Write host credentials (used directly by init now)
