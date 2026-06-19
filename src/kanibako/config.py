@@ -442,104 +442,104 @@ def load_project_overrides(path: Path) -> dict[str, str]:
 # Target settings overrides (per-project)
 # ---------------------------------------------------------------------------
 
-def read_crab_settings(path: Path, agent_name: str) -> dict[str, str]:
-    """Read agent-keyed crab-state overrides from a config file's ``crab`` table.
+def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
+    """Read agent-keyed agent-state overrides from a config file's ``agent`` table.
 
-    Override sections are keyed per agent under ``crab.<agent_name>``, layered
-    over the reserved any-agent ``crab.default`` tier (the agent-specific value
+    Override sections are keyed per agent under ``agent.<agent_name>``, layered
+    over the reserved any-agent ``agent.default`` tier (the agent-specific value
     wins within a single file). This stops an override set while a box is on one
-    agent (e.g. ``model`` under ``crab.claude``) from bleeding onto another
+    agent (e.g. ``model`` under ``agent.claude``) from bleeding onto another
     agent after the box is switched (e.g. to ``goose``); identity keys live in
     ``box.agent``, not here.
 
-    ``crab.default`` is RESERVED as the any-agent default tier; no real agent
+    ``agent.default`` is RESERVED as the any-agent default tier; no real agent
     may be named ``default``.
 
-    **No pass-1 migration.** A legacy FLAT ``[crab]`` table (scalar values
-    written directly under ``crab``, e.g. ``crab.model``) is treated as UNSET —
-    only nested per-agent dicts (``crab.default`` / ``crab.<agent_name>``) are
+    **No pass-1 migration.** A legacy FLAT ``[agent]`` table (scalar values
+    written directly under ``agent``, e.g. ``agent.model``) is treated as UNSET —
+    only nested per-agent dicts (``agent.default`` / ``agent.<agent_name>``) are
     honored. Configs are hand-edited to the new shape. The common no-config case
-    (absent file, or absent/empty ``crab`` table) still returns ``{}`` unchanged.
+    (absent file, or absent/empty ``agent`` table) still returns ``{}`` unchanged.
     """
     if not path.exists():
         return {}
     data = load_doc(path)
-    crab = data.get("crab", {})
-    if not isinstance(crab, dict):
+    agent = data.get("agent", {})
+    if not isinstance(agent, dict):
         return {}
     out: dict[str, str] = {}
-    default_sec = crab.get("default")
+    default_sec = agent.get("default")
     if isinstance(default_sec, dict):
         out.update({k: str(v) for k, v in default_sec.items()})
-    agent_sec = crab.get(agent_name)
+    agent_sec = agent.get(agent_name)
     if isinstance(agent_sec, dict):
         out.update({k: str(v) for k, v in agent_sec.items()})
     return out
 
 
-def write_crab_setting(path: Path, key: str, value: str, agent_name: str) -> None:
-    """Write a single crab-state override under ``crab.<agent_name>``.
+def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:
+    """Write a single agent-state override under ``agent.<agent_name>``.
 
-    Preserves all other sections and other agents' crab subsections. Pass the
+    Preserves all other sections and other agents' agent subsections. Pass the
     reserved ``"default"`` agent name to target the any-agent default tier.
     """
     existing = load_doc(path)
-    crab = existing.get("crab")
-    if not isinstance(crab, dict):
-        crab = {}
-        existing["crab"] = crab
-    agent_sec = crab.get(agent_name)
+    agent = existing.get("agent")
+    if not isinstance(agent, dict):
+        agent = {}
+        existing["agent"] = agent
+    agent_sec = agent.get(agent_name)
     if not isinstance(agent_sec, dict):
         agent_sec = {}
-        crab[agent_name] = agent_sec
+        agent[agent_name] = agent_sec
     agent_sec[key] = value
     dump_doc(path, existing)
 
 
-def remove_crab_setting(path: Path, key: str, agent_name: str) -> bool:
-    """Remove a single crab-state override from ``crab.<agent_name>``.
+def remove_agent_setting(path: Path, key: str, agent_name: str) -> bool:
+    """Remove a single agent-state override from ``agent.<agent_name>``.
 
     Returns True if the setting was found and removed, False otherwise. Prunes a
-    now-empty agent subsection and a now-empty ``crab`` table.
+    now-empty agent subsection and a now-empty ``agent`` table.
     """
     if not path.exists():
         return False
     existing = load_doc(path)
-    crab = existing.get("crab")
-    if not isinstance(crab, dict):
+    agent = existing.get("agent")
+    if not isinstance(agent, dict):
         return False
-    agent_sec = crab.get(agent_name)
+    agent_sec = agent.get(agent_name)
     if not isinstance(agent_sec, dict) or key not in agent_sec:
         return False
     del agent_sec[key]
     if not agent_sec:
-        del crab[agent_name]
-    if not crab:
-        existing.pop("crab", None)
+        del agent[agent_name]
+    if not agent:
+        existing.pop("agent", None)
     dump_doc(path, existing)
     return True
 
 
 def read_binding_overrides(path: Path | None, agent_name: str) -> dict[str, str]:
-    """Read agent-keyed binding host-source overrides from a config ``crab`` table.
+    """Read agent-keyed binding host-source overrides from a config ``agent`` table.
 
-    Reads the ``binding`` sub-table under ``crab.<agent_name>`` layered over the
-    reserved any-agent ``crab.default.binding`` tier (the agent-specific value
+    Reads the ``binding`` sub-table under ``agent.<agent_name>`` layered over the
+    reserved any-agent ``agent.default.binding`` tier (the agent-specific value
     wins within a single file) — the SAME agent-keying as
-    :func:`read_crab_settings`. These redirect the HOST SOURCE of a descriptor
-    :class:`~kanibako.targets.base.Binding` (e.g. ``crab.claude.binding.plugins``
+    :func:`read_agent_settings`. These redirect the HOST SOURCE of a descriptor
+    :class:`~kanibako.targets.base.Binding` (e.g. ``agent.claude.binding.plugins``
     points the claude ``plugins`` share at a custom host directory).
 
     Returns ``{binding_key: host_src}``. Each binding VALUE may be either:
 
-    * a bare string ``host_src`` (``crab.claude.binding.plugins = "/path"``), or
+    * a bare string ``host_src`` (``agent.claude.binding.plugins = "/path"``), or
     * a sub-table carrying a ``host_src`` key
-      (``crab.claude.binding.plugins.host_src = "/path"``).
+      (``agent.claude.binding.plugins.host_src = "/path"``).
 
     A sub-table without a string ``host_src`` (and any other non-string value)
-    is skipped. As with :func:`read_crab_settings`, a legacy FLAT ``[crab]``
+    is skipped. As with :func:`read_agent_settings`, a legacy FLAT ``[agent]``
     table is treated as UNSET (no pass-1 migration); the common no-config case
-    (absent/None/unreadable path, or absent ``crab``/``binding`` table) returns
+    (absent/None/unreadable path, or absent ``agent``/``binding`` table) returns
     ``{}``.
     """
     if path is None or not path.exists():
@@ -548,13 +548,13 @@ def read_binding_overrides(path: Path | None, agent_name: str) -> dict[str, str]
         data = load_doc(path)
     except Exception:
         return {}
-    crab = data.get("crab", {})
-    if not isinstance(crab, dict):
+    agent = data.get("agent", {})
+    if not isinstance(agent, dict):
         return {}
     out: dict[str, str] = {}
     # Least-specific (default tier) first so the agent-specific tier wins.
     for tier in ("default", agent_name):
-        section = crab.get(tier)
+        section = agent.get(tier)
         if not isinstance(section, dict):
             continue
         binding = section.get("binding")

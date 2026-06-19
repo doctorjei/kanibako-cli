@@ -341,13 +341,13 @@ class TestTargetSettings:
         msg = set_config_value("model", "sonnet", config_path=project_toml)
         assert "Set model=sonnet" in msg
 
-        # The agent-agnostic CLI writes the reserved crab.default tier.
+        # The agent-agnostic CLI writes the reserved agent.default tier.
         data = load_doc(project_toml)
-        assert data["crab"]["default"]["model"] == "sonnet"
+        assert data["agent"]["default"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
         project_toml = tmp_path / "project.yaml"
-        dump_doc(project_toml, {"crab": {"default": {"model": "opus"}}})
+        dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         val = get_config_value(
             "model",
@@ -358,7 +358,7 @@ class TestTargetSettings:
 
     def test_reset_model(self, tmp_path):
         project_toml = tmp_path / "project.yaml"
-        dump_doc(project_toml, {"crab": {"default": {"model": "opus"}}})
+        dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg
@@ -414,7 +414,7 @@ class TestShowConfig:
     def test_effective_new_params_default_none_is_byte_identical(
         self, tmp_path, capsys,
     ):
-        """With workset_path/crab_state/env_resolved=None, output is unchanged."""
+        """With workset_path/agent_state/env_resolved=None, output is unchanged."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
         project_toml = tmp_path / "project.yaml"
@@ -431,7 +431,7 @@ class TestShowConfig:
             config_path=project_toml,
             effective=True,
             workset_path=None,
-            crab_state=None,
+            agent_state=None,
             env_resolved=None,
         )
         with_none = capsys.readouterr().out
@@ -457,20 +457,20 @@ class TestShowConfig:
         assert "ws:img" in captured.out
         assert "sys:img" not in captured.out
 
-    def test_effective_crab_state_renders_with_override_marker(
+    def test_effective_agent_state_renders_with_override_marker(
         self, tmp_path, capsys,
     ):
-        """crab_state is rendered; only box-level keys get the override marker."""
+        """agent_state is rendered; only box-level keys get the override marker."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
         project_toml = tmp_path / "project.yaml"
-        project_toml.write_text('crab:\n  default:\n    model: "sonnet"\n')
+        project_toml.write_text('agent:\n  default:\n    model: "sonnet"\n')
 
         show_config(
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
-            crab_state={"model": "sonnet", "start_mode": "default"},
+            agent_state={"model": "sonnet", "start_mode": "default"},
         )
         captured = capsys.readouterr()
         # model is set at box level -> marked override
@@ -527,5 +527,5 @@ class TestConfigLevel:
     def test_levels(self):
         assert ConfigLevel.box.value == "box"
         assert ConfigLevel.workset.value == "workset"
-        assert ConfigLevel.crab.value == "crab"
+        assert ConfigLevel.agent.value == "agent"
         assert ConfigLevel.system.value == "system"

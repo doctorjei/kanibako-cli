@@ -24,7 +24,7 @@ from kanibako.config import (
     _DEFAULTS,
     load_merged_config,
     load_project_overrides,
-    read_crab_settings,
+    read_agent_settings,
     unset_project_config_key,
     write_project_config_key,
 )
@@ -49,7 +49,7 @@ class ConfigLevel(Enum):
 
     box = "box"
     workset = "workset"
-    crab = "crab"
+    agent = "agent"
     system = "system"
 
 
@@ -166,8 +166,8 @@ def _is_shared_key(key: str) -> bool:
     return key.startswith("shared.")
 
 
-def _is_crab_setting(key: str) -> bool:
-    """Keys that belong in the crab section of project.yaml."""
+def _is_agent_setting(key: str) -> bool:
+    """Keys that belong in the agent section of project.yaml."""
     return key in {"model", "start_mode", "autonomous"}
 
 
@@ -225,12 +225,12 @@ def get_config_value(
         return cfg.shared_caches.get(cache_name)
 
     # target settings (model, start_mode, autonomous)
-    if _is_crab_setting(canonical):
+    if _is_agent_setting(canonical):
         # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
-        # ``crab.default`` tier; per-agent overrides live under ``crab.<name>``
+        # ``agent.default`` tier; per-agent overrides live under ``agent.<name>``
         # and are resolved by the launch-time effective-state cascade.
         if project_toml and project_toml.exists():
-            settings = read_crab_settings(project_toml, "default")
+            settings = read_agent_settings(project_toml, "default")
             if canonical in settings:
                 return settings[canonical]
         return None
@@ -292,9 +292,9 @@ def set_config_value(
         return f"Set shared.{cache_name}={value}"
 
     # target settings — the agent-agnostic CLI writes the any-agent
-    # ``crab.default`` tier (per-agent overrides live under ``crab.<name>``).
-    if _is_crab_setting(canonical):
-        _write_nested_toml_key(config_path, ("crab", "default"), canonical, value)
+    # ``agent.default`` tier (per-agent overrides live under ``agent.<name>``).
+    if _is_agent_setting(canonical):
+        _write_nested_toml_key(config_path, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
     # system.path.* keys — write to the nested [system.path] table.
@@ -339,9 +339,9 @@ def reset_config_value(
             return f"Reset shared.{cache_name}"
         return f"No override for shared.{cache_name}"
 
-    # target settings — reset the any-agent ``crab.default`` tier.
-    if _is_crab_setting(canonical):
-        if _remove_nested_toml_key(config_path, ("crab", "default"), canonical):
+    # target settings — reset the any-agent ``agent.default`` tier.
+    if _is_agent_setting(canonical):
+        if _remove_nested_toml_key(config_path, ("agent", "default"), canonical):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -384,14 +384,14 @@ def reset_all(
     # Clear target settings
     if config_path.exists():
         data = load_doc(config_path)
-        crab = data.get("crab")
-        if isinstance(crab, dict):
-            # crab is agent-keyed: {<agent>: {key: val}}; clear every agent's
-            # subsection (the reserved "default" tier included).
-            for agent, sec in list(crab.items()):
+        agent_tbl = data.get("agent")
+        if isinstance(agent_tbl, dict):
+            # agent table is agent-keyed: {<agent>: {key: val}}; clear every
+            # agent's subsection (the reserved "default" tier included).
+            for agent, sec in list(agent_tbl.items()):
                 if isinstance(sec, dict):
                     for k in list(sec):
-                        _remove_nested_toml_key(config_path, ("crab", agent), k)
+                        _remove_nested_toml_key(config_path, ("agent", agent), k)
                         count += 1
         if data.get("resource_overrides"):
             for k in list(data["resource_overrides"]):
@@ -417,7 +417,7 @@ def show_config(
     effective: bool = False,
     file: Any = None,
     workset_path: Path | None = None,
-    crab_state: dict[str, str] | None = None,
+    agent_state: dict[str, str] | None = None,
     env_resolved: dict[str, str] | None = None,
 ) -> int:
     """Display config values.  Returns exit code.
@@ -438,22 +438,22 @@ def show_config(
             marker = " (override)" if fld.name in overrides else ""
             print(f"  {fld.name} = {val}{marker}", file=out)
 
-        # Crab settings.  When a fully-resolved crab_state is supplied (box
+        # Agent settings.  When a fully-resolved agent_state is supplied (box
         # view), render it; mark only the keys actually set at the box level.
         # Otherwise fall back to the project-level overrides (today's behavior).
-        if crab_state is not None:
-            proj_crab = (
-                read_crab_settings(config_path, "default")
+        if agent_state is not None:
+            proj_agent = (
+                read_agent_settings(config_path, "default")
                 if config_path and config_path.exists()
                 else {}
             )
-            if crab_state:
+            if agent_state:
                 print("", file=out)
-                for k, v in sorted(crab_state.items()):
-                    marker = " (override)" if k in proj_crab else ""
+                for k, v in sorted(agent_state.items()):
+                    marker = " (override)" if k in proj_agent else ""
                     print(f"  {k} = {v}{marker}", file=out)
         elif config_path and config_path.exists():
-            settings = read_crab_settings(config_path, "default")
+            settings = read_agent_settings(config_path, "default")
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
@@ -480,7 +480,7 @@ def show_config(
             has_output = True
 
         if config_path and config_path.exists():
-            settings = read_crab_settings(config_path, "default")
+            settings = read_agent_settings(config_path, "default")
             for k, v in sorted(settings.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True

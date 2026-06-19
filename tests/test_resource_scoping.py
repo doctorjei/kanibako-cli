@@ -276,31 +276,31 @@ class TestBuildEffectiveState:
         return target
 
     def _make_global_config(self, tmp_path, settings=None):
-        """Create a minimal global kanibako.yaml, optionally with [crab]."""
-        from kanibako.config import write_crab_setting
+        """Create a minimal global kanibako.yaml, optionally with [agent]."""
+        from kanibako.config import write_agent_setting
 
         global_toml = tmp_path / "kanibako.yaml"
         global_toml.write_text("")
         if settings:
             for k, v in settings.items():
-                write_crab_setting(global_toml, k, v, "claude")
+                write_agent_setting(global_toml, k, v, "claude")
         return global_toml
 
     def _make_workset_config(self, tmp_path, settings=None):
-        """Create a minimal workset config.yaml, optionally with [crab]."""
-        from kanibako.config import write_crab_setting
+        """Create a minimal workset config.yaml, optionally with [agent]."""
+        from kanibako.config import write_agent_setting
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         ws_toml = tmp_path / "config.yaml"
         ws_toml.write_text("")
         if settings:
             for k, v in settings.items():
-                write_crab_setting(ws_toml, k, v, "claude")
+                write_agent_setting(ws_toml, k, v, "claude")
         return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None):
-        """Create a minimal project.yaml, optionally with [crab] overrides."""
-        from kanibako.config import write_project_meta, write_crab_setting
+        """Create a minimal project.yaml, optionally with [agent] overrides."""
+        from kanibako.config import write_project_meta, write_agent_setting
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         project_toml = tmp_path / "project.yaml"
@@ -311,7 +311,7 @@ class TestBuildEffectiveState:
         )
         if settings:
             for k, v in settings.items():
-                write_crab_setting(project_toml, k, v, "claude")
+                write_agent_setting(project_toml, k, v, "claude")
         return project_toml
 
     def test_target_defaults_only(self, tmp_path):
@@ -485,10 +485,10 @@ class TestBuildEffectiveState:
         assert result["model"] == ""
 
     def test_box_override_does_not_bleed_across_agents(self, tmp_path):
-        """B3 regression: a box override set under crab.claude must NOT apply
+        """B3 regression: a box override set under agent.claude must NOT apply
         when the effective state is resolved for agent goose (and vice-versa)."""
         from kanibako.commands.start import _build_effective_state
-        from kanibako.config import write_crab_setting, write_project_meta
+        from kanibako.config import write_agent_setting, write_project_meta
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -502,7 +502,7 @@ class TestBuildEffectiveState:
             mode="default", layout="default",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
-        write_crab_setting(project_toml, "model", "sonnet", "claude")
+        write_agent_setting(project_toml, "model", "sonnet", "claude")
         agent_cfg = AgentConfig()
 
         # claude sees its override.
@@ -520,9 +520,9 @@ class TestBuildEffectiveState:
         assert res_goose["model"] == "opus"
 
     def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
-        """crab.default applies to every agent; crab.<name> overrides it."""
+        """agent.default applies to every agent; agent.<name> overrides it."""
         from kanibako.commands.start import _build_effective_state
-        from kanibako.config import write_crab_setting, write_project_meta
+        from kanibako.config import write_agent_setting, write_project_meta
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -536,8 +536,8 @@ class TestBuildEffectiveState:
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         # Any-agent default, plus a claude-specific override.
-        write_crab_setting(project_toml, "model", "haiku", "default")
-        write_crab_setting(project_toml, "model", "sonnet", "claude")
+        write_agent_setting(project_toml, "model", "haiku", "default")
+        write_agent_setting(project_toml, "model", "sonnet", "claude")
         agent_cfg = AgentConfig()
 
         claude = self._make_target(descriptors, name="claude")
