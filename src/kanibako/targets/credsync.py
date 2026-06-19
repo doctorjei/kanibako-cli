@@ -78,6 +78,8 @@ def seed_cred_files(
 
         if spec.filtered:
             target.transform_cred(spec, src if src_ok else None, dst, "in")
+            if dst.is_file():
+                _chmod_600(dst)
         elif src_ok:
             shutil.copy2(str(src), str(dst))
             _chmod_600(dst)
@@ -119,6 +121,8 @@ def refresh_cred_files(
         dst.parent.mkdir(parents=True, exist_ok=True)
         if spec.filtered:
             target.transform_cred(spec, src, dst, "in")
+            if dst.is_file():
+                _chmod_600(dst)
         else:
             shutil.copy2(str(src), str(dst))
             _chmod_600(dst)
