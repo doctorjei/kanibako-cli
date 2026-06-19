@@ -76,6 +76,7 @@ class TestIsKnownKey:
         assert is_known_key("paths.shell") is True
         assert is_known_key("system.data") is True
         assert is_known_key("system.agents") is True
+        assert is_known_key("system.default_agent") is True
 
     def test_box_shell_is_known(self):
         """box.shell must be a known GET key (set/--reset bypass is_known_key)."""
@@ -655,3 +656,93 @@ class TestH2BoolCoercion:
         msg = set_config_value("box.share_images", "maybe", config_path=project_toml)
         assert msg.startswith("Error:")
         assert "boolean" in msg
+
+
+class TestSystemDefaultAgent:
+    """system.default_agent: the lone system.*-named SETTING (D-M2).
+
+    It is behavior, not a config path, so it lands in the SYSTEM settings tier
+    (the agent.default table) — NOT the [system] config table — and is read
+    back by config.read_default_agent.
+    """
+
+    def test_set_lands_in_agent_default_not_system_table(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        msg = set_config_value("system.default_agent", "claude", config_path=cf)
+        assert msg == "Set system.default_agent=claude"
+
+        data = load_doc(cf)
+        # Stored in the settings tier (agent.default), NOT the config [system].
+        assert data["agent"]["default"]["default_agent"] == "claude"
+        assert "system" not in data
+
+    def test_round_trips_through_real_settings_tier(self, tmp_path):
+        from kanibako.config import read_default_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        set_config_value("system.default_agent", "goose", config_path=cf)
+
+        # The interface getter and the launch-time reader agree.
+        assert get_config_value("system.default_agent", global_config_path=cf) == "goose"
+        assert read_default_agent(cf) == "goose"
+
+    def test_get_unset_returns_none(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        cf.touch()
+        assert get_config_value("system.default_agent", global_config_path=cf) is None
+
+    def test_reset_removes_setting(self, tmp_path):
+        from kanibako.config import read_default_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        set_config_value("system.default_agent", "claude", config_path=cf)
+        msg = reset_config_value("system.default_agent", config_path=cf)
+        assert msg == "Reset system.default_agent"
+        assert read_default_agent(cf) is None
+
+    def test_not_confused_with_system_path_keys(self, tmp_path):
+        """system.data still lands in the [system] config table, not settings."""
+        cf = tmp_path / "kanibako.yaml"
+        set_config_value("system.data", "/custom/data", config_path=cf)
+        set_config_value("system.default_agent", "claude", config_path=cf)
+
+        data = load_doc(cf)
+        assert data["system"]["data"] == "/custom/data"
+        assert data["agent"]["default"]["default_agent"] == "claude"
+
+
+class TestResolveBoxAgent:
+    """config.resolve_box_agent — the box.agent → system.default_agent chain."""
+
+    def test_explicit_box_agent_wins(self, tmp_path):
+        from kanibako.config import resolve_box_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        set_config_value("system.default_agent", "goose", config_path=cf)
+        # Explicit box.agent overrides system.default_agent.
+        assert resolve_box_agent("claude", cf) == "claude"
+
+    def test_falls_back_to_system_default(self, tmp_path):
+        from kanibako.config import resolve_box_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        set_config_value("system.default_agent", "claude", config_path=cf)
+        # box.agent empty -> system.default_agent.
+        assert resolve_box_agent("", cf) == "claude"
+        assert resolve_box_agent(None, cf) == "claude"
+
+    def test_both_unset_returns_none(self, tmp_path):
+        from kanibako.config import resolve_box_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        cf.touch()
+        # Neither set -> None -> today's auto-detect (no regression).
+        assert resolve_box_agent("", cf) is None
+        assert resolve_box_agent(None, cf) is None
+
+    def test_no_config_file_returns_none(self, tmp_path):
+        from kanibako.config import resolve_box_agent
+
+        cf = tmp_path / "missing.yaml"
+        assert resolve_box_agent("", cf) is None
+        assert resolve_box_agent(None, None) is None

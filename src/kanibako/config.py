@@ -548,6 +548,47 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     return out
 
 
+def read_default_agent(system_path: Path | None) -> str | None:
+    """Read the ``system.default_agent`` SETTING from the system settings tier.
+
+    ``system.default_agent`` is the lone ``system.*``-named key that lives in the
+    SETTINGS file set (it is behavior, not a config path).  Transitionally its
+    system tier physically lives in the user-global ``~/.config/kanibako.yaml``,
+    in the reserved any-agent ``agent.default`` table (the same place the system
+    settings tier of :func:`load_settings` reads from), under the key
+    ``default_agent``.  Phase 5 re-points this to ``@system.settings``.
+
+    Returns the configured agent name, or ``None`` when unset/empty (meaning
+    "no system default" — callers fall through to today's auto-detect).
+    """
+    if system_path is None or not system_path.exists():
+        return None
+    settings = read_agent_settings(system_path, "default")
+    value = settings.get("default_agent", "").strip()
+    return value or None
+
+
+def resolve_box_agent(box_agent: str | None, system_path: Path | None) -> str | None:
+    """Resolve the effective agent name for a box launch.
+
+    Resolution order (D-M2):
+
+        1. explicit ``box.agent`` (per-box identity) — wins if set;
+        2. ``system.default_agent`` (the user-global default SETTING);
+        3. ``None`` — fall through to today's behavior (auto-detect, then the
+           no-agent box).
+
+    Returns the agent name to hand to :func:`~kanibako.targets.resolve_target`,
+    or ``None`` to let it auto-detect.  When neither ``box.agent`` nor
+    ``system.default_agent`` is set this returns ``None`` — exactly today's
+    behavior (no regression).
+    """
+    explicit = (box_agent or "").strip()
+    if explicit:
+        return explicit
+    return read_default_agent(system_path)
+
+
 def load_settings(
     agent_name: str,
     *,

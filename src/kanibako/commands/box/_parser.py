@@ -912,7 +912,8 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Resolve target for credential check path
     try:
-        target = resolve_target(merged.box_agent or None)
+        from kanibako.config import resolve_box_agent
+        target = resolve_target(resolve_box_agent(merged.box_agent, config_file))
         creds_file = target.credential_check_path(proj.shell_path)
     except (KeyError, Exception):
         creds_file = None
@@ -1066,7 +1067,10 @@ def run_config(args: argparse.Namespace) -> int:
                 workset_path=workset_path,
             )
             try:
-                target = resolve_target(merged.box_agent or None)
+                from kanibako.config import resolve_box_agent
+                target = resolve_target(
+                    resolve_box_agent(merged.box_agent, config_file)
+                )
             except (KeyError, Exception):
                 target = None
             agent_id = target.name if target else "general"

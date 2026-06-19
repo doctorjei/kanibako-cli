@@ -87,6 +87,10 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.registry",
     "system.cache",
     "system.runtime",
+    # system.default_agent: the lone system.*-named SETTING (behavior, not a
+    # config path).  Routed to the SYSTEM settings tier (the agent.default
+    # table), NOT the [system] config table — handled explicitly below.
+    "system.default_agent",
     # Box-level path settings (flat KanibakoConfig.paths_* fields)
     "paths.shell",
     "paths.vault",
@@ -252,9 +256,28 @@ def _is_agent_setting(key: str) -> bool:
     return key in {"model", "start_mode", "autonomous"}
 
 
+# ``system.default_agent`` is the lone ``system.*``-named SETTING (behavior, not
+# a config path).  It does NOT land in the ``[system]`` config table; it lands in
+# the SYSTEM settings tier — the reserved any-agent ``agent.default`` table, key
+# ``default_agent`` — where ``config.read_default_agent`` reads it back.  Phase 5
+# re-points the system settings tier to ``@system.settings``.
+_DEFAULT_AGENT_KEY = "system.default_agent"
+_DEFAULT_AGENT_SECTIONS: tuple[str, ...] = ("agent", "default")
+_DEFAULT_AGENT_LEAF = "default_agent"
+
+
+def _is_default_agent_key(key: str) -> bool:
+    """The ``system.default_agent`` SETTING (routed to the settings tier)."""
+    return key == _DEFAULT_AGENT_KEY
+
+
 def _is_system_path_key(key: str) -> bool:
-    """Keys that belong in the ``[system]`` config table (system-only)."""
-    return key.startswith("system.")
+    """Keys that belong in the ``[system]`` config table (system-only).
+
+    ``system.default_agent`` is EXCLUDED — it is a SETTING, not a config path,
+    and is handled by :func:`_is_default_agent_key` before this check.
+    """
+    return key.startswith("system.") and not _is_default_agent_key(key)
 
 
 def _system_key_sections(key: str) -> tuple[tuple[str, ...], str]:
@@ -341,6 +364,17 @@ def get_config_value(
             settings = read_agent_settings(project_toml, "default")
             if canonical in settings:
                 return settings[canonical]
+        return None
+
+    # system.default_agent — the SETTING (not a config path).  Read it from the
+    # system settings tier (the global config's agent.default table).
+    if _is_default_agent_key(canonical):
+        for src in (project_toml, global_config_path):
+            if src is None or not src.exists():
+                continue
+            settings = read_agent_settings(src, "default")
+            if _DEFAULT_AGENT_LEAF in settings:
+                return settings[_DEFAULT_AGENT_LEAF] or None
         return None
 
     # system.* keys — read the raw set-value from the global config's [system]
@@ -433,6 +467,14 @@ def set_config_value(
         _write_nested_toml_key(config_path, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
+    # system.default_agent — the SETTING.  Write it into the SYSTEM settings
+    # tier (the agent.default table), NOT the [system] config table.
+    if _is_default_agent_key(canonical):
+        _write_nested_toml_key(
+            config_path, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF, value,
+        )
+        return f"Set {canonical}={value}"
+
     # system.* keys — write into the [system] config table.
     if _is_system_path_key(canonical):
         sections, leaf = _system_key_sections(canonical)
@@ -492,6 +534,15 @@ def reset_config_value(
     # target settings — reset the any-agent ``agent.default`` tier.
     if _is_agent_setting(canonical):
         if _remove_nested_toml_key(config_path, ("agent", "default"), canonical):
+            return f"Reset {canonical}"
+        return f"No override for {canonical}"
+
+    # system.default_agent — the SETTING.  Remove it from the SYSTEM settings
+    # tier (the agent.default table).
+    if _is_default_agent_key(canonical):
+        if _remove_nested_toml_key(
+            config_path, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
+        ):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 

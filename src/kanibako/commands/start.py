@@ -199,7 +199,15 @@ def run_start(args: argparse.Namespace) -> int:
     # If no agent is detected, show a helpful message instead of silently
     # launching a plain shell.  run_shell() is not affected.
     from kanibako.targets.no_agent import NoAgentTarget
-    target = resolve_target()
+    from kanibako.config import resolve_box_agent
+    _cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    try:
+        target = resolve_target(resolve_box_agent(None, _cfg_file))
+    except KeyError:
+        # A configured system.default_agent whose plugin is not installed:
+        # defer the actionable error to the real launch path; fall back to
+        # auto-detect for this pre-launch guard so the message stays friendly.
+        target = resolve_target()
     if isinstance(target, NoAgentTarget):
         print()
         print("No agents detected.")
@@ -683,8 +691,10 @@ def _run_container(
     target = None
     install = None
     if is_agent_mode:
+        from kanibako.config import resolve_box_agent
+        agent_name = resolve_box_agent(merged.box_agent, config_file)
         try:
-            target = resolve_target(merged.box_agent or None)
+            target = resolve_target(agent_name)
         except KeyError as e:
             print(
                 f"Error: {e}\n"
