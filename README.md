@@ -751,7 +751,7 @@ Codex CLI, Goose).
 pip install kanibako-target-aider
 
 # Use a specific target
-kanibako box config box.crab=aider
+kanibako box config box.agent=aider
 kanibako start
 ```
 
@@ -809,7 +809,7 @@ All kanibako config files are YAML.
 | `persistence` | `persistent` | Session type (persistent/ephemeral) |
 | `box.image` | `kanibako-oci:latest` | Container rig |
 | `box.shell` | `$KANIBAKO_SHELL` | Shell launched for a no-agent box (`kanibako start` with no agent, `kanibako shell`); resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
-| `box.crab` | (auto-detect) | Agent target plugin |
+| `box.agent` | (auto-detect) | Agent target plugin |
 | `box.share_images` | | Share host images into the box |
 | `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-project (`false`) |
 | `enable_vault` | `true` | Enable vault directories |

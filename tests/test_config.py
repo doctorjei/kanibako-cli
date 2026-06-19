@@ -183,7 +183,7 @@ class TestMachineConfigLayer:
 
     def test_full_precedence_machine_user_workset_project(self, tmp_path, monkeypatch):
         machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  image: machine:1\n  crab: claude\n")
+        machine.write_text("box:\n  image: machine:1\n  agent: claude\n")
         self._patch_machine(monkeypatch, machine)
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  image: user:2\n")
@@ -194,9 +194,9 @@ class TestMachineConfigLayer:
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
         )
-        # project wins for image; crab only set at machine so it survives.
+        # project wins for image; agent only set at machine so it survives.
         assert merged.box_image == "proj:4"
-        assert merged.box_crab == "claude"
+        assert merged.box_agent == "claude"
 
     def test_missing_machine_file_is_empty_level(self, tmp_path, monkeypatch):
         self._patch_machine(monkeypatch, tmp_path / "absent.yaml")
@@ -258,19 +258,19 @@ class TestMachineConfigLayer:
 
     def test_empty_string_is_a_real_value_not_unset(self, tmp_path, monkeypatch):
         """``""`` is a real value distinct from ``null``: a lower layer sets a
-        non-empty box_crab, a higher layer sets ``""`` and that ``""`` wins
-        (it does NOT reset to box_crab's built-in default, which is also "")."""
+        non-empty box_agent, a higher layer sets ``""`` and that ``""`` wins
+        (it does NOT reset to box_agent's built-in default, which is also "")."""
         machine = tmp_path / "machine.yaml"
-        machine.write_text('box:\n  crab: foo\n')
+        machine.write_text('box:\n  agent: foo\n')
         self._patch_machine(monkeypatch, machine)
         global_path = tmp_path / "global.yaml"
         # Quoted empty string is a real value, not null.
-        global_path.write_text('box:\n  crab: ""\n')
+        global_path.write_text('box:\n  agent: ""\n')
         merged = load_merged_config(global_path)
-        assert merged.box_crab == ""
+        assert merged.box_agent == ""
         # Sanity: a non-empty lower value is what we are overriding away from.
         merged_machine_only = load_merged_config(tmp_path / "no-global.yaml")
-        assert merged_machine_only.box_crab == "foo"
+        assert merged_machine_only.box_agent == "foo"
 
     def test_higher_layer_overrides_after_null(self, tmp_path, monkeypatch):
         """A null reset is not terminal: a higher layer (CLI override) can set a

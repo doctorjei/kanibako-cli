@@ -449,14 +449,14 @@ class TestWriteProjectConfigKey:
         assert "box:" in text
         assert 'image: myimg:v1' in text
 
-    def test_write_crab_key(self, tmp_path):
+    def test_write_agent_key(self, tmp_path):
         p = tmp_path / "project.yaml"
-        write_project_config_key(p, "box_crab", "my-target")
+        write_project_config_key(p, "box_agent", "my-target")
         loaded = load_config(p)
-        assert loaded.box_crab == "my-target"
+        assert loaded.box_agent == "my-target"
         text = p.read_text()
         assert "box:" in text
-        assert 'crab: my-target' in text
+        assert 'agent: my-target' in text
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
@@ -547,9 +547,9 @@ class TestSplitConfigKey:
         from kanibako.config import _split_config_key
         assert _split_config_key("paths_project_toml") == ("paths", "project_toml")
 
-    def test_box_crab_key(self):
+    def test_box_agent_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("box_crab") == ("box", "crab")
+        assert _split_config_key("box_agent") == ("box", "agent")
 
     def test_unknown_prefix_raises(self):
         from kanibako.config import _split_config_key
@@ -570,4 +570,4 @@ class TestConfigKeys:
         assert "box_image" in keys
         assert "paths_shell" in keys
         assert "paths_vault" in keys
-        assert "box_crab" in keys
+        assert "box_agent" in keys

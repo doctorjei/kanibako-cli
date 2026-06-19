@@ -884,7 +884,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Resolve target for credential check path
     try:
-        target = resolve_target(merged.box_crab or None)
+        target = resolve_target(merged.box_agent or None)
         creds_file = target.credential_check_path(proj.shell_path)
     except (KeyError, Exception):
         creds_file = None
@@ -1038,7 +1038,7 @@ def run_config(args: argparse.Namespace) -> int:
                 workset_path=workset_path,
             )
             try:
-                target = resolve_target(merged.box_crab or None)
+                target = resolve_target(merged.box_agent or None)
             except (KeyError, Exception):
                 target = None
             agent_id = target.name if target else "general"
