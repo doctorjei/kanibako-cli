@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsResolver
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +120,29 @@ def config_required_path() -> Path:
     Missing file → treated as an empty level.
     """
     return Path("/etc/kanibako/config_required.yaml")
+
+
+def settings_base_path() -> Path:
+    """Return the machine-wide SETTINGS base file (``/etc/kanibako/settings_base.yaml``).
+
+    The LEAST-specific (bottom) layer of the SETTINGS (behavior) cascade — below
+    every scope (``system``/``agent``/``workset``/``box``): a site admin supplies
+    overridable behavior defaults that any scope can still beat.  Missing file →
+    treated as an empty level (so its absence preserves current behavior).
+    """
+    return Path("/etc/kanibako/settings_base.yaml")
+
+
+def settings_required_path() -> Path:
+    """Return the machine-wide SETTINGS required file (``/etc/kanibako/settings_required.yaml``).
+
+    The MOST-specific (top) layer of the SETTINGS (behavior) cascade — it is
+    **non-overridable** and sits ABOVE ``box`` (decision D): applied LAST so a
+    site admin can pin behavior that no scope (not even ``box``) can override.
+    Missing file → treated as an empty level (so its absence preserves current
+    behavior).
+    """
+    return Path("/etc/kanibako/settings_required.yaml")
 
 
 def migrate_config(config_home: Path) -> Path:
@@ -497,6 +522,99 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     if isinstance(agent_sec, dict):
         out.update({k: str(v) for k, v in agent_sec.items()})
     return out
+
+
+def load_settings(
+    agent_name: str,
+    *,
+    system_path: Path | None,
+    agent_state: Mapping[str, str] | None = None,
+    workset_path: Path | None = None,
+    box_path: Path | None = None,
+    agent_path: Path | None = None,
+    floor: Mapping[str, str] | None = None,
+    host_home: str | None = None,
+    workset_name: str | None = None,
+    xdg: dict[str, str] | None = None,
+) -> SettingsResolver:
+    """Assemble the behavior-settings cascade into a :class:`SettingsResolver`.
+
+    This is the unifying READ-path for behavior settings.  It builds the ordered
+    ``list[LevelView]`` (MOST-SPECIFIC-FIRST, as :func:`resolve_value` expects)
+    for the 5-tier cascade plus the non-overridable ``required`` cap (decision
+    D):
+
+        settings_base < system < agent.<agent> < workset < box < settings_required
+
+    * ``settings_base``     — ``/etc/kanibako/settings_base.yaml`` (defaults; lowest).
+    * ``system``            — the system-level settings file.
+    * ``agent.<agent>``     — the per-agent settings tier.
+    * ``workset``           — the workset settings file.
+    * ``box``               — the box/project settings file.
+    * ``settings_required`` — ``/etc/kanibako/settings_required.yaml``;
+      **non-overridable**, applied ABOVE box so it wins over everything.
+
+    ⚑ TRANSITIONAL FILE MAPPING (the new per-scope ``settings.yaml`` LAYOUT is
+    Phase 5 — files are NOT moved here; only re-pointed there).  Each tier pulls
+    its set-values from the CURRENT on-disk locations via the existing
+    :func:`read_agent_settings` reader (which already layers
+    ``agent.default`` < ``agent.<agent>`` within a single file).  Phase 5 only
+    re-points these paths:
+
+    * ``settings_base`` tier  → ``/etc/kanibako/settings_base.yaml``  (NEW;
+      additive — empty by default, so its absence preserves current behavior).
+    * ``system`` tier  → *system_path* = today's user-global
+      ``~/.config/kanibako.yaml`` ``[agent]`` table.  (TARGET ``system.settings``
+      = ``@system.global/settings.yaml`` — re-pointed in Phase 5.)
+    * ``agent.<agent>`` tier → *agent_state* (the per-agent state dict, already
+      ``agent.<name>``-keyed, loaded from ``agents/<name>.yaml``) overlaid by
+      *agent_path*'s ``[agent]`` table if supplied.
+    * ``workset`` tier → *workset_path* = today's workset ``config.yaml``.
+    * ``box`` tier → *box_path* = today's box/project ``project.yaml`` ``[agent]``
+      table.
+    * ``settings_required`` tier → ``/etc/kanibako/settings_required.yaml``  (NEW;
+      additive — empty by default).
+
+    *floor* (the target's declared-default ``{key: default}``) is attached as the
+    ``settings_base`` level's declared defaults — set-values at any tier beat it,
+    and it is the ultimate fallback.  *agent_state* and *floor* are optional so
+    callers that only have files can omit them.  Absent optional file layers
+    contribute an empty :class:`LevelView` (skipped during resolution).
+    """
+    def _read(path: Path | None) -> dict[str, str]:
+        if path is None:
+            return {}
+        try:
+            if not path.exists():
+                return {}
+            return read_agent_settings(path, agent_name)
+        except Exception:
+            return {}
+
+    # agent tier: the per-agent state dict, overlaid by an explicit agent file.
+    agent_vals: dict[str, str] = dict(agent_state or {})
+    agent_vals.update(_read(agent_path))
+
+    base_vals = _read(settings_base_path())
+    required_vals = _read(settings_required_path())
+
+    # MOST-SPECIFIC-FIRST: required (cap) > box > workset > agent > system > base.
+    levels = [
+        LevelView("settings_required", required_vals),
+        LevelView("box", _read(box_path)),
+        LevelView("workset", _read(workset_path)),
+        LevelView("agent", agent_vals),
+        LevelView("system", _read(system_path)),
+        LevelView("settings_base", base_vals, defaults=dict(floor or {})),
+    ]
+
+    ctx = ResolveCtx(
+        agent_name=agent_name,
+        workset_name=workset_name,
+        host_home=host_home if host_home is not None else str(Path.home()),
+        xdg=xdg or {},
+    )
+    return SettingsResolver(levels, ctx)
 
 
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:

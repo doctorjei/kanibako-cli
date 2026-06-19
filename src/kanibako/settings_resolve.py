@@ -310,3 +310,101 @@ def resolve_value(
             )
 
     return UNSET
+
+
+def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
+    """Default ``@``-ref lookup: behavior settings carry no cross-refs.
+
+    Behavior settings are plain scalars (model, bootstrap, autonomy, …) used
+    verbatim — there is no ``@``-ref expansion in this tier, so any ``@``-ref is
+    a configuration error.
+    """
+    raise SettingsError(f"@-refs are not supported in behavior settings: {ref}")
+
+
+class SettingsResolver:
+    """Unified read-path over the behavior-settings cascade.
+
+    Wraps an ordered ``list[LevelView]`` (MOST-SPECIFIC-FIRST — i.e.
+    ``[settings_required, box, workset, agent, system, settings_base]``) plus a
+    :class:`ResolveCtx`, and exposes :meth:`get` as the single point of truth for
+    "what is the effective value of behavior setting *key*?".
+
+    The class is **pure**: it holds the already-parsed level views and performs
+    no file I/O.  Build it from on-disk files via
+    :func:`kanibako.config.load_settings`, which knows the per-scope file
+    locations (the transitional mapping documented there).
+
+    The precedence semantics are exactly :func:`resolve_value`'s: explicit set
+    values beat declared defaults; the most-specific level wins; an explicit
+    ``""`` is a terminal suppression that does NOT fall through to a
+    less-specific default.
+    """
+
+    def __init__(
+        self,
+        levels: list[LevelView],
+        ctx: ResolveCtx,
+        *,
+        lookup: Callable[[str, tuple[str, ...]], str] | None = None,
+    ) -> None:
+        self.levels = levels
+        self.ctx = ctx
+        self._lookup = lookup if lookup is not None else _no_lookup
+
+    def resolve(self, key: str) -> ResolvedValue | _Unset:
+        """Resolve *key*, returning the winning :class:`ResolvedValue` or UNSET.
+
+        Exposes provenance (which level won, default-vs-set, terminal) for
+        callers that need it; :meth:`get` is the convenience wrapper that
+        collapses this to a plain string / fallback.
+        """
+        return resolve_value(
+            key, levels=self.levels, ctx=self.ctx, lookup=self._lookup
+        )
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        """Return the effective value of behavior setting *key*.
+
+        Returns the most-specific set value (or a declared default) for *key*.
+        When *key* resolves to nothing (UNSET), returns *default*.  An explicit
+        terminal ``""`` resolves to ``""`` (it is a set value, not UNSET).
+        """
+        rv = self.resolve(key)
+        if isinstance(rv, _Unset):
+            return default
+        return rv.value
+
+    def keys(self) -> set[str]:
+        """Return every key set or defaulted at any level in the cascade."""
+        out: set[str] = set()
+        for level in self.levels:
+            out.update(level.values)
+            out.update(level.defaults)
+        return out
+
+    def effective(self) -> dict[str, str]:
+        """Return ``{key: resolved value}`` for every resolvable key.
+
+        The cascade-collapsed view of the behavior settings (the successor to
+        ``start.py``'s ad-hoc precedence walk into an ``effective`` dict).
+        """
+        out: dict[str, str] = {}
+        for key in self.keys():
+            rv = self.resolve(key)
+            if not isinstance(rv, _Unset):
+                out[key] = rv.value
+        return out
+
+    def categories(self) -> object:
+        """Resolve the path-delivery CATEGORIES from the cascade (Phase 4 hook).
+
+        Phase 4 folds ``settings_shares``/``settings_seeds`` into a unified
+        category primitive (masks/bindings/caches/seeded/shared/synced/env) with
+        a cross-category collision resolver, surfaced HERE.  Not implemented in
+        sub-step 2c — this is a stable hook so callers can be wired later.
+        """
+        raise NotImplementedError(
+            "SettingsResolver.categories() is a Phase 4 feature (category "
+            "primitive + collision resolver); not available in this build."
+        )
