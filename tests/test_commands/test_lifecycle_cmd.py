@@ -213,7 +213,7 @@ class TestConvert:
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
         assert proj.metadata_path.parent == std.boxes
         meta = read_project_meta(proj.metadata_path / "project.yaml")
-        assert meta["mode"] == "default"
+        assert meta["mode"] == "primary"
 
     def test_convert_to_workset_inplace_external(self, env):
         config, std, tmp_home = env
@@ -257,7 +257,7 @@ class TestConvert:
             resolve_project(std, config, project_dir=str(pdir),
                             initialize=False).metadata_path / "project.yaml"
         )
-        assert meta["mode"] == "default"
+        assert meta["mode"] == "primary"
 
     def test_convert_requires_target(self, env):
         config, std, tmp_home = env
@@ -325,7 +325,7 @@ class TestLockGuard:
             resolve_project(std, config, project_dir=str(pdir),
                             initialize=False).metadata_path / "project.yaml"
         )
-        assert meta["mode"] == "default"
+        assert meta["mode"] == "primary"
 
     def test_convert_locked_force_proceeds(self, env):
         config, std, tmp_home = env

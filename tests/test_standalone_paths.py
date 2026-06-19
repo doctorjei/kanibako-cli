@@ -9,7 +9,7 @@ import pytest
 from kanibako.errors import ProjectError
 from kanibako.paths import (
     ProjectLayout,
-    ProjectMode,
+    BoxMode,
     resolve_standalone_project,
 )
 from kanibako.utils import project_hash
@@ -24,7 +24,7 @@ class TestResolveStandaloneProject:
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
-        assert proj.mode is ProjectMode.standalone
+        assert proj.mode is BoxMode.standalone
 
     def test_paths_are_inside_project_dir(self, std, config, project_dir):
         proj = resolve_standalone_project(

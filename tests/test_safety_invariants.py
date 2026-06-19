@@ -20,7 +20,7 @@ from kanibako.commands.start import (
     validate_socket_path,
 )
 from kanibako.paths import (
-    ProjectMode,
+    BoxMode,
     detect_project_mode,
     load_std_paths,
 )
@@ -137,7 +137,7 @@ class TestDetectionFalsePositives:
         # Should fall through to local (default), NOT standalone.  A bare
         # directory (even ``.kanibako``) is not a marker on its own: a real
         # standalone project.yaml is required.
-        assert result.mode is not ProjectMode.standalone
+        assert result.mode is not BoxMode.standalone
 
     def test_ancestor_named_kanibako_no_false_positive(
         self, config_file, tmp_home,
@@ -152,7 +152,7 @@ class TestDetectionFalsePositives:
         src_dir.mkdir(parents=True)
 
         result = detect_project_mode(src_dir.resolve(), std, config)
-        assert result.mode is not ProjectMode.standalone
+        assert result.mode is not BoxMode.standalone
 
     def test_dotless_kanibako_with_toml_is_valid(
         self, config_file, tmp_home,
@@ -168,7 +168,7 @@ class TestDetectionFalsePositives:
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.standalone
+        assert result.mode is BoxMode.standalone
 
     def test_dot_kanibako_marker_with_toml_is_valid(
         self, config_file, tmp_home,
@@ -184,7 +184,7 @@ class TestDetectionFalsePositives:
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is ProjectMode.standalone
+        assert result.mode is BoxMode.standalone
 
     def test_dot_kanibako_marker_without_toml_is_not_standalone(
         self, config_file, tmp_home,
@@ -197,7 +197,7 @@ class TestDetectionFalsePositives:
         (project_dir / ".kanibako").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is not ProjectMode.standalone
+        assert result.mode is not BoxMode.standalone
 
 
 # ── Stale names.yaml safety ────────────────────────────────────────────
@@ -223,7 +223,7 @@ class TestStaleNameSafety:
 
         # Should fall through to the default mode at project_dir, NOT match $HOME.
         assert result.project_root == project_dir.resolve()
-        assert result.mode is ProjectMode.default
+        assert result.mode is BoxMode.primary
 
 
 # ── Contract tests: mount source validation ───────────────────────────

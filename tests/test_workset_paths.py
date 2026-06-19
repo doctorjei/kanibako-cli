@@ -10,7 +10,7 @@ from kanibako.config import read_project_meta, write_project_meta
 from kanibako.errors import WorksetError
 from kanibako.paths import (
     ProjectLayout,
-    ProjectMode,
+    BoxMode,
     WorksetSpec,
     resolve_workset_project,
 )
@@ -56,7 +56,7 @@ class TestResolveWorksetProject:
     def test_returns_project_paths_with_workset_mode(self, workset_env, std, config):
         ws, name = workset_env
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
-        assert proj.mode is ProjectMode.workset
+        assert proj.mode is BoxMode.named
 
     def test_paths_use_project_name_not_hash(self, workset_env, std, config):
         ws, name = workset_env
@@ -346,7 +346,7 @@ class TestWorksetAuthOverrideChain:
         assert meta is not None
         write_project_meta(
             project_toml,
-            mode="workset",
+            mode="named",
             layout=meta["layout"] or "robust",
             workspace=meta["workspace"],
             shell=meta["shell"],

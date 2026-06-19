@@ -7,7 +7,7 @@ import pytest
 
 from kanibako.config import load_config
 from kanibako.errors import ConfigError
-from kanibako.paths import ProjectMode, load_std_paths, resolve_project
+from kanibako.paths import BoxMode, load_std_paths, resolve_project
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ class TestProjectPathsModeDefault:
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        assert proj.mode is ProjectMode.default
+        assert proj.mode is BoxMode.primary
 
     def test_mode_field_present_on_dataclass(self):
         """ProjectPaths has a mode field with the expected default."""
@@ -105,7 +105,7 @@ class TestProjectPathsModeDefault:
         assert "mode" in field_names
 
         mode_field = next(f for f in fields(ProjectPaths) if f.name == "mode")
-        assert mode_field.default is ProjectMode.default
+        assert mode_field.default is BoxMode.primary
 
 
 # ---------------------------------------------------------------------------

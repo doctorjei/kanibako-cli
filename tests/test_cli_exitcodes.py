@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from kanibako.errors import KanibakoError, UserCancelled
-from kanibako.paths import ProjectGroup, ProjectMode
+from kanibako.paths import ProjectGroup, BoxMode
 
 
 class TestMainExitCodes:
@@ -190,7 +190,7 @@ class TestStandaloneLaunch:
         """Build a MagicMock ProjectPaths for standalone mode."""
         proj = MagicMock()
         proj.is_new = False
-        proj.mode = ProjectMode.standalone
+        proj.mode = BoxMode.standalone
         proj.group = None  # standalone belongs to no group
         proj.project_path = project_path
         proj.project_hash = "abc123"
@@ -381,7 +381,7 @@ class TestWorksetLaunch:
         """Build a MagicMock ProjectPaths for workset mode."""
         proj = MagicMock()
         proj.is_new = False
-        proj.mode = ProjectMode.workset
+        proj.mode = BoxMode.named
         proj.group = ProjectGroup(
             name="my-workset", root=ws_root,
             is_default=False, local_shared_base=ws_root,

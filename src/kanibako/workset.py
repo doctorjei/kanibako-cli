@@ -528,7 +528,7 @@ def add_project(
             project_toml = ws.projects_dir / name / "project.yaml"
             write_project_meta(
                 project_toml,
-                mode="workset",
+                mode="named",
                 layout="",
                 workspace=str(resolved_source),
                 shell="",

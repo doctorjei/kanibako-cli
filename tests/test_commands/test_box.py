@@ -509,7 +509,7 @@ class TestBoxInfo:
             rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "default" in out
+        assert "primary" in out
         assert str(tmp_home / "project") in out
         assert "Image:" in out
         assert "Container:" in out
@@ -1006,7 +1006,7 @@ class TestBoxDuplicateExternal:
         symlink, and no ``connected.yaml`` entry is written.
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.paths import ProjectMode
+        from kanibako.paths import BoxMode
         from kanibako.workset import _load_connected
 
         config = load_config(config_file)
@@ -1017,7 +1017,7 @@ class TestBoxDuplicateExternal:
 
         copy_into_workset(
             ws, "int_src", proj.metadata_path, proj.shell_path,
-            project_dir, ProjectMode.default, copy_workspace=True, std=std,
+            project_dir, BoxMode.primary, copy_workspace=True, std=std,
         )
 
         # Real internal workspace dir with the copied tree (not a symlink).
@@ -1043,7 +1043,7 @@ class TestBoxDuplicateExternal:
         — no registered-but-incomplete project is left behind.
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.paths import ProjectMode
+        from kanibako.paths import BoxMode
         from kanibako.workset import list_worksets
 
         config = load_config(config_file)
@@ -1059,7 +1059,7 @@ class TestBoxDuplicateExternal:
             try:
                 copy_into_workset(
                     ws, "cf_proj", proj.metadata_path, proj.shell_path,
-                    project_dir, ProjectMode.default, copy_workspace=True, std=std,
+                    project_dir, BoxMode.primary, copy_workspace=True, std=std,
                 )
             except RuntimeError:
                 pass
