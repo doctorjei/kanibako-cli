@@ -860,7 +860,7 @@ def _run_container(
                 std=std, proj=proj, agent_name=agent_id, target=target,
                 global_config_path=config_file, project_toml=project_toml,
                 workset_config_path=workset_path, agent_config_path=agent_cfg_path,
-                logger=logger,
+                logger=logger, group_auth=proj.group_auth,
             )
 
         # Plugin-owned pre-launch host preparation (agent-agnostic call).
@@ -1167,8 +1167,24 @@ def _run_container(
             workset_config_path=workset_path,
             agent_config_path=agent_cfg_path,
             target=target,
+            group_auth=proj.group_auth,
         )
         extra_mounts.extend(share_mounts)
+
+        # Vault mask (decision B): resolve the ~/workspace/vault tmpfs mask
+        # through the category model.  It defaults ON unconditionally (every box
+        # mode) and a box may suppress it via a terminal "" on box.masks.  The
+        # result drives runtime.run(vault_tmpfs=...) below — generalizing the old
+        # hardcoded, default-workset-only flag.
+        vault_tmpfs = _resolve_vault_mask(
+            std=std,
+            proj=proj,
+            agent_name=agent_id,
+            global_config_path=config_file,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            agent_config_path=agent_cfg_path,
+        )
 
         # Image sharing: mount host image storage read-only into child.
         if share_images or merged.box_share_images:
@@ -1396,7 +1412,7 @@ def _run_container(
                 vault_ro_path=proj.vault_ro_path,
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
-                vault_tmpfs=(proj.group is not None and proj.group.is_default),
+                vault_tmpfs=vault_tmpfs,
                 enable_vault=proj.enable_vault,
                 env=container_env,
                 name=container_name,
@@ -1738,69 +1754,43 @@ def _apply_init_seeds(
     workset_config_path,
     agent_config_path,
     logger,
+    group_auth: bool = True,
 ) -> None:
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
 
     ADDITIVE: with no seed config and no target default seeds, copies nothing.
-    Resolves {scope}.seeded.* across the 4 levels (target.default_seeds()
-    as the agent level's declared defaults), translates each SeedPair's
-    guest_dest (/home/agent/X) to a host path under proj.shell_path, and copies
-    host_src -> that path once (dir -> copytree dirs_exist_ok; file -> copy2).
+    Routes the category config through the reconcile model
+    (:func:`_resolve_launch_categories`) and applies the COPY winners whose
+    category is ``seeded``, translating each guest_dest (/home/agent/X) to a host
+    path under proj.shell_path and copying host_src -> that path once (dir ->
+    copytree dirs_exist_ok; file -> copy2).
+
+    The ``group_auth`` credential gate (D-M4) is applied during reconcile: a
+    credential-flagged ``seeded`` entry is suppressed when *group_auth* is False.
     """
     import shutil
 
-    from kanibako.config import machine_config_path, read_seeds
-    from kanibako.settings_resolve import (
-        GUEST_HOME,
-        LevelView,
-        ResolveCtx,
-        SettingsError,
-    )
-    from kanibako.settings_seeds import resolve_seeds
+    from kanibako.settings_resolve import GUEST_HOME
 
     default_seeds = target.default_seeds() if target is not None else {}
 
-    # Five precedence levels, most-specific first; agent carries the target's
-    # declared seed defaults, and machine (/etc) is the least-specific file
-    # source below the user-global system config.
-    levels = [
-        LevelView("box", read_seeds(project_toml)),
-        LevelView("workset", read_seeds(workset_config_path)),
-        LevelView("agent", read_seeds(agent_config_path), defaults=default_seeds),
-        LevelView("system", read_seeds(global_config_path)),
-        LevelView("machine", read_seeds(machine_config_path())),
-    ]
-
-    workset_name = (
-        proj.group.name
-        if (proj.group is not None and not proj.group.is_default)
-        else None
-    )
-    ctx = ResolveCtx(
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
         agent_name=agent_name,
-        workset_name=workset_name,
-        host_home=str(Path.home()),
-        xdg={"XDG_DATA_HOME": str(std.data_home)},
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=default_seeds,
+        group_auth=group_auth,
     )
 
-    resolved_sys = {
-        "system.data": str(std.data),
-        "system.agents": str(std.agents),
-        "system.channels": str(std.channels),
-        "system.base_template": str(std.base_template),
-        "system.registry": str(std.registry),
-        "system.primary_workset": str(std.primary_workset),
-    }
-
-    def _lookup(ref, chain):
-        if ref in resolved_sys:
-            return resolved_sys[ref]
-        raise SettingsError(f"Unresolvable @-reference in seed value: {ref}")
-
-    seeds = resolve_seeds(levels=levels, ctx=ctx, lookup=_lookup)
-
-    for seed in seeds:
-        gd = seed.guest_dest.rstrip("/")
+    for seed in reconciled.copies:
+        if seed.category != "seeded":
+            continue  # synced copies are delivered by the cred-sync engine.
+        assert seed.host_src is not None  # seeds always have a source.
+        gd = seed.box_dest.rstrip("/")
         if gd == GUEST_HOME:
             dest = proj.shell_path
         elif gd.startswith(GUEST_HOME + "/"):
@@ -1809,7 +1799,7 @@ def _apply_init_seeds(
         else:
             logger.warning(
                 "seed %s: guest_dest %r is outside %s; skipping",
-                seed.name, seed.guest_dest, GUEST_HOME,
+                seed.name, seed.box_dest, GUEST_HOME,
             )
             continue
         src = Path(seed.host_src)
@@ -1827,7 +1817,17 @@ def _apply_init_seeds(
             shutil.copy2(str(src), str(dest))
 
 
-def _build_share_mounts(
+# Default vault tmpfs mask (decision B): the local ``~/workspace/vault`` is
+# hidden behind an UNCONDITIONAL read-only tmpfs in every box mode.  It flows
+# through the category resolver as a ``box.masks`` default so a box may add to
+# or suppress (terminal ``""``) it like any other category.  (The old behavior
+# was conditional on the default-workset mode; the mask is now unconditional —
+# design decision B, design-review m6.  The ``.gitignore`` overlay that rode on
+# the old tmpfs is DROPPED.)
+VAULT_MASK_DEST = "~/workspace/vault"
+
+
+def _category_resolution_inputs(
     *,
     std,
     proj,
@@ -1836,38 +1836,30 @@ def _build_share_mounts(
     project_toml,
     workset_config_path,
     agent_config_path,
-    target=None,
-) -> list:
-    """Resolve scoped-binding config ({scope}.bindings.{ro,rw}.*) into Mounts.
+    default_categories: dict[str, str] | None = None,
+):
+    """Build the shared (levels, ctx, lookup, scope_roots) for category resolution.
 
-    ADDITIVE: with no share keys configured (and no target default shares),
-    returns []. Reads each level's set share keys from its config file; the
-    KEY's scope sets the source root + mode, the LEVEL where set decides
-    precedence (a box can suppress an inherited system share with a terminal "").
-
-    *target*'s ``default_shares()`` (if a target is given) are injected as the
-    AGENT level's *declared defaults*: they mount unless overridden/suppressed at
-    a more-specific level. After resolution, host source directories for any
-    read-write share are created best-effort (mirrors the old SHARED-mount
-    behavior) so podman does not stub them; a bad source never crashes launch.
+    Reads every level's scope-category keys (the unified
+    masks/bindings/caches/seeded/shared/synced/env primitive) from its config
+    file and assembles the 5 precedence levels (most-specific first; machine
+    ``/etc`` below the user-global system config).  *default_categories* are
+    injected as the AGENT level's declared defaults (e.g. a target's
+    ``default_shares()`` / ``default_seeds()`` plus core mask defaults).
     """
-    from kanibako.config import machine_config_path, read_shares
+    from kanibako.config import machine_config_path, read_categories
     from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
-    from kanibako.settings_shares import resolve_shares
 
-    default_shares = target.default_shares() if target is not None else {}
-
-    # Five precedence levels, most-specific first; agent carries the target's
-    # declared share defaults, and machine (/etc/kanibako/kanibako.yaml) is the
-    # least-specific file source below the user-global system config.  (The
-    # additive image-baseline overlay lives separately in baseline.load_baseline,
-    # which reads /etc/kanibako/image-baseline.yaml.)
     levels = [
-        LevelView("box", read_shares(project_toml)),
-        LevelView("workset", read_shares(workset_config_path)),
-        LevelView("agent", read_shares(agent_config_path), defaults=default_shares),
-        LevelView("system", read_shares(global_config_path)),
-        LevelView("machine", read_shares(machine_config_path())),
+        LevelView("box", read_categories(project_toml)),
+        LevelView("workset", read_categories(workset_config_path)),
+        LevelView(
+            "agent",
+            read_categories(agent_config_path),
+            defaults=default_categories or {},
+        ),
+        LevelView("system", read_categories(global_config_path)),
+        LevelView("machine", read_categories(machine_config_path())),
     ]
 
     # Source roots per scope group (concrete host paths → expand_expr verbatim).
@@ -1897,7 +1889,7 @@ def _build_share_mounts(
         xdg={"XDG_DATA_HOME": str(std.data_home)},
     )
 
-    # Share VALUES may reference the resolved system config tier via @-refs.
+    # Category VALUES may reference the resolved system config tier via @-refs.
     resolved_sys = {
         "system.data": str(std.data),
         "system.agents": str(std.agents),
@@ -1910,18 +1902,163 @@ def _build_share_mounts(
     def _lookup(ref, chain):
         if ref in resolved_sys:
             return resolved_sys[ref]
-        raise SettingsError(f"Unresolvable @-reference in share value: {ref}")
+        raise SettingsError(f"Unresolvable @-reference in category value: {ref}")
 
-    mounts = resolve_shares(
-        levels=levels, ctx=ctx, lookup=_lookup, scope_roots=scope_roots
+    return levels, ctx, _lookup, scope_roots
+
+
+def _resolve_launch_categories(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    default_categories: dict[str, str] | None = None,
+    group_auth: bool = True,
+):
+    """Resolve + reconcile the unified scope-category config for the launch path.
+
+    Returns a :class:`~kanibako.settings_categories.ReconciledCategories`
+    (``mounts`` / ``copies`` / ``envs``) with cross-category collisions resolved
+    and the ``group_auth`` credential gate applied.  AGENT_CRITICAL agent-binary
+    binds do NOT flow through here (decision C — they stay in the separate
+    descriptor-mount list that always wins).
+    """
+    from kanibako.settings_categories import (
+        reconcile_categories,
+        resolve_categories,
     )
-    for m in mounts:
-        if m.options != "ro":  # rw share: create the host source dir if absent
+
+    levels, ctx, lookup, scope_roots = _category_resolution_inputs(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=default_categories,
+    )
+    entries = resolve_categories(
+        levels=levels, ctx=ctx, lookup=lookup, scope_roots=scope_roots
+    )
+    return reconcile_categories(entries, group_auth=group_auth)
+
+
+def _build_share_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    target=None,
+    group_auth: bool = True,
+) -> list:
+    """Resolve the launch path's category MOUNTs (bindings/caches/shared/masks).
+
+    Routes the category-shaped binds through the reconcile model
+    (:func:`_resolve_launch_categories`) and emits the reconciled MOUNT winners
+    as :class:`~kanibako.targets.base.Mount` objects.  ``masks`` (tmpfs) are
+    handled separately by :func:`_resolve_vault_mask` — they are skipped here so
+    the host-side guarantee-create only runs on real bind sources.
+
+    ADDITIVE: with no category keys configured (and no target default shares),
+    returns only what target defaults declare.  *target*'s ``default_shares()``
+    (if a target is given) are injected as the AGENT level's declared defaults.
+
+    L7 (bug-hunt 2026-06-19): every emitted MOUNT whose host source does not
+    exist is mkdir'd best-effort (rw binds) or, for ro binds whose source is
+    absent, the mount is DROPPED with a warning — a missing source must never be
+    passed to rootless podman, which would abort the whole launch.
+    """
+    from pathlib import Path as _Path
+
+    default_shares = target.default_shares() if target is not None else {}
+
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=default_shares,
+        group_auth=group_auth,
+    )
+
+    from kanibako.targets.base import Mount
+
+    mounts: list = []
+    for e in reconciled.mounts:
+        if e.category == "masks":
+            # tmpfs masks have no host source; emitted via _resolve_vault_mask.
+            continue
+        assert e.host_src is not None  # bind-shaped MOUNTs always have a source.
+        src = _Path(e.host_src)
+        if e.options != "ro":
+            # rw bind: create the host source dir if absent (L7 guarantee-create).
             try:
-                m.source.mkdir(parents=True, exist_ok=True)
+                src.mkdir(parents=True, exist_ok=True)
             except OSError:
                 pass  # best-effort; podman will surface a genuinely bad source
+        elif not src.exists():
+            # ro bind with a missing source: DROP with a warning (L7) instead of
+            # letting rootless podman abort the launch on a dangling bind source.
+            import logging
+            logging.getLogger(__name__).warning(
+                "share %s: read-only source %s does not exist; dropping mount",
+                e.name, e.host_src,
+            )
+            continue
+        mounts.append(
+            Mount(source=src, destination=e.box_dest, options=e.options)
+        )
     return mounts
+
+
+def _resolve_vault_mask(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+) -> bool:
+    """Resolve whether the ``~/workspace/vault`` tmpfs mask is active.
+
+    The vault mask flows through the category resolver as a ``box.masks``
+    default (:data:`VAULT_MASK_DEST`); a box may suppress it with a terminal
+    ``""``.  Returns True iff the reconciled mask set still contains the vault
+    destination — generalizing the old hardcoded ``vault_tmpfs`` flag.  The mask
+    is UNCONDITIONAL across box modes (decision B), unlike the old
+    default-workset-only behavior.
+    """
+    from kanibako.settings_resolve import GUEST_HOME
+
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories={"box.masks": VAULT_MASK_DEST},
+    )
+    vault_dest = f"{GUEST_HOME}/workspace/vault"
+    return any(
+        e.category == "masks" and e.box_dest == vault_dest
+        for e in reconciled.mounts
+    )
 
 
 def _kanibako_mounts():

@@ -283,16 +283,13 @@ class ContainerRuntime:
                 cmd += ["-v", f"{vault_ro_path}:/home/agent/share-ro:ro"]
             if vault_rw_path.is_dir():
                 cmd += ["-v", f"{vault_rw_path}:/home/agent/share-rw:Z,U"]
-            # Local vault hiding: read-only tmpfs over workspace/vault
+            # Local vault hiding: read-only tmpfs over workspace/vault.
+            # The vault mask is generalized into the ``box.masks`` category and
+            # resolved in start.py (decision B); the ``.gitignore`` overlay that
+            # used to ride on this tmpfs is DROPPED (unconditional mask, no
+            # special-case overlay).
             if vault_tmpfs:
                 cmd += ["--mount", "type=tmpfs,dst=/home/agent/workspace/vault,ro"]
-                # Mount a .gitignore on top of the tmpfs so the stub
-                # directories created by the OCI runtime are ignored.
-                import importlib.resources
-                gi_ref = importlib.resources.files("kanibako.scripts").joinpath("vault-gitignore")
-                gi_path = Path(str(gi_ref))
-                if gi_path.is_file():
-                    cmd += ["-v", f"{gi_path}:/home/agent/workspace/vault/.gitignore:ro"]
         # Extra mounts (target binary mounts, etc.)
         if extra_mounts:
             for mount in extra_mounts:
