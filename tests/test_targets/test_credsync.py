@@ -249,6 +249,18 @@ class TestSeed:
         # Distinct auth: src forced to None even though host file exists.
         assert (".claude.json", "in", True) in t.calls
 
+    def test_filtered_chmod_600_after_transform(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".claude/.credentials.json", "CREDS")
+        _write(host / ".claude.json", "SETTINGS")
+        # _MarkerTarget writes dst via write_text (umask ~0644) -> engine must chmod.
+        seed_cred_files(
+            CLAUDE_DESC, _MarkerTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        assert _mode(proj / ".claude/.credentials.json") == 0o600
+        assert _mode(proj / ".claude.json") == 0o600
+
     def test_filtered_default_transform_copies(self, tmp_path: Path) -> None:
         host, proj = tmp_path / "host", tmp_path / "proj"
         _write(host / ".claude.json", "RAW")
@@ -319,6 +331,17 @@ class TestRefresh:
             host_home=host, project_home=proj, group_auth=True,
         )
         assert (proj / ".claude/.credentials.json").read_text() == "FILTERED-IN"
+
+    def test_filtered_chmod_600_after_transform(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(proj / ".claude/.credentials.json", "old", mtime=100)
+        _write(host / ".claude/.credentials.json", "new", mtime=200)
+        # _DirectionTarget writes dst via write_text (umask ~0644) -> engine must chmod.
+        refresh_cred_files(
+            CLAUDE_DESC, _DirectionTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        assert _mode(proj / ".claude/.credentials.json") == 0o600
 
     def test_missing_host_skipped(self, tmp_path: Path) -> None:
         host, proj = tmp_path / "host", tmp_path / "proj"
