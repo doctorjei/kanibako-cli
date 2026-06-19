@@ -837,13 +837,15 @@ class TestSecureAutonomousFlags:
 # ---------------------------------------------------------------------------
 
 class TestVaultTmpfsMode:
-    """Pin the current ``vault_tmpfs=(proj.mode == ProjectMode.default)`` wiring.
+    """Pin the UNCONDITIONAL vault tmpfs mask (config-core 4c, decision B).
 
-    start.py passes ``vault_tmpfs`` to ``runtime.run()`` derived solely from
-    the resolved project's mode: DEFAULT -> tmpfs vault (True); WORKSET and
-    STANDALONE -> not tmpfs (False).  The #71 refactor unifies default/workset
-    resolution, so these tests lock the per-mode result at the
-    ``runtime.run()`` boundary the existing start tests already mock.
+    The vault mask is generalized into the ``box.masks`` category with an
+    unconditional default of ``~/workspace/vault`` (config-core revamp,
+    decision B / design-review m6).  start.py resolves the mask through the
+    category model and passes the result to ``runtime.run(vault_tmpfs=...)``.
+    Unlike the old default-workset-only flag, the mask is now ON in EVERY box
+    mode (default / workset / standalone), unless a box suppresses it via a
+    terminal ``""`` on ``box.masks``.
     """
 
     def test_default_mode_uses_tmpfs_vault(self, start_mocks):
@@ -864,7 +866,7 @@ class TestVaultTmpfsMode:
             )
             assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
 
-    def test_workset_mode_does_not_use_tmpfs_vault(self, start_mocks):
+    def test_workset_mode_now_also_uses_tmpfs_vault(self, start_mocks):
         from pathlib import Path
 
         from kanibako.paths import ProjectGroup, ProjectMode
@@ -880,9 +882,10 @@ class TestVaultTmpfsMode:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is False
+            # Decision B: the mask is now unconditional (was False pre-4c).
+            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
 
-    def test_standalone_mode_does_not_use_tmpfs_vault(self, start_mocks):
+    def test_standalone_mode_now_also_uses_tmpfs_vault(self, start_mocks):
         from kanibako.paths import ProjectMode
 
         with start_mocks() as m:
@@ -893,7 +896,8 @@ class TestVaultTmpfsMode:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is False
+            # Decision B: the mask is now unconditional (was False pre-4c).
+            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
 
 
 class TestConfigurableBootstrap:

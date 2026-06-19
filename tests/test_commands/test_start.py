@@ -1913,6 +1913,90 @@ class TestBuildShareMounts:
         """target=None means no default shares (backward compatible)."""
         assert self._call(tmp_path, target=None) == []
 
+    def test_ro_bind_missing_source_dropped_not_fatal(self, tmp_path):
+        """L7: a read-only bind whose host source is absent is DROPPED (warned),
+        never passed to podman (which would abort the rootless launch)."""
+        missing = tmp_path / "no_such_dir"
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text(
+            "system:\n"
+            "  bindings:\n"
+            "    ro:\n"
+            f'      gone: "{missing}:~/gone"\n'
+        )
+        mounts = self._call(tmp_path, global_config_path=glob)
+        # The missing ro source is dropped, not emitted.
+        assert mounts == []
+
+    def test_rw_bind_missing_source_created(self, tmp_path):
+        """L7: a read-write bind whose host source is absent is mkdir'd
+        (guarantee-create), so podman binds a real dir, not a stub."""
+        from pathlib import Path
+        target = tmp_path / "new_rw_src"
+        assert not target.exists()
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text(
+            "system:\n"
+            "  bindings:\n"
+            "    rw:\n"
+            f'      data: "{target}:~/data"\n'
+        )
+        mounts = self._call(tmp_path, global_config_path=glob)
+        assert len(mounts) == 1
+        assert mounts[0].source == Path(target)
+        assert target.is_dir()
+
+
+class TestResolveVaultMask:
+    """Unit tests for _resolve_vault_mask (vault tmpfs mask, decision B)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            agents=tmp_path / "agents",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            data=tmp_path / "data",
+            channels=tmp_path / "channels",
+            base_template=tmp_path / "base_template",
+            registry=tmp_path / "registry.yaml",
+            primary_workset=tmp_path / "primary_workset",
+        )
+
+    def _proj(self, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(group=group)
+
+    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
+              project_toml=None, workset_config_path=None, agent_config_path=None):
+        from kanibako.commands.start import _resolve_vault_mask
+        return _resolve_vault_mask(
+            std=std or self._std(tmp_path),
+            proj=proj or self._proj(),
+            agent_name="claude",
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            agent_config_path=agent_config_path,
+        )
+
+    def test_default_unconditional_mask_active(self, tmp_path):
+        """With no config, the unconditional vault mask default is active."""
+        assert self._call(tmp_path) is True
+
+    def test_default_mask_active_for_non_default_workset(self, tmp_path):
+        """Decision B: the mask is unconditional — ON even for a named workset
+        (the old behavior gated it on the DEFAULT workset only)."""
+        from types import SimpleNamespace
+        group = SimpleNamespace(root=tmp_path / "ws", name="ws", is_default=False)
+        assert self._call(tmp_path, proj=self._proj(group=group)) is True
+
+    def test_box_suppresses_vault_mask(self, tmp_path):
+        """A box-level terminal '' on box.masks suppresses the vault mask."""
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  masks: ""\n')
+        assert self._call(tmp_path, project_toml=ptoml) is False
+
 
 class TestApplyInitSeeds:
     """Unit tests for _apply_init_seeds (copy-once-at-init seed wiring)."""
@@ -1946,7 +2030,8 @@ class TestApplyInitSeeds:
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, project_toml=None,
-              workset_config_path=None, agent_config_path=None):
+              workset_config_path=None, agent_config_path=None,
+              group_auth=True):
         from kanibako.commands.start import _apply_init_seeds
         _apply_init_seeds(
             std=std or self._std(tmp_path),
@@ -1958,6 +2043,7 @@ class TestApplyInitSeeds:
             workset_config_path=workset_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
+            group_auth=group_auth,
         )
 
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
@@ -2046,6 +2132,23 @@ class TestApplyInitSeeds:
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
         assert list(shell.iterdir()) == []
+
+    def test_non_credential_seed_copied_even_when_group_auth_false(self, tmp_path):
+        """group_auth=False suppresses only credential-flagged seeds; a plain
+        config seed (is_credential False) still copies (D-M4 gate is scoped)."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "file.txt").write_text("hello")
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  seeded:\n    foo: "{src}:~/foo"\n'
+        )
+        self._call(
+            tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
+            group_auth=False,
+        )
+        assert (shell / "foo" / "file.txt").read_text() == "hello"
 
 
 class TestBoxShellLaunch:
