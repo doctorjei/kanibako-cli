@@ -844,7 +844,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         scope_roots["workset.path.share_rw"] = ws_root
 
     ctx = ResolveCtx(
-        crab_name=None,
+        agent_name=None,
         workset_name=None if ws.is_default else ws.name,
         host_home=str(Path.home()),
         xdg={"XDG_DATA_HOME": str(std.data_home)},

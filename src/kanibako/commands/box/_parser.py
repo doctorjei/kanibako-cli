@@ -1042,16 +1042,16 @@ def run_config(args: argparse.Namespace) -> int:
             except (KeyError, Exception):
                 target = None
             agent_id = target.name if target else "general"
-            crab_cfg_path = std.agents / f"{agent_id}.yaml"
-            if target and not crab_cfg_path.exists():
-                crab_cfg = target.generate_agent_config()
-            elif crab_cfg_path.exists():
-                crab_cfg = load_agent_config(crab_cfg_path)
+            agent_cfg_path = std.agents / f"{agent_id}.yaml"
+            if target and not agent_cfg_path.exists():
+                agent_cfg = target.generate_agent_config()
+            elif agent_cfg_path.exists():
+                agent_cfg = load_agent_config(agent_cfg_path)
             else:
-                crab_cfg = None
-            if target is not None and crab_cfg is not None:
+                agent_cfg = None
+            if target is not None and agent_cfg is not None:
                 agent_state = _build_effective_state(
-                    target, crab_cfg, project_toml,
+                    target, agent_cfg, project_toml,
                     global_config_path=config_file,
                     workset_config_path=workset_path,
                 )
@@ -1062,7 +1062,7 @@ def run_config(args: argparse.Namespace) -> int:
             )
             env_resolved = _build_config_env(
                 std.data_path / "env",
-                crab_cfg.env if crab_cfg is not None else {},
+                agent_cfg.env if agent_cfg is not None else {},
                 workset_env_path,
                 proj.metadata_path / "env",
             )

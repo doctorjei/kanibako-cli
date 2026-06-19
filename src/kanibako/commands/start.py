@@ -457,8 +457,8 @@ def _tmux_has_session(session_name: str) -> bool:
     ).returncode == 0
 
 
-def _apply_tweakcc(install, crab_cfg, cache_path, image, runtime_cmd, logger):
-    """Apply tweakcc patching if enabled in crab config.
+def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
+    """Apply tweakcc patching if enabled in agent config.
 
     Patching runs inside a throwaway container (``podman run --rm``) using
     the same image that will be used for the agent.  The patched binary is
@@ -472,7 +472,7 @@ def _apply_tweakcc(install, crab_cfg, cache_path, image, runtime_cmd, logger):
     from kanibako.tweakcc import build_merged_config, resolve_tweakcc_config, write_merged_config
     from kanibako.tweakcc_cache import TweakccCache, TweakccCacheError, config_hash
 
-    tweakcc_cfg = resolve_tweakcc_config(crab_cfg.tweakcc)
+    tweakcc_cfg = resolve_tweakcc_config(agent_cfg.tweakcc)
     if not tweakcc_cfg.enabled:
         return None
 
@@ -709,13 +709,13 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    crab_cfg_path = std.agents / f"{agent_id}.yaml"
-    if target and not crab_cfg_path.exists():
-        # First-use: generate default crab config from target plugin
-        crab_cfg = target.generate_agent_config()
-        write_agent_config(crab_cfg_path, crab_cfg)
+    agent_cfg_path = std.agents / f"{agent_id}.yaml"
+    if target and not agent_cfg_path.exists():
+        # First-use: generate default agent config from target plugin
+        agent_cfg = target.generate_agent_config()
+        write_agent_config(agent_cfg_path, agent_cfg)
     else:
-        crab_cfg = load_agent_config(crab_cfg_path)
+        agent_cfg = load_agent_config(agent_cfg_path)
 
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
@@ -759,7 +759,7 @@ def _run_container(
         if runtime.is_running(container_name) and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
-            # baseline env (env files, crab_cfg.env, KANIBAKO_NAME) was set at
+            # baseline env (env files, agent_cfg.env, KANIBAKO_NAME) was set at
             # launch and is inherited by exec; without this, per-run -e vars
             # would be silently dropped when the box is already running.
             return runtime.exec(
@@ -820,8 +820,8 @@ def _run_container(
             from kanibako.templates import apply_shell_template
             templates_base = std.templates
             # Ensure the agent-specific template variant directory exists.
-            (templates_base / target.name / crab_cfg.shell).mkdir(parents=True, exist_ok=True)
-            apply_shell_template(proj.shell_path, templates_base, target.name, crab_cfg.shell)
+            (templates_base / target.name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
+            apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
             if desc is not None:
                 credsync.seed_cred_files(
                     desc, target, host_home=Path.home(),
@@ -840,16 +840,16 @@ def _run_container(
                     instruction_files=instr_files,
                     templates_base=templates_base,
                     agent_name=target.name,
-                    template_name=crab_cfg.shell,
+                    template_name=agent_cfg.shell,
                 )
 
         # Copy-once-at-init seeds (additive; overlays templates). target may be
         # None (no agent) — seeds can still come from config levels.
         if proj.is_new:
             _apply_init_seeds(
-                std=std, proj=proj, crab_name=agent_id, target=target,
+                std=std, proj=proj, agent_name=agent_id, target=target,
                 global_config_path=config_file, project_toml=project_toml,
-                workset_config_path=workset_path, crab_config_path=crab_cfg_path,
+                workset_config_path=workset_path, crab_config_path=agent_cfg_path,
                 logger=logger,
             )
 
@@ -933,18 +933,18 @@ def _run_container(
         # tweakcc: patch agent binary if enabled
         tweakcc_entry = None
         tweakcc_cache_obj = None
-        if target and install and crab_cfg.tweakcc:
+        if target and install and agent_cfg.tweakcc:
             result = _apply_tweakcc(
-                install, crab_cfg, std.cache_path, image, runtime.cmd, logger,
+                install, agent_cfg, std.cache_path, image, runtime.cmd, logger,
             )
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result
 
-        # Build CLI args via target, merging crab run_args and state
+        # Build CLI args via target, merging agent run_args and state
         if target:
             effective_state = _build_effective_state(
                 target,
-                crab_cfg,
+                agent_cfg,
                 project_toml,
                 global_config_path=config_file,
                 workset_config_path=workset_path,
@@ -952,7 +952,7 @@ def _run_container(
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
-            all_extra = list(crab_cfg.run_args) + list(extra_args)
+            all_extra = list(agent_cfg.run_args) + list(extra_args)
             if desc is not None:
                 # Descriptor path: assemble argv + container-env overlay
                 # declaratively from the plugin descriptor (replaces the legacy
@@ -1043,7 +1043,7 @@ def _run_container(
                 binding_overrides = _build_binding_overrides(
                     project_toml=project_toml,
                     workset_config_path=workset_path,
-                    crab_config_path=crab_cfg_path,
+                    crab_config_path=agent_cfg_path,
                     global_config_path=config_file,
                     agent_name=agent_id,
                 )
@@ -1130,9 +1130,9 @@ def _run_container(
                     ))
 
         # Agent-level shared cache mounts (lazy — only mount if dir exists)
-        if proj.local_shared_path and crab_cfg.shared_caches:
+        if proj.local_shared_path and agent_cfg.shared_caches:
             from kanibako.targets.base import Mount as _Mount
-            for cache_name, container_rel in crab_cfg.shared_caches.items():
+            for cache_name, container_rel in agent_cfg.shared_caches.items():
                 host_dir = proj.local_shared_path / agent_id / cache_name
                 if host_dir.is_dir():
                     extra_mounts.append(_Mount(
@@ -1151,11 +1151,11 @@ def _run_container(
         share_mounts = _build_share_mounts(
             std=std,
             proj=proj,
-            crab_name=agent_id,
+            agent_name=agent_id,
             global_config_path=config_file,
             project_toml=project_toml,
             workset_config_path=workset_path,
-            crab_config_path=crab_cfg_path,
+            crab_config_path=agent_cfg_path,
             target=target,
         )
         extra_mounts.extend(share_mounts)
@@ -1193,7 +1193,7 @@ def _run_container(
         )
 
         # Read environment variables, accumulating across config levels with
-        # the settings-framework precedence (low->high): system < crab <
+        # the settings-framework precedence (low->high): system < agent <
         # workset < box.  Target-derived state env and per-run CLI -e env stay
         # above all config levels.
         global_env_path = std.data_path / "env"
@@ -1206,7 +1206,7 @@ def _run_container(
             else None
         )
         container_env = _build_config_env(
-            global_env_path, crab_cfg.env, workset_env_path, project_env_path,
+            global_env_path, agent_cfg.env, workset_env_path, project_env_path,
         )
         container_env.update(state_env)                        # target-derived state env
 
@@ -1553,11 +1553,11 @@ def _run_container(
 
 def _build_config_env(
     global_env_path,
-    crab_env: dict[str, str],
+    agent_env: dict[str, str],
     workset_env_path,
     project_env_path,
 ) -> dict[str, str]:
-    """Layer config-level env vars, low->high: system < crab < workset < box.
+    """Layer config-level env vars, low->high: system < agent < workset < box.
 
     Shared between container launch (start) and ``box config --effective`` so
     the resolved config-env matches exactly. Runtime-only layers (target state
@@ -1567,7 +1567,7 @@ def _build_config_env(
     from kanibako.shellenv import read_env_file
     env: dict[str, str] = {}
     env.update(read_env_file(global_env_path))   # system
-    env.update(crab_env)                         # crab
+    env.update(agent_env)                        # agent
     if workset_env_path is not None:
         env.update(read_env_file(workset_env_path))  # workset
     env.update(read_env_file(project_env_path))  # box (highest config level)
@@ -1576,27 +1576,27 @@ def _build_config_env(
 
 def _build_effective_state(
     target,
-    crab_cfg,
+    agent_cfg,
     project_toml,
     *,
     global_config_path,
     workset_config_path=None,
 ) -> dict[str, str]:
-    """Resolve effective crab-state via the settings precedence walk.
+    """Resolve effective agent-state via the settings precedence walk.
 
-    Walks four levels MOST-SPECIFIC-FIRST — box > workset > crab > system —
+    Walks four levels MOST-SPECIFIC-FIRST — box > workset > agent > system —
     with the target's declared defaults as a FLOOR (the system level's declared
-    defaults).  Sources for each level's ``[crab]`` table:
+    defaults).  Sources for each level's ``[agent]`` table:
 
-      * **box**     — ``crab.<name>`` (over ``crab.default``) in project.yaml
-      * **workset** — ``crab.<name>`` in the workset's config.yaml (if any)
-      * **crab**    — the crab config's own state dict (already per-agent)
-      * **system**  — ``crab.<name>`` in the global kanibako.yaml
+      * **box**     — ``agent.<name>`` (over ``agent.default``) in project.yaml
+      * **workset** — ``agent.<name>`` in the workset's config.yaml (if any)
+      * **agent**   — the agent config's own state dict (already per-agent)
+      * **system**  — ``agent.<name>`` in the global kanibako.yaml
       * **floor**   — target ``setting_descriptors()`` defaults
 
     The box/workset/system/machine override sections are keyed per agent
-    (``crab.<target.name>`` layered over the any-agent ``crab.default`` tier) so
-    an override never bleeds across an agent switch; ``crab_cfg.state`` is
+    (``agent.<target.name>`` layered over the any-agent ``agent.default`` tier)
+    so an override never bleeds across an agent switch; ``agent_cfg.state`` is
     already per-agent (loaded from ``agents/<name>.yaml``).
 
     Explicit set values beat all declared defaults; the most-specific level
@@ -1605,9 +1605,9 @@ def _build_effective_state(
 
     Values are used verbatim — no ``@``-ref / ``$var`` / ``~`` expansion.
 
-    With no system/workset ``[crab]`` config (the common case) the walk reduces
-    to box > crab > floor, i.e. project override > crab state > target default —
-    identical to the prior two-source merge.
+    With no system/workset ``[agent]`` config (the common case) the walk reduces
+    to box > agent > floor, i.e. project override > agent state > target default
+    — identical to the prior two-source merge.
     """
     from kanibako.config import machine_config_path, read_agent_settings
     from kanibako.settings_resolve import (
@@ -1620,7 +1620,7 @@ def _build_effective_state(
 
     descriptors = target.setting_descriptors()
     if not descriptors:
-        return dict(crab_cfg.state)
+        return dict(agent_cfg.state)
 
     def _read(path) -> dict[str, str]:
         if not path:
@@ -1634,10 +1634,10 @@ def _build_effective_state(
         except Exception:
             return {}
 
-    # Gather per-level [crab] leaf values.
+    # Gather per-level [agent] leaf values.
     box_vals = _read(project_toml)
     ws_vals = _read(workset_config_path)
-    crab_vals = dict(crab_cfg.state)
+    agent_vals = dict(agent_cfg.state)
     sys_vals = _read(global_config_path)
     machine_vals = _read(machine_config_path())
     floor = {d.key: d.default for d in descriptors}
@@ -1648,7 +1648,7 @@ def _build_effective_state(
     levels = [
         LevelView("box", box_vals),
         LevelView("workset", ws_vals),
-        LevelView("crab", crab_vals),
+        LevelView("agent", agent_vals),
         LevelView("system", sys_vals),
         LevelView("machine", machine_vals, defaults=floor),
     ]
@@ -1657,20 +1657,20 @@ def _build_effective_state(
         set(floor)
         | set(box_vals)
         | set(ws_vals)
-        | set(crab_vals)
+        | set(agent_vals)
         | set(sys_vals)
         | set(machine_vals)
     )
 
     ctx = ResolveCtx(
-        crab_name=target.name,
+        agent_name=target.name,
         workset_name=None,
         host_home=str(Path.home()),
         xdg={},
     )
 
     def _no_lookup(ref, chain):
-        raise SettingsError(f"@-refs not supported in crab settings: {ref}")
+        raise SettingsError(f"@-refs not supported in agent settings: {ref}")
 
     effective: dict[str, str] = {}
     for key in keys:
@@ -1696,7 +1696,7 @@ def _build_binding_overrides(
     :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
     then overlays the levels MOST-SPECIFIC-WINS:
 
-        box (project.yaml) > workset > crab (agents/<name>.yaml) > system > machine
+        box (project.yaml) > workset > agent (agents/<name>.yaml) > system > machine
 
     Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
     common case).  A bad/unreadable level contributes nothing (the reader
@@ -1721,7 +1721,7 @@ def _apply_init_seeds(
     *,
     std,
     proj,
-    crab_name: str,
+    agent_name: str,
     target=None,
     global_config_path,
     project_toml,
@@ -1733,7 +1733,7 @@ def _apply_init_seeds(
 
     ADDITIVE: with no seed config and no target default seeds, copies nothing.
     Resolves {scope}.path.seeded.* across the 4 levels (target.default_seeds()
-    as the crab level's declared defaults), translates each SeedPair's
+    as the agent level's declared defaults), translates each SeedPair's
     guest_dest (/home/agent/X) to a host path under proj.shell_path, and copies
     host_src -> that path once (dir -> copytree dirs_exist_ok; file -> copy2).
     """
@@ -1750,13 +1750,13 @@ def _apply_init_seeds(
 
     default_seeds = target.default_seeds() if target is not None else {}
 
-    # Five precedence levels, most-specific first; crab carries the target's
+    # Five precedence levels, most-specific first; agent carries the target's
     # declared seed defaults, and machine (/etc) is the least-specific file
     # source below the user-global system config.
     levels = [
         LevelView("box", read_seeds(project_toml)),
         LevelView("workset", read_seeds(workset_config_path)),
-        LevelView("crab", read_seeds(crab_config_path), defaults=default_seeds),
+        LevelView("agent", read_seeds(crab_config_path), defaults=default_seeds),
         LevelView("system", read_seeds(global_config_path)),
         LevelView("machine", read_seeds(machine_config_path())),
     ]
@@ -1767,7 +1767,7 @@ def _apply_init_seeds(
         else None
     )
     ctx = ResolveCtx(
-        crab_name=crab_name,
+        agent_name=agent_name,
         workset_name=workset_name,
         host_home=str(Path.home()),
         xdg={"XDG_DATA_HOME": str(std.data_home)},
@@ -1823,7 +1823,7 @@ def _build_share_mounts(
     *,
     std,
     proj,
-    crab_name: str,
+    agent_name: str,
     global_config_path,
     project_toml,
     workset_config_path,
@@ -1838,7 +1838,7 @@ def _build_share_mounts(
     precedence (a box can suppress an inherited system share with a terminal "").
 
     *target*'s ``default_shares()`` (if a target is given) are injected as the
-    CRAB level's *declared defaults*: they mount unless overridden/suppressed at
+    AGENT level's *declared defaults*: they mount unless overridden/suppressed at
     a more-specific level. After resolution, host source directories for any
     read-write share are created best-effort (mirrors the old SHARED-mount
     behavior) so podman does not stub them; a bad source never crashes launch.
@@ -1849,7 +1849,7 @@ def _build_share_mounts(
 
     default_shares = target.default_shares() if target is not None else {}
 
-    # Five precedence levels, most-specific first; crab carries the target's
+    # Five precedence levels, most-specific first; agent carries the target's
     # declared share defaults, and machine (/etc/kanibako/kanibako.yaml) is the
     # least-specific file source below the user-global system config.  (The
     # additive image-baseline overlay lives separately in baseline.load_baseline,
@@ -1857,18 +1857,18 @@ def _build_share_mounts(
     levels = [
         LevelView("box", read_shares(project_toml)),
         LevelView("workset", read_shares(workset_config_path)),
-        LevelView("crab", read_shares(crab_config_path), defaults=default_shares),
+        LevelView("agent", read_shares(crab_config_path), defaults=default_shares),
         LevelView("system", read_shares(global_config_path)),
         LevelView("machine", read_shares(machine_config_path())),
     ]
 
     # Source roots per scope group (concrete host paths → expand_expr verbatim).
-    crab_share_root = str(std.agents / crab_name / "share")
+    agent_share_root = str(std.agents / agent_name / "share")
     scope_roots = {
         "system.path.share_ro": str(std.share_ro),
         "system.path.share_rw": str(std.share_rw),
-        "crab.path.share_ro": crab_share_root,
-        "crab.path.share_rw": crab_share_root,
+        "agent.path.share_ro": agent_share_root,
+        "agent.path.share_rw": agent_share_root,
     }
     if proj.group is not None and not proj.group.is_default:
         ws_root = str(proj.group.root)
@@ -1882,7 +1882,7 @@ def _build_share_mounts(
         else None
     )
     ctx = ResolveCtx(
-        crab_name=crab_name,
+        agent_name=agent_name,
         workset_name=workset_name,
         host_home=str(Path.home()),
         xdg={"XDG_DATA_HOME": str(std.data_home)},

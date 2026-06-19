@@ -1,7 +1,7 @@
 """Copy-once-at-init seed resolution (pure, additive).
 
 This module turns settings-framework *seed* config entries into a list of
-``(host_src, guest_dest)`` copy-pairs.  A seed is copied ONCE at box/crab init
+``(host_src, guest_dest)`` copy-pairs.  A seed is copied ONCE at box/agent init
 (the CALLER does the copy — this module is **pure**: no file I/O, no copying,
 no global mutable state).  It imports only stdlib and the expression engine in
 :mod:`kanibako.settings_resolve`.  Wiring it into init is a separate increment.
@@ -17,7 +17,7 @@ A seed is declared with a key of the shape::
 
     {scope}.path.seeded.{name}
 
-where ``scope`` is one of ``system``/``crab``/``workset``/``box`` and ``name``
+where ``scope`` is one of ``system``/``agent``/``workset``/``box`` and ``name``
 is an arbitrary identifier (it may itself contain dots — everything after
 ``seeded.`` is the name).  The value is a ``host_src:guest_dest`` bind
 expression: ``host_src`` resolves in HOST space, ``guest_dest`` in GUEST space
@@ -41,7 +41,7 @@ Accumulate / apply order
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 Distinct seed names accumulate.  For a SINGLE key, the most-specific level that
 set it wins (standard :func:`resolve_value` precedence).  The returned pairs are
-ordered by scope *apply* order ``system, crab, workset, box`` — the REVERSE of
+ordered by scope *apply* order ``system, agent, workset, box`` — the REVERSE of
 the precedence list — so a later/more-specific scope's copy overlays an earlier
 one.  Within a scope, pairs are ordered by ``name`` ascending, for full
 determinism.
@@ -66,7 +66,7 @@ from kanibako.settings_resolve import (
 # Matches a seed key: scope . path . seeded . name
 # (name greedily captures the remainder, which may contain dots).
 SEED_KEY_RE = re.compile(
-    r"^(?P<scope>system|crab|workset|box)\.path\.seeded\.(?P<name>.+)$"
+    r"^(?P<scope>system|agent|workset|box)\.path\.seeded\.(?P<name>.+)$"
 )
 
 # Sentinel value that disables a seed (parallels resolve_template's "empty").
@@ -80,7 +80,7 @@ def is_seed_key(key: str) -> bool:
 
 # Apply order: REVERSE of precedence (most-specific scope copies LAST so a
 # later copy overlays an earlier one).
-_SCOPE_APPLY_ORDER = {"system": 0, "crab": 1, "workset": 2, "box": 3}
+_SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ class SeedPair:
 
     host_src: str       # resolved host path
     guest_dest: str     # resolved guest/container path (e.g. /home/agent/...)
-    scope: str          # "system" | "crab" | "workset" | "box"
+    scope: str          # "system" | "agent" | "workset" | "box"
     name: str
 
 
@@ -101,7 +101,7 @@ def resolve_seeds(
 ) -> list[SeedPair]:
     """Resolve seed config into a deterministic list of copy-pairs.
 
-    *levels* are ordered MOST-SPECIFIC-FIRST (``[box, workset, crab, system]``).
+    *levels* are ordered MOST-SPECIFIC-FIRST (``[box, workset, agent, system]``).
     *lookup* resolves ``@``-refs (typically a closure over *levels*).  Returns
     :class:`SeedPair` objects in apply order (see module docstring).  Raises
     :class:`SettingsError` if a non-suppressed seed value lacks a

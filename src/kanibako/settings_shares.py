@@ -12,7 +12,7 @@ A share is declared with a key of the shape::
 
     {scope}.path.share_{ro|rw}.{name}
 
-where ``scope`` is one of ``system``/``crab``/``workset``/``box``, the mode is
+where ``scope`` is one of ``system``/``agent``/``workset``/``box``, the mode is
 ``ro`` or ``rw``, and ``name`` is an arbitrary identifier (it may itself contain
 dots — everything after ``share_{ro,rw}.`` is the name).  The value is a
 ``host_src:guest_dest`` bind expression.
@@ -31,7 +31,7 @@ Accumulate / apply order
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 Distinct share names accumulate.  For a SINGLE key, the most-specific level that
 set it wins (standard :func:`resolve_value` precedence).  The returned mounts
-are ordered by scope *apply* order ``system, crab, workset, box`` — the REVERSE
+are ordered by scope *apply* order ``system, agent, workset, box`` — the REVERSE
 of the precedence list — so the most-specific scope comes LAST, letting
 podman's "last ``-v`` wins" dedup honor box over system.  Within a scope, mounts
 are ordered by ``(mode, name)`` ascending, for full determinism.
@@ -39,8 +39,8 @@ are ordered by ``(mode, name)`` ascending, for full determinism.
 Root-join rule
 ~~~~~~~~~~~~~~~
 *scope_roots* maps a GROUP PREFIX (the key up to and including
-``share_ro``/``share_rw``, e.g. ``"crab.path.share_rw"``) to a host-space root
-expression (e.g. ``"@system.path.agents/$CRAB/share"``).  When a root exists for
+``share_ro``/``share_rw``, e.g. ``"agent.path.share_rw"``) to a host-space root
+expression (e.g. ``"@system.path.agents/$AGENT/share"``).  When a root exists for
 a key's group AND the resolved ``host_src`` is NOT absolute, the source becomes
 ``root / host_src``; otherwise ``host_src`` is used as-is.  A group absent from
 *scope_roots* (or mapped to ``None``/``""``) means no join — this is the ``box``
@@ -67,7 +67,7 @@ from kanibako.targets.base import Mount
 # Matches a scoped-share key: scope . path . share_{ro|rw} . name
 # (name greedily captures the remainder, which may contain dots).
 SHARE_KEY_RE = re.compile(
-    r"^(?P<scope>system|crab|workset|box)\.path\.share_(?P<mode>ro|rw)\.(?P<name>.+)$"
+    r"^(?P<scope>system|agent|workset|box)\.path\.share_(?P<mode>ro|rw)\.(?P<name>.+)$"
 )
 
 
@@ -78,7 +78,7 @@ def is_share_key(key: str) -> bool:
 
 # Apply order: REVERSE of precedence (most-specific scope mounts LAST so
 # podman's last-`-v`-wins dedup honors it).
-_SCOPE_APPLY_ORDER = {"system": 0, "crab": 1, "workset": 2, "box": 3}
+_SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
 
 def resolve_shares(
@@ -90,7 +90,7 @@ def resolve_shares(
 ) -> list[Mount]:
     """Resolve scoped-share config into a deterministic list of mounts.
 
-    *levels* are ordered MOST-SPECIFIC-FIRST (``[box, workset, crab, system]``).
+    *levels* are ordered MOST-SPECIFIC-FIRST (``[box, workset, agent, system]``).
     *lookup* resolves ``@``-refs (typically a closure over *levels*).
     *scope_roots* maps a group prefix (``"{scope}.path.share_{ro,rw}"``) to a
     host-space root expression; absent/empty means no root join.  Returns mounts
