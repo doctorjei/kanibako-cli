@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
-from kanibako.templates import apply_shell_template, resolve_template
+import pytest
+
+from kanibako.paths import (
+    WorksetSpec,
+    resolve_project,
+    resolve_standalone_project,
+    resolve_workset_project,
+)
+from kanibako.templates import (
+    agent_template_dir,
+    apply_shell_template,
+    base_template_dir,
+    resolve_template,
+    workset_template_dir,
+)
+from kanibako.workset import add_project, create_workset
 
 
 class TestResolveTemplate:
@@ -170,3 +185,63 @@ class TestApplyShellTemplate:
         apply_shell_template(shell, templates, "claude")
 
         assert (shell / "agent-only.txt").read_text() == "agent content"
+
+
+# ---------------------------------------------------------------------------
+# Layered-template path resolution (Phase 7a) — pure derivations, no apply.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def primary_proj(std, config, project_dir):
+    return resolve_project(std, config, str(project_dir), initialize=True)
+
+
+@pytest.fixture
+def named_proj(std, config, tmp_home):
+    ws_root = tmp_home / "worksets" / "my-set"
+    ws = create_workset("my-set", ws_root, std)
+    source = tmp_home / "original-project"
+    source.mkdir()
+    add_project(ws, "cool-app", source)
+    return resolve_workset_project(
+        WorksetSpec.from_workset(ws), "cool-app", std, config, initialize=True,
+    )
+
+
+@pytest.fixture
+def standalone_proj(std, config, project_dir, credentials_dir):
+    return resolve_standalone_project(
+        std, config, str(project_dir), initialize=True,
+    )
+
+
+class TestBaseTemplateDir:
+    def test_is_flat_base_template_root(self, std):
+        """Layer 1 reads @system.base_template FLAT (no general/ subdir)."""
+        assert base_template_dir(std) == std.base_template
+
+
+class TestAgentTemplateDir:
+    def test_derived_under_agents_store(self, std):
+        """Layer 2 = @system.agents/<agent>/template."""
+        assert agent_template_dir(std, "claude") == std.agents / "claude" / "template"
+
+    def test_agent_name_varies(self, std):
+        assert agent_template_dir(std, "goose") == std.agents / "goose" / "template"
+
+
+class TestWorksetTemplateDir:
+    def test_primary_roots_at_primary_workset(self, primary_proj, std):
+        assert (
+            workset_template_dir(primary_proj, std)
+            == std.primary_workset / "template"
+        )
+
+    def test_named_roots_at_workset_root(self, named_proj, std):
+        assert (
+            workset_template_dir(named_proj, std)
+            == named_proj.group.root / "template"
+        )
+
+    def test_standalone_is_none(self, standalone_proj, std):
+        assert workset_template_dir(standalone_proj, std) is None
