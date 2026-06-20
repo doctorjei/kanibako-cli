@@ -747,6 +747,16 @@ def _run_steps(
     )
 
     # ------------------------------------------------------------------
+    # STEP 4b — Relocate THIS box's OWN channel partition (best-effort, D-M10).
+    # Runs AFTER ownership/identity is finalized (A9): standalone convert
+    # regenerates the box name, so we must read the FINAL post-convert name + ws
+    # token off ``new_state``.  Best-effort + idempotent — failures warn and the
+    # lifecycle continues; not registered on the unwind stack (a partial move is
+    # not catastrophic and re-running reconciles).
+    # ------------------------------------------------------------------
+    _relocate_channel_partition(state, new_state, std)
+
+    # ------------------------------------------------------------------
     # STEP 5 — Clean up old workspace (only for a real, internal move).
     # NEVER delete a user's external source directory.
     # ------------------------------------------------------------------
@@ -1183,6 +1193,91 @@ def _to_workset(
 
 
 # -- small helpers ----------------------------------------------------------
+
+def _state_ws_token(state: ProjectState) -> str:
+    """Return the channel-partition workset-name token for *state*.
+
+    ``__PRIMARY__`` for primary mode, the named workset's name for named mode,
+    ``__STANDALONE__`` for standalone.  Mirrors
+    :func:`kanibako.channels.workset_name_token` but reads off the lifecycle
+    :class:`ProjectState` (mode + loaded ``ws``) rather than a ``ProjectPaths``.
+    """
+    from kanibako.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
+
+    if state.mode == BoxMode.standalone:
+        return WS_TOKEN_STANDALONE
+    if state.mode == BoxMode.named:
+        if state.ws is None or not state.ws.name:
+            raise ValueError(
+                "named box is missing its workset; cannot derive the channel "
+                "partition token."
+            )
+        return state.ws.name
+    return WS_TOKEN_PRIMARY
+
+
+def _relocate_channel_partition(
+    old: ProjectState, new: ProjectState, std: StandardPaths,
+) -> None:
+    """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
+
+    A box's mailbox + system-scope share are partitioned by
+    ``@workset.meta.name`` (and keyed by box name), so a move/convert that
+    changes the workset and/or the box name changes its channel address.  This
+    moves the OWN ``mailboxes/<ws>/<box>`` and ``share/<ws>/<box>`` dirs from the
+    OLD partition (*old* — pre-convert identity) to the NEW one (*new* — the
+    FINAL post-convert identity; standalone convert regenerates the box name, so
+    this MUST run after identity is finalized, A9/IN-8).
+
+    BEST-EFFORT (D-M10): any failure — missing source, destination already
+    present, permission — is WARNED and swallowed; the lifecycle continues.  No
+    forwarding marker is left for stale cross-box references to the old address.
+    Workset-LOCAL channels (commons/chat) are scope-owned, not box-owned, so they
+    are NOT relocated (the box simply stops mounting the old workset's local
+    channels and starts mounting the new one's).
+    """
+    import sys
+
+    from kanibako.channels import own_partition_dirs
+
+    try:
+        old_token = _state_ws_token(old)
+        new_token = _state_ws_token(new)
+    except ValueError as e:  # cannot derive a token → nothing to relocate
+        print(f"Warning: skipping channel relocation: {e}", file=sys.stderr)
+        return
+
+    # No address change → nothing to move (idempotent no-op).
+    if old_token == new_token and old.name == new.name:
+        return
+
+    src = own_partition_dirs(std, old_token, old.name)
+    dst = own_partition_dirs(std, new_token, new.name)
+
+    for src_dir, dst_dir, label in (
+        (src.mailbox, dst.mailbox, "mailbox"),
+        (src.share_global, dst.share_global, "share"),
+    ):
+        try:
+            if not src_dir.is_dir():
+                continue  # nothing published yet under the old address
+            if dst_dir.exists():
+                # Idempotent / best-effort: never clobber an existing dest.
+                print(
+                    f"Warning: channel {label} destination already exists, "
+                    f"leaving it in place: {dst_dir}",
+                    file=sys.stderr,
+                )
+                continue
+            dst_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src_dir), str(dst_dir))
+        except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
+            print(
+                f"Warning: could not relocate channel {label} "
+                f"({src_dir} -> {dst_dir}): {e}",
+                file=sys.stderr,
+            )
+
 
 def _safe_unregister(std: StandardPaths, name: str) -> None:
     try:

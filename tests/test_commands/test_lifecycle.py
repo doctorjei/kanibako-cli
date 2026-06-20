@@ -422,6 +422,116 @@ class TestCombo:
 
 
 # ---------------------------------------------------------------------------
+# channel-partition relocation on convert/move (6d, D-M10, §6)
+# ---------------------------------------------------------------------------
+
+class TestChannelPartitionRelocation:
+    """The box's OWN mailbox/share partition follows it across worksets/modes.
+
+    Best-effort (D-M10): own ``mailboxes/<ws>/<box>`` + ``share/<ws>/<box>``
+    move to the new partition; workset-LOCAL channels are NOT relocated; a
+    missing source warns and is skipped.  Relocation reads the FINAL post-convert
+    identity (A9).
+    """
+
+    def _seed_partition(self, std, ws_token, box_name, marker="m"):
+        from kanibako.channels import own_partition_dirs
+
+        part = own_partition_dirs(std, ws_token, box_name)
+        part.mailbox.mkdir(parents=True, exist_ok=True)
+        (part.mailbox / "msg.txt").write_text(marker)
+        part.share_global.mkdir(parents=True, exist_ok=True)
+        (part.share_global / "pub.txt").write_text(marker)
+        return part
+
+    def test_convert_relocates_own_partition(self, env):
+        config, std, tmp_home = env
+        from kanibako.channels import (
+            WS_TOKEN_PRIMARY,
+            WS_TOKEN_STANDALONE,
+            own_partition_dirs,
+        )
+
+        pdir = _make_default(env)
+        # Seed THIS box's own partition under the PRIMARY token.
+        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj", marker="hello")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+
+        # OLD partition (PRIMARY) is gone; NEW (STANDALONE) holds the content.
+        old = own_partition_dirs(std, WS_TOKEN_PRIMARY, "proj")
+        dst = own_partition_dirs(std, WS_TOKEN_STANDALONE, new.name)
+        assert not old.mailbox.exists()
+        assert not old.share_global.exists()
+        assert (dst.mailbox / "msg.txt").read_text() == "hello"
+        assert (dst.share_global / "pub.txt").read_text() == "hello"
+
+    def test_relocation_best_effort_missing_source(self, env, capsys):
+        """A convert with no seeded partition warns nothing fatal + succeeds."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        # No partition seeded → relocation finds no source, skips silently.
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone  # lifecycle completed
+
+    def test_relocation_best_effort_dest_exists(self, env, capsys):
+        """A pre-existing destination is left in place + warned, not clobbered."""
+        config, std, tmp_home = env
+        from kanibako.channels import (
+            WS_TOKEN_PRIMARY,
+            WS_TOKEN_STANDALONE,
+            own_partition_dirs,
+        )
+
+        pdir = _make_default(env)
+        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj", marker="src")
+        # Pre-occupy the destination mailbox with different content.
+        dst_pre = own_partition_dirs(std, WS_TOKEN_STANDALONE, "proj")
+        dst_pre.mailbox.mkdir(parents=True, exist_ok=True)
+        (dst_pre.mailbox / "existing.txt").write_text("keep")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        # Dest preserved (not clobbered) + a warning was emitted.
+        assert (dst_pre.mailbox / "existing.txt").read_text() == "keep"
+        assert "already exists" in capsys.readouterr().err
+
+    def test_workset_local_channels_not_relocated(self, env):
+        """Workset-LOCAL channels (commons/chat) are scope-owned, not moved."""
+        config, std, tmp_home = env
+        from kanibako.channels import WS_TOKEN_PRIMARY
+
+        pdir = _make_default(env)
+        # Seed a PRIMARY workset-local channels tree (scope-owned).
+        local = std.primary_workset / "channels" / "commons"
+        local.mkdir(parents=True, exist_ok=True)
+        (local / "shared.txt").write_text("scope")
+        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        # Workset-local commons untouched — the box stops MOUNTING it, the dir
+        # itself is not relocated.
+        assert (local / "shared.txt").read_text() == "scope"
+
+
+# ---------------------------------------------------------------------------
 # bare --move only valid with workset target
 # ---------------------------------------------------------------------------
 
