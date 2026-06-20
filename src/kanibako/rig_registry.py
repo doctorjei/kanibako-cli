@@ -1,12 +1,15 @@
-"""Host-side rig registry stored in a single ``rigs.yaml`` file.
+"""Host-side rig registry, stored as the ``rigs`` section of ``registry.yaml``.
 
 Pure load/save/query helpers for "added" rig records, keyed by rig name.
 Rig names may contain ``/`` and ``:`` (e.g. ``"corp/base:1.0"``); they are
-emitted as plain YAML mapping keys (PyYAML quotes them as needed).
+emitted as plain YAML mapping keys (the YAML writer quotes them as needed).
 
-Reads and writes go through PyYAML (``yaml.safe_load`` / ``yaml.safe_dump``).
-PyYAML handles all escaping and quoting, so there is no hand-rolled
-serializer here.
+The records live as the ``rigs:`` top-level section of the consolidated
+``system.registry`` file (``registry.yaml``); this module owns that section's
+shape and reads/writes it via ``registry_store.load_section_at`` /
+``save_section_at`` (which preserve every sibling section).  ``RigRecord`` and
+the public load/save/query API (all path-based) are unchanged from when this was
+its own ``rigs.yaml`` — only the on-disk *location* moved.
 
 No network, no global state: the registry path is always passed in.
 """
@@ -17,12 +20,13 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import yaml
-
-from kanibako._atomic import atomic_write_text
+from kanibako import registry_store
 
 if TYPE_CHECKING:
     from kanibako.paths import StandardPaths
+
+# The section of ``registry.yaml`` this module owns.
+_SECTION = "rigs"
 
 
 @dataclass
@@ -53,29 +57,26 @@ _INNER_FIELDS: tuple[str, ...] = tuple(
 
 
 def registry_path(std: StandardPaths) -> Path:
-    """Return the path to ``rigs.yaml`` under the standard data directory."""
-    return std.data_path / "rigs.yaml"
+    """Return the path to the consolidated ``registry.yaml`` (``system.registry``).
+
+    Rig records live as the ``rigs:`` section of this file; the path-based public
+    API keeps its ``StandardPaths``-derived signature, so call sites are unchanged.
+    """
+    return registry_store.registry_path(std.data_path)
 
 
 def load_registry(path: Path) -> dict[str, RigRecord]:
-    """Load all rig records from *path*, keyed by rig name.
+    """Load all rig records from the ``rigs`` section of *path*, keyed by name.
 
-    A missing or empty file yields an empty dict.  The file is shaped as a
-    top-level ``rigs:`` mapping whose keys are rig names::
+    A missing file (or absent ``rigs:`` section) yields an empty dict.  The
+    section is a mapping whose keys are rig names::
 
         rigs:
           corp/base:1.0:
             kind: prefab
             ...
     """
-    if not path.exists():
-        return {}
-
-    data = yaml.safe_load(path.read_text())
-    if not data:
-        return {}
-
-    rigs = data.get("rigs", {})
+    rigs = registry_store.load_section_at(path, _SECTION)
     records: dict[str, RigRecord] = {}
     for name, table in rigs.items():
         kwargs: dict[str, object] = {"name": name}
@@ -87,14 +88,12 @@ def load_registry(path: Path) -> dict[str, RigRecord]:
 
 
 def save_registry(path: Path, records: dict[str, RigRecord]) -> None:
-    """Write *records* to *path* as a ``rigs:`` mapping (one entry per record).
+    """Write *records* to the ``rigs`` section of *path* (one entry per record).
 
     ``None``-valued fields are omitted so the file stays clean.  ``name`` is the
-    mapping key and is not duplicated inside the entry.  The parent directory is
-    created if needed.
+    mapping key and is not duplicated inside the entry.  Sibling sections of
+    ``registry.yaml`` are preserved; the write is atomic.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-
     rigs: dict[str, dict[str, object]] = {}
     for name, record in records.items():
         table: dict[str, object] = {}
@@ -105,8 +104,7 @@ def save_registry(path: Path, records: dict[str, RigRecord]) -> None:
             table[field_name] = value
         rigs[name] = table
 
-    data = {"rigs": rigs}
-    atomic_write_text(path, yaml.safe_dump(data, sort_keys=False))
+    registry_store.save_section_at(path, _SECTION, rigs)
 
 
 def upsert(path: Path, record: RigRecord) -> None:

@@ -694,7 +694,7 @@ def run_rm(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    # --- Un-add: a registered rig (rigs.yaml) wins over image removal. ---
+    # --- Un-add: a registered rig (registry.yaml) wins over image removal. ---
     record = registry_get(registry_path(std), args.image)
     if record is not None:
         registry_remove(registry_path(std), args.image)
@@ -941,7 +941,7 @@ def run_add(args: argparse.Namespace) -> int:
     The *source* is classified (an image ref/tar -> prefab; a Containerfile ->
     template) and recorded. Templates install their Containerfile under the
     user-override dir (the file IS the source of truth -- no registry row);
-    prefabs get a ``rigs.yaml`` row (a tar is loaded via ``runtime.load`` first,
+    prefabs get a registry ``rigs`` row (a tar is loaded via ``runtime.load`` first,
     a ref is recorded as-is). Run ``rig prep <name>`` afterward to materialize.
     """
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))

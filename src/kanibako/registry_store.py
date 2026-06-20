@@ -23,6 +23,12 @@ The file has these top-level sections::
     standalone:
       # box.name → root, populated by sub-step 5d; empty for now.
 
+    rigs:
+      corp/base:1.0: {kind: prefab, ...}   # formerly rigs.yaml
+
+    image_shells:
+      sha256:abc...: /bin/bash             # formerly image-shells.yaml
+
 ``projects`` and ``worksets`` carry the two sections formerly in
 ``names.yaml`` (the human-name index used for name-based lookups).
 ``workset_roots`` carries the former ``worksets.yaml`` name → root registry
@@ -32,6 +38,15 @@ same name → root data and are kept as the two distinct copies they were AS-IS
 preserves the two-writer behavior verbatim).  ``connected`` carries the former
 ``connected.yaml`` payload verbatim.  ``standalone`` is reserved for the
 standalone-box identity work in a later sub-step and stays empty here.
+``rigs`` carries the former ``rigs.yaml`` payload (added-rig records keyed by
+rig name; the ``rig_registry`` module owns its shape).  ``image_shells`` carries
+the former ``image-shells.yaml`` map (image store key → captured login shell;
+the ``shells`` module owns its shape).
+
+The ``rigs`` and ``image_shells`` sections are owned by ``rig_registry`` and
+``shells`` respectively, which read/write them through the path-based
+``load_section_at``/``save_section_at`` helpers (preserving sibling sections);
+this module passes their values through verbatim.
 
 No on-disk migration is performed: the old files are NOT read.  A fresh tree
 (absent ``registry.yaml``) yields empty sections.  Writes are atomic (via
@@ -51,6 +66,8 @@ _SECTIONS: tuple[str, ...] = (
     "workset_roots",
     "connected",
     "standalone",
+    "rigs",
+    "image_shells",
 )
 # Name → path sections whose keys are sorted on write (legacy names.yaml shape).
 _NAME_SECTIONS: frozenset[str] = frozenset(
@@ -90,6 +107,8 @@ def load_registry(data_path: Path) -> dict[str, dict]:
         },
         "connected": dict(data.get("connected", {})),
         "standalone": dict(data.get("standalone", {})),
+        "rigs": dict(data.get("rigs", {})),
+        "image_shells": dict(data.get("image_shells", {})),
     }
 
 
@@ -124,6 +143,36 @@ def save_section(data_path: Path, section: str, entries: dict) -> None:
     registry = load_registry(data_path)
     registry[section] = dict(entries)
     save_registry(data_path, registry)
+
+
+# ---------------------------------------------------------------------------
+# Path-based section access (for section-owners with a path-based public API)
+# ---------------------------------------------------------------------------
+#
+# ``rig_registry`` and ``shells`` expose path-based functions (they take the
+# ``registry.yaml`` path directly, not ``data_path``).  These two helpers let
+# them read/write their own section of the consolidated file while preserving
+# every sibling section — without restructuring their public signatures.  The
+# ``data_path`` is recovered from the registry path (``…/global/registry.yaml``
+# → ``…``) so the canonical loader/writer is reused unchanged.
+
+
+def _data_path_for(registry_file: Path) -> Path:
+    """Recover ``data_path`` from a ``…/global/registry.yaml`` path."""
+    return registry_file.parent.parent
+
+
+def load_section_at(registry_file: Path, section: str) -> dict:
+    """Return *section* of the ``registry.yaml`` located at *registry_file*."""
+    return load_section(_data_path_for(registry_file), section)
+
+
+def save_section_at(registry_file: Path, section: str, entries: dict) -> None:
+    """Replace *section* of the ``registry.yaml`` at *registry_file*, atomically.
+
+    Sibling sections are preserved (whole-file rewrite via ``save_registry``).
+    """
+    save_section(_data_path_for(registry_file), section, entries)
 
 
 # ---------------------------------------------------------------------------
