@@ -66,8 +66,14 @@ class TestCreateWorkset:
         create_workset("same-name", root1, std)
 
         root2 = tmp_home / "worksets" / "set2"
-        with pytest.raises(WorksetError, match="already registered"):
+        with pytest.raises(WorksetError, match="already in use"):
             create_workset("same-name", root2, std)
+
+    def test_duplicate_name_message_explains_uniqueness(self, std, tmp_home):
+        # The collision refusal must be explicit about the clash + uniqueness.
+        create_workset("dup", tmp_home / "worksets" / "a", std)
+        with pytest.raises(WorksetError, match="must be unique"):
+            create_workset("dup", tmp_home / "worksets" / "b", std)
 
     def test_existing_root_raises(self, std, tmp_home):
         root = tmp_home / "worksets" / "existing"
@@ -90,6 +96,16 @@ class TestCreateWorkset:
         root = tmp_home / "worksets" / "default-id"
         with pytest.raises(WorksetError, match="reserved"):
             create_workset("__default__", root, std)
+
+    def test_reserved_primary_sentinel_raises(self, std, tmp_home):
+        root = tmp_home / "worksets" / "primary-sentinel"
+        with pytest.raises(WorksetError, match="reserved"):
+            create_workset("__PRIMARY__", root, std)
+
+    def test_reserved_standalone_sentinel_raises(self, std, tmp_home):
+        root = tmp_home / "worksets" / "standalone-sentinel"
+        with pytest.raises(WorksetError, match="reserved"):
+            create_workset("__STANDALONE__", root, std)
 
 
 # ---------------------------------------------------------------------------

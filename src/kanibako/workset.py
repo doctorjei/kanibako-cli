@@ -71,6 +71,20 @@ class _Unwind:
 DEFAULT_WORKSET_ID = "__default__"
 DEFAULT_WORKSET_ALIAS = "default"
 
+# Sentinel workset names reserved by the three-mode model (TARGET §2c): they
+# address the PRIMARY and STANDALONE channel partitions and must never be a
+# user-chosen NAMED-workset name.  The legacy ``default``/``__default__`` pair
+# (now meaning "primary") is also reserved.  A workset name is a user-typed
+# shared-channel address, so collisions here are refused, never auto-resolved.
+RESERVED_WORKSET_NAMES = frozenset(
+    {DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS, "__PRIMARY__", "__STANDALONE__"}
+)
+
+
+def is_reserved_workset_name(name: str) -> bool:
+    """Return True if *name* is a reserved sentinel (cannot be a NAMED workset)."""
+    return name in RESERVED_WORKSET_NAMES
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -247,13 +261,22 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
     if not name:
         raise WorksetError("Workset name must not be empty.")
 
-    if name in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
-        raise WorksetError("'default' is reserved for the default workset.")
+    if is_reserved_workset_name(name):
+        raise WorksetError(
+            f"Workset name '{name}' is reserved and cannot be used. The names "
+            f"{', '.join(sorted(RESERVED_WORKSET_NAMES))} are reserved sentinels "
+            "for the primary and standalone partitions. Choose another name."
+        )
 
+    # A NAMED workset's name is a user-typed shared-channel address, so it must
+    # be unique across all registered worksets (D-B3). Refuse on collision —
+    # never auto-suffix — and point the user at the existing root.
     registry = _load_registry(std)
     if name in registry:
         raise WorksetError(
-            f"Workset '{name}' is already registered at {registry[name]}"
+            f"Workset name '{name}' is already in use (registered at "
+            f"{registry[name]}). Workset names must be unique; choose a "
+            "different name."
         )
 
     root = root.resolve()

@@ -77,7 +77,42 @@ class TestWorksetCreate:
         rc = run_create(args2)
         assert rc == 1
         err = capsys.readouterr().err
-        assert "already registered" in err
+        assert "already in use" in err
+
+    def test_create_reserved_sentinel_error(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_create
+
+        args = argparse.Namespace(
+            path=str(tmp_home / "ws-primary"), name="__PRIMARY__",
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
+        rc = run_create(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "reserved" in err
+
+    def test_create_auto_name_collision_refused(self, config_file, tmp_home, capsys):
+        # The default name derives from path.name; a collision must still refuse
+        # cleanly (no auto-suffix) via the WorksetError caught in run_create.
+        from kanibako.commands.workset_cmd import run_create
+
+        (tmp_home / "shared").mkdir()
+        first = tmp_home / "a" / "shared"
+        args1 = argparse.Namespace(
+            path=str(first), name=None,
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
+        assert run_create(args1) == 0
+        capsys.readouterr()
+
+        second = tmp_home / "b" / "shared"
+        args2 = argparse.Namespace(
+            path=str(second), name=None,
+            standalone=False, image=None, no_vault=False, distinct_auth=False,
+        )
+        rc = run_create(args2)
+        assert rc == 1
+        assert "already in use" in capsys.readouterr().err
 
     def test_create_existing_root_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
