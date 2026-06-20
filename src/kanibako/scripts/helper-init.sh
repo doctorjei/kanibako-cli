@@ -22,7 +22,7 @@ set -euo pipefail
 HELPER_NUM="${1:-unknown}"
 shift || true
 
-SOCKET_PATH="$HOME/.local/state/kanibako/helper.sock"
+SOCKET_PATH="${XDG_STATE_HOME:-$HOME/.local/state}/kanibako/helper.sock"
 
 # Register with the hub via kanibako CLI (one-shot)
 if [ -S "$SOCKET_PATH" ] && command -v kanibako >/dev/null 2>&1; then

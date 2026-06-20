@@ -19,6 +19,7 @@ from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
 from kanibako.paths import (
     _upgrade_shell,
+    box_state_home,
     xdg,
     load_std_paths,
     resolve_any_project,
@@ -1367,21 +1368,28 @@ def _run_container(
             hub = HelperHub()
             hub.start(socket_path, helper_ctx, log=msg_log)
 
+            # Box-side socket + log dests are XDG_STATE_HOME-aware: derived from
+            # the BOX's container env (honor-iff-absolute, else
+            # ``$HOME/.local/state``), the single derivation shared with
+            # ``helper-init.sh`` (`${XDG_STATE_HOME:-$HOME/.local/state}`) and
+            # the in-box CLI (``xdg``) so host and box agree by construction.
+            box_state_kanibako = box_state_home(container_env) / "kanibako"
+
             # Mount the socket into the container (only if hub started)
             kanibako_dir = proj.shell_path / ".local" / "state" / "kanibako"
             kanibako_dir.mkdir(parents=True, exist_ok=True)
             if socket_path.exists():
                 extra_mounts.append(_HMount(
                     source=socket_path,
-                    destination="/home/agent/.local/state/kanibako/helper.sock",
+                    destination=str(box_state_kanibako / "helper.sock"),
                     options="",
                 ))
 
-            # Mount helper-messages.jsonl for log command inside container
+            # Mount the helper message log for the in-box `log` command
             if log_path.exists():
                 extra_mounts.append(_HMount(
                     source=log_path,
-                    destination="/home/agent/.local/state/kanibako/helper-messages.jsonl",
+                    destination=str(box_state_kanibako / "helpers.jsonl"),
                     options="ro",
                 ))
 

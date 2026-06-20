@@ -516,13 +516,16 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if spawn_toml.is_file():
         mounts.append(Mount(spawn_toml, "/home/agent/spawn.yaml", "ro"))
 
-    # Helper socket — mount the hub socket into the helper
+    # Helper socket — mount the hub socket into the helper.  The box-side dest
+    # is XDG_STATE_HOME-aware: derived from the helper's container env (the same
+    # single derivation start.py + helper-init.sh use) so all sides agree.
     if ctx.socket_path.exists():
+        from kanibako.paths import box_state_home
+
+        box_socket = box_state_home(ctx.env) / "kanibako" / "helper.sock"
         kanibako_dir = helper_root / ".local" / "state" / "kanibako"
         kanibako_dir.mkdir(parents=True, exist_ok=True)
-        mounts.append(
-            Mount(ctx.socket_path, "/home/agent/.local/state/kanibako/helper.sock", "")
-        )
+        mounts.append(Mount(ctx.socket_path, str(box_socket), ""))
 
     # Target binary mounts (same agent binary as the director)
     mounts.extend(ctx.binary_mounts)
