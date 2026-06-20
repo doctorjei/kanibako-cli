@@ -25,6 +25,8 @@ def test_fresh_tree_empty_sections(tmp_path: Path) -> None:
         "workset_roots": {},
         "connected": {},
         "standalone": {},
+        "rigs": {},
+        "image_shells": {},
     }
 
 
@@ -36,6 +38,8 @@ def test_sections_round_trip(tmp_path: Path) -> None:
         "workset_roots": {"ws": "/home/user/ws"},
         "connected": {"/abs/ext": {"workset": "ws", "project": "foo"}},
         "standalone": {"abc_box": "/abs/proj"},
+        "rigs": {"corp/base:1.0": {"kind": "prefab"}},
+        "image_shells": {"sha256:abc": "/bin/bash"},
     }
     registry_store.save_registry(tmp_path, reg)
     assert registry_store.load_registry(tmp_path) == reg
@@ -117,6 +121,34 @@ def test_standalone_register_preserves_other_sections(tmp_path: Path) -> None:
     registry_store.save_section(tmp_path, "projects", {"keep": "/keep"})
     registry_store.register_standalone(tmp_path, "abc_box", Path("/proj"))
     assert registry_store.load_section(tmp_path, "projects") == {"keep": "/keep"}
+
+
+def test_section_at_helpers_round_trip_by_registry_path(tmp_path: Path) -> None:
+    """load_section_at / save_section_at operate via the registry.yaml path.
+
+    They back the path-based section-owners (rig_registry, shells); the
+    ``data_path`` is recovered from ``…/global/registry.yaml``.
+    """
+    reg_file = registry_store.registry_path(tmp_path)
+    registry_store.save_section_at(reg_file, "rigs", {"corp/x:1": {"kind": "prefab"}})
+    assert registry_store.load_section_at(reg_file, "rigs") == {
+        "corp/x:1": {"kind": "prefab"}
+    }
+    # Empty/absent section reads {}.
+    assert registry_store.load_section_at(reg_file, "image_shells") == {}
+
+
+def test_section_at_preserves_sibling_sections(tmp_path: Path) -> None:
+    """A section-owner writing via *_at preserves every other section."""
+    reg_file = registry_store.registry_path(tmp_path)
+    registry_store.save_section(tmp_path, "projects", {"keep": "/keep"})
+    registry_store.save_section_at(reg_file, "rigs", {"r": {"kind": "extended"}})
+    registry_store.save_section_at(reg_file, "image_shells", {"sha256:a": "/bin/sh"})
+
+    reg = registry_store.load_registry(tmp_path)
+    assert reg["projects"] == {"keep": "/keep"}
+    assert reg["rigs"] == {"r": {"kind": "extended"}}
+    assert reg["image_shells"] == {"sha256:a": "/bin/sh"}
 
 
 def test_atomic_write_no_partial_on_existing(tmp_path: Path) -> None:

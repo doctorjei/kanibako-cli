@@ -10,9 +10,10 @@ single source of truth resolved here (both launch and diagnose call
    via ``getent passwd`` and persisted, keyed by image digest).
 4. ``sh`` — universal floor.
 
-The image-shell store is a small YAML map under ``std.data_path`` populated at
-install/prep time; the resolver self-heals (lazy probe + store) for images that
-predate the feature when a runtime is available.
+The image-shell store is the ``image_shells`` section of the consolidated
+``system.registry`` file (``registry.yaml``) under ``std.data_path``, populated
+at install/prep time; the resolver self-heals (lazy probe + store) for images
+that predate the feature when a runtime is available.
 """
 
 from __future__ import annotations
@@ -20,38 +21,42 @@ from __future__ import annotations
 import os
 import subprocess
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako import registry_store
 
 # ---------------------------------------------------------------------------
-# Image-shell store: $XDG_DATA_HOME/kanibako/image-shells.yaml
+# Image-shell store: the ``image_shells`` section of system.registry
+# (``{data_path}/global/registry.yaml``).
 #
 # Maps an image store key (digest, e.g. "sha256:abc..." — or the image
 # reference string when no digest is available) to that image's captured login
-# shell for the box user.  Schema:
+# shell for the box user.  Schema (one section of registry.yaml):
 #
 #     image_shells:
 #       sha256:abc...: /bin/bash
+#
+# This module owns the section's shape and reads/writes it via
+# ``registry_store.load_section_at`` / ``save_section_at`` (which preserve every
+# sibling section).  The public ``std``-based API is unchanged from when this was
+# its own ``image-shells.yaml`` — only the on-disk *location* moved.
 # ---------------------------------------------------------------------------
 
-_STORE_FILENAME = "image-shells.yaml"
 _STORE_SECTION = "image_shells"
 
 
 def _store_path(std):
-    return std.data_path / _STORE_FILENAME
+    return registry_store.registry_path(std.data_path)
 
 
 def load_image_shells(std) -> dict[str, str]:
     """Return ``{store_key: shell}`` from the image-shell store.
 
-    Missing/empty/malformed file → ``{}`` (defensive: a corrupt store must never
+    Missing/empty/malformed store → ``{}`` (defensive: a corrupt store must never
     crash the launch/diagnose path — the shell falls back to ``sh``).
     """
     try:
-        data = load_doc(_store_path(std))
+        section = registry_store.load_section_at(_store_path(std), _STORE_SECTION)
     except Exception:
         return {}
-    section = data.get(_STORE_SECTION, {})
     if not isinstance(section, dict):
         return {}
     return {str(k): str(v) for k, v in section.items()}
@@ -61,7 +66,7 @@ def save_image_shell(std, key: str, shell: str) -> None:
     """Upsert one ``key -> shell`` entry, preserving existing entries."""
     mapping = load_image_shells(std)
     mapping[key] = shell
-    dump_doc(_store_path(std), {_STORE_SECTION: mapping})
+    registry_store.save_section_at(_store_path(std), _STORE_SECTION, mapping)
 
 
 def image_store_key(runtime, image: str) -> str:

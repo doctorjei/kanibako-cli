@@ -57,9 +57,11 @@ class TestImageShellStore:
         assert load_image_shells(std) == {}
 
     def test_load_malformed_file(self, std):
-        std.data_path.mkdir(parents=True, exist_ok=True)
-        (std.data_path / "image-shells.yaml").write_text("this: is: not: valid: yaml\n")
-        # load_doc is defensive; malformed / non-mapping → {}.
+        # The store is the image_shells section of the consolidated registry.yaml.
+        store = std.data_path / "global" / "registry.yaml"
+        store.parent.mkdir(parents=True, exist_ok=True)
+        store.write_text("this: is: not: valid: yaml\n")
+        # load_image_shells is defensive; malformed YAML → {}.
         assert load_image_shells(std) == {}
 
     def test_save_preserves_existing(self, std):

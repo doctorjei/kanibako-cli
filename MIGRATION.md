@@ -354,8 +354,8 @@ host vault rw directory, not the box dest.)
 
 ## 5. Registry consolidation
 
-Three separate stores merge into one `registry.yaml` at `@system.registry`
-(`@system.global/registry.yaml`).
+The separate name/registry stores merge into one `registry.yaml` at
+`@system.registry` (`@system.global/registry.yaml`).
 
 | Old file | New `registry.yaml` section |
 |---|---|
@@ -364,13 +364,17 @@ Three separate stores merge into one `registry.yaml` at `@system.registry`
 | `{data}/worksets.yaml` (== `ws_hints`) | `worksets:` / `workset_roots:` (name→root) |
 | `{data}/connected.yaml` | `connected:` |
 | (standalone boxes — previously unregistered) | `standalone:` (NEW) |
+| `{data}/rigs.yaml` | `rigs:` |
+| `{data}/image-shells.yaml` | `image_shells:` |
 
 Steps:
 
 1. Create `@system.global/` if it does not exist.
-2. Merge the contents of `names.yaml`, `worksets.yaml`, and `connected.yaml` into the
-   appropriate sections of `@system.global/registry.yaml`.
-3. Remove the old `names.yaml` / `worksets.yaml` / `connected.yaml`.
+2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,
+   `rigs.yaml`, and `image-shells.yaml` into the appropriate sections of
+   `@system.global/registry.yaml`.
+3. Remove the old `names.yaml` / `worksets.yaml` / `connected.yaml` /
+   `rigs.yaml` / `image-shells.yaml`.
 
 The registry is now a **derived, rebuildable index** — losing it no longer orphans
 boxes (see §6). On purge, names are now unregistered (no dangling entries), and a
