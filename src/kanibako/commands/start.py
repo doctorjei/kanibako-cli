@@ -826,12 +826,24 @@ def _run_container(
                 logger.info(action)
 
         # Template application + agent init for new projects.
+        if proj.is_new:
+            # Layered seed-once: copy the ordered template layers
+            # (base -> agent -> workset; later overlays earlier, per-file
+            # last-wins) into the box home ONCE at creation.  The base layer is
+            # always present; the agent layer applies iff an agent target is
+            # bound; the workset layer is None for STANDALONE boxes (skipped).
+            from kanibako.templates import (
+                agent_template_dir,
+                apply_template_layers,
+                base_template_dir,
+                workset_template_dir,
+            )
+            layers: list[Path | None] = [base_template_dir(std)]
+            if target:
+                layers.append(agent_template_dir(std, target.name))
+            layers.append(workset_template_dir(proj, std))
+            apply_template_layers(proj.shell_path, layers)
         if proj.is_new and target:
-            from kanibako.templates import apply_shell_template
-            templates_base = std.templates
-            # Ensure the agent-specific template variant directory exists.
-            (templates_base / target.name / agent_cfg.shell).mkdir(parents=True, exist_ok=True)
-            apply_shell_template(proj.shell_path, templates_base, target.name, agent_cfg.shell)
             if desc is not None:
                 credsync.seed_cred_files(
                     desc, target, host_home=Path.home(),

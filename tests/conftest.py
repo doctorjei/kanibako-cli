@@ -199,7 +199,7 @@ def start_mocks():
             patch("kanibako.commands.start.ContainerRuntime") as m_rt_cls,
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
             patch("kanibako.commands.start._upgrade_shell"),
-            patch("kanibako.templates.apply_shell_template"),
+            patch("kanibako.templates.apply_template_layers"),
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),

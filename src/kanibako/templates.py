@@ -15,9 +15,8 @@ if TYPE_CHECKING:
 #
 # The 1.6.0 home-seed model layers three ordered template sources into the box
 # home at creation (base -> agent -> workset; later overlays earlier).  These
-# pure helpers DERIVE each layer's on-disk source root.  They do NOT apply
-# anything — the legacy ``apply_shell_template`` below still drives the actual
-# seed until Phase 7c swaps in the layered seed-once apply.
+# pure helpers DERIVE each layer's on-disk source root; ``apply_template_layers``
+# below copies them, in order, into the box home (Phase 7c).
 #
 #   layer 1  base    @system.base_template      = @system.global/base_template (FLAT)
 #   layer 2  agent   @agent.<agent>.template    = @system.agents/<agent>/template
@@ -88,29 +87,30 @@ def resolve_template(
     return None
 
 
-def apply_shell_template(
-    shell_path: Path,
-    templates_base: Path,
-    agent_name: str,
-    template_name: str = "standard",
+def apply_template_layers(
+    home: Path,
+    layers: list[Path | None],
 ) -> None:
-    """Apply base + resolved template to a shell directory.
+    """Seed *home* once by copying the ordered template *layers* in order.
 
-    Layering:
-      1. general/base/* is copied first (common skeleton)
-      2. The resolved template overlays on top
+    The 1.6.0 home-seed model layers ordered template sources into the box home
+    at creation (base -> agent -> workset; later overlays earlier).  Each layer
+    in *layers* is copied into *home* in sequence with ``dirs_exist_ok=True`` so
+    a later layer's file overwrites an earlier layer's file at the same relative
+    path (per-file LAST-WINS).  Layers that do not exist on disk are skipped (a
+    ``<None>`` / absent layer contributes nothing — e.g. STANDALONE boxes have
+    no workset layer).
 
-    No-op if the resolved template is None (the ``"empty"`` sentinel or no
-    template dirs exist on disk).
+    This is SEED-ONCE: callers invoke it only on box creation
+    (``proj.is_new``).  It does NOT special-case or merge any file — every file
+    is a plain ordered copy (the CLAUDE.md merge special-case is gone, D-B5).
+    The caller is responsible for never re-running it on a subsequent launch so
+    user edits made inside the box survive (D-B6).
     """
-    resolved = resolve_template(templates_base, agent_name, template_name)
-    if resolved is None:
-        return
-
-    # Layer 1: general/base (if it exists)
-    base_dir = templates_base / "general" / "base"
-    if base_dir.is_dir():
-        shutil.copytree(str(base_dir), str(shell_path), dirs_exist_ok=True)
-
-    # Layer 2: resolved template
-    shutil.copytree(str(resolved), str(shell_path), dirs_exist_ok=True)
+    for layer in layers:
+        if layer is None:
+            continue
+        if not layer.is_dir():
+            continue
+        home.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(str(layer), str(home), dirs_exist_ok=True)
