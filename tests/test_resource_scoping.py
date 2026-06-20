@@ -21,15 +21,6 @@ class TestBuildResourceMounts:
         (shell / ".claude").mkdir()
         global_shared = tmp_path / "shared" / "global"
         global_shared.mkdir(parents=True)
-        # Write an empty project.yaml so read_resource_overrides finds it.
-        (metadata / "project.yaml").write_text(
-            'project:\n  mode: "default"\n  layout: "default"\n'
-            '  enable_vault: true\n  group_auth: true\n'
-            'resolved:\n  workspace: "/w"\n  shell: "/s"\n'
-            '  vault_ro: "/ro"\n  vault_rw: "/rw"\n'
-            '  metadata: ""\n  project_hash: ""\n'
-            '  global_shared: ""\n  local_shared: ""\n'
-        )
         return SimpleNamespace(
             metadata_path=metadata,
             shell_path=shell,
@@ -64,47 +55,9 @@ class TestBuildResourceMounts:
         mounts = _build_resource_mounts(proj, target, "claude")
         assert len(mounts) == 0
 
-    def test_seeded_resource_copies_on_first_init(self, tmp_path):
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        # Create a seed file in the shared base.
-        seed_dir = proj.global_shared_path / "claude"
-        seed_file = seed_dir / "settings.json"
-        seed_file.parent.mkdir(parents=True, exist_ok=True)
-        seed_file.write_text('{"key": "value"}')
-
-        mappings = [ResourceMapping("settings.json", ResourceScope.SEEDED, "Settings")]
-        target = self._make_target(mappings)
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        # SEEDED doesn't create a mount.
-        assert len(mounts) == 0
-        # But the file should be copied into the local shell.
-        local = proj.shell_path / ".claude" / "settings.json"
-        assert local.is_file()
-        assert local.read_text() == '{"key": "value"}'
-
-    def test_seeded_resource_noop_when_local_exists(self, tmp_path):
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        # Local already has the file.
-        local = proj.shell_path / ".claude" / "settings.json"
-        local.write_text('{"local": true}')
-
-        # Shared has a different version.
-        seed_dir = proj.global_shared_path / "claude"
-        seed_file = seed_dir / "settings.json"
-        seed_file.parent.mkdir(parents=True, exist_ok=True)
-        seed_file.write_text('{"shared": true}')
-
-        mappings = [ResourceMapping("settings.json", ResourceScope.SEEDED, "Settings")]
-        target = self._make_target(mappings)
-
-        _build_resource_mounts(proj, target, "claude")
-        # Local should NOT be overwritten.
-        assert local.read_text() == '{"local": true}'
+    # NOTE: the SEEDED scope was removed from _build_resource_mounts in 1.6.0
+    # (now owned by the layered seed-once template apply, Phase 7c), so the
+    # SEEDED copy tests are deleted.
 
     def test_no_mappings_returns_empty(self, tmp_path):
         from kanibako.commands.start import _build_resource_mounts
@@ -142,7 +95,15 @@ class TestBuildResourceMounts:
 
 
 class TestResourceOverrideInMounts:
-    """Test that resource overrides change mount behavior."""
+    """Resource scope overrides no longer change mount behavior.
+
+    The per-project project.yaml scope-override read was removed from
+    _build_resource_mounts in 1.6.0 (a retired Phase-5 worksets straggler):
+    _build_resource_mounts honors the plugin's declared scope only.  The
+    project.yaml override read/write helpers still exist in config (their broader
+    retirement is separate); the tests that asserted the OVERRIDE-changes-mount
+    behavior are deleted.
+    """
 
     def _make_proj(self, tmp_path):
         metadata = tmp_path / "metadata"
@@ -158,8 +119,8 @@ class TestResourceOverrideInMounts:
             global_shared_path=global_shared,
         )
 
-    def test_override_shared_to_project(self, tmp_path):
-        """Override a SHARED resource to PROJECT — no mount should be created."""
+    def test_declared_scope_honored_ignoring_override(self, tmp_path):
+        """A project.yaml scope override is IGNORED — the declared scope wins."""
         from kanibako.commands.start import _build_resource_mounts
         from kanibako.config import write_project_meta, write_resource_override
 
@@ -170,6 +131,7 @@ class TestResourceOverrideInMounts:
             mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
+        # Override SHARED->project: must be ignored now (declared SHARED wins).
         write_resource_override(project_toml, "plugins/", "project")
 
         mappings = [ResourceMapping("plugins/", ResourceScope.SHARED, "Plugins")]
@@ -178,30 +140,9 @@ class TestResourceOverrideInMounts:
         target.config_dir_name = ".claude"
 
         mounts = _build_resource_mounts(proj, target, "claude")
-        assert len(mounts) == 0
-
-    def test_override_project_to_shared(self, tmp_path):
-        """Override a PROJECT resource to SHARED — mount should be created."""
-        from kanibako.commands.start import _build_resource_mounts
-        from kanibako.config import write_project_meta, write_resource_override
-
-        proj = self._make_proj(tmp_path)
-        project_toml = proj.metadata_path / "project.yaml"
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
-        write_resource_override(project_toml, "projects/", "shared")
-
-        mappings = [ResourceMapping("projects/", ResourceScope.PROJECT, "Session data")]
-        target = MagicMock()
-        target.resource_mappings.return_value = mappings
-        target.config_dir_name = ".claude"
-
-        mounts = _build_resource_mounts(proj, target, "claude")
+        # Override no longer read -> the declared SHARED scope still mounts.
         assert len(mounts) == 1
-        assert mounts[0].destination == "/home/agent/.claude/projects/"
+        assert mounts[0].destination == "/home/agent/.claude/plugins/"
 
     def test_invalid_path_rejected_by_cli(self, tmp_path):
         """Resource override with a path not in resource_mappings should be rejected by CLI."""

@@ -558,12 +558,13 @@ class TestResourceMappings:
         t = ClaudeTarget()
         assert t.default_shares() == {}
 
-    def test_seeded_resources(self):
-        """settings.json and CLAUDE.md are seeded from workset."""
+    def test_no_seeded_resources(self):
+        """settings.json/CLAUDE.md are now template-seeded, not resource mappings."""
         t = ClaudeTarget()
         mappings = {m.path: m.scope for m in t.resource_mappings()}
-        assert mappings["settings.json"] == ResourceScope.SEEDED
-        assert mappings["CLAUDE.md"] == ResourceScope.SEEDED
+        assert "settings.json" not in mappings
+        assert "CLAUDE.md" not in mappings
+        assert ResourceScope.SEEDED not in {m.scope for m in t.resource_mappings()}
 
     def test_project_resources(self):
         """Session data, history, tasks, etc. are project-scoped."""
