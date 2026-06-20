@@ -191,22 +191,47 @@ class TestRunCommandAssembly:
             idx = cmd.index("--name")
             assert cmd[idx + 1] == "kanibako-test"
 
-    def test_vault_tmpfs(self, tmp_path):
+    def test_tmpfs_mask_default_vault(self, tmp_path):
+        """The default single vault mask emits byte-identical args to the old
+        hardcoded ``vault_tmpfs=True``."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
         with patch("kanibako.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
-            rt.run("img:latest", vault_tmpfs=True, **kwargs)
+            rt.run(
+                "img:latest",
+                tmpfs_masks=["/home/agent/workspace/vault"],
+                **kwargs,
+            )
             cmd = m_run.call_args[0][0]
             idx = cmd.index("--mount")
             assert cmd[idx + 1] == "type=tmpfs,dst=/home/agent/workspace/vault,ro"
 
-    def test_vault_tmpfs_false(self, tmp_path):
+    def test_tmpfs_mask_multiple(self, tmp_path):
+        """Multiple masks each emit a ``--mount type=tmpfs,...,ro`` pair."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
         with patch("kanibako.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
-            rt.run("img:latest", vault_tmpfs=False, **kwargs)
+            rt.run(
+                "img:latest",
+                tmpfs_masks=[
+                    "/home/agent/workspace/vault",
+                    "/home/agent/.secret",
+                ],
+                **kwargs,
+            )
+            cmd = m_run.call_args[0][0]
+            assert cmd.count("--mount") == 2
+            assert "type=tmpfs,dst=/home/agent/workspace/vault,ro" in cmd
+            assert "type=tmpfs,dst=/home/agent/.secret,ro" in cmd
+
+    def test_tmpfs_mask_empty(self, tmp_path):
+        rt = self._make_rt()
+        kwargs = self._base_kwargs(tmp_path)
+        with patch("kanibako.container.subprocess.run") as m_run:
+            m_run.return_value = MagicMock(returncode=0)
+            rt.run("img:latest", tmpfs_masks=None, **kwargs)
             cmd = m_run.call_args[0][0]
             assert "--mount" not in cmd
 
@@ -313,7 +338,7 @@ class TestVaultDisabledRun:
                 project_path=tmp_path / "proj",
                 vault_ro_path=vault_ro,
                 vault_rw_path=vault_rw,
-                vault_tmpfs=True,
+                tmpfs_masks=["/home/agent/workspace/vault"],
                 enable_vault=False,
             )
             cmd = m_run.call_args[0][0]
@@ -338,7 +363,7 @@ class TestVaultDisabledRun:
                 project_path=tmp_path / "proj",
                 vault_ro_path=vault_ro,
                 vault_rw_path=vault_rw,
-                vault_tmpfs=True,
+                tmpfs_masks=["/home/agent/workspace/vault"],
                 enable_vault=True,
             )
             cmd = m_run.call_args[0][0]
