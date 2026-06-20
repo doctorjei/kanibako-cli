@@ -314,11 +314,15 @@ class TestAgentConfigFirstUse:
             # serialize it — a bare MagicMock is not representable.
             from kanibako.agent_config import AgentConfig
             m.target.generate_agent_config.return_value = AgentConfig(name="claude")
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
+            # The derived agent-config path (std.agents / "<id>.yaml") is a
+            # MagicMock here; stub the writer so it never coerces that mock to a
+            # literal "MagicMock" path and mkdir's it into the CWD.
+            with patch("kanibako.commands.start.write_agent_config"):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
             m.target.generate_agent_config.assert_called_once()
 
     def test_does_not_generate_when_exists(self, start_mocks):
