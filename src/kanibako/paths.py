@@ -871,16 +871,16 @@ def _workset_box_paths(
 def _standalone_box_paths(
     metadata_path: Path, project_path: Path,
 ) -> tuple[Path, Path, Path]:
-    """Fixed STANDALONE-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
+    """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis).
 
-    All state stays inside the project dir: shell under the metadata dir,
-    vault under ``<project>/vault/{ro,rw}``.  (The metadata-dir relocation to
-    ``box_data/`` + the ``<random24>_<leaf>`` identity are sub-step 5d.)
+    All state stays inside the project dir under ``box_data/`` (the *metadata
+    path*): the agent home is ``box_data/home``, and the vault lives at
+    ``<project>/vault/{ro,rw}`` (per the §1c STANDALONE table).
     """
-    shell = metadata_path / "shell"
+    home = metadata_path / "home"
     vault_ro = project_path / "vault" / "ro"
     vault_rw = project_path / "vault" / "rw"
-    return shell, vault_ro, vault_rw
+    return home, vault_ro, vault_rw
 
 
 _SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
@@ -1028,15 +1028,19 @@ def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path
     return best
 
 
-def _is_standalone_meta_dir(meta_dir: Path) -> bool:
-    """True only if *meta_dir* is a real standalone project metadata directory.
+_STANDALONE_META_DIR = "box_data"
 
-    A bare directory named ``.kanibako``/``kanibako`` is NOT sufficient: the
-    kanibako container image bakes an empty ``~/.kanibako`` runtime/IPC dir into
-    every container home (helper socket + log), which must never be mistaken for
-    a standalone project marker.  Require a parseable ``project.yaml`` that
-    declares ``mode = "standalone"``.
+
+def _is_standalone_meta_dir(root: Path) -> bool:
+    """True only if *root* is a real standalone project root.
+
+    The walk marker is a ``box_data/`` directory under *root* carrying a box
+    metadata file that declares ``box.mode = "standalone"``.  A bare
+    ``box_data/`` directory is NOT sufficient (it must hold a parseable
+    standalone metadata file), so an unrelated directory of that name is never
+    mistaken for a standalone project marker.
     """
+    meta_dir = root / _STANDALONE_META_DIR
     toml = meta_dir / "project.yaml"
     if not meta_dir.is_dir() or not toml.is_file():
         return False
@@ -1064,9 +1068,8 @@ def detect_project_mode(
     2. Default (name-based) — one-pass scan of ``names.yaml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
-    3. Walk ancestors for standalone markers — a ``.kanibako`` or
-       ``kanibako`` **directory** exists inside the ancestor.
-       ``.kanibako`` takes priority.
+    3. Walk ancestors for standalone markers — a ``box_data/`` **directory**
+       holding a standalone metadata file exists inside the ancestor.
     4. Default — ``primary`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
@@ -1091,12 +1094,10 @@ def detect_project_mode(
     # 3. Walk ancestors for standalone markers.
     current = resolved
     while True:
-        # Standalone check: .kanibako/ or kanibako/ directory with a real
-        # standalone project.yaml.  A bare directory is not enough (the
-        # container image bakes an empty ~/.kanibako runtime/IPC dir).
-        if _is_standalone_meta_dir(current / ".kanibako"):
-            return DetectionResult(BoxMode.standalone, current)
-        if _is_standalone_meta_dir(current / "kanibako"):
+        # Standalone check: a box_data/ directory holding a real standalone
+        # metadata file (box.mode = "standalone").  A bare directory is not
+        # enough (the metadata file must declare standalone mode).
+        if _is_standalone_meta_dir(current):
             return DetectionResult(BoxMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
@@ -1542,11 +1543,14 @@ def resolve_standalone_project(
     All project state lives inside *project_dir* itself.
     No data is written to ``$XDG_DATA_HOME``.
 
-    Phase 5: no layout axis.  New standalone projects use the ``.kanibako``
-    metadata dir; both ``.kanibako`` and ``kanibako`` are still read for
-    existing projects.  (5d re-points the marker to ``box_data/`` and adds the
-    ``<random24>_<leaf>`` identity.)
+    Phase 5d: no layout axis.  Standalone metadata lives under ``box_data/`` in
+    the project root (home at ``box_data/home``, vault at ``<root>/vault/...``).
+    The box identity is ``<random24>_<sanitized leaf>`` (generated + registered
+    in ``registry.standalone`` at create time; reused from the stored meta
+    afterwards).
     """
+    from kanibako import box_identity, registry_store
+
     raw = project_dir or os.getcwd()
     project_path = Path(raw).resolve()
 
@@ -1555,31 +1559,27 @@ def resolve_standalone_project(
 
     phash = project_hash(str(project_path))
 
-    # metadata dir: read either existing location; new projects use ``.kanibako``.
-    dot_meta = project_path / ".kanibako"
-    nodot_meta = project_path / "kanibako"
+    # Metadata dir: box_data/ under the project root (the §1c STANDALONE table).
+    metadata_path = project_path / _STANDALONE_META_DIR
+    project_toml = metadata_path / "project.yaml"
 
     meta = None
-    if dot_meta.is_dir():
-        meta = read_project_meta(dot_meta / "project.yaml")
-        metadata_path = dot_meta
-    elif nodot_meta.is_dir():
-        meta = read_project_meta(nodot_meta / "project.yaml")
-        metadata_path = nodot_meta
-    else:
-        metadata_path = dot_meta
+    if metadata_path.is_dir():
+        meta = read_project_meta(project_toml)
 
-    _sa_shell, _sa_vro, _sa_vrw = _standalone_box_paths(metadata_path, project_path)
+    _sa_home, _sa_vro, _sa_vrw = _standalone_box_paths(metadata_path, project_path)
     if meta:
-        shell_path = Path(meta["shell"]) if meta["shell"] else _sa_shell
+        shell_path = Path(meta["shell"]) if meta["shell"] else _sa_home
         vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _sa_vro
         vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _sa_vrw
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        shell_path, vault_ro_path, vault_rw_path = _sa_shell, _sa_vro, _sa_vrw
+        shell_path, vault_ro_path, vault_rw_path = _sa_home, _sa_vro, _sa_vrw
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    project_toml = metadata_path / "project.yaml"
+    # Box identity: reuse the stored name; generate + register a new one at
+    # create time (whole-name collision regen via the registry's standalone set).
+    box_name = meta.get("name", "") if meta else ""
 
     # Auth mode for standalone: explicit param > meta > default.
     # Standalone projects are NOT in the default group, so they do
@@ -1592,6 +1592,9 @@ def resolve_standalone_project(
 
     is_new = False
     if initialize and not metadata_path.is_dir():
+        if not box_name:
+            existing = registry_store.standalone_box_names(std.data_path)
+            box_name = box_identity.make_standalone_box_name(project_path, existing)
         _init_standalone_project(
             std, metadata_path, shell_path,
             vault_ro_path, vault_rw_path, project_path,
@@ -1608,11 +1611,13 @@ def resolve_standalone_project(
             group_auth=actual_group_auth,
             metadata=str(metadata_path),
             project_hash=phash,
+            name=box_name,
         )
+        registry_store.register_standalone(std.data_path, box_name, project_path)
         is_new = True
 
     if initialize:
-        # Recovery: ensure shell exists.
+        # Recovery: ensure home exists.
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
@@ -1628,6 +1633,7 @@ def resolve_standalone_project(
         mode=BoxMode.standalone,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
+        name=box_name,
         global_shared_path=None,
     )
 

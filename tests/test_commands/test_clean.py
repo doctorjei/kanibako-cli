@@ -97,11 +97,11 @@ class TestClean:
 
 class TestCleanExtended:
     def test_purge_standalone_project(self, config_file, tmp_home):
-        """Purge removes .kanibako/ for standalone projects."""
+        """Purge removes box_data/ for standalone projects."""
         from kanibako.commands.clean import run
 
         project_dir = tmp_home / "project"
-        kanibako_dir = project_dir / ".kanibako"
+        kanibako_dir = project_dir / "box_data"
         kanibako_dir.mkdir()
         (kanibako_dir / "project.yaml").write_text('project:\n  mode: "standalone"\n')
         (kanibako_dir / "data.txt").write_text("session-data")
@@ -128,11 +128,11 @@ class TestCleanExtended:
         # Create a standalone project
         dec_dir = tmp_home / "dec_project"
         dec_dir.mkdir()
-        (dec_dir / ".kanibako").mkdir()
-        (dec_dir / ".kanibako" / "project.yaml").write_text(
+        (dec_dir / "box_data").mkdir()
+        (dec_dir / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
-        (dec_dir / ".kanibako" / "data.txt").write_text("dec-data")
+        (dec_dir / "box_data" / "data.txt").write_text("dec-data")
 
         args = argparse.Namespace(all_projects=True, force=True)
         rc = run(args)
@@ -140,8 +140,8 @@ class TestCleanExtended:
 
         # Local settings should be gone
         assert not proj.metadata_path.exists()
-        # Standalone .kanibako/ should still exist (not covered by --all)
-        assert (dec_dir / ".kanibako" / "data.txt").exists()
+        # Standalone box_data/ should still exist (not covered by --all)
+        assert (dec_dir / "box_data" / "data.txt").exists()
 
 
 class TestCleanWorkset:

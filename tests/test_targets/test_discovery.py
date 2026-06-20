@@ -193,9 +193,9 @@ class TestDirectoryPluginDiscovery:
         assert "myplugin" in targets
 
     def test_discover_project_dir_plugins(self, tmp_path):
-        """Plugins in project .kanibako/plugins/ are discovered."""
+        """Plugins in project box_data/plugins/ are discovered."""
         proj = tmp_path / "myproject"
-        proj_plugins = proj / ".kanibako" / "plugins"
+        proj_plugins = proj / "box_data" / "plugins"
         _write_plugin(proj_plugins, "projplugin.py", "projplugin")
 
         with patch("kanibako.targets.entry_points", return_value=[]):
@@ -211,7 +211,7 @@ class TestDirectoryPluginDiscovery:
 
         # Project plugin also named "shared" from proj_shared.py
         proj = tmp_path / "project"
-        proj_plugins = proj / ".kanibako" / "plugins"
+        proj_plugins = proj / "box_data" / "plugins"
         _write_plugin(proj_plugins, "proj_shared.py", "shared")
 
         with patch("kanibako.targets.entry_points", return_value=[]):
@@ -263,7 +263,7 @@ class TestDirectoryPluginDiscovery:
     def test_get_target_with_project_path(self, tmp_path):
         """get_target accepts project_path parameter."""
         proj = tmp_path / "proj"
-        proj_plugins = proj / ".kanibako" / "plugins"
+        proj_plugins = proj / "box_data" / "plugins"
         _write_plugin(proj_plugins, "custom.py", "custom")
 
         with patch("kanibako.targets.entry_points", return_value=[]):
@@ -273,7 +273,7 @@ class TestDirectoryPluginDiscovery:
     def test_resolve_target_with_project_path(self, tmp_path):
         """resolve_target passes project_path through."""
         proj = tmp_path / "proj"
-        proj_plugins = proj / ".kanibako" / "plugins"
+        proj_plugins = proj / "box_data" / "plugins"
         _write_plugin(proj_plugins, "myplugin.py", "myplugin")
 
         with patch("kanibako.targets.entry_points", return_value=[]):

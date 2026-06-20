@@ -6,9 +6,11 @@ import json
 
 import pytest
 
+from kanibako import registry_store
 from kanibako.errors import ProjectError
 from kanibako.paths import (
     BoxMode,
+    detect_project_mode,
     resolve_standalone_project,
 )
 from kanibako.utils import project_hash
@@ -31,8 +33,8 @@ class TestResolveStandaloneProject:
         )
         resolved = project_dir.resolve()
         assert proj.project_path == resolved
-        assert proj.metadata_path == resolved / ".kanibako"
-        assert proj.shell_path == resolved / ".kanibako" / "shell"
+        assert proj.metadata_path == resolved / "box_data"
+        assert proj.shell_path == resolved / "box_data" / "home"
         assert proj.vault_ro_path == resolved / "vault" / "ro"
         assert proj.vault_rw_path == resolved / "vault" / "rw"
 
@@ -228,9 +230,9 @@ class TestStandaloneCredentialFlow:
 class TestStandaloneFixedPaths:
     """Pin the concrete paths the STANDALONE fixed table produces.
 
-    New standalone projects use the ``.kanibako`` metadata dir; shell lives
-    under it; vault lives in the workspace (``{project}/vault/...``).  (5d
-    re-points the marker to ``box_data/`` and adds the random-id identity.)
+    Standalone metadata lives under ``box_data/`` in the project root; the
+    agent home is ``box_data/home``; vault lives in the workspace
+    (``{project}/vault/...``).  (5d: ``box_data/`` marker + random-id identity.)
     """
 
     def test_standalone_paths(self, std, config, project_dir, credentials_dir):
@@ -239,7 +241,90 @@ class TestStandaloneFixedPaths:
         )
         resolved = project_dir.resolve()
 
-        assert proj.metadata_path == resolved / ".kanibako"
-        assert proj.shell_path == resolved / ".kanibako" / "shell"
+        assert proj.metadata_path == resolved / "box_data"
+        assert proj.shell_path == resolved / "box_data" / "home"
         assert proj.vault_ro_path == resolved / "vault" / "ro"
         assert proj.vault_rw_path == resolved / "vault" / "rw"
+
+
+# ---------------------------------------------------------------------------
+# TestStandaloneIdentity (5d: <random24>_<leaf> + registry.standalone)
+# ---------------------------------------------------------------------------
+
+class TestStandaloneIdentity:
+    def test_create_assigns_random_leaf_name(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        # name = <random24>_<leaf>; leaf is the project dir basename.
+        assert proj.name
+        prefix, _, leaf = proj.name.partition("_")
+        assert leaf == project_dir.resolve().name
+        assert len(prefix) == 5  # 24 bits → 5 base32 chars
+
+    def test_create_registers_in_standalone_section(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        standalone = registry_store.load_standalone(std.data_path)
+        assert standalone.get(proj.name) == str(project_dir.resolve())
+
+    def test_reinit_reuses_stored_name(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        proj1 = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        proj2 = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        assert proj2.name == proj1.name
+
+    def test_resolve_without_meta_has_empty_name(
+        self, std, config, project_dir,
+    ):
+        # No initialize, no on-disk meta → no identity yet.
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=False,
+        )
+        assert proj.name == ""
+
+
+# ---------------------------------------------------------------------------
+# TestStandaloneDetection (5d: box_data/ walk marker)
+# ---------------------------------------------------------------------------
+
+class TestStandaloneDetection:
+    def test_detect_finds_box_data_marker(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        result = detect_project_mode(project_dir, std, config)
+        assert result.mode is BoxMode.standalone
+        assert result.project_root == project_dir.resolve()
+
+    def test_detect_from_subdir_walks_up_to_marker(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        subdir = project_dir / "src" / "deep"
+        subdir.mkdir(parents=True)
+        result = detect_project_mode(subdir, std, config)
+        assert result.mode is BoxMode.standalone
+        assert result.project_root == project_dir.resolve()
+
+    def test_bare_box_data_dir_is_not_a_marker(
+        self, std, config, project_dir,
+    ):
+        # A box_data/ dir without a standalone metadata file must not detect.
+        (project_dir / "box_data").mkdir()
+        result = detect_project_mode(project_dir, std, config)
+        assert result.mode is BoxMode.primary

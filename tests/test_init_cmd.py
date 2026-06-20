@@ -62,8 +62,8 @@ class TestRunCreate:
 
         assert rc == 0
         resolved = project_dir.resolve()
-        assert (resolved / ".kanibako").is_dir()
-        assert (resolved / ".kanibako" / "shell").is_dir()
+        assert (resolved / "box_data").is_dir()
+        assert (resolved / "box_data" / "home").is_dir()
         assert (resolved / "vault" / "ro").is_dir()
         assert (resolved / "vault" / "rw").is_dir()
 
@@ -78,7 +78,7 @@ class TestRunCreate:
 
         assert rc == 0
         resolved = project_dir.resolve()
-        assert (resolved / ".kanibako").is_dir()
+        assert (resolved / "box_data").is_dir()
 
     def test_create_creates_nonexistent_path(
         self, config_file, credentials_dir, tmp_home, capsys,
@@ -91,7 +91,7 @@ class TestRunCreate:
 
         assert rc == 0
         assert target.is_dir()
-        assert (target / ".kanibako").is_dir()
+        assert (target / "box_data").is_dir()
 
     def test_create_already_exists_fails(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -131,7 +131,7 @@ class TestRunCreate:
         assert "$HOME" in captured.err
         assert "--standalone" in captured.err
         # No project metadata should have been created at $HOME.
-        assert not (Path.home() / ".kanibako").exists()
+        assert not (Path.home() / "box_data").exists()
 
     def test_create_at_home_standalone_requires_allow_home(
         self, config_file, credentials_dir, tmp_home, capsys,
@@ -144,7 +144,7 @@ class TestRunCreate:
         assert rc == 1
         captured = capsys.readouterr()
         assert "--allow-home" in captured.err
-        assert not (Path.home() / ".kanibako").exists()
+        assert not (Path.home() / "box_data").exists()
 
     def test_create_at_home_standalone_with_allow_home(
         self, config_file, credentials_dir, tmp_home, capsys,
@@ -157,7 +157,7 @@ class TestRunCreate:
         rc = run_create(args)
 
         assert rc == 0
-        assert (Path.home() / ".kanibako").is_dir()
+        assert (Path.home() / "box_data").is_dir()
 
     def test_create_writes_gitignore_for_standalone(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -168,7 +168,7 @@ class TestRunCreate:
 
         gitignore = project_dir.resolve() / ".gitignore"
         assert gitignore.is_file()
-        assert ".kanibako/" in gitignore.read_text()
+        assert "box_data/" in gitignore.read_text()
 
     def test_create_no_gitignore_for_local(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -262,7 +262,7 @@ class TestCreateNoVault:
         rc = run_create(args)
 
         assert rc == 0
-        assert (project / ".kanibako").is_dir()
+        assert (project / "box_data").is_dir()
         assert not (project / "vault").exists()
 
     def test_create_no_vault_new_dir(
@@ -274,7 +274,7 @@ class TestCreateNoVault:
         rc = run_create(args)
 
         assert rc == 0
-        assert (target / ".kanibako").is_dir()
+        assert (target / "box_data").is_dir()
         assert not (target / "vault").exists()
 
     def test_create_with_vault_creates_vault_dirs(
@@ -304,7 +304,7 @@ class TestCreateDistinctAuth:
         rc = run_create(args)
 
         assert rc == 0
-        shell = project / ".kanibako" / "shell"
+        shell = project / "box_data" / "home"
         assert shell.is_dir()
         # Credentials should NOT have been copied from host.
         assert not (shell / ".claude" / ".credentials.json").exists()
@@ -319,7 +319,7 @@ class TestCreateDistinctAuth:
         args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
         run_create(args)
 
-        meta = read_project_meta(project / ".kanibako" / "project.yaml")
+        meta = read_project_meta(project / "box_data" / "project.yaml")
         assert meta is not None
         assert meta["group_auth"] is False
 
@@ -337,7 +337,7 @@ class TestCreateDistinctAuth:
         rc = run_create(args)
 
         assert rc == 0
-        shell = target / ".kanibako" / "shell"
+        shell = target / "box_data" / "home"
         assert shell.is_dir()
         assert not (shell / ".claude" / ".credentials.json").exists()
 
@@ -356,7 +356,7 @@ class TestCreateImage:
         ])
         run_create(args)
 
-        project_toml = project_dir.resolve() / ".kanibako" / "project.yaml"
+        project_toml = project_dir.resolve() / "box_data" / "project.yaml"
         merged = load_merged_config(config_file, project_toml)
         assert merged.box_image == "kanibako-template-jvm-oci"
 
@@ -368,6 +368,6 @@ class TestCreateImage:
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
 
-        project_toml = project_dir.resolve() / ".kanibako" / "project.yaml"
+        project_toml = project_dir.resolve() / "box_data" / "project.yaml"
         merged = load_merged_config(config_file, project_toml)
         assert "kanibako" in merged.box_image
