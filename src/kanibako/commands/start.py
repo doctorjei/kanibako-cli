@@ -840,19 +840,6 @@ def _run_container(
             else:
                 target.init_home(proj.shell_path, group_auth=proj.group_auth)
 
-            # Merge layered instruction files (base + template + user).
-            instr_files = target.instruction_files()
-            if instr_files:
-                from kanibako.instructions import merge_instruction_files
-                merge_instruction_files(
-                    shell_path=proj.shell_path,
-                    config_dir_name=target.config_dir_name,
-                    instruction_files=instr_files,
-                    templates_base=templates_base,
-                    agent_name=target.name,
-                    template_name=agent_cfg.shell,
-                )
-
         # Copy-once-at-init seeds (additive; overlays templates). target may be
         # None (no agent) — seeds can still come from config levels.
         if proj.is_new:
