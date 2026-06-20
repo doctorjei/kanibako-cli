@@ -246,6 +246,31 @@ class TestConvertInPlace:
         assert pdir.is_dir()
         assert not (pdir / ".kanibako").exists()
 
+    def test_default_inplace_reuses_name_no_suffix(self, env):
+        """L2: an in-place default convert reuses the registered name, not foo2.
+
+        Pre-fix, ``_to_default`` ran ``assign_name`` while the box's own name was
+        still registered, so the unchanged-path convert auto-suffixed (foo→foo2)
+        and stranded the original entry. The path is unchanged here, so the
+        existing name must be reused and there must be no ``proj2``.
+        """
+        config, std, tmp_home = env
+        pdir = _make_default(env)  # registers "proj" → pdir
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="default", name="proj2"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.primary
+        # Name reused (no auto-suffix), path unchanged.
+        assert new.name == "proj"
+        projects = read_names(std.data_path)["projects"]
+        assert projects.get("proj") == str(pdir)
+        # No stranded suffixed entry.
+        assert "proj2" not in projects
+        # Exactly one registry entry points at this workspace.
+        assert sum(1 for v in projects.values() if v == str(pdir)) == 1
+
     def test_workset_to_default(self, env):
         config, std, tmp_home = env
         ws = _make_workset(env)
