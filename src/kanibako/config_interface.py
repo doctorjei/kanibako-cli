@@ -22,6 +22,7 @@ from typing import Any
 
 from kanibako.config import (
     _DEFAULTS,
+    coerce_bool,
     load_merged_config,
     load_project_overrides,
     read_agent_settings,
@@ -160,10 +161,9 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # Boolean keys parse true/false/1/0/yes/no (case-insensitive) to a Python bool
 # so the loader reads back a real bool (``set box.share_images false`` actually
 # disables it).  Build this extensibly — later phases add box.group_auth /
-# vault_enabled / agent.*.{auto_approve,allow_helpers} etc.
-_BOOL_TRUE = frozenset({"true", "1", "yes", "on"})
-_BOOL_FALSE = frozenset({"false", "0", "no", "off"})
-
+# vault_enabled / agent.*.{auto_approve,allow_helpers} etc.  The truth table
+# itself lives in ``config`` (shared with the box.meta writer); see
+# ``config.coerce_bool``.
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
     "allow_helpers": "bool",
@@ -181,11 +181,9 @@ def _coerce_value(canonical: str, value: str) -> object | str:
     """
     kind = KEY_TYPES.get(canonical)
     if kind == "bool":
-        low = value.strip().lower()
-        if low in _BOOL_TRUE:
-            return True
-        if low in _BOOL_FALSE:
-            return False
+        coerced = coerce_bool(value)
+        if coerced is not None:
+            return coerced
         return (
             f"Error: {canonical} expects a boolean "
             f"(true/false/1/0/yes/no), got {value!r}"
@@ -252,7 +250,7 @@ def _is_shared_key(key: str) -> bool:
 
 
 def _is_agent_setting(key: str) -> bool:
-    """Keys that belong in the agent section of project.yaml."""
+    """Keys that belong in the agent section of settings.yaml."""
     return key in {"model", "start_mode", "autonomous"}
 
 
@@ -340,7 +338,7 @@ def get_config_value(
         merged = merge_env(env_global, env_project)
         return merged.get(env_name)
 
-    # resource.* keys — read from resource_overrides in project.yaml
+    # resource.* keys — read from resource_overrides in settings.yaml
     if _is_resource_key(canonical):
         resource_name = canonical[9:]  # strip "resource."
         if project_toml and project_toml.exists():
@@ -433,7 +431,7 @@ def set_config_value(
 ) -> str:
     """Write a config value to the appropriate store.
 
-    *config_path* is the project.yaml (for box/workset) or kanibako.yaml
+    *config_path* is the settings.yaml (for box/workset) or kanibako.yaml
     (for system).  Returns a human-readable confirmation message.
     """
     canonical = _resolve_key(key)

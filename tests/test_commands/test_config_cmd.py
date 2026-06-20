@@ -64,7 +64,7 @@ class TestBoxConfigShow:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Write a project override
-        project_toml = proj.metadata_path / "project.yaml"
+        project_toml = proj.metadata_path / "settings.yaml"
         write_project_config(project_toml, "custom:v1")
 
         args = argparse.Namespace(
@@ -259,7 +259,7 @@ class TestBoxConfigReset:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Set first
-        project_toml = proj.metadata_path / "project.yaml"
+        project_toml = proj.metadata_path / "settings.yaml"
         write_project_config(project_toml, "to-reset:v1")
 
         # Reset
@@ -282,7 +282,7 @@ class TestBoxConfigReset:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Set a value first
-        project_toml = proj.metadata_path / "project.yaml"
+        project_toml = proj.metadata_path / "settings.yaml"
         write_project_config(project_toml, "override:v1")
 
         # Reset all with --force (skip confirmation)
@@ -430,7 +430,7 @@ class TestBoxConfigTooManyArgs:
 
 class TestWriteProjectConfigKey:
     def test_write_paths_key(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "paths_shell", "custom_shell")
         loaded = load_config(p)
         assert loaded.paths_shell == "custom_shell"
@@ -439,7 +439,7 @@ class TestWriteProjectConfigKey:
         assert 'shell: custom_shell' in text
 
     def test_write_box_key(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "myimg:v1")
         loaded = load_config(p)
         assert loaded.box_image == "myimg:v1"
@@ -448,7 +448,7 @@ class TestWriteProjectConfigKey:
         assert 'image: myimg:v1' in text
 
     def test_write_agent_key(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_agent", "my-target")
         loaded = load_config(p)
         assert loaded.box_agent == "my-target"
@@ -458,7 +458,7 @@ class TestWriteProjectConfigKey:
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "multi:v1")
         write_project_config_key(p, "paths_shell", "multi_shell")
         loaded = load_config(p)
@@ -466,7 +466,7 @@ class TestWriteProjectConfigKey:
         assert loaded.paths_shell == "multi_shell"
 
     def test_update_existing_key(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "old:v1")
         write_project_config_key(p, "box_image", "new:v2")
         loaded = load_config(p)
@@ -476,7 +476,7 @@ class TestWriteProjectConfigKey:
 
     def test_backward_compat_with_write_project_config(self, tmp_path):
         """write_project_config (old API) should still work."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config(p, "compat:v1")
         loaded = load_config(p)
         assert loaded.box_image == "compat:v1"
@@ -485,7 +485,7 @@ class TestWriteProjectConfigKey:
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "remove-me:v1")
         assert unset_project_config_key(p, "box_image") is True
         loaded = load_config(p)
@@ -494,7 +494,7 @@ class TestUnsetProjectConfigKey:
 
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "keep:v1")
         assert unset_project_config_key(p, "paths_shell") is False
         # Original key should still be there
@@ -508,7 +508,7 @@ class TestUnsetProjectConfigKey:
 
     def test_unset_preserves_other_keys(self, tmp_path):
         from kanibako.config import unset_project_config_key
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "img:v1")
         write_project_config_key(p, "paths_shell", "my_shell")
         assert unset_project_config_key(p, "box_image") is True
@@ -523,7 +523,7 @@ class TestLoadProjectOverrides:
         assert load_project_overrides(p) == {}
 
     def test_returns_only_overrides(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "override:v1")
         overrides = load_project_overrides(p)
         assert "box_image" in overrides

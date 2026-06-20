@@ -11,7 +11,12 @@ from pathlib import Path
 
 from kanibako.agent_config import load_agent_config, write_agent_config
 from kanibako.commands.diagnose import probe_missing_executables
-from kanibako.config import config_file_path, load_config, load_merged_config
+from kanibako.config import (
+    BOX_META_FILE,
+    config_file_path,
+    load_config,
+    load_merged_config,
+)
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
@@ -589,7 +594,7 @@ def _run_container(
                 break
 
     # Load merged config (global + workset + project)
-    project_toml = proj.metadata_path / "project.yaml"
+    project_toml = proj.metadata_path / BOX_META_FILE
     workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
@@ -1654,7 +1659,7 @@ def _build_effective_state(
     with the target's declared defaults as a FLOOR (the system level's declared
     defaults).  Sources for each level's ``[agent]`` table:
 
-      * **box**     — ``agent.<name>`` (over ``agent.default``) in project.yaml
+      * **box**     — ``agent.<name>`` (over ``agent.default``) in settings.yaml
       * **workset** — ``agent.<name>`` in the workset's config.yaml (if any)
       * **agent**   — the agent config's own state dict (already per-agent)
       * **system**  — ``agent.<name>`` in the global kanibako.yaml
@@ -1762,7 +1767,7 @@ def _build_binding_overrides(
     :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
     then overlays the levels MOST-SPECIFIC-WINS:
 
-        box (project.yaml) > workset > agent (agents/<name>.yaml) > system > machine
+        box (settings.yaml) > workset > agent (agents/<name>.yaml) > system > machine
 
     Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
     common case).  A bad/unreadable level contributes nothing (the reader
@@ -2406,7 +2411,7 @@ def _build_resource_mounts(proj, target, agent_id: str):
 
     NOTE: the SEEDED scope was removed in 1.6.0 — seeding a box's config from a
     shared source is now owned by the layered seed-once template apply (Phase 7c),
-    so there is no SEEDED branch here.  The retired per-project ``project.yaml``
+    so there is no SEEDED branch here.  The retired per-project ``settings.yaml``
     scope override (a Phase-5 worksets casualty) is no longer read either.
     """
     from kanibako.targets.base import Mount, ResourceScope

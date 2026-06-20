@@ -196,7 +196,7 @@ class TestDetectionFalsePositives:
         result = detect_project_mode(project_dir.resolve(), std, config)
         # Should fall through to local (default), NOT standalone.  A bare
         # directory (even ``.kanibako``) is not a marker on its own: a real
-        # standalone project.yaml is required.
+        # standalone settings.yaml is required.
         assert result.mode is not BoxMode.standalone
 
     def test_ancestor_named_kanibako_no_false_positive(
@@ -224,7 +224,7 @@ class TestDetectionFalsePositives:
             project_dir = tmp_home / f"proj_{idx}"
             project_dir.mkdir()
             (project_dir / dirname).mkdir()
-            (project_dir / dirname / "project.yaml").write_text(
+            (project_dir / dirname / "settings.yaml").write_text(
                 'project:\n  mode: "standalone"\n'
             )
             result = detect_project_mode(project_dir.resolve(), std, config)
@@ -233,13 +233,13 @@ class TestDetectionFalsePositives:
     def test_box_data_marker_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """box_data/ with a real standalone project.yaml is a valid marker."""
+        """box_data/ with a real standalone settings.yaml is a valid marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
         (project_dir / "box_data").mkdir()
-        (project_dir / "box_data" / "project.yaml").write_text(
+        (project_dir / "box_data" / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 

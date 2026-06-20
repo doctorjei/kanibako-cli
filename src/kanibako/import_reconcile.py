@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 from kanibako import registry_store
-from kanibako.config import read_project_meta
+from kanibako.config import BOX_META_FILE, read_project_meta
 from kanibako.errors import KanibakoError
 
 
@@ -94,7 +94,7 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
 
     * Already registered to *root* (by ``standalone_name_for_root``) → silent
       no-op, returns the registered name.
-    * The box's persisted ``name`` (from ``box_data/project.yaml``) is missing
+    * The box's persisted ``name`` (from ``box_data/settings.yaml``) is missing
       or empty (a hand-created tree) → generate a fresh ``<random24>_<leaf>``
       name, persist it back into the metadata, register, alert, return it.
     * Otherwise the persisted name is registered to *root* + alerted, UNLESS it
@@ -113,7 +113,7 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
     if existing_name is not None:
         return existing_name
 
-    meta_path = root / "box_data" / "project.yaml"
+    meta_path = root / "box_data" / BOX_META_FILE
     meta = read_project_meta(meta_path)
     if not meta:
         return None  # No standalone metadata on disk → nothing to import.
@@ -210,7 +210,7 @@ def import_primary_box(data_path: Path, box_dir: Path) -> str | None:
     """Reconcile a single on-disk PRIMARY box at *box_dir* against ``registry.projects``.
 
     *box_dir* is a per-box directory under ``@system.primary_workset/boxes/``;
-    its ``project.yaml`` carries ``project.name`` (the box name) and the real
+    its ``settings.yaml`` carries ``project.name`` (the box name) and the real
     external ``workspace`` dir.  Reconciles name → workspace against
     ``registry.projects``:
 
@@ -221,7 +221,7 @@ def import_primary_box(data_path: Path, box_dir: Path) -> str | None:
     Returns the box name, or ``None`` when *box_dir* has no readable metadata or
     no workspace recorded (nothing to import).
     """
-    meta = read_project_meta(box_dir / "project.yaml")
+    meta = read_project_meta(box_dir / BOX_META_FILE)
     if not meta:
         return None
     name = (meta.get("name") or "").strip()
@@ -249,7 +249,7 @@ def import_primary_box_for_workspace(
     """Import the on-disk PRIMARY box whose recorded workspace is *workspace*.
 
     Scans *boxes_dir* (``@system.primary_workset/boxes``) for a box dir whose
-    ``project.yaml`` records *workspace* as its workspace and is NOT yet in
+    ``settings.yaml`` records *workspace* as its workspace and is NOT yet in
     ``registry.projects``, then imports it (alert + register).  Used by
     :func:`kanibako.paths.resolve_project` to re-discover a primary box that was
     dropped in / moved when the registry has no name → path entry for it.
@@ -265,7 +265,7 @@ def import_primary_box_for_workspace(
     for entry in sorted(boxes_dir.iterdir()):
         if not entry.is_dir():
             continue
-        meta = read_project_meta(entry / "project.yaml")
+        meta = read_project_meta(entry / BOX_META_FILE)
         if not meta:
             continue
         ws = (meta.get("workspace") or "").strip()
@@ -296,7 +296,7 @@ def reconcile_primary_boxes(data_path: Path, boxes_dir: Path) -> list[str]:
     for entry in sorted(boxes_dir.iterdir()):
         if not entry.is_dir():
             continue
-        meta = read_project_meta(entry / "project.yaml")
+        meta = read_project_meta(entry / BOX_META_FILE)
         if not meta:
             continue
         name = (meta.get("name") or "").strip()

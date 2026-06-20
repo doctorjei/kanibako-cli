@@ -46,9 +46,9 @@ class TestBoxMove:
         assert str(dest) in names["projects"].values()
         assert str(project_dir) not in names["projects"].values()
 
-        # project.yaml rewritten with the new workspace + hash.
+        # settings.yaml rewritten with the new workspace + hash.
         proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
-        meta = read_project_meta(proj.metadata_path / "project.yaml")
+        meta = read_project_meta(proj.metadata_path / "settings.yaml")
         assert meta["workspace"] == str(dest.resolve())
         assert meta["project_hash"] == project_hash(str(dest.resolve()))
 

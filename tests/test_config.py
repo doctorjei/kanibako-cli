@@ -68,7 +68,7 @@ class TestLoadConfig:
 class TestMergedConfig:
     def test_project_overrides_global(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -78,7 +78,7 @@ class TestMergedConfig:
 
     def test_cli_overrides_all(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -93,7 +93,7 @@ class TestMergedConfig:
     def test_workset_path_none_is_byte_identical(self, tmp_path):
         """Omitting workset_path must reproduce the pre-P2.2 global+project merge."""
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -116,7 +116,7 @@ class TestMergedConfig:
     def test_project_overrides_workset(self, tmp_path):
         global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
 
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
@@ -144,7 +144,7 @@ class TestMergedConfig:
     def test_default_no_op_when_no_workset_config(self, tmp_path):
         """A default-mode project with no workset config.yaml merges exactly as before."""
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
         missing_workset = tmp_path / "no-such-config.yaml"
 
         write_global_config(global_path)
@@ -189,7 +189,7 @@ class TestMachineConfigLayer:
         global_path.write_text("box:\n  image: user:2\n")
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: ws:3\n")
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
         project_path.write_text("box:\n  image: proj:4\n")
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
@@ -251,7 +251,7 @@ class TestMachineConfigLayer:
         # Reset via a more-specific project layer using an empty value.
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  bootstrap_program: screen\n")
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
         project_path.write_text("box:\n  bootstrap_program:\n")
         merged = load_merged_config(global_path, project_path)
         assert merged.box_bootstrap_program == "tmux"
@@ -310,20 +310,20 @@ class TestFlattenToml:
 
 class TestWriteProjectConfig:
     def test_creates_new(self, tmp_path):
-        path = tmp_path / "project.yaml"
+        path = tmp_path / "settings.yaml"
         write_project_config(path, "new-image:latest")
         cfg = load_config(path)
         assert cfg.box_image == "new-image:latest"
 
     def test_updates_existing(self, tmp_path):
-        path = tmp_path / "project.yaml"
+        path = tmp_path / "settings.yaml"
         write_project_config(path, "first:latest")
         write_project_config(path, "second:latest")
         cfg = load_config(path)
         assert cfg.box_image == "second:latest"
 
     def test_update_existing_image(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         write_project_config(p, "img:v1")
         assert "image: img:v1" in p.read_text()
         write_project_config(p, "img:v2")
@@ -332,14 +332,14 @@ class TestWriteProjectConfig:
         assert "img:v1" not in text
 
     def test_add_image_to_container_section(self, tmp_path):
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         p.write_text("box:\n  # empty section\n")
         write_project_config(p, "new:img")
         text = p.read_text()
         assert "image: new:img" in text
 
     def test_create_new_file(self, tmp_path):
-        p = tmp_path / "sub" / "project.yaml"
+        p = tmp_path / "sub" / "settings.yaml"
         write_project_config(p, "fresh:v1")
         assert p.exists()
         assert "box:" in p.read_text()
@@ -350,7 +350,7 @@ class TestProjectMeta:
     """Tests for write_project_meta / read_project_meta."""
 
     def test_write_and_read(self, tmp_path):
-        toml_path = tmp_path / "project.yaml"
+        toml_path = tmp_path / "settings.yaml"
         write_project_meta(
             toml_path,
             mode="primary",
@@ -374,13 +374,13 @@ class TestProjectMeta:
         assert meta is None
 
     def test_read_no_project_section(self, tmp_path):
-        toml_path = tmp_path / "project.yaml"
+        toml_path = tmp_path / "settings.yaml"
         toml_path.write_text('box:\n  image: "foo"\n')
         meta = read_project_meta(toml_path)
         assert meta is None
 
     def test_preserves_existing_sections(self, tmp_path):
-        toml_path = tmp_path / "project.yaml"
+        toml_path = tmp_path / "settings.yaml"
         toml_path.write_text('box:\n  image: "custom:v1"\n')
 
         write_project_meta(
@@ -401,7 +401,7 @@ class TestProjectMeta:
         assert meta["mode"] == "standalone"
 
     def test_overwrite_existing_meta(self, tmp_path):
-        toml_path = tmp_path / "project.yaml"
+        toml_path = tmp_path / "settings.yaml"
         write_project_meta(
             toml_path,
             mode="primary",
@@ -425,7 +425,7 @@ class TestProjectMeta:
 
     def test_new_fields_round_trip(self, tmp_path):
         """New fields (metadata, project_hash, global_shared, local_shared) round-trip."""
-        toml_path = tmp_path / "project.yaml"
+        toml_path = tmp_path / "settings.yaml"
         write_project_meta(
             toml_path,
             mode="primary",
@@ -447,8 +447,8 @@ class TestProjectMeta:
         assert meta["local_shared"] == "/data/shared"
 
     def test_backward_compat_missing_new_fields(self, tmp_path):
-        """Old project.yaml without new fields returns empty strings."""
-        toml_path = tmp_path / "project.yaml"
+        """Old settings.yaml without new fields returns empty strings."""
+        toml_path = tmp_path / "settings.yaml"
         # Write old-style config without new fields.
         toml_path.write_text(
             'project:\n  mode: "default"\n  layout: "default"\n'
@@ -484,7 +484,7 @@ class TestProjectMeta:
 
     def test_partial_new_fields(self, tmp_path):
         """Only some new fields present — missing ones default to empty string."""
-        toml_path = tmp_path / "project.yaml"
+        toml_path = tmp_path / "settings.yaml"
         write_project_meta(
             toml_path,
             mode="named",
@@ -632,7 +632,7 @@ class TestSharedCaches:
             'box:\n  image: "test:latest"\n\n'
             'shared:\n  pip: ".cache/pip"\n'
         )
-        project_path = tmp_path / "project.yaml"
+        project_path = tmp_path / "settings.yaml"
         project_path.write_text('box:\n  image: "proj:v1"\n')
 
         merged = load_merged_config(global_path, project_path)
@@ -641,10 +641,10 @@ class TestSharedCaches:
 
 
 class TestResourceOverrides:
-    """Tests for resource scope override storage in project.yaml."""
+    """Tests for resource scope override storage in settings.yaml."""
 
     def _write_base_toml(self, path):
-        """Write a minimal project.yaml for testing."""
+        """Write a minimal settings.yaml for testing."""
         write_project_meta(
             path,
             mode="primary",
@@ -653,7 +653,7 @@ class TestResourceOverrides:
 
     def test_round_trip(self, tmp_path):
         """Write and read back resource overrides."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
         write_resource_override(p, "settings.json", "shared")
@@ -662,8 +662,8 @@ class TestResourceOverrides:
         assert overrides == {"plugins/": "project", "settings.json": "shared"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """Old project.yaml without [resource_overrides] returns empty dict."""
-        p = tmp_path / "project.yaml"
+        """Old settings.yaml without [resource_overrides] returns empty dict."""
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
 
         overrides = read_resource_overrides(p)
@@ -671,7 +671,7 @@ class TestResourceOverrides:
 
     def test_remove_override(self, tmp_path):
         """remove_resource_override removes a single override."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
         write_resource_override(p, "cache/", "project")
@@ -683,14 +683,14 @@ class TestResourceOverrides:
 
     def test_remove_nonexistent(self, tmp_path):
         """remove_resource_override returns False for missing key."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
 
         assert remove_resource_override(p, "nonexistent/") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing resource overrides doesn't clobber other sections."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
 
@@ -701,10 +701,10 @@ class TestResourceOverrides:
 
 
 class TestTargetSettings:
-    """Tests for target setting override storage in project.yaml."""
+    """Tests for target setting override storage in settings.yaml."""
 
     def _write_base_toml(self, path):
-        """Write a minimal project.yaml for testing."""
+        """Write a minimal settings.yaml for testing."""
         write_project_meta(
             path,
             mode="primary",
@@ -713,7 +713,7 @@ class TestTargetSettings:
 
     def test_round_trip(self, tmp_path):
         """Write and read back agent-keyed target settings."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "claude")
         write_agent_setting(p, "access", "permissive", "claude")
@@ -722,8 +722,8 @@ class TestTargetSettings:
         assert settings == {"model": "sonnet", "access": "permissive"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """project.yaml without a [agent] section returns empty dict."""
-        p = tmp_path / "project.yaml"
+        """settings.yaml without a [agent] section returns empty dict."""
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
 
         settings = read_agent_settings(p, "claude")
@@ -737,7 +737,7 @@ class TestTargetSettings:
         """
         from kanibako.config import dump_doc, load_doc
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         data = load_doc(p)
         data["agent"] = {"model": "sonnet"}  # flat scalar — old shape
@@ -747,7 +747,7 @@ class TestTargetSettings:
 
     def test_default_tier_applies_to_any_agent(self, tmp_path):
         """agent.default values apply to every agent unless overridden."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "default")
 
@@ -756,7 +756,7 @@ class TestTargetSettings:
 
     def test_agent_specific_wins_over_default(self, tmp_path):
         """agent.<agent> overrides agent.default within one file."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "default")
         write_agent_setting(p, "model", "opus", "claude")
@@ -767,7 +767,7 @@ class TestTargetSettings:
 
     def test_no_bleed_across_agents(self, tmp_path):
         """An override set for one agent does NOT bleed onto another (B3 bug)."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "claude")
 
@@ -776,7 +776,7 @@ class TestTargetSettings:
 
     def test_remove_setting(self, tmp_path):
         """remove_agent_setting removes a single agent-keyed setting."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "claude")
         write_agent_setting(p, "access", "permissive", "claude")
@@ -788,14 +788,14 @@ class TestTargetSettings:
 
     def test_remove_nonexistent(self, tmp_path):
         """remove_agent_setting returns False for missing key."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
 
         assert remove_agent_setting(p, "nonexistent", "claude") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write_base_toml(p)
         write_agent_setting(p, "model", "haiku", "claude")
 
@@ -823,7 +823,7 @@ class TestReadBindingOverrides:
     def test_no_crab_or_binding_returns_empty(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         p.write_text("box:\n  foo: bar\n")
         assert read_binding_overrides(p, "claude") == {}
         self._write(p, {"claude": {"model": "opus"}})  # crab, but no binding
@@ -832,14 +832,14 @@ class TestReadBindingOverrides:
     def test_bare_string_host_src(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(p, {"claude": {"binding": {"plugins": "/custom/plugins"}}})
         assert read_binding_overrides(p, "claude") == {"plugins": "/custom/plugins"}
 
     def test_subtable_host_src(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(
             p, {"claude": {"binding": {"plugins": {"host_src": "/custom/plugins"}}}}
         )
@@ -848,14 +848,14 @@ class TestReadBindingOverrides:
     def test_subtable_without_host_src_skipped(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(p, {"claude": {"binding": {"plugins": {"ro": True}}}})
         assert read_binding_overrides(p, "claude") == {}
 
     def test_default_tier_applies_to_any_agent(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(p, {"default": {"binding": {"plugins": "/shared/plugins"}}})
         assert read_binding_overrides(p, "claude") == {"plugins": "/shared/plugins"}
         assert read_binding_overrides(p, "goose") == {"plugins": "/shared/plugins"}
@@ -863,7 +863,7 @@ class TestReadBindingOverrides:
     def test_agent_specific_wins_over_default(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(
             p,
             {
@@ -878,7 +878,7 @@ class TestReadBindingOverrides:
     def test_no_bleed_across_agents(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(p, {"claude": {"binding": {"plugins": "/claude/plugins"}}})
         assert read_binding_overrides(p, "claude") == {"plugins": "/claude/plugins"}
         assert read_binding_overrides(p, "goose") == {}
@@ -886,7 +886,7 @@ class TestReadBindingOverrides:
     def test_flat_legacy_crab_treated_as_unset(self, tmp_path):
         from kanibako.config import read_binding_overrides
 
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         self._write(p, {"binding": {"plugins": "/x"}})  # flat under crab — old shape
         assert read_binding_overrides(p, "claude") == {}
 
@@ -933,7 +933,7 @@ class TestReadShares:
 
     def test_suppression_empty_value_returned(self, tmp_path):
         """An explicit '' is preserved so the resolver can see the suppression."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         p.write_text('system:\n  bindings:\n    rw:\n      foo: ""\n')
         assert read_shares(p) == {"system.bindings.rw.foo": ""}
 
@@ -986,7 +986,7 @@ class TestReadSeeds:
 
     def test_suppression_empty_value_returned(self, tmp_path):
         """An explicit '' is preserved so the resolver can see the suppression."""
-        p = tmp_path / "project.yaml"
+        p = tmp_path / "settings.yaml"
         p.write_text('agent:\n  seeded:\n    foo: ""\n')
         assert read_seeds(p) == {"agent.seeded.foo": ""}
 

@@ -393,7 +393,7 @@ class TestWorksetConnect:
     def test_connect_external_writes_override_and_symlink(
         self, config_file, tmp_home, capsys
     ):
-        """connect to an EXTERNAL dir → workspace override in project.yaml,
+        """connect to an EXTERNAL dir → workspace override in settings.yaml,
         connected.yaml entry, and a workspaces/{name} symlink to the dir."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.config import read_project_meta
@@ -413,8 +413,8 @@ class TestWorksetConnect:
         rc = run_connect(args)
         assert rc == 0
 
-        # project.yaml carries the workspace override = external path.
-        project_toml = ws.projects_dir / "ext" / "project.yaml"
+        # settings.yaml carries the workspace override = external path.
+        project_toml = ws.projects_dir / "ext" / "settings.yaml"
         meta = read_project_meta(project_toml)
         assert meta is not None
         assert meta["workspace"] == str(external)
@@ -452,8 +452,8 @@ class TestWorksetConnect:
         rc = run_connect(args)
         assert rc == 0
 
-        # No workspace override written (project.yaml not pre-seeded).
-        project_toml = ws.projects_dir / "int" / "project.yaml"
+        # No workspace override written (settings.yaml not pre-seeded).
+        project_toml = ws.projects_dir / "int" / "settings.yaml"
         meta = read_project_meta(project_toml)
         assert meta is None
 

@@ -276,7 +276,7 @@ class TestLocalNameAssignment:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        meta = read_project_meta(proj.metadata_path / "project.yaml")
+        meta = read_project_meta(proj.metadata_path / "settings.yaml")
         assert meta is not None
         assert meta["name"] == "project"
 
@@ -401,7 +401,7 @@ class TestNameRegistration:
         assert "project" not in read_names(std.data_path)["projects"]
 
     def test_read_name_after_creation(self, config_file, tmp_home, credentials_dir):
-        """Project name is readable from project.yaml metadata after creation."""
+        """Project name is readable from settings.yaml metadata after creation."""
         from kanibako.config import load_config, read_project_meta
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -410,7 +410,7 @@ class TestNameRegistration:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        meta = read_project_meta(proj.metadata_path / "project.yaml")
+        meta = read_project_meta(proj.metadata_path / "settings.yaml")
         assert meta["name"] == "project"
 
 

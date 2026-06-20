@@ -15,8 +15,35 @@ from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsResolver
 # Defaults (match the old kanibako.rc values)
 # ---------------------------------------------------------------------------
 
+# Per-box construct-time metadata + box-tier settings cascade file (TARGET §2c box.meta.*)
+BOX_META_FILE = "settings.yaml"
+
+# Shared boolean truth tables: used by the typed `config set` writer
+# (config_interface) AND the box.meta writer so both round-trip identically.
+_BOOL_TRUE = frozenset({"true", "1", "yes", "on"})
+_BOOL_FALSE = frozenset({"false", "0", "no", "off"})
+
+
+def coerce_bool(value: object) -> bool | None:
+    """Coerce a config value to a real bool using the shared truth table.
+
+    Returns the bool, or None if *value* is not a recognized bool literal.
+    Already-bool values pass through. Used by the typed `config set` writer
+    (config_interface) AND the box.meta writer so both round-trip identically.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        low = value.strip().lower()
+        if low in _BOOL_TRUE:
+            return True
+        if low in _BOOL_FALSE:
+            return False
+    return None
+
+
 _DEFAULTS = {
-    "paths_project_toml": "project.yaml",
+    "paths_project_toml": BOX_META_FILE,
     "paths_shared": "shared",
     "paths_shell": "shell",
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
@@ -32,7 +59,7 @@ _FIELD_ALIASES: dict[str, str] = {}
 
 @dataclass
 class KanibakoConfig:
-    """Merged configuration (hardcoded defaults < kanibako.yaml < project.yaml < CLI)."""
+    """Merged configuration (hardcoded defaults < kanibako.yaml < settings.yaml < CLI)."""
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]
@@ -235,7 +262,7 @@ def load_merged_config(
 ) -> KanibakoConfig:
     """Load machine + global config, overlay workset, project, then CLI overrides.
 
-    Precedence: CLI flags > project.yaml > workset config.yaml > kanibako.yaml
+    Precedence: CLI flags > settings.yaml > workset config.yaml > kanibako.yaml
     (user) > /etc/kanibako/kanibako.yaml (machine) > hardcoded defaults.
 
     The machine layer (``/etc/kanibako/kanibako.yaml``) is the least-specific
@@ -330,7 +357,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
 
 
 def write_project_config(path: Path, image: str) -> None:
-    """Write or update a project.yaml with the given image."""
+    """Write or update a settings.yaml with the given image."""
     write_project_config_key(path, "box_image", image)
 
 
@@ -350,16 +377,23 @@ def write_project_meta(
     local_shared: str = "",
     name: str = "",
 ) -> None:
-    """Write resolved project metadata to project.yaml, preserving other sections.
+    """Write resolved project metadata to settings.yaml, preserving other sections.
 
     Phase 5 removed the layout axis: ``mode`` (``box.mode``) is the sole
     on-disk shape descriptor now.  No ``layout`` field is written.
+
+    The bool meta keys (``enable_vault``/``group_auth``) are routed through the
+    shared :func:`coerce_bool` so they round-trip identically to the typed
+    ``config set`` writer (H1/H2 fix); a non-bool literal falls back to raw.
     """
     existing = load_doc(path)
 
+    ev = coerce_bool(enable_vault)
+    ga = coerce_bool(group_auth)
     project_sec: dict = {
         "mode": mode,
-        "enable_vault": enable_vault, "group_auth": group_auth,
+        "enable_vault": ev if ev is not None else enable_vault,
+        "group_auth": ga if ga is not None else group_auth,
     }
     if name:
         project_sec["name"] = name
@@ -378,7 +412,7 @@ def write_project_meta(
 
 
 def read_project_meta(path: Path) -> dict | None:
-    """Read stored project metadata from project.yaml.
+    """Read stored project metadata from settings.yaml.
 
     Returns a dict with 'mode', 'workspace', 'shell', 'vault_ro', 'vault_rw'
     or None if no project metadata is stored.
@@ -442,7 +476,7 @@ def config_keys() -> list[str]:
 
 
 def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
-    """Write or update a single key in a project.yaml.
+    """Write or update a single key in a settings.yaml.
 
     *flat_key* is the underscore-joined config name (e.g. ``"box_image"``).
     """
@@ -462,7 +496,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
 
 
 def unset_project_config_key(path: Path, flat_key: str) -> bool:
-    """Remove a single key from a project.yaml.
+    """Remove a single key from a settings.yaml.
 
     Returns True if the key was found and removed, False if it was not present.
     """
@@ -490,7 +524,7 @@ def unset_project_config_key(path: Path, flat_key: str) -> bool:
 
 
 def load_project_overrides(path: Path) -> dict[str, str]:
-    """Load only the project-level overrides from a project.yaml.
+    """Load only the project-level overrides from a settings.yaml.
 
     Returns a dict of flat_key → value for keys that differ from defaults.
     """
@@ -632,7 +666,7 @@ def load_settings(
       ``agent.<name>``-keyed, loaded from ``agents/<name>.yaml``) overlaid by
       *agent_path*'s ``[agent]`` table if supplied.
     * ``workset`` tier → *workset_path* = today's workset ``config.yaml``.
-    * ``box`` tier → *box_path* = today's box/project ``project.yaml`` ``[agent]``
+    * ``box`` tier → *box_path* = today's box/project ``settings.yaml`` ``[agent]``
       table.
     * ``settings_required`` tier → ``/etc/kanibako/settings_required.yaml``  (NEW;
       additive — empty by default).
@@ -845,7 +879,7 @@ def read_seeds(path: Path | None) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def read_resource_overrides(path: Path) -> dict[str, str]:
-    """Read ``resource_overrides`` from a project.yaml.
+    """Read ``resource_overrides`` from a settings.yaml.
 
     Returns a dict of resource_path → scope_string (e.g. ``"shared"``).
     Returns an empty dict when the file or section is absent.
@@ -857,7 +891,7 @@ def read_resource_overrides(path: Path) -> dict[str, str]:
 
 
 def write_resource_override(path: Path, resource_path: str, scope: str) -> None:
-    """Write a single resource scope override to ``resource_overrides`` in project.yaml.
+    """Write a single resource scope override to ``resource_overrides`` in settings.yaml.
 
     Preserves all other sections.
     """

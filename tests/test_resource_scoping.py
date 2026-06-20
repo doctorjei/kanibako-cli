@@ -97,10 +97,10 @@ class TestBuildResourceMounts:
 class TestResourceOverrideInMounts:
     """Resource scope overrides no longer change mount behavior.
 
-    The per-project project.yaml scope-override read was removed from
+    The per-project settings.yaml scope-override read was removed from
     _build_resource_mounts in 1.6.0 (a retired Phase-5 worksets straggler):
     _build_resource_mounts honors the plugin's declared scope only.  The
-    project.yaml override read/write helpers still exist in config (their broader
+    settings.yaml override read/write helpers still exist in config (their broader
     retirement is separate); the tests that asserted the OVERRIDE-changes-mount
     behavior are deleted.
     """
@@ -120,12 +120,12 @@ class TestResourceOverrideInMounts:
         )
 
     def test_declared_scope_honored_ignoring_override(self, tmp_path):
-        """A project.yaml scope override is IGNORED — the declared scope wins."""
+        """A settings.yaml scope override is IGNORED — the declared scope wins."""
         from kanibako.commands.start import _build_resource_mounts
         from kanibako.config import write_project_meta, write_resource_override
 
         proj = self._make_proj(tmp_path)
-        project_toml = proj.metadata_path / "project.yaml"
+        project_toml = proj.metadata_path / "settings.yaml"
         write_project_meta(
             project_toml,
             mode="primary",
@@ -149,7 +149,7 @@ class TestResourceOverrideInMounts:
         # This tests the CLI validation in #12B — just verify read_resource_overrides works.
         from kanibako.config import read_resource_overrides, write_resource_override
 
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         project_toml.write_text(
             'project:\n  mode: "default"\n  layout: "default"\n'
             '  enable_vault: true\n  group_auth: true\n'
@@ -240,11 +240,11 @@ class TestBuildEffectiveState:
         return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None):
-        """Create a minimal project.yaml, optionally with [agent] overrides."""
+        """Create a minimal settings.yaml, optionally with [agent] overrides."""
         from kanibako.config import write_project_meta, write_agent_setting
 
         tmp_path.mkdir(parents=True, exist_ok=True)
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         write_project_meta(
             project_toml,
             mode="primary",
@@ -437,7 +437,7 @@ class TestBuildEffectiveState:
         # An override written while the box was on claude.
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
-        project_toml = proj_dir / "project.yaml"
+        project_toml = proj_dir / "settings.yaml"
         write_project_meta(
             project_toml,
             mode="primary",
@@ -470,7 +470,7 @@ class TestBuildEffectiveState:
         ]
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
-        project_toml = proj_dir / "project.yaml"
+        project_toml = proj_dir / "settings.yaml"
         write_project_meta(
             project_toml,
             mode="primary",

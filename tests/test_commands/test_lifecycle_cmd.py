@@ -107,7 +107,7 @@ class TestRemap:
         assert str(new) in names["projects"].values()
 
         proj = resolve_project(std, config, project_dir=str(new), initialize=False)
-        meta = read_project_meta(proj.metadata_path / "project.yaml")
+        meta = read_project_meta(proj.metadata_path / "settings.yaml")
         assert meta["workspace"] == str(new.resolve())
         assert meta["project_hash"] == project_hash(str(new.resolve()))
 
@@ -202,7 +202,7 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_standalone=True))
         assert rc == 0
-        meta = read_project_meta(pdir / ".kanibako" / "project.yaml")
+        meta = read_project_meta(pdir / ".kanibako" / "settings.yaml")
         assert meta["mode"] == "standalone"
 
     def test_convert_to_default_inplace(self, env):
@@ -212,7 +212,7 @@ class TestConvert:
         assert rc == 0
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
         assert proj.metadata_path.parent == std.boxes
-        meta = read_project_meta(proj.metadata_path / "project.yaml")
+        meta = read_project_meta(proj.metadata_path / "settings.yaml")
         assert meta["mode"] == "primary"
 
     def test_convert_to_workset_inplace_external(self, env):
@@ -224,7 +224,7 @@ class TestConvert:
         ws2 = load_workset(ws.root)
         assert any(p.name == "proj" for p in ws2.projects)
         # in-place → workspace stays outside → external.
-        meta = read_project_meta(ws.projects_dir / "proj" / "project.yaml")
+        meta = read_project_meta(ws.projects_dir / "proj" / "settings.yaml")
         assert meta["workspace"] == str(pdir.resolve())
 
     def test_convert_move_path(self, env):
@@ -234,7 +234,7 @@ class TestConvert:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest)))
         assert rc == 0
         assert dest.is_dir()
-        assert (dest / ".kanibako" / "project.yaml").is_file()
+        assert (dest / ".kanibako" / "settings.yaml").is_file()
         assert not pdir.exists()
 
     def test_convert_bare_move_into_workset(self, env):
@@ -255,7 +255,7 @@ class TestConvert:
         # nothing changed.
         meta = read_project_meta(
             resolve_project(std, config, project_dir=str(pdir),
-                            initialize=False).metadata_path / "project.yaml"
+                            initialize=False).metadata_path / "settings.yaml"
         )
         assert meta["mode"] == "primary"
 
@@ -323,7 +323,7 @@ class TestLockGuard:
         # Ownership unchanged (still default).
         meta = read_project_meta(
             resolve_project(std, config, project_dir=str(pdir),
-                            initialize=False).metadata_path / "project.yaml"
+                            initialize=False).metadata_path / "settings.yaml"
         )
         assert meta["mode"] == "primary"
 
@@ -336,7 +336,7 @@ class TestLockGuard:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest), force=True))
         assert rc == 0
         assert dest.is_dir()
-        assert (dest / ".kanibako" / "project.yaml").is_file()
+        assert (dest / ".kanibako" / "settings.yaml").is_file()
         assert not pdir.exists()
 
 

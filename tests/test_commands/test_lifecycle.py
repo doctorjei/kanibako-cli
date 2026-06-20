@@ -189,8 +189,8 @@ class TestConvertInPlace:
             std, config, confirm=_conf_yes(),
         )
         assert new.mode == BoxMode.standalone
-        assert (pdir / ".kanibako" / "project.yaml").is_file()
-        meta = read_project_meta(pdir / ".kanibako" / "project.yaml")
+        assert (pdir / ".kanibako" / "settings.yaml").is_file()
+        meta = read_project_meta(pdir / ".kanibako" / "settings.yaml")
         assert meta["mode"] == "standalone"
         # default-mode name unregistered.
         assert str(pdir) not in read_names(std.data_path)["projects"].values()
@@ -205,7 +205,7 @@ class TestConvertInPlace:
         assert new.mode == BoxMode.primary
         assert new.metadata_path.is_dir()
         assert new.metadata_path.parent == std.boxes
-        meta = read_project_meta(new.metadata_path / "project.yaml")
+        meta = read_project_meta(new.metadata_path / "settings.yaml")
         assert meta["mode"] == "primary"
         # old in-tree metadata gone.
         assert not (pdir / ".kanibako").exists()
@@ -227,7 +227,7 @@ class TestConvertInPlace:
         # workset registration + external markers.
         ws2 = load_workset(ws.root)
         assert any(p.name == "proj" for p in ws2.projects)
-        meta = read_project_meta(ws.projects_dir / "proj" / "project.yaml")
+        meta = read_project_meta(ws.projects_dir / "proj" / "settings.yaml")
         assert meta["mode"] == "named"
         assert meta["workspace"] == str(pdir.resolve())
         # old default name unregistered.
@@ -304,7 +304,7 @@ class TestConvertInPlace:
         )
         assert new.mode == BoxMode.standalone
         assert external.is_dir()
-        assert (external / ".kanibako" / "project.yaml").is_file()
+        assert (external / ".kanibako" / "settings.yaml").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +372,7 @@ class TestMoveSameOwner:
         assert (dest / "file.txt").read_text() == "movecontent"
         assert not pdir.exists()
         # records updated.
-        meta = read_project_meta(new.metadata_path / "project.yaml")
+        meta = read_project_meta(new.metadata_path / "settings.yaml")
         assert meta["workspace"] == str(dest.resolve())
         # hash recomputed.
         from kanibako.utils import project_hash
@@ -399,7 +399,7 @@ class TestCombo:
         assert new.mode == BoxMode.standalone
         assert dest.is_dir()
         assert (dest / "file.txt").read_text() == "combo"
-        assert (dest / ".kanibako" / "project.yaml").is_file()
+        assert (dest / ".kanibako" / "settings.yaml").is_file()
         assert not pdir.exists()
 
     def test_bare_into_workset(self, env):
@@ -417,7 +417,7 @@ class TestCombo:
         assert landed.is_dir() and (landed / "file.txt").read_text() == "bare"
         assert not pdir.exists()
         # recorded workspace is the in-tree dir.
-        meta = read_project_meta(ws.projects_dir / "proj" / "project.yaml")
+        meta = read_project_meta(ws.projects_dir / "proj" / "settings.yaml")
         assert meta["workspace"] == str(landed.resolve())
 
 
@@ -580,7 +580,7 @@ class TestValidation:
                 std, config, confirm=lambda: False,
             )
         # nothing changed.
-        assert read_project_meta(state.metadata_path / "project.yaml")["mode"] == "primary"
+        assert read_project_meta(state.metadata_path / "settings.yaml")["mode"] == "primary"
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +596,7 @@ class TestUnwind:
         dest = tmp_home / "unwind_dest"
 
         names_before = dict(read_names(std.data_path)["projects"])
-        meta_before = read_project_meta(state.metadata_path / "project.yaml")
+        meta_before = read_project_meta(state.metadata_path / "settings.yaml")
 
         # Force the standalone ownership step to raise AFTER file move + name
         # work has begun.
@@ -616,7 +616,7 @@ class TestUnwind:
         assert pdir.is_dir() and (pdir / "file.txt").read_text() == "unwind"
         # Names + metadata unchanged.
         assert dict(read_names(std.data_path)["projects"]) == names_before
-        assert read_project_meta(state.metadata_path / "project.yaml") == meta_before
+        assert read_project_meta(state.metadata_path / "settings.yaml") == meta_before
 
     def test_workset_failure_unwinds_registration(self, env, monkeypatch):
         """A failure after add_project unwinds the workset registration."""
@@ -645,4 +645,4 @@ class TestUnwind:
         assert not any(p.name == "proj" for p in ws2.projects)
         # original default project intact.
         assert str(pdir) in read_names(std.data_path)["projects"].values()
-        assert read_project_meta(state.metadata_path / "project.yaml")["mode"] == "primary"
+        assert read_project_meta(state.metadata_path / "settings.yaml")["mode"] == "primary"

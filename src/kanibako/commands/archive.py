@@ -207,11 +207,11 @@ def _archive_all(std, config, args) -> int:
 
 def _stub_project(metadata_path, project_path, config):
     """Create a minimal ProjectPaths stand-in for projects whose path is gone."""
-    from kanibako.config import read_project_meta
+    from kanibako.config import BOX_META_FILE, read_project_meta
     from kanibako.paths import ProjectPaths
 
-    # Read hash and name from project.yaml when available.
-    meta = read_project_meta(metadata_path / "project.yaml")
+    # Read hash and name from settings.yaml when available.
+    meta = read_project_meta(metadata_path / BOX_META_FILE)
     phash = (meta.get("project_hash") or metadata_path.name) if meta else metadata_path.name
     name = (meta.get("name") or "") if meta else ""
 
