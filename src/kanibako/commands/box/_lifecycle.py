@@ -862,6 +862,15 @@ def _remove_old_metadata(
     deleted — nothing to clean up here.)
     """
     if state.mode == BoxMode.standalone:
+        # Standalone boxes are registered in registry.standalone (Phase 5d), so
+        # a standalone source's entry must be dropped too — otherwise a
+        # standalone→standalone move strands the old name → root mapping.
+        from kanibako import registry_store
+        if state.name:
+            try:
+                registry_store.unregister_standalone(std.data_path, state.name)
+            except Exception:  # noqa: BLE001
+                pass
         if state.metadata_path.is_dir():
             shutil.rmtree(state.metadata_path, ignore_errors=True)
         return
@@ -992,7 +1001,24 @@ def _to_standalone(
     new_name: str,
     new_workspace: Path,
 ) -> ProjectState:
-    """Convert/relocate the project so it becomes standalone (in-tree metadata)."""
+    """Convert/relocate the project so it becomes standalone (in-tree metadata).
+
+    BUG#4: a standalone box's identity is the canonical opaque
+    ``<random24>_<leaf>`` (matching ``create --standalone`` / ``duplicate
+    --standalone``), not a user-facing name — standalone boxes are NOT named via
+    ``names.yaml`` but registered in ``registry.standalone``.  So convert
+    ESTABLISHES the box uniformly: it generates a FRESH canonical identity (the
+    requested ``new_name`` / ``--name`` is ignored for a standalone target, just
+    as ``create`` never honors a name), writes ``mode=standalone`` with that
+    identity, and registers it in ``registry.standalone`` (with an unwind to
+    drop the registration on failure).  ``_remove_old_metadata`` purges the
+    source's prior registry entry (``names.yaml`` for primary/named) so it does
+    not dangle.  Without this the converted box was unregistered + non-canonically
+    named — a D-M13 collision / channel-addressing risk and an inconsistency with
+    create/duplicate.
+    """
+    from kanibako import box_identity, registry_store
+
     new_workspace.mkdir(parents=True, exist_ok=True)
     dst_metadata = new_workspace / _STANDALONE_META_DIR
 
@@ -1000,6 +1026,11 @@ def _to_standalone(
         state.metadata_path, state.shell_path, dst_metadata,
         shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
+
+    # Generate a FRESH canonical standalone identity (whole-name collision regen
+    # vs the registry's standalone set), never reusing the source/requested name.
+    existing = registry_store.standalone_box_names(std.data_path)
+    box_name = box_identity.make_standalone_box_name(new_workspace, existing)
 
     phash = project_hash(str(new_workspace.resolve()))
     vault_ro = new_workspace / "vault" / "ro"
@@ -1016,7 +1047,11 @@ def _to_standalone(
         group_auth=state.group_auth,
         metadata=str(dst_metadata),
         project_hash=phash,
-        name=new_name,
+        name=box_name,
+    )
+    registry_store.register_standalone(std.data_path, box_name, new_workspace)
+    unwind.push(
+        lambda: registry_store.unregister_standalone(std.data_path, box_name)
     )
 
     write_project_gitignore(new_workspace)
@@ -1029,7 +1064,7 @@ def _to_standalone(
     _remove_old_metadata(state, std, config)
 
     return ProjectState(
-        owner="standalone", mode=BoxMode.standalone, name=new_name,
+        owner="standalone", mode=BoxMode.standalone, name=box_name,
         workspace_path=new_workspace, metadata_path=dst_metadata,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,

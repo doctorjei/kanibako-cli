@@ -211,6 +211,51 @@ class TestConvertInPlace:
         result = detect_project_mode(pdir, std, config)
         assert result.mode is BoxMode.standalone
 
+    def test_convert_primary_to_standalone_registers_canonical(self, env):
+        """BUG#4: converting a PRIMARY box --standalone must ESTABLISH the box
+        uniformly with create/duplicate — detected as standalone, REGISTERED in
+        registry.standalone with a fresh canonical <random24>_<leaf> identity,
+        and the OLD primary names.yaml entry must be gone (no dangle)."""
+        from kanibako.registry_store import load_standalone
+
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        src_state = resolve_lifecycle_target(str(pdir), std, config)
+        src_name = src_state.name
+        # The primary source is registered in names.yaml at the project path.
+        assert str(pdir) in read_names(std.data_path)["projects"].values()
+
+        new = execute_lifecycle(
+            src_state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+
+        # (1) Result is a standalone box.
+        assert new.mode is BoxMode.standalone
+        result = detect_project_mode(pdir, std, config)
+        assert result.mode is BoxMode.standalone
+
+        # (2) Metadata declares mode=standalone with a fresh canonical name
+        #     (NOT the source's primary name).
+        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
+        assert meta is not None
+        assert meta["mode"] == "standalone"
+        new_name = meta["name"]
+        assert new_name != src_name
+        prefix, _, leaf = new_name.partition("_")
+        assert len(prefix) == 5  # <random24> base32 prefix
+        assert leaf == "proj"
+        assert new.name == new_name
+
+        # (3) Registered in registry.standalone keyed by the canonical name.
+        standalone = load_standalone(std.data_path)
+        assert new_name in standalone
+        assert standalone[new_name] == str(pdir)
+
+        # (4) The old primary names.yaml entry is gone (no dangling registration).
+        assert str(pdir) not in read_names(std.data_path)["projects"].values()
+        assert src_name not in read_names(std.data_path)["projects"]
+
     def test_standalone_to_default(self, env):
         config, std, tmp_home = env
         pdir = _make_standalone(env)
@@ -499,19 +544,30 @@ class TestChannelPartitionRelocation:
         )
         assert new.mode == BoxMode.standalone  # lifecycle completed
 
-    def test_relocation_best_effort_dest_exists(self, env, capsys):
+    def test_relocation_best_effort_dest_exists(self, env, capsys, monkeypatch):
         """A pre-existing destination is left in place + warned, not clobbered."""
         config, std, tmp_home = env
+        from kanibako import box_identity
         from kanibako.channels import (
             WS_TOKEN_PRIMARY,
             WS_TOKEN_STANDALONE,
             own_partition_dirs,
         )
 
+        # BUG#4: convert --standalone now generates a FRESH canonical
+        # <random24>_<leaf> identity, so the NEW channel partition is keyed by
+        # that name (not the source's "proj"). Pin the generated name so we can
+        # pre-occupy the destination partition under it.
+        canonical = "abcde_proj"
+        monkeypatch.setattr(
+            box_identity, "make_standalone_box_name",
+            lambda root, existing: canonical,
+        )
+
         pdir = _make_default(env)
         self._seed_partition(std, WS_TOKEN_PRIMARY, "proj", marker="src")
-        # Pre-occupy the destination mailbox with different content.
-        dst_pre = own_partition_dirs(std, WS_TOKEN_STANDALONE, "proj")
+        # Pre-occupy the destination mailbox (keyed by the canonical name).
+        dst_pre = own_partition_dirs(std, WS_TOKEN_STANDALONE, canonical)
         dst_pre.mailbox.mkdir(parents=True, exist_ok=True)
         (dst_pre.mailbox / "existing.txt").write_text("keep")
 
@@ -521,6 +577,7 @@ class TestChannelPartitionRelocation:
             std, config, confirm=_conf_yes(),
         )
         assert new.mode == BoxMode.standalone
+        assert new.name == canonical
         # Dest preserved (not clobbered) + a warning was emitted.
         assert (dst_pre.mailbox / "existing.txt").read_text() == "keep"
         assert "already exists" in capsys.readouterr().err
