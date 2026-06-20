@@ -1623,14 +1623,19 @@ def resolve_standalone_project(
     if metadata_path.is_dir():
         meta = read_project_meta(project_toml)
 
-    _sa_home, _sa_vro, _sa_vrw = _standalone_box_paths(metadata_path, project_path)
+    # STANDALONE paths are ALWAYS derived from the (current) root, never the
+    # stored absolutes: a standalone tree is drop-in portable, so a moved/
+    # imported tree must resolve against its new location.  The resolved.*
+    # section in settings.yaml is advisory only (BUG#1 fix); home/vault always
+    # live at the fixed box_data/home + <root>/vault/{ro,rw} positions.
+    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(
+        metadata_path, project_path,
+    )
     if meta:
-        shell_path = Path(meta["shell"]) if meta["shell"] else _sa_home
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _sa_vro
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _sa_vrw
-        actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
+        actual_vault_enabled = (
+            meta.get("enable_vault", True) if enable_vault is None else enable_vault
+        )
     else:
-        shell_path, vault_ro_path, vault_rw_path = _sa_home, _sa_vro, _sa_vrw
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Box identity: reuse the stored name; generate + register a new one at
