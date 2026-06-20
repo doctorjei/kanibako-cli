@@ -49,7 +49,7 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 # Declarative descriptor for the generalized plugin interface.  LIVE: core
 # start.py assembles goose's launch argv / env / delivery mounts / credential
 # lifecycle from this descriptor (the legacy build_cli_args / binary_mounts /
-# init_home / refresh/writeback hooks are bypassed for goose).
+# refresh/writeback hooks are bypassed for goose).
 #
 # Notes on a few non-obvious fields (goose 1.37.0, empirically verified):
 #   * mode uses the BARE ``session`` subcommand (new) / ``session --resume``
@@ -176,25 +176,6 @@ class GooseTarget(Target):
                 options="ro",
             ))
         return mounts
-
-    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
-        """Initialize Goose-specific directories in the project home.
-
-        Creates the ``.config/goose/`` config dir and the sessions data dir.  The
-        host-config IMPORT (the extensions/instructions allowlist filter of the
-        host ``config.yaml`` + the host secrets copy) was removed in 1.6.0:
-        descriptor-native goose syncs ``secrets.yaml`` via the credsync engine,
-        and the box's curated ``config.yaml`` (extensions/instructions) comes
-        from the agent template with provider/model from the GOOSE_* env settings
-        — not from the host config (D-M15).  This hook is retained as a
-        no-host-import directory setup (descriptor-less / legacy callers only).
-        """
-        (home / ".config" / "goose").mkdir(parents=True, exist_ok=True)
-
-        # Create data directory for sessions DB
-        (home / ".local" / "share" / "Block" / "goose").mkdir(
-            parents=True, exist_ok=True
-        )
 
     def credential_check_path(self, home: Path) -> Path | None:
         """Path to check for credential existence."""

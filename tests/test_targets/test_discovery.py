@@ -31,9 +31,6 @@ class _FakeTarget(Target):
     def binary_mounts(self, install):
         return []
 
-    def init_home(self, home):
-        pass
-
     def refresh_credentials(self, home):
         pass
 
@@ -159,9 +156,6 @@ class MyFilePlugin(Target):
 
     def binary_mounts(self, install):
         return []
-
-    def init_home(self, home):
-        pass
 
     def refresh_credentials(self, home):
         pass

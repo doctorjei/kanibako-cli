@@ -165,61 +165,6 @@ class TestBinaryMounts:
         assert len(mounts) == 0
 
 
-class TestInitHome:
-    """init_home is now a no-host-import directory setup (1.6.0).
-
-    The host-config IMPORT (copying the host ~/.claude.json onboarding stub +
-    credentials into the box) was removed: descriptor-native claude seeds creds
-    via the credsync engine and the onboarding stub comes from the curated agent
-    template.  init_home only creates the .claude/ directory and NEVER reads the
-    host.
-    """
-
-    def test_creates_claude_dir_only(self, tmp_path, monkeypatch):
-        """init_home creates .claude/ and imports nothing from the host."""
-        home = tmp_path / "home"
-        home.mkdir()
-
-        # Host has both config + creds; init_home must NOT import them.
-        fake_home = tmp_path / "fake_user_home"
-        (fake_home / ".claude").mkdir(parents=True)
-        (fake_home / ".claude" / ".credentials.json").write_text(
-            json.dumps({"claudeAiOauth": {"token": "test"}})
-        )
-        (fake_home / ".claude.json").write_text(
-            json.dumps({"oauthAccount": "user@example.com"})
-        )
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-        t = ClaudeTarget()
-        t.init_home(home)
-
-        assert (home / ".claude").is_dir()
-        # No host import: neither the host creds nor the host config is pulled in.
-        assert not (home / ".claude" / ".credentials.json").exists()
-        assert not (home / ".claude.json").exists()
-
-    def test_distinct_auth_also_imports_nothing(self, tmp_path, monkeypatch):
-        """group_auth=False is identical: dir only, no host import."""
-        home = tmp_path / "home"
-        home.mkdir()
-
-        fake_home = tmp_path / "fake_user_home"
-        (fake_home / ".claude").mkdir(parents=True)
-        (fake_home / ".claude" / ".credentials.json").write_text(
-            json.dumps({"claudeAiOauth": {"token": "test"}})
-        )
-        (fake_home / ".claude.json").write_text(json.dumps({"oauthAccount": "x"}))
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-        t = ClaudeTarget()
-        t.init_home(home, group_auth=False)
-
-        assert (home / ".claude").is_dir()
-        assert not (home / ".claude" / ".credentials.json").exists()
-        assert not (home / ".claude.json").exists()
-
-
 class TestBuildCliArgs:
     def test_default(self):
         t = ClaudeTarget()

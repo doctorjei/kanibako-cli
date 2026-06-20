@@ -43,9 +43,6 @@ class _StubTarget(Target):
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
         return []
 
-    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
-        return None
-
     def refresh_credentials(self, home: Path) -> None:
         return None
 

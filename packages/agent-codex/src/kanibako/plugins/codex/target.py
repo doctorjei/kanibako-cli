@@ -25,7 +25,7 @@ the interface was designed.  It implements ONLY the irreducible surface:
 * the declarative helpers ``setting_descriptors`` / ``generate_agent_config`` /
   ``resource_mappings``.
 
-Everything else (``build_cli_args`` / ``binary_mounts`` / ``init_home`` /
+Everything else (``build_cli_args`` / ``binary_mounts`` /
 ``refresh_credentials`` / ``writeback_credentials`` / ``transform_cred``) is
 inherited from the step-3a concrete :class:`Target` defaults — codex needs no
 overrides there (both its cred files are wholesale copies; the descriptor's

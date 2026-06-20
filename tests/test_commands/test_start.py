@@ -792,7 +792,6 @@ class TestCredsyncRouting:
             assert call.kwargs["group_auth"] is True
             from pathlib import Path
             assert call.kwargs["host_home"] == Path.home()
-            m.target.init_home.assert_not_called()
 
     def test_descriptor_refresh_uses_refresh_cred_files(self, start_mocks):
         """Pre-launch (shared auth): refresh_cred_files invoked, legacy
@@ -871,13 +870,14 @@ class TestCredsyncRouting:
             m_credsync.seed_cred_files.assert_called_once()
             m_credsync.refresh_cred_files.assert_not_called()
             m_credsync.writeback_cred_files.assert_not_called()
-            m.target.init_home.assert_not_called()
 
     # ---- legacy path: per-plugin hooks still used, credsync untouched -------
 
-    def test_legacy_init_uses_init_home(self, start_mocks):
+    def test_legacy_init_seeds_nothing(self, start_mocks):
         """Non-descriptor target (descriptor=None, the conftest default): init
-        calls the legacy init_home hook, credsync.seed_cred_files NOT called."""
+        seeds NOTHING.  The vestigial init_home hook was removed in 1.6.0, and a
+        descriptor-less target has no creds to seed, so credsync.seed_cred_files
+        is NOT called (its dirs come from the layered template apply)."""
         with start_mocks() as m:
             m.target.descriptor = None
             m.proj.is_new = True
@@ -889,7 +889,6 @@ class TestCredsyncRouting:
                     extra_args=[],
                 )
             assert rc == 0
-            m.target.init_home.assert_called_once()
             m_credsync.seed_cred_files.assert_not_called()
 
     def test_legacy_refresh_uses_refresh_credentials(self, start_mocks):

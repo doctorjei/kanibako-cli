@@ -6,8 +6,6 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
-import yaml
-
 from kanibako.plugins.goose import GooseTarget
 from kanibako.targets import assembly
 from kanibako.targets.base import (
@@ -103,54 +101,6 @@ class TestBinaryMounts:
         mounts = GooseTarget().binary_mounts(install)
 
         assert mounts == []
-
-
-class TestInitHome:
-    """init_home is now a no-host-import directory setup (1.6.0).
-
-    The host-config IMPORT (the config.yaml extensions/instructions allowlist
-    filter + the host secrets copy) was removed: descriptor-native goose syncs
-    secrets.yaml via the credsync engine and the box's curated config.yaml comes
-    from the agent template.  init_home only creates dirs and NEVER reads the
-    host.
-    """
-
-    def test_creates_config_and_data_dir(self, project_home: Path, fake_host: Path, monkeypatch):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        GooseTarget().init_home(project_home)
-
-        assert (project_home / ".config" / "goose").is_dir()
-        assert (project_home / ".local" / "share" / "Block" / "goose").is_dir()
-
-    def test_imports_nothing_from_host(self, project_home: Path, fake_host: Path, monkeypatch):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-
-        # Host has both config + secrets; init_home must NOT import either.
-        host_config = fake_host / ".config" / "goose" / "config.yaml"
-        host_config.write_text(yaml.safe_dump({"provider": "anthropic", "extensions": ["web"]}))
-        host_secrets = fake_host / ".config" / "goose" / "secrets.yaml"
-        host_secrets.write_text("api_key: secret123\n")
-
-        GooseTarget().init_home(project_home)
-
-        assert not (project_home / ".config" / "goose" / "config.yaml").exists()
-        assert not (project_home / ".config" / "goose" / "secrets.yaml").exists()
-
-    def test_distinct_auth_also_imports_nothing(
-        self, project_home: Path, fake_host: Path, monkeypatch
-    ):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-
-        host_config = fake_host / ".config" / "goose" / "config.yaml"
-        host_config.write_text(yaml.safe_dump({"provider": "anthropic"}))
-        host_secrets = fake_host / ".config" / "goose" / "secrets.yaml"
-        host_secrets.write_text("api_key: secret\n")
-
-        GooseTarget().init_home(project_home, group_auth=False)
-
-        assert (project_home / ".config" / "goose").is_dir()
-        assert not (project_home / ".config" / "goose" / "config.yaml").exists()
-        assert not (project_home / ".config" / "goose" / "secrets.yaml").exists()
 
 
 class TestCredentialCheckPath:

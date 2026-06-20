@@ -59,7 +59,7 @@ _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 # Declarative descriptor for the generalized plugin interface.  LIVE: core
 # start.py assembles claude's launch argv / env / delivery mounts / credential
 # lifecycle from this descriptor (the legacy build_cli_args / binary_mounts /
-# init_home / refresh/writeback hooks are bypassed for claude).
+# refresh/writeback hooks are bypassed for claude).
 #
 # Notes on a few non-obvious fields:
 #   * mode is {start, continue} only — resume is intentionally NOT offered (user
@@ -265,19 +265,6 @@ class ClaudeTarget(Target):
             ))
 
         return mounts
-
-    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
-        """Initialize Claude-specific files in the project home.
-
-        Creates the ``.claude/`` directory.  The host-config IMPORT (copying the
-        host ``.claude.json`` onboarding/``oauthAccount`` stub + credentials into
-        the box) was removed in 1.6.0: descriptor-native claude seeds creds via
-        the credsync engine (the synced ``.credentials.json``), and the box gets
-        its onboarding stub from the curated agent template — not from the host
-        config.  This hook is retained as a no-host-import directory setup
-        (descriptor-less / legacy callers only; claude takes the descriptor path).
-        """
-        (home / ".claude").mkdir(parents=True, exist_ok=True)
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Claude Code crab configuration."""

@@ -32,9 +32,6 @@ class NoAgentTarget(Target):
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
         return []
 
-    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
-        pass
-
     def refresh_credentials(self, home: Path) -> None:
         pass
 
