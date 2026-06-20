@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.config import (
+    BOX_META_FILE,
     config_file_path,
     load_config,
     load_merged_config,
@@ -259,7 +260,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Unregister a project (optionally purge its metadata)",
         description=(
             "Remove a project from names.yaml without touching the workspace.\n"
-            "With --purge, also delete kanibako metadata (shell config, project.yaml, vault symlinks, logs)."
+            "With --purge, also delete kanibako metadata (shell config, settings.yaml, vault symlinks, logs)."
         ),
     )
     rm_p.add_argument(
@@ -478,7 +479,7 @@ def run_create(args: argparse.Namespace) -> int:
 
     # Persist image setting.
     image = args.image or config.box_image
-    project_toml = proj.metadata_path / "project.yaml"
+    project_toml = proj.metadata_path / BOX_META_FILE
     write_project_config(project_toml, image)
 
     # Write .gitignore for standalone projects only.
@@ -894,7 +895,7 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     # Load merged config for image info.
-    project_toml = proj.metadata_path / "project.yaml"
+    project_toml = proj.metadata_path / BOX_META_FILE
     workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
@@ -1001,7 +1002,7 @@ def run_config(args: argparse.Namespace) -> int:
             except ProjectError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
-            project_toml = proj.metadata_path / "project.yaml"
+            project_toml = proj.metadata_path / BOX_META_FILE
             env_path = proj.metadata_path / "env"
             msg = reset_all(
                 config_path=project_toml,
@@ -1018,7 +1019,7 @@ def run_config(args: argparse.Namespace) -> int:
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        project_toml = proj.metadata_path / "project.yaml"
+        project_toml = proj.metadata_path / BOX_META_FILE
         env_path = proj.metadata_path / "env"
         msg = reset_config_value(
             reset_key,
@@ -1042,7 +1043,7 @@ def run_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    project_toml = proj.metadata_path / "project.yaml"
+    project_toml = proj.metadata_path / BOX_META_FILE
     env_global = std.data_path / "env"
     env_project = proj.metadata_path / "env"
 

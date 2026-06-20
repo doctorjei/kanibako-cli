@@ -21,7 +21,7 @@ class TestEnvViaConfigInterface:
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.EDITOR", "vim",
-            config_path=tmp_path / "project.yaml",
+            config_path=tmp_path / "settings.yaml",
             env_path=env_path,
         )
         assert "Set EDITOR=vim" in msg
@@ -31,7 +31,7 @@ class TestEnvViaConfigInterface:
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.123BAD", "val",
-            config_path=tmp_path / "project.yaml",
+            config_path=tmp_path / "settings.yaml",
             env_path=env_path,
         )
         assert "Error" in msg or "Invalid" in msg
@@ -81,7 +81,7 @@ class TestEnvViaConfigInterface:
         env_path.write_text("EDITOR=vim\n")
         msg = reset_config_value(
             "env.EDITOR",
-            config_path=tmp_path / "project.yaml",
+            config_path=tmp_path / "settings.yaml",
             env_path=env_path,
         )
         assert "Unset" in msg
@@ -90,7 +90,7 @@ class TestEnvViaConfigInterface:
     def test_reset_env_var_missing(self, tmp_path):
         msg = reset_config_value(
             "env.MISSING",
-            config_path=tmp_path / "project.yaml",
+            config_path=tmp_path / "settings.yaml",
             env_path=tmp_path / "env",
         )
         assert "No override" in msg

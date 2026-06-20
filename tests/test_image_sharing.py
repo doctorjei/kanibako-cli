@@ -385,7 +385,7 @@ class TestImageSharingConfig:
         from kanibako.config import load_merged_config
         global_toml = tmp_path / "global.yaml"
         global_toml.write_text("box:\n  share_images: false\n")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         project_toml.write_text("box:\n  share_images: true\n")
         cfg = load_merged_config(global_toml, project_toml)
         assert cfg.box_share_images is True

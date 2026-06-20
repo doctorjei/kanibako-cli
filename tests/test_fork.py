@@ -45,7 +45,7 @@ def fork_ctx(tmp_path):
     vault_dir = meta_dir / "vault"
     vault_dir.mkdir()
     (vault_dir / "ro").mkdir()
-    (meta_dir / "project.yaml").write_text('meta:\n  mode: "default"\n')
+    (meta_dir / "settings.yaml").write_text('meta:\n  mode: "default"\n')
     (meta_dir / ".kanibako.lock").write_text("lock\n")
     helpers_dir_meta = meta_dir / "helpers"
     helpers_dir_meta.mkdir()
@@ -135,8 +135,8 @@ class TestHandleFork:
         new_name = resp["name"]
         new_meta = ctx.data_path / "boxes" / new_name
         assert new_meta.is_dir()
-        # project.yaml should be copied
-        assert (new_meta / "project.yaml").is_file()
+        # settings.yaml should be copied
+        assert (new_meta / "settings.yaml").is_file()
         # shell should be copied
         assert (new_meta / "shell" / ".bashrc").is_file()
         # vault should be copied

@@ -721,7 +721,7 @@ class TestPluginsBinding:
             m.proj.global_shared_path = tmp_path / "shared"
             override = tmp_path / "custom-plugins"
             dump_doc(
-                meta / "project.yaml",
+                meta / "settings.yaml",
                 {"agent": {"claude": {"binding": {"plugins": str(override)}}}},
             )
             self._launch()
@@ -742,7 +742,7 @@ class TestPluginsBinding:
             m.proj.global_shared_path = tmp_path / "shared"
             override = tmp_path / "default-plugins"
             dump_doc(
-                meta / "project.yaml",
+                meta / "settings.yaml",
                 {"agent": {"default": {"binding": {"plugins": str(override)}}}},
             )
             self._launch()
@@ -1783,7 +1783,7 @@ class TestBuildShareMounts:
         """No share keys anywhere → no mounts (the no-behavior-change guarantee)."""
         glob = tmp_path / "kanibako.yaml"
         glob.write_text('box_image: "img"\nagent:\n  model: "sonnet"\n')
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  image: "x"\n')
         mounts = self._call(
             tmp_path,
@@ -1814,12 +1814,12 @@ class TestBuildShareMounts:
         assert m.options == "Z,U"
 
     def test_box_level_suppression(self, tmp_path):
-        """project.yaml '' for a system-scoped key suppresses the system share."""
+        """settings.yaml '' for a system-scoped key suppresses the system share."""
         glob = tmp_path / "kanibako.yaml"
         glob.write_text(
             'system:\n  bindings:\n    rw:\n      foo: "/a:~/foo"\n'
         )
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('system:\n  bindings:\n    rw:\n      foo: ""\n')
         mounts = self._call(
             tmp_path, global_config_path=glob, project_toml=ptoml,
@@ -1901,7 +1901,7 @@ class TestBuildShareMounts:
 
     def test_target_default_share_suppressed_by_box(self, tmp_path):
         """A box-level '' overrides/suppresses the target-declared default share."""
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('agent:\n  bindings:\n    rw:\n      plugins: ""\n')
         mounts = self._call(
             tmp_path, project_toml=ptoml, target=self._claude_target(),
@@ -1995,13 +1995,13 @@ class TestResolveVaultMask:
 
     def test_box_suppresses_vault_mask(self, tmp_path):
         """A box-level terminal '' on box.masks suppresses every mask."""
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  masks: ""\n')
         assert self._call(tmp_path, project_toml=ptoml) == []
 
     def test_box_adds_extra_mask(self, tmp_path):
         """A box may add a mask alongside the default vault mask."""
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  masks: "~/workspace/vault,~/.secret"\n')
         masks = self._call(tmp_path, project_toml=ptoml)
         assert set(masks) == {
@@ -2113,7 +2113,7 @@ class TestApplyInitSeeds:
             name="claude",
             default_seeds=lambda: {"agent.seeded.x": f"{src}:~/x"},
         )
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('agent:\n  seeded:\n    x: ""\n')
         self._call(
             tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
@@ -2204,7 +2204,7 @@ class TestResolveConfigEnv:
 
     def test_box_env_resolved(self, tmp_path):
         """A box-level env.<VAR> resolves to {VAR: value}."""
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  env:\n    FOO: "bar"\n')
         assert self._call(tmp_path, project_toml=ptoml) == {"FOO": "bar"}
 
@@ -2212,7 +2212,7 @@ class TestResolveConfigEnv:
         """Box scope wins over system scope for the same VAR (system<box)."""
         glob = tmp_path / "kanibako.yaml"
         glob.write_text('system:\n  env:\n    FOO: "from_system"\n')
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  env:\n    FOO: "from_box"\n')
         out = self._call(
             tmp_path, global_config_path=glob, project_toml=ptoml,
@@ -2223,7 +2223,7 @@ class TestResolveConfigEnv:
         """Different VARs at different scopes accumulate."""
         glob = tmp_path / "kanibako.yaml"
         glob.write_text('system:\n  env:\n    A: "1"\n')
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  env:\n    B: "2"\n')
         out = self._call(
             tmp_path, global_config_path=glob, project_toml=ptoml,
@@ -2289,7 +2289,7 @@ class TestApplySyncedCopies:
         shell = self._shell(tmp_path)
         src = tmp_path / "creds.txt"
         src.write_text("token")
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
         self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
         assert (shell / "cred.txt").read_text() == "token"
@@ -2299,7 +2299,7 @@ class TestApplySyncedCopies:
         shell = self._shell(tmp_path)
         src = tmp_path / "creds.txt"
         src.write_text("token")
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
         self._call(
             tmp_path, proj=self._proj(shell), project_toml=ptoml,
@@ -2313,7 +2313,7 @@ class TestApplySyncedCopies:
         shell = self._shell(tmp_path)
         src = tmp_path / "creds.txt"
         src.write_text("old")
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
         dest = shell / "cred.txt"
         dest.write_text("newer")
@@ -2328,7 +2328,7 @@ class TestApplySyncedCopies:
         """A synced whose host_src does not exist is skipped (no crash)."""
         shell = self._shell(tmp_path)
         missing = tmp_path / "nope"
-        ptoml = tmp_path / "project.yaml"
+        ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    gone: "{missing}:~/gone"\n')
         self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
         assert list(shell.iterdir()) == []

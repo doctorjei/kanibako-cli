@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable
 
 from kanibako.config import (
+    BOX_META_FILE,
     KanibakoConfig,
     read_project_meta,
     write_project_meta,
@@ -277,7 +278,7 @@ def _default_state_from_meta(
     if name is None:
         return None
     metadata_path = std.boxes / name
-    meta = read_project_meta(metadata_path / "project.yaml")
+    meta = read_project_meta(metadata_path / BOX_META_FILE)
     if not meta:
         return None
     shell_path = Path(meta["shell"]) if meta.get("shell") else metadata_path / "shell"
@@ -659,7 +660,7 @@ def execute_lifecycle(
       2. Move files (if relocating).
       3. Update location records / markers.
       4. Apply ownership / mode change (re-root metadata/shell/vault; registry;
-         names; rewrite ``project.yaml`` mode + paths).
+         names; rewrite ``settings.yaml`` mode + paths).
       5. Clean up old (never the user's external source dir).
 
     Steps 2-5 push compensating actions onto an unwind stack; on ANY exception
@@ -733,7 +734,7 @@ def _run_steps(
     # STEP 4 (ownership) is interleaved with STEP 3 (markers) because the
     # destination metadata roots depend on the target owner.  We compute the
     # new metadata/shell/vault dirs for the target owner, copy them, write the
-    # rewritten project.yaml (with correct mode + workspace override + hash +
+    # rewritten settings.yaml (with correct mode + workspace override + hash +
     # markers), then update registry/names, then clean up the old side.
     # ------------------------------------------------------------------
     new_state = _apply_ownership_and_markers(
@@ -786,7 +787,7 @@ def _apply_ownership_and_markers(
     """Re-root metadata/shell/vault into the target owner + rewrite markers.
 
     Handles every transition by copying the source metadata into the target
-    owner's metadata root, writing a fresh ``project.yaml`` (mode + paths +
+    owner's metadata root, writing a fresh ``settings.yaml`` (mode + paths +
     workspace override + hash), updating registry/names, and removing the old
     owner's metadata.  Returns the resulting :class:`ProjectState`.
     """
@@ -951,7 +952,7 @@ def _to_default(
     _global_shared = std.data_path / config.paths_shared / "global"
     _local_shared = std.data_path / config.paths_shared
     write_project_meta(
-        dst_metadata / "project.yaml",
+        dst_metadata / BOX_META_FILE,
         mode="primary",
         workspace=str(new_workspace),
         shell=str(dst_shell),
@@ -1006,7 +1007,7 @@ def _to_standalone(
     vault_rw = new_workspace / "vault" / "rw"
 
     write_project_meta(
-        dst_metadata / "project.yaml",
+        dst_metadata / BOX_META_FILE,
         mode="standalone",
         workspace=str(new_workspace),
         shell=str(dst_shell),
@@ -1159,10 +1160,10 @@ def _to_workset(
     _global_shared = std.data_path / config.paths_shared / "global"
     _local_shared = target_ws.root / config.paths_shared
 
-    # Rewrite project.yaml.  add_project (external) already wrote a minimal
-    # project.yaml with the workspace override; we overwrite with full content.
+    # Rewrite settings.yaml.  add_project (external) already wrote a minimal
+    # settings.yaml with the workspace override; we overwrite with full content.
     write_project_meta(
-        dst_project / "project.yaml",
+        dst_project / BOX_META_FILE,
         mode="named",
         workspace=str(recorded_workspace),
         shell=str(dst_shell),

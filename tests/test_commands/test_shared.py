@@ -16,7 +16,7 @@ class TestSharedViaConfigInterface:
     """Tests for shared.* keys through the unified config interface."""
 
     def test_set_shared_cache(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value(
             "shared.pip", ".cache/pip",
             config_path=project_toml,

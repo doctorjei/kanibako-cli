@@ -7,7 +7,7 @@ single root directory chosen by the user.  The layout is:
         workset.yaml              ← workset metadata + project list
         projects/{name}/          ← per-project metadata + home
             home/                 ← agent home (mounted as /home/agent)
-            project.yaml          ← per-project config
+            settings.yaml          ← per-project config
             .kanibako.lock        ← concurrency lock
         workspaces/{name}/        ← per-project workspace (source tree)
         vault/{name}/ro/    ← per-project read-only vault
@@ -35,7 +35,7 @@ from kanibako.paths import StandardPaths
 # Failure-consistency: a tiny LIFO unwind stack for multi-step mutations.
 #
 # Several public mutators below touch more than one file (a workset.yaml plus
-# the global worksets.yaml/names.yaml registries, or a symlink + project.yaml +
+# the global worksets.yaml/names.yaml registries, or a symlink + settings.yaml +
 # connected.yaml redirect).  Individual writes are torn-file-safe (atomic temp +
 # os.replace via config_io.dump_doc), but a crash *between* steps could strand a
 # half-applied cross-file state: registry says X while disk says Y, an orphan
@@ -450,7 +450,7 @@ def add_project(
     the project is connected to that external directory: the external dir
     becomes the live workspace.  In that case ``workspaces/{name}`` is created
     as a SYMLINK to the external dir (discoverability only — never mounted), a
-    ``workspace`` override is written into the project's ``project.yaml``, and a
+    ``workspace`` override is written into the project's ``settings.yaml``, and a
     redirect entry is recorded in ``connected.yaml`` so launches from the
     external path resolve back to this workset.  Sources inside the workset
     tree keep the normal behavior (a real ``workspaces/{name}`` directory).
@@ -505,7 +505,7 @@ def add_project(
                 "Disconnect it first."
             )
 
-    # Multi-step mutation (external case touches a symlink + project.yaml +
+    # Multi-step mutation (external case touches a symlink + settings.yaml +
     # connected.yaml redirect + the durable workset.yaml registry write).  A
     # crash between steps could strand a symlink/redirect with no workset.yaml
     # entry (external path locked out by a dangling connected.yaml redirect) or
@@ -546,9 +546,9 @@ def add_project(
                     lambda: link.unlink() if link.is_symlink() else None
                 )
 
-            from kanibako.config import write_project_meta
+            from kanibako.config import BOX_META_FILE, write_project_meta
 
-            project_toml = ws.projects_dir / name / "project.yaml"
+            project_toml = ws.projects_dir / name / BOX_META_FILE
             write_project_meta(
                 project_toml,
                 mode="named",

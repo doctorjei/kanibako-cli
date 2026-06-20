@@ -428,7 +428,7 @@ class TestRunBoxDiagnose:
 
     `resolve_any_project` fabricates a default-mode resolution for ANY
     existing directory, so diagnose must verify a project is actually
-    registered (persisted project.yaml) before reporting on its shell/etc.
+    registered (persisted settings.yaml) before reporting on its shell/etc.
     """
 
     def _register_default_project(self, config_file, tmp_home, credentials_dir):
@@ -581,7 +581,7 @@ class TestRunBoxDiagnose:
         internal = ws.workspaces_dir / "api"
         internal.mkdir(parents=True)
         add_project(ws, "api", internal, std)
-        # Initialize the box so project.yaml is persisted (the registration the
+        # Initialize the box so settings.yaml is persisted (the registration the
         # diagnose guard requires).
         with patch(
             "kanibako.container.ContainerRuntime",

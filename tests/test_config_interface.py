@@ -111,7 +111,7 @@ class TestRegularConfigKeys:
         """Reading image with no overrides returns the global default."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "my-image:latest"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         val = get_config_value(
             "image",
@@ -124,7 +124,7 @@ class TestRegularConfigKeys:
         """Setting a config key writes it and subsequent get returns it."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "default:latest"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         msg = set_config_value(
             "image", "custom:v2",
@@ -144,7 +144,7 @@ class TestRegularConfigKeys:
         """Resetting a key removes the project-level override."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "default:latest"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         set_config_value("image", "custom:v2", config_path=project_toml)
         msg = reset_config_value("image", config_path=project_toml)
@@ -152,7 +152,7 @@ class TestRegularConfigKeys:
 
     def test_reset_nonexistent_key(self, tmp_path):
         """Resetting a key that has no override returns informative message."""
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = reset_config_value("image", config_path=project_toml)
         assert "No override" in msg
 
@@ -160,7 +160,7 @@ class TestRegularConfigKeys:
         """box.shell defaults to empty → get returns None (rendered as not set)."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         val = get_config_value(
             "box.shell",
@@ -173,7 +173,7 @@ class TestRegularConfigKeys:
         """Setting box.shell and reading it back returns the value (no error)."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         set_config_value("box.shell", "/bin/zsh", config_path=project_toml)
         val = get_config_value(
@@ -187,7 +187,7 @@ class TestRegularConfigKeys:
         """box.bootstrap_program is unset → get returns the built-in default."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         # No "unknown config key" error; falls back to the merged default.
         val = get_config_value(
@@ -201,7 +201,7 @@ class TestRegularConfigKeys:
         """Setting box.bootstrap_program and reading it back returns the value."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         set_config_value(
             "box.bootstrap_program", "screen", config_path=project_toml
@@ -225,7 +225,7 @@ class TestEnvKeys:
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.MY_VAR", "hello",
-            config_path=tmp_path / "project.yaml",
+            config_path=tmp_path / "settings.yaml",
             env_path=env_path,
         )
         assert "Set MY_VAR=hello" in msg
@@ -271,7 +271,7 @@ class TestResourceKeys:
     """Tests for resource.* config keys."""
 
     def test_set_resource(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value(
             "resource.plugins", "/my/plugins",
             config_path=project_toml,
@@ -283,7 +283,7 @@ class TestResourceKeys:
         assert data["resource_overrides"]["plugins"] == "/my/plugins"
 
     def test_get_resource(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
 
         val = get_config_value(
@@ -294,7 +294,7 @@ class TestResourceKeys:
         assert val == "/a/b"
 
     def test_reset_resource(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
 
         msg = reset_config_value("resource.plugins", config_path=project_toml)
@@ -312,7 +312,7 @@ class TestSharedKeys:
     """Tests for shared.* config keys."""
 
     def test_set_shared(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value(
             "shared.cargo-git", ".cargo/git",
             config_path=project_toml,
@@ -338,7 +338,7 @@ class TestTargetSettings:
     """Tests for target settings keys."""
 
     def test_set_model(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value("model", "sonnet", config_path=project_toml)
         assert "Set model=sonnet" in msg
 
@@ -347,7 +347,7 @@ class TestTargetSettings:
         assert data["agent"]["default"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         val = get_config_value(
@@ -358,7 +358,7 @@ class TestTargetSettings:
         assert val == "opus"
 
     def test_reset_model(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         msg = reset_config_value("model", config_path=project_toml)
@@ -375,7 +375,7 @@ class TestShowConfig:
     def test_show_no_overrides(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         show_config(
             global_config_path=global_cfg,
@@ -387,7 +387,7 @@ class TestShowConfig:
     def test_show_effective(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         show_config(
             global_config_path=global_cfg,
@@ -401,7 +401,7 @@ class TestShowConfig:
     def test_show_with_override(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "default"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         project_toml.write_text('box:\n  image: "custom"\n')
 
         show_config(
@@ -418,7 +418,7 @@ class TestShowConfig:
         """With workset_path/agent_state/env_resolved=None, output is unchanged."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         show_config(
             global_config_path=global_cfg,
@@ -443,7 +443,7 @@ class TestShowConfig:
         """A value set only at the workset level is reflected when supplied."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "sys:img"\n')
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         workset_cfg = tmp_path / "config.yaml"
         workset_cfg.write_text('box:\n  image: "ws:img"\n')
 
@@ -464,7 +464,7 @@ class TestShowConfig:
         """agent_state is rendered; only box-level keys get the override marker."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         project_toml.write_text('agent:\n  default:\n    model: "sonnet"\n')
 
         show_config(
@@ -484,7 +484,7 @@ class TestShowConfig:
         """env_resolved is the source dict for the env section when given."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
 
         show_config(
             global_config_path=global_cfg,
@@ -504,7 +504,7 @@ class TestResetAll:
     """Tests for the reset-all operation."""
 
     def test_reset_all_with_force(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         project_toml.write_text('box:\n  image: "custom"\n')
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
@@ -513,7 +513,7 @@ class TestResetAll:
         assert "Reset" in msg
 
     def test_reset_all_nothing_to_reset(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = reset_all(config_path=project_toml, force=True)
         assert "No overrides" in msg
 
@@ -546,7 +546,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     """
 
     def test_set_group_auth_no_crash(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         # Must not raise; lands in [project] as a real bool.
         msg = set_config_value("group_auth", "false", config_path=project_toml)
         assert msg.startswith("Set")
@@ -554,7 +554,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert data["project"]["group_auth"] is False
 
     def test_set_allow_helpers_no_crash(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value("allow_helpers", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
@@ -563,14 +563,14 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_vault_enabled_lands_in_real_location(self, tmp_path):
         """vault.enabled aliases to its real stored key enable_vault (H1 note)."""
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value("vault.enabled", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
         assert data["project"]["enable_vault"] is False
 
     def test_set_mode_and_layout_no_crash(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         assert set_config_value("mode", "primary", config_path=project_toml).startswith("Set")
         assert set_config_value("layout", "robust", config_path=project_toml).startswith("Set")
         data = load_doc(project_toml)
@@ -578,7 +578,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert data["project"]["layout"] == "robust"
 
     def test_set_unknown_key_returns_error_not_raise(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         # No exception: an UNKNOWN key returns an error string.
         msg = set_config_value("totally-bogus-key", "x", config_path=project_toml)
         assert msg.startswith("Error:")
@@ -587,7 +587,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert not project_toml.exists() or "totally-bogus-key" not in load_doc(project_toml)
 
     def test_reset_unknown_key_returns_error_not_raise(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = reset_config_value("totally-bogus-key", config_path=project_toml)
         assert msg.startswith("Error:")
 
@@ -595,7 +595,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         """Every routed key set by the writer reads back (no asymmetry)."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         for key, val in [
             ("group_auth", "false"),
             ("mode", "default"),
@@ -621,7 +621,7 @@ class TestH2BoolCoercion:
     def test_set_box_share_images_false_loads_as_real_bool(self, tmp_path):
         from kanibako.config import load_config
 
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         set_config_value("box.share_images", "false", config_path=project_toml)
 
         # On-disk: a real YAML bool, not the string 'false'.
@@ -634,7 +634,7 @@ class TestH2BoolCoercion:
         assert not cfg.box_share_images  # consumer disable-check honored
 
     def test_set_box_share_images_various_truthy_falsy(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         for raw, expected in [
             ("true", True), ("TRUE", True), ("1", True), ("yes", True), ("on", True),
             ("false", False), ("0", False), ("no", False), ("off", False),
@@ -645,14 +645,14 @@ class TestH2BoolCoercion:
     def test_set_allow_helpers_false_loads_as_real_bool(self, tmp_path):
         from kanibako.config import load_config
 
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         set_config_value("allow_helpers", "false", config_path=project_toml)
         cfg = load_config(project_toml)
         assert cfg.allow_helpers is False
         assert not cfg.allow_helpers
 
     def test_bool_key_rejects_garbage(self, tmp_path):
-        project_toml = tmp_path / "project.yaml"
+        project_toml = tmp_path / "settings.yaml"
         msg = set_config_value("box.share_images", "maybe", config_path=project_toml)
         assert msg.startswith("Error:")
         assert "boolean" in msg

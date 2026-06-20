@@ -84,12 +84,12 @@ class TestStandaloneImport:
     def test_handcreated_tree_mints_and_persists_name(
         self, std, config, project_dir, capsys,
     ):
-        # A hand-built standalone tree: box_data/project.yaml with no name.
+        # A hand-built standalone tree: box_data/settings.yaml with no name.
         from kanibako.config import read_project_meta, write_project_meta
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
-        meta_file = box_data / "project.yaml"
+        meta_file = box_data / "settings.yaml"
         write_project_meta(
             meta_file,
             mode="standalone",
@@ -197,7 +197,7 @@ class TestPrimaryBoxImport:
         self, std, config, project_dir, credentials_dir, capsys,
     ):
         # Create a primary box, then drop the registry's projects entry so the
-        # on-disk box dir (with project.yaml) survives unregistered.
+        # on-disk box dir (with settings.yaml) survives unregistered.
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )

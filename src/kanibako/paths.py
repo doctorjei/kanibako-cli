@@ -15,6 +15,7 @@ import yaml
 from kanibako.log import get_logger
 
 from kanibako.config import (
+    BOX_META_FILE,
     KanibakoConfig,
     config_file_path,
     load_config,
@@ -171,7 +172,7 @@ class ProjectPaths:
 
     project_path: Path
     project_hash: str
-    metadata_path: Path      # host-only: project.yaml, breadcrumb, lock
+    metadata_path: Path      # host-only: settings.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
     vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/vault/ro)
     vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/vault/rw)
@@ -668,7 +669,7 @@ def resolve_project(
     ``@system.primary_workset/vault/{ro,rw}/<name>``.
 
     *enable_vault* controls whether vault directories are created and mounted.
-    Defaults to True for new projects; existing projects read from ``project.yaml``.
+    Defaults to True for new projects; existing projects read from ``settings.yaml``.
     """
     raw = project_dir or os.getcwd()
     # If the user passed a bare token (no path separator) and no file/dir of
@@ -712,8 +713,8 @@ def resolve_project(
 
     metadata_path = project_dir_path
 
-    # Check for stored paths in project.yaml (enables user overrides).
-    project_toml = metadata_path / "project.yaml"
+    # Check for stored paths in settings.yaml (enables user overrides).
+    project_toml = metadata_path / BOX_META_FILE
     meta = read_project_meta(project_toml)
     _default_shell, _default_vro, _default_vrw = _primary_box_paths(
         std, metadata_path, project_name or metadata_path.name,
@@ -764,7 +765,7 @@ def resolve_project(
         shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
             std, metadata_path, project_name,
         )
-        project_toml = metadata_path / "project.yaml"
+        project_toml = metadata_path / BOX_META_FILE
 
         _init_project(
             std, metadata_path, shell_path,
@@ -796,14 +797,14 @@ def resolve_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Backfill project.yaml for old-format projects (pre-v0.8).
-        if metadata_path.is_dir() and read_project_meta(metadata_path / "project.yaml") is None:
+        # Backfill settings.yaml for old-format projects (pre-v0.8).
+        if metadata_path.is_dir() and read_project_meta(metadata_path / BOX_META_FILE) is None:
             _global_shared_bf = std.data_path / config.paths_shared / "global"
             _local_shared_bf = std.data_path / config.paths_shared
             # Use directory name as project name (name-based dirs).
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
-                metadata_path / "project.yaml",
+                metadata_path / BOX_META_FILE,
                 mode="primary",
                 workspace=str(project_path),
                 shell=str(shell_path),
@@ -1078,7 +1079,7 @@ def _is_standalone_meta_dir(root: Path) -> bool:
     mistaken for a standalone project marker.
     """
     meta_dir = root / _STANDALONE_META_DIR
-    toml = meta_dir / "project.yaml"
+    toml = meta_dir / BOX_META_FILE
     if not meta_dir.is_dir() or not toml.is_file():
         return False
     try:
@@ -1235,8 +1236,8 @@ def resolve_workset_project(
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
-    # Check for stored paths in project.yaml (enables user overrides).
-    project_toml = metadata_path / "project.yaml"
+    # Check for stored paths in settings.yaml (enables user overrides).
+    project_toml = metadata_path / BOX_META_FILE
     meta = read_project_meta(project_toml)
     # Honor a stored workspace override (set when the project was connected to
     # an EXTERNAL directory): the external dir is the live workspace.  Mirrors
@@ -1354,7 +1355,7 @@ def _init_workset_project(
 def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project.
 
-    *project_path* is read from ``project.yaml`` (``workspace`` field) when
+    *project_path* is read from ``settings.yaml`` (``workspace`` field) when
     available, falling back to ``project-path.txt`` for backward compat.
     """
     projects_dir = std.boxes
@@ -1365,8 +1366,8 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
         if not entry.is_dir():
             continue
         project_path: Path | None = None
-        # Prefer project.yaml workspace field.
-        meta = read_project_meta(entry / "project.yaml")
+        # Prefer settings.yaml workspace field.
+        meta = read_project_meta(entry / BOX_META_FILE)
         if meta and meta.get("workspace"):
             project_path = Path(meta["workspace"])
         else:
@@ -1616,7 +1617,7 @@ def resolve_standalone_project(
 
     # Metadata dir: box_data/ under the project root (the §1c STANDALONE table).
     metadata_path = project_path / _STANDALONE_META_DIR
-    project_toml = metadata_path / "project.yaml"
+    project_toml = metadata_path / BOX_META_FILE
 
     meta = None
     if metadata_path.is_dir():
