@@ -100,6 +100,43 @@ class BoxChannelAddresses:
     share_workset: Path | None
 
 
+@dataclass(frozen=True)
+class OwnPartition:
+    """This box's OWN system-scope partition dirs (mailbox + share_global).
+
+    ``mailbox`` == ``@system.channels.mailboxes/<ws>/<box>`` (this box's inbox
+    source dir) and ``share_global`` == ``@system.channels.share/<ws>/<box>``
+    (this box's system-scope publication dir).  Used by the move/convert
+    relocation (6d), which addresses the partition by raw ``(ws_token, box)``
+    rather than a fully-resolved :class:`ProjectPaths`.
+    """
+
+    ws_token: str
+    box_name: str
+    mailbox: Path
+    share_global: Path
+
+
+def own_partition_dirs(
+    std: StandardPaths, ws_token: str, box_name: str
+) -> OwnPartition:
+    """Derive a box's OWN system-scope partition dirs from ``(ws_token, box)``.
+
+    The lower-level primitive behind :func:`box_channel_addresses` — it takes the
+    workset-name token + box name directly (no ``ProjectPaths``), so the lifecycle
+    relocation can compute BOTH the OLD and the NEW partition for a box being
+    moved/converted.  Mirrors :func:`system_partition` + the ``box.meta.{inbox,
+    share_global}`` joins (TARGET §2c).
+    """
+    part = system_partition(std, ws_token)
+    return OwnPartition(
+        ws_token=ws_token,
+        box_name=box_name,
+        mailbox=part.mailboxes / box_name,
+        share_global=part.share / box_name,
+    )
+
+
 def workset_name_token(proj: ProjectPaths) -> str:
     """Return the workset-name token for *proj* (the system partition key).
 
