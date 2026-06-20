@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from typing import Any
 
@@ -247,6 +248,25 @@ def _ensure_initialized() -> None:
         target_toml = agents_path / f"{target_name}.yaml"
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
+
+    # Curated per-agent template layer (@agent.<agent>.template =
+    # @system.agents/<agent>/template), seeded into the box home at creation by
+    # the layered seed-once apply (templates.apply_template_layers).  The host
+    # agent-config IMPORT was removed in 1.6.0, so the box's onboarding stub now
+    # comes from this curated template instead of the host ~/.claude.json.
+    #
+    # MINIMAL stub: claude's static .claude.json onboarding marker, shipped
+    # UNCONDITIONALLY (not group_auth-gated) so a fresh box never re-triggers
+    # first-run onboarding.  Auth flows from the synced .credentials.json alone.
+    # The FULL curated content (settings.json, CLAUDE.md, goose/codex config) is
+    # authored in Phase 9.
+    claude_template = agents_path / "claude" / "template"
+    claude_template.mkdir(parents=True, exist_ok=True)
+    claude_onboarding = claude_template / ".claude.json"
+    if not claude_onboarding.exists():
+        claude_onboarding.write_text(
+            json.dumps({"hasCompletedOnboarding": True}, indent=2) + "\n"
+        )
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file

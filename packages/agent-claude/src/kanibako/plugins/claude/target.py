@@ -32,7 +32,6 @@ from kanibako.targets.base import (
 )
 
 from kanibako.plugins.claude.credentials import (
-    filter_settings,
     merge_oauth_in,
     refresh_host_to_project,
     writeback_project_to_host,
@@ -84,7 +83,6 @@ _CLAUDE_DESCRIPTOR = PluginDescriptor(
     container_env={"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
     cred_files=(
         CredFileSpec(".claude/.credentials.json", ".claude/.credentials.json", cadence=Cadence.SYNC, mtime_gate=True, filtered=True),
-        CredFileSpec(".claude.json", ".claude.json", cadence=Cadence.SEED_ONCE, filtered=True),
     ),
     host_prep=True,
     init_dirs=(".claude",),
@@ -127,16 +125,12 @@ class ClaudeTarget(Target):
         dst: Path,
         direction: str,
     ) -> None:
-        """Filter/merge a claude credential or config file (PURE content op).
+        """Merge a claude credential file (PURE content op).
 
         Called by the credential-sync engine for ``filtered=True`` specs; the
         engine owns all mtime/existence gating, so this hook performs NO mtime
-        checks.  It mirrors the legacy init_home / refresh / writeback content
-        ops exactly:
+        checks.  It mirrors the legacy refresh / writeback content ops exactly:
 
-        * ``.claude.json`` (SEED_ONCE, "in" only): a host source is allowlist-
-          filtered via :func:`filter_settings`; no source -> an empty file, the
-          legacy ``init_home`` ``.claude.json`` touch behaviour.
         * ``.credentials.json`` "in": claudeAiOauth merge host->project via
           :func:`merge_oauth_in` (the gate-free refresh content op).
         * ``.credentials.json`` "out": wholesale project->host copy (the gate-
@@ -144,17 +138,12 @@ class ClaudeTarget(Target):
 
         Defensive throughout: never raises on a malformed file (matching the
         warn-and-skip helpers).
-        """
-        if spec.home_rel == ".claude.json":
-            # SEED_ONCE config file, seeded host->project once at init.
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if src is not None and Path(src).is_file():
-                filter_settings(src, dst)
-            else:
-                # No host source -> empty .claude.json (legacy init_home touch).
-                dst.touch()
-            return
 
+        NOTE: the host ``.claude.json`` config IMPORT (allowlist-filtered seed of
+        ``oauthAccount``/``hasCompletedOnboarding``) was removed in 1.6.0 — a box
+        gets its onboarding stub from the curated agent template, and auth flows
+        from the synced ``.credentials.json`` alone.
+        """
         if spec.home_rel.endswith(".credentials.json"):
             if direction == "out":
                 # project->host writeback: wholesale copy (engine gated mtime).
@@ -280,28 +269,15 @@ class ClaudeTarget(Target):
     def init_home(self, home: Path, *, group_auth: bool = True) -> None:
         """Initialize Claude-specific files in the project home.
 
-        Creates ``.claude/`` directory.  When *group_auth* is ``True``, copies
-        credentials and filtered settings from the host.  When ``False``,
-        skips credential copy (project manages its own auth).
+        Creates the ``.claude/`` directory.  The host-config IMPORT (copying the
+        host ``.claude.json`` onboarding/``oauthAccount`` stub + credentials into
+        the box) was removed in 1.6.0: descriptor-native claude seeds creds via
+        the credsync engine (the synced ``.credentials.json``), and the box gets
+        its onboarding stub from the curated agent template — not from the host
+        config.  This hook is retained as a no-host-import directory setup
+        (descriptor-less / legacy callers only; claude takes the descriptor path).
         """
-        claude_dir = home / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-
-        if group_auth:
-            # Copy credentials from host ~/.claude/.credentials.json
-            host_creds = Path.home() / ".claude" / ".credentials.json"
-            if host_creds.is_file():
-                shutil.copy2(str(host_creds), str(claude_dir / ".credentials.json"))
-
-            # Copy filtered .claude.json from host
-            host_settings = Path.home() / ".claude.json"
-            if host_settings.is_file():
-                filter_settings(host_settings, home / ".claude.json")
-            else:
-                (home / ".claude.json").touch()
-        else:
-            # Distinct auth: create empty .claude.json
-            (home / ".claude.json").touch()
+        (home / ".claude").mkdir(parents=True, exist_ok=True)
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Claude Code crab configuration."""

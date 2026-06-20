@@ -8,7 +8,6 @@ from pathlib import Path
 import yaml
 
 from kanibako.plugins.goose.credentials import (
-    filter_config,
     read_yaml,
     refresh_secrets,
     write_yaml,
@@ -55,40 +54,8 @@ class TestWriteYaml:
         assert loaded == data
 
 
-class TestFilterConfig:
-    def test_keeps_only_safe_keys(self, tmp_path: Path):
-        src = tmp_path / "src.yaml"
-        dst = tmp_path / "dst.yaml"
-        data = {
-            "provider": "anthropic",
-            "model": "claude-4",
-            "extensions": ["web"],
-            "instructions": "be helpful",
-            "SECRET_KEY": "should-drop",
-            "random_field": "also-dropped",
-        }
-        src.write_text(yaml.safe_dump(data))
-        filter_config(src, dst)
-        result = yaml.safe_load(dst.read_text())
-        assert set(result.keys()) == {"provider", "model", "extensions", "instructions"}
-        assert result["provider"] == "anthropic"
-
-    def test_drops_unknown_keys(self, tmp_path: Path):
-        src = tmp_path / "src.yaml"
-        dst = tmp_path / "dst.yaml"
-        data = {"SECRET": "val", "TOKEN": "val2"}
-        src.write_text(yaml.safe_dump(data))
-        filter_config(src, dst)
-        # All keys are unsafe so filtered dict is empty -> write_yaml writes {}
-        result = yaml.safe_load(dst.read_text())
-        assert result == {}
-
-    def test_handles_empty_source(self, tmp_path: Path):
-        src = tmp_path / "src.yaml"
-        dst = tmp_path / "dst.yaml"
-        src.write_text("")  # empty file -> safe_load returns None -> read_yaml returns {}
-        filter_config(src, dst)
-        assert not dst.exists()
+# NOTE: the host config.yaml allowlist filter (filter_config) was removed in
+# 1.6.0 along with the host-config import; its tests are deleted.
 
 
 class TestRefreshSecrets:

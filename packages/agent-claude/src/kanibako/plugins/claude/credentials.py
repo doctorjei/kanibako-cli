@@ -92,21 +92,3 @@ def writeback_project_to_host(project_creds: Path) -> None:
         return
     host_creds = Path.home() / ".claude" / ".credentials.json"
     cp_if_newer(project_creds, host_creds)
-
-
-def filter_settings(src: Path, dst: Path) -> None:
-    """Copy host .claude.json with only safe keys (replaces jq filter)."""
-    try:
-        data = json.loads(src.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        print(f"Warning: Cannot read {src}: {exc}", file=sys.stderr)
-        return
-    filtered = {
-        "oauthAccount": data.get("oauthAccount"),
-        "hasCompletedOnboarding": True,
-        "installMethod": data.get("installMethod"),
-    }
-    # Remove None values
-    filtered = {k: v for k, v in filtered.items() if v is not None}
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(filtered, indent=2) + "\n")

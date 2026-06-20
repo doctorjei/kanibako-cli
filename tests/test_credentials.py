@@ -8,7 +8,6 @@ import time
 
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.claude.credentials import (
-    filter_settings,
     refresh_host_to_project,
     writeback_project_to_host,
 )
@@ -78,24 +77,8 @@ class TestRefreshHostToProject:
         assert not refresh_host_to_project(host, project)
 
 
-class TestFilterSettings:
-    def test_filters_keys(self, tmp_path):
-        src = tmp_path / "source.json"
-        dst = tmp_path / "dest.json"
-
-        src.write_text(json.dumps({
-            "oauthAccount": "acct",
-            "hasCompletedOnboarding": False,
-            "installMethod": "cli",
-            "extraKey": "ignored",
-        }))
-
-        filter_settings(src, dst)
-        data = json.loads(dst.read_text())
-        assert data["oauthAccount"] == "acct"
-        assert data["hasCompletedOnboarding"] is True  # Always set to True
-        assert data["installMethod"] == "cli"
-        assert "extraKey" not in data
+# NOTE: the host .claude.json allowlist filter (filter_settings) was removed in
+# 1.6.0 along with the host-config import; its tests are deleted.
 
 
 # ---------------------------------------------------------------------------
@@ -225,29 +208,6 @@ class TestWriteback:
         # No host creds created
         host_creds = home / ".claude" / ".credentials.json"
         assert not host_creds.exists()
-
-
-# ---------------------------------------------------------------------------
-# filter_settings edge cases
-# ---------------------------------------------------------------------------
-
-class TestFilterSettingsExtended:
-    def test_bad_json_src(self, tmp_path):
-        src = tmp_path / "src.json"
-        src.write_text("{corrupt!")
-        dst = tmp_path / "dst.json"
-        filter_settings(src, dst)
-        # dst should not be created when src is bad
-        assert not dst.exists()
-
-    def test_missing_keys(self, tmp_path):
-        src = tmp_path / "src.json"
-        src.write_text(json.dumps({"randomKey": 42}))
-        dst = tmp_path / "dst.json"
-        filter_settings(src, dst)
-        data = json.loads(dst.read_text())
-        # Only hasCompletedOnboarding (always True) should be present
-        assert data == {"hasCompletedOnboarding": True}
 
 
 class TestInvalidateCredentials:
