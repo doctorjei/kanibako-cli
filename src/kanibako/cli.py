@@ -221,9 +221,16 @@ def _ensure_initialized() -> None:
     (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
     (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
 
-    comms_dir = sys_paths["system.channels"]
-    (comms_dir / "mailbox").mkdir(parents=True, exist_ok=True)
-    (comms_dir / "broadcast.log").touch(exist_ok=True)
+    # Channels type-root skeleton (per-workset mailbox/share partitions + chat
+    # logs are guarantee-created on the launch path; see commands/install.py).
+    channels_dir = sys_paths["system.channels"]
+    (channels_dir / "commons").mkdir(parents=True, exist_ok=True)
+    (channels_dir / "share").mkdir(parents=True, exist_ok=True)
+    (channels_dir / "mailboxes").mkdir(parents=True, exist_ok=True)
+    chat_dir = channels_dir / "chat"
+    chat_dir.mkdir(parents=True, exist_ok=True)
+    (chat_dir / "general.md").touch(exist_ok=True)
+    (chat_dir / "broadcast.md").touch(exist_ok=True)
 
     # Create agents directory and generate default agent TOMLs.
     from kanibako.agent_config import AgentConfig, write_agent_config

@@ -111,18 +111,14 @@ class StandardPaths:
     primary_logs: Path
 
     # ------------------------------------------------------------------
-    # Transitional aliases (owners = Phase 6/7; not retired here).
+    # Transitional aliases (owner = Phase 7; not retired here).
     #
-    # ``comms``/``templates`` still alias the renamed ``channels``/
-    # ``base_template`` dirs for the channels (Phase 6) and templates (Phase 7)
-    # call sites; ``share_ro``/``share_rw`` raise (the dirs were deleted in the
-    # system.* reorg).  Do NOT add new uses.
+    # ``templates`` still aliases the renamed ``base_template`` dir for the
+    # templates (Phase 7) call sites; ``share_ro``/``share_rw`` raise (the dirs
+    # were deleted in the system.* reorg).  The ``comms`` alias was retired in
+    # Phase 6 (the legacy comms mount is gone; all readers use ``channels``).
+    # Do NOT add new uses.
     # ------------------------------------------------------------------
-
-    @property
-    def comms(self) -> Path:
-        """OLD ``std.comms`` → the renamed ``channels`` dir."""
-        return self.channels
 
     @property
     def templates(self) -> Path:
