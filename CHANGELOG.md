@@ -15,12 +15,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This release generalizes kanibako's agent-plugin interface so that any agent is
 described by one declarative contract, and ships first-class **Goose** and
 **Codex** agents alongside Claude. The `kanibako` meta-package now installs all
-three by default.
+three by default. It also lands a large **config / settings revamp** (one breaking
+change set) that splits config from settings, renames `crab` → `agent`, restructures
+the `system.*` namespace, unifies worksets, rebuilds the comm system as channels,
+and reworks templates.
+
+### Changed (BREAKING — config / settings revamp)
+
+The revamp is **one breaking change set** with **no automatic migration** — see
+[`MIGRATION.md`](MIGRATION.md) for the full step-by-step runbook. Summary:
+
+- **Config vs settings split.** Layout (`system.*`, *where things live*) and
+  behavior (`agent.*`/`box.*`/`workset.*` + the category keys) now live in separate
+  file sets. A 6-tier settings cascade applies (`settings_base < system <
+  agent.<agent> < workset < box`, with `*_required` an absolute cap above `box`).
+  The scoped shares/seeds/env collapse into one **category** primitive
+  (`masks`/`bindings.ro`/`bindings.rw`/`caches`/`seeded`/`shared`/`synced`/`env`).
+  ⚑ Dropping a project `.env` file no longer works — move vars to `<scope>.env.<VAR>`.
+- **`crab` → `agent` rename.** The tool, its config keys, directories, and the
+  config-facing commands are now `agent`; the `crab` CLI command is **cut** (its
+  verbs split between `agent` and `box`). The `$CRAB` reference var is now `$AGENT`,
+  and the per-agent YAML section token `crab:` is now `agent:`.
+- **`system.*` namespace restructured.** `system.path.*` → `system.*` (the `.path`
+  infix dropped); new `system.global`/`backup`/`settings`/`primary_workset`/
+  `cache`/`runtime`; the default-agent setting `system.agent` → `system.default_agent`;
+  XDG base-directory resolution honored on both host and box side.
+- **Worksets + modes.** The two-axis `ProjectMode × ProjectLayout` model becomes a
+  single three-mode model (`box.mode` = primary | named | standalone); **layouts are
+  removed** (no more human-vault symlinks; vault always at `@workset.vault_{ro,rw}`).
+  The PRIMARY workset is now a real directory; standalone state moves into `box_data/`
+  and standalone boxes are registered. Trees are **drop-in importable** — detection is
+  an on-disk ancestor-walk; an unregistered on-disk tree is auto-imported (with an
+  alert), and a name collision is refused.
+- **Registry consolidation.** `names.yaml` + `worksets.yaml` + `connected.yaml`
+  merge into one `registry.yaml`, now a derived/rebuildable index (losing it no
+  longer orphans boxes).
+- **Comm system → channels.** The single `~/comms/` mount is replaced by the
+  `~/channels/` tree (5 channel types across system + workset scopes). Mailboxes are
+  partitioned by workset name (`mailboxes/<ws>/<box>`), and the broadcast log moves
+  and changes format (`broadcast.log` → `chat/broadcast.md`). The box-side helper
+  socket/log dest is now XDG-aware (`helper-messages.jsonl` → `helpers.jsonl`).
+- **Templates + host-config import removal.** The shell-variant template tree, the
+  CLAUDE.md instruction merge, and per-agent **host-config import** collapse into one
+  **layered seed-once** model (base → agent → workset, last-wins, copied once).
+  ⚑ **Your host agent config no longer flows into boxes** — claude `.claude.json`/
+  `oauthAccount`, codex `config.toml`, and goose `extensions`/`instructions` are no
+  longer imported; boxes use curated templates plus synced credentials (credential
+  sync is unchanged). Set goose provider/model via `agent.goose.env.GOOSE_*` settings.
+- **Box-side vault dest moved.** Inside a box the vault is now at `~/vault/ro` /
+  `~/vault/rw` (was `~/share-ro` / `~/share-rw`).
+- **Per-box meta file renamed.** `project.yaml` → `settings.yaml` (all modes).
 
 ### Changed (BREAKING)
 
-Two config/storage changes require a one-time manual migration — there is **no
-automatic migration**:
+Two earlier config/storage changes (plugin-interface generalization) also require a
+one-time manual migration — there is **no automatic migration**:
 
 - **Agent-specific `crab` config overrides are now keyed by agent name.** A
   crab override section (in `project.yaml`, a workset's `config.yaml`,
