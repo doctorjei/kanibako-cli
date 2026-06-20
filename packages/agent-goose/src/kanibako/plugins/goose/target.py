@@ -85,6 +85,10 @@ _GOOSE_DESCRIPTOR = PluginDescriptor(
     mode={"start": ("session",), "continue": ("session", "--resume")},
     operations={"exec": Operation(("run", "--no-session", "-t"))},
     safe_bypass=SafeBypass(Channel.ENV, env_var="GOOSE_MODE", env_value="auto", secure_env_value="approve", setting_key=""),
+    # The SettingArg only wires the ENV CHANNEL (the env-var NAME); the default
+    # VALUES (GOOSE_MODEL="claude-sonnet-4-20250514", GOOSE_PROVIDER="anthropic",
+    # per settings-keyspace §2d) are supplied by ``setting_descriptors()`` below
+    # (the resolver's least-specific "floor" tier in start.py), not here.
     settings=(
         SettingArg("model", Channel.ENV, env_var="GOOSE_MODEL"),
         SettingArg("provider", Channel.ENV, env_var="GOOSE_PROVIDER"),
