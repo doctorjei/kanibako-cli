@@ -256,6 +256,79 @@ class TestConvertInPlace:
         assert str(pdir) not in read_names(std.data_path)["projects"].values()
         assert src_name not in read_names(std.data_path)["projects"]
 
+    def test_convert_standalone_no_name_generates_fresh(self, env):
+        """No --name on a standalone convert → a freshly generated canonical id
+        (leaf from the root basename), NOT the source's name (R1/R3 branch 1)."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        src_state = resolve_lifecycle_target(str(pdir), std, config)
+        src_name = src_state.name
+        new = execute_lifecycle(
+            src_state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode is BoxMode.standalone
+        assert new.name != src_name
+        prefix, _, leaf = new.name.partition("_")
+        assert len(prefix) == 5
+        assert leaf == "proj"
+
+    def test_convert_standalone_honors_canonical_name(self, env):
+        """A free, well-formed canonical --name is honored verbatim (no forced
+        rename — the OLD BUG#4 behavior is replaced) (R1/R3 match+free)."""
+        from kanibako.registry_store import load_standalone
+
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        src_state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            src_state,
+            TargetSpec(location=INPLACE, ownership="standalone", name="ab2c3_proj"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode is BoxMode.standalone
+        assert new.name == "ab2c3_proj"
+        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
+        assert meta["name"] == "ab2c3_proj"
+        standalone = load_standalone(std.data_path)
+        assert standalone["ab2c3_proj"] == str(pdir)
+
+    def test_convert_standalone_noncanonical_name_becomes_leaf(self, env):
+        """A non-canonical --name becomes the leaf with a FRESH random prefix
+        (lowercased + sanitized) (R1/R3 no-match)."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        src_state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            src_state,
+            TargetSpec(location=INPLACE, ownership="standalone", name="MyBox"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode is BoxMode.standalone
+        prefix, sep, leaf = new.name.partition("_")
+        assert sep == "_"
+        assert len(prefix) == 5
+        assert leaf == "mybox"  # lowercased
+
+    def test_convert_standalone_taken_canonical_name_refuses(self, env):
+        """A canonical --name that collides with an existing standalone box is
+        refused (R1/R3 match+taken)."""
+        config, std, tmp_home = env
+        # Establish an existing standalone box and learn its real name.
+        existing_dir = _make_standalone(env, name="existing")
+        existing_state = resolve_lifecycle_target(str(existing_dir), std, config)
+        taken = existing_state.name
+        assert "_" in taken
+
+        pdir = _make_default(env)
+        src_state = resolve_lifecycle_target(str(pdir), std, config)
+        with pytest.raises(ProjectError, match="already a box with that name"):
+            execute_lifecycle(
+                src_state,
+                TargetSpec(location=INPLACE, ownership="standalone", name=taken),
+                std, config, confirm=_conf_yes(),
+            )
+
     def test_standalone_to_default(self, env):
         config, std, tmp_home = env
         pdir = _make_standalone(env)

@@ -1598,8 +1598,11 @@ def establish_standalone(
     The single shared core behind all three standalone paths (``create
     --standalone``, ``convert --standalone``, ``duplicate --standalone``).  It
 
-    1. derives the canonical opaque identity ``<random24>_<leaf>`` (whole-name
-       collision regen vs ``registry.standalone``) unless a *name* is supplied;
+    1. derives the box identity via :func:`box_identity.resolve_standalone_name`
+       — a fresh canonical ``<random24>_<leaf>`` (whole-name collision regen vs
+       ``registry.standalone``) when *name* is empty, otherwise honoring the
+       supplied (lowercased) ``--name``: a verbatim canonical id if free (else
+       refuse), or a fresh prefix over the supplied string as the leaf;
     2. writes the standalone ``box_data/settings.yaml`` meta (``mode=standalone``
        + the fixed STANDALONE path table via :func:`_standalone_box_paths`);
     3. registers the box in ``registry.standalone`` (``box_name`` → *root*).
@@ -1622,10 +1625,8 @@ def establish_standalone(
     # each call site's prior behavior.
     phash = project_hash(str(root.resolve()))
 
-    box_name = name
-    if not box_name:
-        existing = registry_store.standalone_box_names(std.data_path)
-        box_name = box_identity.make_standalone_box_name(root, existing)
+    existing = registry_store.standalone_box_names(std.data_path)
+    box_name = box_identity.resolve_standalone_name(root, name, existing)
 
     write_project_meta(
         metadata_path / BOX_META_FILE,
@@ -1652,6 +1653,7 @@ def resolve_standalone_project(
     initialize: bool = False,
     enable_vault: bool | None = None,
     group_auth: bool | None = None,
+    name: str = "",
 ) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths for standalone mode.
 
@@ -1695,9 +1697,13 @@ def resolve_standalone_project(
     else:
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    # Box identity: reuse the stored name; generate + register a new one at
-    # create time (whole-name collision regen via the registry's standalone set).
+    # Box identity: reuse the stored name; for a fresh box, resolve the identity
+    # from the user-supplied *name* (empty → fresh canonical) at create time via
+    # establish_standalone → box_identity.resolve_standalone_name.
     box_name = meta.get("name", "") if meta else ""
+    # The user's explicit --name (only meaningful when establishing a new box;
+    # ignored once meta exists since the stored identity is authoritative).
+    requested_name = name
 
     # Auth mode for standalone: explicit param > meta > default.
     # Standalone projects are NOT in the default group, so they do
@@ -1716,13 +1722,13 @@ def resolve_standalone_project(
             enable_vault=actual_vault_enabled,
         )
         # Identity + meta + registration via the shared establish core.  The
-        # init block is only reached when no meta exists, so box_name is always
-        # freshly generated here (name="").
+        # init block is only reached when no meta exists, so the identity is
+        # resolved fresh from the user-supplied --name (empty → fresh canonical).
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
             std, project_path,
             enable_vault=actual_vault_enabled,
             group_auth=actual_group_auth,
-            name=box_name,
+            name=requested_name,
         )
         is_new = True
 

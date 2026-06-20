@@ -257,7 +257,9 @@ def _duplicate_to_workset(args, std, config) -> int:
         print("Error: source is already a workset project.", file=sys.stderr)
         return 1
 
-    proj_name = getattr(args, "project_name", None) or source_path.name
+    # R2: every box name is lowercase — fold a user-supplied --name, and also
+    # lowercase the basename-derived default for a consistent invariant.
+    proj_name = (getattr(args, "project_name", None) or source_path.name).lower()
 
     # Validate name not taken.
     for p in ws.projects:
