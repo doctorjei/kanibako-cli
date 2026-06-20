@@ -629,8 +629,8 @@ class TestPrecreateMountStubs:
             vault_rw_path=vault_rw,
             tmpfs_masks=["/home/agent/workspace/vault"],
         )
-        assert (shell / "share-ro").is_dir()
-        assert (shell / "share-rw").is_dir()
+        assert (shell / "vault" / "ro").is_dir()
+        assert (shell / "vault" / "rw").is_dir()
         # The default vault mask box-dest maps to project_path / "vault"
         # (byte-identical to the old single-vault stub).
         assert (project / "vault").is_dir()
@@ -668,8 +668,8 @@ class TestPrecreateMountStubs:
             vault_rw_path=tmp_path / "missing-rw",
             tmpfs_masks=[],
         )
-        assert not (shell / "share-ro").exists()
-        assert not (shell / "share-rw").exists()
+        assert not (shell / "vault" / "ro").exists()
+        assert not (shell / "vault" / "rw").exists()
 
     def test_extra_dir_mount_under_home(self, tmp_path):
         from dataclasses import dataclass

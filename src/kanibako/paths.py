@@ -173,8 +173,8 @@ class ProjectPaths:
     project_hash: str
     metadata_path: Path      # host-only: project.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
-    vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/share-ro)
-    vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
+    vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/vault/ro)
+    vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/vault/rw)
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
     enable_vault: bool = field(default=True)
