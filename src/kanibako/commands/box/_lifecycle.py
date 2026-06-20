@@ -1017,7 +1017,8 @@ def _to_standalone(
     named — a D-M13 collision / channel-addressing risk and an inconsistency with
     create/duplicate.
     """
-    from kanibako import box_identity, registry_store
+    from kanibako import registry_store
+    from kanibako.paths import establish_standalone
 
     new_workspace.mkdir(parents=True, exist_ok=True)
     dst_metadata = new_workspace / _STANDALONE_META_DIR
@@ -1027,29 +1028,15 @@ def _to_standalone(
         shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
 
-    # Generate a FRESH canonical standalone identity (whole-name collision regen
-    # vs the registry's standalone set), never reusing the source/requested name.
-    existing = registry_store.standalone_box_names(std.data_path)
-    box_name = box_identity.make_standalone_box_name(new_workspace, existing)
-
-    phash = project_hash(str(new_workspace.resolve()))
-    vault_ro = new_workspace / "vault" / "ro"
-    vault_rw = new_workspace / "vault" / "rw"
-
-    write_project_meta(
-        dst_metadata / BOX_META_FILE,
-        mode="standalone",
-        workspace=str(new_workspace),
-        shell=str(dst_shell),
-        vault_ro=str(vault_ro),
-        vault_rw=str(vault_rw),
+    # Establish the canonical standalone identity + meta + registration via the
+    # shared core (a FRESH name, never the source/requested name; whole-name
+    # collision regen vs the registry's standalone set).  The metadata dir was
+    # just populated by _copy_metadata above.
+    box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
+        std, new_workspace,
         enable_vault=state.enable_vault,
         group_auth=state.group_auth,
-        metadata=str(dst_metadata),
-        project_hash=phash,
-        name=box_name,
     )
-    registry_store.register_standalone(std.data_path, box_name, new_workspace)
     unwind.push(
         lambda: registry_store.unregister_standalone(std.data_path, box_name)
     )

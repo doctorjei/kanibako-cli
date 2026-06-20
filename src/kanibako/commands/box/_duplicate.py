@@ -139,9 +139,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     name, so standalone detection (``_is_standalone_meta_dir`` requires
     ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
     """
-    from kanibako import box_identity, registry_store
-    from kanibako.config import BOX_META_FILE, write_project_meta
-    from kanibako.utils import project_hash, write_project_gitignore
+    from kanibako.paths import establish_standalone
+    from kanibako.utils import write_project_gitignore
 
     dst_metadata = new_path / _STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
@@ -161,31 +160,16 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
             shutil.rmtree(dst_shell)
         shutil.copytree(src_proj.shell_path, dst_shell)
 
-    # Generate a FRESH standalone identity (a duplicate is a distinct box, even
-    # from a standalone source) with whole-name collision regen vs the registry.
-    existing = registry_store.standalone_box_names(std.data_path)
-    box_name = box_identity.make_standalone_box_name(new_path, existing)
-
-    # Rewrite the dest meta into the canonical standalone shape (mode=standalone,
-    # fresh name, standalone path table).  write_project_meta preserves any other
-    # sections copied from the source.
-    phash = project_hash(str(new_path.resolve()))
-    vault_ro = new_path / "vault" / "ro"
-    vault_rw = new_path / "vault" / "rw"
-    write_project_meta(
-        dst_metadata / BOX_META_FILE,
-        mode="standalone",
-        workspace=str(new_path),
-        shell=str(dst_shell),
-        vault_ro=str(vault_ro),
-        vault_rw=str(vault_rw),
+    # Establish the canonical standalone shape (mode=standalone, a FRESH
+    # <random24>_<leaf> identity even from a standalone source, the standalone
+    # path table) + register it, via the shared core.  The dest metadata dir was
+    # just copied/rewritten above; establish overwrites its meta in place,
+    # preserving any other sections copied from the source.
+    establish_standalone(
+        std, new_path,
         enable_vault=src_proj.enable_vault,
         group_auth=src_proj.group_auth,
-        metadata=str(dst_metadata),
-        project_hash=phash,
-        name=box_name,
     )
-    registry_store.register_standalone(std.data_path, box_name, new_path)
 
     write_project_gitignore(new_path)
 

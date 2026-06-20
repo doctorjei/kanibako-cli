@@ -1585,6 +1585,65 @@ def resolve_any_project(
     return resolve_project(std, config, project_dir=root_str, initialize=initialize)
 
 
+def establish_standalone(
+    std: StandardPaths,
+    root: Path,
+    *,
+    enable_vault: bool,
+    group_auth: bool,
+    name: str = "",
+) -> tuple[str, Path, Path, Path]:
+    """Establish a standalone box at *root*: identity + meta + registration.
+
+    The single shared core behind all three standalone paths (``create
+    --standalone``, ``convert --standalone``, ``duplicate --standalone``).  It
+
+    1. derives the canonical opaque identity ``<random24>_<leaf>`` (whole-name
+       collision regen vs ``registry.standalone``) unless a *name* is supplied;
+    2. writes the standalone ``box_data/settings.yaml`` meta (``mode=standalone``
+       + the fixed STANDALONE path table via :func:`_standalone_box_paths`);
+    3. registers the box in ``registry.standalone`` (``box_name`` → *root*).
+
+    *root* is the standalone project dir (the workspace).  The box-data dir
+    (``root/box_data``) must already exist (each caller creates/copies it before
+    calling).  Returns ``(box_name, shell_path, vault_ro, vault_rw)`` so callers
+    can build their result state without recomputing the table.  Callers own
+    their own surrounding concerns (file copies, unwind registration, old-name
+    unregister) — only the identity/meta/register core lives here.
+    """
+    from kanibako import box_identity, registry_store
+
+    metadata_path = root / _STANDALONE_META_DIR
+    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(
+        metadata_path, root,
+    )
+    # phash derives from the resolved root (a standalone tree is drop-in
+    # portable); the on-disk string fields below use *root* verbatim, matching
+    # each call site's prior behavior.
+    phash = project_hash(str(root.resolve()))
+
+    box_name = name
+    if not box_name:
+        existing = registry_store.standalone_box_names(std.data_path)
+        box_name = box_identity.make_standalone_box_name(root, existing)
+
+    write_project_meta(
+        metadata_path / BOX_META_FILE,
+        mode="standalone",
+        workspace=str(root),
+        shell=str(shell_path),
+        vault_ro=str(vault_ro_path),
+        vault_rw=str(vault_rw_path),
+        enable_vault=enable_vault,
+        group_auth=group_auth,
+        metadata=str(metadata_path),
+        project_hash=phash,
+        name=box_name,
+    )
+    registry_store.register_standalone(std.data_path, box_name, root)
+    return box_name, shell_path, vault_ro_path, vault_rw_path
+
+
 def resolve_standalone_project(
     std: StandardPaths,
     config: KanibakoConfig,
@@ -1605,8 +1664,6 @@ def resolve_standalone_project(
     in ``registry.standalone`` at create time; reused from the stored meta
     afterwards).
     """
-    from kanibako import box_identity, registry_store
-
     raw = project_dir or os.getcwd()
     project_path = Path(raw).resolve()
 
@@ -1653,28 +1710,20 @@ def resolve_standalone_project(
 
     is_new = False
     if initialize and not metadata_path.is_dir():
-        if not box_name:
-            existing = registry_store.standalone_box_names(std.data_path)
-            box_name = box_identity.make_standalone_box_name(project_path, existing)
         _init_standalone_project(
             std, metadata_path, shell_path,
             vault_ro_path, vault_rw_path, project_path,
             enable_vault=actual_vault_enabled,
         )
-        write_project_meta(
-            project_toml,
-            mode="standalone",
-            workspace=str(project_path),
-            shell=str(shell_path),
-            vault_ro=str(vault_ro_path),
-            vault_rw=str(vault_rw_path),
+        # Identity + meta + registration via the shared establish core.  The
+        # init block is only reached when no meta exists, so box_name is always
+        # freshly generated here (name="").
+        box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
+            std, project_path,
             enable_vault=actual_vault_enabled,
             group_auth=actual_group_auth,
-            metadata=str(metadata_path),
-            project_hash=phash,
             name=box_name,
         )
-        registry_store.register_standalone(std.data_path, box_name, project_path)
         is_new = True
 
     if initialize:
