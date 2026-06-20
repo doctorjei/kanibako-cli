@@ -338,6 +338,19 @@ Drop `layout` entirely; translate `mode` per §4.1; the path fields are now deri
 from the fixed per-mode tables, not stored. (For **standalone**, see the ⚑ note in
 §4.5 — the file is still `project.yaml` for now.)
 
+### 4.7 Box-side vault path moved: `~/share-ro` / `~/share-rw` → `~/vault/ro` / `~/vault/rw`
+
+⚑ **User-visible box-layout break.** Inside the box, the vault is now mounted at
+`~/vault/ro` (read-only) and `~/vault/rw` (read-write) — the keyspace §2c box dests.
+Previously it was mounted at the legacy `~/share-ro` / `~/share-rw`. The host-side
+vault SOURCE (`@workset.vault_{ro,rw}`) and the local vault MASK
+(`~/workspace/vault`, a tmpfs) are unchanged.
+
+Any in-box scripts, aliases, or agent instructions that reference `~/share-ro` /
+`~/share-rw` must be updated to `~/vault/ro` / `~/vault/rw`. (Host-side snapshot
+tooling — `kanibako vault snapshot/restore` — is unaffected; it operates on the
+host vault rw directory, not the box dest.)
+
 ---
 
 ## 5. Registry consolidation

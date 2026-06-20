@@ -97,8 +97,23 @@ class TestRunCommandAssembly:
             assert f"{kwargs['shell_path']}:/home/agent:Z,U" in cmd
             assert f"{kwargs['project_path']}:/home/agent/workspace:Z,U" in cmd
             # Vault mounts (dirs exist)
-            assert f"{kwargs['vault_ro_path']}:/home/agent/share-ro:ro" in cmd
-            assert f"{kwargs['vault_rw_path']}:/home/agent/share-rw:Z,U" in cmd
+            assert f"{kwargs['vault_ro_path']}:/home/agent/vault/ro:ro" in cmd
+            assert f"{kwargs['vault_rw_path']}:/home/agent/vault/rw:Z,U" in cmd
+
+    def test_vault_box_dest_is_under_home_vault(self, tmp_path):
+        """The box-side vault dest is ``~/vault/{ro,rw}`` (keyspace §2c), NOT the
+        legacy ``~/share-ro`` / ``~/share-rw``."""
+        rt = self._make_rt()
+        kwargs = self._base_kwargs(tmp_path)
+        with patch("kanibako.container.subprocess.run") as m_run:
+            m_run.return_value = MagicMock(returncode=0)
+            rt.run("img:latest", **kwargs)
+            cmd_str = " ".join(m_run.call_args[0][0])
+            assert "/home/agent/vault/ro:ro" in cmd_str
+            assert "/home/agent/vault/rw:Z,U" in cmd_str
+            # The legacy box-dest is gone.
+            assert "share-ro" not in cmd_str
+            assert "share-rw" not in cmd_str
 
     def test_vault_mounts_skipped_when_missing(self, tmp_path):
         rt = self._make_rt()
@@ -108,8 +123,8 @@ class TestRunCommandAssembly:
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)
-            assert "share-ro" not in cmd_str
-            assert "share-rw" not in cmd_str
+            assert "/home/agent/vault/ro" not in cmd_str
+            assert "/home/agent/vault/rw" not in cmd_str
 
     def test_entrypoint_override(self, tmp_path):
         rt = self._make_rt()
@@ -344,8 +359,8 @@ class TestVaultDisabledRun:
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)
             # No vault mounts even though dirs exist
-            assert "share-ro" not in cmd_str
-            assert "share-rw" not in cmd_str
+            assert "/home/agent/vault/ro" not in cmd_str
+            assert "/home/agent/vault/rw" not in cmd_str
             # No tmpfs overlay
             assert "tmpfs" not in cmd_str
 
@@ -368,6 +383,6 @@ class TestVaultDisabledRun:
             )
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)
-            assert "share-ro" in cmd_str
-            assert "share-rw" in cmd_str
+            assert "/home/agent/vault/ro" in cmd_str
+            assert "/home/agent/vault/rw" in cmd_str
             assert "tmpfs" in cmd_str

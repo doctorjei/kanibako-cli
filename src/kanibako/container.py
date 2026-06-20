@@ -281,9 +281,9 @@ class ContainerRuntime:
         # Vault mounts (only if directories exist and vault is enabled)
         if enable_vault:
             if vault_ro_path.is_dir():
-                cmd += ["-v", f"{vault_ro_path}:/home/agent/share-ro:ro"]
+                cmd += ["-v", f"{vault_ro_path}:/home/agent/vault/ro:ro"]
             if vault_rw_path.is_dir():
-                cmd += ["-v", f"{vault_rw_path}:/home/agent/share-rw:Z,U"]
+                cmd += ["-v", f"{vault_rw_path}:/home/agent/vault/rw:Z,U"]
             # Local masking: a read-only tmpfs over each box-dest in the
             # ``box.masks`` category (resolved in start.py, decision B).  The
             # default mask is ``~/workspace/vault`` (the old single hardcoded
@@ -570,9 +570,9 @@ def _precreate_mount_stubs(
     _ensure_dir(shell_path / "workspace")
     if enable_vault:
         if vault_ro_path.is_dir():
-            _ensure_dir(shell_path / "share-ro")
+            _ensure_dir(shell_path / "vault" / "ro")
         if vault_rw_path.is_dir():
-            _ensure_dir(shell_path / "share-rw")
+            _ensure_dir(shell_path / "vault" / "rw")
         # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
         # Map each box-dest to its host side the same way extra mounts are
         # mapped (under project_path for workspace dests, shell_path for other
