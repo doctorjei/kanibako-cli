@@ -1217,20 +1217,22 @@ def _run_container(
                     file=sys.stderr,
                 )
 
-        # Peer communication: mount shared comms directory.
-        from kanibako.targets.base import Mount as _CMount
-        comms_path = std.comms
-        comms_path.mkdir(parents=True, exist_ok=True)
-        if proj.name:
-            mailbox = comms_path / "mailbox" / proj.name
-            mailbox.mkdir(parents=True, exist_ok=True)
-        broadcast = comms_path / "broadcast.log"
-        if not broadcast.exists():
-            broadcast.touch()
-        _rotate_file(broadcast)
-        extra_mounts.append(
-            _CMount(comms_path, "/home/agent/comms", "Z,U"),
+        # Peer communication: the channel system (5 types, 2 scopes — TARGET §2f).
+        # Replaces the single legacy ``~/comms`` mount with per-mode channel binds
+        # surfaced under ``~/channels/`` (system, every mode) + ``~/channels/workset/``
+        # (workset-local, primary/named only) + own ``~/channels/inbox``.  The binds
+        # flow through the category resolver (D-B1 precedence + L7 guarantee-create);
+        # chat ``general.md``/``broadcast.md`` are seeded inside the chat sources.
+        channel_mounts = _build_channel_mounts(
+            std=std,
+            proj=proj,
+            agent_name=agent_id,
+            global_config_path=config_file,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            agent_config_path=agent_cfg_path,
         )
+        extra_mounts.extend(channel_mounts)
 
         # Read environment variables, accumulating across config levels with
         # the settings-framework precedence (low->high): system < agent <
@@ -2095,8 +2097,6 @@ def _build_share_mounts(
     absent, the mount is DROPPED with a warning — a missing source must never be
     passed to rootless podman, which would abort the whole launch.
     """
-    from pathlib import Path as _Path
-
     default_shares = target.default_shares() if target is not None else {}
 
     reconciled = _resolve_launch_categories(
@@ -2110,6 +2110,21 @@ def _build_share_mounts(
         default_categories=default_shares,
         group_auth=group_auth,
     )
+
+    return _emit_reconciled_mounts(reconciled, label="share")
+
+
+def _emit_reconciled_mounts(reconciled, *, label: str) -> list:
+    """Emit the reconciled MOUNT winners as :class:`Mount`s (L7 guarantee-create).
+
+    Shared by :func:`_build_share_mounts` and :func:`_build_channel_mounts`:
+    skips ``masks`` (tmpfs, no host source — emitted via :func:`_resolve_masks`);
+    for every other MOUNT it mkdir's a missing rw source (L7 guarantee-create) and
+    DROPS a ro bind whose source is absent with a warning (a missing source must
+    never reach rootless podman, which would abort the launch).  *label* names the
+    bind family in the drop warning.
+    """
+    from pathlib import Path as _Path
 
     from kanibako.targets.base import Mount
 
@@ -2131,8 +2146,8 @@ def _build_share_mounts(
             # letting rootless podman abort the launch on a dangling bind source.
             import logging
             logging.getLogger(__name__).warning(
-                "share %s: read-only source %s does not exist; dropping mount",
-                e.name, e.host_src,
+                "%s %s: read-only source %s does not exist; dropping mount",
+                label, e.name, e.host_src,
             )
             continue
         mounts.append(
@@ -2174,6 +2189,147 @@ def _resolve_masks(
         default_categories={"box.masks": VAULT_MASK_DEST},
     )
     return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
+
+
+# In-box channel mount roots (guest paths).  System channels under
+# ``~/channels/``; workset-local channels (primary/named only) under
+# ``~/channels/workset/``; own inbox surfaced at ``~/channels/inbox``.
+_CH_SYSTEM_BASE = "~/channels"
+_CH_WORKSET_BASE = "~/channels/workset"
+
+
+def _ch_bind(host_src, box_dest: str) -> str:
+    """Build a ``host_src:guest_dest`` bind expression for a channel default.
+
+    *host_src* is an already-resolved absolute host path (from the ``channels``
+    helpers).  Any literal ``:`` in the host path is escaped so :func:`split_bind`
+    splits only at the dest separator; the guest dest is a fixed ``~/channels``
+    path with no colon.
+    """
+    return f"{str(host_src).replace(':', chr(92) + ':')}:{box_dest}"
+
+
+def _channel_default_categories(std, proj) -> dict[str, str]:
+    """Build the per-mode channel bind table as ``default_categories`` (§3/§3a).
+
+    Maps ``box.bindings.rw.<key>`` → a ``host_src:guest_dest`` bind expression for
+    every channel surfaced into THIS box.  Injected through the category resolver
+    (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like masks/shares.
+
+    ALL MODES (system scope): the five system channel type roots
+    (commons/chat/share/mailboxes) plus this box's own inbox double-bind (the SAME
+    host source bound at both ``~/channels/inbox`` and
+    ``~/channels/mailboxes/<ws>/<self>`` — A2) plus its share_global publication
+    dir source.  PRIMARY + NAMED additionally get the three workset-local type
+    roots under ``~/channels/workset/``; STANDALONE OMITS them (A10).
+    """
+    from kanibako import channels as _ch
+
+    addr = _ch.box_channel_addresses(proj, std)
+
+    binds: dict[str, str] = {
+        # System channel type roots (every mode).
+        "box.bindings.rw.ch_commons": _ch_bind(
+            std.channels_commons, f"{_CH_SYSTEM_BASE}/commons"
+        ),
+        "box.bindings.rw.ch_chat": _ch_bind(
+            std.channels_chat, f"{_CH_SYSTEM_BASE}/chat"
+        ),
+        "box.bindings.rw.ch_share": _ch_bind(
+            std.channels_share, f"{_CH_SYSTEM_BASE}/share"
+        ),
+        "box.bindings.rw.ch_mailboxes": _ch_bind(
+            std.channels_mailboxes, f"{_CH_SYSTEM_BASE}/mailboxes"
+        ),
+        # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced
+        # at the (C)-stable path ~/channels/inbox.  The depth-sort lands this
+        # deeper dest after ~/channels/mailboxes — both binds are kept.
+        "box.bindings.rw.inbox": _ch_bind(
+            addr.inbox, f"{_CH_SYSTEM_BASE}/inbox"
+        ),
+    }
+
+    wch = _ch.workset_channel_paths(proj, std)
+    if wch is not None:
+        # Workset-local channels (primary + named only; standalone omits).
+        binds["box.bindings.rw.wch_commons"] = _ch_bind(
+            wch.commons, f"{_CH_WORKSET_BASE}/commons"
+        )
+        binds["box.bindings.rw.wch_chat"] = _ch_bind(
+            wch.chat, f"{_CH_WORKSET_BASE}/chat"
+        )
+        binds["box.bindings.rw.wch_share"] = _ch_bind(
+            wch.share, f"{_CH_WORKSET_BASE}/share"
+        )
+
+    return binds
+
+
+def _seed_channel_files(std, proj) -> None:
+    """Guarantee-create the chat log files inside the channel sources (§3c).
+
+    ``chat/general.md`` (default log) + ``chat/broadcast.md`` (reserved broadcast
+    log) at the SYSTEM chat dir (every mode); and at the WORKSET chat dir for
+    primary/named.  Create-if-absent (idempotent — never overwrites a user-edited
+    log); the partition source DIRS themselves are mkdir'd by the L7 rw-branch.
+    Keeps ``_rotate_file`` on each ``broadcast.md`` (A5 — parity with the legacy
+    ``broadcast.log`` rotation).
+    """
+    from kanibako import channels as _ch
+
+    chat_dirs = [std.channels_chat]
+    wch = _ch.workset_channel_paths(proj, std)
+    if wch is not None:
+        chat_dirs.append(wch.chat)
+
+    for chat_dir in chat_dirs:
+        try:
+            chat_dir.mkdir(parents=True, exist_ok=True)
+            general = chat_dir / "general.md"
+            if not general.exists():
+                general.touch()
+            broadcast = chat_dir / "broadcast.md"
+            if not broadcast.exists():
+                broadcast.touch()
+            _rotate_file(broadcast)
+        except OSError:
+            # Best-effort: a genuinely unwritable source surfaces at launch.
+            pass
+
+
+def _build_channel_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+) -> list:
+    """Resolve the channel binds (§3) and emit them as :class:`Mount`s.
+
+    Replaces the legacy single ``~/comms`` mount.  Injects the per-mode channel
+    bind table (:func:`_channel_default_categories`) through the category resolver
+    as the AGENT level's declared defaults — so the channel binds flow through the
+    D-B1 precedence + depth-sort + L7 guarantee-create (mkdir of every rw source,
+    including the per-workset partition dirs) exactly like masks/shares.  Seeds the
+    chat ``general.md``/``broadcast.md`` files (§3c) before emitting.  A box may
+    override or suppress any individual channel bind at a more-specific level.
+    """
+    _seed_channel_files(std, proj)
+
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=_channel_default_categories(std, proj),
+    )
+    return _emit_reconciled_mounts(reconciled, label="channel")
 
 
 def _resolve_config_env(
