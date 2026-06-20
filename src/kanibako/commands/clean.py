@@ -50,6 +50,60 @@ def run(args: argparse.Namespace) -> int:
     return _purge_one(std, config, args.path, force=args.force)
 
 
+def _unregister_purged(std, proj) -> None:
+    """Drop a purged box's registry entry (M2 orphan-cleanup).
+
+    PRIMARY boxes live in ``registry.projects`` (name → workspace path);
+    STANDALONE boxes live in ``registry.standalone`` (box name → root). Resolve
+    the registered name by reverse path lookup first (the workspace path is what
+    the registry stores), falling back to the resolved/ metadata-dir name, and
+    remove it. Best-effort: a missing or already-clean entry is a no-op.
+    """
+    from kanibako import registry_store
+    from kanibako.names import lookup_by_path, unregister_name
+
+    try:
+        if proj.mode is BoxMode.standalone:
+            name = registry_store.standalone_name_for_root(
+                std.data_path, proj.project_path,
+            ) or proj.name
+            if name:
+                registry_store.unregister_standalone(std.data_path, name)
+            return
+
+        # PRIMARY (named-workset boxes are unregistered via remove_project, not
+        # purge): the registry maps name → workspace path, so reverse-resolve.
+        found = lookup_by_path(std.data_path, str(proj.project_path))
+        name = found[0] if found else (proj.name or proj.metadata_path.name)
+        if name:
+            unregister_name(std.data_path, name)
+    except Exception:  # noqa: BLE001 - cleanup must never break a purge
+        pass
+
+
+def _unregister_purged_primary(std, metadata_path, project_path) -> None:
+    """M2 mirror for ``_purge_all``: unregister a purged PRIMARY box by path.
+
+    ``iter_projects`` yields ``(metadata_path, project_path)`` for primary-mode
+    boxes; reverse-resolve the registered name from the workspace path (falling
+    back to the metadata dir name) and drop it from ``registry.projects``.
+    """
+    from kanibako.names import lookup_by_path, unregister_name
+
+    try:
+        name: str | None = None
+        if project_path is not None:
+            found = lookup_by_path(std.data_path, str(project_path))
+            if found:
+                name = found[0]
+        if name is None:
+            name = metadata_path.name
+        if name:
+            unregister_name(std.data_path, name)
+    except Exception:  # noqa: BLE001 - cleanup must never break a purge
+        pass
+
+
 def _purge_one(std, config, path: str, *, force: bool) -> int:
     """Purge session data for a single project."""
     proj = resolve_any_project(std, config, project_dir=path, initialize=False)
@@ -86,6 +140,11 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     log_dir = std.data_path / "logs" / _log_id
     if log_dir.is_dir():
         shutil.rmtree(log_dir)
+
+    # M2 (registry hygiene): the box metadata is gone, so drop its registry
+    # entry too — otherwise registry.{projects,standalone} keeps a dangling
+    # name → path that would shadow a future box at the same path.
+    _unregister_purged(std, proj)
 
     print("done.")
     print(f"Session data removed for {proj.project_path}")
@@ -148,6 +207,9 @@ def _purge_all(std, config, *, force: bool) -> int:
         log_dir = std.data_path / "logs" / metadata_path.name
         if log_dir.is_dir():
             shutil.rmtree(log_dir)
+
+        # M2: drop the now-dangling registry entry for this PRIMARY box.
+        _unregister_purged_primary(std, metadata_path, project_path)
 
         print("done.")
         removed += 1

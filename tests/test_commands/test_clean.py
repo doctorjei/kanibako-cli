@@ -30,6 +30,48 @@ class TestClean:
         assert rc == 0
         assert not proj.metadata_path.exists()
 
+    def test_purge_unregisters_primary(self, config_file, tmp_home, credentials_dir):
+        """M2: purging a primary box drops its registry.projects entry."""
+        from kanibako.commands.clean import run
+        from kanibako.names import lookup_by_path, read_names
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        (tmp_home / "registered_proj").mkdir()
+        project_dir = str(tmp_home / "registered_proj")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # Initialized → registered.
+        assert lookup_by_path(std.data_path, project_dir) is not None
+
+        args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
+        assert run(args) == 0
+
+        # No dangling name → path entry remains.
+        assert lookup_by_path(std.data_path, project_dir) is None
+        assert project_dir not in read_names(std.data_path)["projects"].values()
+
+    def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
+        """M2 mirror: --all purge clears every primary registry entry."""
+        from kanibako.commands.clean import run
+        from kanibako.names import read_names
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        (tmp_home / "reg_a").mkdir()
+        (tmp_home / "reg_b").mkdir()
+        a = str(tmp_home / "reg_a")
+        b = str(tmp_home / "reg_b")
+        resolve_project(std, config, project_dir=a, initialize=True)
+        resolve_project(std, config, project_dir=b, initialize=True)
+
+        args = argparse.Namespace(path=None, all_projects=True, force=True)
+        assert run(args) == 0
+
+        projects = read_names(std.data_path)["projects"]
+        assert a not in projects.values()
+        assert b not in projects.values()
+
     def test_no_session_data(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.clean import run
 

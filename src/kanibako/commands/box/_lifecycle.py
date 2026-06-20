@@ -33,7 +33,11 @@ from kanibako.config import (
     write_project_meta,
 )
 from kanibako.errors import ProjectError, WorksetError
-from kanibako.names import assign_name, unregister_name
+from kanibako.names import (
+    assign_name,
+    lookup_by_path,
+    unregister_name,
+)
 from kanibako.paths import (
     BoxMode,
     ProjectPaths,
@@ -827,7 +831,13 @@ def _copy_metadata(
     return dst_shell
 
 
-def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: KanibakoConfig) -> None:
+def _remove_old_metadata(
+    state: ProjectState,
+    std: StandardPaths,
+    config: KanibakoConfig,
+    *,
+    preserve_name: str | None = None,
+) -> None:
     """Remove the source project's metadata/shell (+ PRIMARY vault).
 
     Standalone source: removes the in-tree ``.kanibako`` metadata dir.
@@ -847,11 +857,17 @@ def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: Kaniba
         return
 
     if state.mode == BoxMode.primary:
-        if state.name:
+        # L2: when the converted box reuses its own name (same-name in-place
+        # convert), the destination metadata/vault IS the source — keep the
+        # reused name + its metadata/vault rather than dropping them.
+        reused_in_place = preserve_name is not None and state.name == preserve_name
+        if state.name and not reused_in_place:
             try:
                 unregister_name(std.data_path, state.name)
             except Exception:  # noqa: BLE001
                 pass
+        if reused_in_place:
+            return
         if state.metadata_path.is_dir():
             shutil.rmtree(state.metadata_path, ignore_errors=True)
         # PRIMARY vault lives under @system.primary_workset/vault/{ro,rw}/<name>
@@ -887,14 +903,35 @@ def _to_default(
     new_workspace: Path,
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
+    # L2 (name reuse on same-name convert): a PRIMARY source's own name is still
+    # registered at this point, so assign_name would see the collision and
+    # auto-suffix (foo→foo2), stranding the original entry once _remove_old_
+    # metadata later unregisters it. Unregister the source's name FIRST (only for
+    # a primary source — other modes aren't in registry.projects) so the same
+    # name is reused; the later _remove_old_metadata unregister then no-ops.
+    preserved_name: str | None = None
+    if state.mode == BoxMode.primary and state.name:
+        existing = lookup_by_path(std.data_path, str(new_workspace))
+        if existing is not None and existing[1] == "projects":
+            # Path unchanged + still registered: free the name so it is reused
+            # verbatim rather than suffixed, and mark it preserved so
+            # _remove_old_metadata neither re-unregisters it nor deletes the
+            # reused metadata.
+            preserved_name = existing[0]
+            _safe_unregister(std, existing[0])
     project_name = assign_name(std.data_path, str(new_workspace))
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
-    dst_shell = _copy_metadata(
-        state.metadata_path, state.shell_path, dst_metadata,
-        shell_into_metadata=True, unwind=unwind,
-    )
+    # When the name is reused in place, the metadata already lives at the
+    # destination — copying would be a (failing) copy-onto-self, so reuse it.
+    if dst_metadata.resolve() == state.metadata_path.resolve():
+        dst_shell = state.shell_path
+    else:
+        dst_shell = _copy_metadata(
+            state.metadata_path, state.shell_path, dst_metadata,
+            shell_into_metadata=True, unwind=unwind,
+        )
 
     phash = project_hash(str(new_workspace.resolve()))
     # Phase 5 fixed PRIMARY table: vault under @system.primary_workset.
@@ -925,7 +962,7 @@ def _to_default(
         unwind.push(lambda: shutil.rmtree(vault_ro, ignore_errors=True))
         unwind.push(lambda: shutil.rmtree(vault_rw, ignore_errors=True))
 
-    _remove_old_metadata(state, std, config)
+    _remove_old_metadata(state, std, config, preserve_name=preserved_name)
 
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=project_name,
