@@ -17,4 +17,12 @@ where = ["src"]
 include = ["kanibako.plugins.claude*"]
 
 [tool.setuptools.package-data]
-"kanibako.plugins.claude" = ["py.typed"]
+# Curated template content (Phase 9c).  setuptools' glob does NOT recurse into
+# hidden directories with ``**/*`` alone, so the dot-dir patterns (.claude/,
+# .config/) are listed explicitly to package nested config files.
+"kanibako.plugins.claude" = [
+    "py.typed",
+    "template/**/*", "template/**/.*",
+    "template/.*/**/*", "template/.*/*",
+    "template/**/.*/**/*", "template/**/.*/*",
+]

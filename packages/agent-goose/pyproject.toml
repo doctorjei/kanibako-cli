@@ -17,7 +17,15 @@ where = ["src"]
 include = ["kanibako.plugins.goose*"]
 
 [tool.setuptools.package-data]
-"kanibako.plugins.goose" = ["py.typed"]
+# Curated template content (Phase 9c).  setuptools' glob does NOT recurse into
+# hidden directories with ``**/*`` alone, so the dot-dir patterns (.config/)
+# are listed explicitly to package nested config files.
+"kanibako.plugins.goose" = [
+    "py.typed",
+    "template/**/*", "template/**/.*",
+    "template/.*/**/*", "template/.*/*",
+    "template/**/.*/**/*", "template/**/.*/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

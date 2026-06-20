@@ -1,0 +1,9 @@
+# goose configuration (kanibako-curated, minimal).
+#
+# Provider and model are supplied at launch via the GOOSE_PROVIDER /
+# GOOSE_MODEL environment variables (set through kanibako settings), so they are
+# intentionally NOT pinned here. Host extensions/instructions are not imported
+# (1.6.0); add any extensions you want below.
+#
+# This file is seeded once and is safe to edit.
+extensions: {}

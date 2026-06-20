@@ -17,7 +17,15 @@ where = ["src"]
 include = ["kanibako.plugins.codex*"]
 
 [tool.setuptools.package-data]
-"kanibako.plugins.codex" = ["py.typed"]
+# Curated template content (Phase 9c).  setuptools' glob does NOT recurse into
+# hidden directories with ``**/*`` alone, so the dot-dir patterns (.codex/) are
+# listed explicitly to package nested config files.
+"kanibako.plugins.codex" = [
+    "py.typed",
+    "template/**/*", "template/**/.*",
+    "template/.*/**/*", "template/.*/*",
+    "template/**/.*/**/*", "template/**/.*/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

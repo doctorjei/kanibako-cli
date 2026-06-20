@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from typing import Any
 
@@ -218,10 +217,6 @@ def _ensure_initialized() -> None:
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
     sys_paths["system._boxes"].mkdir(parents=True, exist_ok=True)
 
-    templates_dir = sys_paths["system.base_template"]
-    (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
-    (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
-
     # Channels type-root skeleton (per-workset mailbox/share partitions + chat
     # logs are guarantee-created on the launch path; see commands/install.py).
     channels_dir = sys_paths["system.channels"]
@@ -244,29 +239,25 @@ def _ensure_initialized() -> None:
     if not general_toml.exists():
         write_agent_config(general_toml, AgentConfig(name="Shell"))
 
+    target_names = list(discover_targets())
     for target_name, cls in discover_targets().items():
         target_toml = agents_path / f"{target_name}.yaml"
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
 
-    # Curated per-agent template layer (@agent.<agent>.template =
-    # @system.agents/<agent>/template), seeded into the box home at creation by
-    # the layered seed-once apply (templates.apply_template_layers).  The host
-    # agent-config IMPORT was removed in 1.6.0, so the box's onboarding stub now
-    # comes from this curated template instead of the host ~/.claude.json.
-    #
-    # MINIMAL stub: claude's static .claude.json onboarding marker, shipped
-    # UNCONDITIONALLY (not group_auth-gated) so a fresh box never re-triggers
-    # first-run onboarding.  Auth flows from the synced .credentials.json alone.
-    # The FULL curated content (settings.json, CLAUDE.md, goose/codex config) is
-    # authored in Phase 9.
-    claude_template = agents_path / "claude" / "template"
-    claude_template.mkdir(parents=True, exist_ok=True)
-    claude_onboarding = claude_template / ".claude.json"
-    if not claude_onboarding.exists():
-        claude_onboarding.write_text(
-            json.dumps({"hasCompletedOnboarding": True}, indent=2) + "\n"
-        )
+    # Curated base + per-agent template content (Phase 9c).  The host
+    # agent-config IMPORT was removed in 1.6.0, so a box gets its base guidance
+    # (~/INSTRUCTIONS.md) and per-agent config (claude .claude.json onboarding
+    # stub + settings.json, goose config.yaml, codex config.toml) from these
+    # CURATED templates instead.  The content ships as static package data and
+    # is COPIED here into the runtime template dirs (@system.base_template +
+    # @system.agents/<agent>/template), create-if-absent so user edits survive
+    # an upgrade.  The layered seed-once apply (templates.apply_template_layers)
+    # then copies them into each new box home at creation.
+    from kanibako.paths import load_std_paths
+    from kanibako.templates import install_packaged_templates
+
+    install_packaged_templates(load_std_paths(config), target_names)
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import shutil
 from typing import TYPE_CHECKING
 from pathlib import Path
@@ -88,3 +89,88 @@ def apply_template_layers(
             continue
         home.mkdir(parents=True, exist_ok=True)
         shutil.copytree(str(layer), str(home), dirs_exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Packaged curated-template install (Phase 9c).
+#
+# The base + per-agent template content ships as STATIC files inside the
+# installed packages (mirroring how ``image-baseline.yaml`` ships under
+# ``kanibako.data``):
+#
+#   base   -> ``kanibako.data`` resource ``templates/base/``
+#   agent  -> ``kanibako.plugins.<agent>`` resource ``template/``
+#
+# On first-run init (``cli._ensure_initialized`` / ``install.run``) these are
+# COPIED into the runtime template dirs (``@system.base_template`` and
+# ``@system.agents/<agent>/template``) where the layered seed-once apply above
+# reads them at box creation.  The copy is CREATE-IF-ABSENT per file: it adds
+# files the user does not yet have but never clobbers a user-edited template
+# (an explicit "refresh from package" is out of scope for 1.6.0).
+# ---------------------------------------------------------------------------
+
+
+def _copy_resource_tree_if_absent(src: Path, dest: Path) -> None:
+    """Copy every file under *src* into *dest*, skipping files that exist.
+
+    Mirrors the relative tree of *src* into *dest*.  Existing destination files
+    are left untouched (create-if-absent) so user edits to a seeded template
+    survive a later kanibako upgrade.  Directories are created as needed.
+    """
+    if not src.is_dir():
+        return
+    for entry in src.rglob("*"):
+        if not entry.is_file():
+            continue
+        rel = entry.relative_to(src)
+        target = dest / rel
+        if target.exists():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(entry), str(target))
+
+
+def _packaged_base_template() -> Path | None:
+    """Locate the packaged base-template content (``kanibako.data/templates/base``)."""
+    try:
+        ref = importlib.resources.files("kanibako.data").joinpath("templates", "base")
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+    path = Path(str(ref))
+    return path if path.is_dir() else None
+
+
+def _packaged_agent_template(agent_name: str) -> Path | None:
+    """Locate a plugin's packaged template content (``kanibako.plugins.<agent>/template``).
+
+    Returns ``None`` if the plugin is not installed or ships no ``template/``
+    (e.g. ``no_agent`` / a third-party target without curated content).
+    """
+    try:
+        ref = importlib.resources.files(
+            f"kanibako.plugins.{agent_name}"
+        ).joinpath("template")
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+    path = Path(str(ref))
+    return path if path.is_dir() else None
+
+
+def install_packaged_templates(std: StandardPaths, agent_names: list[str]) -> None:
+    """Copy packaged curated-template content into the runtime template dirs.
+
+    Populates ``@system.base_template`` from the packaged base content and each
+    ``@system.agents/<agent>/template`` from the agent plugin's packaged
+    ``template/``.  Create-if-absent (never clobbers user edits).  Called from
+    first-run init; safe to re-run (idempotent for unchanged trees).
+    """
+    base_src = _packaged_base_template()
+    if base_src is not None:
+        _copy_resource_tree_if_absent(base_src, std.base_template)
+
+    for agent_name in agent_names:
+        agent_src = _packaged_agent_template(agent_name)
+        if agent_src is None:
+            continue
+        dest = agent_template_dir(std, agent_name)
+        _copy_resource_tree_if_absent(agent_src, dest)
