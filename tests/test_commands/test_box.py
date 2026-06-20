@@ -731,7 +731,55 @@ class TestBoxDuplicateCrossMode:
         rc = run_duplicate(args)
         assert rc == 0
 
-        assert not (dst_dir / ".kanibako" / ".kanibako.lock").exists()
+        assert not (dst_dir / "box_data" / ".kanibako.lock").exists()
+
+    def test_duplicate_primary_to_standalone_is_detectable_and_registered(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """BUG#3: duplicating a PRIMARY box --standalone must ESTABLISH a real
+        standalone box — detected as standalone, registered in
+        ``registry.standalone``, ``mode=standalone``, with a FRESH
+        ``<random24>_<leaf>`` name distinct from the source (which is unregistered
+        as a standalone, since primary boxes use ``names.yaml``)."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.config import BOX_META_FILE, read_project_meta
+        from kanibako.paths import BoxMode, detect_project_mode
+        from kanibako.registry_store import load_standalone
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "b3_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('b3')")
+        src_proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+        src_name = src_proj.name
+
+        dst_dir = tmp_home / "b3_dst"
+
+        args = self._make_args(src_dir, dst_dir, "standalone")
+        rc = run_duplicate(args)
+        assert rc == 0
+
+        # (1) Detected as standalone via the on-disk box_data/ marker.
+        result = detect_project_mode(dst_dir, std, config)
+        assert result.mode == BoxMode.standalone
+
+        # (2) Metadata declares mode=standalone with a fresh <random24>_<leaf> name.
+        meta = read_project_meta(dst_dir / "box_data" / BOX_META_FILE)
+        assert meta is not None
+        assert meta["mode"] == "standalone"
+        new_name = meta["name"]
+        assert new_name != src_name
+        # <random24>_<leaf>: 5-char base32 prefix + "_" + sanitized leaf.
+        prefix, _, leaf = new_name.partition("_")
+        assert len(prefix) == 5
+        assert leaf == "b3_dst"
+
+        # (3) Registered in registry.standalone keyed by the new name → dst root.
+        standalone = load_standalone(std.data_path)
+        assert new_name in standalone
+        assert standalone[new_name] == str(dst_dir)
 
     def test_duplicate_cross_mode_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
