@@ -738,7 +738,7 @@ def _run_container(
     # credential lifecycle sites below (init / refresh / writeback) and the
     # launch-assembly block all branch off a single value: descriptor-bearing
     # targets route their cred lifecycle through the credsync engine, legacy
-    # targets keep the per-plugin init_home/refresh/writeback hooks.
+    # targets keep the per-plugin refresh/writeback hooks.
     desc = target.descriptor if target else None
 
     # Persistent mode: reattach if already running, clean up stale containers
@@ -843,14 +843,15 @@ def _run_container(
                 layers.append(agent_template_dir(std, target.name))
             layers.append(workset_template_dir(proj, std))
             apply_template_layers(proj.shell_path, layers)
-        if proj.is_new and target:
-            if desc is not None:
-                credsync.seed_cred_files(
-                    desc, target, host_home=Path.home(),
-                    project_home=proj.shell_path, group_auth=proj.group_auth,
-                )
-            else:
-                target.init_home(proj.shell_path, group_auth=proj.group_auth)
+        # Descriptor-bearing targets seed creds via the credsync engine.  A
+        # descriptor-less target (only no_agent) has nothing to seed at init —
+        # its dirs come from the layered template apply above — so there is no
+        # else branch (the vestigial init_home hook was removed in 1.6.0).
+        if proj.is_new and target and desc is not None:
+            credsync.seed_cred_files(
+                desc, target, host_home=Path.home(),
+                project_home=proj.shell_path, group_auth=proj.group_auth,
+            )
 
         # Copy-once-at-init seeds (additive; overlays templates). target may be
         # None (no agent) — seeds can still come from config levels.

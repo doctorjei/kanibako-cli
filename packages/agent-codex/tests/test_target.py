@@ -457,10 +457,6 @@ class TestInheritedDefaults:
         )
         assert out == ["--foo"]
 
-    def test_init_home_noop(self, project_home: Path):
-        # Inherited no-op: must not raise.
-        assert CodexTarget().init_home(project_home) is None
-
     def test_refresh_writeback_noop(self, project_home: Path):
         assert CodexTarget().refresh_credentials(project_home) is None
         assert CodexTarget().writeback_credentials(project_home) is None

@@ -311,21 +311,6 @@ class Target(ABC):
         """
         return []
 
-    def init_home(self, home: Path, *, group_auth: bool = True) -> None:
-        """Initialize agent-specific files in the project home directory.
-
-        Called after kanibako core creates .bashrc/.profile.  The target
-        should create its own config directories and files (e.g. .claude/).
-
-        *group_auth* is ``True`` (copy credentials from host) or ``False``
-        (skip credential copy — project manages its own credentials).
-
-        Default: no-op.  Descriptor-native plugins create dirs + seed creds via
-        ``descriptor.init_dirs``/``cred_files`` (core's credsync engine) and need
-        not override this; legacy plugins override it.
-        """
-        return None
-
     @property
     def has_binary(self) -> bool:
         """Whether this target requires a host-installed binary."""

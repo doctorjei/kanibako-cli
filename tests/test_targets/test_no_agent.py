@@ -24,20 +24,6 @@ class TestNoAgentTarget:
     def test_binary_mounts_empty(self):
         assert self.target.binary_mounts(None) == []
 
-    def test_init_home_is_noop(self, tmp_path):
-        """init_home should not create any files."""
-        home = tmp_path / "shell"
-        home.mkdir()
-        self.target.init_home(home)
-        # Only the dir we created should exist
-        assert list(home.iterdir()) == []
-
-    def test_init_home_distinct_auth(self, tmp_path):
-        home = tmp_path / "shell"
-        home.mkdir()
-        self.target.init_home(home, group_auth=False)
-        assert list(home.iterdir()) == []
-
     def test_refresh_credentials_is_noop(self, tmp_path):
         self.target.refresh_credentials(tmp_path)
 

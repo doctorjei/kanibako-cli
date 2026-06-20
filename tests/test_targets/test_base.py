@@ -162,9 +162,6 @@ class TestTargetABC:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, group_auth=True):
-                pass
-
             def refresh_credentials(self, home):
                 pass
 
@@ -200,9 +197,6 @@ class TestTargetABC:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, group_auth=True):
-                pass
-
             def refresh_credentials(self, home):
                 pass
 
@@ -232,9 +226,6 @@ class TestTargetABC:
 
             def binary_mounts(self, install):
                 return []
-
-            def init_home(self, home, *, group_auth=True):
-                pass
 
             def refresh_credentials(self, home):
                 pass
@@ -283,9 +274,6 @@ class TestGenerateAgentConfig:
             def binary_mounts(self, install):
                 return []
 
-            def init_home(self, home, *, group_auth=True):
-                pass
-
             def refresh_credentials(self, home):
                 pass
 
@@ -321,9 +309,6 @@ class TestApplyState:
 
             def binary_mounts(self, install):
                 return []
-
-            def init_home(self, home, *, group_auth=True):
-                pass
 
             def refresh_credentials(self, home):
                 pass
@@ -538,9 +523,6 @@ class TestPluginDescriptorDataclasses:
 
             def binary_mounts(self, install):
                 return []
-
-            def init_home(self, home, *, group_auth=True):
-                pass
 
             def refresh_credentials(self, home):
                 pass
