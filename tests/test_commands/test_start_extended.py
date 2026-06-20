@@ -842,7 +842,7 @@ class TestVaultTmpfsMode:
     The vault mask is generalized into the ``box.masks`` category with an
     unconditional default of ``~/workspace/vault`` (config-core revamp,
     decision B / design-review m6).  start.py resolves the mask through the
-    category model and passes the result to ``runtime.run(vault_tmpfs=...)``.
+    category model and passes the result to ``runtime.run(tmpfs_masks=...)``.
     Unlike the old default-workset-only flag, the mask is now ON in EVERY box
     mode (default / workset / standalone), unless a box suppresses it via a
     terminal ``""`` on ``box.masks``.
@@ -864,7 +864,8 @@ class TestVaultTmpfsMode:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
+            masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
+            assert masks == ["/home/agent/workspace/vault"]
 
     def test_workset_mode_now_also_uses_tmpfs_vault(self, start_mocks):
         from pathlib import Path
@@ -883,7 +884,8 @@ class TestVaultTmpfsMode:
                 extra_args=[],
             )
             # Decision B: the mask is now unconditional (was False pre-4c).
-            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
+            masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
+            assert masks == ["/home/agent/workspace/vault"]
 
     def test_standalone_mode_now_also_uses_tmpfs_vault(self, start_mocks):
         from kanibako.paths import BoxMode
@@ -897,7 +899,8 @@ class TestVaultTmpfsMode:
                 extra_args=[],
             )
             # Decision B: the mask is now unconditional (was False pre-4c).
-            assert m.runtime.run.call_args.kwargs.get("vault_tmpfs") is True
+            masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
+            assert masks == ["/home/agent/workspace/vault"]
 
 
 class TestConfigurableBootstrap:

@@ -608,7 +608,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "no-ro",
             vault_rw_path=tmp_path / "no-rw",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         assert (shell / "workspace").is_dir()
 
@@ -627,11 +627,33 @@ class TestPrecreateMountStubs:
             enable_vault=True,
             vault_ro_path=vault_ro,
             vault_rw_path=vault_rw,
-            vault_tmpfs=True,
+            tmpfs_masks=["/home/agent/workspace/vault"],
         )
         assert (shell / "share-ro").is_dir()
         assert (shell / "share-rw").is_dir()
+        # The default vault mask box-dest maps to project_path / "vault"
+        # (byte-identical to the old single-vault stub).
         assert (project / "vault").is_dir()
+
+    def test_mask_stub_under_home(self, tmp_path):
+        """A mask box-dest under ~/ (not workspace) maps under shell_path."""
+        from kanibako.container import _precreate_mount_stubs
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        vault_ro = tmp_path / "vault-ro"
+        vault_ro.mkdir()
+        vault_rw = tmp_path / "vault-rw"
+        vault_rw.mkdir()
+        _precreate_mount_stubs(
+            shell, project, None,
+            enable_vault=True,
+            vault_ro_path=vault_ro,
+            vault_rw_path=vault_rw,
+            tmpfs_masks=["/home/agent/.secret"],
+        )
+        assert (shell / ".secret").is_dir()
 
     def test_vault_dirs_skipped_when_source_missing(self, tmp_path):
         from kanibako.container import _precreate_mount_stubs
@@ -644,7 +666,7 @@ class TestPrecreateMountStubs:
             enable_vault=True,
             vault_ro_path=tmp_path / "missing-ro",
             vault_rw_path=tmp_path / "missing-rw",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         assert not (shell / "share-ro").exists()
         assert not (shell / "share-rw").exists()
@@ -671,7 +693,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         assert (shell / "comms").is_dir()
 
@@ -697,7 +719,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         assert (shell / ".local" / "bin").is_dir()
         assert (shell / ".local" / "bin" / "claude").is_file()
@@ -724,7 +746,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         assert (project / "vault").is_dir()
 
@@ -750,7 +772,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         # No dirs created under shell or project for /opt/ mounts
         assert list(shell.iterdir()) == [shell / "workspace"]
@@ -781,7 +803,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         # File stub should NOT overwrite existing content
         assert existing.read_text() == "existing content"
@@ -812,7 +834,7 @@ class TestPrecreateMountStubs:
                 enable_vault=False,
                 vault_ro_path=tmp_path / "x",
                 vault_rw_path=tmp_path / "y",
-                vault_tmpfs=False,
+                tmpfs_masks=[],
             )
         finally:
             shell.chmod(0o755)
@@ -852,7 +874,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         # Symlink cleared; dest is now a real, non-symlink file mountpoint.
         assert not link.is_symlink()
@@ -889,7 +911,7 @@ class TestPrecreateMountStubs:
             enable_vault=False,
             vault_ro_path=tmp_path / "x",
             vault_rw_path=tmp_path / "y",
-            vault_tmpfs=False,
+            tmpfs_masks=[],
         )
         assert not link.is_symlink()
         assert link.is_dir()

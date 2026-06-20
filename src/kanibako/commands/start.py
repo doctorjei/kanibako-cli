@@ -1170,12 +1170,13 @@ def _run_container(
         )
         extra_mounts.extend(share_mounts)
 
-        # Vault mask (decision B): resolve the ~/workspace/vault tmpfs mask
-        # through the category model.  It defaults ON unconditionally (every box
-        # mode) and a box may suppress it via a terminal "" on box.masks.  The
-        # result drives runtime.run(vault_tmpfs=...) below — generalizing the old
-        # hardcoded, default-workset-only flag.
-        vault_tmpfs = _resolve_vault_mask(
+        # Masks (decision B): resolve the ``box.masks`` tmpfs mask LIST through
+        # the category model.  The vault mask (~/workspace/vault) is injected
+        # unconditionally (every box mode); a box may add masks or suppress all
+        # via a terminal "" on box.masks.  The result drives
+        # runtime.run(tmpfs_masks=...) below — generalizing the old hardcoded,
+        # single, default-workset-only flag.
+        tmpfs_masks = _resolve_masks(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -1409,7 +1410,7 @@ def _run_container(
                 vault_ro_path=proj.vault_ro_path,
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
-                vault_tmpfs=vault_tmpfs,
+                tmpfs_masks=tmpfs_masks or None,
                 enable_vault=proj.enable_vault,
                 env=container_env,
                 name=container_name,
@@ -1962,7 +1963,7 @@ def _build_share_mounts(
     Routes the category-shaped binds through the reconcile model
     (:func:`_resolve_launch_categories`) and emits the reconciled MOUNT winners
     as :class:`~kanibako.targets.base.Mount` objects.  ``masks`` (tmpfs) are
-    handled separately by :func:`_resolve_vault_mask` — they are skipped here so
+    handled separately by :func:`_resolve_masks` — they are skipped here so
     the host-side guarantee-create only runs on real bind sources.
 
     ADDITIVE: with no category keys configured (and no target default shares),
@@ -1995,7 +1996,7 @@ def _build_share_mounts(
     mounts: list = []
     for e in reconciled.mounts:
         if e.category == "masks":
-            # tmpfs masks have no host source; emitted via _resolve_vault_mask.
+            # tmpfs masks have no host source; emitted via _resolve_masks.
             continue
         assert e.host_src is not None  # bind-shaped MOUNTs always have a source.
         src = _Path(e.host_src)
@@ -2020,7 +2021,7 @@ def _build_share_mounts(
     return mounts
 
 
-def _resolve_vault_mask(
+def _resolve_masks(
     *,
     std,
     proj,
@@ -2029,18 +2030,19 @@ def _resolve_vault_mask(
     project_toml,
     workset_config_path,
     agent_config_path,
-) -> bool:
-    """Resolve whether the ``~/workspace/vault`` tmpfs mask is active.
+) -> list[str]:
+    """Resolve the active tmpfs masks (the ``box.masks`` category) as box-dests.
 
-    The vault mask flows through the category resolver as a ``box.masks``
-    default (:data:`VAULT_MASK_DEST`); a box may suppress it with a terminal
-    ``""``.  Returns True iff the reconciled mask set still contains the vault
-    destination — generalizing the old hardcoded ``vault_tmpfs`` flag.  The mask
-    is UNCONDITIONAL across box modes (decision B), unlike the old
-    default-workset-only behavior.
+    Masks flow through the category resolver; the unconditional default
+    (:data:`VAULT_MASK_DEST` → ``~/workspace/vault``) is injected so the local
+    vault is hidden behind a read-only tmpfs in every box mode (decision B).  A
+    box may add masks or suppress all of them with a terminal ``""``.  Returns
+    the reconciled mask box-dest LIST (``@``-expanded, e.g.
+    ``/home/agent/workspace/vault``) — generalizing the old hardcoded single
+    ``vault_tmpfs`` flag.  The default (no extra masks) yields exactly
+    ``["/home/agent/workspace/vault"]`` so the emitted podman args are
+    byte-identical to the pre-list behavior.
     """
-    from kanibako.settings_resolve import GUEST_HOME
-
     reconciled = _resolve_launch_categories(
         std=std,
         proj=proj,
@@ -2051,11 +2053,7 @@ def _resolve_vault_mask(
         agent_config_path=agent_config_path,
         default_categories={"box.masks": VAULT_MASK_DEST},
     )
-    vault_dest = f"{GUEST_HOME}/workspace/vault"
-    return any(
-        e.category == "masks" and e.box_dest == vault_dest
-        for e in reconciled.mounts
-    )
+    return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
 
 
 def _kanibako_mounts():

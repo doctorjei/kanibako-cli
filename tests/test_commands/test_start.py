@@ -1948,7 +1948,7 @@ class TestBuildShareMounts:
 
 
 class TestResolveVaultMask:
-    """Unit tests for _resolve_vault_mask (vault tmpfs mask, decision B)."""
+    """Unit tests for _resolve_masks (vault tmpfs mask LIST, decision B)."""
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
@@ -1969,8 +1969,8 @@ class TestResolveVaultMask:
 
     def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
               project_toml=None, workset_config_path=None, agent_config_path=None):
-        from kanibako.commands.start import _resolve_vault_mask
-        return _resolve_vault_mask(
+        from kanibako.commands.start import _resolve_masks
+        return _resolve_masks(
             std=std or self._std(tmp_path),
             proj=proj or self._proj(),
             agent_name="claude",
@@ -1981,21 +1981,34 @@ class TestResolveVaultMask:
         )
 
     def test_default_unconditional_mask_active(self, tmp_path):
-        """With no config, the unconditional vault mask default is active."""
-        assert self._call(tmp_path) is True
+        """With no config, the unconditional vault mask default is active and
+        is the only mask (byte-identical single-vault behavior)."""
+        assert self._call(tmp_path) == ["/home/agent/workspace/vault"]
 
     def test_default_mask_active_for_non_default_workset(self, tmp_path):
         """Decision B: the mask is unconditional — ON even for a named workset
         (the old behavior gated it on the DEFAULT workset only)."""
         from types import SimpleNamespace
         group = SimpleNamespace(root=tmp_path / "ws", name="ws", is_default=False)
-        assert self._call(tmp_path, proj=self._proj(group=group)) is True
+        assert self._call(tmp_path, proj=self._proj(group=group)) == [
+            "/home/agent/workspace/vault"
+        ]
 
     def test_box_suppresses_vault_mask(self, tmp_path):
-        """A box-level terminal '' on box.masks suppresses the vault mask."""
+        """A box-level terminal '' on box.masks suppresses every mask."""
         ptoml = tmp_path / "project.yaml"
         ptoml.write_text('box:\n  masks: ""\n')
-        assert self._call(tmp_path, project_toml=ptoml) is False
+        assert self._call(tmp_path, project_toml=ptoml) == []
+
+    def test_box_adds_extra_mask(self, tmp_path):
+        """A box may add a mask alongside the default vault mask."""
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  masks: "~/workspace/vault,~/.secret"\n')
+        masks = self._call(tmp_path, project_toml=ptoml)
+        assert set(masks) == {
+            "/home/agent/workspace/vault",
+            "/home/agent/.secret",
+        }
 
 
 class TestApplyInitSeeds:

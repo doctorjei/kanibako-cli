@@ -244,7 +244,7 @@ class ContainerRuntime:
         vault_ro_path: Path,
         vault_rw_path: Path,
         extra_mounts: list | None = None,
-        vault_tmpfs: bool = False,
+        tmpfs_masks: list[str] | None = None,
         enable_vault: bool = True,
         env: dict[str, str] | None = None,
         name: str | None = None,
@@ -257,11 +257,12 @@ class ContainerRuntime:
         When *detach* is True the container runs in the background (``-d``
         instead of ``-it``, no ``--rm``).  Returns 0 on success.
         """
+        masks = tmpfs_masks or []
         # Pre-create mount destination stubs so crun doesn't need to mkdir
         # inside bind-mounted overlay filesystems (fails in LXC).
         _precreate_mount_stubs(
             shell_path, project_path, extra_mounts,
-            enable_vault, vault_ro_path, vault_rw_path, vault_tmpfs,
+            enable_vault, vault_ro_path, vault_rw_path, masks,
         )
 
         if detach:
@@ -283,13 +284,14 @@ class ContainerRuntime:
                 cmd += ["-v", f"{vault_ro_path}:/home/agent/share-ro:ro"]
             if vault_rw_path.is_dir():
                 cmd += ["-v", f"{vault_rw_path}:/home/agent/share-rw:Z,U"]
-            # Local vault hiding: read-only tmpfs over workspace/vault.
-            # The vault mask is generalized into the ``box.masks`` category and
-            # resolved in start.py (decision B); the ``.gitignore`` overlay that
-            # used to ride on this tmpfs is DROPPED (unconditional mask, no
-            # special-case overlay).
-            if vault_tmpfs:
-                cmd += ["--mount", "type=tmpfs,dst=/home/agent/workspace/vault,ro"]
+            # Local masking: a read-only tmpfs over each box-dest in the
+            # ``box.masks`` category (resolved in start.py, decision B).  The
+            # default mask is ``~/workspace/vault`` (the old single hardcoded
+            # vault tmpfs); a box may add masks or suppress via a terminal "".
+            # The ``.gitignore`` overlay that used to ride on the vault tmpfs is
+            # DROPPED (unconditional mask, no special-case overlay).
+            for mask in masks:
+                cmd += ["--mount", f"type=tmpfs,dst={mask},ro"]
         # Extra mounts (target binary mounts, etc.)
         if extra_mounts:
             for mount in extra_mounts:
@@ -511,7 +513,7 @@ def _precreate_mount_stubs(
     enable_vault: bool,
     vault_ro_path: Path,
     vault_rw_path: Path,
-    vault_tmpfs: bool,
+    tmpfs_masks: list[str],
 ) -> None:
     """Pre-create mount destination stubs to avoid crun permission errors.
 
@@ -571,8 +573,18 @@ def _precreate_mount_stubs(
             _ensure_dir(shell_path / "share-ro")
         if vault_rw_path.is_dir():
             _ensure_dir(shell_path / "share-rw")
-        if vault_tmpfs:
-            _ensure_dir(project_path / "vault")
+        # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
+        # Map each box-dest to its host side the same way extra mounts are
+        # mapped (under project_path for workspace dests, shell_path for other
+        # home dests).  The default mask ``/home/agent/workspace/vault`` maps to
+        # ``project_path / "vault"`` — byte-identical to the old single stub.
+        for mask in tmpfs_masks:
+            if mask.startswith(WORKSPACE):
+                _ensure_dir(project_path / mask[len(WORKSPACE):])
+            elif mask.startswith(AGENT_HOME):
+                _ensure_dir(shell_path / mask[len(AGENT_HOME):])
+            else:
+                logger.debug("mask stub skip (not under home): %s", mask)
 
     # Extra mounts: pre-create destination stubs.
     if not extra_mounts:
