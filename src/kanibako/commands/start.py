@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import fcntl
-import os
 import shutil
 import subprocess
 import sys
@@ -26,7 +25,7 @@ from kanibako.paths import (
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
-from kanibako.utils import container_name_for, short_hash
+from kanibako.utils import container_name_for, project_hash, short_hash
 
 
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -1276,19 +1275,17 @@ def _run_container(
             from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
             from kanibako.targets.base import Mount as _HMount
 
-            # Socket must live in a short path to stay under the 108-byte
-            # AF_UNIX limit.  /run/user/$UID is the XDG runtime dir.
-            _uid = os.getuid()
-            _run_base = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{_uid}"))
-            _run_dir = _run_base / "kanibako"
-            try:
-                _run_dir.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                # Fallback if /run/user/$UID is not writable
-                _run_dir = Path(f"/tmp/kanibako-{_uid}")
-                _run_dir.mkdir(parents=True, exist_ok=True)
-            _sock_id = proj.name if proj.name else short_hash(proj.project_hash)
-            socket_path = _run_dir / f"{_sock_id}.sock"
+            # Socket must live in a short path to stay under the AF_UNIX
+            # ``sun_path`` limit.  ``std.runtime`` is ``$XDG_RUNTIME_DIR/kanibako``
+            # resolved through the hardened XDG resolver (honor-iff-absolute,
+            # with a warn-on-fallback to /run/user/$UID or a 0700 temp dir) —
+            # the single source of truth for the runtime base.
+            _run_dir = std.runtime
+            _run_dir.mkdir(parents=True, exist_ok=True)
+            # Socket name derives from the (globally unique) box name alone,
+            # bounded so a long standalone leaf can't overflow ``sun_path``.
+            _box_name = proj.name if proj.name else short_hash(proj.project_hash)
+            socket_path = _run_dir / bounded_socket_name(_box_name, _run_dir)
             validate_socket_path(socket_path)
             _log_id = proj.name if proj.name else short_hash(proj.project_hash)
             log_dir = std.data_path / "logs" / _log_id
@@ -2147,7 +2144,11 @@ def _build_resource_mounts(proj, target, agent_id: str):
     return mounts
 
 
-# AF_UNIX sun_path limit (108 on Linux, 104 on macOS).
+# AF_UNIX ``sun_path`` length limit.  The platform value is 108 bytes on Linux
+# and 104 on macOS/BSD.  We use the smaller (104) as a conservative
+# cross-platform floor so a socket path validated here is portable to either —
+# never the larger value, which would let a Linux-only path slip past and then
+# fail on macOS.
 _UNIX_SOCKET_PATH_LIMIT = 104
 
 
@@ -2190,6 +2191,28 @@ def _rotate_file(path: Path) -> None:
     backup = path.with_suffix(path.suffix + ".1")
     path.rename(backup)
     path.touch()
+
+
+# Length (hex chars) of the bounded hash fallback for an over-long box name.
+# 16 hex chars = 64 bits of a SHA-256 prefix: ample collision resistance for
+# the per-user set of boxes while keeping the basename tiny (``<16>.sock``).
+_SOCKET_HASH_LEN = 16
+
+
+def bounded_socket_name(box_name: str, run_dir: Path) -> str:
+    """Return a bounded, deterministic ``.sock`` basename for *box_name*.
+
+    The host helper socket lives at ``run_dir / <name>``.  ``box.meta.name`` is
+    already globally unique, so the socket name derives from it ALONE (no
+    redundant workset suffix).  When ``<box_name>.sock`` fits under the AF_UNIX
+    limit at *run_dir* it is used verbatim; otherwise the name is replaced by a
+    fixed-width SHA-256 prefix of *box_name* (deterministic per box — so a later
+    reattach computes the same socket — and collision-safe across boxes).
+    """
+    verbatim = f"{box_name}.sock"
+    if len(str(run_dir / verbatim)) < _UNIX_SOCKET_PATH_LIMIT:
+        return verbatim
+    return f"{short_hash(project_hash(box_name), _SOCKET_HASH_LEN)}.sock"
 
 
 def validate_socket_path(socket_path: Path) -> None:
