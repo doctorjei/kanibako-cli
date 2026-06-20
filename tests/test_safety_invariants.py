@@ -17,6 +17,7 @@ import pytest
 from kanibako.commands.start import (
     _UNIX_SOCKET_PATH_LIMIT,
     _validate_mounts,
+    bounded_socket_name,
     validate_socket_path,
 )
 from kanibako.paths import (
@@ -106,6 +107,65 @@ class TestSocketPathBoundary:
         shash = short_hash(long_hash)
         socket_path = Path(f"/tmp/kanibako-1000000/{shash}.sock")
         assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+
+
+class TestBoundedSocketName:
+    """``bounded_socket_name`` keeps the socket under the AF_UNIX limit."""
+
+    def test_short_name_verbatim(self):
+        """A short box name is used verbatim as ``<name>.sock``."""
+        run_dir = Path("/run/user/1000/kanibako")
+        assert bounded_socket_name("myproj", run_dir) == "myproj.sock"
+
+    def test_worst_case_standalone_name_under_limit(self):
+        """A ``<random24>_<32-char-leaf>`` name in a deep runtime dir fits."""
+        # 5-char base32 random24 + "_" + 32-char leaf = 38-char box name.
+        box_name = "abcde_" + "x" * 32
+        assert len(box_name) == 38
+        # A plausibly deep XDG_RUNTIME_DIR.
+        run_dir = Path("/run/user/4000000/kanibako")
+        socket_path = run_dir / bounded_socket_name(box_name, run_dir)
+        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+
+    def test_very_long_name_falls_back_to_hash(self):
+        """An over-long name is replaced by a bounded hash, still under limit."""
+        run_dir = Path("/run/user/1000/kanibako")
+        box_name = "z" * 200
+        name = bounded_socket_name(box_name, run_dir)
+        # Verbatim would be far over the limit; the fallback must be short.
+        assert name != f"{box_name}.sock"
+        assert name.endswith(".sock")
+        assert len(name) == len("0123456789abcdef") + len(".sock")
+        assert len(str(run_dir / name)) < _UNIX_SOCKET_PATH_LIMIT
+
+    def test_deterministic(self):
+        """Same box name yields the same socket name (so reattach finds it)."""
+        run_dir = Path("/run/user/1000/kanibako")
+        box_name = "q" * 200
+        assert bounded_socket_name(box_name, run_dir) == bounded_socket_name(
+            box_name, run_dir
+        )
+
+    def test_distinct_names_distinct_sockets(self):
+        """Different over-long names get different bounded sockets."""
+        run_dir = Path("/run/user/1000/kanibako")
+        a = bounded_socket_name("a" * 200, run_dir)
+        b = bounded_socket_name("b" * 200, run_dir)
+        assert a != b
+
+    def test_boundary_triggers_fallback(self):
+        """When verbatim hits the limit exactly, the hash fallback engages."""
+        run_dir = Path("/run/user/1000/kanibako")
+        # Pick a name whose verbatim ``<name>.sock`` is exactly at the limit.
+        prefix_len = len(str(run_dir)) + 1  # run_dir + "/"
+        name_len = _UNIX_SOCKET_PATH_LIMIT - prefix_len - len(".sock")
+        box_name = "n" * name_len
+        verbatim = run_dir / f"{box_name}.sock"
+        assert len(str(verbatim)) == _UNIX_SOCKET_PATH_LIMIT  # not < limit
+        # Must therefore fall back, and the result must pass the guard.
+        result = bounded_socket_name(box_name, run_dir)
+        assert result != f"{box_name}.sock"
+        assert len(str(run_dir / result)) < _UNIX_SOCKET_PATH_LIMIT
 
 
 # ── Negative tests: detection false positives ─────────────────────────
