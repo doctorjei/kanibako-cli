@@ -178,7 +178,7 @@ class TestAgentConfigTweakcc:
         from kanibako.agent_config import load_agent_config
 
         yaml_content = """\
-crab:
+agent:
   name: "Claude Code"
   shell: "standard"
   run_args: []
@@ -201,7 +201,7 @@ tweakcc:
         from kanibako.agent_config import load_agent_config
 
         yaml_content = """\
-crab:
+agent:
   name: "Claude Code"
 """
         path = tmp_path / "agent.yaml"

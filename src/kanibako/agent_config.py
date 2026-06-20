@@ -7,7 +7,7 @@ from pathlib import Path
 
 from kanibako.config_io import dump_doc, load_doc
 
-# Keys that live directly in [crab] as crab identity (not crab state).
+# Keys that live directly in the [agent] section as agent identity (not state).
 IDENTITY_KEYS = frozenset({"name", "run_args"})
 
 
@@ -16,7 +16,7 @@ class AgentConfig:
     """Per-agent configuration loaded from an agent YAML file.
 
     Sections:
-      crab   — identity (name, run_args) plus crab-state knobs
+      agent  — identity (name, run_args) plus agent-state knobs
                (model, access, start_mode, autonomous, …)
       env    — raw env vars injected into container
       shared — agent-level shared cache paths
@@ -53,7 +53,7 @@ def load_agent_config(path: Path) -> AgentConfig:
 
     data = load_doc(path)
 
-    agent_sec = data.get("crab", {})
+    agent_sec = data.get("agent", {})
     cfg.name = str(agent_sec.get("name", ""))
     raw_args = agent_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
@@ -78,7 +78,7 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
         agent_sec[k] = v
 
     data: dict = {
-        "crab": agent_sec,
+        "agent": agent_sec,
         "env": dict(cfg.env),
         "shared": dict(cfg.shared_caches),
         "tweakcc": dict(cfg.tweakcc),
