@@ -124,3 +124,54 @@ def save_section(data_path: Path, section: str, entries: dict) -> None:
     registry = load_registry(data_path)
     registry[section] = dict(entries)
     save_registry(data_path, registry)
+
+
+# ---------------------------------------------------------------------------
+# Standalone-box helpers (``standalone`` section: box.name → project root)
+# ---------------------------------------------------------------------------
+#
+# Standalone boxes are self-describing on disk (``box_data/`` marker under the
+# project root); ``registry.standalone`` is a derived index keyed by the box's
+# ``<random24>_<leaf>`` name → root path string.  It backs the whole-name
+# collision check (D-M13) and the drop-in import work in the next sub-step.
+
+
+def load_standalone(data_path: Path) -> dict[str, str]:
+    """Return the ``standalone`` section as ``{box_name: root_str}``."""
+    return {k: str(v) for k, v in load_section(data_path, "standalone").items()}
+
+
+def standalone_box_names(data_path: Path) -> set[str]:
+    """Return the set of registered standalone box names (the collision domain)."""
+    return set(load_standalone(data_path))
+
+
+def register_standalone(data_path: Path, box_name: str, root: Path) -> None:
+    """Register a standalone box (``box_name`` → *root*) in the registry.
+
+    Idempotent for a matching ``(box_name, root)`` pair; overwrites the stored
+    root if the same name re-registers a different root (a moved box).
+    """
+    entries = load_standalone(data_path)
+    entries[box_name] = str(root)
+    save_section(data_path, "standalone", entries)
+
+
+def unregister_standalone(data_path: Path, box_name: str) -> None:
+    """Remove *box_name* from the ``standalone`` section (no-op if absent)."""
+    entries = load_standalone(data_path)
+    if entries.pop(box_name, None) is not None:
+        save_section(data_path, "standalone", entries)
+
+
+def standalone_name_for_root(data_path: Path, root: Path) -> str | None:
+    """Return the registered standalone box name whose root is *root*, if any.
+
+    Lets a caller (e.g. the next drop-in-import sub-step) check whether an
+    on-disk standalone root is already registered, and reuse its name.
+    """
+    target = str(root)
+    for name, root_str in load_standalone(data_path).items():
+        if root_str == target:
+            return name
+    return None

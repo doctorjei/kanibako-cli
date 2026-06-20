@@ -82,6 +82,43 @@ def test_load_section_returns_single_section(tmp_path: Path) -> None:
     assert registry_store.load_section(tmp_path, "projects") == {}
 
 
+def test_register_standalone_adds_entry(tmp_path: Path) -> None:
+    registry_store.register_standalone(tmp_path, "abc_box", Path("/abs/proj"))
+    assert registry_store.load_standalone(tmp_path) == {"abc_box": "/abs/proj"}
+    assert registry_store.standalone_box_names(tmp_path) == {"abc_box"}
+
+
+def test_register_standalone_overwrites_root(tmp_path: Path) -> None:
+    registry_store.register_standalone(tmp_path, "abc_box", Path("/old"))
+    registry_store.register_standalone(tmp_path, "abc_box", Path("/new"))
+    assert registry_store.load_standalone(tmp_path) == {"abc_box": "/new"}
+
+
+def test_unregister_standalone(tmp_path: Path) -> None:
+    registry_store.register_standalone(tmp_path, "abc_box", Path("/abs/proj"))
+    registry_store.unregister_standalone(tmp_path, "abc_box")
+    assert registry_store.load_standalone(tmp_path) == {}
+    # No-op when absent.
+    registry_store.unregister_standalone(tmp_path, "missing")
+
+
+def test_standalone_name_for_root(tmp_path: Path) -> None:
+    registry_store.register_standalone(tmp_path, "abc_box", Path("/abs/proj"))
+    assert (
+        registry_store.standalone_name_for_root(tmp_path, Path("/abs/proj"))
+        == "abc_box"
+    )
+    assert (
+        registry_store.standalone_name_for_root(tmp_path, Path("/other")) is None
+    )
+
+
+def test_standalone_register_preserves_other_sections(tmp_path: Path) -> None:
+    registry_store.save_section(tmp_path, "projects", {"keep": "/keep"})
+    registry_store.register_standalone(tmp_path, "abc_box", Path("/proj"))
+    assert registry_store.load_section(tmp_path, "projects") == {"keep": "/keep"}
+
+
 def test_atomic_write_no_partial_on_existing(tmp_path: Path) -> None:
     """A second save fully replaces the file (atomic temp + replace)."""
     registry_store.save_section(tmp_path, "projects", {"a": "/a", "b": "/b"})
