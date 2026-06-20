@@ -12,7 +12,7 @@ from kanibako.paths import (
 )
 from kanibako.templates import (
     agent_template_dir,
-    apply_shell_template,
+    apply_template_layers,
     base_template_dir,
     resolve_template,
     workset_template_dir,
@@ -64,127 +64,110 @@ class TestResolveTemplate:
         assert result is None
 
 
-class TestApplyShellTemplate:
-    def test_copies_base_then_overlay(self, tmp_path):
-        """Base files are applied first, then agent template overlays."""
-        templates = tmp_path / "templates"
-        shell = tmp_path / "shell"
-        shell.mkdir()
+class TestApplyTemplateLayers:
+    def _layer(self, root, name, files):
+        d = root / name
+        d.mkdir(parents=True)
+        for rel, content in files.items():
+            p = d / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content)
+        return d
 
-        # Set up general/base with a file
-        base_dir = templates / "general" / "base"
-        base_dir.mkdir(parents=True)
-        (base_dir / "base-file.txt").write_text("from base")
-        (base_dir / "shared.txt").write_text("base version")
+    def test_ordered_last_wins(self, tmp_path):
+        """base -> agent -> workset applied in order; later layer wins per-file."""
+        home = tmp_path / "home"
+        home.mkdir()
+        base = self._layer(tmp_path, "base", {
+            "base-only.txt": "base",
+            "shared.txt": "base version",
+            "two.txt": "base two",
+        })
+        agent = self._layer(tmp_path, "agent", {
+            "agent-only.txt": "agent",
+            "shared.txt": "agent version",
+            "two.txt": "agent two",
+        })
+        workset = self._layer(tmp_path, "workset", {
+            "workset-only.txt": "workset",
+            "shared.txt": "workset version",
+        })
 
-        # Set up claude/standard with an overlay file
-        agent_dir = templates / "claude" / "standard"
-        agent_dir.mkdir(parents=True)
-        (agent_dir / "agent-file.txt").write_text("from agent")
-        (agent_dir / "shared.txt").write_text("agent version")
+        apply_template_layers(home, [base, agent, workset])
 
-        apply_shell_template(shell, templates, "claude")
+        # Each layer's unique files all land.
+        assert (home / "base-only.txt").read_text() == "base"
+        assert (home / "agent-only.txt").read_text() == "agent"
+        assert (home / "workset-only.txt").read_text() == "workset"
+        # Last layer to set a file wins (workset > agent > base).
+        assert (home / "shared.txt").read_text() == "workset version"
+        # agent overlays base where workset is silent.
+        assert (home / "two.txt").read_text() == "agent two"
 
-        assert (shell / "base-file.txt").read_text() == "from base"
-        assert (shell / "agent-file.txt").read_text() == "from agent"
-        # Overlay wins on conflict
-        assert (shell / "shared.txt").read_text() == "agent version"
+    def test_seed_once_does_not_overwrite_existing_user_file(self, tmp_path):
+        """A pre-existing (user-edited) file in home is NOT clobbered by a re-seed.
 
-    def test_base_only_when_no_agent_template(self, tmp_path):
-        """When only general/standard exists, base + general/standard are applied."""
-        templates = tmp_path / "templates"
-        shell = tmp_path / "shell"
-        shell.mkdir()
+        Re-running the apply must not overwrite a file the user changed after the
+        first seed (seed-once, D-B6).  The caller gates on ``proj.is_new``; this
+        asserts the apply itself never touches a file no layer ships.
+        """
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "user-edited.txt").write_text("user changes")
+        base = self._layer(tmp_path, "base", {"base-only.txt": "base"})
 
-        base_dir = templates / "general" / "base"
-        base_dir.mkdir(parents=True)
-        (base_dir / "base-file.txt").write_text("from base")
+        apply_template_layers(home, [base])
 
-        general_dir = templates / "general" / "standard"
-        general_dir.mkdir(parents=True)
-        (general_dir / "general-file.txt").write_text("from general")
+        assert (home / "user-edited.txt").read_text() == "user changes"
+        assert (home / "base-only.txt").read_text() == "base"
 
-        apply_shell_template(shell, templates, "claude")
+    def test_none_and_missing_layers_skipped(self, tmp_path):
+        """A None layer or a layer dir that doesn't exist contributes nothing."""
+        home = tmp_path / "home"
+        home.mkdir()
+        base = self._layer(tmp_path, "base", {"base-only.txt": "base"})
+        missing = tmp_path / "does-not-exist"
 
-        assert (shell / "base-file.txt").read_text() == "from base"
-        assert (shell / "general-file.txt").read_text() == "from general"
+        apply_template_layers(home, [base, None, missing])
 
-    def test_empty_is_noop(self, tmp_path):
-        """No template dirs at all — shell is unchanged."""
-        templates = tmp_path / "templates"
-        templates.mkdir()
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        (shell / "existing.txt").write_text("untouched")
+        assert (home / "base-only.txt").read_text() == "base"
+        assert sorted(p.name for p in home.iterdir()) == ["base-only.txt"]
 
-        apply_shell_template(shell, templates, "claude")
+    def test_standalone_omits_workset_layer(self, tmp_path):
+        """STANDALONE boxes seed base + agent only (workset layer is None)."""
+        home = tmp_path / "home"
+        home.mkdir()
+        base = self._layer(tmp_path, "base", {"shared.txt": "base version"})
+        agent = self._layer(tmp_path, "agent", {"shared.txt": "agent version"})
 
-        assert (shell / "existing.txt").read_text() == "untouched"
-        # No new files created
-        assert sorted(p.name for p in shell.iterdir()) == ["existing.txt"]
+        # Standalone: workset_template_dir() -> None.
+        apply_template_layers(home, [base, agent, None])
 
-    def test_empty_sentinel_is_noop(self, tmp_path):
-        """Explicit 'empty' template doesn't copy anything, even with dirs on disk."""
-        templates = tmp_path / "templates"
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        (shell / "existing.txt").write_text("untouched")
-
-        # Create base and empty dirs that would match
-        (templates / "general" / "base").mkdir(parents=True)
-        (templates / "general" / "base" / "base-file.txt").write_text("from base")
-        (templates / "general" / "empty").mkdir(parents=True)
-        (templates / "general" / "empty" / "tmpl-file.txt").write_text("from empty")
-
-        apply_shell_template(shell, templates, "claude", "empty")
-
-        assert (shell / "existing.txt").read_text() == "untouched"
-        assert sorted(p.name for p in shell.iterdir()) == ["existing.txt"]
+        assert (home / "shared.txt").read_text() == "agent version"
 
     def test_nested_directories(self, tmp_path):
-        """Template with nested directory structure is copied correctly."""
-        templates = tmp_path / "templates"
-        shell = tmp_path / "shell"
-        shell.mkdir()
-
-        agent_dir = templates / "claude" / "standard"
-        nested = agent_dir / ".claude"
+        """Layers with nested directory structure are copied correctly."""
+        home = tmp_path / "home"
+        home.mkdir()
+        agent = tmp_path / "agent"
+        nested = agent / ".claude"
         nested.mkdir(parents=True)
         (nested / "CLAUDE.md").write_text("# Instructions")
 
-        apply_shell_template(shell, templates, "claude")
+        apply_template_layers(home, [agent])
 
-        assert (shell / ".claude" / "CLAUDE.md").read_text() == "# Instructions"
+        assert (home / ".claude" / "CLAUDE.md").read_text() == "# Instructions"
 
-    def test_preserves_existing_shell_files(self, tmp_path):
-        """Existing files in shell_path that don't conflict are preserved."""
-        templates = tmp_path / "templates"
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        (shell / ".bashrc").write_text("existing bashrc")
+    def test_no_layers_is_noop(self, tmp_path):
+        """No layers -> home is untouched."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "existing.txt").write_text("untouched")
 
-        agent_dir = templates / "claude" / "standard"
-        agent_dir.mkdir(parents=True)
-        (agent_dir / "new-file.txt").write_text("new content")
+        apply_template_layers(home, [])
 
-        apply_shell_template(shell, templates, "claude")
-
-        assert (shell / ".bashrc").read_text() == "existing bashrc"
-        assert (shell / "new-file.txt").read_text() == "new content"
-
-    def test_no_base_dir(self, tmp_path):
-        """Works when general/base doesn't exist (only agent template applied)."""
-        templates = tmp_path / "templates"
-        shell = tmp_path / "shell"
-        shell.mkdir()
-
-        agent_dir = templates / "claude" / "standard"
-        agent_dir.mkdir(parents=True)
-        (agent_dir / "agent-only.txt").write_text("agent content")
-
-        apply_shell_template(shell, templates, "claude")
-
-        assert (shell / "agent-only.txt").read_text() == "agent content"
+        assert (home / "existing.txt").read_text() == "untouched"
+        assert sorted(p.name for p in home.iterdir()) == ["existing.txt"]
 
 
 # ---------------------------------------------------------------------------

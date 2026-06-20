@@ -332,23 +332,24 @@ class TestAgentConfigFirstUse:
             )
             m.target.generate_agent_config.assert_not_called()
 
-    def test_agent_template_variant_used(self, start_mocks):
-        """Template application uses agent_cfg.shell for template variant."""
+    def test_template_layers_applied_for_new_box(self, start_mocks):
+        """A new box seeds the ordered base/agent/workset template layers once."""
         import kanibako.templates
         with start_mocks() as m:
             m.proj.is_new = True
-            m.agent_cfg.shell = "minimal"
             m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The already-patched apply_shell_template should have been called
-            mock_fn = kanibako.templates.apply_shell_template
+            # The already-patched apply_template_layers should have been called
+            # once with (home, [base, agent, workset]) — three ordered layers
+            # when an agent target is bound.
+            mock_fn = kanibako.templates.apply_template_layers
             mock_fn.assert_called_once()
-            call_args = mock_fn.call_args[0]
-            assert call_args[3] == "minimal"  # template_name
+            layers = mock_fn.call_args[0][1]
+            assert len(layers) == 3  # base, agent, workset
 
     def test_no_agent_target_uses_no_agent_id(self, start_mocks):
         """When auto-detect finds nothing, NoAgentTarget's name is used as agent_id."""
