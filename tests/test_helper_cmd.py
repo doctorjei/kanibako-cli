@@ -480,7 +480,7 @@ class TestRunLog:
         assert "No helper message log" in capsys.readouterr().err
 
     def test_log_displays_entries(self, helpers_env, capsys):
-        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helpers.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -498,7 +498,7 @@ class TestRunLog:
         assert "Found 3 issues." in out
 
     def test_log_filter_by_helper(self, helpers_env, capsys):
-        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helpers.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -515,7 +515,7 @@ class TestRunLog:
         assert "c" not in out
 
     def test_log_last_n(self, helpers_env, capsys):
-        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helpers.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [
@@ -532,7 +532,7 @@ class TestRunLog:
         assert "first" not in out
 
     def test_log_control_entries(self, helpers_env, capsys):
-        log_file = helpers_env / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
+        log_file = helpers_env / ".local" / "state" / "kanibako" / "helpers.jsonl"
         log_file.parent.mkdir(parents=True)
         import json
         entries = [

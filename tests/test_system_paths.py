@@ -19,7 +19,9 @@ import pytest
 
 from kanibako.config import load_config
 from kanibako.paths import (
+    BOX_HOME,
     SYSTEM_PATH_DEFAULTS,
+    box_state_home,
     load_system_config,
     resolve_system_paths,
     resolve_xdg,
@@ -306,6 +308,59 @@ class TestResolveXdg:
         first = resolve_xdg("XDG_RUNTIME_DIR", None)
         second = resolve_xdg("XDG_RUNTIME_DIR", None)
         assert first == second
+
+
+class TestBoxStateHome:
+    """``box_state_home`` derives the in-container ``$XDG_STATE_HOME`` dest from
+    the box's container env (honor-iff-absolute, else ``$HOME/.local/state``).
+
+    This is the single derivation the host (``start.py``) shares with the
+    box-side shell (``helper-init.sh``'s ``${XDG_STATE_HOME:-$HOME/.local/state}``)
+    and the in-box CLI (``xdg``), so the helper socket/log dests agree by
+    construction across all three.
+    """
+
+    def test_unset_uses_box_home_default(self):
+        """No XDG_STATE_HOME in the box env -> default under the BOX home."""
+        for env in (None, {}, {"FOO": "bar"}):
+            assert (
+                str(box_state_home(env))
+                == f"{BOX_HOME}/.local/state"
+            )
+
+    def test_absolute_env_value_honored(self):
+        """An absolute XDG_STATE_HOME in the box env is used verbatim."""
+        env = {"XDG_STATE_HOME": "/srv/state"}
+        assert str(box_state_home(env)) == "/srv/state"
+
+    def test_relative_env_value_ignored(self):
+        """A relative value is invalid per the XDG spec -> default used."""
+        env = {"XDG_STATE_HOME": "relative/state"}
+        assert str(box_state_home(env)) == f"{BOX_HOME}/.local/state"
+
+    def test_empty_env_value_uses_default(self):
+        env = {"XDG_STATE_HOME": ""}
+        assert str(box_state_home(env)) == f"{BOX_HOME}/.local/state"
+
+    def test_socket_dest_matches_shell_default(self):
+        """The full socket dest for the default case equals what
+        helper-init.sh's ``${XDG_STATE_HOME:-$HOME/.local/state}`` resolves to
+        in the box (HOME=/home/agent, XDG_STATE_HOME unset)."""
+        dest = str(box_state_home(None) / "kanibako" / "helper.sock")
+        assert dest == "/home/agent/.local/state/kanibako/helper.sock"
+
+    def test_socket_dest_matches_shell_when_xdg_set(self):
+        """When the box sets XDG_STATE_HOME, both the host dest and the shell's
+        ``${XDG_STATE_HOME:-...}`` resolve to the same socket path."""
+        env = {"XDG_STATE_HOME": "/var/run/box-state"}
+        dest = str(box_state_home(env) / "kanibako" / "helper.sock")
+        assert dest == "/var/run/box-state/kanibako/helper.sock"
+
+    def test_log_dest_uses_helpers_jsonl(self):
+        """The log box-dest filename is ``helpers.jsonl`` (renamed from
+        ``helper-messages.jsonl``)."""
+        dest = str(box_state_home(None) / "kanibako" / "helpers.jsonl")
+        assert dest == "/home/agent/.local/state/kanibako/helpers.jsonl"
 
 
 class TestLoadSystemConfig:

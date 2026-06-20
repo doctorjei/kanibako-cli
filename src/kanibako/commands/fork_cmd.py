@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -25,7 +24,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_fork(args: argparse.Namespace) -> int:
-    socket_path = Path.home() / ".local" / "state" / "kanibako" / "helper.sock"
+    from kanibako.paths import xdg
+
+    # Box-side socket dest is XDG_STATE_HOME-aware (honor-iff-absolute, else
+    # $HOME/.local/state) to match the dest mounted by start.py.
+    socket_path = xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "helper.sock"
     if not socket_path.exists():
         print(
             "Error: fork requires a running kanibako session with helpers enabled.",

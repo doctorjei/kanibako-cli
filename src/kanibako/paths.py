@@ -6,7 +6,7 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol
 
@@ -387,6 +387,32 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     sites that just need a spec-backed XDG base dir.
     """
     return resolve_xdg(env_var, default_suffix)
+
+
+# The container's home directory.  Boxes always run as ``agent`` with this
+# home; used to anchor the box-side XDG default when resolving an in-container
+# path from the HOST (where ``$HOME`` is the operator's, not the box's).
+BOX_HOME = "/home/agent"
+
+
+def box_state_home(box_env: Mapping[str, str] | None) -> PurePosixPath:
+    """Resolve the BOX-side ``$XDG_STATE_HOME`` from the box's container env.
+
+    This is the host-assembly mirror of :func:`resolve_xdg` for the
+    ``XDG_STATE_HOME`` var, evaluated against the BOX's environment (*box_env*,
+    the assembled ``container_env``) rather than the host process env.  Honors
+    the var iff it is set AND absolute (per the XDG Base Directory spec); else
+    falls back to ``<BOX_HOME>/.local/state``.
+
+    Returning a :class:`PurePosixPath` (no filesystem touch) keeps it correct
+    for an in-container path computed on the host.  The matching box-side shell
+    reads ``${XDG_STATE_HOME:-$HOME/.local/state}`` (see ``helper-init.sh``) and
+    the in-box CLI uses :func:`xdg`, so all three agree by construction.
+    """
+    val = (box_env or {}).get("XDG_STATE_HOME", "")
+    if val and PurePosixPath(val).is_absolute():
+        return PurePosixPath(val)
+    return PurePosixPath(BOX_HOME) / ".local" / "state"
 
 
 # ---------------------------------------------------------------------------

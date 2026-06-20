@@ -574,12 +574,18 @@ class TestBundledInitScript:
         assert "set -euo pipefail" in content
 
     def test_bundled_socket_path_matches_mount_dest(self):
-        # The hub socket is mounted at ~/.local/state/kanibako/helper.sock
-        # (start.py / helper_listener.py). The script must check that path so
-        # `kanibako helper register` actually runs and the helper joins the hub.
+        # The hub socket is mounted at $XDG_STATE_HOME/kanibako/helper.sock
+        # (start.py / helper_listener.py derive the box-dest from the box's
+        # XDG_STATE_HOME via box_state_home). The script must check the SAME
+        # XDG-aware path so `kanibako helper register` runs and the helper
+        # joins the hub. The shared single derivation is
+        # ${XDG_STATE_HOME:-$HOME/.local/state} -> host and box agree.
         path = bundled_init_script()
         content = path.read_text()
-        assert 'SOCKET_PATH="$HOME/.local/state/kanibako/helper.sock"' in content
+        assert (
+            'SOCKET_PATH="${XDG_STATE_HOME:-$HOME/.local/state}/kanibako/helper.sock"'
+            in content
+        )
         assert "$HOME/.kanibako/helper.sock" not in content
 
 

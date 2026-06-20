@@ -154,8 +154,13 @@ def _helpers_dir() -> Path:
 
 
 def _socket_path() -> Path:
-    """Return the path to the helper hub socket."""
-    return Path.home() / ".local" / "state" / "kanibako" / "helper.sock"
+    """Return the path to the helper hub socket.
+
+    Resolved against the box's ``$XDG_STATE_HOME`` (honor-iff-absolute, else
+    ``$HOME/.local/state``) so it matches the dest mounted by ``start.py`` and
+    the path ``helper-init.sh`` registers against.
+    """
+    return xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "helper.sock"
 
 
 def _check_helpers_enabled() -> bool:
@@ -547,8 +552,13 @@ def run_register(args: argparse.Namespace) -> int:
 
 
 def _log_path() -> Path:
-    """Return the path to the helper message log file."""
-    return Path.home() / ".local" / "state" / "kanibako" / "helper-messages.jsonl"
+    """Return the path to the helper message log file.
+
+    Resolved against the box's ``$XDG_STATE_HOME`` (honor-iff-absolute, else
+    ``$HOME/.local/state``) so it matches the ``helpers.jsonl`` dest mounted by
+    ``start.py``.
+    """
+    return xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "helpers.jsonl"
 
 
 def run_log(args: argparse.Namespace) -> int:
