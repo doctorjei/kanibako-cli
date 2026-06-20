@@ -131,6 +131,10 @@ _CODEX_DESCRIPTOR = PluginDescriptor(
     settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
     container_env={},
     cred_files=(
+        # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
+        # filtered=True + add a transform_cred allowlist ONLY if E2E proves
+        # auth.json carries non-portable machine-id/installation fields (see the
+        # OPEN QUESTION above + settings-keyspace §2d Q2).
         CredFileSpec(".codex/auth.json",   ".codex/auth.json",   cadence=Cadence.SYNC,      mtime_gate=True, filtered=False),
     ),
     host_prep=False,
