@@ -131,8 +131,8 @@ ENV_KEY_RE = re.compile(
     r"^(?P<scope>system|agent|workset|box)\.env\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
 )
 
-# Sentinel value that disables a COPY entry (parallels resolve_template's
-# "empty"; preserved from the seed resolver).
+# Sentinel value that disables a COPY entry (the "empty" terminal, preserved
+# from the seed resolver).
 _DISABLE_SENTINEL = "empty"
 
 # Apply order: REVERSE of precedence (most-specific scope lands LAST).

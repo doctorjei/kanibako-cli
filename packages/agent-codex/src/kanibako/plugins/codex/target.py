@@ -390,7 +390,6 @@ class CodexTarget(Target):
 
         return _AgentConfig(
             name=self.display_name,
-            shell="standard",
             state={"model": "gpt-5.5"},
         )
 

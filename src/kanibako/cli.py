@@ -246,13 +246,7 @@ def _ensure_initialized() -> None:
     for target_name, cls in discover_targets().items():
         target_toml = agents_path / f"{target_name}.yaml"
         if not target_toml.exists():
-            agent_cfg = cls().generate_agent_config()
-            write_agent_config(target_toml, agent_cfg)
-        else:
-            agent_cfg = AgentConfig()
-        (templates_dir / target_name / agent_cfg.shell).mkdir(
-            parents=True, exist_ok=True,
-        )
+            write_agent_config(target_toml, cls().generate_agent_config())
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file

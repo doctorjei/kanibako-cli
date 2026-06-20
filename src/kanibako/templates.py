@@ -61,32 +61,6 @@ def workset_template_dir(proj: ProjectPaths, std: StandardPaths) -> Path | None:
     return workset_root(proj, std) / "template"
 
 
-def resolve_template(
-    templates_base: Path,
-    agent_name: str,
-    template_name: str = "standard",
-) -> Path | None:
-    """Return the path to the resolved template directory, or None for 'empty'.
-
-    Resolution order:
-      1. {templates_base}/{agent_name}/{template_name}/
-      2. {templates_base}/general/{template_name}/
-      3. None (empty template — no files applied)
-    """
-    if template_name == "empty":
-        return None
-
-    agent_dir = templates_base / agent_name / template_name
-    if agent_dir.is_dir():
-        return agent_dir
-
-    general_dir = templates_base / "general" / template_name
-    if general_dir.is_dir():
-        return general_dir
-
-    return None
-
-
 def apply_template_layers(
     home: Path,
     layers: list[Path | None],

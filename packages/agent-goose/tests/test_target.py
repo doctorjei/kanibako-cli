@@ -287,7 +287,6 @@ class TestGenerateAgentConfig:
     def test_returns_correct_defaults(self):
         config = GooseTarget().generate_agent_config()
         assert config.name == "Goose"
-        assert config.shell == "standard"
         assert config.state["provider"] == "anthropic"
         assert "model" in config.state
 

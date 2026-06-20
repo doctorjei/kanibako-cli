@@ -298,7 +298,6 @@ class TestGenerateAgentConfig:
         t = SimpleTarget()
         cfg = t.generate_agent_config()
         assert cfg.name == "Simple Agent"
-        assert cfg.shell == "standard"
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.shared_caches == {}

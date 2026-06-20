@@ -651,7 +651,6 @@ class TestGenerateAgentConfig:
         t = ClaudeTarget()
         cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
-        assert cfg.shell == "standard"
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.shared_caches == {}
         assert cfg.run_args == []

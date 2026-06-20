@@ -30,7 +30,6 @@ def agent_env(config_file, tmp_home):
     # Create a sample agent
     cfg = AgentConfig(
         name="claude",
-        shell="standard",
         run_args=["--no-helpers"],
         state={"model": "opus"},
         env={"EDITOR": "vim"},
@@ -67,7 +66,6 @@ class TestRunList:
         out = capsys.readouterr().out
         assert "claude" in out
         assert "opus" in out
-        assert "standard" in out
 
     def test_list_quiet(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_list
@@ -101,7 +99,7 @@ class TestRunList:
         from kanibako.commands.agent_cmd import run_list
 
         adir = agents_dir(agent_env)
-        cfg2 = AgentConfig(name="aider", shell="bash", state={"model": "sonnet"})
+        cfg2 = AgentConfig(name="aider", state={"model": "sonnet"})
         write_agent_config(adir / "aider.yaml", cfg2)
 
         args = argparse.Namespace(quiet=False)
@@ -126,7 +124,6 @@ class TestRunInfo:
         assert rc == 0
         out = capsys.readouterr().out
         assert "claude" in out
-        assert "standard" in out
         assert "opus" in out
         assert "EDITOR" in out
         assert "npm" in out
@@ -157,7 +154,6 @@ class TestRunConfig:
         rc = run_config(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "shell = standard" in out
         assert "model = opus" in out
 
     def test_config_get_state_key(self, agent_env, capsys):
@@ -237,7 +233,10 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.env["PAGER"] == "less"
 
-    def test_config_set_shell(self, agent_env, capsys):
+    def test_config_shell_is_no_longer_an_identity_key(self, agent_env, capsys):
+        # The template-variant ``shell`` axis was removed; ``shell`` is no longer
+        # an AgentConfig identity field, so a ``shell=`` set now lands in generic
+        # state (not as a dedicated identity knob).
         from kanibako.commands.agent_cmd import run_config
         from kanibako.agent_config import agent_config_path, load_agent_config
 
@@ -250,7 +249,8 @@ class TestRunConfig:
 
         path = agent_config_path(agent_env, "claude")
         cfg = load_agent_config(path)
-        assert cfg.shell == "bash"
+        assert not hasattr(cfg, "shell")
+        assert cfg.state["shell"] == "bash"
 
     def test_config_reset_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config

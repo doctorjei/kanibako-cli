@@ -14,54 +14,9 @@ from kanibako.templates import (
     agent_template_dir,
     apply_template_layers,
     base_template_dir,
-    resolve_template,
     workset_template_dir,
 )
 from kanibako.workset import add_project, create_workset
-
-
-class TestResolveTemplate:
-    def test_agent_specific(self, tmp_path):
-        """Agent-specific template takes priority over general."""
-        (tmp_path / "claude" / "standard").mkdir(parents=True)
-        (tmp_path / "general" / "standard").mkdir(parents=True)
-
-        result = resolve_template(tmp_path, "claude")
-        assert result == tmp_path / "claude" / "standard"
-
-    def test_falls_back_to_general(self, tmp_path):
-        """Falls back to general when agent-specific dir is absent."""
-        (tmp_path / "general" / "standard").mkdir(parents=True)
-
-        result = resolve_template(tmp_path, "claude")
-        assert result == tmp_path / "general" / "standard"
-
-    def test_empty_when_no_dirs(self, tmp_path):
-        """Returns None when no template dirs exist."""
-        result = resolve_template(tmp_path, "claude")
-        assert result is None
-
-    def test_custom_template_name(self, tmp_path):
-        """Resolves a custom template variant."""
-        (tmp_path / "claude" / "minimal").mkdir(parents=True)
-
-        result = resolve_template(tmp_path, "claude", "minimal")
-        assert result == tmp_path / "claude" / "minimal"
-
-    def test_general_agent_name(self, tmp_path):
-        """Resolves general/standard for agent_name='general'."""
-        (tmp_path / "general" / "standard").mkdir(parents=True)
-
-        result = resolve_template(tmp_path, "general")
-        assert result == tmp_path / "general" / "standard"
-
-    def test_empty_sentinel_returns_none(self, tmp_path):
-        """Explicit 'empty' returns None even when a matching directory exists."""
-        (tmp_path / "general" / "empty").mkdir(parents=True)
-        (tmp_path / "claude" / "empty").mkdir(parents=True)
-
-        result = resolve_template(tmp_path, "claude", "empty")
-        assert result is None
 
 
 class TestApplyTemplateLayers:

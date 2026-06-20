@@ -139,13 +139,12 @@ def run_list(args: argparse.Namespace) -> int:
             print(f.stem)
         return 0
 
-    print(f"{'NAME':<20} {'SHELL':<12} {'MODEL'}")
+    print(f"{'NAME':<20} {'MODEL'}")
     for f in toml_files:
         cfg = load_agent_config(f)
         name = f.stem
-        shell = cfg.shell or "standard"
         model = cfg.state.get("model", "-")
-        print(f"{name:<20} {shell:<12} {model}")
+        print(f"{name:<20} {model}")
     return 0
 
 
@@ -167,7 +166,6 @@ def run_info(args: argparse.Namespace) -> int:
 
     cfg = load_agent_config(path)
     print(f"Name:         {cfg.name or agent_id}")
-    print(f"Shell:        {cfg.shell}")
     if cfg.run_args:
         print(f"Default args: {' '.join(cfg.run_args)}")
     else:
@@ -293,8 +291,6 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     if key.startswith("shared."):
         cache_name = key[7:]
         return cfg.shared_caches.get(cache_name)
-    if key == "shell":
-        return cfg.shell
     if key == "name":
         return cfg.name or None
     if key == "run_args":
@@ -311,8 +307,6 @@ def _set_agent_key(cfg: AgentConfig, key: str, value: str) -> None:
     elif key.startswith("shared."):
         cache_name = key[7:]
         cfg.shared_caches[cache_name] = value
-    elif key == "shell":
-        cfg.shell = value
     elif key == "name":
         cfg.name = value
     elif key == "run_args":
@@ -336,9 +330,6 @@ def _reset_agent_key(cfg: AgentConfig, key: str) -> bool:
             del cfg.shared_caches[cache_name]
             return True
         return False
-    if key == "shell":
-        cfg.shell = "standard"
-        return True
     if key == "name":
         cfg.name = ""
         return True
@@ -361,7 +352,6 @@ def _show_agent_config(
 
     # Identity keys
     print(f"  name = {cfg.name or agent_id}")
-    print(f"  shell = {cfg.shell}")
     if cfg.run_args:
         print(f"  run_args = {cfg.run_args}")
     has_output = True
