@@ -225,7 +225,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Copy a project's workspace directory and kanibako metadata to a new path.\n"
             "The metadata is re-keyed under the new path's hash.\n"
-            "With --to, duplicate into a different mode layout."
+            "With --to, duplicate into a different mode."
         ),
     )
     duplicate_p.add_argument("source_path", help="Existing project directory to duplicate")
@@ -236,7 +236,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     duplicate_p.add_argument(
         "--to", dest="to_mode", choices=_MODE_CHOICES, default=None,
-        help="Duplicate into a different mode layout",
+        help="Duplicate into a different mode",
     )
     duplicate_p.add_argument(
         "--force", action="store_true",
@@ -718,10 +718,6 @@ def _purge_dir(target: Path) -> bool:
 def run_rm(args: argparse.Namespace) -> int:
     """Unregister a project from names.yaml, optionally purging metadata."""
     from kanibako.names import lookup_by_path
-    from kanibako.paths import (
-        _remove_human_vault_symlink,
-        _remove_project_vault_symlink,
-    )
     from kanibako.utils import confirm_prompt
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -777,14 +773,16 @@ def run_rm(args: argparse.Namespace) -> int:
                     print("Aborted (name was already unregistered).")
                     return 2
 
-            # Clean up vault symlinks before removing metadata.
-            vault_dir = std.data_path / config.paths_vault
-            _remove_human_vault_symlink(vault_dir, metadata_dir / "vault")
-            if path:
-                _remove_project_vault_symlink(Path(path))
-
             if _purge_dir(metadata_dir):
                 print(f"Removed metadata: {metadata_dir}")
+                # Phase 5: PRIMARY vault lives under @system.primary_workset/
+                # vault/{ro,rw}/<name> (not under metadata_dir) — remove it too.
+                for vdir in (
+                    std.primary_vault_ro / name,
+                    std.primary_vault_rw / name,
+                ):
+                    if vdir.is_dir():
+                        _purge_dir(vdir)
             else:
                 print(
                     f"Warning: could not fully remove {metadata_dir} "

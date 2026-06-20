@@ -66,27 +66,6 @@ class DetectionResult(NamedTuple):
     project_root: Path
 
 
-class ProjectLayout(Enum):
-    """Directory layout variant within a project mode.
-
-    - **simple**: shell and vault live inside the workspace (minimal footprint)
-    - **default**: shell in boxes, vault in workspace (middle ground)
-    - **robust**: full separation — all four folders are top-level siblings
-    """
-
-    simple = "simple"
-    default = "default"
-    robust = "robust"
-
-
-# Default layout per mode.
-_DEFAULT_LAYOUT = {
-    BoxMode.primary: ProjectLayout.default,
-    BoxMode.named: ProjectLayout.robust,
-    BoxMode.standalone: ProjectLayout.simple,
-}
-
-
 @dataclass
 class StandardPaths:
     """Resolved XDG and kanibako standard directory paths."""
@@ -117,28 +96,28 @@ class StandardPaths:
     channels_broadcast: Path
     channels_mailboxes: Path
     channels_share: Path
-    # Transitional: the OLD ``boxes`` location, resolved unchanged (Phase 5
-    # moves boxes/logs/vault under the PRIMARY workset; until then disk layout
-    # is preserved).  Backs the ``boxes`` alias below.  Deleted in Phase 5.
-    _boxes: Path
+    # PRIMARY-workset box store: ``@system.primary_workset/boxes``.  Phase 5
+    # moved this here from the OLD ``@system.data/boxes`` location (the
+    # transitional ``_boxes`` pseudo-key + alias property were retired with the
+    # ``_migrate_settings_to_boxes`` shim).  Per-box metadata/shell live under
+    # ``boxes/<name>/``; the PRIMARY vault/logs live as siblings under the
+    # PRIMARY workset (see :func:`resolve_project`).
+    boxes: Path
+    # PRIMARY-workset vault + logs roots: ``@system.primary_workset/vault/{ro,rw}``
+    # and ``@system.primary_workset/logs``.  Phase 5 moved the PRIMARY vault out
+    # of the workspace into the PRIMARY workset.
+    primary_vault_ro: Path
+    primary_vault_rw: Path
+    primary_logs: Path
 
     # ------------------------------------------------------------------
-    # Transitional aliases (DELETED in Phase 5).
+    # Transitional aliases (owners = Phase 6/7; not retired here).
     #
-    # The renamed/restructured fields above replace the old flat
-    # ``system.path.*``-backed fields.  Roughly 20 call sites (start.py,
-    # workset.py, install, diagnose, box lifecycle, helper_listener, …) still
-    # read the OLD field names.  These read-only ``@property`` aliases keep
-    # those non-Phase-3 call sites compiling unchanged until Phase 5 migrates
-    # them onto the new structure (boxes/logs/vault move under the PRIMARY
-    # workset; channels sub-keys get wired).  Do NOT add new uses.
+    # ``comms``/``templates`` still alias the renamed ``channels``/
+    # ``base_template`` dirs for the channels (Phase 6) and templates (Phase 7)
+    # call sites; ``share_ro``/``share_rw`` raise (the dirs were deleted in the
+    # system.* reorg).  Do NOT add new uses.
     # ------------------------------------------------------------------
-
-    @property
-    def boxes(self) -> Path:
-        """OLD ``std.boxes`` — the per-project box store (location unchanged
-        in Phase 3; Phase 5 moves it under the PRIMARY workset)."""
-        return self._boxes
 
     @property
     def comms(self) -> Path:
@@ -202,7 +181,6 @@ class ProjectPaths:
     vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/share-rw)
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
-    layout: ProjectLayout = field(default=ProjectLayout.default)
     enable_vault: bool = field(default=True)
     group_auth: bool = field(default=True)
     name: str = field(default="")
@@ -457,10 +435,10 @@ def resolve_system_paths(
     *data_home* is the already-resolved XDG data base (e.g. ``~/.local/share``)
     exposed to expressions as ``$XDG_DATA_HOME``; *home* expands a leading
     ``~``.  Returns ``{full_dotted_key: Path}`` for every key in
-    :data:`SYSTEM_PATH_DEFAULTS`, plus the transitional pseudo-key
-    ``system._boxes`` (the OLD ``@system.data/boxes`` location, kept for the
-    ``StandardPaths.boxes`` alias until Phase 5 moves boxes under the PRIMARY
-    workset).
+    :data:`SYSTEM_PATH_DEFAULTS`, plus the derived PRIMARY-workset pseudo-keys
+    ``system._boxes`` / ``system._primary_vault_ro`` /
+    ``system._primary_vault_rw`` / ``system._primary_logs`` (boxes/vault/logs
+    under ``@system.primary_workset``; Phase 5 moved them here).
     """
     # Populate the FULL XDG var set so ``$XDG_*`` references in system path
     # expressions resolve.  ``data_home`` is passed in already-resolved (it
@@ -499,11 +477,15 @@ def resolve_system_paths(
         expanded = expand_expr(rv.value, space="host", ctx=ctx, lookup=lookup)
         resolved[key] = Path(expanded)
 
-    # Transitional ``system._boxes``: the OLD ``@system.data/boxes`` location,
-    # resolved off the (possibly overridden) data path so disk layout is
-    # unchanged in Phase 3.  Backs the ``StandardPaths.boxes`` alias; removed
-    # in Phase 5 when boxes move under the PRIMARY workset.
-    resolved["system._boxes"] = resolved["system.data"] / "boxes"
+    # PRIMARY-workset box/vault/logs roots, derived from the resolved PRIMARY
+    # workset dir.  Phase 5 moved boxes/vault/logs out of ``@system.data/boxes``
+    # (and out of the per-project workspace, for the vault) into the PRIMARY
+    # workset so the PRIMARY workset is a real on-disk dir like a named one.
+    pw = resolved["system.primary_workset"]
+    resolved["system._boxes"] = pw / "boxes"
+    resolved["system._primary_vault_ro"] = pw / "vault" / "ro"
+    resolved["system._primary_vault_rw"] = pw / "vault" / "rw"
+    resolved["system._primary_logs"] = pw / "logs"
     return resolved
 
 
@@ -566,15 +548,6 @@ def _migrate_global_env(config_home: Path, data_path: Path) -> None:
         print(f"Migrated: {old} → {new}", file=sys.stderr)
 
 
-def _migrate_settings_to_boxes(data_path: Path, boxes_path: Path) -> None:
-    """Rename the legacy ``data_path/settings`` dir to the resolved boxes dir."""
-    old = data_path / "settings"
-    if old.is_dir() and not boxes_path.exists():
-        old.rename(boxes_path)
-        import sys
-        print(f"Migrated: {old} → {boxes_path}", file=sys.stderr)
-
-
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories.
 
@@ -611,9 +584,6 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     state_path = state_home / rel
     cache_path = cache_home / rel
 
-    # Migrate settings/ -> boxes/ if needed (transitional box location).
-    _migrate_settings_to_boxes(data_path, resolved["system._boxes"])
-
     # Migrate global env file from config_home/kanibako/env to data_path/env.
     _migrate_global_env(config_home, data_path)
 
@@ -648,7 +618,10 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         channels_broadcast=resolved["system.channels.broadcast"],
         channels_mailboxes=resolved["system.channels.mailboxes"],
         channels_share=resolved["system.channels.share"],
-        _boxes=resolved["system._boxes"],
+        boxes=resolved["system._boxes"],
+        primary_vault_ro=resolved["system._primary_vault_ro"],
+        primary_vault_rw=resolved["system._primary_vault_rw"],
+        primary_logs=resolved["system._primary_logs"],
     )
 
 
@@ -658,18 +631,19 @@ def resolve_project(
     project_dir: str | None = None,
     *,
     initialize: bool = False,
-    layout: ProjectLayout | None = None,
     enable_vault: bool | None = None,
     name_override: str | None = None,
 ) -> ProjectPaths:
-    """Resolve (and optionally initialize) per-project paths.
+    """Resolve (and optionally initialize) per-project paths (PRIMARY mode).
 
     When *initialize* is True (used by ``start``), missing project directories
     are created and credential templates are copied in.  When False (used by
     subcommands like ``archive``/``purge``), the paths are merely computed.
 
-    *layout* overrides the default layout for new projects.  Existing projects
-    read their layout from ``project.yaml``.
+    Phase 5: PRIMARY boxes/vault/logs live under ``@system.primary_workset``
+    (the real PRIMARY-workset dir); there is no layout axis.  Per-box state is
+    ``boxes/<name>/`` (metadata + shell) with the vault at
+    ``@system.primary_workset/vault/{ro,rw}/<name>``.
 
     *enable_vault* controls whether vault directories are created and mounted.
     Defaults to True for new projects; existing projects read from ``project.yaml``.
@@ -704,17 +678,17 @@ def resolve_project(
     # Check for stored paths in project.yaml (enables user overrides).
     project_toml = metadata_path / "project.yaml"
     meta = read_project_meta(project_toml)
+    _default_shell, _default_vro, _default_vrw = _primary_box_paths(
+        std, metadata_path, project_name or metadata_path.name,
+    )
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[BoxMode.primary]
-        shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
+        shell_path = Path(meta["shell"]) if meta["shell"] else _default_shell
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _default_vro
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _default_vrw
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.primary]
-        shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
-            actual_layout, metadata_path, project_path,
-            vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
+        shell_path, vault_ro_path, vault_rw_path = (
+            _default_shell, _default_vro, _default_vrw,
         )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
@@ -750,9 +724,8 @@ def resolve_project(
         project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
-        shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
-            actual_layout, metadata_path, project_path,
-            vault_root=_local_vault_root(actual_layout, metadata_path, project_path),
+        shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
+            std, metadata_path, project_name,
         )
         project_toml = metadata_path / "project.yaml"
 
@@ -766,7 +739,6 @@ def resolve_project(
         write_project_meta(
             project_toml,
             mode="primary",
-            layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
             vault_ro=str(vault_ro_path),
@@ -796,7 +768,6 @@ def resolve_project(
             write_project_meta(
                 metadata_path / "project.yaml",
                 mode="primary",
-                layout=actual_layout.value,
                 workspace=str(project_path),
                 shell=str(shell_path),
                 vault_ro=str(vault_ro_path),
@@ -808,24 +779,6 @@ def resolve_project(
                 local_shared=str(_local_shared_bf),
                 name=_bf_name,
             )
-        # Convenience symlink when vault lives outside the workspace.
-        if actual_vault_enabled:
-            _ensure_vault_symlink(project_path, vault_ro_path)
-            # Human-friendly symlink for robust layout.
-            if actual_layout == ProjectLayout.robust:
-                human_vault_dir = std.data_path / config.paths_vault
-                _ensure_human_vault_symlink(
-                    human_vault_dir, project_path, vault_ro_path.parent,
-                )
-                if is_new:
-                    import sys
-                    print(
-                        f"\nNOTE: In robust layout, the default-workset vault "
-                        f"is linked from\n{human_vault_dir}. You can create a "
-                        f"symlink from your home directory with:\n"
-                        f"  ln -s {human_vault_dir} $HOME/kanibako_vault",
-                        file=sys.stderr,
-                    )
 
     # Resolve shared paths: prefer stored values (enables user overrides).
     _computed_global_shared = std.data_path / config.paths_shared / "global"
@@ -844,7 +797,6 @@ def resolve_project(
         vault_rw_path=vault_rw_path,
         is_new=is_new,
         mode=BoxMode.primary,
-        layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
         name=project_name,
@@ -884,54 +836,50 @@ def _resolve_local_dir(
 
 
 
-def _compute_project_paths(
-    layout: ProjectLayout, metadata_path: Path, project_path: Path,
-    *, vault_root: Path,
+def _primary_box_paths(
+    std: StandardPaths, metadata_path: Path, box_name: str,
 ) -> tuple[Path, Path, Path]:
-    """Compute ``(shell, vault_ro, vault_rw)`` for default and workset modes.
+    """Fixed PRIMARY-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
 
-    The only structural difference between default and workset is *where* the
-    vault lives in the non-``simple`` layouts; the caller expresses that by
-    passing ``vault_root`` — the parent directory under which ``ro`` and
-    ``rw`` are placed.  The ``simple`` layout always keeps shell and
-    vault inside the workspace and ignores *vault_root*.
-
-    Caller-supplied *vault_root* must reproduce the existing per-mode policy:
-
-    - **default**: ``default`` → ``project_path/"vault"``; ``robust`` →
-      ``metadata_path/"vault"``.
-    - **workset**: ``default``/``robust`` → ``vault_base/project_name``.
+    Shell lives under the per-box metadata dir (``boxes/<name>/shell``); the
+    vault lives under the PRIMARY workset (``@system.primary_workset/vault/{ro,
+    rw}/<name>``), NOT inside the user's workspace.  Phase 5 moved the PRIMARY
+    vault out of the workspace so the PRIMARY workset owns boxes/vault/logs
+    just like a named workset.
     """
-    if layout == ProjectLayout.simple:
-        shell = project_path / ".shell"
-        vault_ro = project_path / "vault" / "ro"
-        vault_rw = project_path / "vault" / "rw"
-    else:  # default / robust
-        shell = metadata_path / "shell"
-        vault_ro = vault_root / "ro"
-        vault_rw = vault_root / "rw"
+    shell = metadata_path / "shell"
+    vault_ro = std.primary_vault_ro / box_name
+    vault_rw = std.primary_vault_rw / box_name
     return shell, vault_ro, vault_rw
 
 
-def _local_vault_root(layout: ProjectLayout, metadata_path: Path, project_path: Path) -> Path:
-    """Vault parent dir for default mode in the non-``simple`` layouts."""
-    if layout == ProjectLayout.robust:
-        return metadata_path / "vault"
-    return project_path / "vault"  # default
-
-
-def _compute_standalone_paths(
-    layout: ProjectLayout, metadata_path: Path, project_path: Path,
+def _workset_box_paths(
+    metadata_path: Path, vault_base: Path,
 ) -> tuple[Path, Path, Path]:
-    """Compute (shell, vault_ro, vault_rw) for standalone mode."""
-    if layout == ProjectLayout.robust:
-        shell = project_path / "shell"
-        vault_ro = project_path / "vault" / "ro"
-        vault_rw = project_path / "vault" / "rw"
-    else:  # simple (default for standalone)
-        shell = metadata_path / "shell"
-        vault_ro = project_path / "vault" / "ro"
-        vault_rw = project_path / "vault" / "rw"
+    """Fixed NAMED-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
+
+    Shell under the per-project box dir; vault under the workset's vault dir
+    (``<vault_base>/{ro,rw}``).  Matches the former ``robust`` workset layout
+    (the prior default for named worksets).
+    """
+    shell = metadata_path / "shell"
+    vault_ro = vault_base / "ro"
+    vault_rw = vault_base / "rw"
+    return shell, vault_ro, vault_rw
+
+
+def _standalone_box_paths(
+    metadata_path: Path, project_path: Path,
+) -> tuple[Path, Path, Path]:
+    """Fixed STANDALONE-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
+
+    All state stays inside the project dir: shell under the metadata dir,
+    vault under ``<project>/vault/{ro,rw}``.  (The metadata-dir relocation to
+    ``box_data/`` + the ``<random24>_<leaf>`` identity are sub-step 5d.)
+    """
+    shell = metadata_path / "shell"
+    vault_ro = project_path / "vault" / "ro"
+    vault_rw = project_path / "vault" / "rw"
     return shell, vault_ro, vault_rw
 
 
@@ -984,125 +932,6 @@ def _upgrade_shell(shell_path: Path) -> None:
     content += "# Source user init scripts\n"
     content += f"{_SHELL_D_SOURCE_LINE}\n"
     bashrc.write_text(content)
-
-
-def _ensure_vault_symlink(project_path: Path, vault_ro_path: Path) -> None:
-    """Create a convenience symlink from project_path/vault when vault lives elsewhere.
-
-    In local tree and WS default/tree layouts, vault dirs are stored outside the
-    project workspace.  The symlink lets the user discover vault via their
-    project directory.  No-op when vault is already under project_path or the
-    symlink target already matches.
-    """
-    vault_parent = vault_ro_path.parent  # e.g. metadata_path/vault or vault_base/name
-    link = project_path / "vault"
-
-    # Vault already lives under project_path — no symlink needed.
-    try:
-        if vault_parent.resolve() == link.resolve():
-            return
-    except OSError:
-        pass
-
-    if link.is_symlink():
-        # Symlink exists — update only if target differs.
-        if link.resolve() == vault_parent.resolve():
-            return
-        link.unlink()
-    elif link.exists():
-        # A real directory or file exists — don't overwrite.
-        return
-
-    try:
-        link.symlink_to(vault_parent)
-    except OSError:
-        pass  # Best-effort; non-fatal if we can't create the symlink.
-
-
-def _ensure_human_vault_symlink(
-    vault_dir: Path, project_path: Path, vault_parent: Path,
-) -> Path | None:
-    """Create a human-friendly symlink ``{vault_dir}/{basename}`` → *vault_parent*.
-
-    *vault_dir* is e.g. ``{data_path}/vault``.  *project_path* is the user's
-    workspace directory whose basename is used as the symlink name.
-    *vault_parent* is the hash-based vault directory (``…/boxes/{hash}/vault``).
-
-    Collision handling: if *basename* already points elsewhere, tries
-    ``{name}1``, ``{name}2``, … up to ``{name}99``.
-
-    Returns the created/existing symlink ``Path`` on success, ``None`` on
-    failure or if *vault_parent* does not exist.
-    """
-    if not vault_parent.is_dir():
-        return None
-
-    vault_dir.mkdir(parents=True, exist_ok=True)
-    basename = project_path.name
-
-    # Try the plain name first, then name1..name99.
-    candidates = [basename] + [f"{basename}{i}" for i in range(1, 100)]
-    for name in candidates:
-        link = vault_dir / name
-        if link.is_symlink():
-            try:
-                if link.resolve() == vault_parent.resolve():
-                    return link  # Already correct — idempotent.
-            except OSError:
-                pass
-            continue  # Points elsewhere — try next candidate.
-        if link.exists():
-            continue  # Real file/dir — skip.
-        # Slot is free.
-        try:
-            link.symlink_to(vault_parent)
-            return link
-        except OSError:
-            return None  # Best-effort.
-    return None  # All 100 candidates exhausted.
-
-
-def _remove_human_vault_symlink(vault_dir: Path, vault_parent: Path) -> bool:
-    """Remove the human-friendly symlink that points to *vault_parent*.
-
-    Scans *vault_dir* for the first symlink whose target resolves to
-    *vault_parent* and removes it.  Removes *vault_dir* itself if empty
-    afterwards.
-
-    Returns True if a symlink was removed, False otherwise.
-    """
-    if not vault_dir.is_dir():
-        return False
-    try:
-        for entry in vault_dir.iterdir():
-            if entry.is_symlink():
-                try:
-                    if entry.resolve() == vault_parent.resolve():
-                        entry.unlink()
-                        # Clean up empty vault_dir.
-                        if not any(vault_dir.iterdir()):
-                            vault_dir.rmdir()
-                        return True
-                except OSError:
-                    continue
-    except OSError:
-        pass
-    return False
-
-
-def _remove_project_vault_symlink(project_path: Path) -> bool:
-    """Remove ``{project_path}/vault`` if it is a symlink (not a real dir).
-
-    Returns True if a symlink was removed, False otherwise.
-    """
-    link = project_path / "vault"
-    if link.is_symlink():
-        try:
-            link.unlink()
-            return True
-        except OSError:
-            pass
-    return False
 
 
 def _init_common(
@@ -1326,14 +1155,16 @@ def resolve_workset_project(
     config: KanibakoConfig,
     *,
     initialize: bool = False,
-    layout: ProjectLayout | None = None,
     enable_vault: bool | None = None,
 ) -> ProjectPaths:
-    """Resolve per-project paths for a project inside a workset.
+    """Resolve per-project paths for a project inside a NAMED workset.
 
     *ws* is a lightweight :class:`WorksetSpec` describing the workset's name,
-    root, directory layout, auth mode, and registered project names.  Callers
-    holding a full ``Workset`` object pass ``WorksetSpec.from_workset(ws)``.
+    root, auth mode, and registered project names.  Callers holding a full
+    ``Workset`` object pass ``WorksetSpec.from_workset(ws)``.
+
+    Phase 5: no layout axis — shell under the per-project box dir, vault under
+    the workset vault dir (``<ws.vault_dir>/<name>/{ro,rw}``).
 
     Raises ``WorksetError`` if *project_name* is not registered in *ws*.
     """
@@ -1356,18 +1187,16 @@ def resolve_workset_project(
     # the describe path (iter_projects), which already reads meta["workspace"].
     if meta and meta.get("workspace"):
         project_path = Path(meta["workspace"])
+    _ws_shell, _ws_vro, _ws_vrw = _workset_box_paths(
+        metadata_path, ws.vault_dir / project_name,
+    )
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[BoxMode.named]
-        shell_path = Path(meta["shell"]) if meta["shell"] else project_dir / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else ws.vault_dir / project_name / "ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else ws.vault_dir / project_name / "rw"
+        shell_path = Path(meta["shell"]) if meta["shell"] else _ws_shell
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _ws_vro
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _ws_vrw
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.named]
-        shell_path, vault_ro_path, vault_rw_path = _compute_project_paths(
-            actual_layout, metadata_path, project_path,
-            vault_root=ws.vault_dir / project_name,
-        )
+        shell_path, vault_ro_path, vault_rw_path = _ws_shell, _ws_vro, _ws_vrw
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Auth mode: workset-level overrides project-level.
@@ -1386,7 +1215,6 @@ def resolve_workset_project(
         write_project_meta(
             project_toml,
             mode="named",
-            layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
             vault_ro=str(vault_ro_path),
@@ -1405,9 +1233,6 @@ def resolve_workset_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Convenience symlink when vault lives outside the workspace.
-        if actual_vault_enabled:
-            _ensure_vault_symlink(project_path, vault_ro_path)
 
     # Resolve shared paths: prefer stored values (enables user overrides).
     _ws_computed_global = std.data_path / config.paths_shared / "global"
@@ -1426,7 +1251,6 @@ def resolve_workset_project(
         vault_rw_path=vault_rw_path,
         is_new=is_new,
         mode=BoxMode.named,
-        layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
         name=project_name,
@@ -1710,7 +1534,6 @@ def resolve_standalone_project(
     project_dir: str | None = None,
     *,
     initialize: bool = False,
-    layout: ProjectLayout | None = None,
     enable_vault: bool | None = None,
     group_auth: bool | None = None,
 ) -> ProjectPaths:
@@ -1718,6 +1541,11 @@ def resolve_standalone_project(
 
     All project state lives inside *project_dir* itself.
     No data is written to ``$XDG_DATA_HOME``.
+
+    Phase 5: no layout axis.  New standalone projects use the ``.kanibako``
+    metadata dir; both ``.kanibako`` and ``kanibako`` are still read for
+    existing projects.  (5d re-points the marker to ``box_data/`` and adds the
+    ``<random24>_<leaf>`` identity.)
     """
     raw = project_dir or os.getcwd()
     project_path = Path(raw).resolve()
@@ -1727,16 +1555,11 @@ def resolve_standalone_project(
 
     phash = project_hash(str(project_path))
 
-    # Determine metadata_path (depends on layout for standalone).
-    # For tree layout: {project}/kanibako (no dot)
-    # For simple (default): {project}/.kanibako (dot prefix)
-    # Check both locations for existing projects.
+    # metadata dir: read either existing location; new projects use ``.kanibako``.
     dot_meta = project_path / ".kanibako"
     nodot_meta = project_path / "kanibako"
 
-    # Check for stored paths in existing metadata.
     meta = None
-    actual_layout = None
     if dot_meta.is_dir():
         meta = read_project_meta(dot_meta / "project.yaml")
         metadata_path = dot_meta
@@ -1744,25 +1567,16 @@ def resolve_standalone_project(
         meta = read_project_meta(nodot_meta / "project.yaml")
         metadata_path = nodot_meta
     else:
-        # New project — determine layout and metadata_path.
-        actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.standalone]
-        if actual_layout == ProjectLayout.robust:
-            metadata_path = nodot_meta
-        else:
-            metadata_path = dot_meta
+        metadata_path = dot_meta
 
+    _sa_shell, _sa_vro, _sa_vrw = _standalone_box_paths(metadata_path, project_path)
     if meta:
-        actual_layout = ProjectLayout(meta["layout"]) if meta.get("layout") else _DEFAULT_LAYOUT[BoxMode.standalone]
-        shell_path = Path(meta["shell"]) if meta["shell"] else metadata_path / "shell"
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else project_path / "vault" / "ro"
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else project_path / "vault" / "rw"
+        shell_path = Path(meta["shell"]) if meta["shell"] else _sa_shell
+        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _sa_vro
+        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _sa_vrw
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        if actual_layout is None:
-            actual_layout = layout or _DEFAULT_LAYOUT[BoxMode.standalone]
-        shell_path, vault_ro_path, vault_rw_path = _compute_standalone_paths(
-            actual_layout, metadata_path, project_path,
-        )
+        shell_path, vault_ro_path, vault_rw_path = _sa_shell, _sa_vro, _sa_vrw
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     project_toml = metadata_path / "project.yaml"
@@ -1786,7 +1600,6 @@ def resolve_standalone_project(
         write_project_meta(
             project_toml,
             mode="standalone",
-            layout=actual_layout.value,
             workspace=str(project_path),
             shell=str(shell_path),
             vault_ro=str(vault_ro_path),
@@ -1813,7 +1626,6 @@ def resolve_standalone_project(
         vault_rw_path=vault_rw_path,
         is_new=is_new,
         mode=BoxMode.standalone,
-        layout=actual_layout,
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
         global_shared_path=None,

@@ -10,15 +10,10 @@ from kanibako.config import load_config
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.paths import (
     DetectionResult,
-    ProjectLayout,
     BoxMode,
     _bootstrap_shell,
-    _ensure_human_vault_symlink,
-    _ensure_vault_symlink,
     _find_local_ancestor,
     _find_workset_for_path,
-    _remove_human_vault_symlink,
-    _remove_project_vault_symlink,
     _resolve_workset_or_connected,
     _upgrade_shell,
     detect_project_mode,
@@ -202,7 +197,6 @@ class TestProjectMeta:
         write_project_meta(
             proj.metadata_path / "project.yaml",
             mode="primary",
-            layout="default",
             workspace=str(proj.project_path),
             shell=str(custom_shell),
             vault_ro=str(proj.vault_ro_path),
@@ -287,7 +281,7 @@ class TestProjectMeta:
         meta = read_project_meta(project_toml)
         write_project_meta(
             project_toml,
-            mode=meta["mode"], layout=meta["layout"],
+            mode=meta["mode"],
             workspace=meta["workspace"], shell=meta["shell"],
             vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
             enable_vault=meta["enable_vault"], group_auth=meta["group_auth"],
@@ -313,7 +307,7 @@ class TestProjectMeta:
         meta = read_project_meta(project_toml)
         write_project_meta(
             project_toml,
-            mode=meta["mode"], layout=meta["layout"],
+            mode=meta["mode"],
             workspace=meta["workspace"], shell=meta["shell"],
             vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
             enable_vault=meta["enable_vault"], group_auth=meta["group_auth"],
@@ -692,9 +686,9 @@ class TestFindLocalAncestor:
 
         # Register both and create their boxes dirs.
         register_name(std.data_path, "outer", str(outer))
-        (std.data_path / "boxes" / "outer").mkdir(parents=True)
+        (std.boxes / "outer").mkdir(parents=True)
         register_name(std.data_path, "inner", str(inner))
-        (std.data_path / "boxes" / "inner").mkdir(parents=True)
+        (std.boxes / "inner").mkdir(parents=True)
 
         # From a subdirectory of inner, the deeper match should win.
         target = inner / "src"
@@ -725,7 +719,7 @@ class TestFindLocalAncestor:
         project = tmp_home / "exact"
         project.mkdir()
         register_name(std.data_path, "exact", str(project))
-        (std.data_path / "boxes" / "exact").mkdir(parents=True)
+        (std.boxes / "exact").mkdir(parents=True)
 
         result = _find_local_ancestor(project.resolve(), std.data_path, std.boxes)
         assert result == project.resolve()
@@ -759,7 +753,7 @@ class TestResolveProjectHomeGuard:
         names_path.write_text(
             f'projects:\n  home: "{home.resolve()}"\nworksets: {{}}\n'
         )
-        boxes_dir = std.data_path / "boxes" / "home"
+        boxes_dir = std.boxes / "home"
         boxes_dir.mkdir(parents=True)
         (boxes_dir / "shell").mkdir()
         # Write a minimal project.yaml so resolve_project reads stored paths.
@@ -767,7 +761,6 @@ class TestResolveProjectHomeGuard:
         write_project_meta(
             boxes_dir / "project.yaml",
             mode="primary",
-            layout="default",
             workspace=str(home.resolve()),
             shell=str(boxes_dir / "shell"),
             vault_ro=str(home / "vault" / "ro"),
@@ -1022,107 +1015,14 @@ class TestResolveWorksetOrConnected:
             _resolve_workset_or_connected(tmp_home / "nowhere", std)
 
 
-class TestEnsureVaultSymlink:
-    """Tests for _ensure_vault_symlink convenience symlink."""
+class TestPrimaryVaultLocation:
+    """Phase 5: PRIMARY vault lives under @system.primary_workset, NOT in the
+    workspace, and no discovery symlink is created (A7 deleted that machinery).
+    """
 
-    def test_creates_symlink_when_vault_outside_project(self, tmp_path):
-        """Symlink created when vault lives outside the project."""
-        project = tmp_path / "project"
-        project.mkdir()
-        remote_vault = tmp_path / "settings" / "abc" / "vault"
-        vault_ro = remote_vault / "ro"
-        vault_ro.mkdir(parents=True)
-
-        _ensure_vault_symlink(project, vault_ro)
-
-        link = project / "vault"
-        assert link.is_symlink()
-        assert link.resolve() == remote_vault.resolve()
-
-    def test_noop_when_vault_inside_project(self, tmp_path):
-        """No symlink created when vault is already under project_path."""
-        project = tmp_path / "project"
-        vault = project / "vault"
-        vault_ro = vault / "ro"
-        vault_ro.mkdir(parents=True)
-
-        _ensure_vault_symlink(project, vault_ro)
-
-        assert not (project / "vault").is_symlink()
-        assert (project / "vault").is_dir()
-
-    def test_noop_when_vault_dir_exists(self, tmp_path):
-        """Existing real vault/ directory is not overwritten."""
-        project = tmp_path / "project"
-        project.mkdir()
-        existing_vault = project / "vault"
-        existing_vault.mkdir()
-        (existing_vault / "my-data").touch()
-
-        remote_vault = tmp_path / "remote" / "vault"
-        vault_ro = remote_vault / "ro"
-        vault_ro.mkdir(parents=True)
-
-        _ensure_vault_symlink(project, vault_ro)
-
-        assert not existing_vault.is_symlink()
-        assert (existing_vault / "my-data").exists()
-
-    def test_updates_stale_symlink(self, tmp_path):
-        """Stale symlink is updated to point to new target."""
-        project = tmp_path / "project"
-        project.mkdir()
-        old_target = tmp_path / "old" / "vault"
-        old_target.mkdir(parents=True)
-        link = project / "vault"
-        link.symlink_to(old_target)
-
-        new_target = tmp_path / "new" / "vault"
-        vault_ro = new_target / "ro"
-        vault_ro.mkdir(parents=True)
-
-        _ensure_vault_symlink(project, vault_ro)
-
-        assert link.is_symlink()
-        assert link.resolve() == new_target.resolve()
-
-    def test_idempotent_when_symlink_matches(self, tmp_path):
-        """No change when symlink already points to correct target."""
-        project = tmp_path / "project"
-        project.mkdir()
-        remote_vault = tmp_path / "settings" / "vault"
-        vault_ro = remote_vault / "ro"
-        vault_ro.mkdir(parents=True)
-
-        link = project / "vault"
-        link.symlink_to(remote_vault)
-
-        _ensure_vault_symlink(project, vault_ro)
-
-        assert link.is_symlink()
-        assert link.resolve() == remote_vault.resolve()
-
-    def test_local_tree_layout_creates_symlink(self, config_file, tmp_home, credentials_dir):
-        """resolve_project with tree layout creates vault symlink."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        proj = resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.robust,
-        )
-
-        # Vault dirs should be under metadata_path, not project_path.
-        assert "boxes" in str(proj.vault_ro_path)
-
-        # Symlink should exist at project_path/vault.
-        link = proj.project_path / "vault"
-        assert link.is_symlink()
-        assert (link / "ro").is_dir()
-
-    def test_local_default_layout_no_symlink(self, config_file, tmp_home, credentials_dir):
-        """resolve_project with default layout does not create symlink."""
+    def test_primary_vault_under_primary_workset(
+        self, config_file, tmp_home, credentials_dir,
+    ):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -1131,9 +1031,25 @@ class TestEnsureVaultSymlink:
             std, config, project_dir=project_dir, initialize=True,
         )
 
-        link = proj.project_path / "vault"
-        assert not link.is_symlink()
-        assert link.is_dir()
+        # Vault dirs are under the PRIMARY workset, keyed by box name.
+        assert proj.vault_ro_path == std.primary_vault_ro / proj.name
+        assert proj.vault_rw_path == std.primary_vault_rw / proj.name
+        assert proj.vault_ro_path.is_dir()
+
+        # No vault dir or discovery symlink is created inside the workspace.
+        assert not (proj.project_path / "vault").exists()
+        assert not (proj.project_path / "vault").is_symlink()
+
+    def test_primary_shell_under_box_metadata(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=True,
+        )
+        assert proj.shell_path == proj.metadata_path / "shell"
+        assert proj.metadata_path == std.boxes / proj.name
 
 
 class TestBootstrapShell:
@@ -1263,294 +1179,6 @@ class TestLocalSharedPath:
 
         expected = std.data_path / config.paths_shared
         assert proj.local_shared_path == expected
-
-
-class TestHumanFriendlyVaultSymlink:
-    """Tests for _ensure_human_vault_symlink."""
-
-    def test_creates_symlink_for_robust_layout(self, tmp_path):
-        """Creates {vault_dir}/{basename} → vault_parent."""
-        vault_dir = tmp_path / "vault"
-        project_path = tmp_path / "my-project"
-        project_path.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc123" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        result = _ensure_human_vault_symlink(vault_dir, project_path, vault_parent)
-
-        assert result is not None
-        link = vault_dir / "my-project"
-        assert link.is_symlink()
-        assert link.resolve() == vault_parent.resolve()
-
-    def test_collision_handling(self, tmp_path):
-        """When basename exists pointing elsewhere, tries name1, name2, etc."""
-        vault_dir = tmp_path / "vault"
-        vault_dir.mkdir()
-        project_path = tmp_path / "proj"
-        project_path.mkdir()
-
-        # Create two vault_parents for the same project basename.
-        vp1 = tmp_path / "boxes" / "aaa" / "vault"
-        vp1.mkdir(parents=True)
-        vp2 = tmp_path / "boxes" / "bbb" / "vault"
-        vp2.mkdir(parents=True)
-
-        # First call takes "proj".
-        r1 = _ensure_human_vault_symlink(vault_dir, project_path, vp1)
-        assert r1 is not None
-        assert r1.name == "proj"
-
-        # Second call with different target gets "proj1".
-        r2 = _ensure_human_vault_symlink(vault_dir, project_path, vp2)
-        assert r2 is not None
-        assert r2.name == "proj1"
-
-    def test_idempotent_on_reinit(self, tmp_path):
-        """Re-calling with same target is a no-op."""
-        vault_dir = tmp_path / "vault"
-        project_path = tmp_path / "proj"
-        project_path.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        r1 = _ensure_human_vault_symlink(vault_dir, project_path, vault_parent)
-        r2 = _ensure_human_vault_symlink(vault_dir, project_path, vault_parent)
-
-        assert r1 == r2
-        # Only one symlink should exist.
-        links = list(vault_dir.iterdir())
-        assert len(links) == 1
-
-    def test_no_symlink_when_vault_parent_missing(self, tmp_path):
-        """Returns None when vault_parent doesn't exist."""
-        vault_dir = tmp_path / "vault"
-        project_path = tmp_path / "proj"
-        project_path.mkdir()
-        vault_parent = tmp_path / "nonexistent" / "vault"
-
-        result = _ensure_human_vault_symlink(vault_dir, project_path, vault_parent)
-        assert result is None
-
-    def test_creates_vault_dir_if_missing(self, tmp_path):
-        """vault_dir is created if it doesn't exist."""
-        vault_dir = tmp_path / "deep" / "vault"
-        project_path = tmp_path / "proj"
-        project_path.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        _ensure_human_vault_symlink(vault_dir, project_path, vault_parent)
-
-        assert vault_dir.is_dir()
-        assert (vault_dir / "proj").is_symlink()
-
-    def test_skips_real_directory(self, tmp_path):
-        """If basename is a real directory, tries next candidate."""
-        vault_dir = tmp_path / "vault"
-        vault_dir.mkdir()
-        # Create a real directory with the project name.
-        (vault_dir / "proj").mkdir()
-        project_path = tmp_path / "proj"
-        project_path.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        result = _ensure_human_vault_symlink(vault_dir, project_path, vault_parent)
-        assert result is not None
-        assert result.name == "proj1"
-
-    def test_robust_layout_integration(self, config_file, tmp_home, credentials_dir):
-        """resolve_project with robust layout creates human-friendly symlink."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        proj = resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.robust,
-        )
-
-        human_vault_dir = std.data_path / config.paths_vault
-        link = human_vault_dir / "project"
-        assert link.is_symlink()
-        assert link.resolve() == (proj.metadata_path / "vault").resolve()
-
-    def test_default_layout_no_human_symlink(self, config_file, tmp_home, credentials_dir):
-        """resolve_project with default layout does NOT create human-friendly symlink."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        resolve_project(
-            std, config, project_dir=project_dir, initialize=True,
-        )
-
-        human_vault_dir = std.data_path / config.paths_vault
-        assert not human_vault_dir.exists()
-
-    def test_simple_layout_no_human_symlink(self, config_file, tmp_home, credentials_dir):
-        """resolve_project with simple layout does NOT create human-friendly symlink."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.simple,
-        )
-
-        human_vault_dir = std.data_path / config.paths_vault
-        assert not human_vault_dir.exists()
-
-    def test_vault_disabled_no_human_symlink(self, config_file, tmp_home, credentials_dir):
-        """No human-friendly symlink when vault is disabled."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.robust, enable_vault=False,
-        )
-
-        human_vault_dir = std.data_path / config.paths_vault
-        assert not human_vault_dir.exists()
-
-
-class TestRemoveHumanVaultSymlink:
-    """Tests for _remove_human_vault_symlink."""
-
-    def test_removes_matching_symlink(self, tmp_path):
-        vault_dir = tmp_path / "vault"
-        vault_dir.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        link = vault_dir / "proj"
-        link.symlink_to(vault_parent)
-
-        result = _remove_human_vault_symlink(vault_dir, vault_parent)
-        assert result is True
-        assert not link.exists()
-
-    def test_cleans_up_empty_vault_dir(self, tmp_path):
-        vault_dir = tmp_path / "vault"
-        vault_dir.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        link = vault_dir / "proj"
-        link.symlink_to(vault_parent)
-
-        _remove_human_vault_symlink(vault_dir, vault_parent)
-        assert not vault_dir.exists()
-
-    def test_keeps_vault_dir_when_not_empty(self, tmp_path):
-        vault_dir = tmp_path / "vault"
-        vault_dir.mkdir()
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        link = vault_dir / "proj"
-        link.symlink_to(vault_parent)
-        (vault_dir / "other").touch()  # Extra file keeps dir alive.
-
-        _remove_human_vault_symlink(vault_dir, vault_parent)
-        assert not link.exists()
-        assert vault_dir.is_dir()
-
-    def test_noop_when_no_match(self, tmp_path):
-        vault_dir = tmp_path / "vault"
-        vault_dir.mkdir()
-        other_target = tmp_path / "other"
-        other_target.mkdir()
-        (vault_dir / "proj").symlink_to(other_target)
-
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-        vault_parent.mkdir(parents=True)
-
-        result = _remove_human_vault_symlink(vault_dir, vault_parent)
-        assert result is False
-        assert (vault_dir / "proj").is_symlink()
-
-    def test_noop_when_dir_missing(self, tmp_path):
-        vault_dir = tmp_path / "vault"  # Does not exist.
-        vault_parent = tmp_path / "boxes" / "abc" / "vault"
-
-        result = _remove_human_vault_symlink(vault_dir, vault_parent)
-        assert result is False
-
-
-class TestRemoveProjectVaultSymlink:
-    """Tests for _remove_project_vault_symlink."""
-
-    def test_removes_vault_symlink(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        target = tmp_path / "boxes" / "abc" / "vault"
-        target.mkdir(parents=True)
-        (project / "vault").symlink_to(target)
-
-        result = _remove_project_vault_symlink(project)
-        assert result is True
-        assert not (project / "vault").exists()
-
-    def test_noop_for_real_directory(self, tmp_path):
-        project = tmp_path / "project"
-        (project / "vault").mkdir(parents=True)
-
-        result = _remove_project_vault_symlink(project)
-        assert result is False
-        assert (project / "vault").is_dir()
-
-    def test_noop_when_no_vault(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        result = _remove_project_vault_symlink(project)
-        assert result is False
-
-
-class TestPurgeVaultSymlinkCleanup:
-    """Tests that purge removes vault symlinks."""
-
-    def test_purge_removes_human_friendly_symlink(self, config_file, tmp_home, credentials_dir):
-        """Purging a robust-layout project removes the human-friendly symlink."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        proj = resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.robust,
-        )
-
-        human_vault_dir = std.data_path / config.paths_vault
-        assert (human_vault_dir / "project").is_symlink()
-
-        # Simulate purge cleanup.
-        from kanibako.paths import _remove_human_vault_symlink
-        _remove_human_vault_symlink(human_vault_dir, proj.metadata_path / "vault")
-        assert not (human_vault_dir / "project").exists()
-
-    def test_purge_removes_project_level_symlink(self, config_file, tmp_home, credentials_dir):
-        """Purging a robust-layout project removes the project-level vault symlink."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        proj = resolve_project(
-            std, config, project_dir=project_dir,
-            initialize=True, layout=ProjectLayout.robust,
-        )
-
-        project_path = proj.project_path
-        assert (project_path / "vault").is_symlink()
-
-        from kanibako.paths import _remove_project_vault_symlink
-        _remove_project_vault_symlink(project_path)
-        assert not (project_path / "vault").exists()
 
 
 class TestConnectedExternal:

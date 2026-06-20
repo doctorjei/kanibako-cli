@@ -354,7 +354,6 @@ class TestProjectMeta:
         write_project_meta(
             toml_path,
             mode="primary",
-            layout="default",
             workspace="/home/user/myproject",
             shell="/data/kanibako/settings/abc/shell",
             vault_ro="/home/user/myproject/vault/ro",
@@ -387,7 +386,6 @@ class TestProjectMeta:
         write_project_meta(
             toml_path,
             mode="standalone",
-            layout="default",
             workspace="/tmp/proj",
             shell="/tmp/proj/.kanibako/shell",
             vault_ro="/tmp/proj/vault/ro",
@@ -407,7 +405,6 @@ class TestProjectMeta:
         write_project_meta(
             toml_path,
             mode="primary",
-            layout="default",
             workspace="/old",
             shell="/old/shell",
             vault_ro="/old/vault/ro",
@@ -416,7 +413,6 @@ class TestProjectMeta:
         write_project_meta(
             toml_path,
             mode="named",
-            layout="default",
             workspace="/new",
             shell="/new/shell",
             vault_ro="/new/vault/ro",
@@ -433,7 +429,6 @@ class TestProjectMeta:
         write_project_meta(
             toml_path,
             mode="primary",
-            layout="default",
             workspace="/home/user/proj",
             shell="/data/boxes/abc/shell",
             vault_ro="/home/user/proj/vault/ro",
@@ -493,7 +488,6 @@ class TestProjectMeta:
         write_project_meta(
             toml_path,
             mode="named",
-            layout="robust",
             workspace="/ws/proj",
             shell="/ws/proj/shell",
             vault_ro="/ws/vault/proj/ro",
@@ -653,7 +647,7 @@ class TestResourceOverrides:
         """Write a minimal project.yaml for testing."""
         write_project_meta(
             path,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
 
@@ -713,7 +707,7 @@ class TestTargetSettings:
         """Write a minimal project.yaml for testing."""
         write_project_meta(
             path,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
 

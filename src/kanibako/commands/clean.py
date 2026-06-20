@@ -9,8 +9,7 @@ import sys
 from kanibako.config import load_config
 from kanibako.errors import UserCancelled
 from kanibako.paths import (
-    _remove_human_vault_symlink,
-    _remove_project_vault_symlink,
+    BoxMode,
     load_std_paths,
     resolve_any_project,
 )
@@ -73,13 +72,14 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             print("Aborted.")
             return 2
 
-    # Clean up vault symlinks before removing data.
-    vault_dir = std.data_path / config.paths_vault
-    _remove_human_vault_symlink(vault_dir, proj.metadata_path / "vault")
-    _remove_project_vault_symlink(proj.project_path)
-
     print("Removing session data... ", end="", flush=True)
     shutil.rmtree(proj.metadata_path)
+    # Phase 5: PRIMARY vault lives under @system.primary_workset (not under
+    # metadata_path), so remove the per-box ro/rw dirs explicitly.
+    if proj.mode is BoxMode.primary:
+        for vault_dir in (proj.vault_ro_path, proj.vault_rw_path):
+            if vault_dir.is_dir():
+                shutil.rmtree(vault_dir, ignore_errors=True)
 
     # Remove helper log directory if it exists.
     _log_id = proj.name if proj.name else proj.metadata_path.name
@@ -130,16 +130,19 @@ def _purge_all(std, config, *, force: bool) -> int:
 
     removed = 0
 
-    # Default-mode projects.
-    vault_dir = std.data_path / config.paths_vault
+    # PRIMARY-mode projects.
     for metadata_path, project_path in projects:
-        # Clean up vault symlinks before removing data.
-        _remove_human_vault_symlink(vault_dir, metadata_path / "vault")
-        if project_path is not None:
-            _remove_project_vault_symlink(project_path)
         label = str(project_path) if project_path else metadata_path.name
         print(f"Removing {label}... ", end="", flush=True)
         shutil.rmtree(metadata_path)
+        # Phase 5: PRIMARY vault lives under @system.primary_workset/vault/
+        # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
+        for vault_dir in (
+            std.primary_vault_ro / metadata_path.name,
+            std.primary_vault_rw / metadata_path.name,
+        ):
+            if vault_dir.is_dir():
+                shutil.rmtree(vault_dir, ignore_errors=True)
 
         # Remove helper log directory if it exists.
         log_dir = std.data_path / "logs" / metadata_path.name

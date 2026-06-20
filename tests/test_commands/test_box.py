@@ -265,7 +265,7 @@ class TestBoxDuplicate:
         assert (dst_dir / "code.py").read_text() == "print('hello')"
 
         # Metadata copied.
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         new_project = projects_base / "dst_project"
         assert (new_project / "marker.txt").read_text() == "session-data"
 
@@ -292,7 +292,7 @@ class TestBoxDuplicate:
         assert not dst_dir.exists()
 
         # Metadata exists.
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         assert (projects_base / "bare_dst").is_dir()
 
     def test_duplicate_source_not_dir_error(self, config_file, tmp_home, credentials_dir):
@@ -395,7 +395,7 @@ class TestBoxDuplicate:
         rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
         assert rc == 0
 
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         new_project = projects_base / "excl_dst"
         assert not (new_project / ".kanibako.lock").exists()
 
@@ -418,7 +418,7 @@ class TestBoxDuplicate:
         rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
         assert rc == 0
 
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         # Force duplicate re-registers and gets a deduplicated name since
         # "fw_dst" is already taken by the pre-existing project.
         new_project = projects_base / "fw_dst2"
@@ -489,7 +489,7 @@ class TestBoxDuplicate:
         assert names_after == names_before
         assert "orphan_dst" not in names_after
         # No partial dest metadata dir.
-        assert not (std.data_path / "boxes" / "orphan_dst").exists()
+        assert not (std.boxes / "orphan_dst").exists()
 
 
 class TestBoxInfo:
@@ -623,7 +623,7 @@ class TestBoxDuplicateCrossMode:
         assert rc == 0
 
         # Destination should have local layout.
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         ac_project = projects_base / "dup_dec_dst"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "dec-data"
@@ -670,7 +670,7 @@ class TestBoxDuplicateCrossMode:
         names_after = read_names(std.data_path)["projects"]
         assert names_after == names_before
         assert "tlfail_dst" not in names_after
-        assert not (std.data_path / "boxes" / "tlfail_dst").exists()
+        assert not (std.boxes / "tlfail_dst").exists()
 
     def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -1114,7 +1114,7 @@ class TestBoxDuplicateExternal:
         )
         rc = run_duplicate(args)
         assert rc == 0
-        assert (std.data_path / "boxes" / "plain_bare_dst").is_dir()
+        assert (std.boxes / "plain_bare_dst").is_dir()
 
     def test_bare_refusal_runs_before_workset_resolution(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -1209,7 +1209,7 @@ class TestBoxDuplicateExternal:
 
         # Destination has the external dir's CONTENTS + default-mode metadata.
         assert (dest / "code.py").read_text() == "print('external')"
-        ac_project = std.data_path / "boxes" / "e2d_dst"
+        ac_project = std.boxes / "e2d_dst"
         assert ac_project.is_dir()
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
@@ -1275,7 +1275,7 @@ class TestBoxDuplicateExternal:
         assert rc == 0
 
         # Metadata exists; workspace content NOT copied (bare).
-        assert (std.data_path / "boxes" / "eb_dst").is_dir()
+        assert (std.boxes / "eb_dst").is_dir()
         assert not (dest / "code.py").exists()
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
@@ -1343,7 +1343,7 @@ class TestBoxDuplicateFromWorkset:
         assert rc == 0
 
         # Local layout at destination
-        projects_base = std.data_path / "boxes"
+        projects_base = std.boxes
         ac_project = projects_base / "dup_ws_ac_dst"
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-dup-marker"

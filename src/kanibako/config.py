@@ -19,7 +19,6 @@ _DEFAULTS = {
     "paths_project_toml": "project.yaml",
     "paths_shared": "shared",
     "paths_shell": "shell",
-    "paths_vault": "vault",
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_agent": "",
     "box_bootstrap_program": "tmux",
@@ -38,7 +37,6 @@ class KanibakoConfig:
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]
     paths_shell: str = _DEFAULTS["paths_shell"]
-    paths_vault: str = _DEFAULTS["paths_vault"]
     box_image: str = _DEFAULTS["box_image"]
     box_agent: str = _DEFAULTS["box_agent"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
@@ -340,7 +338,6 @@ def write_project_meta(
     path: Path,
     *,
     mode: str,
-    layout: str,
     workspace: str,
     shell: str,
     vault_ro: str,
@@ -353,11 +350,15 @@ def write_project_meta(
     local_shared: str = "",
     name: str = "",
 ) -> None:
-    """Write resolved project metadata to project.yaml, preserving other sections."""
+    """Write resolved project metadata to project.yaml, preserving other sections.
+
+    Phase 5 removed the layout axis: ``mode`` (``box.mode``) is the sole
+    on-disk shape descriptor now.  No ``layout`` field is written.
+    """
     existing = load_doc(path)
 
     project_sec: dict = {
-        "mode": mode, "layout": layout,
+        "mode": mode,
         "enable_vault": enable_vault, "group_auth": group_auth,
     }
     if name:
@@ -400,8 +401,6 @@ def read_project_meta(path: Path) -> dict | None:
 
     return {
         "mode": mode,
-        # Backward compat: "tree" was renamed to "robust" in v0.6.0.
-        "layout": "robust" if project_sec.get("layout") == "tree" else project_sec.get("layout", ""),
         "enable_vault": project_sec.get("enable_vault", True),
         "group_auth": project_sec.get("group_auth", True),
         "name": project_sec.get("name", ""),

@@ -529,7 +529,6 @@ def add_project(
             write_project_meta(
                 project_toml,
                 mode="named",
-                layout="",
                 workspace=str(resolved_source),
                 shell="",
                 vault_ro="",

@@ -574,5 +574,4 @@ class TestConfigKeys:
         keys = config_keys()
         assert "box_image" in keys
         assert "paths_shell" in keys
-        assert "paths_vault" in keys
         assert "box_agent" in keys

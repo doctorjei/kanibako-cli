@@ -9,7 +9,6 @@ import pytest
 from kanibako.config import read_project_meta, write_project_meta
 from kanibako.errors import WorksetError
 from kanibako.paths import (
-    ProjectLayout,
     BoxMode,
     WorksetSpec,
     resolve_workset_project,
@@ -347,7 +346,6 @@ class TestWorksetAuthOverrideChain:
         write_project_meta(
             project_toml,
             mode="named",
-            layout=meta["layout"] or "robust",
             workspace=meta["workspace"],
             shell=meta["shell"],
             vault_ro=meta["vault_ro"],
@@ -368,26 +366,25 @@ class TestWorksetAuthOverrideChain:
 
 
 # ---------------------------------------------------------------------------
-# Characterization: workset 'simple' layout paths (pins behavior for #71 B0)
+# Characterization: NAMED-workset fixed path table (Phase 5, no layout axis)
 # ---------------------------------------------------------------------------
 
-class TestWorksetSimpleLayoutPaths:
-    """Pin the concrete paths ``_compute_project_paths`` produces for the
-    workset ``simple`` layout (shell + vault live inside the workspace dir).
+class TestWorksetFixedPaths:
+    """Pin the concrete paths the NAMED fixed table produces (shell under the
+    per-project box dir; vault under the workset vault dir).
     """
 
-    def test_simple_layout_paths(self, workset_env, std, config, credentials_dir):
+    def test_named_paths(self, workset_env, std, config, credentials_dir):
         ws, name = workset_env
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws), name, std, config,
-            initialize=True, layout=ProjectLayout.simple,
+            initialize=True,
         )
 
         workspace = ws.workspaces_dir / name
-        assert proj.layout is ProjectLayout.simple
         assert proj.project_path == workspace
         assert proj.metadata_path == ws.projects_dir / name
-        # simple layout: shell and vault are inside the workspace.
-        assert proj.shell_path == workspace / ".shell"
-        assert proj.vault_ro_path == workspace / "vault" / "ro"
-        assert proj.vault_rw_path == workspace / "vault" / "rw"
+        # Fixed NAMED table: shell under the box dir, vault under the workset.
+        assert proj.shell_path == ws.projects_dir / name / "shell"
+        assert proj.vault_ro_path == ws.vault_dir / name / "ro"
+        assert proj.vault_rw_path == ws.vault_dir / name / "rw"

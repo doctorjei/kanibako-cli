@@ -8,7 +8,6 @@ import pytest
 
 from kanibako.errors import ProjectError
 from kanibako.paths import (
-    ProjectLayout,
     BoxMode,
     resolve_standalone_project,
 )
@@ -223,45 +222,24 @@ class TestStandaloneCredentialFlow:
 
 
 # ---------------------------------------------------------------------------
-# Characterization: standalone layout paths (pins behavior for #71 B0)
+# Characterization: standalone fixed path table (Phase 5, no layout axis)
 # ---------------------------------------------------------------------------
 
-class TestStandaloneLayoutPaths:
-    """Pin the concrete paths ``_compute_standalone_paths`` produces per layout.
+class TestStandaloneFixedPaths:
+    """Pin the concrete paths the STANDALONE fixed table produces.
 
-    Current behavior:
-
-    - ``robust`` -> metadata dir is dotless ``kanibako/``; shell is
-      ``{project}/shell``; vault under ``{project}/vault/...``.
-    - ``default`` (and ``simple``) -> falls into the non-robust branch:
-      metadata dir is ``.kanibako/``; shell is ``{metadata}/shell`` i.e.
-      ``{project}/.kanibako/shell``; vault under ``{project}/vault/...``.
+    New standalone projects use the ``.kanibako`` metadata dir; shell lives
+    under it; vault lives in the workspace (``{project}/vault/...``).  (5d
+    re-points the marker to ``box_data/`` and adds the random-id identity.)
     """
 
-    def test_default_layout_paths(self, std, config, project_dir, credentials_dir):
+    def test_standalone_paths(self, std, config, project_dir, credentials_dir):
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
-            layout=ProjectLayout.default,
         )
         resolved = project_dir.resolve()
 
-        assert proj.layout is ProjectLayout.default
-        # default layout uses the dotted metadata dir and shell under it.
         assert proj.metadata_path == resolved / ".kanibako"
         assert proj.shell_path == resolved / ".kanibako" / "shell"
-        assert proj.vault_ro_path == resolved / "vault" / "ro"
-        assert proj.vault_rw_path == resolved / "vault" / "rw"
-
-    def test_robust_layout_paths(self, std, config, project_dir, credentials_dir):
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-            layout=ProjectLayout.robust,
-        )
-        resolved = project_dir.resolve()
-
-        assert proj.layout is ProjectLayout.robust
-        # robust layout uses the DOTLESS metadata dir and top-level shell.
-        assert proj.metadata_path == resolved / "kanibako"
-        assert proj.shell_path == resolved / "shell"
         assert proj.vault_ro_path == resolved / "vault" / "ro"
         assert proj.vault_rw_path == resolved / "vault" / "rw"
