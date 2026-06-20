@@ -862,6 +862,20 @@ def _run_container(
                 logger=logger, group_auth=proj.group_auth,
             )
 
+        # Synced copies (the `<scope>.synced.<name>` category) — applied on
+        # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
+        # plugin descriptor's `cred_files` credsync engine above (that is
+        # descriptor-driven; this is settings-driven), so there is no double
+        # application.  ADDITIVE: with no `synced.*` keys configured the
+        # reconciled copy set has no synced winners -> no-op.  The group_auth
+        # gate (D-M4) suppresses every synced entry when group_auth is False.
+        _apply_synced_copies(
+            std=std, proj=proj, agent_name=agent_id, target=target,
+            global_config_path=config_file, project_toml=project_toml,
+            workset_config_path=workset_path, agent_config_path=agent_cfg_path,
+            logger=logger, group_auth=proj.group_auth,
+        )
+
         # Plugin-owned pre-launch host preparation (agent-agnostic call).
         # The plugin owns everything agent-specific that must touch the host
         # before mounts: e.g. the Claude plugin runs a synchronous `claude
@@ -1233,6 +1247,24 @@ def _run_container(
         )
         container_env = _build_config_env(
             global_env_path, agent_cfg.env, workset_env_path, project_env_path,
+        )
+        # Settings-framework env (the `<scope>.env.<VAR>` category) supersedes
+        # the retired `.env` files (Phase 2 decision E).  reconcile picks the
+        # most-specific scope per VAR (system<agent<workset<box), so applying it
+        # over the legacy map is the documented config-level precedence.  It
+        # stays BELOW target state env and CLI -e.  ADDITIVE: with no `env.*`
+        # keys configured the reconciled env set is empty -> byte-identical.
+        container_env.update(
+            _resolve_config_env(
+                std=std,
+                proj=proj,
+                agent_name=agent_id,
+                global_config_path=config_file,
+                project_toml=project_toml,
+                workset_config_path=workset_path,
+                agent_config_path=agent_cfg_path,
+                group_auth=proj.group_auth,
+            )
         )
         container_env.update(state_env)                        # target-derived state env
 
@@ -1786,7 +1818,7 @@ def _apply_init_seeds(
 
     for seed in reconciled.copies:
         if seed.category != "seeded":
-            continue  # synced copies are delivered by the cred-sync engine.
+            continue  # synced copies are applied by _apply_synced_copies.
         assert seed.host_src is not None  # seeds always have a source.
         gd = seed.box_dest.rstrip("/")
         if gd == GUEST_HOME:
@@ -1807,6 +1839,94 @@ def _apply_init_seeds(
                 seed.name, seed.host_src,
             )
             continue
+        if src.is_dir():
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dest))
+
+
+def _apply_synced_copies(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    target=None,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    logger,
+    group_auth: bool = True,
+) -> None:
+    """Apply the ``<scope>.synced.<name>`` category copies into the box shell dir.
+
+    Unlike copy-once seeds, synced entries are reapplied on EVERY launch, but
+    only when the host source is NEWER than the box-side copy (mtime gating) so
+    an unchanged source is a no-op.  Routes the category config through the
+    reconcile model (:func:`_resolve_launch_categories`) and applies the COPY
+    winners whose category is ``synced``, translating each guest_dest
+    (/home/agent/X) to a host path under ``proj.shell_path``.
+
+    This is the settings-driven synced path, DISTINCT from the plugin
+    descriptor's ``cred_files`` credsync engine (descriptor-driven) — the two do
+    not overlap, so there is no double application.
+
+    The ``group_auth`` credential gate (D-M4) is applied during reconcile: every
+    ``synced`` entry is suppressed when *group_auth* is False.
+
+    ADDITIVE: with no ``synced.*`` keys configured (and no target default synced
+    entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
+    """
+    import shutil
+
+    from kanibako.settings_resolve import GUEST_HOME
+
+    # NOTE: synced entries come only from settings `<scope>.synced.<name>` keys.
+    # Plugin descriptors do NOT yet declare default synced entries — that
+    # population is Phase 8.  *target* is accepted for call-site symmetry and is
+    # unused here until then.
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        group_auth=group_auth,
+    )
+
+    for sync in reconciled.copies:
+        if sync.category != "synced":
+            continue  # seeded copies are applied by _apply_init_seeds.
+        assert sync.host_src is not None  # synced entries always have a source.
+        gd = sync.box_dest.rstrip("/")
+        if gd == GUEST_HOME:
+            dest = proj.shell_path
+        elif gd.startswith(GUEST_HOME + "/"):
+            rel = gd[len(GUEST_HOME) + 1:]
+            dest = proj.shell_path / rel
+        else:
+            logger.warning(
+                "synced %s: guest_dest %r is outside %s; skipping",
+                sync.name, sync.box_dest, GUEST_HOME,
+            )
+            continue
+        src = Path(sync.host_src)
+        if not src.exists():
+            logger.warning(
+                "synced %s: host_src %r does not exist; skipping",
+                sync.name, sync.host_src,
+            )
+            continue
+        # mtime gate: skip if the dest is at least as new as the source.
+        try:
+            if dest.exists() and dest.stat().st_mtime >= src.stat().st_mtime:
+                continue
+        except OSError:
+            pass  # stat failure -> fall through and (re)copy
         if src.is_dir():
             dest.mkdir(parents=True, exist_ok=True)
             shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
@@ -2054,6 +2174,41 @@ def _resolve_masks(
         default_categories={"box.masks": VAULT_MASK_DEST},
     )
     return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
+
+
+def _resolve_config_env(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    group_auth: bool = True,
+) -> dict[str, str]:
+    """Resolve the ``<scope>.env.<VAR>`` category into a VAR -> value dict.
+
+    Routes the env category through the reconcile model
+    (:func:`_resolve_launch_categories`); each :class:`CategoryEntry` of
+    delivery ``ENV`` carries the VAR name in ``box_dest`` and the resolved value
+    in ``options``.  reconcile already picked the most-specific scope per VAR
+    (system<agent<workset<box), so the returned map IS the config-level env at
+    the documented precedence.  ADDITIVE: with no ``env.*`` keys configured the
+    map is empty (the retired ``.env`` files no longer feed this) -> byte-
+    identical to the pre-wiring launch env.
+    """
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        group_auth=group_auth,
+    )
+    return {e.box_dest: e.options for e in reconciled.envs}
 
 
 def _kanibako_mounts():
