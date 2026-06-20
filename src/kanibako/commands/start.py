@@ -1164,7 +1164,7 @@ def _run_container(
                         options="Z,U",
                     ))
 
-        # Resource scope mounts (SHARED / SEEDED from target.resource_mappings())
+        # Resource scope mounts (SHARED from target.resource_mappings())
         if target and proj.global_shared_path:
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
             extra_mounts.extend(resource_mounts)
@@ -2398,15 +2398,16 @@ def _kanibako_mounts():
 
 
 def _build_resource_mounts(proj, target, agent_id: str):
-    """Build bind mounts from target resource_mappings() and per-project overrides.
+    """Build bind mounts from target resource_mappings().
 
     - SHARED: mount shared dir over ``/home/agent/{config_dir}/{path}`` (read-write).
-    - SEEDED: on first init, copy from shared to project-local; then no extra mount.
     - PROJECT: no extra mount (already in shell_path).
-    """
-    import shutil
 
-    from kanibako.config import read_resource_overrides
+    NOTE: the SEEDED scope was removed in 1.6.0 — seeding a box's config from a
+    shared source is now owned by the layered seed-once template apply (Phase 7c),
+    so there is no SEEDED branch here.  The retired per-project ``project.yaml``
+    scope override (a Phase-5 worksets casualty) is no longer read either.
+    """
     from kanibako.targets.base import Mount, ResourceScope
 
     mappings = target.resource_mappings()
@@ -2419,19 +2420,9 @@ def _build_resource_mounts(proj, target, agent_id: str):
 
     config_dir = target.config_dir_name
 
-    project_toml = proj.metadata_path / "project.yaml"
-    try:
-        overrides = read_resource_overrides(project_toml)
-    except Exception:
-        overrides = {}
-
     mounts = []
     for mapping in mappings:
-        # Apply per-project override if present.
-        scope_str = overrides.get(mapping.path)
-        scope = ResourceScope(scope_str) if scope_str else mapping.scope
-
-        if scope == ResourceScope.SHARED:
+        if mapping.scope == ResourceScope.SHARED:
             shared_path = shared_base / agent_id / mapping.path
             if mapping.path.endswith("/"):
                 shared_path.mkdir(parents=True, exist_ok=True)
@@ -2445,16 +2436,6 @@ def _build_resource_mounts(proj, target, agent_id: str):
                 destination=f"/home/agent/{config_dir}/{mapping.path}",
                 options="Z,U",
             ))
-        elif scope == ResourceScope.SEEDED:
-            local = proj.shell_path / config_dir / mapping.path
-            if not local.exists():
-                src = shared_base / agent_id / mapping.path
-                if src.exists():
-                    if src.is_dir():
-                        shutil.copytree(str(src), str(local))
-                    else:
-                        local.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(str(src), str(local))
         # PROJECT scope: no extra mount needed.
 
     return mounts

@@ -300,8 +300,9 @@ class GooseTarget(Target):
         Paths are relative to config_dir_name (.config/goose/).
         """
         return [
-            # Seeded from workset template at project creation
-            ResourceMapping("config.yaml", ResourceScope.SEEDED, "Goose configuration"),
+            # config.yaml is seeded into the box home at creation by the layered
+            # seed-once template apply (the curated agent template layer), so it
+            # is NOT a resource mapping — there is no SEEDED scope here.
             # Project-specific
             ResourceMapping("secrets.yaml", ResourceScope.PROJECT, "API keys and secrets"),
             # Session DB lives under the data dir, NOT the config dir: anchor it

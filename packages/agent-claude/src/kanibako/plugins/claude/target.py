@@ -465,9 +465,9 @@ class ClaudeTarget(Target):
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare Claude Code resource sharing scopes.
 
-        Seeded: settings.json, CLAUDE.md (shipped in the curated agent template
-        layer @agent.claude.template and copied into the box home at creation by
-        the layered seed-once apply).
+        settings.json + CLAUDE.md are seeded into the box home at creation by
+        the layered seed-once template apply (the curated @agent.claude.template
+        layer), so they are NOT resource mappings — there is no SEEDED scope here.
         Project: everything else (caches, stats, telemetry, session data, tasks).
 
         Plugins are served separately as an AGENT-scope SHARED_STORE binding in
@@ -480,9 +480,6 @@ class ClaudeTarget(Target):
             ResourceMapping("stats-cache.json", ResourceScope.PROJECT, "Usage stats cache"),
             ResourceMapping("statsig/", ResourceScope.PROJECT, "Feature flags"),
             ResourceMapping("telemetry/", ResourceScope.PROJECT, "Telemetry data"),
-            # Seeded from workset template at project creation
-            ResourceMapping("settings.json", ResourceScope.SEEDED, "Permissions and enabled plugins"),
-            ResourceMapping("CLAUDE.md", ResourceScope.SEEDED, "Agent instructions template"),
             # Project-specific (fresh per project)
             ResourceMapping("projects/", ResourceScope.PROJECT, "Session data and memory"),
             ResourceMapping("session-env/", ResourceScope.PROJECT, "Session environment state"),

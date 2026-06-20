@@ -19,6 +19,7 @@ from kanibako.targets.base import (
     CredFileSpec,
     HostSrcOrigin,
     PluginDescriptor,
+    ResourceScope,
 )
 
 
@@ -286,19 +287,20 @@ class TestSettingDescriptors:
 
 class TestResourceMappings:
     def test_returns_expected_entries(self):
+        # config.yaml is now template-seeded (no SEEDED resource mapping).
         mappings = GooseTarget().resource_mappings()
         names = [m.path for m in mappings]
-        assert "config.yaml" in names
+        assert "config.yaml" not in names
         assert "secrets.yaml" in names
         assert "sessions.db" in names
-        assert len(mappings) == 3
+        assert len(mappings) == 2
+        assert ResourceScope.SEEDED not in {m.scope for m in mappings}
 
     def test_sessions_db_anchored_to_data_dir(self):
         """sessions.db lives under the data dir, anchored via `base`."""
         mappings = {m.path: m for m in GooseTarget().resource_mappings()}
         assert mappings["sessions.db"].base == ".local/share/goose/sessions"
-        # config/secrets stay relative to the config dir (no base).
-        assert mappings["config.yaml"].base == ""
+        # secrets stays relative to the config dir (no base).
         assert mappings["secrets.yaml"].base == ""
 
 
