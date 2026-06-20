@@ -68,7 +68,6 @@ class TestNoAgentTarget:
     def test_generate_agent_config(self):
         cfg = self.target.generate_agent_config()
         assert cfg.name == "Shell"
-        assert cfg.shell == "standard"
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.shared_caches == {}

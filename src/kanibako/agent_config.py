@@ -8,7 +8,7 @@ from pathlib import Path
 from kanibako.config_io import dump_doc, load_doc
 
 # Keys that live directly in [crab] as crab identity (not crab state).
-IDENTITY_KEYS = frozenset({"name", "shell", "run_args"})
+IDENTITY_KEYS = frozenset({"name", "run_args"})
 
 
 @dataclass
@@ -16,14 +16,13 @@ class AgentConfig:
     """Per-agent configuration loaded from an agent YAML file.
 
     Sections:
-      crab   — identity (name, shell, run_args) plus crab-state knobs
+      crab   — identity (name, run_args) plus crab-state knobs
                (model, access, start_mode, autonomous, …)
       env    — raw env vars injected into container
       shared — agent-level shared cache paths
     """
 
     name: str = ""
-    shell: str = "standard"
     run_args: list[str] = field(default_factory=list)
     state: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
@@ -56,7 +55,6 @@ def load_agent_config(path: Path) -> AgentConfig:
 
     agent_sec = data.get("crab", {})
     cfg.name = str(agent_sec.get("name", ""))
-    cfg.shell = str(agent_sec.get("shell", "standard"))
     raw_args = agent_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
@@ -74,7 +72,6 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
     """Write an AgentConfig to a YAML file."""
     agent_sec: dict = {
         "name": cfg.name,
-        "shell": cfg.shell,
         "run_args": list(cfg.run_args),
     }
     for k, v in cfg.state.items():

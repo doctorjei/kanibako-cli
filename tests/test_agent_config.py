@@ -15,7 +15,6 @@ class TestAgentConfigDefaults:
     def test_defaults(self):
         cfg = AgentConfig()
         assert cfg.name == ""
-        assert cfg.shell == "standard"
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.env == {}
@@ -24,14 +23,12 @@ class TestAgentConfigDefaults:
     def test_custom_values(self):
         cfg = AgentConfig(
             name="Claude Code",
-            shell="minimal",
             run_args=["--verbose"],
             state={"access": "permissive"},
             env={"FOO": "bar"},
             shared_caches={"plugins": ".claude/plugins"},
         )
         assert cfg.name == "Claude Code"
-        assert cfg.shell == "minimal"
         assert cfg.run_args == ["--verbose"]
         assert cfg.state == {"access": "permissive"}
         assert cfg.env == {"FOO": "bar"}
@@ -70,7 +67,6 @@ class TestLoadAgentConfig:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
         cfg = load_agent_config(tmp_path / "missing.yaml")
         assert cfg.name == ""
-        assert cfg.shell == "standard"
         assert cfg.run_args == []
 
     def test_load_all_sections(self, tmp_path):
@@ -78,7 +74,6 @@ class TestLoadAgentConfig:
         cfg_path.write_text(
             'crab:\n'
             '  name: "Claude Code"\n'
-            '  shell: "minimal"\n'
             '  run_args: ["--verbose", "--debug"]\n'
             '  model: "opus"\n'
             '  access: "permissive"\n'
@@ -89,7 +84,6 @@ class TestLoadAgentConfig:
         )
         cfg = load_agent_config(cfg_path)
         assert cfg.name == "Claude Code"
-        assert cfg.shell == "minimal"
         assert cfg.run_args == ["--verbose", "--debug"]
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.env == {"MY_VAR": "hello"}
@@ -103,7 +97,6 @@ class TestLoadAgentConfig:
         )
         cfg = load_agent_config(cfg_path)
         assert cfg.name == "Shell"
-        assert cfg.shell == "standard"
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.env == {}
@@ -136,7 +129,6 @@ class TestLoadAgentConfig:
         cfg_path.write_text("")
         cfg = load_agent_config(cfg_path)
         assert cfg.name == ""
-        assert cfg.shell == "standard"
 
     def test_run_args_must_be_list(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
@@ -165,7 +157,6 @@ class TestWriteAgentConfig:
         path = tmp_path / "test.yaml"
         cfg = AgentConfig(
             name="Claude Code",
-            shell="standard",
             run_args=["--verbose"],
             state={"access": "permissive"},
             env={"FOO": "bar"},
@@ -175,7 +166,6 @@ class TestWriteAgentConfig:
 
         loaded = load_agent_config(path)
         assert loaded.name == "Claude Code"
-        assert loaded.shell == "standard"
         assert loaded.run_args == ["--verbose"]
         assert loaded.state == {"access": "permissive"}
         assert loaded.env == {"FOO": "bar"}
@@ -203,7 +193,6 @@ class TestRoundTrip:
         path = tmp_path / "test.yaml"
         original = AgentConfig(
             name="Claude Code",
-            shell="minimal",
             run_args=["--verbose", "--debug"],
             state={"model": "opus", "access": "permissive"},
             env={"MY_VAR": "hello"},
@@ -213,7 +202,6 @@ class TestRoundTrip:
         loaded = load_agent_config(path)
 
         assert loaded.name == original.name
-        assert loaded.shell == original.shell
         assert loaded.run_args == original.run_args
         assert loaded.state == original.state
         assert loaded.env == original.env
@@ -226,7 +214,6 @@ class TestRoundTrip:
         loaded = load_agent_config(path)
 
         assert loaded.name == ""
-        assert loaded.shell == "standard"
         assert loaded.run_args == []
         assert loaded.state == {}
         assert loaded.env == {}
@@ -238,7 +225,6 @@ class TestRoundTrip:
         path = tmp_path / "test.yaml"
         original = AgentConfig(
             name="Claude Code",
-            shell="minimal",
             run_args=["--verbose"],
             state={"model": "sonnet"},
         )
@@ -247,13 +233,11 @@ class TestRoundTrip:
         assert 'state:' not in content
         assert content.count("crab:") == 1
         assert 'name: Claude Code' in content
-        assert 'shell: minimal' in content
         assert 'model: sonnet' in content
 
         loaded = load_agent_config(path)
         assert loaded.state == {"model": "sonnet"}
         assert loaded.name == "Claude Code"
-        assert loaded.shell == "minimal"
         assert loaded.run_args == ["--verbose"]
 
     def test_round_trip_multiple_run_args(self, tmp_path):

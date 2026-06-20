@@ -309,7 +309,6 @@ class ClaudeTarget(Target):
 
         return _AgentConfig(
             name="Claude Code",
-            shell="standard",
             state={"model": "opus", "access": "permissive"},
         )
 
@@ -490,7 +489,9 @@ class ClaudeTarget(Target):
     def resource_mappings(self) -> list[ResourceMapping]:
         """Declare Claude Code resource sharing scopes.
 
-        Seeded: settings.json, CLAUDE.md (copied from workset template at creation).
+        Seeded: settings.json, CLAUDE.md (shipped in the curated agent template
+        layer @agent.claude.template and copied into the box home at creation by
+        the layered seed-once apply).
         Project: everything else (caches, stats, telemetry, session data, tasks).
 
         Plugins are served separately as an AGENT-scope SHARED_STORE binding in

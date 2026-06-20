@@ -293,7 +293,6 @@ class GooseTarget(Target):
 
         return _AgentConfig(
             name="Goose",
-            shell="standard",
             state={"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
         )
 
