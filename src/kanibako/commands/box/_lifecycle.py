@@ -637,6 +637,11 @@ def _validate(
         "relocating": relocating,
         "no_owner_change": no_owner_change,
         "new_name": new_name,
+        # The user's EXPLICIT --name (empty when not given).  Unlike ``new_name``
+        # (which defaults to the source name), this distinguishes "no --name"
+        # from "--name <source-name>" so a standalone target only treats a real
+        # --name as a user assertion (R1/R3).
+        "requested_name": (spec.name or "").lower(),
     }
 
 
@@ -705,6 +710,7 @@ def _run_steps(
     dest: Path | None = plan["dest"]
     relocating: bool = plan["relocating"]
     new_name: str = plan["new_name"]
+    requested_name: str = plan["requested_name"]
 
     # ------------------------------------------------------------------
     # STEP 2 — Move files (only when relocating a real workspace tree).
@@ -746,6 +752,7 @@ def _run_steps(
         new_workspace=new_workspace,
         relocating=relocating,
         dest=dest,
+        requested_name=requested_name,
     )
 
     # ------------------------------------------------------------------
@@ -784,6 +791,7 @@ def _apply_ownership_and_markers(
     new_workspace: Path,
     relocating: bool,
     dest: Path | None,
+    requested_name: str = "",
 ) -> ProjectState:
     """Re-root metadata/shell/vault into the target owner + rewrite markers.
 
@@ -805,6 +813,7 @@ def _apply_ownership_and_markers(
         return _to_standalone(
             state, std, config, unwind,
             new_name=new_name, new_workspace=new_workspace,
+            requested_name=requested_name,
         )
     return _to_default(
         state, std, config, unwind,
@@ -1000,22 +1009,28 @@ def _to_standalone(
     *,
     new_name: str,
     new_workspace: Path,
+    requested_name: str = "",
 ) -> ProjectState:
     """Convert/relocate the project so it becomes standalone (in-tree metadata).
 
-    BUG#4: a standalone box's identity is the canonical opaque
-    ``<random24>_<leaf>`` (matching ``create --standalone`` / ``duplicate
-    --standalone``), not a user-facing name — standalone boxes are NOT named via
-    ``names.yaml`` but registered in ``registry.standalone``.  So convert
-    ESTABLISHES the box uniformly: it generates a FRESH canonical identity (the
-    requested ``new_name`` / ``--name`` is ignored for a standalone target, just
-    as ``create`` never honors a name), writes ``mode=standalone`` with that
-    identity, and registers it in ``registry.standalone`` (with an unwind to
-    drop the registration on failure).  ``_remove_old_metadata`` purges the
-    source's prior registry entry (``names.yaml`` for primary/named) so it does
-    not dangle.  Without this the converted box was unregistered + non-canonically
-    named — a D-M13 collision / channel-addressing risk and an inconsistency with
-    create/duplicate.
+    A standalone box's identity is the canonical opaque ``<random24>_<leaf>``
+    (matching ``create --standalone`` / ``duplicate --standalone``); standalone
+    boxes are NOT named via ``names.yaml`` but registered in
+    ``registry.standalone``.  Convert ESTABLISHES the box uniformly via
+    :func:`establish_standalone`, which now HONORS an explicit ``--name``
+    (``new_name``) through :func:`box_identity.resolve_standalone_name`: a
+    verbatim canonical id is used if free (else refused), a non-canonical
+    ``--name`` becomes a fresh ``<random24>_<sanitized name>``, and NO ``--name``
+    generates a fresh canonical id from the root basename.  It writes
+    ``mode=standalone`` with that identity and registers it in
+    ``registry.standalone`` (with an unwind to drop the registration on
+    failure).  ``_remove_old_metadata`` purges the source's prior registry entry
+    (``names.yaml`` for primary/named) so it does not dangle.
+
+    ``new_name`` is only a *requested* name; the source's name is passed as the
+    default when the caller did not pass ``--name`` (i.e. ``new_name ==
+    state.name``), in which case it is NOT treated as a user assertion — a fresh
+    canonical id is generated instead.
     """
     from kanibako import registry_store
     from kanibako.paths import establish_standalone
@@ -1028,14 +1043,17 @@ def _to_standalone(
         shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
 
-    # Establish the canonical standalone identity + meta + registration via the
-    # shared core (a FRESH name, never the source/requested name; whole-name
-    # collision regen vs the registry's standalone set).  The metadata dir was
-    # just populated by _copy_metadata above.
+    # Establish the standalone identity + meta + registration via the shared
+    # core.  ``requested_name`` is the user's explicit ``--name`` (empty when
+    # not given); establish_standalone routes it through resolve_standalone_name
+    # (honor a free canonical id verbatim, refuse a taken one, else fresh prefix
+    # over the supplied string; empty → fresh canonical from the root basename).
+    # The metadata dir was just populated by _copy_metadata above.
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, new_workspace,
         enable_vault=state.enable_vault,
         group_auth=state.group_auth,
+        name=requested_name,
     )
     unwind.push(
         lambda: registry_store.unregister_standalone(std.data_path, box_name)
@@ -1336,6 +1354,16 @@ def _ownership_from_args(args) -> str | _Sentinel:
     return UNCHANGED
 
 
+def _lower_name(args) -> str | None:
+    """Return the user's ``--name`` folded to lowercase (R2), or ``None``.
+
+    Every box name is lowercase, so a user-supplied ``--name`` is silently
+    lowercased on acceptance (no rejection of mixed-case input).
+    """
+    name = getattr(args, "name", None)
+    return name.lower() if name else name
+
+
 def _make_confirm(force: bool, summary: str):
     """Return a ``Callable[[], bool]`` for ``execute_lifecycle``'s *confirm*.
 
@@ -1475,7 +1503,7 @@ def run_move(args) -> int:
 
     ownership = _ownership_from_args(args)
     spec = TargetSpec(
-        location=new_path, ownership=ownership, name=getattr(args, "name", None),
+        location=new_path, ownership=ownership, name=_lower_name(args),
     )
     summary = (
         "Move project workspace:\n"
@@ -1548,7 +1576,7 @@ def run_convert(args) -> int:
         return 2
 
     spec = TargetSpec(
-        location=location, ownership=ownership, name=getattr(args, "name", None),
+        location=location, ownership=ownership, name=_lower_name(args),
     )
     if location is INPLACE:
         loc_desc = "in place"

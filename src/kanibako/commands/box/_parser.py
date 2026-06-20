@@ -428,6 +428,10 @@ def run_create(args: argparse.Namespace) -> int:
     group_auth = False if getattr(args, "distinct_auth", False) else None
     project_dir = args.path
 
+    # R2: every box name is lowercase — silently fold a user-supplied --name.
+    if getattr(args, "name", None):
+        args.name = args.name.lower()
+
     # $HOME guard: a home-directory project mounts the entire home tree, so it
     # must be (a) standalone and (b) an explicit opt-in via --allow-home. Local
     # mode at $HOME is never permitted.
@@ -462,6 +466,7 @@ def run_create(args: argparse.Namespace) -> int:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
             enable_vault=enable_vault, group_auth=group_auth,
+            name=getattr(args, "name", None) or "",
         )
     else:
         proj = resolve_project(
