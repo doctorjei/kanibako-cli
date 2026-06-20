@@ -15,6 +15,50 @@ import pytest
 from kanibako.config import KanibakoConfig, load_config, write_global_config
 
 
+@pytest.fixture(autouse=True)
+def _no_magicmock_dir_leak():
+    """Fail any test that leaks a ``<MagicMock ...>`` entry into the CWD.
+
+    A MagicMock ``std`` whose unconfigured channel/path attrs reach a
+    ``mkdir`` (e.g. the channels L7 guarantee-create) creates literal
+    directories named after the mock's ``repr`` in the working tree.  This
+    autouse fixture snapshots the CWD before each test and asserts no
+    ``MagicMock``-named entry appeared after — turning the silent filesystem
+    leak into a test failure rather than working-tree pollution.
+    """
+    from pathlib import Path
+
+    cwd = Path.cwd()
+
+    def _magicmock_entries() -> set[str]:
+        try:
+            return {p.name for p in cwd.iterdir() if "MagicMock" in p.name}
+        except OSError:
+            return set()
+
+    before = _magicmock_entries()
+    try:
+        yield
+    finally:
+        leaked = _magicmock_entries() - before
+        # Clean up so a single offending test doesn't cascade into the rest.
+        for name in leaked:
+            try:
+                target = cwd / name
+                if target.is_dir():
+                    import shutil as _shutil
+
+                    _shutil.rmtree(target, ignore_errors=True)
+                else:
+                    target.unlink(missing_ok=True)
+            except OSError:
+                pass
+        assert not leaked, (
+            f"test leaked MagicMock-named entries into {cwd}: {sorted(leaked)} "
+            "(an unmocked MagicMock path likely reached mkdir)"
+        )
+
+
 @pytest.fixture
 def tmp_home(tmp_path, monkeypatch):
     """Set HOME, XDG dirs, and CWD to an isolated temp tree."""
@@ -200,6 +244,17 @@ def start_mocks():
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
             patch("kanibako.commands.start._upgrade_shell"),
             patch("kanibako.templates.apply_template_layers"),
+            # Channel mounts run through the real category resolver + L7
+            # guarantee-create (mkdir of every rw source).  Driven with the
+            # MagicMock ``std`` here, the channel sources are MagicMock repr
+            # strings, which the guarantee-create would mkdir as literal
+            # ``<MagicMock ...>`` directories in the test's CWD.  Stub it to an
+            # empty mount set — channel-mount behavior is covered by
+            # tests/test_commands/test_start_channels.py with a real ``std``.
+            patch(
+                "kanibako.commands.start._build_channel_mounts",
+                return_value=[],
+            ) as m_build_channel_mounts,
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),
@@ -327,6 +382,7 @@ def start_mocks():
                 launch_check=m_launch_check,
                 validate_binary=m_validate_binary,
                 credsync=m_credsync,
+                build_channel_mounts=m_build_channel_mounts,
             )
 
     return _make
