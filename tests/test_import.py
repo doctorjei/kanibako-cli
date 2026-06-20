@@ -113,6 +113,35 @@ class TestStandaloneImport:
         # box_data/ absent → nothing to import.
         assert import_reconcile.import_standalone(std.data_path, project_dir) is None
 
+    def test_moved_standalone_rebases_resolved_paths(
+        self, std, config, tmp_home, credentials_dir, capsys,
+    ):
+        import shutil
+
+        from kanibako.paths import resolve_standalone_project
+        # Create a standalone box at the original location.
+        orig = tmp_home / "orig"
+        orig.mkdir()
+        resolve_standalone_project(std, config, str(orig), initialize=True)
+        # Move the whole tree to a new path; clear the registry (simulate a move).
+        moved = tmp_home / "moved"
+        shutil.move(str(orig), str(moved))
+        registry_store.save_section(std.data_path, "standalone", {})
+        capsys.readouterr()
+        # Import + resolve from the NEW location.
+        import_reconcile.import_standalone(std.data_path, moved)
+        resolved = resolve_standalone_project(
+            std, config, str(moved), initialize=False,
+        )
+        # resolved.* point at the NEW root, not the deleted original.
+        assert resolved.shell_path.name == "home"
+        assert resolved.shell_path.parent == (moved / "box_data").resolve()
+        assert resolved.shell_path.parent.parent == moved.resolve()
+        assert resolved.vault_ro_path == (moved / "vault" / "ro").resolve()
+        assert resolved.vault_rw_path == (moved / "vault" / "rw").resolve()
+        assert str(orig) not in str(resolved.shell_path)
+        assert resolved.metadata_path == (moved / "box_data").resolve()
+
 
 # ---------------------------------------------------------------------------
 # NAMED (worksets)
