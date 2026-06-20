@@ -195,7 +195,18 @@ class CredFileSpec:
 
 @dataclass(frozen=True)
 class PluginDescriptor:
-    """Declarative data a plugin exposes via Target.descriptor. Divergent LOGIC stays in Target hook methods."""
+    """Declarative data a plugin exposes via Target.descriptor. Divergent LOGIC stays in Target hook methods.
+
+    Maps onto the per-agent keyspace (``settings-keyspace-1.6.0-target.md`` §2d),
+    keyed by ``@agent.<agent>.meta.name`` (the plugin's ``name`` property).  A few
+    §2d keys are *informational* — they describe where core derives a path, not a
+    descriptor field: ``agent.<agent>.path`` (``@system.agents/<name>``, derived in
+    core), ``agent.<agent>.template`` (the layer-2 seed source, owned by the
+    templates layer), and ``agent.<agent>.transform`` (a binary-patch cache label;
+    claude's tweakcc is a bespoke path, not a descriptor hook).  The ``synced``
+    category in §2d is the spec VIEW of ``cred_files`` (realized by the credsync
+    engine); ``critical`` is the set of ``AGENT_CRITICAL`` ``bindings`` keys.
+    """
 
     command: tuple[str, ...]                       # box argv prefix (e.g. ("claude",))
     bindings: tuple[Binding, ...]                  # ALL bound elements; ordered; >=1
@@ -370,24 +381,26 @@ class Target(ABC):
         return []
 
     def default_shares(self) -> dict[str, str]:
-        """Declare default scoped shares for this agent's crab.
+        """Declare default AGENT-scope shares/caches for this agent.
 
-        Returns a mapping of full scoped-binding keys
-        ({scope}.bindings.{ro,rw}.{name}) to host_src:guest_dest bind
-        expressions. These become the CRAB level's *declared defaults* in the
-        share resolver — a user can override or suppress (terminal "") any of
-        them at a more-specific level. The default returns {} (no shares).
+        Returns a mapping of full scoped category keys
+        (``agent.shared.<name>`` / ``agent.caches.<name>``) to
+        ``host_src:box_dest`` bind expressions. These are injected as the AGENT
+        level's *declared defaults* (``default_categories``) in the category
+        resolver — a user can override or suppress (terminal "") any of them at
+        a more-specific level. The default returns {} (no shares).
         """
         return {}
 
     def default_seeds(self) -> dict[str, str]:
-        """Declare default copy-once-at-init seeds for this agent's crab.
+        """Declare default copy-once-at-init seeds for this agent.
 
-        Returns a mapping of full seed keys ({scope}.seeded.{name}) to
-        host_src:guest_dest expressions, injected as the CRAB level's declared
-        defaults in the seed resolver. A user can override or suppress (terminal
-        "" or the "empty" sentinel) any of them at a more-specific level. The
-        default returns {} (no seeds). No target ships a default seed yet.
+        Returns a mapping of full seed keys (``agent.seeded.<name>``) to
+        ``host_src:box_dest`` expressions, injected as the AGENT level's declared
+        defaults (``default_categories``) in the category resolver. A user can
+        override or suppress (terminal "" or the "empty" sentinel) any of them at
+        a more-specific level. The default returns {} (no seeds). No target ships
+        a default seed yet.
         """
         return {}
 

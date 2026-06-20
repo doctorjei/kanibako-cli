@@ -1,6 +1,6 @@
-"""Agent-agnostic credential-sync engine (DORMANT — not yet wired into start.py).
+"""Agent-agnostic credential-sync engine (LIVE — wired into start.py).
 
-This module centralizes the per-plugin credential lifecycle that currently lives
+This module centralizes the per-plugin credential lifecycle that previously lived
 in each plugin's ``init_home`` / ``refresh_credentials`` / ``writeback_credentials``
 hooks.  It is driven entirely by a :class:`~kanibako.targets.base.PluginDescriptor`
 (its ``init_dirs`` and ``cred_files``) plus the plugin's
@@ -17,8 +17,11 @@ The engine owns the data-driven mtime gating / directory creation / chmod; the
 per-file transform (claude ``claudeAiOauth`` merge + ``.claude.json`` allowlist,
 goose ``config.yaml`` allowlist) stays a plugin hook reached via ``transform_cred``.
 
-NOTE: This engine is DORMANT.  Nothing in the codebase calls it yet; wiring it
-into ``start.py`` and retiring the per-plugin primitives is a later phase.
+NOTE: This engine is LIVE.  ``commands/start.py`` calls :func:`seed_cred_files`
+(new boxes), :func:`refresh_cred_files` (reattach + pre-launch), and
+:func:`writeback_cred_files` (post-session) for every descriptor-bearing target;
+the per-plugin ``init_home`` / ``refresh_credentials`` / ``writeback_credentials``
+primitives are bypassed on the descriptor path.
 """
 
 from __future__ import annotations
