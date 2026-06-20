@@ -167,7 +167,7 @@ class TestResourceOverrideInMounts:
         project_toml = proj.metadata_path / "project.yaml"
         write_project_meta(
             project_toml,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         write_resource_override(project_toml, "plugins/", "project")
@@ -189,7 +189,7 @@ class TestResourceOverrideInMounts:
         project_toml = proj.metadata_path / "project.yaml"
         write_project_meta(
             project_toml,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         write_resource_override(project_toml, "projects/", "shared")
@@ -306,7 +306,7 @@ class TestBuildEffectiveState:
         project_toml = tmp_path / "project.yaml"
         write_project_meta(
             project_toml,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         if settings:
@@ -499,7 +499,7 @@ class TestBuildEffectiveState:
         project_toml = proj_dir / "project.yaml"
         write_project_meta(
             project_toml,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         write_agent_setting(project_toml, "model", "sonnet", "claude")
@@ -532,7 +532,7 @@ class TestBuildEffectiveState:
         project_toml = proj_dir / "project.yaml"
         write_project_meta(
             project_toml,
-            mode="primary", layout="default",
+            mode="primary",
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         # Any-agent default, plus a claude-specific override.

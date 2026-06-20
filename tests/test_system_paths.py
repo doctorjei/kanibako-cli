@@ -41,8 +41,11 @@ class TestResolveSystemPathsDefaults:
         assert resolved["system.settings"] == base / "global" / "settings.yaml"
         assert resolved["system.primary_workset"] == base / "primary_workset"
         assert resolved["system.registry"] == base / "global" / "registry.yaml"
-        # Transitional box store (OLD std.boxes location, unchanged in Phase 3).
-        assert resolved["system._boxes"] == base / "boxes"
+        # Phase 5: PRIMARY box/vault/logs roots live under the PRIMARY workset.
+        assert resolved["system._boxes"] == base / "primary_workset" / "boxes"
+        assert resolved["system._primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
+        assert resolved["system._primary_vault_rw"] == base / "primary_workset" / "vault" / "rw"
+        assert resolved["system._primary_logs"] == base / "primary_workset" / "logs"
 
     def test_channels_skeleton_resolves(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
@@ -67,8 +70,13 @@ class TestResolveSystemPathsDefaults:
 
     def test_returns_every_declared_key(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        # Every declared default key plus the transitional system._boxes.
-        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {"system._boxes"}
+        # Every declared default key plus the derived PRIMARY-workset pseudo-keys.
+        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {
+            "system._boxes",
+            "system._primary_vault_ro",
+            "system._primary_vault_rw",
+            "system._primary_logs",
+        }
 
 
 class TestResolveSystemPathsOverrides:
@@ -82,7 +90,7 @@ class TestResolveSystemPathsOverrides:
         custom = tmp_path / "custom"
         assert resolved["system.data"] == custom
         assert resolved["system.agents"] == custom / "agents"
-        assert resolved["system._boxes"] == custom / "boxes"
+        assert resolved["system._boxes"] == custom / "primary_workset" / "boxes"
         assert resolved["system.global"] == custom / "global"
 
     def test_absolute_leaf_override_isolated(self, tmp_path):
@@ -146,8 +154,12 @@ class TestLoadStdPathsParity:
         assert std.global_dir == std.data_path / "global"
         assert std.base_template == std.data_path / "global" / "base_template"
         assert std.registry == std.data_path / "global" / "registry.yaml"
-        # Transitional aliases (deleted in Phase 5).
-        assert std.boxes == std.data_path / "boxes"
+        # Phase 5: PRIMARY box/vault/logs live under the PRIMARY workset.
+        assert std.boxes == std.primary_workset / "boxes"
+        assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
+        assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
+        assert std.primary_logs == std.primary_workset / "logs"
+        # Lingering aliases (owners = Phase 6/7).
         assert std.comms == std.channels
         assert std.templates == std.base_template
 
@@ -182,7 +194,7 @@ class TestBoxesOverrideConsumers:
         )
 
         custom_data = tmp_home / "srv_data"
-        custom_boxes = custom_data / "boxes"
+        custom_boxes = custom_data / "primary_workset" / "boxes"
 
         # Write a config that overrides system.data to the custom dir.
         cf = tmp_home / "config" / "kanibako.yaml"
@@ -337,7 +349,12 @@ class TestLoadSystemConfig:
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {"system._boxes"}
+        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {
+            "system._boxes",
+            "system._primary_vault_ro",
+            "system._primary_vault_rw",
+            "system._primary_logs",
+        }
         assert resolved["system.data"] == tmp_path / "kanibako"
 
     def test_user_wins_over_base(self, tmp_path, monkeypatch):

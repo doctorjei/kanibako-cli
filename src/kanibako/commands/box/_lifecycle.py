@@ -35,15 +35,11 @@ from kanibako.config import (
 from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
-    ProjectLayout,
     BoxMode,
     ProjectPaths,
     StandardPaths,
     WorksetSpec,
-    _ensure_human_vault_symlink,
     _find_workset_for_path,
-    _remove_human_vault_symlink,
-    _remove_project_vault_symlink,
     detect_project_mode,
     resolve_project,
     resolve_standalone_project,
@@ -109,7 +105,6 @@ class ProjectState:
     vault_rw: Path
     is_external: bool = False
     ws: Workset | None = None
-    layout: ProjectLayout = ProjectLayout.default
     enable_vault: bool = True
     group_auth: bool = True
 
@@ -281,15 +276,14 @@ def _default_state_from_meta(
     meta = read_project_meta(metadata_path / "project.yaml")
     if not meta:
         return None
-    layout = ProjectLayout(meta["layout"]) if meta.get("layout") else ProjectLayout.default
     shell_path = Path(meta["shell"]) if meta.get("shell") else metadata_path / "shell"
-    vault_ro = Path(meta["vault_ro"]) if meta.get("vault_ro") else metadata_path / "vault" / "ro"
-    vault_rw = Path(meta["vault_rw"]) if meta.get("vault_rw") else metadata_path / "vault" / "rw"
+    vault_ro = Path(meta["vault_ro"]) if meta.get("vault_ro") else std.primary_vault_ro / name
+    vault_rw = Path(meta["vault_rw"]) if meta.get("vault_rw") else std.primary_vault_rw / name
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=name,
         workspace_path=workspace.resolve(), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=False, ws=None, layout=layout,
+        is_external=False, ws=None,
         enable_vault=bool(meta.get("enable_vault", True)),
         group_auth=bool(meta.get("group_auth", True)),
     )
@@ -346,7 +340,6 @@ def _state_from_paths(
         vault_rw=proj.vault_rw_path,
         is_external=is_external,
         ws=ws,
-        layout=proj.layout,
         enable_vault=proj.enable_vault,
         group_auth=proj.group_auth,
     )
@@ -835,25 +828,25 @@ def _copy_metadata(
 
 
 def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: KanibakoConfig) -> None:
-    """Remove the source project's metadata/shell + vault symlinks.
+    """Remove the source project's metadata/shell (+ PRIMARY vault).
 
     Standalone source: removes the in-tree ``.kanibako`` metadata dir.
-    Default source: unregisters the name, removes human-vault symlink, removes
-    the boxes metadata dir.
+    Primary source: unregisters the name, removes the boxes metadata dir and
+    the PRIMARY-workset vault dir (which Phase 5 moved out of the workspace).
     Workset source: removes the workset registration (std-aware) so external
-    markers/symlink/connected.yaml are cleaned; the external source dir is never
+    markers/connected.yaml are cleaned; the external source dir is never
     deleted.
+
+    (Phase 5 / A7: layouts are gone and the vault is never "hidden" inside the
+    workspace, so the human-vault / project-vault discovery symlinks were
+    deleted — nothing to clean up here.)
     """
     if state.mode == BoxMode.standalone:
-        _remove_project_vault_symlink(state.workspace_path)
         if state.metadata_path.is_dir():
             shutil.rmtree(state.metadata_path, ignore_errors=True)
         return
 
     if state.mode == BoxMode.primary:
-        human_vault_dir = std.data_path / config.paths_vault
-        _remove_human_vault_symlink(human_vault_dir, state.metadata_path / "vault")
-        _remove_project_vault_symlink(state.workspace_path)
         if state.name:
             try:
                 unregister_name(std.data_path, state.name)
@@ -861,6 +854,17 @@ def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: Kaniba
                 pass
         if state.metadata_path.is_dir():
             shutil.rmtree(state.metadata_path, ignore_errors=True)
+        # PRIMARY vault lives under @system.primary_workset/vault/{ro,rw}/<name>
+        # (Phase 5), so it is NOT under metadata_path — remove the per-box ro/rw
+        # dirs explicitly (NOT their shared parent, which holds every box's
+        # vault).
+        for vault_dir in (state.vault_ro, state.vault_rw):
+            if vault_dir.is_dir():
+                try:
+                    vault_dir.relative_to(std.primary_workset)
+                except ValueError:
+                    continue
+                shutil.rmtree(vault_dir, ignore_errors=True)
         if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "shell":
             try:
                 state.shell_path.relative_to(state.metadata_path)
@@ -893,17 +897,15 @@ def _to_default(
     )
 
     phash = project_hash(str(new_workspace.resolve()))
-    layout = state.layout if state.layout != ProjectLayout.simple else ProjectLayout.default
-    vault_root = dst_metadata / "vault" if layout == ProjectLayout.robust else new_workspace / "vault"
-    vault_ro = vault_root / "ro"
-    vault_rw = vault_root / "rw"
+    # Phase 5 fixed PRIMARY table: vault under @system.primary_workset.
+    vault_ro = std.primary_vault_ro / project_name
+    vault_rw = std.primary_vault_rw / project_name
 
     _global_shared = std.data_path / config.paths_shared / "global"
     _local_shared = std.data_path / config.paths_shared
     write_project_meta(
         dst_metadata / "project.yaml",
         mode="primary",
-        layout=layout.value,
         workspace=str(new_workspace),
         shell=str(dst_shell),
         vault_ro=str(vault_ro),
@@ -917,11 +919,11 @@ def _to_default(
         name=project_name,
     )
 
-    # Human-vault symlink for robust layout (best-effort).
-    if (dst_metadata / "vault").is_dir():
-        _ensure_human_vault_symlink(
-            std.data_path / config.paths_vault, new_workspace, dst_metadata / "vault",
-        )
+    if state.enable_vault:
+        vault_ro.mkdir(parents=True, exist_ok=True)
+        vault_rw.mkdir(parents=True, exist_ok=True)
+        unwind.push(lambda: shutil.rmtree(vault_ro, ignore_errors=True))
+        unwind.push(lambda: shutil.rmtree(vault_rw, ignore_errors=True))
 
     _remove_old_metadata(state, std, config)
 
@@ -929,7 +931,7 @@ def _to_default(
         owner="primary", mode=BoxMode.primary, name=project_name,
         workspace_path=new_workspace, metadata_path=dst_metadata,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=False, ws=None, layout=layout,
+        is_external=False, ws=None,
         enable_vault=state.enable_vault, group_auth=state.group_auth,
     )
 
@@ -953,14 +955,12 @@ def _to_standalone(
     )
 
     phash = project_hash(str(new_workspace.resolve()))
-    layout = ProjectLayout.simple
     vault_ro = new_workspace / "vault" / "ro"
     vault_rw = new_workspace / "vault" / "rw"
 
     write_project_meta(
         dst_metadata / "project.yaml",
         mode="standalone",
-        layout=layout.value,
         workspace=str(new_workspace),
         shell=str(dst_shell),
         vault_ro=str(vault_ro),
@@ -985,7 +985,7 @@ def _to_standalone(
         owner="standalone", mode=BoxMode.standalone, name=new_name,
         workspace_path=new_workspace, metadata_path=dst_metadata,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=False, ws=None, layout=layout,
+        is_external=False, ws=None,
         enable_vault=state.enable_vault, group_auth=state.group_auth,
     )
 
@@ -1107,7 +1107,6 @@ def _to_workset(
         recorded_workspace = new_workspace
     phash = project_hash(str(recorded_workspace.resolve()))
 
-    layout = ProjectLayout.robust
     vault_ro = target_ws.vault_dir / new_name / "ro"
     vault_rw = target_ws.vault_dir / new_name / "rw"
     _global_shared = std.data_path / config.paths_shared / "global"
@@ -1118,7 +1117,6 @@ def _to_workset(
     write_project_meta(
         dst_project / "project.yaml",
         mode="named",
-        layout=layout.value,
         workspace=str(recorded_workspace),
         shell=str(dst_shell),
         vault_ro=str(vault_ro),
@@ -1142,7 +1140,7 @@ def _to_workset(
         mode=BoxMode.named, name=new_name,
         workspace_path=recorded_workspace, metadata_path=dst_project,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
-        is_external=not internal, ws=target_ws, layout=layout,
+        is_external=not internal, ws=target_ws,
         enable_vault=state.enable_vault, group_auth=state.group_auth,
     )
 
