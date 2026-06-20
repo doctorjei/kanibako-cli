@@ -161,8 +161,7 @@ class TestLoadStdPathsParity:
         assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
         assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
         assert std.primary_logs == std.primary_workset / "logs"
-        # Lingering aliases (owners = Phase 6/7).
-        assert std.comms == std.channels
+        # Lingering alias (owner = Phase 7; the Phase-6 ``comms`` alias is gone).
         assert std.templates == std.base_template
 
     def test_deleted_share_aliases_raise(self, tmp_home, config_file):
