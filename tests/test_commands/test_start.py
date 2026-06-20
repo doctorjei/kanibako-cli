@@ -2164,6 +2164,177 @@ class TestApplyInitSeeds:
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
 
+class TestResolveConfigEnv:
+    """Unit tests for _resolve_config_env (the `<scope>.env.<VAR>` category)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            agents=tmp_path / "agents",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            data=tmp_path / "data",
+            channels=tmp_path / "channels",
+            base_template=tmp_path / "base_template",
+            registry=tmp_path / "registry.yaml",
+            primary_workset=tmp_path / "primary_workset",
+        )
+
+    def _proj(self, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(group=group)
+
+    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
+              project_toml=None, workset_config_path=None, agent_config_path=None,
+              group_auth=True):
+        from kanibako.commands.start import _resolve_config_env
+        return _resolve_config_env(
+            std=std or self._std(tmp_path),
+            proj=proj or self._proj(),
+            agent_name="claude",
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            agent_config_path=agent_config_path,
+            group_auth=group_auth,
+        )
+
+    def test_empty_no_config_is_empty(self, tmp_path):
+        """No env.* keys → empty map (byte-identical: nothing added to env)."""
+        assert self._call(tmp_path) == {}
+
+    def test_box_env_resolved(self, tmp_path):
+        """A box-level env.<VAR> resolves to {VAR: value}."""
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  env:\n    FOO: "bar"\n')
+        assert self._call(tmp_path, project_toml=ptoml) == {"FOO": "bar"}
+
+    def test_box_overrides_system_precedence(self, tmp_path):
+        """Box scope wins over system scope for the same VAR (system<box)."""
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text('system:\n  env:\n    FOO: "from_system"\n')
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  env:\n    FOO: "from_box"\n')
+        out = self._call(
+            tmp_path, global_config_path=glob, project_toml=ptoml,
+        )
+        assert out == {"FOO": "from_box"}
+
+    def test_distinct_vars_accumulate(self, tmp_path):
+        """Different VARs at different scopes accumulate."""
+        glob = tmp_path / "kanibako.yaml"
+        glob.write_text('system:\n  env:\n    A: "1"\n')
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text('box:\n  env:\n    B: "2"\n')
+        out = self._call(
+            tmp_path, global_config_path=glob, project_toml=ptoml,
+        )
+        assert out == {"A": "1", "B": "2"}
+
+
+class TestApplySyncedCopies:
+    """Unit tests for _apply_synced_copies (the `<scope>.synced.<name>` cat)."""
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            agents=tmp_path / "agents",
+            data_home=tmp_path / "data_home",
+            data_path=tmp_path / "data",
+            data=tmp_path / "data",
+            channels=tmp_path / "channels",
+            base_template=tmp_path / "base_template",
+            registry=tmp_path / "registry.yaml",
+            primary_workset=tmp_path / "primary_workset",
+        )
+
+    def _proj(self, shell_path, group=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(shell_path=shell_path, group=group)
+
+    def _logger(self):
+        import logging
+        return logging.getLogger("test_apply_synced_copies")
+
+    def _shell(self, tmp_path):
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        return shell
+
+    def _call(self, tmp_path, *, std=None, proj=None, target=None,
+              global_config_path=None, project_toml=None,
+              workset_config_path=None, agent_config_path=None,
+              group_auth=True):
+        from kanibako.commands.start import _apply_synced_copies
+        _apply_synced_copies(
+            std=std or self._std(tmp_path),
+            proj=proj,
+            agent_name="claude",
+            target=target,
+            global_config_path=global_config_path,
+            project_toml=project_toml,
+            workset_config_path=workset_config_path,
+            agent_config_path=agent_config_path,
+            logger=self._logger(),
+            group_auth=group_auth,
+        )
+
+    def test_empty_no_config_copies_nothing(self, tmp_path):
+        """No synced config → nothing copied (additive no-op)."""
+        shell = self._shell(tmp_path)
+        self._call(tmp_path, proj=self._proj(shell))
+        assert list(shell.iterdir()) == []
+
+    def test_configured_synced_copied(self, tmp_path):
+        """A box-config synced entry copies host_src into shell_path/<dest>."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "creds.txt"
+        src.write_text("token")
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
+        self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
+        assert (shell / "cred.txt").read_text() == "token"
+
+    def test_synced_suppressed_when_group_auth_false(self, tmp_path):
+        """group_auth=False suppresses every synced entry (D-M4)."""
+        shell = self._shell(tmp_path)
+        src = tmp_path / "creds.txt"
+        src.write_text("token")
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
+        self._call(
+            tmp_path, proj=self._proj(shell), project_toml=ptoml,
+            group_auth=False,
+        )
+        assert not (shell / "cred.txt").exists()
+
+    def test_mtime_gate_skips_fresh_dest(self, tmp_path):
+        """An unchanged source (dest newer-or-equal) is not recopied."""
+        import os
+        shell = self._shell(tmp_path)
+        src = tmp_path / "creds.txt"
+        src.write_text("old")
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
+        dest = shell / "cred.txt"
+        dest.write_text("newer")
+        # Make dest strictly newer than src.
+        os.utime(src, (1000, 1000))
+        os.utime(dest, (2000, 2000))
+        self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
+        # mtime gate: dest is newer, so it is NOT overwritten.
+        assert dest.read_text() == "newer"
+
+    def test_missing_host_src_skipped(self, tmp_path):
+        """A synced whose host_src does not exist is skipped (no crash)."""
+        shell = self._shell(tmp_path)
+        missing = tmp_path / "nope"
+        ptoml = tmp_path / "project.yaml"
+        ptoml.write_text(f'box:\n  synced:\n    gone: "{missing}:~/gone"\n')
+        self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
+        assert list(shell.iterdir()) == []
+
+
 class TestBoxShellLaunch:
     """Verify the no-agent launch shell comes from resolve_box_shell (Phase 3).
 
