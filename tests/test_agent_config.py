@@ -72,7 +72,7 @@ class TestLoadAgentConfig:
     def test_load_all_sections(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'crab:\n'
+            'agent:\n'
             '  name: "Claude Code"\n'
             '  run_args: ["--verbose", "--debug"]\n'
             '  model: "opus"\n'
@@ -89,10 +89,10 @@ class TestLoadAgentConfig:
         assert cfg.env == {"MY_VAR": "hello"}
         assert cfg.shared_caches == {"plugins": ".claude/plugins"}
 
-    def test_load_crab_section_only(self, tmp_path):
+    def test_load_agent_section_only(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'crab:\n'
+            'agent:\n'
             '  name: "Shell"\n'
         )
         cfg = load_agent_config(cfg_path)
@@ -103,17 +103,17 @@ class TestLoadAgentConfig:
         assert cfg.shared_caches == {}
 
     def test_load_state_keys_without_identity(self, tmp_path):
-        # [crab] with only state keys (no identity keys) → all land in state.
+        # [agent] with only state keys (no identity keys) → all land in state.
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'crab:\n'
+            'agent:\n'
             '  access: "safe"\n'
         )
         cfg = load_agent_config(cfg_path)
         assert cfg.name == ""
         assert cfg.state == {"access": "safe"}
 
-    def test_load_missing_crab_section(self, tmp_path):
+    def test_load_missing_agent_section(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'env:\n'
@@ -133,7 +133,7 @@ class TestLoadAgentConfig:
     def test_run_args_must_be_list(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'crab:\n'
+            'agent:\n'
             '  run_args: "not-a-list"\n'
         )
         cfg = load_agent_config(cfg_path)
@@ -148,7 +148,7 @@ class TestWriteAgentConfig:
 
         assert path.exists()
         content = path.read_text()
-        assert 'crab:' in content
+        assert 'agent:' in content
         assert 'state:' not in content
         assert 'env:' in content
         assert 'shared:' in content
@@ -171,13 +171,13 @@ class TestWriteAgentConfig:
         assert loaded.env == {"FOO": "bar"}
         assert loaded.shared_caches == {"plugins": ".claude/plugins"}
 
-    def test_state_folded_into_crab_section(self, tmp_path):
+    def test_state_folded_into_agent_section(self, tmp_path):
         path = tmp_path / "test.yaml"
         cfg = AgentConfig(state={"access": "permissive"})
         write_agent_config(path, cfg)
 
         content = path.read_text()
-        # No separate state section; state knobs live under crab.
+        # No separate state section; state knobs live under agent.
         assert 'state:' not in content
         loaded = load_agent_config(path)
         assert loaded.state == {"access": "permissive"}
@@ -219,8 +219,8 @@ class TestRoundTrip:
         assert loaded.env == {}
         assert loaded.shared_caches == {}
 
-    def test_state_folded_into_single_crab_section(self, tmp_path):
-        # Writing state must produce ONE crab section (identity + state),
+    def test_state_folded_into_single_agent_section(self, tmp_path):
+        # Writing state must produce ONE agent section (identity + state),
         # with no separate state section, and load back intact.
         path = tmp_path / "test.yaml"
         original = AgentConfig(
@@ -231,7 +231,7 @@ class TestRoundTrip:
         write_agent_config(path, original)
         content = path.read_text()
         assert 'state:' not in content
-        assert content.count("crab:") == 1
+        assert content.count("agent:") == 1
         assert 'name: Claude Code' in content
         assert 'model: sonnet' in content
 

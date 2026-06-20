@@ -1,7 +1,7 @@
 """Centralized load/dump for kanibako config documents (YAML).
 
 All kanibako-owned config files (kanibako.yaml, project.yaml, config.yaml,
-workset.yaml, names.yaml, spawn.yaml, general.yaml, crab configs) are
+workset.yaml, names.yaml, spawn.yaml, general.yaml, agent configs) are
 serialized as YAML through these two helpers. There is no hand-rolled
 serializer. (pyproject.toml is Python packaging and is NOT handled here.)
 """
