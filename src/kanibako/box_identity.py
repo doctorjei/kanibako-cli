@@ -24,6 +24,8 @@ import os
 import re
 from pathlib import Path
 
+from kanibako.errors import ProjectError
+
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32
 # Fallback leaf when the project basename sanitizes to empty.
@@ -32,6 +34,13 @@ _EMPTY_LEAF_FALLBACK = "box"
 _SAFE_CHAR_RE = re.compile(r"[^A-Za-z0-9._-]")
 # Bound on collision-regeneration attempts before giving up.
 _MAX_REGEN_ATTEMPTS = 1000
+
+# A canonical standalone box name is ``<random24>_<leaf>`` where the random
+# prefix is exactly 5 lowercase base32 chars and the leaf is 1-32 chars drawn
+# from the sanitized, *lowercased* alphabet (see :func:`sanitize_cap`).  This
+# is the verbatim shape the generator emits, so it is also what a user may
+# assert by passing a fully-formed ``--name``.
+_CANONICAL_NAME_RE = re.compile(r"^[a-z2-7]{5}_[a-z0-9._-]{1,32}$")
 
 
 def random24() -> str:
@@ -46,14 +55,47 @@ def random24() -> str:
 
 
 def sanitize_cap(leaf: str) -> str:
-    """Sanitize and cap a project-basename *leaf* for use in a box name.
+    """Sanitize, lowercase, and cap a project-basename *leaf* for a box name.
 
     Non-portable characters (anything outside ``[A-Za-z0-9._-]``) become ``_``;
-    the result is capped at :data:`_LEAF_CAP` characters.  An empty result
-    (e.g. an empty or all-illegal basename) falls back to ``"box"``.
+    the result is lowercased (every box name is lowercase) and capped at
+    :data:`_LEAF_CAP` characters.  An empty result (e.g. an empty or all-illegal
+    basename) falls back to ``"box"``.
     """
-    sanitized = _SAFE_CHAR_RE.sub("_", leaf)[:_LEAF_CAP]
+    sanitized = _SAFE_CHAR_RE.sub("_", leaf).lower()[:_LEAF_CAP]
     return sanitized or _EMPTY_LEAF_FALLBACK
+
+
+def is_canonical_standalone_name(name: str) -> bool:
+    """True when *name* matches the canonical ``<random24>_<leaf>`` shape.
+
+    The prefix must be exactly 5 lowercase base32 chars (``[a-z2-7]``) and the
+    leaf 1-32 chars of ``[a-z0-9._-]`` (lowercase, matching :func:`sanitize_cap`).
+    An over-long or illegal-char leaf, or a wrong-width prefix, fails the match.
+    The check is case-sensitive: callers lowercase a supplied name first.
+    """
+    return _CANONICAL_NAME_RE.match(name) is not None
+
+
+def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
+    """Build ``<random24>_<leaf>`` with whole-name collision regen.
+
+    *leaf* must already be sanitized (see :func:`sanitize_cap`).  Regenerates
+    the random prefix (bounded retries) until the whole name is unique within
+    *existing*.  Shared by :func:`make_standalone_box_name` (leaf from the root
+    basename) and :func:`resolve_standalone_name` (leaf from a supplied string).
+
+    Raises :class:`RuntimeError` if a unique name cannot be found within
+    :data:`_MAX_REGEN_ATTEMPTS` attempts.
+    """
+    for _ in range(_MAX_REGEN_ATTEMPTS):
+        name = f"{random24()}_{leaf}"
+        if name not in existing:
+            return name
+    raise RuntimeError(
+        "Could not generate a unique standalone box name after "
+        f"{_MAX_REGEN_ATTEMPTS} attempts."
+    )
 
 
 def make_standalone_box_name(root: Path, existing: set[str]) -> str:
@@ -68,12 +110,42 @@ def make_standalone_box_name(root: Path, existing: set[str]) -> str:
     :data:`_MAX_REGEN_ATTEMPTS` attempts (effectively impossible with a sane
     ``existing`` set; the bound guards against a degenerate caller).
     """
-    leaf = sanitize_cap(root.name)
-    for _ in range(_MAX_REGEN_ATTEMPTS):
-        name = f"{random24()}_{leaf}"
-        if name not in existing:
-            return name
-    raise RuntimeError(
-        "Could not generate a unique standalone box name after "
-        f"{_MAX_REGEN_ATTEMPTS} attempts."
-    )
+    return _generate_with_leaf(sanitize_cap(root.name), existing)
+
+
+def resolve_standalone_name(
+    root: Path, supplied: str, existing: set[str],
+) -> str:
+    """Resolve the standalone box name for *root* given a user *supplied* name.
+
+    Pure (modulo ``os.urandom``) so it is directly unit-testable.  Branches:
+
+    1. *supplied* empty → :func:`make_standalone_box_name` (fresh prefix +
+       sanitized ``root.name`` leaf, whole-name collision regen).
+    2. Otherwise lowercase *supplied*, then:
+
+       * If it does NOT match the canonical ``<random24>_<leaf>`` shape (see
+         :func:`is_canonical_standalone_name`) → treat the WHOLE supplied string
+         as a raw leaf: ``<fresh-random>_<sanitize_cap(supplied)>`` with
+         collision regen.  (An over-long / illegal name lands here.)
+       * If it DOES match → the user is asserting a full canonical id verbatim.
+         If it is free in *existing* → return it as-is; if taken → raise
+         :class:`~kanibako.errors.ProjectError`.
+    """
+    if not supplied:
+        return make_standalone_box_name(root, existing)
+
+    supplied = supplied.lower()
+
+    if not is_canonical_standalone_name(supplied):
+        # Not a canonical id: use the whole supplied string as the leaf source.
+        return _generate_with_leaf(sanitize_cap(supplied), existing)
+
+    # A verbatim canonical id: honor it if free, else refuse with guidance.
+    if supplied in existing:
+        prefix = supplied.partition("_")[0]
+        raise ProjectError(
+            f"already a box with that name '{supplied}' — try without the "
+            f"'{prefix}_' prefix to generate a fresh one"
+        )
+    return supplied
