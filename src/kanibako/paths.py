@@ -673,6 +673,21 @@ def resolve_project(
         std.data_path, project_path_str, std.boxes,
     )
 
+    # Drop-in import: the registry reverse-lookup missed, but an on-disk PRIMARY
+    # box for this workspace may exist under @system.primary_workset/boxes (a
+    # dropped-in / moved tree).  On-disk metadata is authoritative — import it
+    # (alert + register; name collision → refuse), then re-resolve the dir.
+    if not project_name:
+        from kanibako import import_reconcile
+
+        imported = import_reconcile.import_primary_box_for_workspace(
+            std.data_path, std.boxes, project_path,
+        )
+        if imported:
+            project_name, project_dir_path = _resolve_local_dir(
+                std.data_path, project_path_str, std.boxes,
+            )
+
     metadata_path = project_dir_path
 
     # Check for stored paths in project.yaml (enables user overrides).
@@ -1068,8 +1083,10 @@ def detect_project_mode(
     2. Default (name-based) — one-pass scan of ``names.yaml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
-    3. Walk ancestors for standalone markers — a ``box_data/`` **directory**
-       holding a standalone metadata file exists inside the ancestor.
+    3. Walk ancestors for on-disk markers — a ``box_data/`` standalone marker,
+       or an unregistered NAMED workset root (``workset.yaml``).  Both are
+       drop-in *imported* on discovery (registered + an alert to stderr; a
+       name collision REFUSES — see :mod:`kanibako.import_reconcile`).
     4. Default — ``primary`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
@@ -1091,13 +1108,29 @@ def detect_project_mode(
     if ac_ancestor is not None:
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
-    # 3. Walk ancestors for standalone markers.
+    # 3. Walk ancestors for on-disk markers (standalone box_data/ or an
+    # unregistered NAMED workset root).  On-disk metadata is authoritative; a
+    # discovered-but-unregistered entity is IMPORTED here (alert + register;
+    # collision → refuse) so a dropped-in tree is re-discovered.  The named
+    # check runs first at each level: a workset root may itself contain a
+    # box_data/ dir, but its workset.yaml marker is the more specific identity.
+    from kanibako import import_reconcile
+
     current = resolved
     while True:
-        # Standalone check: a box_data/ directory holding a real standalone
-        # metadata file (box.mode = "standalone").  A bare directory is not
-        # enough (the metadata file must declare standalone mode).
+        # NAMED: an unregistered workset root (workset.yaml present, name not in
+        # the registry).  Import it, then the standard workset check resolves it.
+        if (current / "workset.yaml").is_file():
+            import_reconcile.import_named_workset(std.data_path, current)
+            ws_after = _check_workset(resolved, std)
+            if ws_after is not None:
+                return ws_after
+
+        # STANDALONE: a box_data/ directory holding a real standalone metadata
+        # file (box.mode = "standalone").  A bare directory is not enough (the
+        # metadata file must declare standalone mode).
         if _is_standalone_meta_dir(current):
+            import_reconcile.import_standalone(std.data_path, current)
             return DetectionResult(BoxMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
