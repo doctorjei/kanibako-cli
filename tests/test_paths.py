@@ -345,12 +345,12 @@ class TestDetectBoxMode:
         assert result.mode is BoxMode.primary
         assert result.project_root == project_dir.resolve()
 
-    def test_standalone_when_kanibako_dir_exists(self, config_file, tmp_home):
+    def test_standalone_when_box_data_dir_exists(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -370,22 +370,23 @@ class TestDetectBoxMode:
     def test_local_takes_priority_over_standalone(
         self, config_file, tmp_home, credentials_dir
     ):
-        """When both settings/{hash}/ and .kanibako exist, local wins."""
+        """When both settings/{hash}/ and box_data/ exist, local wins."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
-        (project_dir / ".kanibako").mkdir(exist_ok=True)
+        (project_dir / "box_data").mkdir(exist_ok=True)
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.primary
 
-    def test_kanibako_file_not_dir_is_not_standalone(self, config_file, tmp_home):
-        """A .kanibako *file* (not directory) should not trigger standalone mode."""
+    def test_box_data_file_not_dir_is_not_standalone(self, config_file, tmp_home):
+        """A box_data *file* (not directory) should not trigger standalone mode."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").write_text("not a directory")
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "box_data").write_text("not a directory")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.primary
@@ -448,8 +449,8 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -467,18 +468,18 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Outer project has .kanibako marker
+        # Outer project has box_data marker
         outer = tmp_home / "project"
-        (outer / ".kanibako").mkdir()
-        (outer / ".kanibako" / "project.yaml").write_text(
+        (outer / "box_data").mkdir()
+        (outer / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
-        # Inner project also has .kanibako marker
+        # Inner project also has box_data marker
         inner = outer / "subproject"
         inner.mkdir()
-        (inner / ".kanibako").mkdir()
-        (inner / ".kanibako" / "project.yaml").write_text(
+        (inner / "box_data").mkdir()
+        (inner / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -487,134 +488,51 @@ class TestDetectBoxMode:
         assert result.mode is BoxMode.standalone
         assert result.project_root == inner.resolve()
 
-    # --- Dotless kanibako/ marker tests ---
-
-    def test_dotless_kanibako_dir_triggers_standalone(self, config_file, tmp_home):
-        """A `kanibako/` directory with project.yaml triggers standalone mode."""
+    def test_box_data_dir_without_toml_ignored(self, config_file, tmp_home):
+        """A `box_data/` directory without project.yaml is NOT a marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
-
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is BoxMode.standalone
-        assert result.project_root == project_dir.resolve()
-
-    def test_dotless_kanibako_dir_without_toml_ignored(self, config_file, tmp_home):
-        """A `kanibako/` directory without project.yaml is NOT a marker."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "project"
-        (project_dir / "kanibako").mkdir()
+        (project_dir / "box_data").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.primary
 
-    def test_dot_kanibako_preferred_over_dotless(self, config_file, tmp_home):
-        """.kanibako/ is preferred when both .kanibako/ and kanibako/ exist."""
+    # --- Bare-marker rejection tests (regression: empty box_data) ---
+
+    def test_empty_box_data_dir_is_local(self, config_file, tmp_home):
+        """An empty box_data/ (no project.yaml) is NOT a standalone marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
-        (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
-
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is BoxMode.standalone
-        # Both trigger standalone; the function returns on .kanibako first
-        assert result.project_root == project_dir.resolve()
-
-    def test_kanibako_file_not_dir_ignored_for_dotless(self, config_file, tmp_home):
-        """A `kanibako` *file* (not directory) should not trigger standalone."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "project"
-        (project_dir / "kanibako").write_text("not a directory")
-
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is BoxMode.primary
-
-    def test_dotless_marker_found_from_subdirectory(self, config_file, tmp_home):
-        """Ancestor walk finds dotless kanibako/ with project.yaml in parent."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "project"
-        (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
-
-        subdir = project_dir / "src"
-        subdir.mkdir()
-
-        result = detect_project_mode(subdir.resolve(), std, config)
-        assert result.mode is BoxMode.standalone
-        assert result.project_root == project_dir.resolve()
-
-    # --- Bare-marker rejection tests (regression: empty ~/.kanibako) ---
-
-    def test_empty_dot_kanibako_dir_is_local(self, config_file, tmp_home):
-        """An empty .kanibako/ (no project.yaml) is NOT a standalone marker."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
+        (project_dir / "box_data").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.primary
         assert result.project_root == project_dir.resolve()
-
-    def test_baked_in_home_kanibako_does_not_adopt_home(self, config_file, tmp_home):
-        """THE BUG: the image bakes an empty ~/.kanibako runtime/IPC dir.
-
-        A stray file (e.g. helper.sock) inside it must NOT cause kanibako to
-        adopt the entire $HOME as a standalone project.  Detection from a real
-        project subdir must stay local and rooted at that subdir.
-        """
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        home = Path.home().resolve()
-        # Simulate the baked-in runtime dir at $HOME (no project.yaml).
-        (home / ".kanibako").mkdir(parents=True, exist_ok=True)
-        (home / ".kanibako" / "helper.sock").write_text("")
-
-        seadog = home / "workspace" / "seadog"
-        seadog.mkdir(parents=True, exist_ok=True)
-
-        result = detect_project_mode(seadog.resolve(), std, config)
-        assert result.mode is BoxMode.primary
-        assert result.project_root == seadog.resolve()
 
     def test_malformed_project_toml_is_local_and_does_not_raise(
         self, config_file, tmp_home
     ):
-        """A malformed .kanibako/project.yaml must not raise; falls to local."""
+        """A malformed box_data/project.yaml must not raise; falls to local."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text("not valid yaml: {{{")
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text("not valid yaml: {{{")
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.primary
         assert result.project_root == project_dir.resolve()
 
-    def test_local_mode_project_toml_is_not_standalone(self, config_file, tmp_home):
-        """A .kanibako/project.yaml declaring mode=local is not a standalone marker."""
+    def test_non_standalone_mode_toml_is_not_standalone(self, config_file, tmp_home):
+        """A box_data/project.yaml declaring a non-standalone mode is not a marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "default"\n'
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text(
+            'project:\n  mode: "primary"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -630,7 +548,10 @@ class TestDetectBoxMode:
         home = tmp_home / "home"
 
         # Place a marker ABOVE home (at tmp_home level)
-        (tmp_home / ".kanibako").mkdir(exist_ok=True)
+        (tmp_home / "box_data").mkdir(exist_ok=True)
+        (tmp_home / "box_data" / "project.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
+        )
 
         # project_dir is under home
         project_dir = home / "myproject"
@@ -798,19 +719,19 @@ class TestResolveAnyProject:
         assert proj.metadata_path.is_dir()
 
     def test_resolve_any_project_standalone(self, config_file, tmp_home):
-        """Dispatches to resolve_standalone_project when .kanibako/ exists."""
+        """Dispatches to resolve_standalone_project when box_data/ exists."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
         proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
 
         assert proj.mode is BoxMode.standalone
-        assert proj.metadata_path == project_dir.resolve() / ".kanibako"
+        assert proj.metadata_path == project_dir.resolve() / "box_data"
 
     def test_resolve_any_project_default_cwd(self, config_file, tmp_home, credentials_dir):
         """Uses cwd when project_dir is None."""
@@ -904,8 +825,8 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 

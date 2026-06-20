@@ -154,47 +154,47 @@ class TestDetectionFalsePositives:
         result = detect_project_mode(src_dir.resolve(), std, config)
         assert result.mode is not BoxMode.standalone
 
-    def test_dotless_kanibako_with_toml_is_valid(
+    def test_legacy_kanibako_dirs_are_not_markers(
         self, config_file, tmp_home,
     ):
-        """A kanibako/ dir WITH project.yaml IS a valid standalone marker."""
+        """The legacy ``.kanibako``/``kanibako`` dirs are no longer markers."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        for idx, dirname in enumerate((".kanibako", "kanibako")):
+            project_dir = tmp_home / f"proj_{idx}"
+            project_dir.mkdir()
+            (project_dir / dirname).mkdir()
+            (project_dir / dirname / "project.yaml").write_text(
+                'project:\n  mode: "standalone"\n'
+            )
+            result = detect_project_mode(project_dir.resolve(), std, config)
+            assert result.mode is not BoxMode.standalone
+
+    def test_box_data_marker_with_toml_is_valid(
+        self, config_file, tmp_home,
+    ):
+        """box_data/ with a real standalone project.yaml is a valid marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
-        (project_dir / "kanibako").mkdir()
-        (project_dir / "kanibako" / "project.yaml").write_text(
+        (project_dir / "box_data").mkdir()
+        (project_dir / "box_data" / "project.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.standalone
 
-    def test_dot_kanibako_marker_with_toml_is_valid(
+    def test_box_data_marker_without_toml_is_not_standalone(
         self, config_file, tmp_home,
     ):
-        """.kanibako/ with a real standalone project.yaml is a valid marker."""
+        """A bare box_data/ (no metadata file) is NOT a marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
-        (project_dir / ".kanibako").mkdir()
-        (project_dir / ".kanibako" / "project.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
-
-        result = detect_project_mode(project_dir.resolve(), std, config)
-        assert result.mode is BoxMode.standalone
-
-    def test_dot_kanibako_marker_without_toml_is_not_standalone(
-        self, config_file, tmp_home,
-    ):
-        """A bare .kanibako/ (the baked-in runtime dir) is NOT a marker."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = tmp_home / "myproject"
-        project_dir.mkdir()
-        (project_dir / ".kanibako").mkdir()
+        (project_dir / "box_data").mkdir()
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is not BoxMode.standalone

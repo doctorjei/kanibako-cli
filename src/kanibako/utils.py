@@ -111,11 +111,11 @@ def unescape_path(encoded: str) -> str:
 # Project .gitignore helper
 # ---------------------------------------------------------------------------
 
-_GITIGNORE_ENTRIES = [".kanibako/"]
+_GITIGNORE_ENTRIES = ["box_data/"]
 
 
 def write_project_gitignore(project_path: Path) -> None:
-    """Append .kanibako/ to the project's root .gitignore."""
+    """Append the standalone box-metadata dir (box_data/) to the project .gitignore."""
     gitignore = project_path / ".gitignore"
     existing = ""
     if gitignore.is_file():

@@ -110,7 +110,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     1. Entry points (pip-installed packages)
     2. ``kanibako.plugins.*`` module scan (bind-mount fallback)
     3. User directory (``~/.local/share/kanibako/plugins/``)
-    4. Project directory (``{project}/.kanibako/plugins/``)
+    4. Project directory (``{project}/box_data/plugins/``)
     """
     targets: dict[str, type[Target]] = {}
     # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
@@ -133,7 +133,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
 
     # Project-level file-drop plugins
     if project_path is not None:
-        _scan_directory_plugins(project_path / ".kanibako" / "plugins", targets)
+        _scan_directory_plugins(project_path / "box_data" / "plugins", targets)
 
     return targets
 
