@@ -166,75 +166,49 @@ class TestBinaryMounts:
 
 
 class TestInitHome:
-    def test_creates_claude_dir(self, tmp_path, monkeypatch):
-        """init_home creates .claude/ directory in home."""
+    """init_home is now a no-host-import directory setup (1.6.0).
+
+    The host-config IMPORT (copying the host ~/.claude.json onboarding stub +
+    credentials into the box) was removed: descriptor-native claude seeds creds
+    via the credsync engine and the onboarding stub comes from the curated agent
+    template.  init_home only creates the .claude/ directory and NEVER reads the
+    host.
+    """
+
+    def test_creates_claude_dir_only(self, tmp_path, monkeypatch):
+        """init_home creates .claude/ and imports nothing from the host."""
         home = tmp_path / "home"
         home.mkdir()
 
-        # No host files to copy.
+        # Host has both config + creds; init_home must NOT import them.
         fake_home = tmp_path / "fake_user_home"
-        fake_home.mkdir()
+        (fake_home / ".claude").mkdir(parents=True)
+        (fake_home / ".claude" / ".credentials.json").write_text(
+            json.dumps({"claudeAiOauth": {"token": "test"}})
+        )
+        (fake_home / ".claude.json").write_text(
+            json.dumps({"oauthAccount": "user@example.com"})
+        )
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
         t = ClaudeTarget()
         t.init_home(home)
 
         assert (home / ".claude").is_dir()
-        assert (home / ".claude.json").exists()
+        # No host import: neither the host creds nor the host config is pulled in.
+        assert not (home / ".claude" / ".credentials.json").exists()
+        assert not (home / ".claude.json").exists()
 
-    def test_copies_host_credentials(self, tmp_path, monkeypatch):
-        """init_home copies .credentials.json from host."""
+    def test_distinct_auth_also_imports_nothing(self, tmp_path, monkeypatch):
+        """group_auth=False is identical: dir only, no host import."""
         home = tmp_path / "home"
         home.mkdir()
 
         fake_home = tmp_path / "fake_user_home"
         (fake_home / ".claude").mkdir(parents=True)
-        creds = {"claudeAiOauth": {"token": "test"}}
-        (fake_home / ".claude" / ".credentials.json").write_text(json.dumps(creds))
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-        t = ClaudeTarget()
-        t.init_home(home)
-
-        copied = home / ".claude" / ".credentials.json"
-        assert copied.is_file()
-        assert json.loads(copied.read_text())["claudeAiOauth"]["token"] == "test"
-
-    def test_copies_filtered_settings(self, tmp_path, monkeypatch):
-        """init_home copies filtered .claude.json from host."""
-        home = tmp_path / "home"
-        home.mkdir()
-
-        fake_home = tmp_path / "fake_user_home"
-        fake_home.mkdir()
-        settings = {
-            "oauthAccount": "user@example.com",
-            "hasCompletedOnboarding": True,
-            "installMethod": "npm",
-            "dangerousKey": "should-be-removed",
-        }
-        (fake_home / ".claude.json").write_text(json.dumps(settings))
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-        t = ClaudeTarget()
-        t.init_home(home)
-
-        result = json.loads((home / ".claude.json").read_text())
-        assert result["oauthAccount"] == "user@example.com"
-        assert result["hasCompletedOnboarding"] is True
-        assert "dangerousKey" not in result
-
-
-class TestInitHomeDistinctAuth:
-    def test_distinct_auth_skips_credential_copy(self, tmp_path, monkeypatch):
-        """init_home with group_auth=False skips credential copy."""
-        home = tmp_path / "home"
-        home.mkdir()
-
-        fake_home = tmp_path / "fake_user_home"
-        (fake_home / ".claude").mkdir(parents=True)
-        creds = {"claudeAiOauth": {"token": "test"}}
-        (fake_home / ".claude" / ".credentials.json").write_text(json.dumps(creds))
+        (fake_home / ".claude" / ".credentials.json").write_text(
+            json.dumps({"claudeAiOauth": {"token": "test"}})
+        )
         (fake_home / ".claude.json").write_text(json.dumps({"oauthAccount": "x"}))
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
@@ -243,27 +217,7 @@ class TestInitHomeDistinctAuth:
 
         assert (home / ".claude").is_dir()
         assert not (home / ".claude" / ".credentials.json").exists()
-        # Empty .claude.json is created
-        assert (home / ".claude.json").exists()
-        assert (home / ".claude.json").read_text() == ""
-
-    def test_shared_auth_copies_credentials(self, tmp_path, monkeypatch):
-        """init_home with group_auth=True (default) copies credentials."""
-        home = tmp_path / "home"
-        home.mkdir()
-
-        fake_home = tmp_path / "fake_user_home"
-        (fake_home / ".claude").mkdir(parents=True)
-        creds = {"claudeAiOauth": {"token": "test"}}
-        (fake_home / ".claude" / ".credentials.json").write_text(json.dumps(creds))
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-        t = ClaudeTarget()
-        t.init_home(home, group_auth=True)
-
-        copied = home / ".claude" / ".credentials.json"
-        assert copied.is_file()
-        assert json.loads(copied.read_text())["claudeAiOauth"]["token"] == "test"
+        assert not (home / ".claude.json").exists()
 
 
 class TestBuildCliArgs:
@@ -791,20 +745,17 @@ class TestDescriptor:
         assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
 
     def test_cred_files(self):
+        # The host .claude.json config IMPORT (SEED_ONCE) was removed in 1.6.0;
+        # only the synced .credentials.json remains.
         d = ClaudeTarget().descriptor
         specs = {s.home_rel: s for s in d.cred_files}
-        assert set(specs) == {".claude/.credentials.json", ".claude.json"}
+        assert set(specs) == {".claude/.credentials.json"}
 
         creds = specs[".claude/.credentials.json"]
         assert creds.host_rel == ".claude/.credentials.json"
         assert creds.cadence == Cadence.SYNC
         assert creds.mtime_gate is True
         assert creds.filtered is True
-
-        settings = specs[".claude.json"]
-        assert settings.host_rel == ".claude.json"
-        assert settings.cadence == Cadence.SEED_ONCE
-        assert settings.filtered is True
 
     def test_host_prep_and_init_dirs(self):
         d = ClaudeTarget().descriptor
@@ -815,40 +766,10 @@ class TestDescriptor:
 class TestTransformCred:
     """transform_cred — PURE content op (engine owns gating)."""
 
-    _SETTINGS_SPEC = CredFileSpec(
-        ".claude.json", ".claude.json", cadence=Cadence.SEED_ONCE, filtered=True,
-    )
     _CREDS_SPEC = CredFileSpec(
         ".claude/.credentials.json", ".claude/.credentials.json",
         cadence=Cadence.SYNC, mtime_gate=True, filtered=True,
     )
-
-    def test_claude_json_with_source_filtered(self, tmp_path):
-        """.claude.json with a host source -> allowlist-filtered write."""
-        src = tmp_path / ".claude.json"
-        src.write_text(json.dumps({
-            "oauthAccount": "user@example.com",
-            "hasCompletedOnboarding": True,
-            "installMethod": "npm",
-            "dangerousKey": "should-be-removed",
-        }))
-        dst = tmp_path / "home" / ".claude.json"
-
-        ClaudeTarget().transform_cred(self._SETTINGS_SPEC, src, dst, "in")
-
-        result = json.loads(dst.read_text())
-        assert result["oauthAccount"] == "user@example.com"
-        assert result["hasCompletedOnboarding"] is True
-        assert "dangerousKey" not in result
-
-    def test_claude_json_without_source_creates_empty(self, tmp_path):
-        """.claude.json with src=None -> empty file (legacy init_home touch)."""
-        dst = tmp_path / "home" / ".claude.json"
-
-        ClaudeTarget().transform_cred(self._SETTINGS_SPEC, None, dst, "in")
-
-        assert dst.is_file()
-        assert dst.read_text() == ""
 
     def test_credentials_in_dst_absent_wholesale_copy(self, tmp_path):
         """.credentials.json "in" with project absent -> wholesale copy."""

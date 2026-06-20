@@ -105,19 +105,18 @@ _NPM_ROOT_TIMEOUT = 10
 #     real native ELF; codex has no separate launcher symlink, so no LAUNCHER
 #     binding.  Binding the static-pie musl ELF works standalone — no node
 #     in-box.
-#   * cred files (both filtered=False -> the credsync engine wholesale-copies
-#     them; NO transform_cred override needed):
+#   * cred files (filtered=False -> the credsync engine wholesale-copies it; NO
+#     transform_cred override needed):
 #       - ``.codex/auth.json`` (SYNC, mtime-gated): the credential; absent until
 #         login and inode-swaps on re-login (delete+recreate), hence copy-sync.
-#       - ``.codex/config.toml`` (SEED_ONCE): config; NOT auto-created (codex
-#         runs on built-in defaults), so it is seeded only if the user authored
-#         one on the host.
+#     The host ``config.toml`` IMPORT was removed in 1.6.0: a box's config comes
+#     from the curated agent template (codex otherwise runs on built-in
+#     defaults), not from the host config.
 #     ⚑ OPEN QUESTION (flagged for E2E): whether ``auth.json`` mixes a portable
 #     API key with NON-portable fields (e.g. an installation-bound token /
-#     machine id) that would need an allowlist, and whether ``config.toml``
-#     carries any secrets.  If either proves true, flip its spec to
+#     machine id) that would need an allowlist.  If so, flip its spec to
 #     ``filtered=True`` and add a ``transform_cred`` allowlist (mirroring goose's
-#     config.yaml).  For now both are wholesale copies.
+#     secrets handling).  For now it is a wholesale copy.
 #   * init_dirs creates ``.codex`` (codex does not create it itself).  The live
 #     mutating per-project state (sqlite/WAL, sessions/, installation_id, ...)
 #     is NOT mounted — it stays project-local under this dir.
@@ -133,7 +132,6 @@ _CODEX_DESCRIPTOR = PluginDescriptor(
     container_env={},
     cred_files=(
         CredFileSpec(".codex/auth.json",   ".codex/auth.json",   cadence=Cadence.SYNC,      mtime_gate=True, filtered=False),
-        CredFileSpec(".codex/config.toml", ".codex/config.toml", cadence=Cadence.SEED_ONCE,                  filtered=False),
     ),
     host_prep=False,
     init_dirs=(".codex",),

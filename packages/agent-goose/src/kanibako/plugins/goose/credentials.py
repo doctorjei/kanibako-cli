@@ -16,10 +16,6 @@ except ImportError:
         "PyYAML is required for the Goose plugin. Install it with: pip install pyyaml"
     )
 
-# Keys from config.yaml that are safe to copy (non-secret settings).
-_SAFE_CONFIG_KEYS = {"provider", "model", "extensions", "instructions"}
-
-
 def read_yaml(path: Path) -> dict:
     """Read a YAML file, returning {} on any error."""
     if not path.is_file():
@@ -35,18 +31,6 @@ def write_yaml(path: Path, data: dict) -> None:
     """Write a dict as YAML, creating parent directories as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(data, default_flow_style=False))
-
-
-def filter_config(src: Path, dst: Path) -> None:
-    """Copy host config.yaml to project, keeping only safe keys.
-
-    Non-safe keys (credentials, tokens, etc.) are dropped.
-    """
-    data = read_yaml(src)
-    if not data:
-        return
-    filtered = {k: v for k, v in data.items() if k in _SAFE_CONFIG_KEYS}
-    write_yaml(dst, filtered)
 
 
 def refresh_secrets(host_secrets: Path, project_secrets: Path) -> bool:

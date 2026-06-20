@@ -8,8 +8,6 @@ and settings filtering.  Run with::
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 
@@ -48,33 +46,9 @@ class TestInstallFilesystem:
         reloaded = load_config(integration_config)
         assert reloaded.box_image == "custom:v99"
 
-    def test_install_filters_settings_json(
-        self, integration_home, integration_config
-    ):
-        """Only safe keys survive the settings filter."""
-        from kanibako.plugins.claude.credentials import filter_settings
-
-        src = integration_home / "host_settings.json"
-        dst = integration_home / "filtered_settings.json"
-
-        # Include safe + unsafe keys
-        data = {
-            "oauthAccount": "user@example.com",
-            "hasCompletedOnboarding": False,
-            "installMethod": "npm",
-            "sensitiveKey": "should-be-removed",
-            "anotherPrivate": 42,
-        }
-        src.write_text(json.dumps(data))
-
-        filter_settings(src, dst)
-
-        filtered = json.loads(dst.read_text())
-        assert filtered["oauthAccount"] == "user@example.com"
-        assert filtered["hasCompletedOnboarding"] is True  # forced to True
-        assert filtered["installMethod"] == "npm"
-        assert "sensitiveKey" not in filtered
-        assert "anotherPrivate" not in filtered
+    # NOTE: test_install_filters_settings_json was deleted in 1.6.0 — the host
+    # .claude.json allowlist filter (filter_settings) was removed with the
+    # host-config import.
 
 
 @pytest.mark.integration

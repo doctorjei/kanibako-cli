@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -51,7 +52,7 @@ class TestDetect:
         binary.chmod(0o755)
         _anchor_contract(monkeypatch, binary)
 
-        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
+        with patch.object(shutil, "which") as m_which:
             result = GooseTarget().detect()
         m_which.assert_not_called()
 
@@ -64,7 +65,7 @@ class TestDetect:
     def test_not_found(self, tmp_path: Path, monkeypatch):
         """Detect returns None when the contract path is absent."""
         _anchor_contract(monkeypatch, tmp_path / "goose")  # never created
-        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
+        with patch.object(shutil, "which") as m_which:
             assert GooseTarget().detect() is None
         m_which.assert_not_called()
 
@@ -104,6 +105,15 @@ class TestBinaryMounts:
 
 
 class TestInitHome:
+    """init_home is now a no-host-import directory setup (1.6.0).
+
+    The host-config IMPORT (the config.yaml extensions/instructions allowlist
+    filter + the host secrets copy) was removed: descriptor-native goose syncs
+    secrets.yaml via the credsync engine and the box's curated config.yaml comes
+    from the agent template.  init_home only creates dirs and NEVER reads the
+    host.
+    """
+
     def test_creates_config_and_data_dir(self, project_home: Path, fake_host: Path, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
         GooseTarget().init_home(project_home)
@@ -111,61 +121,21 @@ class TestInitHome:
         assert (project_home / ".config" / "goose").is_dir()
         assert (project_home / ".local" / "share" / "Block" / "goose").is_dir()
 
-    def test_copies_filtered_config(self, project_home: Path, fake_host: Path, monkeypatch):
+    def test_imports_nothing_from_host(self, project_home: Path, fake_host: Path, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
 
+        # Host has both config + secrets; init_home must NOT import either.
         host_config = fake_host / ".config" / "goose" / "config.yaml"
-        data = {
-            "provider": "anthropic",
-            "model": "claude-4",
-            "extensions": ["web"],
-            "SECRET_KEY": "should-be-dropped",
-            "unknown_field": "also-dropped",
-        }
-        host_config.write_text(yaml.safe_dump(data))
-
-        GooseTarget().init_home(project_home)
-
-        result = yaml.safe_load(
-            (project_home / ".config" / "goose" / "config.yaml").read_text()
-        )
-        assert set(result.keys()) == {"provider", "model", "extensions"}
-        assert "SECRET_KEY" not in result
-        assert "unknown_field" not in result
-
-    def test_idempotent(self, project_home: Path, fake_host: Path, monkeypatch):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-
-        config_dir = project_home / ".config" / "goose"
-        config_dir.mkdir(parents=True)
-        existing = {"provider": "existing"}
-        (config_dir / "config.yaml").write_text(yaml.safe_dump(existing))
-
-        host_config = fake_host / ".config" / "goose" / "config.yaml"
-        host_config.write_text(yaml.safe_dump({"provider": "new-value"}))
-
-        GooseTarget().init_home(project_home)
-
-        result = yaml.safe_load(
-            (project_home / ".config" / "goose" / "config.yaml").read_text()
-        )
-        assert result["provider"] == "existing"  # Not overwritten
-
-    def test_copies_secrets_with_perms(self, project_home: Path, fake_host: Path, monkeypatch):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-
+        host_config.write_text(yaml.safe_dump({"provider": "anthropic", "extensions": ["web"]}))
         host_secrets = fake_host / ".config" / "goose" / "secrets.yaml"
         host_secrets.write_text("api_key: secret123\n")
 
         GooseTarget().init_home(project_home)
 
-        project_secrets = project_home / ".config" / "goose" / "secrets.yaml"
-        assert project_secrets.is_file()
-        assert project_secrets.read_text() == "api_key: secret123\n"
-        mode = project_secrets.stat().st_mode & 0o777
-        assert mode == 0o600
+        assert not (project_home / ".config" / "goose" / "config.yaml").exists()
+        assert not (project_home / ".config" / "goose" / "secrets.yaml").exists()
 
-    def test_distinct_auth_creates_empty_config_no_secrets(
+    def test_distinct_auth_also_imports_nothing(
         self, project_home: Path, fake_host: Path, monkeypatch
     ):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
@@ -177,12 +147,9 @@ class TestInitHome:
 
         GooseTarget().init_home(project_home, group_auth=False)
 
-        project_config = project_home / ".config" / "goose" / "config.yaml"
-        assert project_config.is_file()
-        assert project_config.read_text() == ""  # empty
-
-        project_secrets = project_home / ".config" / "goose" / "secrets.yaml"
-        assert not project_secrets.exists()
+        assert (project_home / ".config" / "goose").is_dir()
+        assert not (project_home / ".config" / "goose" / "config.yaml").exists()
+        assert not (project_home / ".config" / "goose" / "secrets.yaml").exists()
 
 
 class TestCredentialCheckPath:
@@ -261,7 +228,7 @@ class TestCheckAuth:
         secrets = fake_host / ".config" / "goose" / "secrets.yaml"
         secrets.write_text("key: secret\n")
 
-        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
+        with patch.object(shutil, "which") as m_which:
             assert GooseTarget().check_auth() is True
         m_which.assert_not_called()
 
@@ -278,7 +245,7 @@ class TestCheckAuth:
     def test_returns_true_when_binary_not_found(self, tmp_path: Path, monkeypatch):
         """No contract binary -> True (defers to later warnings), no which."""
         _anchor_contract(monkeypatch, tmp_path / "goose")  # never created
-        with patch("kanibako.plugins.goose.target.shutil.which") as m_which:
+        with patch.object(shutil, "which") as m_which:
             assert GooseTarget().check_auth() is True
         m_which.assert_not_called()
 
@@ -430,23 +397,17 @@ class TestDescriptor:
         assert GooseTarget().descriptor.container_env == {}
 
     def test_cred_files(self):
+        # The host config.yaml IMPORT (SEED_ONCE, filtered) was removed in 1.6.0;
+        # only the synced secrets.yaml remains.
         d = GooseTarget().descriptor
         specs = {s.home_rel: s for s in d.cred_files}
-        assert set(specs) == {
-            ".config/goose/secrets.yaml",
-            ".config/goose/config.yaml",
-        }
+        assert set(specs) == {".config/goose/secrets.yaml"}
 
         secrets = specs[".config/goose/secrets.yaml"]
         assert secrets.host_rel == ".config/goose/secrets.yaml"
         assert secrets.cadence == Cadence.SYNC
         assert secrets.mtime_gate is True
         assert secrets.filtered is False
-
-        config = specs[".config/goose/config.yaml"]
-        assert config.host_rel == ".config/goose/config.yaml"
-        assert config.cadence == Cadence.SEED_ONCE
-        assert config.filtered is True
 
     def test_host_prep_and_init_dirs(self):
         d = GooseTarget().descriptor
@@ -455,46 +416,22 @@ class TestDescriptor:
 
 
 class TestTransformCred:
-    """transform_cred — PURE content op (engine owns gating)."""
+    """transform_cred — goose no longer overrides it (1.6.0).
 
-    _CONFIG_SPEC = CredFileSpec(
-        ".config/goose/config.yaml", ".config/goose/config.yaml",
-        cadence=Cadence.SEED_ONCE, filtered=True,
-    )
+    The host config.yaml IMPORT (the extensions/instructions allowlist filter)
+    was removed, so goose inherits the base no-filter plain-copy.  Its only cred
+    file is the unfiltered secrets.yaml (the engine wholesale-copies it without
+    ever calling transform_cred), but the inherited hook still plain-copies a
+    filtered spec if one is passed.
+    """
+
     _SECRETS_SPEC = CredFileSpec(
         ".config/goose/secrets.yaml", ".config/goose/secrets.yaml",
         cadence=Cadence.SYNC, mtime_gate=True, filtered=False,
     )
 
-    def test_config_with_source_filtered(self, tmp_path):
-        """config.yaml with a host source -> allowlist-filtered write."""
-        src = tmp_path / "config.yaml"
-        src.write_text(yaml.safe_dump({
-            "provider": "anthropic",
-            "model": "claude-4",
-            "extensions": ["web"],
-            "SECRET_KEY": "should-be-dropped",
-            "unknown_field": "also-dropped",
-        }))
-        dst = tmp_path / "home" / ".config" / "goose" / "config.yaml"
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, src, dst, "in")
-
-        result = yaml.safe_load(dst.read_text())
-        assert set(result.keys()) == {"provider", "model", "extensions"}
-        assert "SECRET_KEY" not in result
-        assert "unknown_field" not in result
-
-    def test_config_without_source_is_noop(self, tmp_path):
-        """config.yaml with src=None -> no file written (no empty-config rule)."""
-        dst = tmp_path / "home" / ".config" / "goose" / "config.yaml"
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, None, dst, "in")
-
-        assert not dst.exists()
-
-    def test_secrets_falls_back_to_base_copy(self, tmp_path):
-        """A non-config spec routes to the base plain-copy fallback."""
+    def test_inherits_base_plain_copy(self, tmp_path):
+        """The inherited base transform_cred plain-copies the source."""
         src = tmp_path / "secrets.yaml"
         src.write_text("api_key: secret123\n")
         dst = tmp_path / "home" / ".config" / "goose" / "secrets.yaml"

@@ -424,20 +424,17 @@ class TestDescriptor:
         assert CodexTarget().descriptor.container_env == {}
 
     def test_cred_files(self):
+        # The host config.toml IMPORT (SEED_ONCE) was removed in 1.6.0; only the
+        # synced auth.json remains.
         d = CodexTarget().descriptor
         specs = {s.home_rel: s for s in d.cred_files}
-        assert set(specs) == {".codex/auth.json", ".codex/config.toml"}
+        assert set(specs) == {".codex/auth.json"}
 
         auth = specs[".codex/auth.json"]
         assert auth.host_rel == ".codex/auth.json"
         assert auth.cadence == Cadence.SYNC
         assert auth.mtime_gate is True
         assert auth.filtered is False
-
-        config = specs[".codex/config.toml"]
-        assert config.host_rel == ".codex/config.toml"
-        assert config.cadence == Cadence.SEED_ONCE
-        assert config.filtered is False
 
     def test_host_prep_and_init_dirs(self):
         d = CodexTarget().descriptor
