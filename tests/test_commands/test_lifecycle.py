@@ -23,6 +23,7 @@ from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import read_names
 from kanibako.paths import (
     BoxMode,
+    detect_project_mode,
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
@@ -97,7 +98,7 @@ class TestResolveTarget:
         state = resolve_lifecycle_target(str(pdir), std, config)
         assert state.owner == "standalone"
         assert state.mode == BoxMode.standalone
-        assert state.metadata_path == (pdir / ".kanibako").resolve() or state.metadata_path.is_dir()
+        assert state.metadata_path == (pdir / "box_data").resolve()
         assert not state.is_external
 
     def test_workset_internal(self, env):
@@ -189,11 +190,26 @@ class TestConvertInPlace:
             std, config, confirm=_conf_yes(),
         )
         assert new.mode == BoxMode.standalone
-        assert (pdir / ".kanibako" / "settings.yaml").is_file()
-        meta = read_project_meta(pdir / ".kanibako" / "settings.yaml")
+        assert (pdir / "box_data" / "settings.yaml").is_file()
+        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
         assert meta["mode"] == "standalone"
         # default-mode name unregistered.
         assert str(pdir) not in read_names(std.data_path)["projects"].values()
+
+    def test_convert_to_standalone_is_detectable(self, env):
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        # Canonical box_data/ marker, not legacy .kanibako/.
+        assert (pdir / "box_data" / "settings.yaml").is_file()
+        assert not (pdir / ".kanibako").exists()
+        # Detection recognizes the converted box.
+        result = detect_project_mode(pdir, std, config)
+        assert result.mode is BoxMode.standalone
 
     def test_standalone_to_default(self, env):
         config, std, tmp_home = env
@@ -208,7 +224,7 @@ class TestConvertInPlace:
         meta = read_project_meta(new.metadata_path / "settings.yaml")
         assert meta["mode"] == "primary"
         # old in-tree metadata gone.
-        assert not (pdir / ".kanibako").exists()
+        assert not (pdir / "box_data").exists()
         # name registered.
         assert str(pdir) in read_names(std.data_path)["projects"].values()
 
@@ -244,7 +260,7 @@ class TestConvertInPlace:
         assert new.mode == BoxMode.named
         assert new.is_external
         assert pdir.is_dir()
-        assert not (pdir / ".kanibako").exists()
+        assert not (pdir / "box_data").exists()
 
     def test_default_inplace_reuses_name_no_suffix(self, env):
         """L2: an in-place default convert reuses the registered name, not foo2.
@@ -304,7 +320,7 @@ class TestConvertInPlace:
         )
         assert new.mode == BoxMode.standalone
         assert external.is_dir()
-        assert (external / ".kanibako" / "settings.yaml").is_file()
+        assert (external / "box_data" / "settings.yaml").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +415,7 @@ class TestCombo:
         assert new.mode == BoxMode.standalone
         assert dest.is_dir()
         assert (dest / "file.txt").read_text() == "combo"
-        assert (dest / ".kanibako" / "settings.yaml").is_file()
+        assert (dest / "box_data" / "settings.yaml").is_file()
         assert not pdir.exists()
 
     def test_bare_into_workset(self, env):

@@ -596,11 +596,11 @@ class TestBoxDuplicateCrossMode:
         assert rc == 0
 
         # Destination should have standalone layout.
-        assert (dst_dir / ".kanibako").is_dir()
-        assert (dst_dir / ".kanibako" / "marker.txt").read_text() == "ac-data"
+        assert (dst_dir / "box_data").is_dir()
+        assert (dst_dir / "box_data" / "marker.txt").read_text() == "ac-data"
         assert (dst_dir / "code.py").read_text() == "print('hello')"
         # No breadcrumb in standalone.
-        assert not (dst_dir / ".kanibako" / "project-path.txt").exists()
+        assert not (dst_dir / "box_data" / "project-path.txt").exists()
 
     def test_duplicate_standalone_to_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -690,7 +690,7 @@ class TestBoxDuplicateCrossMode:
         assert rc == 0
 
         # Metadata exists but workspace content not copied.
-        assert (dst_dir / ".kanibako").is_dir()
+        assert (dst_dir / "box_data").is_dir()
         assert not (dst_dir / "code.py").exists()
 
     def test_duplicate_cross_mode_preserves_source(self, config_file, tmp_home, credentials_dir):
@@ -1240,7 +1240,7 @@ class TestBoxDuplicateExternal:
         assert rc == 0
 
         # Standalone layout at destination with the external contents.
-        assert (dest / ".kanibako").is_dir()
+        assert (dest / "box_data").is_dir()
         assert (dest / "code.py").read_text() == "print('external')"
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
@@ -1362,8 +1362,8 @@ class TestBoxDuplicateFromWorkset:
         rc = run_duplicate(args)
         assert rc == 0
 
-        assert (dest / ".kanibako").is_dir()
-        assert (dest / ".kanibako" / "marker.txt").read_text() == "ws-dup-marker"
+        assert (dest / "box_data").is_dir()
+        assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
         assert (dest / "code.py").read_text() == "print('ws-dup')"
 
     def test_duplicate_workset_bare(self, config_file, tmp_home, credentials_dir):
@@ -1380,7 +1380,7 @@ class TestBoxDuplicateFromWorkset:
         assert rc == 0
 
         # Metadata exists but workspace not copied
-        assert (dest / ".kanibako" / "marker.txt").read_text() == "ws-dup-marker"
+        assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
         assert not (dest / "code.py").exists()
 
     def test_duplicate_workset_preserves_source(self, config_file, tmp_home, credentials_dir):

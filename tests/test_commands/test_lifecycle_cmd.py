@@ -202,7 +202,7 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_standalone=True))
         assert rc == 0
-        meta = read_project_meta(pdir / ".kanibako" / "settings.yaml")
+        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
         assert meta["mode"] == "standalone"
 
     def test_convert_to_default_inplace(self, env):
@@ -234,7 +234,7 @@ class TestConvert:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest)))
         assert rc == 0
         assert dest.is_dir()
-        assert (dest / ".kanibako" / "settings.yaml").is_file()
+        assert (dest / "box_data" / "settings.yaml").is_file()
         assert not pdir.exists()
 
     def test_convert_bare_move_into_workset(self, env):
@@ -336,7 +336,7 @@ class TestLockGuard:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest), force=True))
         assert rc == 0
         assert dest.is_dir()
-        assert (dest / ".kanibako" / "settings.yaml").is_file()
+        assert (dest / "box_data" / "settings.yaml").is_file()
         assert not pdir.exists()
 
 

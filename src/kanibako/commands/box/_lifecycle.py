@@ -40,6 +40,7 @@ from kanibako.names import (
     unregister_name,
 )
 from kanibako.paths import (
+    _STANDALONE_META_DIR,
     BoxMode,
     ProjectPaths,
     StandardPaths,
@@ -412,7 +413,7 @@ def copy_into_workset(
             dst_workspace = ws.workspaces_dir / proj_name
             ignore = None
             if source_mode == BoxMode.standalone:
-                ignore = shutil.ignore_patterns(".kanibako", "kanibako")
+                ignore = shutil.ignore_patterns(_STANDALONE_META_DIR, ".kanibako", "kanibako")
             shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         try:
@@ -819,12 +820,13 @@ def _copy_metadata(
     dst_metadata: Path,
     *,
     shell_into_metadata: bool,
+    home_leaf: str = "shell",
     unwind: _Unwind,
 ) -> Path:
     """Copy metadata (minus lock+shell) and shell into *dst_metadata*.
 
-    Returns the destination shell path.  Pushes an rmtree of *dst_metadata*
-    onto *unwind*.
+    Returns the destination shell path (``dst_metadata / home_leaf``).  Pushes
+    an rmtree of *dst_metadata* onto *unwind*.
     """
     shutil.copytree(
         src_metadata, dst_metadata,
@@ -833,10 +835,7 @@ def _copy_metadata(
     )
     unwind.push(lambda: shutil.rmtree(dst_metadata, ignore_errors=True))
 
-    if shell_into_metadata:
-        dst_shell = dst_metadata / "shell"
-    else:
-        dst_shell = dst_metadata / "shell"
+    dst_shell = dst_metadata / home_leaf
     if src_shell.is_dir():
         shutil.copytree(src_shell, dst_shell, dirs_exist_ok=True)
     return dst_shell
@@ -995,11 +994,11 @@ def _to_standalone(
 ) -> ProjectState:
     """Convert/relocate the project so it becomes standalone (in-tree metadata)."""
     new_workspace.mkdir(parents=True, exist_ok=True)
-    dst_metadata = new_workspace / ".kanibako"
+    dst_metadata = new_workspace / _STANDALONE_META_DIR
 
     dst_shell = _copy_metadata(
         state.metadata_path, state.shell_path, dst_metadata,
-        shell_into_metadata=True, unwind=unwind,
+        shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
 
     phash = project_hash(str(new_workspace.resolve()))
@@ -1145,7 +1144,7 @@ def _to_workset(
         dst_workspace = target_ws.workspaces_dir / new_name
         ignore = None
         if state.mode == BoxMode.standalone:
-            ignore = shutil.ignore_patterns(".kanibako", "kanibako")
+            ignore = shutil.ignore_patterns(_STANDALONE_META_DIR, ".kanibako", "kanibako")
         shutil.copytree(state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
     # Determine the recorded workspace + hash.

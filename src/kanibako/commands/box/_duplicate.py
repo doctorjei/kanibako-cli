@@ -10,6 +10,7 @@ from pathlib import Path
 from kanibako.config import config_file_path, load_config
 from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
+    _STANDALONE_META_DIR,
     BoxMode,
     WorksetSpec,
     _resolve_local_dir,
@@ -129,8 +130,8 @@ def _duplicate_to_standalone(src_proj, new_path, force):
     """Copy metadata into standalone layout at new_path."""
     from kanibako.utils import write_project_gitignore
 
-    dst_metadata = new_path / ".kanibako"
-    dst_shell = dst_metadata / "shell"
+    dst_metadata = new_path / _STANDALONE_META_DIR
+    dst_shell = dst_metadata / "home"
 
     # Ensure new_path exists for bare duplicates.
     new_path.mkdir(parents=True, exist_ok=True)
