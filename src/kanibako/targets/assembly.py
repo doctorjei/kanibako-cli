@@ -1,7 +1,7 @@
 """Agent-agnostic, declarative assembly of an agent launch from a PluginDescriptor.
 
-This module is the data-driven core that (in a LATER phase) will replace the
-per-plugin ``build_cli_args`` / ``binary_mounts`` hooks: given a plugin's
+This module is the data-driven core that replaces the per-plugin
+``build_cli_args`` / ``binary_mounts`` hooks: given a plugin's
 :class:`~kanibako.targets.base.PluginDescriptor` plus the resolved host
 :class:`~kanibako.targets.base.AgentInstall` and a handful of per-launch knobs,
 it assembles the agent argv, container env, and host->box mounts.
@@ -12,8 +12,11 @@ checks in :func:`descriptor_mounts` / :func:`resolve_binding_source` (which only
 are agent-agnostic: no plugin names appear, and divergent LOGIC stays behind the
 plugin ``Target`` hook methods.
 
-DORMANT: nothing here is wired into ``start.py`` / ``container.py`` yet; this
-phase ships the module + tests only so a later phase can adopt it incrementally.
+LIVE: this module is wired into ``commands/start.py`` for every descriptor-bearing
+target (all three first-party agents).  ``resolve_mode`` / ``assemble_argv`` /
+``assemble_env`` build the launch argv + container env, and ``descriptor_mounts``
+emits the delivery binds; the legacy ``build_cli_args`` / ``binary_mounts`` hooks
+are bypassed when a target exposes a descriptor.
 """
 
 from __future__ import annotations
