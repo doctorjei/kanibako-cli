@@ -53,11 +53,6 @@ def run(args: argparse.Namespace) -> int:
     containers_dest = data_path / "containers"
     containers_dest.mkdir(parents=True, exist_ok=True)
 
-    # Create template directory structure.
-    templates_dir = sys_paths["system.base_template"]
-    (templates_dir / "general" / "base").mkdir(parents=True, exist_ok=True)
-    (templates_dir / "general" / "standard").mkdir(parents=True, exist_ok=True)
-
     # Create the channel system skeleton (5 types, system scope — TARGET §2f).
     # Per-workset mailbox/share partitions + chat logs are guarantee-created on
     # the launch path; setup pre-creates the type roots + the default chat logs.
@@ -83,10 +78,19 @@ def run(args: argparse.Namespace) -> int:
         write_agent_config(general_toml, AgentConfig(name="Shell"))
 
     # Each discovered target plugin
+    target_names = list(discover_targets())
     for target_name, cls in discover_targets().items():
         target_toml = agents_path / f"{target_name}.yaml"
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
+
+    # Curated base + per-agent template content (Phase 9c): copy the packaged
+    # static template files into the runtime template dirs (create-if-absent).
+    # The layered seed-once apply then seeds them into each new box home.
+    from kanibako.paths import load_std_paths
+    from kanibako.templates import install_packaged_templates
+
+    install_packaged_templates(load_std_paths(config), target_names)
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file

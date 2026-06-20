@@ -183,3 +183,67 @@ class TestWorksetTemplateDir:
 
     def test_standalone_is_none(self, standalone_proj, std):
         assert workset_template_dir(standalone_proj, std) is None
+
+
+# ---------------------------------------------------------------------------
+# Packaged curated-template install + fresh-box seeding (Phase 9c).
+# ---------------------------------------------------------------------------
+
+from kanibako.templates import install_packaged_templates  # noqa: E402
+
+
+class TestInstallPackagedTemplates:
+    def test_base_instructions_landed(self, std):
+        """The packaged base INSTRUCTIONS.md is copied to @system.base_template."""
+        install_packaged_templates(std, ["claude", "goose", "codex"])
+        assert (std.base_template / "INSTRUCTIONS.md").is_file()
+
+    def test_claude_template_landed(self, std):
+        """The claude agent template (.claude.json stub + settings) is copied."""
+        install_packaged_templates(std, ["claude"])
+        dest = agent_template_dir(std, "claude")
+        assert (dest / ".claude.json").is_file()
+        assert (dest / ".claude" / "settings.json").is_file()
+        # The onboarding stub marks onboarding complete.
+        import json
+        data = json.loads((dest / ".claude.json").read_text())
+        assert data.get("hasCompletedOnboarding") is True
+
+    def test_goose_and_codex_templates_landed(self, std):
+        install_packaged_templates(std, ["goose", "codex"])
+        assert (
+            agent_template_dir(std, "goose") / ".config" / "goose" / "config.yaml"
+        ).is_file()
+        assert (
+            agent_template_dir(std, "codex") / ".codex" / "config.toml"
+        ).is_file()
+
+    def test_unknown_agent_is_skipped(self, std):
+        """An agent with no packaged template (e.g. no_agent) is a no-op."""
+        install_packaged_templates(std, ["no_agent"])
+        assert not (agent_template_dir(std, "no_agent")).exists()
+
+    def test_create_if_absent_does_not_clobber(self, std):
+        """A user-edited template file survives a re-install (create-if-absent)."""
+        install_packaged_templates(std, ["claude"])
+        instr = std.base_template / "INSTRUCTIONS.md"
+        instr.write_text("MY EDITS")
+        install_packaged_templates(std, ["claude"])
+        assert instr.read_text() == "MY EDITS"
+
+    def test_fresh_box_seeds_base_and_agent(self, std, tmp_path):
+        """End-to-end: install packaged templates, then the layered seed-once
+        apply lands the base INSTRUCTIONS.md + the agent files into a box home."""
+        install_packaged_templates(std, ["claude"])
+        home = tmp_path / "box-home"
+        layers = [
+            base_template_dir(std),
+            agent_template_dir(std, "claude"),
+            None,  # standalone: no workset layer
+        ]
+        apply_template_layers(home, layers)
+        # Base layer seeded.
+        assert (home / "INSTRUCTIONS.md").is_file()
+        # Agent layer seeded.
+        assert (home / ".claude.json").is_file()
+        assert (home / ".claude" / "settings.json").is_file()

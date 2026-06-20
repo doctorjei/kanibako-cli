@@ -1,0 +1,5 @@
+# codex configuration (kanibako-curated, minimal).
+#
+# Codex runs on its built-in defaults; this file is intentionally empty. The
+# host config.toml is not imported (1.6.0). Add any overrides below; this file
+# is seeded once and is safe to edit.
