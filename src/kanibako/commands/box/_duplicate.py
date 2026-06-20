@@ -116,7 +116,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # Copy metadata into target mode layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
-        _duplicate_to_standalone(src_proj, new_path, args.force)
+        _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
         _duplicate_to_local(src_proj, new_path, std, config, args.force)
 
@@ -126,9 +126,22 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     return 0
 
 
-def _duplicate_to_standalone(src_proj, new_path, force):
-    """Copy metadata into standalone layout at new_path."""
-    from kanibako.utils import write_project_gitignore
+def _duplicate_to_standalone(src_proj, new_path, std, force):
+    """Establish a fresh standalone box at *new_path*.
+
+    A duplicate is a NEW box, so this mirrors ``create --standalone`` /
+    ``convert --standalone`` rather than copying the source verbatim: the source
+    metadata is copied for its agent/home state, then the destination
+    ``box_data/settings.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
+    generated ``<random24>_<leaf>`` identity (never the source's name), and the
+    standalone path table — and the box is registered in ``registry.standalone``.
+    Without this the dest would keep the source's ``mode`` (e.g. ``primary``) and
+    name, so standalone detection (``_is_standalone_meta_dir`` requires
+    ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
+    """
+    from kanibako import box_identity, registry_store
+    from kanibako.config import BOX_META_FILE, write_project_meta
+    from kanibako.utils import project_hash, write_project_gitignore
 
     dst_metadata = new_path / _STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
@@ -147,6 +160,32 @@ def _duplicate_to_standalone(src_proj, new_path, force):
         if force and dst_shell.is_dir():
             shutil.rmtree(dst_shell)
         shutil.copytree(src_proj.shell_path, dst_shell)
+
+    # Generate a FRESH standalone identity (a duplicate is a distinct box, even
+    # from a standalone source) with whole-name collision regen vs the registry.
+    existing = registry_store.standalone_box_names(std.data_path)
+    box_name = box_identity.make_standalone_box_name(new_path, existing)
+
+    # Rewrite the dest meta into the canonical standalone shape (mode=standalone,
+    # fresh name, standalone path table).  write_project_meta preserves any other
+    # sections copied from the source.
+    phash = project_hash(str(new_path.resolve()))
+    vault_ro = new_path / "vault" / "ro"
+    vault_rw = new_path / "vault" / "rw"
+    write_project_meta(
+        dst_metadata / BOX_META_FILE,
+        mode="standalone",
+        workspace=str(new_path),
+        shell=str(dst_shell),
+        vault_ro=str(vault_ro),
+        vault_rw=str(vault_rw),
+        enable_vault=src_proj.enable_vault,
+        group_auth=src_proj.group_auth,
+        metadata=str(dst_metadata),
+        project_hash=phash,
+        name=box_name,
+    )
+    registry_store.register_standalone(std.data_path, box_name, new_path)
 
     write_project_gitignore(new_path)
 
@@ -347,7 +386,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     # Copy metadata into target layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
-        _duplicate_to_standalone(src_proj, new_path, args.force)
+        _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
         _duplicate_to_local(src_proj, new_path, std, config, args.force)
 
