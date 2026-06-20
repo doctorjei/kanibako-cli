@@ -1,14 +1,9 @@
 # Migrating to kanibako 1.6.0
 
-> **DRAFT — covers the implemented phases of the config/settings revamp.**
 > This is a **manual** runbook: 1.6.0 ships **no migration code**. You edit your
 > on-disk state from the old (≤ pre-revamp) layout to the new layout *before*
 > installing 1.6.0. The sections below describe each old→new change as a set of
 > numbered steps with before→after tables and tree diagrams.
->
-> The **Channels**, **Templates / host-config removal**, and **Agent descriptors**
-> sections are **STUBS** — those phases (6/7/8) are not yet implemented and these
-> sections will be filled when they land.
 
 1.6.0 is **one breaking change set**. Read the whole document before touching
 anything, take a backup of `~/.config/kanibako*` and `~/.local/share/kanibako/`,
@@ -25,9 +20,13 @@ then work top-to-bottom.
 | System paths | `system.path.*` | `system.*` (`.path` dropped), restructured |
 | Modes | `ProjectMode{default,workset,standalone}` × `ProjectLayout{simple,default,robust}` | `box.mode{primary,named,standalone}`, **no layouts** |
 | Primary store | scattered `boxes/`, `comms/`, `share_*/` under data root | **PRIMARY workset** is a real dir at `@system.primary_workset` |
-| Per-project file | `project.yaml` (mode/layout/paths/...) | per-box `settings.yaml` + workset meta (**but see §4 note** — standalone metadata file is still named `project.yaml` for now) |
+| Per-box meta file | `project.yaml` (mode/layout/paths/...) | per-box `settings.yaml` (`[project]` + `[resolved]` sections); all modes (§9) |
 | Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`) |
 | Detection | registry-driven | **on-disk authoritative**, walk-detected, drop-in importable |
+| Comm system | single `~/comms/` mount (`mailbox/<box>`, `broadcast.log`) | **channels** — 5 types under `~/channels/` (`mailboxes/<ws>/<box>`, `chat/broadcast.md`) (§7) |
+| Templates | shell-variant tree + CLAUDE.md merge + host-config import | **layered seed-once** (base→agent→workset); host-config import **removed** (§8) |
+| Per-agent YAML section | `crab:` | `agent:` (§9) |
+| Box-side vault dest | `~/share-ro` / `~/share-rw` | `~/vault/ro` / `~/vault/rw` (§4.7, §9) |
 
 ---
 
@@ -171,7 +170,7 @@ restructured. The PRIMARY workset (§4) absorbs the old top-level box/log/vault 
 |---|---|---|
 | `system.path.data` | `system.data` | rename only |
 | `system.path.crabs` | `system.agents` | + crab→agent (§2) |
-| `system.path.comms` | `system.channels` | renamed + rebuilt (see §7 stub) |
+| `system.path.comms` | `system.channels` | renamed + rebuilt (see §7) |
 | `system.path.templates` | `system.base_template` | re-pointed to `@system.global/base_template` |
 | `system.path.ws_hints` | `system.registry` | absorbed into the consolidated registry (§5) |
 | `system.path.boxes` | **DELETED** | → `@system.primary_workset/boxes` (§4) |
@@ -183,7 +182,7 @@ restructured. The PRIMARY workset (§4) absorbs the old top-level box/log/vault 
 | — | `system.primary_workset` | NEW (`@system.data/primary_workset`; the PRIMARY workset root) |
 | — | `system.cache` | NEW (`$XDG_CACHE_HOME/kanibako`; **not** under data) |
 | — | `system.runtime` | NEW (`$XDG_RUNTIME_DIR/kanibako`; helper sockets; **not** under data) |
-| — | `system.channels.{commons,chat,broadcast,mailboxes,share}` | NEW skeleton (filled in §7 stub) |
+| — | `system.channels.{commons,chat,broadcast,mailboxes,share}` | NEW sub-keys (detailed in §7) |
 
 Also **deleted from the top level** (now under the PRIMARY workset): `system.boxes`,
 `system.logs`, `system.vault_ro`, `system.vault_rw`.
@@ -307,11 +306,18 @@ Standalone metadata moves from the in-tree `.kanibako`/`kanibako` dotdir into a
 
 ```
 ~/scratch/myproj/             ← @workset.meta.root  (workset.meta.name: __STANDALONE__)
-├── project.yaml              ← box metadata  (see ⚑ note below)
+├── box_data/                 ├─ settings.yaml   (box metadata; the walk marker)
+│                             ├─ home/ → ~/      └─ <box.name>.jsonl   (helper log)
 ├── workspace/                → ~/workspace
-├── box_data/                 ├─ home/ → ~/   └─ <box.name>.jsonl   (helper log)
 └── vault/{ro,rw}/            → ~/vault/{ro,rw}
 ```
+
+⚑ **The standalone walk marker is now `box_data/settings.yaml`** (a `box_data/`
+directory holding a metadata file with `mode: standalone`). The old in-tree
+`.kanibako`/`kanibako` dotdir marker is gone, and the metadata file is now named
+`settings.yaml` like every other mode (it was briefly `project.yaml` mid-revamp;
+see §9). When hand-editing a standalone tree, place `settings.yaml` under
+`box_data/`. Drop any `layout:` field; the mode token stays `standalone`.
 
 **Standalone box identity** is now `<random24>_<leaf>` — a 24-bit random token plus a
 sanitized, length-capped leaf of the project dir name (e.g. `a1b2c3_myproj`). The
@@ -319,24 +325,17 @@ random token is regenerated on a whole-name collision. Standalone boxes are now
 **registered** in `registry.yaml` (a `standalone` section), where they previously
 were not.
 
-⚑ **Metadata file name (current state):** the standalone metadata file is still
-named **`project.yaml`** on disk (with `mode: standalone` inside), not `settings.yaml`.
-The `project.yaml`→`settings.yaml` / `box.mode` rename is a later mechanical pass.
-When hand-editing a standalone tree today, edit `project.yaml` and place it under the
-project root as shown above. (Drop the `layout:` field; the mode token stays
-`standalone`.)
+### 4.6 `project.yaml` → per-box `settings.yaml`
 
-### 4.6 `project.yaml` → per-box settings + workset meta
+The old per-project `project.yaml` (mode/layout/workspace/shell/vault_ro/vault_rw/
+group_auth/metadata/...) is replaced by a per-box **`settings.yaml`** in **every**
+mode. Its on-disk shape (the `[project]` + `[resolved]` sections it actually carries)
+is detailed in §9 — read that section before hand-editing it.
 
-For **primary** and **named** modes, the old per-project `project.yaml`
-(mode/layout/workspace/shell/vault_ro/vault_rw/group_auth/metadata/...) is replaced by:
-
-- a per-box `settings.yaml` carrying `box.meta.*` (name, workspace, settings path), and
-- the workset's `settings.yaml` carrying `workset.meta.*`.
-
-Drop `layout` entirely; translate `mode` per §4.1; the path fields are now derived
-from the fixed per-mode tables, not stored. (For **standalone**, see the ⚑ note in
-§4.5 — the file is still `project.yaml` for now.)
+Drop `layout` entirely; translate `mode` per §4.1; the path fields are derived from
+the fixed per-mode tables, not user-edited. (Where the file lives: primary →
+`@system.primary_workset/boxes/<box>/settings.yaml`; named →
+`<wsroot>/boxes/<box>/settings.yaml`; standalone → `box_data/settings.yaml`.)
 
 ### 4.7 Box-side vault path moved: `~/share-ro` / `~/share-rw` → `~/vault/ro` / `~/vault/rw`
 
@@ -407,35 +406,264 @@ avoided.
 
 ---
 
-## 7. Channels (STUB — Phase 6, not yet implemented)
+## 7. Channels (the comm-system rebuild)
 
-> **TODO: fill when Phase 6 lands.**
->
-> The comm system (`comms` → `channels`) is being rebuilt. Expected user-visible
-> changes to document here: `system.path.comms` → `system.channels.*` paths;
-> in-box `~/comms/` → `~/channels/`; broadcast log `broadcast.log` → `broadcast.md`;
-> mailbox/share partitioning by workset name; `INSTRUCTIONS.md` references updated
-> from `~/comms/...` to `~/channels/...`. Do not hand-migrate channels until this
-> section is filled.
+The single legacy `comms` mount is replaced by the **channels** system: 5 channel
+types across 2 scopes (system + workset), surfaced in-box under `~/channels/` and
+`~/channels/workset/`, with per-instance partitioning keyed by the workset name.
+
+### 7.1 Key + path renames
+
+| Old `system.path.comms` | New `system.channels.*` |
+|---|---|
+| `system.path.comms` (one dir) | `system.channels` (`@system.data/channels`) + sub-keys below |
+| — | `system.channels.commons` (`@system.channels/commons`) |
+| — | `system.channels.chat` (`@system.channels/chat`; dir of `*.md` logs) |
+| — | `system.channels.broadcast` (`@system.channels.chat/broadcast.md`) |
+| — | `system.channels.mailboxes` (`@system.channels/mailboxes`; partitioned `/<ws>/<box>`) |
+| — | `system.channels.share` (`@system.channels/share`; partitioned `/<ws>/<box>`) |
+
+(The `system.path.comms` → `system.channels` rename is also listed in §3.1; this
+section details the sub-keys and the in-box layout.)
+
+### 7.2 The 5 channel types
+
+| Type | Owner | Other-box perms\* | Where (host) |
+|---|---|---|---|
+| **Mailbox** | a box | write-only\* | system `mailboxes/<ws>/<box>` |
+| **Share** | a box | read-only\* | system `share/<ws>/<box>` + workset `channels/share/<box>` |
+| **Commons** | a scope | read-write | `commons/` (system + workset) |
+| **Chat** | a scope | read-append\* | `chat/*.md` (system + workset); default `general.md` |
+| **Broadcast** | a scope | read-append\* | `chat/broadcast.md` (system + workset) |
+
+\* Permissions are **by convention, not enforced** in 1.6.0 — every channel is
+read-write-mounted. Any box can technically read or overwrite any other box's
+mailbox/share/commons/chat. This is the deliberate single-operator box↔box trust
+stance; box↔HOST isolation is unaffected. (Future helper-mediated enforcement will
+tighten the write paths without moving the in-box paths.)
+
+### 7.3 In-box layout: `~/comms/` → `~/channels/`
+
+**Before** (single mount):
+
+```
+~/comms/
+├── mailbox/<box>/      ← flat, keyed by box name
+└── broadcast.log       ← top-level, .log
+```
+
+**After** (the channels tree):
+
+```
+~/channels/                      ~/channels/workset/   (primary/named only; standalone OMITS)
+├── commons/                     ├── commons/
+├── chat/                        ├── chat/
+│   ├── general.md               │   ├── general.md
+│   └── broadcast.md             │   └── broadcast.md
+├── share/                       └── share/
+├── mailboxes/<ws>/<box>/
+└── inbox/                       ← own mailbox alias (== mailboxes/<ws>/<self>)
+```
+
+⚑ Three structural breaks to migrate by hand:
+
+1. **`~/comms/mailbox/<box>/` → `~/channels/mailboxes/<ws>/<box>/`.** Mailboxes are
+   now plural (`mailboxes/`) and **partitioned by workset name** first. `<ws>` is
+   the workset-name token: `__PRIMARY__` (primary mode), the workset name (named
+   mode), or `__STANDALONE__` (standalone). Move each old `mailbox/<box>` dir to
+   `mailboxes/<ws>/<box>` under the host channels root. (Workset-name uniqueness —
+   §4.4 — is what makes the `<ws>` partition unambiguous.)
+2. **`broadcast.log` → `chat/broadcast.md`.** Both a **location** change (now inside
+   the `chat/` dir) and a **format** change (`.log` → `.md`). Move the old
+   `broadcast.log` content into `chat/broadcast.md`.
+3. **Own inbox.** A box's own mailbox is additionally surfaced at `~/channels/inbox`
+   (the same host dir as `~/channels/mailboxes/<ws>/<self>`). No migration needed —
+   it is created on box launch.
+
+The host roots live under `@system.channels` (system scope) and
+`<wsroot>/channels` (workset scope, primary/named only). The Share type also has a
+**system** publication dir (`share/<ws>/<box>`) and, for primary/named boxes, a
+**workset-local** one (`channels/share/<box>`).
+
+### 7.4 Box-side helper socket / log dest (XDG-aware)
+
+The in-box helper socket and message-log destinations are now XDG-aware (they
+honor `$XDG_STATE_HOME` if it is set and absolute, else fall back to
+`~/.local/state`):
+
+| Old (hardcoded) | New (XDG-aware) |
+|---|---|
+| `/home/agent/.local/state/kanibako/helper.sock` | `$XDG_STATE_HOME/kanibako/helper.sock` |
+| `/home/agent/.local/state/kanibako/helper-messages.jsonl` | `$XDG_STATE_HOME/kanibako/helpers.jsonl` |
+
+The in-box message-log filename changed `helper-messages.jsonl` → `helpers.jsonl`.
+The **host-side** log filename (`<box>.jsonl`, under the workset/box logs dir) is
+unchanged. In-box tooling/scripts that referenced the old literal socket/log paths
+should use the XDG-derived path. No host-side hand-migration is required — these are
+recreated per box launch.
+
+### 7.5 Move / convert relocates the owning box's partition (best-effort)
+
+A box's mailbox/share partition key is the workset name, so moving a box between
+worksets (or converting between modes) changes its channel address. `box move` /
+`box convert` now relocate the box's **own** mailbox + system-share partition to the
+new address on a **best-effort** basis. Stale cross-box references to the box's old
+address may break — there is **no forwarding marker**. Scope-owned channels
+(commons/chat) are not relocated; the box simply stops mounting the old workset's
+local channels and starts mounting the new one's.
 
 ---
 
-## 8. Templates / host-config removal (STUB — Phase 7, not yet implemented)
+## 8. Templates & host-config removal
 
-> **TODO: fill when Phase 7 lands.**
->
-> Expected changes to document here: per-scope layered template seed
-> (base → agent → workset, copied once at box creation); removal of host-config
-> import (claude `.claude.json` onboarding, codex `config.toml`, goose `config.yaml`
-> are no longer host-copied — behavior flows from settings + the curated template);
-> the shell-variant template selector is removed; old `templates/<agent>/standard`
-> content becomes `@agent.<agent>.template`.
+Three overlapping ad-hoc seeding mechanisms (the shell-variant template, the
+CLAUDE.md instruction merge, and the per-agent host-config import) collapse into
+**one layered seed-once** model. This is the headline behavior break in this
+section: **your host agent config no longer flows into boxes.**
+
+### 8.1 Layered seed-once template
+
+On box creation, three template layers are copied into the box home `~/` in order
+(later overlays earlier; absent layers are skipped), **once** — never re-seeded, so
+any edits you make inside a box afterward survive:
+
+```
+1. base    @system.base_template          → ~/    (always)
+2. agent   @agent.<agent>.template         → ~/    (= @system.agents/<agent>/template; if box.agent set)
+3. workset @workset.template               → ~/    (= <wsroot>/template; optional, primary/named only)
+```
+
+Per-file rule: plain ordered copy, **last layer wins**, seed-once. There is **no
+per-file merge of any file** (see the CLAUDE.md change below).
+
+### 8.2 Content moves (a rename, not a loss)
+
+| Old on-disk content | New location |
+|---|---|
+| `templates/<agent>/standard/*` | `@agent.<agent>.template` (= `@system.agents/<agent>/template`) |
+| `templates/general/{base,standard}/*` | `@system.base_template` (flat — no `general/`, no variant subdir) |
+
+Hand-move your existing template content accordingly. The base template is now
+**flat** (no `general/base` vs `general/standard` split).
+
+### 8.3 Shell-variant selector dropped
+
+The template-variant selector (`crab.shell` / `template_name`, default `"standard"`)
+is **gone**. There is one fixed `@agent.<agent>.template` per agent — no variant
+subdirectory. `box.shell` now means **only the login shell**. (If a need for
+variants reappears it can return later as a creation-time `box create --template
+<variant>` flag, not a cascade setting.) Remove any `shell:`/`template_name:`
+variant key from your agent config.
+
+### 8.4 CLAUDE.md is now a plain template file
+
+The instruction-merge machinery (section-marker concatenation of base / template /
+project layers of `CLAUDE.md`) is **deleted**. `CLAUDE.md` is now an ordinary
+template file: plain ordered copy, last-wins, seed-once. Base-layer guidance lives
+in a separate non-colliding file (`INSTRUCTIONS.md`) so it never clobbers the agent
+template's `CLAUDE.md`. If you relied on the merge markers, fold your content
+directly into the appropriate template-layer `CLAUDE.md`.
+
+### 8.5 ⚑ Host-config IMPORT removed (the headline break)
+
+kanibako no longer copies your **host** agent config into a fresh box. Each agent's
+import is removed:
+
+| Agent | Host source no longer imported | What replaces it |
+|---|---|---|
+| claude | `~/.claude.json` (the `oauthAccount` / `hasCompletedOnboarding` / `installMethod` allowlist) | a curated static `.claude.json` onboarding stub (`{"hasCompletedOnboarding": true}`) in the claude template + your synced `~/.claude/.credentials.json` |
+| codex | `~/.codex/config.toml` | a curated `config.toml` in the codex template (or codex's built-in defaults) |
+| goose | `~/.config/goose/config.yaml` (the provider/model/**extensions**/**instructions** allowlist) | provider/model via the `agent.goose.env.GOOSE_PROVIDER` / `GOOSE_MODEL` settings; extensions/instructions = the **curated goose template set** |
+
+What you must now do instead:
+
+- **claude:** authentication flows from the **synced** `~/.claude/.credentials.json`
+  (still synced every launch) plus the template's onboarding stub. Your host
+  `~/.claude.json` settings (including `oauthAccount`) no longer seed the box.
+- **goose:** set provider/model as settings (`agent.goose.env.GOOSE_PROVIDER`,
+  `agent.goose.env.GOOSE_MODEL`) rather than relying on your host `config.yaml`.
+  ⚑ **Your host goose `extensions` and `instructions` are NOT carried into boxes** —
+  this is an accepted loss; boxes use the template's curated set. Place any extension
+  config you want in boxes into the goose template (`@agent.goose.template`).
+- **codex:** codex runs on built-in defaults; place any custom config in the codex
+  template (`@agent.codex.template`).
+- **any agent:** to ship custom per-agent config into boxes, put it in that agent's
+  template dir (`@system.agents/<agent>/template`) — it seeds via layer 2.
+
+**Credential SYNC is unchanged** (this is separate from host-config import): claude
+`.credentials.json`, codex `auth.json`, and goose `secrets.yaml` are still two-way
+synced on every launch.
 
 ---
 
-## 9. Agent descriptors (STUB — Phase 8, not yet implemented)
+## 9. Agent descriptors, the per-box meta file & box-side vault dest
 
-> **TODO: fill when Phase 8 lands.**
->
-> Document here any user-visible `agent.<agent>.*` key changes that finalize with the
-> plugin descriptors (per-agent bindings/creds/caps/env), once Phase 8 is implemented.
+The agent descriptor model is finalized in 1.6.0; most of it is internal (the
+plugin contract). The user-visible pieces are three on-disk / box-layout changes.
+
+### 9.1 Per-agent YAML section `crab:` → `agent:`
+
+The top-level section token in a per-agent YAML file is renamed from `crab` to
+`agent` (the last on-disk `crab` token in the config layer):
+
+```yaml
+# Before                         # After
+crab:                            agent:
+  model: opus                      model: opus
+```
+
+⚑ **Hard break, no back-read.** A file with a `crab:` section is not recognized
+until you rename the section to `agent:`. (This is in addition to the cascade-level
+and key renames in §2.)
+
+### 9.2 Per-box meta file `project.yaml` → `settings.yaml`
+
+The per-box metadata file is renamed `project.yaml` → **`settings.yaml`** in **every**
+mode (primary, named, and standalone). See §4.6 for where each mode's file lives;
+§4.5 for the standalone `box_data/settings.yaml` walk marker.
+
+⚑ **What the file actually contains (on-disk format).** The per-box `settings.yaml`
+stores construct-time box metadata in two YAML sections, `project:` and `resolved:`
+— these are the *physical* on-disk shape you would see if you opened the file. (The
+keyspace documents this metadata as the logical `box.meta.*` / `workset.meta.*`
+model; the on-disk layout uses these two sections rather than nested `box.meta.*`
+tables. The logical keyspace names are the model; the sections below are the disk
+reality.)
+
+```yaml
+project:
+  mode: primary            # primary | named | standalone  (was project.mode; NO layout field)
+  enable_vault: true
+  group_auth: true
+  name: <box name>
+resolved:
+  workspace: <project dir>
+  shell: <login shell>
+  vault_ro: <host vault ro path>
+  vault_rw: <host vault rw path>
+  metadata: <metadata path>
+  project_hash: <hash>
+  global_shared: <path>
+  local_shared: <path>
+```
+
+When migrating an old `project.yaml`: rename the file to `settings.yaml`, **drop any
+`layout:` field**, translate `mode` per §4.1, and keep the `project:` / `resolved:`
+section layout shown above. You normally do not hand-edit the `resolved:` section —
+it is derived construct-time state, regenerated by kanibako. The `name` under
+`project:` is what lets a moved/copied tree keep its identity on drop-in import (§6).
+
+### 9.3 Box-side vault dest `~/share-ro` / `~/share-rw` → `~/vault/ro` / `~/vault/rw`
+
+This change is detailed in **§4.7** — cross-reference it, not duplicated here. In
+short: inside the box, the vault is now mounted at `~/vault/ro` / `~/vault/rw`
+(previously `~/share-ro` / `~/share-rw`). Update any in-box scripts, aliases, or
+agent instructions accordingly. The host-side vault source and the local
+`~/workspace/vault` mask are unchanged.
+
+### 9.4 Host agent-config import removed
+
+The removal of host agent-config import (claude `.claude.json`/`oauthAccount`, codex
+`config.toml`, goose `extensions`/`instructions`) is detailed in **§8.5** —
+cross-reference it. It is the user-facing behavior change that the finalized
+descriptors carry; the descriptor model change itself is internal.
