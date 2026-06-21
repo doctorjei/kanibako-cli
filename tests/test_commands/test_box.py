@@ -1448,3 +1448,70 @@ class TestBoxDuplicateFromWorkset:
         assert proj.metadata_path.is_dir()
         assert (proj.metadata_path / "marker.txt").read_text() == "ws-dup-marker"
         assert (workspace_path / "code.py").read_text() == "print('ws-dup')"
+
+
+class TestBoxDuplicateNoToMode:
+    """Bare `box duplicate <src> <dst>` (no --to) for non-primary sources (BUG-B)."""
+
+    def _make_args(self, source, dest, bare=False, force=True):
+        return argparse.Namespace(
+            source_path=str(source), new_path=str(dest),
+            bare=bare, force=force, to_mode=None,
+            workset=None, project_name=None,
+        )
+
+    def test_standalone_source_without_to_duplicates(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A standalone source resolves without --to and lands a fresh standalone."""
+        from kanibako import registry_store
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "sa_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('sa')")
+        src_proj = resolve_standalone_project(
+            std, config, str(src_dir), initialize=True,
+        )
+
+        dst_dir = tmp_home / "sa_dst"
+        rc = run_duplicate(self._make_args(src_dir, dst_dir))
+        assert rc == 0
+
+        # Workspace copied + a fresh standalone box established at the dst.
+        assert (dst_dir / "code.py").read_text() == "print('sa')"
+        assert (dst_dir / "box_data").is_dir()
+        sa = registry_store.load_standalone(std.data_path)
+        dst_names = [n for n, root in sa.items() if root == str(dst_dir.resolve())]
+        assert len(dst_names) == 1
+        # Fresh identity (not the source's box name).
+        assert dst_names[0] != src_proj.name
+
+    def test_named_source_without_to_duplicates_to_default(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A workset (named) source resolves without --to into a default box."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        ws_root = tmp_home / "worksets" / "wset"
+        ws = create_workset("wset", ws_root, std)
+        source = tmp_home / "orig"
+        source.mkdir()
+        add_project(ws, "app", source)
+        from kanibako.paths import WorksetSpec, resolve_workset_project
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), "app", std, config, initialize=True,
+        )
+        (proj.project_path / "code.py").write_text("print('ws')")
+
+        dst_dir = tmp_home / "ws_dst"
+        rc = run_duplicate(self._make_args(proj.project_path, dst_dir))
+        assert rc == 0
+        assert (std.boxes / "ws_dst").is_dir()
