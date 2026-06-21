@@ -1515,3 +1515,61 @@ class TestBoxDuplicateNoToMode:
         rc = run_duplicate(self._make_args(proj.project_path, dst_dir))
         assert rc == 0
         assert (std.boxes / "ws_dst").is_dir()
+
+
+class TestBoxRmStandalone:
+    """`box rm` for standalone boxes (BUG-C)."""
+
+    def _rm_args(self, target, purge=False, force=True):
+        return argparse.Namespace(target=str(target), purge=purge, force=force)
+
+    def _make_standalone(self, std, config, tmp_home, leaf="rm_sa"):
+        root = tmp_home / leaf
+        root.mkdir()
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+        return root, proj.name
+
+    def test_rm_by_name_unregisters(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako import registry_store
+        from kanibako.commands.box import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root, box_name = self._make_standalone(std, config, tmp_home)
+
+        rc = run_rm(self._rm_args(box_name))
+        assert rc == 0
+        assert box_name not in registry_store.load_standalone(std.data_path)
+        # Metadata left in place without --purge.
+        assert (root / "box_data").is_dir()
+
+    def test_rm_by_path_unregisters(self, config_file, tmp_home, credentials_dir):
+        from kanibako import registry_store
+        from kanibako.commands.box import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root, box_name = self._make_standalone(std, config, tmp_home, leaf="rm_sa_path")
+
+        rc = run_rm(self._rm_args(root))
+        assert rc == 0
+        assert box_name not in registry_store.load_standalone(std.data_path)
+
+    def test_rm_purge_removes_metadata(self, config_file, tmp_home, credentials_dir):
+        from kanibako import registry_store
+        from kanibako.commands.box import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root, box_name = self._make_standalone(std, config, tmp_home, leaf="rm_sa_purge")
+
+        rc = run_rm(self._rm_args(box_name, purge=True))
+        assert rc == 0
+        assert box_name not in registry_store.load_standalone(std.data_path)
+        assert not (root / "box_data").exists()
+
+    def test_rm_unknown_target_errors(self, config_file, tmp_home, credentials_dir):
+        from kanibako.commands.box import run_rm
+
+        rc = run_rm(self._rm_args("no-such-box"))
+        assert rc == 1

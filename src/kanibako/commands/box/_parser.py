@@ -721,6 +721,94 @@ def _purge_dir(target: Path) -> bool:
     return not target.exists()
 
 
+def _resolve_standalone_target(
+    std, config, target: str,
+) -> tuple[str | None, Path | None]:
+    """Resolve a ``box rm`` *target* to a registered standalone box.
+
+    Returns ``(box_name, root)`` when *target* names a standalone box, else
+    ``(None, None)``.  *target* may be a registered standalone box NAME (looked
+    up in ``registry.standalone``) or a PATH (resolved by ancestor-walk
+    detection, then matched to its registered root).  Mirrors how ``box purge``
+    finds standalone boxes (BUG-C).
+    """
+    from kanibako import registry_store
+    from kanibako.paths import BoxMode, detect_project_mode
+
+    # 1) Direct standalone-name lookup.
+    entries = registry_store.load_standalone(std.data_path)
+    if target in entries:
+        return target, Path(entries[target])
+
+    # 2) Path target: detect the box by ancestor-walk, then match its root.
+    candidate = Path(target)
+    if candidate.exists():
+        try:
+            detection = detect_project_mode(candidate.resolve(), std, config)
+        except Exception:  # noqa: BLE001 - a non-project path is simply a miss
+            return None, None
+        if detection.mode is BoxMode.standalone:
+            root = detection.project_root
+            sa_name = registry_store.standalone_name_for_root(std.data_path, root)
+            if sa_name is not None:
+                return sa_name, root
+    return None, None
+
+
+def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
+    """Remove a standalone box: drop its registry entry (+ box_data/ on --purge).
+
+    Standalone state lives in-tree under ``<root>/box_data`` (+ ``<root>/vault``)
+    and the box is indexed in ``registry.standalone``.  Always drops the registry
+    entry; with ``--purge`` also deletes the in-tree ``box_data/`` metadata (and,
+    on confirmation, the ``vault/`` tree).  The user's workspace files are never
+    touched.
+    """
+    from kanibako import registry_store
+    from kanibako.errors import UserCancelled
+    from kanibako.paths import _STANDALONE_META_DIR
+    from kanibako.utils import confirm_prompt
+
+    print(f"Removing standalone box: {box_name} ({root})")
+    registry_store.unregister_standalone(std.data_path, box_name)
+    print(f"Removed '{box_name}' from the registry")
+
+    metadata_dir = Path(root) / _STANDALONE_META_DIR if root is not None else None
+    if args.purge:
+        if metadata_dir is not None and metadata_dir.is_dir():
+            if not args.force:
+                print()
+                try:
+                    confirm_prompt(
+                        f"Delete metadata at {metadata_dir}? This cannot be undone.\n"
+                        "Type 'yes' to confirm: "
+                    )
+                except UserCancelled:
+                    print("Aborted (box was already unregistered).")
+                    return 2
+            if _purge_dir(metadata_dir):
+                print(f"Removed metadata: {metadata_dir}")
+                vault_dir = Path(root) / "vault"
+                if vault_dir.is_dir():
+                    _purge_dir(vault_dir)
+                    print(f"Removed vault: {vault_dir}")
+            else:
+                print(
+                    f"Warning: could not fully remove {metadata_dir} "
+                    "(it may contain files created inside a container). "
+                    f"Try: podman unshare rm -rf {metadata_dir}",
+                    file=sys.stderr,
+                )
+        else:
+            print(f"No metadata directory found at {metadata_dir}")
+    elif metadata_dir is not None and metadata_dir.is_dir():
+        print(
+            f"Metadata still present at {metadata_dir}. "
+            f"Run 'kanibako box rm {box_name} --purge' to delete."
+        )
+    return 0
+
+
 def run_rm(args: argparse.Namespace) -> int:
     """Unregister a project from names.yaml, optionally purging metadata."""
     from kanibako.names import lookup_by_path
@@ -751,6 +839,16 @@ def run_rm(args: argparse.Namespace) -> int:
         if result is not None:
             name, section = result
             path = names[section][name]
+
+    if name is None:
+        # STANDALONE boxes are not in names.yaml — they live in
+        # registry.standalone (box name → root). Resolve the target as either a
+        # registered standalone box name or a path (ancestor-walk detection), so
+        # `box rm <canonical-name>` and `box rm <path>` both clean up an
+        # otherwise-uncleanable standalone box (BUG-C).
+        sa_name, sa_root = _resolve_standalone_target(std, config, target)
+        if sa_name is not None:
+            return _rm_standalone(std, sa_name, sa_root, args)
 
     if name is None or section is None:
         print(f"Error: '{target}' is not a registered project or workset.", file=sys.stderr)
