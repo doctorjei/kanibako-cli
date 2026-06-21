@@ -416,6 +416,24 @@ def run_duplicate(args: argparse.Namespace) -> int:
     if getattr(args, "to_mode", None) is not None:
         return _run_duplicate_cross_mode(args, std, config)
 
+    # No --to: the default-mode path below resolves the source via
+    # _resolve_local_dir, which only knows PRIMARY (central-store) boxes.  A
+    # STANDALONE or NAMED source would miss → a misleading "no project data
+    # found" (BUG-B).  Detect the source mode (ancestor-walk) and, for a
+    # non-primary source, default the target mode sensibly so a bare
+    # `box duplicate <src> <dst>` works: standalone → a fresh standalone box at
+    # the destination (matching `--to standalone`); named → a default-mode box
+    # (matching `--to default`).
+    src_for_detect = Path(args.source_path)
+    if src_for_detect.is_dir():
+        src_mode = detect_project_mode(src_for_detect.resolve(), std, config).mode
+        if src_mode is BoxMode.standalone:
+            args.to_mode = "standalone"
+            return _run_duplicate_cross_mode(args, std, config)
+        if src_mode is BoxMode.named:
+            args.to_mode = "default"
+            return _run_duplicate_cross_mode(args, std, config)
+
     source_path = Path(args.source_path).resolve()
     new_path = Path(args.new_path).resolve()
 
