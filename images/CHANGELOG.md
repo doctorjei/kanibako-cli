@@ -8,6 +8,17 @@ bundles `kanibako-cli==X.Y.Z` (passed as the `KANIBAKO_CLI_VERSION` build-arg).
 
 ## [Unreleased]
 
+### Changed
+- `VERSION` -> `1.6.0.dev24`: pin images to the 1.6.0 revamp dev pre-release of
+  `kanibako-cli` for the pre-promote full E2E.
+- `containers/Containerfile.kanibako`: home-dir stub `share-ro`/`share-rw` ->
+  `vault/ro`/`vault/rw` (1.6.0 vault-naming; cosmetic — these dests are created
+  at launch and shadowed by the box_data home bind).
+- `build-images.yml`: the manual dispatch now version-tags the build
+  (`:<VERSION>`) instead of `:latest`, so a dev/pre-release cli pin can be built
+  and pulled for testing without clobbering the prod `:latest` images. `:latest`
+  stays owned by `release.yml`'s promote (digest copy from the green rc).
+
 ### Added
 - `release.yml`: rc-then-promote release workflow. An `vX.Y.Z-rcN` tag builds and
   publishes the four `:X.Y.Z-rcN` rc images (each with
