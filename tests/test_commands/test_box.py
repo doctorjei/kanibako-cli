@@ -1573,3 +1573,68 @@ class TestBoxRmStandalone:
 
         rc = run_rm(self._rm_args("no-such-box"))
         assert rc == 1
+
+
+class TestBoxListStandalone:
+    """`box list` includes standalone boxes (BUG-E)."""
+
+    def test_list_shows_standalone(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa_listed"
+        root.mkdir()
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Standalone boxes:" in out
+        assert proj.name in out
+        assert str(root.resolve()) in out
+
+    def test_list_quiet_includes_standalone(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa_quiet"
+        root.mkdir()
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out.splitlines()
+        assert proj.name in out
+
+    def test_list_hides_missing_standalone_by_default(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        import shutil
+
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa_gone"
+        root.mkdir()
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+        shutil.rmtree(root)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        assert proj.name not in capsys.readouterr().out
+
+        # --all surfaces the missing standalone box.
+        args_all = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+        rc = run_list(args_all)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert proj.name in out
+        assert "missing" in out
