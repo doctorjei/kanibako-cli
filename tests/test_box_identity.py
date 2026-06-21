@@ -216,6 +216,34 @@ class TestResolveStandaloneName:
                 Path("/x/p"), supplied, {supplied}
             )
 
+
+# ---------------------------------------------------------------------------
+# validate_standalone_name (BUG-A pre-flight)
+# ---------------------------------------------------------------------------
+
+class TestValidateStandaloneName:
+    def test_empty_is_noop(self) -> None:
+        box_identity.validate_standalone_name("", {"ab2c3_proj"})
+
+    def test_non_canonical_is_noop(self) -> None:
+        # A plain string always becomes a fresh-prefixed name → never refusable.
+        box_identity.validate_standalone_name("WeirdName", {"weirdname"})
+
+    def test_free_canonical_is_noop(self) -> None:
+        box_identity.validate_standalone_name("ab2c3_proj", {"zz9zz_other"})
+
+    def test_taken_canonical_raises(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match="already a box with that name"):
+            box_identity.validate_standalone_name("ab2c3_proj", {"ab2c3_proj"})
+
+    def test_taken_canonical_raises_case_insensitive(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match="already a box with that name"):
+            box_identity.validate_standalone_name("AB2C3_Proj", {"ab2c3_proj"})
+
     def test_match_and_taken_error_suggests_dropping_prefix(self) -> None:
         from kanibako.errors import ProjectError
 
