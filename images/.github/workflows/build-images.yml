@@ -62,7 +62,10 @@ jobs:
           # NOT publish; the publish dispatch restores those cached layers
           # (cache-from below) and pushes without rebuilding.
           push: ${{ github.event_name == 'workflow_dispatch' && inputs.push }}
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:latest
+          # Version-tag the manual build (e.g. :1.6.0.dev24) instead of :latest,
+          # so a pre-release/dev cli pin never clobbers the prod :latest images.
+          # :latest is owned by release.yml's promote path (digest copy from rc).
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kanibako-${{ matrix.variant }}:${{ steps.ver.outputs.cli_version }}
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             VARIANT=${{ matrix.variant }}
