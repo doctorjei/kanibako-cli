@@ -62,6 +62,44 @@ def workset_template_dir(proj: ProjectPaths, std: StandardPaths) -> Path | None:
     return workset_root(proj, std) / "template"
 
 
+#: Sentinel filename (under the box metadata dir) recording that the seed-once
+#: home content (templates + credential seeds + init seeds) has been applied.
+#: Its presence — NOT ``proj.is_new`` — is what gates seed-once application, so a
+#: box made via the two-step ``box create`` then ``start`` flow (which creates
+#: the metadata dir at CREATE time, leaving ``is_new`` False at START) is still
+#: seeded exactly once on its first ``start`` (BUG-D).
+SEED_MARKER = ".seeded"
+
+
+def seed_marker_path(metadata_path: Path) -> Path:
+    """Return the seed-once sentinel path under *metadata_path*."""
+    return metadata_path / SEED_MARKER
+
+
+def needs_seed(metadata_path: Path, *, is_new: bool) -> bool:
+    """True when the box still needs its one-time home seeding.
+
+    A box needs seeding when it is freshly created (*is_new*) OR when it was
+    created earlier (e.g. via ``box create``) but never seeded — detected by the
+    absence of the :data:`SEED_MARKER` sentinel under *metadata_path*.  Once the
+    sentinel exists the box is never re-seeded, so user edits to seeded files
+    survive subsequent launches (D-B6).
+    """
+    if is_new:
+        return True
+    return not seed_marker_path(metadata_path).exists()
+
+
+def mark_seeded(metadata_path: Path) -> None:
+    """Record that the box's one-time home seeding has completed.
+
+    Writes the :data:`SEED_MARKER` sentinel under *metadata_path* so a later
+    launch's :func:`needs_seed` returns False.  Idempotent.
+    """
+    metadata_path.mkdir(parents=True, exist_ok=True)
+    seed_marker_path(metadata_path).touch()
+
+
 def apply_template_layers(
     home: Path,
     layers: list[Path | None],

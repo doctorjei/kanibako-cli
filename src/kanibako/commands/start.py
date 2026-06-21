@@ -830,8 +830,17 @@ def _run_container(
             for action in hygiene_actions:
                 logger.info(action)
 
+        # Seed-once gate (BUG-D): seed the box home exactly once, on its FIRST
+        # start — whether the box was created by this very `start` (proj.is_new)
+        # or earlier by `box create` (which makes the metadata dir, leaving
+        # is_new False at start time).  The `.seeded` sentinel under the metadata
+        # dir records completion so subsequent launches never re-seed (user edits
+        # to seeded files survive, D-B6).
+        from kanibako.templates import mark_seeded, needs_seed
+        seed_box = needs_seed(proj.metadata_path, is_new=proj.is_new)
+
         # Template application + agent init for new projects.
-        if proj.is_new:
+        if seed_box:
             # Layered seed-once: copy the ordered template layers
             # (base -> agent -> workset; later overlays earlier, per-file
             # last-wins) into the box home ONCE at creation.  The base layer is
@@ -852,7 +861,7 @@ def _run_container(
         # descriptor-less target (only no_agent) has nothing to seed at init —
         # its dirs come from the layered template apply above — so there is no
         # else branch (the vestigial init_home hook was removed in 1.6.0).
-        if proj.is_new and target and desc is not None:
+        if seed_box and target and desc is not None:
             credsync.seed_cred_files(
                 desc, target, host_home=Path.home(),
                 project_home=proj.shell_path, group_auth=proj.group_auth,
@@ -860,13 +869,18 @@ def _run_container(
 
         # Copy-once-at-init seeds (additive; overlays templates). target may be
         # None (no agent) — seeds can still come from config levels.
-        if proj.is_new:
+        if seed_box:
             _apply_init_seeds(
                 std=std, proj=proj, agent_name=agent_id, target=target,
                 global_config_path=config_file, project_toml=project_toml,
                 workset_config_path=workset_path, agent_config_path=agent_cfg_path,
                 logger=logger, group_auth=proj.group_auth,
             )
+
+        # Record seed-once completion so subsequent launches skip the blocks
+        # above (idempotent; only the first start writes meaningful content).
+        if seed_box:
+            mark_seeded(proj.metadata_path)
 
         # Synced copies (the `<scope>.synced.<name>` category) — applied on
         # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
