@@ -295,6 +295,40 @@ class TestStandaloneIdentity:
 
 
 # ---------------------------------------------------------------------------
+# TestStandaloneAtomicCreate (BUG-A: name-collision pre-flight before FS init)
+# ---------------------------------------------------------------------------
+
+class TestStandaloneAtomicCreate:
+    def test_taken_canonical_name_refuses_before_fs_init(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """A create whose --name is a TAKEN verbatim canonical id refuses up
+        front, leaving NO half-created box_data/ or vault/ tree (BUG-A)."""
+        # Register a canonical id so the requested --name collides.
+        taken = "abcde_taken"
+        registry_store.register_standalone(std.data_path, taken, project_dir)
+
+        with pytest.raises(ProjectError):
+            resolve_standalone_project(
+                std, config, str(project_dir), initialize=True, name=taken,
+            )
+
+        # No orphaned kanibako-managed tree left behind.
+        assert not (project_dir / "box_data").exists()
+        assert not (project_dir / "vault").exists()
+
+    def test_free_canonical_name_still_creates(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """A free canonical --name is honored verbatim (no false refusal)."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True, name="abcde_mine",
+        )
+        assert proj.name == "abcde_mine"
+        assert (project_dir / "box_data").is_dir()
+
+
+# ---------------------------------------------------------------------------
 # TestStandaloneDetection (5d: box_data/ walk marker)
 # ---------------------------------------------------------------------------
 

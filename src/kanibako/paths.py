@@ -1716,6 +1716,16 @@ def resolve_standalone_project(
 
     is_new = False
     if initialize and not metadata_path.is_dir():
+        # Pre-flight the requested --name BEFORE any FS mutation so a doomed
+        # create (a verbatim-canonical name already taken) refuses up front
+        # rather than leaving an orphaned half-created box_data/ + vault/ tree
+        # (BUG-A).  establish_standalone re-resolves the name authoritatively;
+        # this only surfaces the refusable collision early.
+        from kanibako import box_identity, registry_store
+        box_identity.validate_standalone_name(
+            requested_name,
+            registry_store.standalone_box_names(std.data_path),
+        )
         _init_standalone_project(
             std, metadata_path, shell_path,
             vault_ro_path, vault_rw_path, project_path,

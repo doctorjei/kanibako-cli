@@ -113,6 +113,32 @@ def make_standalone_box_name(root: Path, existing: set[str]) -> str:
     return _generate_with_leaf(sanitize_cap(root.name), existing)
 
 
+def validate_standalone_name(supplied: str, existing: set[str]) -> None:
+    """Pre-flight a user-supplied standalone ``--name`` for a refusable collision.
+
+    Pure and side-effect free.  Raises the SAME
+    :class:`~kanibako.errors.ProjectError` that :func:`resolve_standalone_name`
+    would on the one refusable case — a *supplied* name that is a verbatim
+    canonical ``<random24>_<leaf>`` id already present in *existing*.  Every other
+    input (empty, or a non-canonical string that becomes a fresh
+    ``<random24>_<leaf>``) is always satisfiable, so this is a no-op for them.
+
+    Callers run this BEFORE any filesystem mutation so a doomed standalone
+    ``create`` refuses up front instead of leaving a half-created tree (BUG-A).
+    """
+    if not supplied:
+        return
+    supplied = supplied.lower()
+    if not is_canonical_standalone_name(supplied):
+        return
+    if supplied in existing:
+        prefix = supplied.partition("_")[0]
+        raise ProjectError(
+            f"already a box with that name '{supplied}' — try without the "
+            f"'{prefix}_' prefix to generate a fresh one"
+        )
+
+
 def resolve_standalone_name(
     root: Path, supplied: str, existing: set[str],
 ) -> str:
