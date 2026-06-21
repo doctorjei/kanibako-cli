@@ -9,8 +9,9 @@ bundles `kanibako-cli==X.Y.Z` (passed as the `KANIBAKO_CLI_VERSION` build-arg).
 ## [Unreleased]
 
 ### Changed
-- `VERSION` -> `1.6.0.dev24`: pin images to the 1.6.0 revamp dev pre-release of
-  `kanibako-cli` for the pre-promote full E2E.
+- `VERSION` -> `1.6.0.dev25`: re-pin to the 1.6.0 revamp dev pre-release after the
+  full-E2E bug-fix pass (5 standalone/seed-once fixes incl. BUG-D template seeding
+  on `box create`->`start`). (dev24 was the first E2E build.)
 - `containers/Containerfile.kanibako`: home-dir stub `share-ro`/`share-rw` ->
   `vault/ro`/`vault/rw` (1.6.0 vault-naming; cosmetic — these dests are created
   at launch and shadowed by the box_data home bind).
