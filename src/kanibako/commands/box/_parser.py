@@ -522,6 +522,10 @@ def run_list(args: argparse.Namespace) -> int:
 
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)
+    # STANDALONE boxes live only in registry.standalone (box name → root); they
+    # are not in names.yaml / iter_projects, so list them explicitly (BUG-E).
+    from kanibako import registry_store
+    standalone = registry_store.load_standalone(std.data_path)
 
     if orphan_only:
         return _list_orphans(projects, ws_data, std, quiet)
@@ -535,7 +539,7 @@ def run_list(args: argparse.Namespace) -> int:
     except ContainerError:
         pass  # No runtime available — all projects show as stopped.
 
-    if not projects and not ws_data:
+    if not projects and not ws_data and not standalone:
         if not quiet:
             print("No known projects.")
         return 0
@@ -627,6 +631,33 @@ def run_list(args: argparse.Namespace) -> int:
             print(f"  {'NAME':<18} {'STATUS':<10} {'SOURCE'}")
             for proj_name, display_status, source in ws_items:
                 print(f"  {proj_name:<18} {display_status:<10} {source}")
+
+    # STANDALONE boxes (registry.standalone: box name → in-tree root).
+    sa_items: list[tuple[str, str, str]] = []
+    for box_name, root_str in sorted(standalone.items()):
+        root = Path(root_str)
+        if not root.is_dir():
+            status = "missing"
+        else:
+            cname = f"kanibako-{box_name}"
+            status = "active" if cname in running_containers else "stopped"
+        if status == "missing" and not show_all:
+            continue
+        if active_only and status != "active":
+            continue
+        sa_items.append((box_name, status, root_str))
+
+    if sa_items:
+        any_output = True
+        if quiet:
+            for box_name, _status, _root in sa_items:
+                print(box_name)
+        else:
+            print()
+            print("Standalone boxes:")
+            print(f"  {'NAME':<26} {'STATUS':<10} {'ROOT'}")
+            for box_name, status, root_str in sa_items:
+                print(f"  {box_name:<26} {status:<10} {root_str}")
 
     if not any_output and not quiet:
         if active_only:
