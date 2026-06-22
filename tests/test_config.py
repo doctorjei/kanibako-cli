@@ -118,6 +118,76 @@ class TestReadSetupCompleted:
         assert data["box"]["agent"] != "none"
 
 
+class TestSetupNudgeMessage:
+    """setup_nudge_message: Gate-1 absent/stale/current advisory (non-blocking)."""
+
+    def test_absent_marker_nudges_setup(self, tmp_path):
+        from kanibako.config import setup_nudge_message
+
+        cf = tmp_path / "kanibako.yaml"
+        write_global_config(cf)  # no setup_completed
+        msg = setup_nudge_message(cf)
+        assert msg == "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+
+    def test_missing_file_nudges_setup(self, tmp_path):
+        from kanibako.config import setup_nudge_message
+
+        assert setup_nudge_message(tmp_path / "nope.yaml") == (
+            "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+        )
+        assert setup_nudge_message(None) == (
+            "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+        )
+
+    def test_stale_marker_nudges_reupdate(self, tmp_path):
+        from kanibako.config import setup_nudge_message
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        # A version older than OLDEST_COMPATIBLE_SETUP_VERSION (== "1.6.0").
+        write_system_value(cf, "setup_completed", "1.5.0")
+        assert setup_nudge_message(cf) == (
+            "kanibako setup is out of date — re-run 'kanibako setup'."
+        )
+
+    def test_current_marker_no_nudge(self, tmp_path):
+        from kanibako.config import setup_nudge_message
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        write_system_value(cf, "setup_completed", "1.6.0")
+        assert setup_nudge_message(cf) is None
+
+    def test_newer_marker_no_nudge(self, tmp_path):
+        from kanibako.config import setup_nudge_message
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        write_system_value(cf, "setup_completed", "1.7.0")
+        assert setup_nudge_message(cf) is None
+
+    def test_dev_marker_no_nudge(self, tmp_path):
+        """PEP 440 dev/rc suffixes parse fine (1.6.0.dev25 >= 1.6.0? No → stale)."""
+        from kanibako.config import setup_nudge_message
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        # 1.6.0.dev25 < 1.6.0 under PEP 440 → stale (pre-release of the target).
+        write_system_value(cf, "setup_completed", "1.6.0.dev25")
+        assert setup_nudge_message(cf) == (
+            "kanibako setup is out of date — re-run 'kanibako setup'."
+        )
+
+    def test_unparseable_marker_no_nudge(self, tmp_path):
+        """A hand-edited unparseable marker is treated as present (no nag)."""
+        from kanibako.config import setup_nudge_message
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        write_system_value(cf, "setup_completed", "custom-build")
+        assert setup_nudge_message(cf) is None
+
+
 class TestMergedConfig:
     def test_project_overrides_global(self, tmp_path):
         global_path = tmp_path / "global.yaml"

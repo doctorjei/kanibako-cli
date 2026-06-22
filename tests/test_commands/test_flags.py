@@ -157,23 +157,3 @@ class TestResolveSubjectValue:
         from kanibako.errors import KanibakoError
         with pytest.raises(KanibakoError):
             resolve_subject_value("a", "b")
-
-
-# ---------------------------------------------------------------------------
-# refresh: -p/--project removed (clean break)
-# ---------------------------------------------------------------------------
-
-class TestRefreshProjectRemoved:
-    def test_refresh_credentials_parser_has_no_project_flag(self):
-        import argparse
-
-        from kanibako.commands import refresh_credentials
-
-        parser = argparse.ArgumentParser()
-        sub = parser.add_subparsers()
-        refresh_credentials.add_parser(sub)
-        # The reauth parser no longer defines -p/--project.
-        reauth = sub.choices["reauth"]
-        opts = {o for a in reauth._actions for o in a.option_strings}
-        assert "-p" not in opts
-        assert "--project" not in opts

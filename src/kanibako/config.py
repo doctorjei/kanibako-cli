@@ -597,6 +597,42 @@ def read_setup_completed(config_path: Path | None) -> str | None:
     return value or None
 
 
+def setup_nudge_message(config_path: Path | None) -> str | None:
+    """Return the Gate-1 setup-completion nudge for *config_path*, or ``None``.
+
+    Gate 1 (§Design 3/4): fires when the ``system.setup_completed`` marker is
+    ABSENT, or STALE (its version is older than the build's
+    ``OLDEST_COMPATIBLE_SETUP_VERSION``, compared via PEP 440
+    ``packaging.version.Version`` — the project's own versions, e.g.
+    ``1.6.0.dev25`` / ``1.6.0-rc1``, are PEP 440, not strict semver).
+
+    * absent → "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+    * stale  → "kanibako setup is out of date — re-run 'kanibako setup'."
+    * else   → ``None`` (no nudge).
+
+    This is a NON-BLOCKING advisory (the Phase-E Gate-1 DECISION): callers print
+    the message to stderr and CONTINUE to normal agent resolution.  An
+    unparseable stored marker is treated as present-and-current (no spurious
+    nudge — better than nagging a user who has a hand-edited value).
+    """
+    from kanibako import OLDEST_COMPATIBLE_SETUP_VERSION
+
+    marker = read_setup_completed(config_path)
+    if marker is None:
+        return "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        if Version(marker) < Version(OLDEST_COMPATIBLE_SETUP_VERSION):
+            return "kanibako setup is out of date — re-run 'kanibako setup'."
+    except InvalidVersion:
+        # Hand-edited / unrecognized marker: assume the user knows what they're
+        # doing; don't nag.
+        return None
+    return None
+
+
 def load_settings(
     agent_name: str,
     *,

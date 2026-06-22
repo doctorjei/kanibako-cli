@@ -292,6 +292,37 @@ def _ensure_initialized() -> None:
         pass
 
 
+def _setup_nudge(args: argparse.Namespace) -> None:
+    """Gate-1 NON-BLOCKING setup-completion nudge (§Design 3/4).
+
+    Fires only for the agent-requiring commands (those in
+    :data:`~kanibako.commands.flags.AGENT_FLAG_COMMANDS` — ``start``,
+    ``box start``, ``agent reauth``), i.e. the ones that run the unified agent
+    resolver.  ``shell`` and ``setup`` itself, plus pure config/list commands,
+    are intentionally excluded.
+
+    If the ``system.setup_completed`` marker is absent or stale, prints an
+    advisory to stderr and RETURNS — the command then proceeds to normal agent
+    resolution.  This never blocks (a fresh user with exactly one installed
+    agent still launches), and any failure reading the marker is swallowed (the
+    nudge must never break a command).
+    """
+    from kanibako.commands.flags import AGENT_FLAG_COMMANDS, command_key
+
+    if command_key(args) not in AGENT_FLAG_COMMANDS:
+        return
+    try:
+        from kanibako.config import config_file_path, setup_nudge_message
+        from kanibako.paths import xdg
+
+        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        message = setup_nudge_message(cf)
+    except Exception:  # pragma: no cover - defensive; never break a command
+        return
+    if message:
+        print(message, file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
 
@@ -351,6 +382,12 @@ def main(argv: list[str] | None = None) -> None:
         except FlagRelevanceError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(2)
+
+        # Gate 1 (§Design 3/4): a NON-BLOCKING setup-completion nudge for the
+        # agent-requiring commands (those that run the unified resolver).  Prints
+        # to stderr and CONTINUES — never blocks, so a fresh user with exactly
+        # one installed agent still launches (just with a nudge).
+        _setup_nudge(args)
 
         if args.command == "start":
             args.agent_args = post_dash or []
