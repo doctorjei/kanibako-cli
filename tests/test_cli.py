@@ -960,3 +960,99 @@ class TestVerboseFlag:
     def test_help_description(self):
         parser = build_parser()
         assert parser.description == "Safe, persistent workspaces for AI coding agents."
+
+
+class TestSetupNudge:
+    """Gate-1 NON-BLOCKING setup-completion nudge (_setup_nudge)."""
+
+    def _ns(self, command, **kw):
+        import argparse
+
+        return argparse.Namespace(command=command, **kw)
+
+    def test_absent_marker_nudges_agent_command(self, tmp_path, capsys):
+        """Agent-requiring command + absent marker → nudge on stderr; returns None."""
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako.yaml"  # does not exist → absent marker
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            result = _setup_nudge(self._ns("start"))
+        assert result is None  # non-blocking: no raise, no exit
+        err = capsys.readouterr().err
+        assert "kanibako isn't set up yet" in err
+
+    def test_stale_marker_nudges_agent_command(self, tmp_path, capsys):
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        write_system_value(cf, "setup_completed", "1.5.0")
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("start"))
+        assert "out of date" in capsys.readouterr().err
+
+    def test_current_marker_no_nudge(self, tmp_path, capsys):
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        write_system_value(cf, "setup_completed", "1.6.0")
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("start"))
+        assert capsys.readouterr().err == ""
+
+    def test_agent_reauth_nudges(self, tmp_path, capsys):
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako.yaml"
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("agent", agent_command="reauth"))
+        assert "kanibako isn't set up yet" in capsys.readouterr().err
+
+    def test_shell_never_nudges(self, tmp_path, capsys):
+        """shell bypasses the nudge entirely (no agent resolution)."""
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako.yaml"  # absent marker
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("shell"))
+        assert capsys.readouterr().err == ""
+
+    def test_setup_never_nudges(self, tmp_path, capsys):
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako.yaml"
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("setup"))
+        assert capsys.readouterr().err == ""
+
+    def test_config_command_never_nudges(self, tmp_path, capsys):
+        """Pure config/list commands are not agent-requiring → no nudge."""
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako.yaml"
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("list"))
+            _setup_nudge(self._ns("agent", agent_command="list"))
+        assert capsys.readouterr().err == ""

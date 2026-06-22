@@ -55,7 +55,7 @@ class TestSetupRuntime:
 class TestSetupAgents:
     """Step 2: agent detection."""
 
-    def test_setup_detects_agents(self, setup_args, capsys):
+    def test_setup_detects_agents(self, setup_args, capsys, tmp_path):
         """When an agent plugin is installed and detected, it shows [ok]."""
         mock_target = MagicMock()
         mock_target.display_name = "Claude Code"
@@ -63,6 +63,11 @@ class TestSetupAgents:
 
         mock_cls = MagicMock(return_value=mock_target)
 
+        # ``xdg()`` must return a REAL directory: setup's unconditional
+        # ``_write_setup_marker`` resolves the config path off it and calls
+        # ``mkdir``.  A bare MagicMock here leaks a ``<MagicMock name='xdg()'>``
+        # dir into the CWD.  Point it at tmp_path so the marker write lands in a
+        # throwaway location instead.
         with (
             patch(
                 "kanibako.commands.diagnose._check_runtime",
@@ -76,9 +81,7 @@ class TestSetupAgents:
                 "kanibako.commands.diagnose._check_image",
                 return_value=("ok", "test:latest (available locally)"),
             ),
-            patch("kanibako.config.config_file_path"),
-            patch("kanibako.config.load_merged_config"),
-            patch("kanibako.paths.xdg"),
+            patch("kanibako.paths.xdg", return_value=tmp_path),
         ):
             rc = run_setup(setup_args)
 
@@ -105,7 +108,7 @@ class TestSetupAgents:
         captured = capsys.readouterr()
         assert "No agent plugins installed" in captured.out
 
-    def test_setup_agent_not_detected(self, setup_args, capsys):
+    def test_setup_agent_not_detected(self, setup_args, capsys, tmp_path):
         """When a plugin exists but agent binary is not found, it shows [--]."""
         mock_target = MagicMock()
         mock_target.display_name = "Claude Code"
@@ -113,6 +116,8 @@ class TestSetupAgents:
 
         mock_cls = MagicMock(return_value=mock_target)
 
+        # Real xdg() dir so the unconditional setup-marker write lands in
+        # tmp_path rather than leaking a MagicMock-named dir into the CWD.
         with (
             patch(
                 "kanibako.commands.diagnose._check_runtime",
@@ -126,9 +131,7 @@ class TestSetupAgents:
                 "kanibako.commands.diagnose._check_image",
                 return_value=("--", "not found"),
             ),
-            patch("kanibako.config.config_file_path"),
-            patch("kanibako.config.load_merged_config"),
-            patch("kanibako.paths.xdg"),
+            patch("kanibako.paths.xdg", return_value=tmp_path),
         ):
             rc = run_setup(setup_args)
 
