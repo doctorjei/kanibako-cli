@@ -30,7 +30,6 @@ class TestLoadConfig:
     def test_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.yaml")
         assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
-        assert cfg.paths_shared == "shared"
         assert cfg.system_paths == {}
 
     def test_round_trip(self, tmp_path):
@@ -578,66 +577,6 @@ class TestMigrateConfig:
         migrate_config(tmp_path)
         assert old_dir.exists()
         assert (old_dir / "other.txt").exists()
-
-
-class TestSharedCaches:
-    def test_shared_section_parsed(self, tmp_path):
-        """[shared] entries populate shared_caches dict."""
-        path = tmp_path / "kanibako.yaml"
-        path.write_text(
-            'paths:\n  data_path: ""\n\n'
-            'box:\n  image: "test:latest"\n\n'
-            'shared:\n  cargo-git: ".cargo/git"\n  pip: ".cache/pip"\n'
-        )
-        cfg = load_config(path)
-        assert cfg.shared_caches == {"cargo-git": ".cargo/git", "pip": ".cache/pip"}
-
-    def test_shared_section_not_flattened(self, tmp_path):
-        """[shared] keys don't produce shared_* flat keys on KanibakoConfig."""
-        path = tmp_path / "kanibako.yaml"
-        path.write_text(
-            'shared:\n  cargo-git: ".cargo/git"\n'
-        )
-        cfg = load_config(path)
-        # shared_caches is populated correctly
-        assert cfg.shared_caches == {"cargo-git": ".cargo/git"}
-        # No spurious attributes
-        assert not hasattr(cfg, "shared_cargo-git")
-
-    def test_no_shared_section(self, tmp_path):
-        """shared_caches defaults to empty dict when shared is absent."""
-        path = tmp_path / "kanibako.yaml"
-        path.write_text('paths:\n  data_path: ""\n')
-        cfg = load_config(path)
-        assert cfg.shared_caches == {}
-
-    def test_nonexistent_file(self):
-        """shared_caches defaults to empty dict for missing config file."""
-        from pathlib import Path
-        cfg = load_config(Path("/nonexistent/kanibako.yaml"))
-        assert cfg.shared_caches == {}
-
-    def test_write_global_config_includes_shared(self, tmp_path):
-        """write_global_config includes a shared section."""
-        path = tmp_path / "kanibako.yaml"
-        write_global_config(path)
-        text = path.read_text()
-        assert "shared:" in text
-
-    def test_merged_config_preserves_shared_caches(self, tmp_path):
-        """load_merged_config preserves shared_caches from global config."""
-        global_path = tmp_path / "global.yaml"
-        global_path.write_text(
-            'paths:\n  data_path: ""\n\n'
-            'box:\n  image: "test:latest"\n\n'
-            'shared:\n  pip: ".cache/pip"\n'
-        )
-        project_path = tmp_path / "settings.yaml"
-        project_path.write_text('box:\n  image: "proj:v1"\n')
-
-        merged = load_merged_config(global_path, project_path)
-        assert merged.shared_caches == {"pip": ".cache/pip"}
-        assert merged.box_image == "proj:v1"
 
 
 class TestResourceOverrides:

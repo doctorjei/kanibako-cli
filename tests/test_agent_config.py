@@ -18,7 +18,6 @@ class TestAgentConfigDefaults:
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.env == {}
-        assert cfg.shared_caches == {}
 
     def test_custom_values(self):
         cfg = AgentConfig(
@@ -26,13 +25,11 @@ class TestAgentConfigDefaults:
             run_args=["--verbose"],
             state={"access": "permissive"},
             env={"FOO": "bar"},
-            shared_caches={"plugins": ".claude/plugins"},
         )
         assert cfg.name == "Claude Code"
         assert cfg.run_args == ["--verbose"]
         assert cfg.state == {"access": "permissive"}
         assert cfg.env == {"FOO": "bar"}
-        assert cfg.shared_caches == {"plugins": ".claude/plugins"}
 
 
 class TestAgentsDir:
@@ -79,15 +76,12 @@ class TestLoadAgentConfig:
             '  access: "permissive"\n'
             'env:\n'
             '  MY_VAR: "hello"\n'
-            'shared:\n'
-            '  plugins: ".claude/plugins"\n'
         )
         cfg = load_agent_config(cfg_path)
         assert cfg.name == "Claude Code"
         assert cfg.run_args == ["--verbose", "--debug"]
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.env == {"MY_VAR": "hello"}
-        assert cfg.shared_caches == {"plugins": ".claude/plugins"}
 
     def test_load_agent_section_only(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
@@ -100,7 +94,6 @@ class TestLoadAgentConfig:
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.env == {}
-        assert cfg.shared_caches == {}
 
     def test_load_state_keys_without_identity(self, tmp_path):
         # [agent] with only state keys (no identity keys) → all land in state.
@@ -151,7 +144,6 @@ class TestWriteAgentConfig:
         assert 'agent:' in content
         assert 'state:' not in content
         assert 'env:' in content
-        assert 'shared:' in content
 
     def test_write_with_values(self, tmp_path):
         path = tmp_path / "test.yaml"
@@ -160,7 +152,6 @@ class TestWriteAgentConfig:
             run_args=["--verbose"],
             state={"access": "permissive"},
             env={"FOO": "bar"},
-            shared_caches={"plugins": ".claude/plugins"},
         )
         write_agent_config(path, cfg)
 
@@ -169,7 +160,6 @@ class TestWriteAgentConfig:
         assert loaded.run_args == ["--verbose"]
         assert loaded.state == {"access": "permissive"}
         assert loaded.env == {"FOO": "bar"}
-        assert loaded.shared_caches == {"plugins": ".claude/plugins"}
 
     def test_state_folded_into_agent_section(self, tmp_path):
         path = tmp_path / "test.yaml"
@@ -196,7 +186,6 @@ class TestRoundTrip:
             run_args=["--verbose", "--debug"],
             state={"model": "opus", "access": "permissive"},
             env={"MY_VAR": "hello"},
-            shared_caches={"plugins": ".claude/plugins"},
         )
         write_agent_config(path, original)
         loaded = load_agent_config(path)
@@ -205,7 +194,6 @@ class TestRoundTrip:
         assert loaded.run_args == original.run_args
         assert loaded.state == original.state
         assert loaded.env == original.env
-        assert loaded.shared_caches == original.shared_caches
 
     def test_round_trip_empty_config(self, tmp_path):
         path = tmp_path / "test.yaml"
@@ -217,7 +205,6 @@ class TestRoundTrip:
         assert loaded.run_args == []
         assert loaded.state == {}
         assert loaded.env == {}
-        assert loaded.shared_caches == {}
 
     def test_state_folded_into_single_agent_section(self, tmp_path):
         # Writing state must produce ONE agent section (identity + state),

@@ -318,8 +318,8 @@ class TestProjectMeta:
 
         proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
         # Should use computed defaults (not None, not empty).
-        assert proj2.global_shared_path == std.data_path / config.paths_shared / "global"
-        assert proj2.local_shared_path == std.data_path / config.paths_shared
+        assert proj2.global_shared_path == std.data_path / "shared" / "global"
+        assert proj2.local_shared_path == std.data_path / "shared"
 
 
 class TestDetectBoxMode:
@@ -1075,7 +1075,7 @@ class TestGlobalSharedPath:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        expected = std.data_path / config.paths_shared / "global"
+        expected = std.data_path / "shared" / "global"
         assert proj.global_shared_path == expected
 
     def test_local_no_init_has_global_shared_path(self, config_file, tmp_home):
@@ -1098,7 +1098,7 @@ class TestLocalSharedPath:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        expected = std.data_path / config.paths_shared
+        expected = std.data_path / "shared"
         assert proj.local_shared_path == expected
 
 

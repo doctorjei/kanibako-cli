@@ -43,7 +43,6 @@ class TestNoAgentTarget:
         assert cfg.name == "Shell"
         assert cfg.run_args == []
         assert cfg.state == {}
-        assert cfg.shared_caches == {}
 
 
 class TestNoAgentTargetImport:

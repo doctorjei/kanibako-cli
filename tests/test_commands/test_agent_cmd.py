@@ -33,7 +33,6 @@ def agent_env(config_file, tmp_home):
         run_args=["--no-helpers"],
         state={"model": "opus"},
         env={"EDITOR": "vim"},
-        shared_caches={"npm": "/home/agent/.npm"},
     )
     write_agent_config(adir / "claude.yaml", cfg)
 
@@ -126,7 +125,6 @@ class TestRunInfo:
         assert "claude" in out
         assert "opus" in out
         assert "EDITOR" in out
-        assert "npm" in out
         assert "--no-helpers" in out
 
     def test_info_missing_agent(self, agent_env, capsys):
@@ -177,17 +175,6 @@ class TestRunConfig:
         rc = run_config(args)
         assert rc == 0
         assert "vim" in capsys.readouterr().out
-
-    def test_config_get_shared_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
-
-        args = argparse.Namespace(
-            agent_id="claude", key_value="shared.npm",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
-        assert rc == 0
-        assert "/home/agent/.npm" in capsys.readouterr().out
 
     def test_config_get_missing_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_config
@@ -311,7 +298,6 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.state == {}
         assert cfg.env == {}
-        assert cfg.shared_caches == {}
         assert cfg.run_args == []
 
     def test_config_reset_requires_key(self, agent_env, capsys):

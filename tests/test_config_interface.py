@@ -73,15 +73,20 @@ class TestIsKnownKey:
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
-        assert is_known_key("paths.shared") is True
         assert is_known_key("system.data") is True
         assert is_known_key("system.agents") is True
         assert is_known_key("system.default_agent") is True
 
     def test_dead_keys_no_longer_known(self):
-        """W4: paths.shell/paths.vault, layout, persistence were deleted."""
+        """W4: paths.shell/paths.vault, layout, persistence were deleted.
+
+        The shared-cache surgery additionally retired paths.shared and the
+        shared.* dynamic prefix (replaced by the ``caches`` category).
+        """
         assert is_known_key("paths.shell") is False
         assert is_known_key("paths.vault") is False
+        assert is_known_key("paths.shared") is False
+        assert is_known_key("shared.cargo-git") is False
         assert is_known_key("layout") is False
         assert is_known_key("persistence") is False
 
@@ -98,9 +103,6 @@ class TestIsKnownKey:
 
     def test_dynamic_resource_prefix(self):
         assert is_known_key("resource.plugins") is True
-
-    def test_dynamic_shared_prefix(self):
-        assert is_known_key("shared.cargo-git") is True
 
     def test_unknown_key(self):
         assert is_known_key("my-project") is False
@@ -309,32 +311,6 @@ class TestResourceKeys:
 
         data = load_doc(project_toml)
         assert "resource_overrides" not in data  # section removed when empty
-
-
-# ---------------------------------------------------------------------------
-# shared.* keys
-# ---------------------------------------------------------------------------
-
-class TestSharedKeys:
-    """Tests for shared.* config keys."""
-
-    def test_set_shared(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
-        msg = set_config_value(
-            "shared.cargo-git", ".cargo/git",
-            config_path=project_toml,
-        )
-        assert "Set shared.cargo-git" in msg
-
-    def test_get_shared(self, tmp_path):
-        global_cfg = tmp_path / "kanibako.yaml"
-        global_cfg.write_text('shared:\n  cargo-git: ".cargo/git"\n')
-
-        val = get_config_value(
-            "shared.cargo-git",
-            global_config_path=global_cfg,
-        )
-        assert val == ".cargo/git"
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +587,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         for key, val in [
             ("group_auth", "false"),
             ("mode", "default"),
-            ("paths.shared", "myshared"),
+            ("box.image", "custom:latest"),
             ("vault.ro", "/ro"),
         ]:
             set_config_value(key, val, config_path=project_toml)
