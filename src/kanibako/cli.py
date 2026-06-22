@@ -76,8 +76,10 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.baseline_cmd import add_parser as add_baseline_parser
 
     # Setup wizard (before management commands, works pre-init).
+    from kanibako.commands.setup_cmd import add_arguments as add_setup_arguments
     from kanibako.commands.setup_cmd import run_setup
     setup_p = subparsers.add_parser("setup", help="Run the setup wizard")
+    add_setup_arguments(setup_p)
     setup_p.set_defaults(func=run_setup)
 
     # Top-level aliases (start, shell, stop already have their own parsers).
