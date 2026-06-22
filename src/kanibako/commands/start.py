@@ -599,7 +599,7 @@ def _run_container(
 
     # Load merged config (global + workset + project)
     project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
+    workset_path = (proj.group.root / "settings.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml,

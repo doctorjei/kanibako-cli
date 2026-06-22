@@ -38,7 +38,7 @@ class TestShareAdd:
     def test_add_rw_writes_key(self, config_file, tmp_home, workset, capsys):
         rc = run_share_add(_add_args(mode="rw"))
         assert rc == 0
-        shares = read_shares(workset.root / "config.yaml")
+        shares = read_shares(workset.root / "settings.yaml")
         assert shares == {"workset.bindings.rw.data": "/host/data:/home/agent/data"}
         out = capsys.readouterr().out
         assert "Added rw share 'data'" in out
@@ -47,7 +47,7 @@ class TestShareAdd:
     def test_add_ro_writes_key(self, config_file, tmp_home, workset):
         rc = run_share_add(_add_args(name="docs", bind="/host/docs:/srv/docs", mode="ro"))
         assert rc == 0
-        shares = read_shares(workset.root / "config.yaml")
+        shares = read_shares(workset.root / "settings.yaml")
         assert shares == {"workset.bindings.ro.docs": "/host/docs:/srv/docs"}
 
     def test_add_overwrite_updates(self, config_file, tmp_home, workset, capsys):
@@ -55,14 +55,14 @@ class TestShareAdd:
         capsys.readouterr()
         rc = run_share_add(_add_args(bind="/host/b:/g"))
         assert rc == 0
-        shares = read_shares(workset.root / "config.yaml")
+        shares = read_shares(workset.root / "settings.yaml")
         assert shares == {"workset.bindings.rw.data": "/host/b:/g"}
         assert "Updated rw share 'data'" in capsys.readouterr().out
 
     def test_add_relative_host_src_allowed(self, config_file, tmp_home, workset):
         rc = run_share_add(_add_args(bind="sub/dir:/home/agent/data"))
         assert rc == 0
-        shares = read_shares(workset.root / "config.yaml")
+        shares = read_shares(workset.root / "settings.yaml")
         assert shares["workset.bindings.rw.data"] == "sub/dir:/home/agent/data"
 
     @pytest.mark.parametrize("bind", ["nocolon", ":/dest", "/src:", "a:b:c"])
@@ -89,7 +89,7 @@ class TestShareRemove:
         capsys.readouterr()
         rc = run_share_remove(_rm_args())
         assert rc == 0
-        assert read_shares(workset.root / "config.yaml") == {}
+        assert read_shares(workset.root / "settings.yaml") == {}
         out = capsys.readouterr().out
         assert "Removed rw share 'data'" in out
         assert "next box launch" in out
@@ -98,7 +98,7 @@ class TestShareRemove:
         run_share_add(_add_args(mode="ro", bind="/h:/g"))
         rc = run_share_remove(_rm_args(mode="ro"))
         assert rc == 0
-        assert read_shares(workset.root / "config.yaml") == {}
+        assert read_shares(workset.root / "settings.yaml") == {}
 
     def test_rm_missing_returns_1(self, config_file, tmp_home, workset, capsys):
         rc = run_share_remove(_rm_args(name="ghost"))
@@ -114,14 +114,14 @@ class TestShareRemove:
         err = capsys.readouterr().err
         assert "both ro and rw" in err
         # Nothing removed.
-        assert len(read_shares(workset.root / "config.yaml")) == 2
+        assert len(read_shares(workset.root / "settings.yaml")) == 2
 
     def test_rm_ambiguous_with_mode_removes_one(self, config_file, tmp_home, workset):
         run_share_add(_add_args(mode="rw", bind="/h:/g1"))
         run_share_add(_add_args(mode="ro", bind="/h:/g2"))
         rc = run_share_remove(_rm_args(mode="rw"))
         assert rc == 0
-        shares = read_shares(workset.root / "config.yaml")
+        shares = read_shares(workset.root / "settings.yaml")
         assert shares == {"workset.bindings.ro.data": "/h:/g2"}
 
     def test_rm_wrong_mode_returns_1(self, config_file, tmp_home, workset, capsys):

@@ -7,6 +7,7 @@ import pytest
 
 from kanibako.errors import WorksetError
 from kanibako.names import register_name
+from kanibako.paths import BoxMode
 from kanibako.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
@@ -212,13 +213,15 @@ class TestLoadWorkset:
         root = tmp_home / "worksets" / "no-toml"
         root.mkdir(parents=True)
 
-        with pytest.raises(WorksetError, match="No workset.yaml"):
+        with pytest.raises(WorksetError, match="No settings.yaml"):
             load_workset(root)
 
     def test_toml_without_name_raises(self, std, tmp_home):
         root = tmp_home / "worksets" / "bad-toml"
         root.mkdir(parents=True)
-        (root / "workset.yaml").write_text('created: "2026-01-01"\n')
+        (root / "settings.yaml").write_text(
+            'workset:\n  meta:\n    created: "2026-01-01"\n'
+        )
 
         with pytest.raises(WorksetError, match="no 'name' key"):
             load_workset(root)
@@ -496,7 +499,72 @@ class TestWorksetProperties:
         assert ws.projects_dir == resolved / "boxes"
         assert ws.workspaces_dir == resolved / "workspaces"
         assert ws.vault_dir == resolved / "vault"
-        assert ws.toml_path == resolved / "workset.yaml"
+        assert ws.toml_path == resolved / "settings.yaml"
+
+
+class TestWorksetSettingsFile:
+    def test_identity_under_workset_meta(self, std, tmp_home):
+        """create_workset writes identity into settings.yaml's workset.meta."""
+        from kanibako.config_io import load_doc
+
+        root = tmp_home / "worksets" / "mset"
+        create_workset("mset", root, std)
+
+        settings = root.resolve() / "settings.yaml"
+        assert settings.is_file()
+        assert not (root.resolve() / "workset.yaml").exists()
+        data = load_doc(settings)
+        assert data["workset"]["meta"]["name"] == "mset"
+        assert data["workset"]["meta"]["group_auth"] is True
+
+    def test_identity_and_cascade_coexist(self, std, tmp_home):
+        """Cascade settings + the workset.meta identity share one file without
+        clobbering each other across writes."""
+        from kanibako.config import read_categories
+        from kanibako.config_io import dump_doc, load_doc
+
+        root = tmp_home / "worksets" / "coexist"
+        ws = create_workset("coexist", root, std)
+        settings = ws.toml_path
+
+        # Write a cascade share key into the same file.
+        data = load_doc(settings)
+        data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
+            "rw", {}
+        )["data"] = "/host:/guest"
+        dump_doc(settings, data)
+
+        # An identity update (group_auth) must preserve the cascade key.
+        ws.group_auth = False
+        from kanibako.workset import _write_workset_toml
+        _write_workset_toml(ws)
+
+        # Both survive: cascade reader sees the binding, identity reload sees auth.
+        cats = read_categories(settings)
+        assert cats.get("workset.bindings.rw.data") == "/host:/guest"
+        reloaded = load_workset(root)
+        assert reloaded.group_auth is False
+        assert reloaded.name == "coexist"
+
+    def test_detection_marker_is_workset_meta(self, std, tmp_home, config):
+        """A dir with a settings.yaml carrying workset.meta is detected NAMED;
+        a box-style settings.yaml (box.meta only) is not."""
+        from kanibako.config_io import dump_doc
+        from kanibako.paths import detect_project_mode
+        from kanibako.workset import read_workset_meta
+
+        root = tmp_home / "worksets" / "marker"
+        create_workset("marker", root, std)
+        assert read_workset_meta(root / "settings.yaml") is not None
+
+        # A box-style settings.yaml (no workset.meta) is NOT a workset marker.
+        boxlike = tmp_home / "boxlike"
+        boxlike.mkdir()
+        dump_doc(boxlike / "settings.yaml", {"box": {"meta": {"name": "b"}}})
+        assert read_workset_meta(boxlike / "settings.yaml") is None
+        # Detection from inside a registered workset resolves to NAMED.
+        result = detect_project_mode(root, std, config)
+        assert result.mode is BoxMode.named
 
 
 # ---------------------------------------------------------------------------

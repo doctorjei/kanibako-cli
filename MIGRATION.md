@@ -386,6 +386,29 @@ and must be unique. On a collision at create/import time, kanibako **refuses** (
 does not auto-suffix). The names `__PRIMARY__` and `__STANDALONE__` (and legacy
 `default`) are **reserved** and cannot be used.
 
+**Workset files consolidated `workset.yaml` + `config.yaml` → one `settings.yaml`.**
+A NAMED workset previously kept its identity/marker/project-list in a
+`<root>/workset.yaml` and its cascade settings (image, `agent.*`, `workset.bindings.*`,
+`standalone`, `enable_vault`) in a separate `<root>/config.yaml`. Both now live in a
+**single `<root>/settings.yaml`** = `@workset.meta.settings`, mirroring a box's
+`settings.yaml` which carries `box.meta.*` alongside its settings:
+
+| Old file → key | New location |
+| --- | --- |
+| `<root>/workset.yaml` (`name`, `created`, `group_auth`, `projects`) | `<root>/settings.yaml` under `workset.meta.*` |
+| `<root>/config.yaml` (`box.*`, `agent.*`, `workset.bindings.*`, `standalone`, `enable_vault`) | `<root>/settings.yaml` (top level — unchanged key shapes) |
+
+The identity lives under the `workset.meta` table so it never collides with the
+cascade-settings tables in the same file; the settings readers ignore `workset.meta`
+and the identity reader ignores everything else. **Detection** of a drop-in/unregistered
+NAMED workset root now keys on `<root>/settings.yaml` carrying a `workset.meta` identity
+(was: presence of `workset.yaml`). No auto-migration: for each existing NAMED workset,
+fold `workset.yaml`'s keys under a `workset:`→`meta:` table in `settings.yaml` and merge
+the old `config.yaml` keys in at the top level, then remove both old files. (The
+default/synthesized workset is unaffected: its `group_auth` still lives in the
+data-root `config.yaml` `[project]` section, which is the system/default config file,
+not a NAMED-workset file.)
+
 ### 4.5 STANDALONE layout & identity
 
 Standalone metadata moves from the in-tree `.kanibako`/`kanibako` dotdir into a

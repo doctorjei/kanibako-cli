@@ -1117,9 +1117,10 @@ def detect_project_mode(
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
     3. Walk ancestors for on-disk markers — a ``box_data/`` standalone marker,
-       or an unregistered NAMED workset root (``workset.yaml``).  Both are
-       drop-in *imported* on discovery (registered + an alert to stderr; a
-       name collision REFUSES — see :mod:`kanibako.import_reconcile`).
+       or an unregistered NAMED workset root (a ``settings.yaml`` carrying a
+       ``workset.meta`` identity).  Both are drop-in *imported* on discovery
+       (registered + an alert to stderr; a name collision REFUSES — see
+       :mod:`kanibako.import_reconcile`).
     4. Default — ``primary`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
@@ -1146,14 +1147,17 @@ def detect_project_mode(
     # discovered-but-unregistered entity is IMPORTED here (alert + register;
     # collision → refuse) so a dropped-in tree is re-discovered.  The named
     # check runs first at each level: a workset root may itself contain a
-    # box_data/ dir, but its workset.yaml marker is the more specific identity.
+    # box_data/ dir, but its settings.yaml workset.meta marker is the more
+    # specific identity.
     from kanibako import import_reconcile
+    from kanibako.workset import WORKSET_META_FILE, read_workset_meta
 
     current = resolved
     while True:
-        # NAMED: an unregistered workset root (workset.yaml present, name not in
-        # the registry).  Import it, then the standard workset check resolves it.
-        if (current / "workset.yaml").is_file():
+        # NAMED: an unregistered workset root (settings.yaml carrying a
+        # workset.meta identity, name not in the registry).  Import it, then the
+        # standard workset check resolves it.
+        if read_workset_meta(current / WORKSET_META_FILE) is not None:
             import_reconcile.import_named_workset(std.data_path, current)
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:

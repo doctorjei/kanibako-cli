@@ -4,8 +4,10 @@ A *workset* is a named group of projects whose persistent state lives under a
 single root directory chosen by the user.  The layout is:
 
     {root}/
-        workset.yaml              ← workset metadata + project list
-        projects/{name}/          ← per-project metadata + home
+        settings.yaml             ← workset identity (workset.meta.*) + cascade
+                                    settings (the single workset file; mirrors a
+                                    box's settings.yaml carrying box.meta.*)
+        boxes/{name}/             ← per-project metadata + home
             home/                 ← agent home (mounted as /home/agent)
             settings.yaml          ← per-project config
             .kanibako.lock        ← concurrency lock
@@ -31,11 +33,18 @@ from kanibako.errors import WorksetError
 from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import StandardPaths
 
+# The single per-workset file at the workset root.  It carries the workset
+# IDENTITY (under ``workset.meta.*``) AND the workset's cascade settings (box/
+# agent/workset.bindings tables), mirroring a box's ``settings.yaml`` which holds
+# ``box.meta.*`` alongside its settings.  Same filename as ``BOX_META_FILE`` by
+# design — both are the "settings.yaml at the entity's root" convention.
+WORKSET_META_FILE = "settings.yaml"
+
 
 # ---------------------------------------------------------------------------
 # Failure-consistency: a tiny LIFO unwind stack for multi-step mutations.
 #
-# Several public mutators below touch more than one file (a workset.yaml plus
+# Several public mutators below touch more than one file (a root settings.yaml plus
 # the global worksets.yaml/names.yaml registries, or a symlink + settings.yaml +
 # connected.yaml redirect).  Individual writes are torn-file-safe (atomic temp +
 # os.replace via config_io.dump_doc), but a crash *between* steps could strand a
@@ -130,16 +139,37 @@ class Workset:
 
     @property
     def toml_path(self) -> Path:
-        return self.root / "workset.yaml"
+        return self.root / WORKSET_META_FILE
 
 
 # ---------------------------------------------------------------------------
-# workset.yaml (at workset root)
+# settings.yaml (at workset root): identity (workset.meta.*) + cascade settings.
+#
+# The IDENTITY lives under the ``workset.meta`` table so it never collides with
+# the cascade-settings tables in the same file (``box.*``, ``agent.*``,
+# ``workset.bindings.*`` — the latter shares the ``workset`` top-level key but a
+# different sub-key).  The settings readers (read_categories / read_agent_settings
+# / _present_scalar_fields) only recognize their own key shapes, so ``workset.meta``
+# is invisible to them; conversely the identity reader below only touches
+# ``workset.meta``, preserving any cascade keys a write_*/dump round-trips.
 # ---------------------------------------------------------------------------
 
 def _write_workset_toml(ws: Workset) -> None:
-    """Serialize *ws* to ``workset.yaml`` at the workset root."""
-    data: dict = {
+    """Persist *ws*'s identity into ``workset.meta`` of the root settings.yaml.
+
+    Reads the existing file first so the workset's cascade settings (box/agent/
+    workset.bindings tables, written by ``workset config``/``workset share``) are
+    preserved across an identity update — only the ``workset.meta`` table is
+    replaced.
+    """
+    existing = load_doc(ws.toml_path) if ws.toml_path.is_file() else {}
+    if not isinstance(existing, dict):
+        existing = {}
+    workset_tbl = existing.get("workset")
+    if not isinstance(workset_tbl, dict):
+        workset_tbl = {}
+        existing["workset"] = workset_tbl
+    workset_tbl["meta"] = {
         "name": ws.name,
         "created": ws.created,
         "group_auth": ws.group_auth,
@@ -148,22 +178,28 @@ def _write_workset_toml(ws: Workset) -> None:
             for proj in ws.projects
         ],
     }
-    dump_doc(ws.toml_path, data)
+    dump_doc(ws.toml_path, existing)
 
 
 def _load_workset_toml(root: Path) -> Workset:
-    """Read ``workset.yaml`` from *root* and return a ``Workset``."""
-    toml_path = root / "workset.yaml"
+    """Read the workset identity (``workset.meta``) from *root*'s settings.yaml."""
+    toml_path = root / WORKSET_META_FILE
     if not toml_path.is_file():
-        raise WorksetError(f"No workset.yaml in {root}")
-    data = load_doc(toml_path)
-    name = data.get("name")
+        raise WorksetError(f"No {WORKSET_META_FILE} in {root}")
+    meta = read_workset_meta(toml_path)
+    if meta is None:
+        raise WorksetError(
+            f"{WORKSET_META_FILE} in {root} has no 'workset.meta' identity"
+        )
+    name = meta.get("name")
     if not name:
-        raise WorksetError(f"workset.yaml in {root} has no 'name' key")
-    created = data.get("created", "")
-    group_auth = bool(data.get("group_auth", True))
+        raise WorksetError(
+            f"{WORKSET_META_FILE} in {root} has no 'name' key"
+        )
+    created = meta.get("created", "")
+    group_auth = bool(meta.get("group_auth", True))
     projects = []
-    for entry in data.get("projects", []):
+    for entry in meta.get("projects", []):
         projects.append(
             WorksetProject(
                 name=entry["name"],
@@ -171,6 +207,31 @@ def _load_workset_toml(root: Path) -> Workset:
             )
         )
     return Workset(name=name, root=root, created=created, projects=projects, group_auth=group_auth)
+
+
+def read_workset_meta(path: Path) -> dict | None:
+    """Return the ``workset.meta`` identity table from a workset settings.yaml.
+
+    Returns the meta dict, or ``None`` when the file is missing/unreadable or
+    carries no ``workset.meta`` table (i.e. *path* is not a NAMED-workset root
+    marker).  This is the detection primitive: a directory is a NAMED workset
+    root iff its ``settings.yaml`` carries ``workset.meta`` with a name.
+    """
+    if not path.is_file():
+        return None
+    try:
+        data = load_doc(path)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    workset_tbl = data.get("workset")
+    if not isinstance(workset_tbl, dict):
+        return None
+    meta = workset_tbl.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    return meta
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +349,7 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
     if root.exists():
         raise WorksetError(f"Workset root already exists: {root}")
 
-    # Multi-step: create disk skeleton + workset.yaml, then the global
+    # Multi-step: create disk skeleton + root settings.yaml, then the global
     # worksets.yaml registry, then the names.yaml index.  A crash between any two
     # would leave orphan dirs (not in the registry) or a worksets.yaml entry with
     # no names.yaml index (bare-name resolution fails while `workset list`
@@ -336,7 +397,8 @@ def _unregister_workset(std: StandardPaths, name: str) -> None:
 def load_workset(root: Path) -> Workset:
     """Load a workset from its root directory.
 
-    Raises ``WorksetError`` if the directory or ``workset.yaml`` is missing.
+    Raises ``WorksetError`` if the directory or the root ``settings.yaml``
+    (carrying ``workset.meta``) is missing.
     """
     root = root.resolve()
     if not root.is_dir():
@@ -366,7 +428,7 @@ def default_workset(std: StandardPaths) -> Workset:
     The default workset is virtual: its members are the default-mode projects
     in ``names.yaml [projects]`` and its ``group_auth`` lives as a normal key in
     ``{data_path}/config.yaml``.  This object is NEVER persisted to disk (no
-    workset.yaml / registry write).
+    root settings.yaml / registry write).
     """
     projects_map = read_names(std.data_path).get("projects", {})
     projects = [
@@ -511,8 +573,8 @@ def add_project(
             )
 
     # Multi-step mutation (external case touches a symlink + settings.yaml +
-    # connected.yaml redirect + the durable workset.yaml registry write).  A
-    # crash between steps could strand a symlink/redirect with no workset.yaml
+    # connected.yaml redirect + the durable root settings.yaml registry write).  A
+    # crash between steps could strand a symlink/redirect with no settings.yaml
     # entry (external path locked out by a dangling connected.yaml redirect) or
     # vice-versa.  Track forward effects on an unwind stack; on any failure undo
     # in reverse + re-raise so the connect is all-or-nothing.  Success behavior
@@ -638,9 +700,9 @@ def remove_project(
         )
 
     # Failure-consistency ordering: clean the connected.yaml redirect + the
-    # discoverability symlink BEFORE the durable workset.yaml registry write, so
+    # discoverability symlink BEFORE the durable root settings.yaml registry write, so
     # the registry removal (which makes the project "gone") is the LAST durable
-    # step.  A crash mid-cleanup then leaves the project still in workset.yaml —
+    # step.  A crash mid-cleanup then leaves the project still in settings.yaml —
     # a re-runnable state — instead of removing it from the registry while the
     # connected.yaml redirect still points at it (which would lock out the
     # external path).  The cleanups are idempotent: a re-run finds nothing to do.

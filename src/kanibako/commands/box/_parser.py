@@ -1031,7 +1031,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Load merged config for image info.
     project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = (proj.group.root / "config.yaml") if proj.group is not None else None
+    workset_path = (proj.group.root / "settings.yaml") if proj.group is not None else None
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
@@ -1180,7 +1180,7 @@ def run_config(args: argparse.Namespace) -> int:
 
     if action == ConfigAction.show:
         workset_path = (
-            (proj.group.root / "config.yaml") if proj.group is not None else None
+            (proj.group.root / "settings.yaml") if proj.group is not None else None
         )
         agent_state = None
         env_resolved = None

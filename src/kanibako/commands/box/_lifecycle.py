@@ -392,7 +392,7 @@ def copy_into_workset(
     add_project(ws, proj_name, ws.workspaces_dir / proj_name, std)
 
     # Failure-consistency: a crash AFTER add_project (which registers the project
-    # in workset.yaml + creates per-project dirs) but DURING the copies below
+    # in the workset.meta identity + creates per-project dirs) but DURING the copies below
     # would otherwise strand a registered-but-incomplete project.  Roll the
     # registration + partial dirs back on any failure, then re-raise.
     # remove_project(remove_files=True, std=...) is idempotent and removes only

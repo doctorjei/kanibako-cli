@@ -15,8 +15,8 @@ on-disk truth" mechanism (no per-mode special-casing):
   ancestor-walk when a ``box_data/`` marker is found whose box is not in
   ``registry.standalone``.
 * **NAMED** — :func:`import_named_workset`, called lazily during the walk when a
-  workset-root marker (``workset.yaml``) is found that is not a registered
-  workset root.
+  workset-root marker (a ``settings.yaml`` carrying a ``workset.meta`` identity)
+  is found that is not a registered workset root.
 * **PRIMARY** — :func:`import_primary_box` (single box) and
   :func:`reconcile_primary_boxes` (scan ``@system.primary_workset/boxes/*``),
   for re-associating a central primary box with its external workspace.
@@ -153,9 +153,9 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
 def import_named_workset(data_path: Path, root: Path) -> str | None:
     """Reconcile an on-disk workset at *root* against the workset registry.
 
-    Reads the workset name from *root*'s ``workset.yaml`` and reconciles it
-    against ``registry.workset_roots`` (the name → root index that backs workset
-    discovery, written by :mod:`kanibako.workset`):
+    Reads the workset name from *root*'s ``settings.yaml`` ``workset.meta`` table
+    and reconciles it against ``registry.workset_roots`` (the name → root index
+    that backs workset discovery, written by :mod:`kanibako.workset`):
 
     * The name is already registered to *root* → silent idempotent no-op.
     * The name is registered to a DIFFERENT root → :class:`ImportConflictError`.
@@ -164,23 +164,19 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
       return the name.
 
     Returns the workset name, or ``None`` when *root* has no readable
-    ``workset.yaml`` (nothing to import).  Does NOT rewrite the workset-create
-    skeleton — it only registers an already-on-disk workset.
+    ``settings.yaml`` ``workset.meta`` identity (nothing to import).  Does NOT
+    rewrite the workset-create skeleton — it only registers an already-on-disk
+    workset.
     """
     root = root.resolve()
     root_str = str(root)
 
-    toml = root / "workset.yaml"
-    if not toml.is_file():
-        return None
+    from kanibako.workset import WORKSET_META_FILE, read_workset_meta
 
-    from kanibako.config_io import load_doc
-
-    try:
-        data = load_doc(toml)
-    except Exception:
+    meta = read_workset_meta(root / WORKSET_META_FILE)
+    if meta is None:
         return None
-    name = (data.get("name") or "").strip() if isinstance(data, dict) else ""
+    name = (meta.get("name") or "").strip()
     if not name:
         return None
 

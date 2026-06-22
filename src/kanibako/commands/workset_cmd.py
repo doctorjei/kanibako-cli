@@ -279,8 +279,17 @@ def _load_std():
 
 
 def _workset_config_path(ws) -> Path:
-    """Return the path to the workset-level config.yaml."""
-    return ws.root / "config.yaml"
+    """Return the path to the workset-level settings file.
+
+    For a NAMED workset this is the single ``<root>/settings.yaml`` that also
+    carries the workset identity (``workset.meta``); the cascade-settings tables
+    (box/agent/workset.bindings) coexist there without colliding.  For the
+    synthesized default workset (no on-disk root) it is the data-path
+    ``config.yaml`` (the system/default-workset config file, unchanged).
+    """
+    if getattr(ws, "is_default", False):
+        return ws.root / "config.yaml"
+    return ws.root / "settings.yaml"
 
 
 def run_create(args: argparse.Namespace) -> int:
@@ -307,20 +316,24 @@ def run_create(args: argparse.Namespace) -> int:
         ws.group_auth = group_auth
         _write_workset_toml(ws)
 
-    # Store additional settings in workset-level config.yaml.
+    # Store additional cascade settings in the workset settings.yaml.  Merge
+    # into the existing file (created with the workset.meta identity by
+    # create_workset) rather than overwriting it, so the identity survives.
     image = getattr(args, "image", None)
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)
     if image or standalone or no_vault:
-        from kanibako.config_io import dump_doc
-        config_data: dict = {}
+        from kanibako.config_io import dump_doc, load_doc
+        ws_config = _workset_config_path(ws)
+        config_data = load_doc(ws_config) if ws_config.is_file() else {}
+        if not isinstance(config_data, dict):
+            config_data = {}
         if image:
             config_data["box"] = {"image": image}
         if standalone:
             config_data["standalone"] = True
         if no_vault:
             config_data["enable_vault"] = False
-        ws_config = _workset_config_path(ws)
         dump_doc(ws_config, config_data)
 
     print(f"Created working set '{ws.name}' at {ws.root}")
@@ -487,7 +500,8 @@ def run_config(args: argparse.Namespace) -> int:
     """Unified config interface for working set settings.
 
     Handles get, set, show, reset operations via the config_interface engine.
-    The ``group_auth`` key is special-cased to update workset.yaml directly.
+    The ``group_auth`` key is special-cased to update the workset.meta identity
+    directly.
     """
     from kanibako.config_interface import (
         ConfigAction,
@@ -527,7 +541,7 @@ def run_config(args: argparse.Namespace) -> int:
         if reset_key == "group_auth":
             ws.group_auth = True
             if ws.is_default:
-                # Default workset has no workset.yaml — clear the key in
+                # Default workset has no settings.yaml identity — clear the key in
                 # config.yaml's [project] section.
                 from kanibako.config_interface import _remove_toml_key
                 _remove_toml_key(ws_config, "project", "group_auth")
@@ -558,7 +572,7 @@ def run_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
-        # Special case: group_auth key lives in workset.yaml
+        # Special case: group_auth key lives in the workset.meta identity
         if key == "group_auth":
             print(ws.group_auth)
             return 0
@@ -575,7 +589,7 @@ def run_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Special case: group_auth key updates workset.yaml directly
+        # Special case: group_auth key updates the workset.meta identity directly
         if key == "group_auth":
             normalized = value.strip().lower()
             if normalized in ("true", "1"):
@@ -592,7 +606,7 @@ def run_config(args: argparse.Namespace) -> int:
             old_group_auth = ws.group_auth
             ws.group_auth = new_group_auth
             if ws.is_default:
-                # Default workset has no workset.yaml — write group_auth as a
+                # Default workset has no settings.yaml identity — write group_auth as a
                 # normal boolean key in config.yaml's [project] section.
                 from kanibako.config_interface import _write_toml_key
                 _write_toml_key(ws_config, "project", "group_auth", new_group_auth)
@@ -677,7 +691,7 @@ def _resolve_share_workset(name: str):
 
 
 def _load_share_doc(ws_config: Path) -> dict:
-    """Load the workset config.yaml as a nested dict (missing → {})."""
+    """Load the workset settings.yaml as a nested dict (missing → {})."""
     from kanibako.config_io import load_doc
 
     return load_doc(ws_config)
@@ -687,7 +701,7 @@ def run_share_add(args: argparse.Namespace) -> int:
     """Add (or overwrite) a workset-scoped shared directory.
 
     Writes ``workset.bindings.{mode}.{name} = host_src:guest_dest`` into the
-    working set's ``config.yaml``. Re-running with the same name overwrites the
+    working set's ``settings.yaml``. Re-running with the same name overwrites the
     mapping (this is how a share is "updated"; shares are live bind mounts and
     no content sync exists).
     """
