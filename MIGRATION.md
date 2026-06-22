@@ -411,33 +411,51 @@ not a NAMED-workset file.)
 
 ### 4.5 STANDALONE layout & identity
 
-Standalone metadata moves from the in-tree `.kanibako`/`kanibako` dotdir into a
-`box_data/` directory under the project root.
+Standalone metadata moves from the in-tree `.kanibako`/`kanibako` dotdir to the
+project root: the box `settings.yaml` lives **at the root**, the live workspace is
+a **`workspace/` subdir** (NOT the root itself), and a `box_data/` marker dir
+holds the agent home + the helper log.
 
 **Before**:
 
 ```
 ~/scratch/myproj/
 ├── .kanibako/   (or kanibako/)   ← metadata dotdir
-└── ...
+└── ...                           ← project files mounted directly as ~/workspace
 ```
 
 **After**:
 
 ```
 ~/scratch/myproj/             ← @workset.meta.root  (workset.meta.name: __STANDALONE__)
-├── box_data/                 ├─ settings.yaml   (box metadata; the walk marker)
-│                             ├─ home/ → ~/      └─ <box.name>.jsonl   (helper log)
-├── workspace/                → ~/workspace
+├── settings.yaml             ← box.meta.settings   (box metadata; AT THE ROOT)
+├── workspace/                → ~/workspace          (a SUBDIR, not the root)
+├── box_data/                 ├─ home/ → ~/          └─ <box.name>.jsonl   (helper log)
 └── vault/{ro,rw}/            → ~/vault/{ro,rw}
 ```
 
-⚑ **The standalone walk marker is now `box_data/settings.yaml`** (a `box_data/`
-directory holding a metadata file with `mode: standalone`). The old in-tree
-`.kanibako`/`kanibako` dotdir marker is gone, and the metadata file is now named
-`settings.yaml` like every other mode (it was briefly `project.yaml` mid-revamp;
-see §9). When hand-editing a standalone tree, place `settings.yaml` under
-`box_data/`. Drop any `layout:` field; the mode token stays `standalone`.
+⚑ **Two changes from earlier 1.6.0 dev builds (drift H + I):**
+
+- **`settings.yaml` moved from `box_data/settings.yaml` to `<root>/settings.yaml`.**
+  The `box_data/` directory is now ONLY the marker dir + home + helper log; the box
+  metadata file is at the project root, alongside `workspace/` and `vault/`.
+- **The workspace is now a `<root>/workspace/` subdir, not the project root.** The
+  root holds the kanibako artifacts (`settings.yaml`, `box_data/`, `vault/`); your
+  actual project files live under `workspace/` (mounted as `~/workspace`).
+
+⚑ **The standalone walk marker is now a `box_data/` directory PLUS a
+`<root>/settings.yaml`** declaring `mode: standalone`. (A NAMED workset root also
+carries `<root>/settings.yaml`, but with a `workset.meta` identity and NO
+`box_data/` dir, so the two never collide.) The old in-tree `.kanibako`/`kanibako`
+dotdir marker is gone. When hand-editing a standalone tree, place `settings.yaml`
+at the root, keep a `box_data/` dir beside it, and put your files under
+`workspace/`. Drop any `layout:` field; the mode token stays `standalone`.
+
+⚑ **No automatic migration (pre-public):** there is no on-disk migrator. To move a
+pre-existing standalone tree to the new shape by hand: move `box_data/settings.yaml`
+up to `<root>/settings.yaml`, create `<root>/workspace/` and move your project files
+into it (leaving `settings.yaml`, `box_data/`, and `vault/` at the root), and keep
+the `<box>.jsonl` helper log inside `box_data/`.
 
 **Standalone box identity** is now `<random24>_<leaf>` — a 24-bit random token plus a
 sanitized, length-capped leaf of the project dir name (e.g. `a1b2c3_myproj`). The
@@ -455,7 +473,8 @@ is detailed in §9 — read that section before hand-editing it.
 Drop `layout` entirely; translate `mode` per §4.1; the path fields are derived from
 the fixed per-mode tables, not user-edited. (Where the file lives: primary →
 `@system.primary_workset/boxes/<box>/settings.yaml`; named →
-`<wsroot>/boxes/<box>/settings.yaml`; standalone → `box_data/settings.yaml`.)
+`<wsroot>/boxes/<box>/settings.yaml`; standalone → `<root>/settings.yaml` (at the
+project root, NOT inside `box_data/` — see §4.5).)
 
 ### 4.7 Box-side vault path moved: `~/share-ro` / `~/share-rw` → `~/vault/ro` / `~/vault/rw`
 
@@ -533,8 +552,9 @@ All three modes are **self-describing on disk and drop-in importable.**
 What this means for you:
 
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
-  walking up for a `box_data/` marker + box metadata; named by a workset-root
-  `settings.yaml`; primary by reconciling the central boxes dir against the registry.
+  walking up for a `box_data/` dir + a root `settings.yaml` with `mode: standalone`;
+  named by a workset-root `settings.yaml` carrying `workset.meta`; primary by
+  reconciling the central boxes dir against the registry.
 - **You can move or copy a box/workset/project tree** to a new location or machine and
   kanibako re-discovers it.
 - **Import is automatic with an alert, no confirmation.** When kanibako finds an
@@ -772,7 +792,7 @@ and key renames in §2.)
 
 The per-box metadata file is renamed `project.yaml` → **`settings.yaml`** in **every**
 mode (primary, named, and standalone). See §4.6 for where each mode's file lives;
-§4.5 for the standalone `box_data/settings.yaml` walk marker.
+§4.5 for the standalone walk marker (`box_data/` dir + `<root>/settings.yaml`).
 
 ⚑ **What the file actually contains (on-disk format).** The per-box `settings.yaml`
 stores construct-time box metadata in two YAML sections, `project:` and `resolved:`
