@@ -12,6 +12,7 @@ single root directory chosen by the user.  The layout is:
         workspaces/{name}/        ← per-project workspace (source tree)
         vault/ro/{name}/    ← per-project read-only vault
         vault/rw/{name}/    ← per-project read-write vault
+        logs/{name}.jsonl   ← per-box helper message log
 
 A global registry at ``$XDG_DATA_HOME/kanibako/worksets.yaml`` maps workset
 names to root paths so they can be discovered from anywhere.
@@ -122,6 +123,10 @@ class Workset:
     @property
     def vault_dir(self) -> Path:
         return self.root / "vault"
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.root / "logs"
 
     @property
     def toml_path(self) -> Path:
@@ -296,7 +301,7 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
         # Create directory skeleton.
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
-        for subdir in ("boxes", "workspaces", "vault"):
+        for subdir in ("boxes", "workspaces", "vault", "logs"):
             (root / subdir).mkdir()
 
         ws = Workset(

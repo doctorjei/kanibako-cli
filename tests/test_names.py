@@ -604,15 +604,15 @@ class TestBoxRm:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Create a fake log directory.
-        log_dir = std.data_path / "logs" / "project"
-        log_dir.mkdir(parents=True)
-        (log_dir / "helper.jsonl").write_text("test")
+        # Create a fake per-box helper log (PRIMARY → primary_workset/logs/<box>.jsonl).
+        std.primary_logs.mkdir(parents=True, exist_ok=True)
+        log_file = std.primary_logs / "project.jsonl"
+        log_file.write_text("test")
 
         args = argparse.Namespace(target="project", purge=True, force=True)
         rc = run_rm(args)
         assert rc == 0
-        assert not log_dir.is_dir()
+        assert not log_file.exists()
 
     def test_rm_preserves_workspace(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box._parser import run_rm

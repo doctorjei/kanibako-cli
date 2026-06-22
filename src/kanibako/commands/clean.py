@@ -10,6 +10,7 @@ from kanibako.config import load_config
 from kanibako.errors import UserCancelled
 from kanibako.paths import (
     BoxMode,
+    helper_log_path,
     load_std_paths,
     resolve_any_project,
 )
@@ -135,11 +136,10 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             if vault_dir.is_dir():
                 shutil.rmtree(vault_dir, ignore_errors=True)
 
-    # Remove helper log directory if it exists.
-    _log_id = proj.name if proj.name else proj.metadata_path.name
-    log_dir = std.data_path / "logs" / _log_id
-    if log_dir.is_dir():
-        shutil.rmtree(log_dir)
+    # Remove the per-box helper log if it exists.  It now lives in the box's
+    # own workset/box tree (per-mode), not the old shared @system.data/logs/.
+    log_file = helper_log_path(std, proj)
+    log_file.unlink(missing_ok=True)
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
     # entry too — otherwise registry.{projects,standalone} keeps a dangling
@@ -203,10 +203,9 @@ def _purge_all(std, config, *, force: bool) -> int:
             if vault_dir.is_dir():
                 shutil.rmtree(vault_dir, ignore_errors=True)
 
-        # Remove helper log directory if it exists.
-        log_dir = std.data_path / "logs" / metadata_path.name
-        if log_dir.is_dir():
-            shutil.rmtree(log_dir)
+        # Remove the per-box helper log if it exists.  PRIMARY logs live at
+        # @system.primary_workset/logs/<box>.jsonl (box == metadata dir name).
+        (std.primary_logs / f"{metadata_path.name}.jsonl").unlink(missing_ok=True)
 
         # M2: drop the now-dangling registry entry for this PRIMARY box.
         _unregister_purged_primary(std, metadata_path, project_path)
@@ -224,6 +223,8 @@ def _purge_all(std, config, *, force: bool) -> int:
                 label = f"{ws_name}/{proj_name}"
                 print(f"Removing {label}... ", end="", flush=True)
                 shutil.rmtree(project_dir)
+                # NAMED helper log is a sibling at <root>/logs/<box>.jsonl.
+                (ws.logs_dir / f"{proj_name}.jsonl").unlink(missing_ok=True)
                 print("done.")
                 removed += 1
 

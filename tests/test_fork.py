@@ -68,6 +68,7 @@ def fork_ctx(tmp_path):
         binary_mounts=[],
         project_path=project_path,
         data_path=data_path,
+        boxes=data_path / "boxes",
     )
 
 

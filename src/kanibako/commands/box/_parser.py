@@ -926,11 +926,12 @@ def run_rm(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
-            # Remove helper log directory if present.
-            log_dir = std.data_path / "logs" / name
-            if log_dir.is_dir():
-                _purge_dir(log_dir)
-                print(f"Removed logs: {log_dir}")
+            # Remove the per-box helper log if present.  PRIMARY logs live at
+            # @system.primary_workset/logs/<box>.jsonl (box == registry name).
+            log_file = std.primary_logs / f"{name}.jsonl"
+            if log_file.is_file():
+                log_file.unlink()
+                print(f"Removed log: {log_file}")
         else:
             print(f"No metadata directory found at {metadata_dir}")
     else:
