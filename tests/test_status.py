@@ -333,6 +333,8 @@ class TestRunInfo:
             "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ), patch(
+            "kanibako.config.resolve_agent", return_value="claude",
+        ), patch(
             "kanibako.commands.box._parser.resolve_target",
             return_value=mock_target,
         ):
@@ -352,6 +354,8 @@ class TestRunInfo:
         with patch(
             "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
+        ), patch(
+            "kanibako.config.resolve_agent", return_value="claude",
         ), patch(
             "kanibako.commands.box._parser.resolve_target",
             return_value=mock_target,

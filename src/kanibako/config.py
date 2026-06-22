@@ -597,27 +597,6 @@ def read_setup_completed(config_path: Path | None) -> str | None:
     return value or None
 
 
-def resolve_box_agent(box_agent: str | None, system_path: Path | None) -> str | None:
-    """Resolve the effective agent name for a box launch.
-
-    Resolution order (D-M2):
-
-        1. explicit ``box.agent`` (per-box identity) — wins if set;
-        2. ``system.default_agent`` (the user-global default SETTING);
-        3. ``None`` — fall through to today's behavior (auto-detect, then the
-           no-agent box).
-
-    Returns the agent name to hand to :func:`~kanibako.targets.resolve_target`,
-    or ``None`` to let it auto-detect.  When neither ``box.agent`` nor
-    ``system.default_agent`` is set this returns ``None`` — exactly today's
-    behavior (no regression).
-    """
-    explicit = (box_agent or "").strip()
-    if explicit:
-        return explicit
-    return read_default_agent(system_path)
-
-
 def load_settings(
     agent_name: str,
     *,

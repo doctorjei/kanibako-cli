@@ -614,16 +614,23 @@ def run_config(args: argparse.Namespace) -> int:
                 _write_workset_toml(ws)
 
             if (not new_group_auth) and old_group_auth:
-                # Switched shared→distinct: invalidate credentials in all shells.
-                from kanibako.targets import resolve_target
-                try:
-                    target = resolve_target(None)
-                except KeyError:
-                    target = None
-                if target:
-                    for proj in ws.projects:
-                        shell_path = ws.projects_dir / proj.name / "home"
-                        if shell_path.is_dir():
+                # Switched shared→distinct: invalidate credentials in all
+                # shells, across ALL KNOWN AGENTS (§Design 8(b)).  Cred
+                # invalidation is a cleanup op that must NOT depend on
+                # single-agent resolution — a workset may have been used with
+                # several agents, so clear every installed agent's creds rather
+                # than the one the cascade happens to resolve.
+                from kanibako.targets import resolve_target, discover_targets
+                targets = []
+                for agent_name in discover_targets().keys():
+                    try:
+                        targets.append(resolve_target(agent_name))
+                    except (KeyError, ValueError):
+                        continue
+                for proj in ws.projects:
+                    shell_path = ws.projects_dir / proj.name / "home"
+                    if shell_path.is_dir():
+                        for target in targets:
                             target.invalidate_credentials(shell_path)
                 print(
                     f"Set group_auth to false (distinct) for '{ws.name}'. "

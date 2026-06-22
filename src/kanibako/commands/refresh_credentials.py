@@ -28,15 +28,32 @@ def run(args: argparse.Namespace) -> int:
     config = load_config(config_file)
 
     # Resolve project to check auth mode.
+    from kanibako.config import BOX_META_FILE, load_merged_config, resolve_agent
     from kanibako.paths import load_std_paths, resolve_any_project
     std = load_std_paths(config)
     proj = resolve_any_project(std, config, getattr(args, "project", None))
 
-    try:
-        target = resolve_target(config.box_agent or None)
-    except KeyError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    # Resolve the agent UP FRONT via the unified cascade (explicit > box >
+    # workset > system default → installed-count rule).  Typed
+    # AgentResolutionError (Gate-2a/2b) propagates to the top-level cli.py
+    # handler — never a silent auto-detect.
+    project_toml = proj.metadata_path / BOX_META_FILE
+    workset_path = (
+        (proj.group.root / "settings.yaml") if proj.group is not None else None
+    )
+    merged = load_merged_config(
+        config_file,
+        project_toml if project_toml.exists() else None,
+        workset_path=workset_path,
+    )
+    agent_name = resolve_agent(
+        explicit_agent=getattr(args, "agent", None),  # Phase D seam (--agent)
+        box_agent=merged.box_agent,
+        workset_agent=None,  # merged.box_agent already folds the workset tier
+        system_default_path=std.settings,
+        project_path=proj.project_path,
+    )
+    target = resolve_target(agent_name, proj.project_path)
 
     if not target.has_binary:
         print("No agent target configured.", file=sys.stderr)

@@ -334,12 +334,20 @@ class TestRunConfig:
 
 
 class TestRunReauth:
+    # W1: reauth resolves the agent via the unified config.resolve_agent cascade
+    # before resolve_target.  We patch resolve_agent to a fixed name so these
+    # tests don't depend on the host's installed-agent set, and patch
+    # resolve_target for the resulting target object.
+
     def test_reauth_no_binary(self, config_file, tmp_home, capsys):
         """Reauth errors if no agent binary is found."""
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        with patch("kanibako.targets.resolve_target") as mock_target:
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+        ):
             target = MagicMock()
             target.has_binary = False
             mock_target.return_value = target
@@ -347,23 +355,30 @@ class TestRunReauth:
         assert rc == 1
         assert "No agent target" in capsys.readouterr().err
 
-    def test_reauth_target_error(self, config_file, tmp_home, capsys):
-        """Reauth errors gracefully when target resolution fails."""
+    def test_reauth_resolution_error_propagates(self, config_file, tmp_home):
+        """When the cascade resolves nothing (Gate-2a/2b), the typed
+        AgentResolutionError propagates to the top-level cli.py handler —
+        reauth does NOT swallow it into a rc-1 with an ad-hoc message."""
         from kanibako.commands.agent_cmd import run_reauth
+        from kanibako.errors import NoAgentSelectedError
 
         args = argparse.Namespace(project=None)
-        with patch("kanibako.targets.resolve_target") as mock_target:
-            mock_target.side_effect = KeyError("no target")
-            rc = run_reauth(args)
-        assert rc == 1
-        assert "Error" in capsys.readouterr().err
+        with patch(
+            "kanibako.config.resolve_agent",
+            side_effect=NoAgentSelectedError("no agent selected"),
+        ):
+            with pytest.raises(NoAgentSelectedError):
+                run_reauth(args)
 
     def test_reauth_refreshes_credentials(self, config_file, tmp_home, capsys):
         """After successful check_auth, credentials are synced to project."""
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        with patch("kanibako.targets.resolve_target") as mock_target:
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+        ):
             target = MagicMock()
             target.has_binary = True
             target.check_auth.return_value = True
@@ -385,7 +400,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        with patch("kanibako.targets.resolve_target") as mock_target:
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+        ):
             target = MagicMock()
             target.has_binary = True
             target.display_name = "Claude Code"

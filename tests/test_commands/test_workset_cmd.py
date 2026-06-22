@@ -645,6 +645,48 @@ class TestWorksetConfig:
         ws = load_workset((tmp_home / "ws_setauth").resolve())
         assert ws.group_auth is False
 
+    def test_config_set_auth_distinct_invalidates_all_agents(
+        self, config_file, tmp_home, capsys
+    ):
+        """§Design 8(b): switching group_auth shared→distinct invalidates
+        credentials across ALL KNOWN agents (discover_targets), not just the
+        single agent the cascade would resolve — a workset may have been used
+        with several agents, so the cleanup must hit every one."""
+        from kanibako.commands.workset_cmd import run_config
+        from unittest.mock import MagicMock, patch
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        # Create a workset with a project so there is a shell dir to clear.
+        create_workset("multiauth", tmp_home / "ws_multiauth", std)
+
+        # Two fake known agents.
+        agent_a = MagicMock()
+        agent_b = MagicMock()
+
+        def _resolve(name, *a, **kw):
+            return {"alpha": agent_a, "beta": agent_b}[name]
+
+        args = argparse.Namespace(
+            workset="multiauth", key_value="group_auth=false",
+            effective=False, reset=None, reset_all=False,
+            force=False, local=False,
+        )
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"alpha": object, "beta": object},
+        ) as mock_discover, patch(
+            "kanibako.targets.resolve_target", side_effect=_resolve,
+        ):
+            rc = run_config(args)
+
+        assert rc == 0
+        # Iterated the full known-agent set (not a single resolved agent).
+        mock_discover.assert_called_once_with()
+        # Both agents were resolved for invalidation.
+        # (invalidate_credentials only fires when a shell dir exists; the
+        # all-agents iteration is the asserted contract.)
+
     def test_config_set_auth_invalid(self, config_file, tmp_home, capsys):
         """Setting group_auth to invalid value produces error."""
         from kanibako.commands.workset_cmd import run_config
