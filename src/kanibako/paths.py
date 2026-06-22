@@ -19,7 +19,6 @@ from kanibako.config import (
     KanibakoConfig,
     config_file_path,
     load_config,
-    migrate_config,
     read_project_meta,
     write_project_meta,
 )
@@ -560,18 +559,6 @@ def load_system_config(
     return resolve_system_paths(set_values, data_home=data_home, home=home)
 
 
-def _migrate_global_env(config_home: Path, data_path: Path) -> None:
-    """Move global env file from old config_home/kanibako/env to data_path/env."""
-    old = config_home / "kanibako" / "env"
-    new = data_path / "env"
-    if old.is_file() and not new.exists():
-        import shutil
-        data_path.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(old), str(new))
-        import sys
-        print(f"Migrated: {old} → {new}", file=sys.stderr)
-
-
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories.
 
@@ -583,8 +570,6 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     state_home = xdg("XDG_STATE_HOME", ".local/state")
     cache_home = xdg("XDG_CACHE_HOME", ".cache")
 
-    # Migrate config file from old subdir location if needed.
-    migrate_config(config_home)
     config_file = config_file_path(config_home)
 
     if config is None:
@@ -607,9 +592,6 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     rel = data_path.name
     state_path = state_home / rel
     cache_path = cache_home / rel
-
-    # Migrate global env file from config_home/kanibako/env to data_path/env.
-    _migrate_global_env(config_home, data_path)
 
     # Ensure directories exist.
     config_file.parent.mkdir(parents=True, exist_ok=True)

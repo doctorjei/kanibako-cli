@@ -10,7 +10,6 @@ from kanibako.config import (
     config_file_path,
     load_config,
     load_merged_config,
-    migrate_config,
     read_project_meta,
     read_resource_overrides,
     read_seeds,
@@ -639,70 +638,14 @@ class TestConfigFilePath:
         result = config_file_path(tmp_path)
         assert result == new
 
-    def test_returns_old_path_when_only_old_exists(self, tmp_path):
+    def test_ignores_legacy_old_subdir_location(self, tmp_path):
+        # An old-location file is no longer recognized: always resolves
+        # to the current top-level location.
         old = tmp_path / "kanibako" / "kanibako.yaml"
         old.parent.mkdir()
         old.write_text("paths:\n")
         result = config_file_path(tmp_path)
-        assert result == old
-
-    def test_prefers_new_path_over_old(self, tmp_path):
-        new = tmp_path / "kanibako.yaml"
-        new.write_text("paths:\n")
-        old = tmp_path / "kanibako" / "kanibako.yaml"
-        old.parent.mkdir()
-        old.write_text("paths:\n")
-        result = config_file_path(tmp_path)
-        assert result == new
-
-
-class TestMigrateConfig:
-    def test_migrates_old_to_new(self, tmp_path):
-        old = tmp_path / "kanibako" / "kanibako.yaml"
-        old.parent.mkdir()
-        old.write_text('paths:\n  boxes: "boxes"\n')
-
-        result = migrate_config(tmp_path)
-        new = tmp_path / "kanibako.yaml"
-        assert result == new
-        assert new.exists()
-        assert not old.exists()
-        assert "boxes" in new.read_text()
-
-    def test_no_op_when_new_exists(self, tmp_path):
-        new = tmp_path / "kanibako.yaml"
-        new.write_text('paths:\n  boxes: "new"\n')
-        old = tmp_path / "kanibako" / "kanibako.yaml"
-        old.parent.mkdir()
-        old.write_text('paths:\n  boxes: "old"\n')
-
-        result = migrate_config(tmp_path)
-        assert result == new
-        assert "new" in new.read_text()
-        assert old.exists()  # old not removed
-
-    def test_no_op_when_neither_exists(self, tmp_path):
-        result = migrate_config(tmp_path)
         assert result == tmp_path / "kanibako.yaml"
-
-    def test_removes_empty_old_dir(self, tmp_path):
-        old = tmp_path / "kanibako" / "kanibako.yaml"
-        old.parent.mkdir()
-        old.write_text("paths:\n")
-
-        migrate_config(tmp_path)
-        assert not old.parent.exists()
-
-    def test_keeps_old_dir_if_not_empty(self, tmp_path):
-        old_dir = tmp_path / "kanibako"
-        old_dir.mkdir()
-        old = old_dir / "kanibako.yaml"
-        old.write_text("paths:\n")
-        (old_dir / "other.txt").write_text("keep me\n")
-
-        migrate_config(tmp_path)
-        assert old_dir.exists()
-        assert (old_dir / "other.txt").exists()
 
 
 class TestResourceOverrides:

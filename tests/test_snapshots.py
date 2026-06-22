@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tarfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,7 +53,7 @@ def _make_dir_snapshot(versions: Path, name: str, vault_rw: Path) -> Path:
 
 
 class TestCreateSnapshot:
-    def test_creates_archive(self, tmp_path: Path) -> None:
+    def test_creates_directory_snapshot(self, tmp_path: Path) -> None:
         vault_rw = tmp_path / "vault" / "share-rw"
         _populate_rw(vault_rw)
 
@@ -62,7 +61,7 @@ class TestCreateSnapshot:
 
         assert result is not None
         assert result.exists()
-        assert result.name.endswith(".tar.xz")
+        assert result.is_dir()
         assert result.parent.name == ".versions"
 
     def test_returns_none_when_empty(self, tmp_path: Path) -> None:
@@ -76,29 +75,14 @@ class TestCreateSnapshot:
 
         assert create_snapshot(vault_rw) is None
 
-    def test_archive_contains_files(self, tmp_path: Path) -> None:
+    def test_snapshot_contains_files(self, tmp_path: Path) -> None:
         vault_rw = tmp_path / "vault" / "share-rw"
         _populate_rw(vault_rw)
 
         result = create_snapshot(vault_rw)
-        with tarfile.open(result, "r:xz") as tar:
-            names = tar.getnames()
-            assert "file1.txt" in names
-            assert "subdir/file2.txt" in names
-
-    def test_create_snapshot_tarxz_explicit(self, tmp_path: Path) -> None:
-        """Explicit strategy='tarxz' produces a tar.xz archive."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-
-        result = create_snapshot(vault_rw, strategy="tarxz")
-
         assert result is not None
-        assert result.name.endswith(".tar.xz")
-        assert result.is_file()
-        with tarfile.open(result, "r:xz") as tar:
-            names = tar.getnames()
-            assert "file1.txt" in names
+        assert (result / "file1.txt").read_text() == "hello"
+        assert (result / "subdir" / "file2.txt").read_text() == "world"
 
     def test_create_snapshot_hardlink(self, tmp_path: Path) -> None:
         """strategy='hardlink' produces a directory snapshot."""
@@ -182,7 +166,7 @@ class TestListSnapshots:
 
         assert len(snaps) == 1
         name, ts, size = snaps[0]
-        assert name.endswith(".tar.xz")
+        assert not name.endswith(".tar.xz")
         assert "UTC" in ts
         assert size > 0
 
@@ -198,16 +182,14 @@ class TestListSnapshots:
         versions.mkdir(parents=True)
         _populate_rw(vault_rw)
 
-        # Manually create two snapshots with different timestamps.
-        import tarfile
-        for name in ("20260101T000000Z.tar.xz", "20260201T000000Z.tar.xz"):
-            with tarfile.open(versions / name, "w:xz") as tar:
-                tar.add(str(vault_rw / "file1.txt"), arcname="file1.txt")
+        # Manually create two directory snapshots with different timestamps.
+        _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
+        _make_dir_snapshot(versions, "20260201T000000Z", vault_rw)
 
         snaps = list_snapshots(vault_rw)
         assert len(snaps) == 2
-        assert snaps[0][0] == "20260101T000000Z.tar.xz"
-        assert snaps[1][0] == "20260201T000000Z.tar.xz"
+        assert snaps[0][0] == "20260101T000000Z"
+        assert snaps[1][0] == "20260201T000000Z"
 
     def test_lists_directory_snapshots(self, tmp_path: Path) -> None:
         """Directory snapshots are listed with computed size."""
@@ -224,26 +206,20 @@ class TestListSnapshots:
         assert "UTC" in ts
         assert size > 0
 
-    def test_list_snapshots_mixed(self, tmp_path: Path) -> None:
-        """Both directory and tar.xz snapshots are listed together."""
+    def test_ignores_legacy_tarxz(self, tmp_path: Path) -> None:
+        """A leftover legacy .tar.xz archive is no longer recognized."""
         vault_rw = tmp_path / "vault" / "share-rw"
         versions = tmp_path / "vault" / ".versions"
         versions.mkdir(parents=True)
         _populate_rw(vault_rw)
 
-        # Create a tar.xz snapshot manually with an earlier timestamp.
-        with tarfile.open(versions / "20260101T000000Z.tar.xz", "w:xz") as tar:
-            tar.add(str(vault_rw / "file1.txt"), arcname="file1.txt")
-
-        # Create a directory snapshot with a later timestamp.
+        # An old-format archive file is simply ignored (not listed).
+        (versions / "20260101T000000Z.tar.xz").write_bytes(b"old-archive")
         _make_dir_snapshot(versions, "20260201T000000Z", vault_rw)
 
         snaps = list_snapshots(vault_rw)
-        assert len(snaps) == 2
-        # tar.xz first (older).
-        assert snaps[0][0] == "20260101T000000Z.tar.xz"
-        # directory second (newer).
-        assert snaps[1][0] == "20260201T000000Z"
+        assert len(snaps) == 1
+        assert snaps[0][0] == "20260201T000000Z"
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +249,7 @@ class TestRestoreSnapshot:
         vault_rw.mkdir(parents=True)
 
         with pytest.raises(FileNotFoundError, match="Snapshot not found"):
-            restore_snapshot(vault_rw, "nonexistent.tar.xz")
+            restore_snapshot(vault_rw, "20260101T000000Z")
 
     def test_restore_from_directory_snapshot(self, tmp_path: Path) -> None:
         """Restore from a directory snapshot (hardlink/reflink)."""
@@ -332,28 +308,6 @@ class TestRestoreSnapshot:
         ]
         assert leftovers == []
 
-    def test_restore_atomic_on_failure_tarxz(self, tmp_path: Path) -> None:
-        """A mid-restore failure (tar.xz snapshot) preserves live contents."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-
-        snap = create_snapshot(vault_rw, strategy="tarxz")
-        assert snap is not None
-
-        (vault_rw / "file1.txt").write_text("live-precious")
-        (vault_rw / "live_only.txt").write_text("must-survive")
-
-        # Fail during extraction (before live contents are touched).
-        with patch(
-            "kanibako.snapshots.tarfile.open",
-            side_effect=OSError("corrupt archive"),
-        ):
-            with pytest.raises(OSError, match="corrupt archive"):
-                restore_snapshot(vault_rw, snap.name)
-
-        assert (vault_rw / "file1.txt").read_text() == "live-precious"
-        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
-
     def test_restore_partial_swap_rolls_back(self, tmp_path: Path) -> None:
         """A failure partway through the swap rolls back the live contents."""
         vault_rw = tmp_path / "vault" / "share-rw"
@@ -401,9 +355,7 @@ class TestPruneSnapshots:
 
         # Create 7 snapshots manually.
         for i in range(7):
-            name = f"2026010{i + 1}T000000Z.tar.xz"
-            with tarfile.open(versions / name, "w:xz") as tar:
-                tar.add(str(vault_rw / "file1.txt"), arcname="file1.txt")
+            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
 
         removed = prune_snapshots(vault_rw, max_keep=3)
 
@@ -433,9 +385,7 @@ class TestPruneSnapshots:
         versions.mkdir(parents=True)
         _populate_rw(vault_rw)
 
-        # Create a mix of tar.xz and directory snapshots.
-        with tarfile.open(versions / "20260101T000000Z.tar.xz", "w:xz") as tar:
-            tar.add(str(vault_rw / "file1.txt"), arcname="file1.txt")
+        _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
         _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
         _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
 
@@ -463,26 +413,26 @@ class TestPruneSnapshots:
         # Kept the two newest.
         assert remaining == ["20260104T000000Z", "20260105T000000Z"]
 
-    def test_prune_mixed_snapshots(self, tmp_path: Path) -> None:
-        """Prune handles a mix of tar.xz and directory snapshots."""
+    def test_prune_ignores_legacy_tarxz(self, tmp_path: Path) -> None:
+        """Prune ignores leftover legacy tar.xz archives (only dirs counted)."""
         vault_rw = tmp_path / "vault" / "share-rw"
         versions = tmp_path / "vault" / ".versions"
         versions.mkdir(parents=True)
         _populate_rw(vault_rw)
 
-        # tar.xz (oldest).
-        with tarfile.open(versions / "20260101T000000Z.tar.xz", "w:xz") as tar:
-            tar.add(str(vault_rw / "file1.txt"), arcname="file1.txt")
+        # A leftover legacy archive is not a recognized snapshot.
+        (versions / "20260101T000000Z.tar.xz").write_bytes(b"old-archive")
 
-        # Directory snapshots (newer).
+        # Directory snapshots.
         _make_dir_snapshot(versions, "20260102T000000Z", vault_rw)
         _make_dir_snapshot(versions, "20260103T000000Z", vault_rw)
 
         removed = prune_snapshots(vault_rw, max_keep=2)
 
-        assert removed == 1
+        # Only the two directory snapshots count; nothing pruned, archive kept.
+        assert removed == 0
         remaining = sorted(e.name for e in versions.iterdir())
-        assert "20260101T000000Z.tar.xz" not in remaining
+        assert "20260101T000000Z.tar.xz" in remaining
         assert "20260102T000000Z" in remaining
         assert "20260103T000000Z" in remaining
 
@@ -516,13 +466,3 @@ class TestAutoSnapshot:
         assert result is not None
         assert result.is_dir()
         assert (result / "file1.txt").read_text() == "hello"
-
-    def test_auto_snapshot_with_tarxz_strategy(self, tmp_path: Path) -> None:
-        """auto_snapshot with strategy='tarxz' creates tar.xz archive."""
-        vault_rw = tmp_path / "vault" / "share-rw"
-        _populate_rw(vault_rw)
-
-        result = auto_snapshot(vault_rw, strategy="tarxz", max_keep=3)
-        assert result is not None
-        assert result.is_file()
-        assert result.name.endswith(".tar.xz")

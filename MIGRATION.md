@@ -967,3 +967,49 @@ The `image` / `agent` short config-key names no longer resolve to anything; only
 the canonical `box.image` / `box.agent` keys are recognized (setting an `image`
 or `agent` key is now an "unknown key" error). Image-freshness notices that used
 to suggest `kanibako rig rebuild` now point to `kanibako rig prep --force`.
+
+---
+
+## 12. Removed data-relocation shims (clean break; no auto-migration)
+
+The auto-handlers that silently moved or read your old on-disk state are
+**removed outright**. They may strand state created by older versions — migrate
+it by hand using the tables below.
+
+### 12.1 Snapshot `.tar.xz` archives → directory snapshots
+
+Vault snapshots are now **directory snapshots only** (`reflink` / `hardlink`).
+The legacy compressed-archive format is no longer created, listed, restored, or
+pruned; a leftover `*.tar.xz` file under `<vault>/.versions/` is simply ignored
+(not shown by `kanibako box vault list`, never picked up by `prune`).
+
+To recover data from an old archive, extract it manually:
+
+```bash
+# Recover a legacy archive into a directory snapshot (named by its timestamp).
+cd <vault>/.versions
+mkdir 20260221T103000Z
+tar -xJf 20260221T103000Z.tar.xz -C 20260221T103000Z
+rm 20260221T103000Z.tar.xz      # optional: it is otherwise ignored
+```
+
+After that the directory is a normal snapshot, restorable with
+`kanibako box vault restore 20260221T103000Z`.
+
+### 12.2 Config & env files at old locations
+
+`config_file_path` now resolves **only** the current location, and the global
+`env` file is no longer auto-moved. If you have files at the old paths, move
+them yourself:
+
+| What        | Old location (no longer read/moved)        | Current location                |
+|-------------|--------------------------------------------|---------------------------------|
+| Main config | `$XDG_CONFIG_HOME/kanibako/kanibako.yaml`  | `$XDG_CONFIG_HOME/kanibako.yaml`|
+| Global env  | `$XDG_CONFIG_HOME/kanibako/env`            | `<data>/env` (`@system.data/env`) |
+
+```bash
+mv ~/.config/kanibako/kanibako.yaml ~/.config/kanibako.yaml
+mv ~/.config/kanibako/env "$(kanibako system config system.data)/env"
+```
+
+(`$XDG_CONFIG_HOME` defaults to `~/.config`. Adjust if you set it explicitly.)

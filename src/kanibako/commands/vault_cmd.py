@@ -63,7 +63,7 @@ def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
         help="Restore vault share-rw from a snapshot",
         description="Replace the current share-rw contents with a snapshot.",
     )
-    restore_p.add_argument("name", help="Snapshot name (e.g. 20260221T103000Z.tar.xz)")
+    restore_p.add_argument("name", help="Snapshot name (e.g. 20260221T103000Z)")
     restore_p.add_argument(
         "project", nargs="?", default=None,
         help="Project directory or name (default: cwd)",
