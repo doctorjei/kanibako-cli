@@ -538,8 +538,6 @@ Your binary mounts go into `/home/agent/.local/bin/` (executables) and
 
 ## Examples
 
-See the `examples/` directory for three complete, graduated example plugins:
-
-- **[kanibako-target-aider](../examples/kanibako-target-aider/)** — Minimal target (pip-installed Python CLI)
-- **[kanibako-target-codex](../examples/kanibako-target-codex/)** — Moderate target (npm-installed Node.js CLI with credential sync)
-- **[kanibako-target-goose](../examples/kanibako-target-goose/)** — Advanced target (compiled binary with YAML config filtering)
+A worked, descriptor-based example target will be provided here in a future
+release. In the meantime, the bundled agent plugins under
+`packages/agent-*/` serve as real-world references.
