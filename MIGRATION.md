@@ -266,6 +266,17 @@ The old default-agent selector `system.agent` is renamed to **`system.default_ag
 **setting** (behavior), not config — it lives in the settings file set despite its
 `system.*` name. `box.agent` falls back to it.
 
+The system tier of these behavior settings now lives in **`global/settings.yaml`**
+(`@system.settings`), separate from the `~/.config/kanibako.yaml` CONFIG file (which
+holds only `system.*` layout/path keys). The `kanibako system config` command routes
+accordingly: behavior settings (e.g. `system.default_agent`, agent settings like
+`model`) are read/written to `global/settings.yaml`, while structural `system.*`
+config (e.g. `system.data`) is read from `kanibako.yaml`. **No automatic migration:**
+if you previously set `system.default_agent` in `kanibako.yaml`, re-set it via
+`kanibako system config system.default_agent <name>` (or move the `[agent.default]`
+table out of `kanibako.yaml` into `global/settings.yaml`) — a stale `[agent]` table
+in `kanibako.yaml` is no longer read by the system settings tier.
+
 ### 3.2a Box-level `[paths]` keys removed
 
 The old box-level `[paths]` config table is gone. None of its keys are settable any
