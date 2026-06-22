@@ -65,29 +65,46 @@ The revamp is **one breaking change set** with **no automatic migration** — se
 - **Box-side vault dest moved.** Inside a box the vault is now at `~/vault/ro` /
   `~/vault/rw` (was `~/share-ro` / `~/share-rw`).
 - **Per-box meta file renamed.** `project.yaml` → `settings.yaml` (all modes).
+  A NAMED workset's `workset.yaml` + `config.yaml` likewise consolidate into one
+  `<root>/settings.yaml`; the per-agent `agents/<agent>.yaml` sibling file moves
+  inside the store dir as `agents/<agent>/settings.yaml`.
+- **Agent overrides keyed by agent name.** Agent-specific overrides are now read
+  under `agent.<agent>` (e.g. `agent.claude`, `agent.goose`), layered over a
+  reserved any-agent tier `agent.default`; the agent-specific value wins. This
+  fixes "bleed" where an override (e.g. `model`) set while a box ran one agent
+  kept applying after the box switched agents. The agent-agnostic
+  `kanibako system config <key> <value>` writes under `agent.default`.
 
-### Changed (BREAKING)
+### Removed
 
-Two earlier config/storage changes (plugin-interface generalization) also require a
-one-time manual migration — there is **no automatic migration**:
-
-- **Agent-specific `crab` config overrides are now keyed by agent name.** A
-  crab override section (in `project.yaml`, a workset's `config.yaml`,
-  `kanibako.yaml`, or `/etc/kanibako/kanibako.yaml`) is now read under
-  `crab.<agent-name>` (e.g. `crab.claude`, `crab.goose`), layered over a
-  reserved any-agent tier `crab.default`. The agent-specific value wins. This
-  fixes "bleed" where an override set while a box ran one agent (e.g. `model`)
-  kept applying after the box switched to a different agent. A **legacy flat
-  `[crab]` override section no longer applies** until you move its keys under
-  `crab.default` (apply to every agent) or `crab.<agent-name>` (per agent). The
-  agent-agnostic `kanibako config set <key> <value>` now writes under
-  `crab.default`. Per-agent `crabs/<name>.yaml` state files are unaffected.
-- **The plugins host-storage location moved.** Per-agent plugins now live at
-  `global_shared/<agent-id>/plugins` (a shared store under the data dir) instead
-  of the old per-crab share dir `crabs/<name>/share/plugins`. Hand-move any
-  existing plugin directories to the new location. Note: when no global shared
-  store is configured, plugins are no longer mounted at all (the old path mounted
-  them unconditionally from the crab-share dir).
+- **Claude `-R` / `--resume` conversation picker.** Claude's launch modes are now
+  `start` and `continue` only; `-R` / `--resume` now resolves to `--continue`.
+  The resume picker remains reachable from within an interactive Claude session.
+- **Dead config keys deleted (pre-public clean-house).** `shared.*`, `paths.shell`, `paths.vault`,
+  `layout`, and `persistence` are removed (subsumed by newer keys: `shared.*`
+  caches → `<scope>.caches.*`; paths folded into `system.*`; layouts replaced by
+  `box.mode`). Setting any of them is now rejected as unknown.
+- **`system.*` config keys are now file-only.** The CLI reads and shows them but
+  **refuses to set/reset** them (`kanibako system config system.<key> <value>`
+  errors with a pointer to the config file); `setup` and programmatic writers
+  still write them. `box.*` and other behavior settings stay CLI-settable.
+- **Legacy plugin hooks removed (descriptor-only).** The legacy `Target` launch
+  hooks (`build_cli_args` / `binary_mounts` / `init_home` / `generate_crab_config`)
+  and the core legacy assembly branch are gone — every plugin is now driven by its
+  declarative `PluginDescriptor`. The `ResourceMapping` / `ResourceScope` /
+  `resource_mappings()` resource-sharing abstraction is **deleted**; agent
+  resources are expressed via the `agent.<agent>.shared` / `caches` / `seeded`
+  categories instead.
+- **The shared store and `shared/` data dir are gone.** Per-agent plugins and
+  caches now live under the per-agent store at `agents/<agent>/{plugins,cache}`
+  (bound rw to `~/.claude/{plugins,cache}` in the box) as `agent.<agent>.shared.*`
+  entries, instead of the old `shared/<agent-id>/plugins` store. The top-level
+  `<data>/shared/` directory no longer exists; hand-move existing plugin dirs.
+- **Host-deployment tooling and legacy example plugins scrubbed.** The VM/host
+  provisioning kit (`host-definitions/`, `lint-vm.yml`, `docs/host-deployment.md`),
+  the legacy `examples/kanibako-target-*` plugins, and the archived experimental
+  Containerfiles are removed from the release tree (preserved on archival
+  branches). A descriptor-based example will return later.
 
 ### Added
 
@@ -101,7 +118,7 @@ one-time manual migration — there is **no automatic migration**:
   you the cli plus all three agent plugins.
 - **Per-agent binding host-source overrides.** A box's bound host directory for a
   given agent resource (e.g. the plugins dir) can be redirected via the config
-  key `crab.<agent-name>.binding.<key>` (layered over `crab.default.binding.<key>`).
+  key `agent.<agent>.binding.<key>` (layered over `agent.default.binding.<key>`).
   The value is a host path string, or a sub-table with a `host_src` key.
 - **Independent agent publishing in the release pipeline.** `kanibako-agent-goose`
   and `kanibako-agent-codex` are built and published by the release pipeline at
@@ -138,12 +155,6 @@ one-time manual migration — there is **no automatic migration**:
   start` form that 1.37.0 removed, so launching Goose failed. The grammar is
   rewritten to the verified 1.37.0 tokens. (The previous Goose plugin was an
   unpublished `0.1.0`, so this is not a regression.)
-
-### Removed
-
-- **Claude `-R` / `--resume` conversation picker.** Claude's launch modes are now
-  `start` and `continue` only; `-R` / `--resume` now resolves to `--continue`.
-  The resume picker remains reachable from within an interactive Claude session.
 
 ## [1.5.1] - 2026-06-16
 
