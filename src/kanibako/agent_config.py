@@ -33,11 +33,27 @@ def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
     return data_path / (paths_agents or "agents")
 
 
+def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
+    """Return ``@agent.<agent>.meta.settings`` for *agent_id*.
+
+    The per-agent SETTINGS cascade file lives INSIDE the per-agent store dir
+    (``@agent.<agent>.meta.path`` = ``agents/<agent>/``) as ``settings.yaml``
+    — NOT the old sibling ``agents/<agent>.yaml`` file (D-2026-06-22).  This
+    parallels the per-agent template dir ``agents/<agent>/template`` and the
+    Part-3 ``agents/<agent>/{plugins,cache}`` stores.
+    """
+    return agents_root / agent_id / "settings.yaml"
+
+
 def agent_config_path(
     data_path: Path, agent_id: str, paths_agents: str = "agents",
 ) -> Path:
-    """Return the path to an agent's config file."""
-    return agents_dir(data_path, paths_agents) / f"{agent_id}.yaml"
+    """Return the path to an agent's config (settings) file.
+
+    Convenience wrapper for callers that hold a *data_path* rather than the
+    resolved agents root; delegates to :func:`agent_settings_path`.
+    """
+    return agent_settings_path(agents_dir(data_path, paths_agents), agent_id)
 
 
 def load_agent_config(path: Path) -> AgentConfig:
@@ -79,4 +95,7 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
         "env": dict(cfg.env),
         "tweakcc": dict(cfg.tweakcc),
     }
+    # The settings file lives inside the per-agent store dir
+    # (agents/<agent>/settings.yaml); ensure that dir exists.
+    path.parent.mkdir(parents=True, exist_ok=True)
     dump_doc(path, data)

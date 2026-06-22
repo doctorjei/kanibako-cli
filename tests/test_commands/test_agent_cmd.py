@@ -7,7 +7,12 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from kanibako.agent_config import AgentConfig, write_agent_config, agents_dir
+from kanibako.agent_config import (
+    AgentConfig,
+    agent_settings_path,
+    agents_dir,
+    write_agent_config,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +39,7 @@ def agent_env(config_file, tmp_home):
         state={"model": "opus"},
         env={"EDITOR": "vim"},
     )
-    write_agent_config(adir / "claude.yaml", cfg)
+    write_agent_config(agent_settings_path(adir, "claude"), cfg)
 
     return std.data_path
 
@@ -99,7 +104,7 @@ class TestRunList:
 
         adir = agents_dir(agent_env)
         cfg2 = AgentConfig(name="aider", state={"model": "sonnet"})
-        write_agent_config(adir / "aider.yaml", cfg2)
+        write_agent_config(agent_settings_path(adir, "aider"), cfg2)
 
         args = argparse.Namespace(quiet=False)
         rc = run_list(args)

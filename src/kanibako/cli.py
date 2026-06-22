@@ -228,20 +228,27 @@ def _ensure_initialized() -> None:
     (chat_dir / "general.md").touch(exist_ok=True)
     (chat_dir / "broadcast.md").touch(exist_ok=True)
 
-    # Create agents directory and generate default agent TOMLs.
-    from kanibako.agent_config import AgentConfig, write_agent_config
+    # Create agents directory and generate default per-agent settings files.
+    # Each agent's settings live INSIDE its store dir as
+    # agents/<agent>/settings.yaml (the per-agent store dir is created on
+    # demand by write_agent_config).
+    from kanibako.agent_config import (
+        AgentConfig,
+        agent_settings_path,
+        write_agent_config,
+    )
     from kanibako.targets import discover_targets
 
     agents_path = sys_paths["system.agents"]
     agents_path.mkdir(parents=True, exist_ok=True)
 
-    general_toml = agents_path / "general.yaml"
+    general_toml = agent_settings_path(agents_path, "general")
     if not general_toml.exists():
         write_agent_config(general_toml, AgentConfig(name="Shell"))
 
     target_names = list(discover_targets())
     for target_name, cls in discover_targets().items():
-        target_toml = agents_path / f"{target_name}.yaml"
+        target_toml = agent_settings_path(agents_path, target_name)
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
 

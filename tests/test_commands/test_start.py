@@ -1026,14 +1026,21 @@ class TestAgentConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The crab config path is derived as std.agents / "general.yaml".
-            # (std.agents also gets a / "general" / "share" call from the scoped-
-            # share resolver, so check the full call list rather than the last.)
+            # The agent config path is derived as
+            # std.agents / "general" / "settings.yaml" (the settings file lives
+            # inside the per-agent store dir).
             div_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
             ]
-            assert "general.yaml" in div_args
+            assert "general" in div_args
+            # ... / "general" / "settings.yaml"
+            sub_args = [
+                c[0][0]
+                for c in m.load_std_paths.return_value.agents.__truediv__
+                .return_value.__truediv__.call_args_list
+            ]
+            assert "settings.yaml" in sub_args
 
 
 class TestContainerEnvPrecedence:

@@ -641,7 +641,8 @@ def load_settings(
       ``~/.config/kanibako.yaml`` ``[agent]`` table.  (TARGET ``system.settings``
       = ``@system.global/settings.yaml`` — re-pointed in Phase 5.)
     * ``agent.<agent>`` tier → *agent_state* (the per-agent state dict, already
-      ``agent.<name>``-keyed, loaded from ``agents/<name>.yaml``) overlaid by
+      ``agent.<name>``-keyed, loaded from ``agents/<name>/settings.yaml``)
+      overlaid by
       *agent_path*'s ``[agent]`` table if supplied.
     * ``workset`` tier → *workset_path* = today's workset ``config.yaml``.
     * ``box`` tier → *box_path* = today's box/project ``settings.yaml`` ``[agent]``

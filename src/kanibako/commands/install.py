@@ -65,22 +65,27 @@ def run(args: argparse.Namespace) -> int:
     (chat_dir / "general.md").touch(exist_ok=True)
     (chat_dir / "broadcast.md").touch(exist_ok=True)
 
-    # Create agents directory and generate default agent TOMLs.
-    from kanibako.agent_config import AgentConfig, write_agent_config
+    # Create agents directory and generate default per-agent settings files
+    # (agents/<agent>/settings.yaml, inside each per-agent store dir).
+    from kanibako.agent_config import (
+        AgentConfig,
+        agent_settings_path,
+        write_agent_config,
+    )
     from kanibako.targets import discover_targets
 
     agents_path = sys_paths["system.agents"]
     agents_path.mkdir(parents=True, exist_ok=True)
 
-    # general.yaml (no-agent default)
-    general_toml = agents_path / "general.yaml"
+    # general (no-agent default)
+    general_toml = agent_settings_path(agents_path, "general")
     if not general_toml.exists():
         write_agent_config(general_toml, AgentConfig(name="Shell"))
 
     # Each discovered target plugin
     target_names = list(discover_targets())
     for target_name, cls in discover_targets().items():
-        target_toml = agents_path / f"{target_name}.yaml"
+        target_toml = agent_settings_path(agents_path, target_name)
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
 

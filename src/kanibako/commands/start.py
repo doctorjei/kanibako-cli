@@ -9,7 +9,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.agent_config import load_agent_config, write_agent_config
+from kanibako.agent_config import (
+    agent_settings_path,
+    load_agent_config,
+    write_agent_config,
+)
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import (
     BOX_META_FILE,
@@ -724,7 +728,7 @@ def _run_container(
 
     # Load agent config
     agent_id = target.name if target else "general"
-    agent_cfg_path = std.agents / f"{agent_id}.yaml"
+    agent_cfg_path = agent_settings_path(std.agents, agent_id)
     if target and not agent_cfg_path.exists():
         # First-use: generate default agent config from target plugin
         agent_cfg = target.generate_agent_config()
@@ -1631,7 +1635,7 @@ def _build_effective_state(
     The box/workset/system/machine override sections are keyed per agent
     (``agent.<target.name>`` layered over the any-agent ``agent.default`` tier)
     so an override never bleeds across an agent switch; ``agent_cfg.state`` is
-    already per-agent (loaded from ``agents/<name>.yaml``).
+    already per-agent (loaded from ``agents/<name>/settings.yaml``).
 
     Explicit set values beat all declared defaults; the most-specific level
     wins; an explicit ``""`` is terminal (no fall-through to the floor).
@@ -1730,7 +1734,7 @@ def _build_binding_overrides(
     :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
     then overlays the levels MOST-SPECIFIC-WINS:
 
-        box (settings.yaml) > workset > agent (agents/<name>.yaml) > system > machine
+        box (settings.yaml) > workset > agent (agents/<name>/settings.yaml) > system > machine
 
     Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
     common case).  A bad/unreadable level contributes nothing (the reader
