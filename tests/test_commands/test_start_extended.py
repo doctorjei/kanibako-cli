@@ -100,7 +100,13 @@ class TestFlagCombinations:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--continue" in cli_args
 
-    def test_resume_adds_resume_flag(self, start_mocks):
+    def test_resume_falls_through_to_continue(self, start_mocks):
+        """Resume was cut from claude's descriptor (user 2026-06-17).
+
+        ``-R``/resume_mode has no ``"resume"`` mode key to select, so
+        assembly.resolve_mode falls through to ``--continue`` (continue-last) and
+        never emits ``--resume`` for claude.
+        """
         with start_mocks() as m:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -108,8 +114,8 @@ class TestFlagCombinations:
                 extra_args=[],
             )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--resume" in cli_args
-            assert "--continue" not in cli_args
+            assert "--resume" not in cli_args
+            assert "--continue" in cli_args
 
     def test_extra_resume_skips_continue(self, start_mocks):
         with start_mocks() as m:
@@ -134,6 +140,8 @@ class TestFlagCombinations:
             assert "--continue" not in cli_args
 
     def test_safe_and_resume(self, start_mocks):
+        """Secure (-S) drops the bypass flag; resume_mode falls through to
+        --continue (claude's descriptor declares no "resume" mode key)."""
         with start_mocks() as m:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -142,7 +150,8 @@ class TestFlagCombinations:
             )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
-            assert "--resume" in cli_args
+            assert "--resume" not in cli_args
+            assert "--continue" in cli_args
 
     def test_image_override(self, start_mocks):
         with start_mocks() as m:
@@ -186,8 +195,13 @@ class TestFlagCombinations:
             assert rc == 42
 
     def test_target_refresh_called(self, start_mocks):
-        """target.refresh_credentials is called before runtime.run."""
+        """Legacy (descriptor-less) target: refresh_credentials runs pre-launch.
+
+        A descriptor-bearing target routes refresh through the credsync engine
+        (TestCredsyncRouting), so this pins the legacy hook path explicitly.
+        """
         with start_mocks() as m:
+            m.target.descriptor = None
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -196,9 +210,14 @@ class TestFlagCombinations:
             m.target.refresh_credentials.assert_called_once_with(m.proj.shell_path)
 
     def test_target_writeback_after_run(self, start_mocks):
-        """target.writeback_credentials is called after runtime.run."""
+        """Legacy (descriptor-less) target: writeback_credentials runs post-run.
+
+        A descriptor-bearing target routes writeback through the credsync engine
+        (TestCredsyncRouting), so this pins the legacy hook path explicitly.
+        """
         call_order = []
         with start_mocks() as m:
+            m.target.descriptor = None
             def track_run(*a, **kw):
                 call_order.append("run")
                 return 0
@@ -211,21 +230,24 @@ class TestFlagCombinations:
             )
             assert call_order == ["run", "writeback"]
 
-    def test_target_build_cli_args_called(self, start_mocks):
-        """target.build_cli_args is called with correct parameters."""
+    def test_argv_assembled_from_descriptor(self, start_mocks):
+        """The agent argv is assembled from the descriptor (build_cli_args is gone).
+
+        With new_session=True (no --continue), secure safe_mode=True (no
+        --dangerously-skip-permissions), the only argv tail is the passed
+        extra_args; assert the observable cli_args that reach runtime.run.
+        """
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=True, safe_mode=True, resume_mode=False,
                 extra_args=["--foo"],
             )
-            m.target.build_cli_args.assert_called_once_with(
-                safe_mode=True,
-                resume_mode=False,
-                new_session=True,
-                is_new_project=False,
-                extra_args=["--foo"],
-            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" not in cli_args            # new session
+            assert "--dangerously-skip-permissions" not in cli_args  # secure
+            assert "--foo" in cli_args                      # extra args appended
 
 
 # ---------------------------------------------------------------------------
@@ -423,8 +445,15 @@ class TestPersistentMode:
             m.runtime.exec.assert_called_once()
 
     def test_persistent_reattach_refreshes_credentials(self, start_mocks):
-        """Reattach refreshes credentials before exec."""
+        """Reattach refreshes credentials before exec (legacy hook path).
+
+        A descriptor-bearing target routes the reattach refresh through the
+        credsync engine (TestCredsyncRouting.
+        test_descriptor_reattach_refresh_uses_refresh_cred_files); this pins the
+        legacy hook explicitly.
+        """
         with start_mocks() as m:
+            m.target.descriptor = None
             m.runtime.is_running.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -652,27 +681,32 @@ class TestModelOverride:
     """Verify -M/--model override is applied to effective state."""
 
     def test_model_override_applied(self, start_mocks):
-        """Model override is passed to effective state before apply_state."""
+        """-M/--model overrides effective state -> --model <value> in the argv.
+
+        The model value flows through effective_state into assembly's SettingArg
+        emission; assert the observable --model flag on the launched argv.
+        """
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], model_override="opus",
             )
-            # apply_state should be called with model in effective state
-            call_args = m.target.apply_state.call_args[0]
-            assert call_args[0].get("model") == "opus"
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args[cli_args.index("--model") + 1] == "opus"
 
     def test_no_model_override(self, start_mocks):
-        """Without model override, effective state is unmodified."""
+        """Without a model override (and no crab model state), no --model flag."""
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], model_override=None,
             )
-            call_args = m.target.apply_state.call_args[0]
-            assert "model" not in call_args[0]
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--model" not in cli_args
 
 
 class TestCliEnv:

@@ -340,26 +340,40 @@ def start_mocks():
             target.name = "claude"
             target.default_entrypoint = "claude"
             target.config_dir_name = ".claude"
-            # Default the mock target to the LEGACY path (no descriptor) so the
-            # existing tests that drive build_cli_args / apply_state / binary_mounts
-            # stay valid.  Descriptor-path assembly is covered by
-            # tests/test_targets/test_start_descriptor_assembly.py.  A test that
-            # wants the descriptor path can set target.descriptor explicitly.
-            target.descriptor = None
-            install_mock = MagicMock()
-            install_mock.binary.exists.return_value = True
-            install_mock.install_dir.exists.return_value = True
-            target.detect.return_value = install_mock
-            # Return non-empty mounts so the fail-fast guard doesn't trigger.
-            from kanibako.targets.base import Mount
-            target.binary_mounts.return_value = [
-                Mount(source=MagicMock(), destination="/home/agent/.local/share/claude", options="ro"),
-                Mount(source=MagicMock(), destination="/home/agent/.local/bin/claude", options="ro"),
-            ]
-            target.build_cli_args.side_effect = lambda *, safe_mode, resume_mode, new_session, is_new_project, extra_args: (
-                _build_default_cli_args(safe_mode, resume_mode, new_session, is_new_project, extra_args)
+            # Default the mock target to the DESCRIPTOR path using claude's REAL
+            # descriptor: the descriptor-only plugin system means a target with a
+            # host `install` ALWAYS has a descriptor (the legacy
+            # build_cli_args / binary_mounts / apply_state launch hooks were
+            # removed from start.py).  start.py therefore drives argv / env /
+            # delivery mounts through ``kanibako.targets.assembly`` for this mock.
+            # A test that wants a descriptor-less target (only NoAgentTarget in
+            # production) sets ``target.descriptor = None`` explicitly.
+            from kanibako.plugins.claude.target import ClaudeTarget
+            target.descriptor = ClaudeTarget().descriptor
+
+            # Make the detected install resolvable by ``descriptor_mounts``: its
+            # AGENT_CRITICAL bindings (share -> install_dir, launcher -> launcher)
+            # require a host source whose ``.exists()`` is True and that survives
+            # ``Mount(src, dest, opts)`` construction, so use REAL paths under a
+            # temp dir (created here so they actually exist on disk).  The
+            # ``plugins`` SHARED_STORE binding is skipped when shared_store_root
+            # is None (the conftest default: proj.global_shared_path = None).
+            import tempfile
+            _install_root = Path(tempfile.mkdtemp(prefix="kanibako-test-install-"))
+            _install_dir = _install_root / "share" / "claude"
+            _install_dir.mkdir(parents=True, exist_ok=True)
+            _launcher = _install_root / "bin" / "claude"
+            _launcher.parent.mkdir(parents=True, exist_ok=True)
+            _launcher.write_bytes(b"\x7fELF" + b"\x00" * 50)
+
+            from kanibako.targets.base import AgentInstall
+            install_mock = AgentInstall(
+                name="claude",
+                binary=_launcher,
+                install_dir=_install_dir,
+                launcher=_launcher,
             )
-            target.apply_state.return_value = ([], {})
+            target.detect.return_value = install_mock
             m_resolve_target.return_value = target
 
             yield SimpleNamespace(
@@ -386,23 +400,3 @@ def start_mocks():
             )
 
     return _make
-
-
-def _build_default_cli_args(
-    safe_mode: bool, resume_mode: bool, new_session: bool,
-    is_new_project: bool, extra_args: list[str],
-) -> list[str]:
-    """Reproduce ClaudeTarget.build_cli_args logic for test mocks."""
-    cli_args: list[str] = []
-    if not safe_mode:
-        cli_args.append("--dangerously-skip-permissions")
-    if resume_mode:
-        cli_args.append("--resume")
-    else:
-        skip_continue = new_session or is_new_project
-        if any(a in ("--resume", "-r") for a in extra_args):
-            skip_continue = True
-        if not skip_continue:
-            cli_args.append("--continue")
-    cli_args.extend(extra_args)
-    return cli_args

@@ -159,23 +159,16 @@ class TestTargetABC:
             def detect(self):
                 return None
 
-            def binary_mounts(self, install):
-                return []
-
             def refresh_credentials(self, home):
                 pass
 
             def writeback_credentials(self, home):
                 pass
 
-            def build_cli_args(self, **kwargs):
-                return []
-
         t = DummyTarget()
         assert t.name == "dummy"
         assert t.display_name == "Dummy Agent"
         assert t.detect() is None
-        assert t.binary_mounts(None) == []
         assert t.check_auth() is True  # default no-op returns True
         assert t.resource_mappings() == []
 
@@ -194,17 +187,11 @@ class TestTargetABC:
             def detect(self):
                 return None
 
-            def binary_mounts(self, install):
-                return []
-
             def refresh_credentials(self, home):
                 pass
 
             def writeback_credentials(self, home):
                 pass
-
-            def build_cli_args(self, **kwargs):
-                return []
 
         t = MinimalTarget()
         assert t.resource_mappings() == []
@@ -224,17 +211,11 @@ class TestTargetABC:
             def detect(self):
                 return None
 
-            def binary_mounts(self, install):
-                return []
-
             def refresh_credentials(self, home):
                 pass
 
             def writeback_credentials(self, home):
                 pass
-
-            def build_cli_args(self, **kwargs):
-                return []
 
         t = MinimalTarget()
         assert t.default_seeds() == {}
@@ -271,17 +252,11 @@ class TestGenerateAgentConfig:
             def detect(self):
                 return None
 
-            def binary_mounts(self, install):
-                return []
-
             def refresh_credentials(self, home):
                 pass
 
             def writeback_credentials(self, home):
                 pass
-
-            def build_cli_args(self, **kwargs):
-                return []
 
         t = SimpleTarget()
         cfg = t.generate_agent_config()
@@ -307,17 +282,11 @@ class TestApplyState:
             def detect(self):
                 return None
 
-            def binary_mounts(self, install):
-                return []
-
             def refresh_credentials(self, home):
                 pass
 
             def writeback_credentials(self, home):
                 pass
-
-            def build_cli_args(self, **kwargs):
-                return []
 
         t = SimpleTarget()
         cli_args, env_vars = t.apply_state({"model": "opus"})
@@ -521,16 +490,10 @@ class TestPluginDescriptorDataclasses:
             def detect(self):
                 return None
 
-            def binary_mounts(self, install):
-                return []
-
             def refresh_credentials(self, home):
                 pass
 
             def writeback_credentials(self, home):
                 pass
-
-            def build_cli_args(self, **kwargs):
-                return []
 
         assert NoDescTarget().descriptor is None

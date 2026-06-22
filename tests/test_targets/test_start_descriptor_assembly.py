@@ -210,37 +210,26 @@ class TestDescriptorArgv:
             (False, False, True, False, ["bar", "baz"]),
         ],
     )
-    def test_equivalence_with_legacy_build_cli_args(
+    def test_descriptor_argv_carries_expected_invariants(
         self, safe_mode, resume_mode, new_session, is_new_project, extra
     ):
-        """Descriptor argv == legacy build_cli_args + apply_state, as a SET.
+        """The descriptor argv carries the documented launch invariants.
 
-        The legacy path emits ``[bypass?, mode?, *extra, --model, opus]``; the
-        descriptor path emits ``[mode?, bypass?, --model, opus, *extra]``.  The
-        only difference is flag ORDER (semantically irrelevant to claude's CLI),
-        so we compare as multisets.
+        Replaces the former legacy ``build_cli_args``/``apply_state`` equivalence
+        check (those hooks were removed for the descriptor-only public release).
+        Asserts the same invariants the legacy comparison guaranteed, directly
+        on the descriptor-assembled argv: ``--dangerously-skip-permissions`` iff
+        not secure; ``--continue`` iff continuing (no new-session forcing and no
+        ``--resume`` in extra); the ``--model opus`` setting flag; and that
+        ``*extra`` is passed through.
 
-        NOTE: ``resume_mode=True`` cases are intentionally excluded — resume was
-        cut from claude's descriptor (user 2026-06-17), so the descriptor emits
-        ``--continue`` where legacy emitted ``--resume``.  That deliberate
-        divergence is covered by ``test_resume_mode_falls_through_to_continue``.
+        NOTE: ``resume_mode=True`` cases are excluded — resume was cut from
+        claude's descriptor (user 2026-06-17), so the descriptor emits
+        ``--continue`` where legacy emitted ``--resume`` (covered by
+        ``test_resume_mode_falls_through_to_continue``).
         """
-        target = ClaudeTarget()
-        desc = target.descriptor
-        assert desc is not None
-
-        legacy = target.build_cli_args(
-            safe_mode=safe_mode,
-            resume_mode=resume_mode,
-            new_session=new_session,
-            is_new_project=is_new_project,
-            extra_args=list(extra),
-        )
-        state_args, _ = target.apply_state(DEFAULT_STATE)
-        legacy = legacy + state_args
-
-        new = _start_argv(
-            desc,
+        argv = _start_argv(
+            ClaudeTarget().descriptor,
             safe_mode=safe_mode,
             resume_mode=resume_mode,
             new_session=new_session,
@@ -249,7 +238,20 @@ class TestDescriptorArgv:
             state=DEFAULT_STATE,
         )
 
-        assert sorted(legacy) == sorted(new)
+        # safe-bypass: present iff NOT secure (-S).
+        assert ("--dangerously-skip-permissions" in argv) is (not safe_mode)
+
+        # continue: present iff continuing (not new-session/new-project and no
+        # --resume requested in extra).
+        skip_continue = (
+            new_session or is_new_project or "--resume" in extra
+        )
+        assert ("--continue" in argv) is (not skip_continue)
+
+        # model setting flag + passthrough of extra args.
+        assert argv[argv.index("--model") + 1] == "opus"
+        for a in extra:
+            assert a in argv
 
 
 class TestPersistedAccessSafeBypass:
@@ -367,21 +369,22 @@ class TestDescriptorMounts:
             launcher=launcher,
         )
 
-    def test_delivery_mounts_match_legacy(self, tmp_path):
-        """descriptor_mounts(shared_store_root=None) == legacy binary_mounts."""
+    def test_delivery_mounts_cover_share_and_launcher(self, tmp_path):
+        """descriptor_mounts delivers the share + launcher (ro) and skips plugins.
+
+        Replaces the former equivalence-with-``binary_mounts`` check (the legacy
+        hook was removed for the descriptor-only public release).
+        """
         target = ClaudeTarget()
         install = self._install(tmp_path)
 
-        legacy = target.binary_mounts(install)
         new = descriptor_mounts(
             target.descriptor, install, shared_store_root=None,
         )
 
-        legacy_set = {(str(m.source), m.destination, m.options) for m in legacy}
-        new_set = {(str(m.source), m.destination, m.options) for m in new}
-        assert legacy_set == new_set
-        # Both deliver the share (install_dir) + launcher, ro, and SKIP plugins.
+        # Deliver the share (install_dir) + launcher, ro, and SKIP plugins.
         assert len(new) == 2
+        assert all(m.options == "ro" for m in new)
         dests = {m.destination for m in new}
         assert dests == {
             "/home/agent/.local/share/claude",
