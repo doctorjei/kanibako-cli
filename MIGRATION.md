@@ -27,6 +27,9 @@ then work top-to-bottom.
 | Templates | shell-variant tree + CLAUDE.md merge + host-config import | **layered seed-once** (base→agent→workset); host-config import **removed** (§8) |
 | Per-agent YAML section | `crab:` | `agent:` (§9) |
 | Box-side vault dest | `~/share-ro` / `~/share-rw` | `~/vault/ro` / `~/vault/rw` (§4.7, §9) |
+| Agent selection | arbitrary auto-pick among installed agents | cascade + installed-count rule; **2+ agents with no choice = error** (§10) |
+| Choosing a default agent | `kanibako system config system.default_agent …` | `kanibako setup` / edit the file — `system.*` is file-only (§10) |
+| Targeting a non-cwd box | `refresh -p/--project` | `--box <name-or-path>` (universal); `-p/--project` removed (§10) |
 
 ---
 
@@ -268,14 +271,16 @@ The old default-agent selector `system.agent` is renamed to **`system.default_ag
 
 The system tier of these behavior settings now lives in **`global/settings.yaml`**
 (`@system.settings`), separate from the `~/.config/kanibako.yaml` CONFIG file (which
-holds only `system.*` layout/path keys). The `kanibako system config` command routes
-accordingly: behavior settings (e.g. `system.default_agent`, agent settings like
-`model`) are read/written to `global/settings.yaml`, while structural `system.*`
-config (e.g. `system.data`) is read from `kanibako.yaml`. **No automatic migration:**
-if you previously set `system.default_agent` in `kanibako.yaml`, re-set it via
-`kanibako system config system.default_agent <name>` (or move the `[agent.default]`
-table out of `kanibako.yaml` into `global/settings.yaml`) — a stale `[agent]` table
-in `kanibako.yaml` is no longer read by the system settings tier.
+holds only `system.*` layout/path keys). The `kanibako system config` command READS /
+SHOWS `system.*` keys (e.g. `system.default_agent`, `system.data`) but — as of the W1
+overhaul (see §10) — **refuses to SET them**: all `system.*`-prefixed keys are
+file-only. Non-`system.` settings (e.g. `model`) stay CLI-settable at the global tier
+and are written to `global/settings.yaml`. **No automatic migration:** if you
+previously set `system.default_agent` in `kanibako.yaml`, choose it with
+**`kanibako setup`** (which writes it for you) or move the `[agent.default]` table
+into `global/settings.yaml` by hand — a stale `[agent]` table in `kanibako.yaml` is
+no longer read by the system settings tier. See **§10** for the full file-only rule
+and the new agent-resolution behavior.
 
 ### 3.2a Box-level `[paths]` keys removed
 
@@ -848,3 +853,96 @@ The removal of host agent-config import (claude `.claude.json`/`oauthAccount`, c
 `config.toml`, goose `extensions`/`instructions`) is detailed in **§8.5** —
 cross-reference it. It is the user-facing behavior change that the finalized
 descriptors carry; the descriptor model change itself is internal.
+
+---
+
+## 10. Agent selection, blanket flags & file-only `system.*`
+
+The 1.6.0 pre-public clean-house also overhauls how an agent is chosen and how a
+command targets a box. These are **breaking** and require action on upgrade.
+
+### 10.1 No agent is auto-picked when 2+ are installed (BREAKING)
+
+Previously, `kanibako` (i.e. `start`) with no explicit or configured agent would
+**arbitrarily launch one of the installed agents** — the first in plugin-discovery
+order (the "goose-by-luck" footgun, since the `kanibako` meta-package installs all
+three). That arbitrary pick is **removed**.
+
+The new resolution cascade (highest precedence first) is
+`--agent > box > workset > system default`. If nothing resolves, the **installed
+count** decides — with **no ordering and no tie-break**:
+
+| Installed agents | Behavior |
+|---|---|
+| exactly 1 | used implicitly (unambiguous — no change for single-agent users) |
+| 0 | **error**: install a plugin (or use `kanibako shell`) |
+| **2+** | **error**: pick one — run `kanibako setup` or pass `--agent <name>` |
+
+**What you must do:** if you run the meta-package (2+ agents) and relied on the
+implicit pick, choose a default once with **`kanibako setup`**, or pass
+`--agent <name>` per invocation. This applies uniformly to every agent-requiring
+command (`start`, `box start`, `agent reauth`, …) — not just launch.
+
+`kanibako shell` is the **sole** no-agent path: it never resolves an agent and never
+errors on agent selection (the emergency-recovery hatch into the container).
+
+### 10.2 `setup` now selects a default agent
+
+`kanibako setup` gained an interactive step (the **only** interactive prompt in the
+CLI): on a TTY it lists detected agents in a numbered menu and writes your pick as
+the host-global default. A "skip" option is offered; with 2+ agents installed skip is
+**gated** — it warns that a naked launch will then fail and requires an explicit
+`y`/`yes`, otherwise it re-prompts. With exactly one agent, skip is harmless.
+
+- Non-interactive: `kanibako setup --agent <name>` (validated against installed
+  plugins; unknown name is an actionable error, no prompt).
+- Non-TTY without `--agent` (CI / headless): selection is skipped gracefully — no
+  prompt — with a note to set it later.
+
+`setup` also records a **completion marker** (`system.setup_completed`, the build
+version). Agent-requiring commands print a **non-blocking** stderr nudge when setup
+has never been run (or the recorded version predates a setup-affecting change), then
+proceed — it never blocks the single-agent happy path.
+
+### 10.3 `system.*` config keys are file-only (BREAKING)
+
+`kanibako system config system.<key> <value>` (and the reset path) no longer SET any
+`system.`-prefixed key — including `system.default_agent`. The CLI still **reads and
+shows** them; it refuses to set them and points you at the config file:
+
+- To set the default agent: run **`kanibako setup`** (it writes it for you), or edit
+  `global/settings.yaml`'s `[agent.default] default_agent` directly.
+- To change a structural path (e.g. `system.data`): edit `~/.config/kanibako.yaml`.
+
+Non-`system.`-prefixed settings (e.g. `model`, `box.image`) remain CLI-settable at
+every scope, including the global tier (`kanibako system config model=opus`).
+
+**What you must do:** replace any scripted `kanibako system config system.*=…`
+invocations with a `setup` run or a direct file edit.
+
+### 10.4 Blanket `--agent` and `--box` flags
+
+Two flags now parse on every command (passing one to an unrelated command is an
+error, not a silent no-op):
+
+- **`--agent <name>`** — uniform, top-precedence, **ephemeral** (this invocation only)
+  agent override. Pulls that agent's whole config; never persisted.
+- **`--box <name-or-path>`** — universal **subject/anchor** selector: act on a box
+  that is not your cwd. The value is a path OR a box name (**name takes precedence**);
+  it replaces the need to `cd` into the box. It coexists with the box-command
+  destination group (`--default/--standalone/--workset` on `move`/`convert`), which is
+  an orthogonal axis: `kanibako box convert --box mybox --standalone` works.
+
+### 10.5 `-p`/`--project` removed (clean break)
+
+The old `refresh -p/--project` flag is **removed outright** with no deprecation alias.
+Use `--box <name-or-path>` instead.
+
+### 10.6 Box-name constraints (NEW)
+
+New box names (at creation / `--name`) are validated against a blocklist. Allowed:
+unicode letters/digits plus interior `_`, `-`, `.`. Blocked: control characters, all
+whitespace, every ASCII punctuation char except `_ - .`, the names `.` and `..`, a
+leading `-` or `.`, a trailing `.` or whitespace, and length over 64. Uppercase ASCII
+folds to lowercase. Pre-existing non-conforming boxes still resolve but are **flagged**
+(warned), not rejected — rename them at your convenience.

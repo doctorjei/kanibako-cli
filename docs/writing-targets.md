@@ -348,11 +348,16 @@ targets not already found via entry points.
 ### Resolution
 
 When a user runs `kanibako start`, kanibako calls `discover_targets()`, which
-loads all registered entry points and scans `kanibako.plugins.*`.  The active
-agent for a box resolves from `box.agent` (and the agent cascade); if nothing
-is set, kanibako calls `detect()` on each target.  If no target detects, it
-falls back to `NoAgentTarget` — a plain shell with no agent binary or
-credentials.
+loads all registered entry points and scans `kanibako.plugins.*`, then resolves
+the active agent via `resolve_agent()` — the cascade `--agent > box.agent >
+workset default > system.default_agent`.  When nothing in the cascade resolves,
+the **installed-agent count** decides (no ordering, no tie-break): exactly one
+installed target is used implicitly; **zero or 2+ raise an `AgentResolutionError`**
+(install a plugin, or run `kanibako setup` / pass `--agent` to pick one).  This
+replaces the older "call `detect()` on each target and fall back to the first" —
+`detect()` is now only used to populate the `setup` menu and the diagnostics report,
+not to silently pick a launch target.  `kanibako shell` bypasses agent resolution
+entirely (a plain shell with no agent binary or credentials).
 
 Select a target for a box explicitly:
 

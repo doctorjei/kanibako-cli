@@ -30,8 +30,9 @@ by the `kanibako` meta-package); other agents can be added as plugins.
   credentials (three modes: primary, workset/named, standalone)
 - **Credential forwarding** -- host credentials are synced into the box
   and written back after each session
-- **Setup wizard** -- `kanibako setup` detects installed agents and checks
-  your container runtime; no manual configuration needed
+- **Setup wizard** -- `kanibako setup` detects installed agents, checks your
+  container runtime, and lets you pick a default agent (the only interactive
+  prompt in the CLI); no manual configuration needed
 - **Diagnostics** -- `kanibako system diagnose` checks runtime, images,
   agents, and storage; `box diagnose` and `rig diagnose` drill into specific
   scopes
@@ -82,8 +83,11 @@ pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-codex/ -e pa
 ```
 
 On first use, Kanibako automatically creates its config and data directories.
-Run `kanibako setup` to verify your environment, or just dive in -- setup
-runs automatically when needed.
+Run `kanibako setup` to verify your environment and pick a default agent. If you
+have **more than one** agent installed (the meta-package ships all three), you
+**must** choose one — either with `setup` or per-run with `--agent <name>` —
+otherwise `kanibako` will error rather than guess. With a single agent installed
+it is used automatically. See [Agent Selection](#agent-selection).
 
 ## Quick Start
 
@@ -327,9 +331,82 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 
 ### Global Flags
 
+These parse on every command (passing one to a command it doesn't apply to is an
+error, not a silent no-op).
+
 | Flag | Description |
 |------|-------------|
 | `-v, --verbose` | Show debug output (target detection, container command) |
+| `--agent NAME` | Top-precedence, ephemeral (this-invocation) agent override; wins over the cascade. See [Agent Selection](#agent-selection). |
+| `--box NAME-OR-PATH` | Universal subject/anchor selector -- act on a box that isn't your cwd, by box name (precedence) or path. See [Agent Selection](#agent-selection). |
+
+> **`setup` keeps its own `--agent`** flag (it persists the chosen default rather
+> than overriding for one run).
+
+#### `--box`: operate on any box
+
+`--box` substitutes for being in the box's directory: `kanibako stop --box myproj`,
+`kanibako box config --box myproj model=opus`. The value is a **box name (resolved
+first) or a path**. It is the *subject* the command acts on, and stays orthogonal to
+the `move`/`convert` *destination* group, so they coexist:
+
+```bash
+kanibako box convert --box mybox --standalone   # convert box "mybox" to standalone
+```
+
+When both a positional target and `--box` are given: same target → warn + continue;
+different → error.
+
+**Box-name rules.** New names (creation / `--name`) allow unicode letters/digits plus
+interior `_ - .`; blocked are control chars, whitespace, ASCII punctuation other than
+`_ - .`, `.`/`..`, a leading `-`/`.`, a trailing `.`/whitespace, and length over 64.
+Uppercase ASCII folds to lowercase. Pre-existing non-conforming names still resolve
+but are flagged.
+
+## Agent Selection
+
+Which agent a command uses is resolved by a single cascade (highest precedence
+first):
+
+```
+--agent  >  box.agent  >  workset default  >  system.default_agent
+```
+
+If a name resolves, it is used (and an error is raised if that agent's plugin
+isn't installed). If **nothing** resolves, the **installed-agent count** decides --
+with no ordering and no tie-break:
+
+| Installed agents | Behavior |
+|---|---|
+| exactly 1 | used implicitly (unambiguous) |
+| 0 | error -- install an agent plugin (or use `kanibako shell`) |
+| **2+** | error -- pick one with `kanibako setup` or `--agent <name>` |
+
+> **Behavior change (1.6.0).** Earlier versions would arbitrarily launch the
+> *first* installed agent when none was chosen. With the meta-package (all three
+> agents installed) that produced a surprising, machine-dependent pick. Now 2+
+> installed agents with no choice is an **error** -- you select deliberately. A
+> single installed agent still launches with no extra step.
+
+This resolution is **uniform** across every agent-requiring command (`start`,
+`box start`, `agent reauth`, ...). `kanibako shell` is the **sole** exception: it
+needs no agent and never errors on resolution -- the way to reach a box's container
+when no agent is configured.
+
+### Choosing a default agent
+
+`kanibako setup` is where you pick the host-global default (`system.default_agent`).
+On a TTY it shows a numbered menu of detected agents (the only interactive prompt in
+the CLI); `setup --agent <name>` sets it non-interactively. A "skip" option is
+offered -- with 2+ agents it warns that a bare launch will then fail and asks you to
+confirm. Non-TTY runs (CI / headless) skip the prompt gracefully.
+
+`setup` records a completion marker; agent-requiring commands print a non-blocking
+nudge to run `setup` if it has never been run, then proceed.
+
+Because `system.*` keys are **file-only** (see [Configuration](#configuration)),
+the default agent is *not* settable via `kanibako system config` -- use `setup` or
+edit `global/settings.yaml` directly.
 
 ## Project Modes
 
@@ -788,6 +865,11 @@ kanibako system config model=opus
 kanibako system config --reset --all    # reset all global settings
 ```
 
+`kanibako system config` sets **non-`system.`** settings only. `system.*`-prefixed
+keys (layout paths AND `system.default_agent`) are **file-only**: the CLI shows them
+but refuses to set/reset them, pointing you at the config file. Set the default agent
+with `kanibako setup`; edit structural paths in `~/.config/kanibako.yaml` directly.
+
 ### Files
 
 All kanibako config/settings files are YAML.
@@ -808,7 +890,7 @@ All kanibako config/settings files are YAML.
 | `autonomous` | `true` | Run with full permissions (autonomy) |
 | `box.image` | `kanibako-oci:latest` | Container rig |
 | `box.shell` | `$KANIBAKO_SHELL` | Login shell for a no-agent box (`kanibako start` with no agent, `kanibako shell`); resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
-| `box.agent` | (auto-detect) | Agent target plugin; falls back to `system.default_agent` |
+| `box.agent` | (resolved) | Agent target plugin for this box; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
 | `box.share_images` | | Share host images into the box |
 | `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-box (`false`) |
 | `enable_vault` | `true` | Enable vault directories |
