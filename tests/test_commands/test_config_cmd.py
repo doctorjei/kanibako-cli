@@ -431,12 +431,12 @@ class TestBoxConfigTooManyArgs:
 class TestWriteProjectConfigKey:
     def test_write_paths_key(self, tmp_path):
         p = tmp_path / "settings.yaml"
-        write_project_config_key(p, "paths_shell", "custom_shell")
+        write_project_config_key(p, "paths_shared", "custom_shared")
         loaded = load_config(p)
-        assert loaded.paths_shell == "custom_shell"
+        assert loaded.paths_shared == "custom_shared"
         text = p.read_text()
         assert "paths:" in text
-        assert 'shell: custom_shell' in text
+        assert 'shared: custom_shared' in text
 
     def test_write_box_key(self, tmp_path):
         p = tmp_path / "settings.yaml"
@@ -460,10 +460,10 @@ class TestWriteProjectConfigKey:
         """Writing keys from different sections should create both."""
         p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "multi:v1")
-        write_project_config_key(p, "paths_shell", "multi_shell")
+        write_project_config_key(p, "paths_shared", "multi_shared")
         loaded = load_config(p)
         assert loaded.box_image == "multi:v1"
-        assert loaded.paths_shell == "multi_shell"
+        assert loaded.paths_shared == "multi_shared"
 
     def test_update_existing_key(self, tmp_path):
         p = tmp_path / "settings.yaml"
@@ -496,7 +496,7 @@ class TestUnsetProjectConfigKey:
         from kanibako.config import unset_project_config_key
         p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "keep:v1")
-        assert unset_project_config_key(p, "paths_shell") is False
+        assert unset_project_config_key(p, "paths_shared") is False
         # Original key should still be there
         loaded = load_config(p)
         assert loaded.box_image == "keep:v1"
@@ -510,10 +510,10 @@ class TestUnsetProjectConfigKey:
         from kanibako.config import unset_project_config_key
         p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "img:v1")
-        write_project_config_key(p, "paths_shell", "my_shell")
+        write_project_config_key(p, "paths_shared", "my_shared")
         assert unset_project_config_key(p, "box_image") is True
         loaded = load_config(p)
-        assert loaded.paths_shell == "my_shell"
+        assert loaded.paths_shared == "my_shared"
         assert loaded.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
 
@@ -529,7 +529,7 @@ class TestLoadProjectOverrides:
         assert "box_image" in overrides
         assert overrides["box_image"] == "override:v1"
         # Other keys should not appear (they are defaults)
-        assert "paths_shell" not in overrides
+        assert "paths_shared" not in overrides
 
 
 class TestSplitConfigKey:
@@ -539,7 +539,7 @@ class TestSplitConfigKey:
 
     def test_paths_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("paths_shell") == ("paths", "shell")
+        assert _split_config_key("paths_shared") == ("paths", "shared")
 
     def test_paths_key_with_underscores(self):
         from kanibako.config import _split_config_key
@@ -573,5 +573,5 @@ class TestConfigKeys:
         from kanibako.config import config_keys
         keys = config_keys()
         assert "box_image" in keys
-        assert "paths_shell" in keys
+        assert "paths_shared" in keys
         assert "box_agent" in keys
