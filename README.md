@@ -15,8 +15,8 @@ CRAB: **C**ontained **R**untime **A**gent in a **B**ox.
 
 No Docker or Podman experience required.  Just `cd` into a project and run
 `kanibako`.  Setup, rig pulls, credential syncing, and teardown are automatic.
-Claude Code is supported via the built-in plugin; other agents (Aider, Codex,
-Goose) are available as [example plugins](examples/).
+Claude Code, Codex, and Goose ship as first-class agent plugins (all installed
+by the `kanibako` meta-package); other agents can be added as plugins.
 
 ## Features
 
@@ -26,29 +26,29 @@ Goose) are available as [example plugins](examples/).
   Kanibako manages all container operations for you
 - **Session continuity** -- `kanibako start` defaults to `--continue`, picking
   up where you left off; persistent tmux sessions survive SSH disconnects
-- **Per-project isolation** -- each project gets its own shell, config, and
-  credentials (three modes: default, workset, standalone)
-- **Credential forwarding** -- host credentials are synced into the container
+- **Per-box isolation** -- each box gets its own home, config, and
+  credentials (three modes: primary, workset/named, standalone)
+- **Credential forwarding** -- host credentials are synced into the box
   and written back after each session
 - **Setup wizard** -- `kanibako setup` detects installed agents and checks
   your container runtime; no manual configuration needed
 - **Diagnostics** -- `kanibako system diagnose` checks runtime, images,
-  agents, and storage; `box diagnose`, `crab diagnose`, and `rig diagnose`
-  drill into specific scopes
-- **Vault snapshots** -- per-project read-only and read-write shared
+  agents, and storage; `box diagnose` and `rig diagnose` drill into specific
+  scopes
+- **Vault snapshots** -- per-box read-only and read-write shared
   directories with smart snapshot strategy detection (reflink, hardlink,
   or tar.xz depending on filesystem)
-- **Shell customization** -- per-project environment variables (`box config
-  env.*`), drop-in init scripts (`shell.d/`), and layered home directory
+- **Shell customization** -- per-box environment variables (`box config
+  env.*`), drop-in init scripts (`shell.d/`), and layered seed-once home
   templates
-- **Crab configuration** -- per-agent TOML config with template variant,
-  default args, state knobs, env vars, and shared caches; per-project
-  setting overrides via `box config`
+- **Agent configuration** -- per-agent YAML config with default args, state
+  knobs, env vars, and shared caches; per-box setting overrides via
+  `box config`
 - **Shared caches** -- global download caches (pip, cargo, npm, etc.)
-  shared across projects; agent-level caches via crab TOML
-- **Plugin system** -- agent-agnostic core (`kanibako-cli`); Claude Code
-  plugin (`kanibako-agent-claude`) ships by default; three-tier discovery
-  (entry points, user directory, project directory)
+  shared across boxes; agent-level caches via the agent config
+- **Plugin system** -- agent-agnostic core (`kanibako-cli`); Claude/Codex/Goose
+  plugins (`kanibako-agent-*`) ship with the meta-package; descriptor-only
+  three-tier discovery (entry points, user directory, project directory)
 - **Rig freshness checks** -- non-blocking digest comparison against GHCR
   on startup (24h cache)
 - **Helper spawning** -- spawn child agent instances for parallel workloads
@@ -67,7 +67,7 @@ Goose) are available as [example plugins](examples/).
 ## Installation
 
 ```bash
-# Standard install (base + Claude plugin)
+# Standard install (cli + Claude, Codex, and Goose plugins)
 uv tool install kanibako
 # -- or --
 pip install kanibako
@@ -78,7 +78,7 @@ pip install kanibako-cli
 # Development install
 git clone https://github.com/doctorjei/kanibako.git
 cd kanibako
-pip install -e '.[dev]' -e packages/agent-claude/
+pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-codex/ -e packages/agent-goose/
 ```
 
 On first use, Kanibako automatically creates its config and data directories.
@@ -103,9 +103,6 @@ kanibako shell -- echo hello
 
 # Start a new conversation
 kanibako -N
-
-# Resume with the conversation picker
-kanibako -R
 ```
 
 That's it -- no `docker run`, no volume flags, no Containerfile.  On first run,
@@ -192,13 +189,13 @@ shortcuts for common operations:
 
 | Command | Description |
 |---------|-------------|
-| `box` | Project lifecycle (create, list, start, stop, shell, config, archive, ...) |
+| `box` | Box lifecycle (create, list, start, stop, shell, config, diagnose, helper, fork, archive, ...) |
 | `rig` | Rig management -- container images (create, list, info, rm, rebuild) |
 | `workset` | Project grouping (create, list, connect, disconnect, config, ...) |
-| `crab` | Crab (agent) management (list, config, reauth, helper, fork) |
+| `agent` | Agent management (list, info, config, reauth) |
 | `system` | Global configuration, diagnostics, and self-update |
 
-**Aliases:** `agent` -> `crab`, `image` -> `rig`, `container` -> `box`
+**Aliases:** `image` -> `rig`, `container` -> `box`
 
 ### `box` Subcommands
 
@@ -265,24 +262,31 @@ shortcuts for common operations:
 | `workset connect <workset> [source]` | Add project to working set (`--name`) |
 | `workset disconnect <workset> <project>` | Remove project from working set (`--force`) |
 
-### `crab` Subcommands
+### `agent` Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
-| `crab list` / `crab ls` | List configured crabs (`-q`) |
-| `crab info` / `crab inspect` | Crab configuration details |
-| `crab config` | View or modify crab configuration |
-| `crab reauth [project]` | Refresh credentials |
-| `crab helper spawn` | Spawn child instance (`--depth`, `--breadth`, `--model`, `--image`) |
-| `crab helper list` / `helper ls` | List helpers (`-q`) |
-| `crab helper stop <n>` | Stop a helper |
-| `crab helper respawn <n>` | Respawn a stopped helper |
-| `crab helper cleanup <n>` | Clean up helper (`--cascade`) |
-| `crab helper send <n> <msg>` | Message a helper |
-| `crab helper broadcast <msg>` | Message all helpers |
-| `crab helper log` | View message log (`-f`, `--from`, `--tail`) |
-| `crab fork <name>` | Fork project into a new directory |
-| `crab diagnose` | Check agent status and configuration |
+| `agent list` / `agent ls` | List configured agents (`-q`) |
+| `agent info` / `agent inspect` | Agent configuration details |
+| `agent config` | View or modify agent configuration |
+| `agent reauth [project]` | Refresh credentials |
+
+### `box helper` / `box fork` Subcommands
+
+The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
+
+| Subcommand | Description |
+|------------|-------------|
+| `box helper spawn` | Spawn child instance (`--depth`, `--breadth`, `--model`, `--image`) |
+| `box helper list` / `helper ls` | List helpers (`-q`) |
+| `box helper stop <n>` | Stop a helper |
+| `box helper respawn <n>` | Respawn a stopped helper |
+| `box helper cleanup <n>` | Clean up helper (`--cascade`) |
+| `box helper send <n> <msg>` | Message a helper |
+| `box helper broadcast <msg>` | Message all helpers |
+| `box helper log` | View message log (`-f`, `--from`, `--tail`) |
+| `box fork <name>` | Fork project into a new directory |
+| `box diagnose` | Check box + agent status and configuration |
 
 ### `system` Subcommands
 
@@ -301,7 +305,7 @@ shortcuts for common operations:
 |------|-------------|
 | `-N, --new` | Start a new conversation |
 | `-C, --continue` | Continue the most recent conversation (default) |
-| `-R, --resume` | Resume with conversation picker |
+| `-R, --resume` | Accepted for compatibility; resolves to `--continue` (the in-session resume picker remains reachable from within the agent) |
 | `-A, --autonomous` | Run with full permissions (default) |
 | `-S, --secure` | Run without `--dangerously-skip-permissions` |
 | `-M, --model MODEL` | Override the agent model for this run |
@@ -329,56 +333,50 @@ shortcuts for common operations:
 
 ## Project Modes
 
-Kanibako supports three ways to organize project state.  The mode is inferred
-automatically from context.
+Kanibako supports three ways to organize box state (`box.mode`).  The mode is
+inferred automatically from context.
 
-Two of those modes -- **default** and **workset** -- are flavors of the same idea:
-a **project group**, a shared root that holds the boxes, vaults, and a
-group-level config/auth tier that member projects inherit.  The default mode is
-simply the implicit default group; a workset is a *named* group rooted at a
-directory you choose.  **Standalone** is the odd one out -- its state lives
-inside the project directory rather than in a group root.
+Two of those modes -- **primary** and **named** -- are flavors of the same idea:
+a **workset**, a shared root that holds the boxes, vaults, channels, and a
+group-level settings/auth tier that member boxes inherit.  The primary workset
+is simply the implicit default group; a named workset is rooted at a directory
+you choose.  **Standalone** is the odd one out -- its state lives inside the
+project directory rather than in a group root.
 
-### Default workset
+### Primary workset
 
-The default project group: a centralized store keyed by project name, rooted at
-`$XDG_DATA_HOME/kanibako`.  You never name or create it -- just `cd` into any
-directory and run `kanibako`, and the project joins the default group.
+The default group: a real directory at `$XDG_DATA_HOME/kanibako/primary_workset`,
+keyed by box name.  You never name or create it -- just `cd` into any directory
+and run `kanibako`, and the box joins the primary workset.
 
-The default group is itself modeled as an always-present **default workset**
-(alias `default`, id `__default__`).  It is virtual -- never created or deleted,
-with no on-disk workset file -- but it is addressable through the same `workset`
-commands as named worksets, so default-workset settings use the ordinary `workset
-config` mechanism (see [Configuration](#configuration)):
+The primary workset is addressable through the same `workset` commands as named
+worksets (workset name token `__PRIMARY__`), so primary-workset settings use the
+ordinary `workset config default` mechanism (see [Configuration](#configuration)):
 
 ```bash
-kanibako workset info default                       # show the default workset
-kanibako workset config default model=opus          # default for ALL default-mode projects
+kanibako workset config default model=opus          # default for ALL primary-mode boxes
 kanibako workset config default group_auth=false    # distinct credentials by default
 ```
 
-In `kanibako workset list` the default workset appears with its root displayed
-as `<default workset>`.  The names `default` / `__default__` are reserved: they
-cannot be used as a named-workset name, and the default workset cannot be
-removed.
+The names `__PRIMARY__` / `__STANDALONE__` (and legacy `default`) are reserved
+and cannot be used as a named-workset name.
 
 ```
-$XDG_DATA_HOME/kanibako/boxes/{name}/          metadata + shell
-{project}/vault/ro/                            read-only vault
-{project}/vault/rw/                            read-write vault
+$XDG_DATA_HOME/kanibako/primary_workset/
+├── settings.yaml
+├── boxes/{name}/{home/ → ~/ , settings.yaml}
+├── vault/{ro,rw}/{name}/                        → ~/vault/{ro,rw}
+└── logs/{name}.jsonl
+# the box WORKSPACE stays external: your real project dir → ~/workspace
 ```
 
-### Workset
+### Named workset
 
 A workset is a *named* project group rooted at a directory you pick.  It groups
-related projects under one human-readable root, with a `workset.yaml` member
-list and a group-level config/auth tier that member projects inherit (see
-[Configuration](#configuration)).  Mechanically it is the same project-group
-machinery as default mode, just with an explicit name and root instead of the
-implicit default.
-
-Worksets are stable and supported but not actively receiving new features.
-For most use cases, the default workset is simpler.
+related projects under one human-readable root, with a single `<root>/settings.yaml`
+(identity + member list + a group-level settings/auth tier that member boxes
+inherit; see [Configuration](#configuration)).  A workset name is a shared
+address and must be unique -- a collision at create/import time is refused.
 
 ```bash
 kanibako workset create ~/worksets/research --name my-research
@@ -388,15 +386,18 @@ kanibako
 ```
 
 ```
-{workset}/boxes/{name}/             metadata + shell
-{workset}/workspaces/{name}/        workspace
-{workset}/vault/{name}/share-{ro,rw}/  vault
+{workset}/
+├── settings.yaml
+├── boxes/{name}/{home/ → ~/ , settings.yaml}
+├── workspaces/{name}/                  → ~/workspace
+├── vault/{ro,rw}/{name}/               → ~/vault/{ro,rw}
+└── logs/{name}.jsonl
 ```
 
 ### Standalone
 
-A separate mode -- not a project group.  All state lives inside the project
-directory itself, co-located with the workspace.  Fully portable.
+A separate mode -- not a workset.  All state lives inside the project directory
+itself, alongside the workspace.  Fully portable (drop-in importable).
 
 ```bash
 kanibako create --standalone           # in the current directory
@@ -404,8 +405,11 @@ kanibako create --standalone ~/myproj  # create and initialize a new directory
 ```
 
 ```
-{project}/.kanibako/          metadata + shell
-{project}/vault/share-{ro,rw}/  vault
+{project}/                       ← project root
+├── settings.yaml                ← box metadata (at the root)
+├── workspace/                   → ~/workspace  (a subdir, not the root)
+├── box_data/{home/ → ~/ , {name}.jsonl}
+└── vault/{ro,rw}/               → ~/vault/{ro,rw}
 ```
 
 ### Orphan detection
@@ -524,15 +528,16 @@ podman push kanibako-template-custom ghcr.io/myorg/kanibako-template-custom
 Inside the container, the agent sees:
 
 ```
-/home/agent/                 persistent shell (bind mount)
+/home/agent/                 persistent home (bind mount)
   |- .bashrc                shell config (with shell.d sourcing)
   |- .profile               login profile
   |- .shell.d/              drop-in init scripts (*.sh)
   |- .claude/               agent credentials
   |- .claude.json            agent settings
   |- workspace/             project files (bind mount)
-  |- share-ro/              read-only vault (bind mount, optional)
-  '- share-rw/              read-write vault (bind mount, optional)
+  |- vault/ro/              read-only vault (bind mount, optional)
+  |- vault/rw/              read-write vault (bind mount, optional)
+  '- channels/             inter-box channel tree
 ```
 
 ## Shell Customization
@@ -579,109 +584,100 @@ echo 'alias ll="ls -la"' > /path/to/shell/.shell.d/aliases.sh
 Existing shells from older Kanibako versions are automatically upgraded to
 support `shell.d/` on the next launch.
 
-## Crab Configuration
+## Agent Configuration
 
-Each crab (agent instance) gets a YAML configuration file at
-`$XDG_DATA_HOME/kanibako/crabs/{id}.yaml`.  The file is generated
-automatically on first use (via the target plugin's `generate_crab_config()`
-method) and can be edited afterwards.
+Each agent gets a YAML configuration file inside its per-agent store directory
+at `$XDG_DATA_HOME/kanibako/agents/{agent}/settings.yaml`.  The file is
+generated automatically on first use (via the target plugin's
+`generate_agent_config()` method) and can be edited afterwards.
 
 ```yaml
-crab:
+agent:
   name: "Claude Code"
-  shell: "standard"         # template variant (see Shell Templates)
   run_args: []              # extra CLI args prepended on every launch
-  model: "opus"             # target-specific state knobs (e.g. --model for Claude)
+  model: "opus"             # agent-specific state knobs (e.g. --model for Claude)
   access: "permissive"
 env:
-  # KEY: "value"            # raw env vars injected into the container
-shared:
-  # plugins: ".claude/plugins"  # crab-level shared cache paths
+  # KEY: "value"            # raw env vars injected into the box
 tweakcc:
   # enabled: false          # enable tweakcc binary patching
   # config: "~/.tweakcc/config.json"  # external tweakcc config file
 ```
 
 **Sections:**
-- `crab:` -- identity and defaults (`name`, `shell` template variant, `run_args`)
-  plus runtime state knobs translated by the target plugin into CLI args and env
-  vars (e.g. Claude maps `model` -> `--model`). Effective state resolves across
-  `box > workset > crab > system` with the target's declared defaults as the floor.
-- `env:` -- environment variables injected into the container
-- `shared:` -- crab-level shared cache paths (mounted from the per-crab
-  shared directory, independent of global shared caches)
+- `agent:` -- identity and defaults (`name`, `run_args`) plus runtime state
+  knobs translated by the target plugin into CLI args and env vars (e.g. Claude
+  maps `model` -> `--model`). Effective state resolves across the settings
+  cascade `system < agent.<agent> < workset < box` with the target's declared
+  defaults as the floor.
+- `env:` -- environment variables injected into the box
 - `tweakcc:` -- optional tweakcc integration for binary patching
   (see [docs/tweakcc.md](docs/tweakcc.md))
 
-Manage crab settings via the CLI:
+Per-agent shares/caches are declared by the plugin (`agent.<agent>.shared.*` /
+`agent.<agent>.caches.*`) and served from the per-agent store dir
+(`agents/<agent>/{plugins,cache}`).
+
+Manage agent settings via the CLI:
 
 ```bash
-kanibako crab list                    # list configured crabs
-kanibako crab config model            # show effective model
-kanibako crab config model=sonnet     # set crab-level default
+kanibako agent list                    # list configured agents
+kanibako agent config model            # show effective model
+kanibako agent config model=sonnet     # set agent-level default
 ```
 
-## Shell Templates
+## Home Templates
 
-Shell templates provide layered home directory initialization for new projects.
-Templates live under `$XDG_DATA_HOME/kanibako/templates/` and are applied
-once during project init.
-
-**Resolution order** (for template variant `standard` and agent `claude`):
-1. `templates/claude/standard/` -- agent-specific template
-2. `templates/general/standard/` -- general fallback
-3. None -- no template files applied
-
-The special variant `"empty"` always resolves to None (no files applied),
-bypassing directory lookup entirely.  Use `shell = "empty"` in the crab
-TOML to skip template initialization.
-
-**Layering:**
-1. `templates/general/base/` is copied first (common skeleton)
-2. The resolved template overlays on top
-
-**Example directory layout** (for agent `claude`, variant `standard`):
+Home templates provide **layered seed-once** initialization for a new box.
+Three layers are copied into the box home `~/` in order (later overlays
+earlier; absent layers are skipped), **once** -- edits you make inside a box
+afterward are never overwritten:
 
 ```
-templates/
-|- general/
-|   |- base/              <- layer 1: always copied (common skeleton)
-|   |   |- .bashrc
-|   |   '- .profile
-|   '- standard/          <- layer 2 fallback (if no agent-specific dir)
-'- claude/
-    '- standard/          <- layer 2 preferred (agent-specific)
-        |- .claude/
-        |   '- settings.json
-        '- playbook/
-            '- ONBOARD.md
+1. base    @system.base_template     → ~/   (always; the flat base skeleton)
+2. agent   @agent.<agent>.template    → ~/   (= agents/<agent>/template; if box.agent set)
+3. workset @workset.template          → ~/   (= <wsroot>/template; optional, primary/named)
 ```
 
-**Important:** files go inside `claude/standard/`, not directly in `claude/`.
-Placing files in `templates/claude/` (without the variant subdirectory) will
-have no effect -- the resolver looks for `templates/{agent}/{variant}/`.
+Per-file rule: plain ordered copy, **last layer wins**, seed-once.  There is no
+per-file merge of any file -- `CLAUDE.md` is an ordinary template file, and the
+base layer's guidance lives in a separate non-colliding `INSTRUCTIONS.md` so it
+never clobbers an agent template's `CLAUDE.md`.
 
-The template variant is controlled by the `shell` field in the crab TOML
-(defaults to `"standard"`).  To customize, create a directory under
-`templates/` matching the desired structure and set `shell` in the crab TOML.
+The old shell-variant selector (`crab.shell` / `template_name`) is gone -- there
+is one fixed `template/` dir per agent, with no variant subdirectory.  `box.shell`
+now means only the login shell (see [Configuration](#configuration)).
+
+**Example agent template layout** (for agent `claude`):
+
+```
+agents/claude/template/
+|- .claude/
+|   '- settings.json
+'- CLAUDE.md
+```
+
+To ship custom per-agent config into boxes, put it in that agent's `template/`
+dir; it seeds via layer 2.
 
 ## Vault
 
-Each project has optional read-only and read-write shared directories:
+Each box has optional read-only and read-write shared directories, mounted
+inside the box at `~/vault/ro` and `~/vault/rw`:
 
-- **share-ro/** -- files visible inside the container but not writable
+- **vault/ro/** -- files visible inside the box but not writable
   (documentation, reference data, prompt libraries)
-- **share-rw/** -- files that persist across sessions and can be modified
+- **vault/rw/** -- files that persist across sessions and can be modified
   (databases, build caches, generated artifacts)
 
-In default mode, vault directories live under your project and are hidden inside
-the container via a read-only tmpfs overlay, so the agent cannot see or modify
-vault metadata.
+The host-side vault lives under the workset (`vault/{ro,rw}/<box>`); inside the
+box the local `~/workspace/vault` path is masked by a read-only tmpfs, so the
+agent cannot see or modify host vault metadata.
 
 ### Snapshots
 
-Kanibako automatically creates a snapshot of `share-rw/` before each
-container launch.  The snapshot strategy is detected per-project: reflink
+Kanibako automatically creates a snapshot of the read-write vault before each
+box launch.  The snapshot strategy is detected per-project: reflink
 (instant copy-on-write on Btrfs/XFS), hardlink (fast for unchanged files),
 or tar.xz (universal fallback).  Manage snapshots manually:
 
@@ -702,22 +698,23 @@ kanibako create --standalone ~/p --no-vault      # new directory, no vault
 ## Target Plugin System
 
 Kanibako is agent-agnostic.  All agent-specific logic lives in **target
-plugins** -- Python classes that implement the `Target` abstract base class.
-Claude Code is supported via `kanibako-agent-claude` (installed by the
-`kanibako` meta-package); other agents can be added as pip packages.
-Install `kanibako-cli` for agent-agnostic operation.
+plugins** -- Python classes that subclass the `Target` abstract base class and
+expose a declarative `PluginDescriptor` (the plugin system is descriptor-only).
+Claude, Codex, and Goose ship via `kanibako-agent-{claude,codex,goose}`
+(installed by the `kanibako` meta-package); other agents can be added as pip
+packages.  Install `kanibako-cli` alone for agent-agnostic operation.
 If no agent is detected, Kanibako falls back to `no_agent` -- a plain shell
 with no agent binary or credentials.
 
-**Supported agents:**
-- **Claude Code** -- built-in via `kanibako-agent-claude`
-- **Aider, Codex CLI, Goose** -- example plugins in [examples/](examples/)
+**Shipped agents:**
+- **Claude Code** -- `kanibako-agent-claude`
+- **OpenAI Codex CLI** -- `kanibako-agent-codex`
+- **Goose** -- `kanibako-agent-goose`
 
 A target handles:
-1. Detecting the agent binary on the host
-2. Mounting the binary/installation into the container
-3. Syncing credentials between host and container
-4. Building CLI arguments for the agent entrypoint
+1. Detecting the agent binary on the host (`detect`)
+2. Describing the launch contract declaratively (`descriptor`) -- core
+   assembles argv, delivery binds, container env, and credential sync from it
 
 ### Three-tier plugin discovery
 
@@ -747,95 +744,96 @@ pip install kanibako-target-myagent
 # Use a specific target
 kanibako box config box.agent=myagent
 kanibako start
+
+# (`crab_name` is gone -- select the agent via box.agent)
 ```
 
 ## Configuration
 
+Kanibako splits **config** (layout -- *where things live*, the `system.*`
+namespace) from **settings** (behavior -- `agent.*` / `box.*` / `workset.*` plus
+the category keys).  They live in separate file sets.
+
+**Settings** follow a 6-tier cascade (box wins among the normal tiers;
+`*_required` is an absolute admin cap above box), below CLI flags:
+
 ```
-Precedence: CLI flag > project.yaml > workset config.yaml > crab config > kanibako.yaml (system) > defaults
+CLI flag > settings_required > box > workset > agent.<agent> > system > settings_base
 ```
 
-The **workset config tier** is a workset's own `config.yaml`, applied at box
-start/status.  For a named workset it lives at `<workset_root>/config.yaml`; for
-the always-present default workset it is `<data_dir>/config.yaml`.  Setting it
-on the default workset (`kanibako workset config default <key>=<value>`)
-establishes default-workset defaults inherited by all default-mode projects,
-while an individual project (or a CLI flag) may still override.
+**Config** (`system.*`) is read from the config file set
+(`config_base < ~/.config/kanibako.yaml < config_required`).  Config keys are
+**file-only** -- the CLI reads and shows them but refuses to set them (edit the
+file directly); `setup` and programmatic writers still write them.
 
-All configuration levels share a unified interface:
+All settings levels share a unified interface:
 
 ```bash
-# Box (project) level
-kanibako box config                     # show project overrides
+# Box level
+kanibako box config                     # show box overrides
 kanibako box config --effective         # show resolved values (inherited + overrides)
 kanibako box config model               # get one key
 kanibako box config model=sonnet        # set one key
 kanibako box config --reset model       # remove override, back to default
 
-# Workset level (group defaults inherited by member projects)
+# Workset level (group defaults inherited by member boxes)
 kanibako workset config <workset> model=opus
-kanibako workset config default model=opus   # default-workset default
+kanibako workset config default model=opus   # primary-workset default
 
-# Crab level (defaults for all projects using this crab)
-kanibako crab config model=opus
+# Agent level (defaults for all boxes using this agent)
+kanibako agent config model=opus
 
-# System level (global defaults)
+# System level (global settings defaults)
 kanibako system config model=opus
-kanibako system config --reset --all    # reset all global config
+kanibako system config --reset --all    # reset all global settings
 ```
 
-### Config files
+### Files
 
-All kanibako config files are YAML.
+All kanibako config/settings files are YAML.
 
-- **Global**: `$XDG_CONFIG_HOME/kanibako.yaml`
-- **Project**: `boxes/{name}/project.yaml`
-- **Crabs**: `$XDG_DATA_HOME/kanibako/crabs/{id}.yaml`
-- **Templates**: `$XDG_DATA_HOME/kanibako/templates/`
+- **Config (global)**: `$XDG_CONFIG_HOME/kanibako.yaml` (`system.*` layout only)
+- **System settings**: `$XDG_DATA_HOME/kanibako/global/settings.yaml`
+- **Workset settings**: `<workset_root>/settings.yaml`
+- **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/settings.yaml`
+- **Per-box settings**: `boxes/{name}/settings.yaml` (standalone: `<root>/settings.yaml`)
+- **Base template**: `$XDG_DATA_HOME/kanibako/global/base_template/`
 
-### Configuration keys
+### Common settings keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `start_mode` | `continue` | Default start mode (continue/new/resume) |
+| `start_mode` | `continue` | Default start mode (continue/new) |
 | `model` | platform default | Agent model name |
-| `autonomous` | `true` | Enable autonomy override |
-| `persistence` | `persistent` | Session type (persistent/ephemeral) |
+| `autonomous` | `true` | Run with full permissions (autonomy) |
 | `box.image` | `kanibako-oci:latest` | Container rig |
-| `box.shell` | `$KANIBAKO_SHELL` | Shell launched for a no-agent box (`kanibako start` with no agent, `kanibako shell`); resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
-| `box.agent` | (auto-detect) | Agent target plugin |
+| `box.shell` | `$KANIBAKO_SHELL` | Login shell for a no-agent box (`kanibako start` with no agent, `kanibako shell`); resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
+| `box.agent` | (auto-detect) | Agent target plugin; falls back to `system.default_agent` |
 | `box.share_images` | | Share host images into the box |
-| `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-project (`false`) |
+| `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-box (`false`) |
 | `enable_vault` | `true` | Enable vault directories |
-| `env.*` | | Persistent environment variables |
-| `resource.*` | | Resource path overrides |
-| `{scope}.path.share_ro.*` / `.share_rw.*` | | Scoped bind-mount shares (`host_src:guest_dest`) |
+| `env.*` | | Persistent environment variables (`<scope>.env.<VAR>`) |
+| `<scope>.bindings.ro.*` / `.rw.*` | | Scoped bind-mounts (`host_src:box_dest`) |
+| `<scope>.caches.*` | | Scoped cache mounts (`host_src:box_dest`) |
+| `<scope>.seeded.*` | | Copy-once seeds applied at box init |
 
 ### Global config file
 
-The global config (`kanibako.yaml`) supports a `system.path` section to override
-the data-directory layout, a `box` section for box-level defaults, and a `shared`
-section for globally shared cache mounts. `system.path` values may use the
-resolver grammar — `@`-refs, `$XDG_*`, `~`:
+The global config (`~/.config/kanibako.yaml`) holds only `system.*` layout keys
+(the `.path` infix is gone).  Values may use the resolver grammar -- `@`-refs,
+`$XDG_*`, `~`:
 
 ```yaml
 system:
-  path:
-    data: "$XDG_DATA_HOME/kanibako"     # data root
-    boxes: "@system.path.data/boxes"    # project state subdirectory
-    crabs: "@system.path.data/crabs"    # crab config subdirectory
-    comms: "@system.path.data/comms"
-    templates: "@system.path.data/templates"
-    ws_hints: "@system.path.data/worksets.yaml"
-box:
-  image: "kanibako-oci:latest"
-shared:
-  pip: ".cache/pip"
-  cargo: ".cargo/registry"
-  npm: ".npm"
+  data: "$XDG_DATA_HOME/kanibako"         # data root
+  agents: "@system.data/agents"           # per-agent store
+  primary_workset: "@system.data/primary_workset"
+  channels: "@system.data/channels"
+  global: "@system.data/global"           # settings.yaml + registry.yaml
 ```
 
-Shared caches are **lazy** -- they are only mounted if the host directory exists.
+Behavior defaults (`box.*`, agent settings, caches) go in
+`global/settings.yaml`, not in the config file.
 
 ## Helper Spawning
 
@@ -847,31 +845,31 @@ to it for orchestration and messaging.
 
 ```bash
 # Spawning and lifecycle
-kanibako crab helper spawn                 # spawn a child with default budget
-kanibako crab helper spawn --model sonnet  # child uses a different model
-kanibako crab helper spawn --depth 2 --breadth 3  # custom spawn limits
-kanibako crab helper list                  # show all helpers with status
-kanibako crab helper stop 1                # stop helper 1
-kanibako crab helper respawn 1             # relaunch a stopped helper
-kanibako crab helper cleanup 1             # stop and remove helper 1
-kanibako crab helper cleanup 1 --cascade   # also remove all descendants
+kanibako box helper spawn                 # spawn a child with default budget
+kanibako box helper spawn --model sonnet  # child uses a different model
+kanibako box helper spawn --depth 2 --breadth 3  # custom spawn limits
+kanibako box helper list                  # show all helpers with status
+kanibako box helper stop 1                # stop helper 1
+kanibako box helper respawn 1             # relaunch a stopped helper
+kanibako box helper cleanup 1             # stop and remove helper 1
+kanibako box helper cleanup 1 --cascade   # also remove all descendants
 
 # Messaging
-kanibako crab helper send 1 "Analyze the auth module"
-kanibako crab helper broadcast "Starting tests"
+kanibako box helper send 1 "Analyze the auth module"
+kanibako box helper broadcast "Starting tests"
 
 # Conversation log
-kanibako crab helper log                   # display full message log
-kanibako crab helper log --follow          # tail log in real-time
-kanibako crab helper log --from 1          # filter by helper number
-kanibako crab helper log --tail 10         # show last 10 entries
+kanibako box helper log                   # display full message log
+kanibako box helper log --follow          # tail log in real-time
+kanibako box helper log --from 1          # filter by helper number
+kanibako box helper log --tail 10         # show last 10 entries
 
 # Opt out
 kanibako start --no-helpers                 # launch without helper support
 ```
 
 **Architecture:** The Kanibako CLI is bind-mounted into every container
-(director and helpers), so `kanibako crab helper spawn/send/broadcast/log`
+(director and helpers), so `kanibako box helper spawn/send/broadcast/log`
 works inside containers. Each helper launches with `helper-init.sh` as
 its entrypoint -- the script registers with the hub, sources broadcast
 startup scripts, then execs the agent command.
@@ -885,7 +883,7 @@ Two communication layers work together:
 
 **Logging:** All inter-agent messages are logged to a JSONL file on the
 host. Each entry records sender, recipient(s), timestamp, and message
-content. View the conversation in real-time with `kanibako crab helper log --follow`:
+content. View the conversation in real-time with `kanibako box helper log --follow`:
 ```
 12:35:10  [0 -> 1]  Analyze the auth module and report back.
 12:36:45  [1 -> 0]  Found 3 issues in the token refresh flow.
@@ -916,9 +914,9 @@ A broadcast channel (`all/`) is available to all helpers.
   all/ro/               # broadcast read-only
   all/rw/               # broadcast read-write
   channels/             # raw peer channel directories
-~/.local/state/kanibako/
+$XDG_STATE_HOME/kanibako/
   helper.sock           # hub socket (mounted from host)
-  helper-messages.jsonl # message log (mounted read-only)
+  helpers.jsonl         # message log (mounted read-only)
 ~/.local/bin/kanibako   # kanibako CLI (bind-mounted from host, ro)
 ```
 
@@ -997,7 +995,7 @@ Host myproject
 
 ```bash
 # Install dev dependencies
-pip install -e ".[dev]" -e packages/agent-claude/
+pip install -e ".[dev]" -e packages/agent-claude/ -e packages/agent-codex/ -e packages/agent-goose/
 
 # Run tests
 pytest tests/ -v                    # unit tests (1911)
@@ -1024,7 +1022,7 @@ project state, configuration, and plugin discovery.  Agent-specific logic
 lives in target plugins (e.g. `kanibako-agent-claude`).  The CLI is an
 argparse tree in `cli.py` that delegates to command modules in `commands/`.
 Configuration flows through a unified engine (`config_interface.py`) that
-supports get/set/reset/show at every level (box, workset, crab, system).
+supports get/set/reset/show at every level (box, workset, agent, system).
 
 ## License
 
