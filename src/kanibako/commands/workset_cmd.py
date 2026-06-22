@@ -456,16 +456,42 @@ def run_disconnect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # Reconcile the positional <project> with the blanket --box (same → warn /
+    # differ → error), then resolve path-or-name to the canonical box name via
+    # the shared resolver (§Design 8 — same resolver even though "box" reads
+    # oddly for a workset member; consistency wins).  A bare member name that
+    # is not an independently-registered box still falls back to the raw token
+    # (remove_project matches it against the workset's member list by name).
+    from kanibako.commands.flags import resolve_subject_value
+    from kanibako.paths import resolve_box_target
+    project_token = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
+    if not project_token:
+        print("Error: no project specified to disconnect.", file=sys.stderr)
+        return 1
+    member: str = project_token
+    if project_token:
+        try:
+            from kanibako.config import config_file_path, load_config
+            from kanibako.paths import xdg
+            config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+            resolved = resolve_box_target(std, config, project_token)
+            if resolved.name:
+                member = resolved.name
+        except Exception:
+            member = project_token
+
     if not args.force:
         label = "and remove files " if args.remove_files else ""
         confirm_prompt(
-            f"Remove {label}project '{args.project}' from '{ws.name}'? "
+            f"Remove {label}project '{member}' from '{ws.name}'? "
             "Type 'yes' to confirm: "
         )
 
     try:
         proj = remove_project(
-            ws, args.project, remove_files=args.remove_files, std=std,
+            ws, member, remove_files=args.remove_files, std=std,
         )
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)

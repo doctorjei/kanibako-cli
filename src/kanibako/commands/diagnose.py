@@ -302,7 +302,11 @@ def run_box_diagnose(args: object) -> int:
     config = load_config(cf)
     std = load_std_paths(config)
 
-    project_dir = getattr(args, "project", None) or getattr(args, "path", None)
+    from kanibako.commands.flags import resolve_subject_value
+    project_dir = resolve_subject_value(
+        getattr(args, "project", None) or getattr(args, "path", None),
+        getattr(args, "box", None),
+    )
     try:
         proj = resolve_any_project(std, config, project_dir)
     except Exception as e:

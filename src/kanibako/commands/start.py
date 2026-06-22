@@ -31,7 +31,7 @@ from kanibako.paths import (
     box_state_home,
     xdg,
     load_std_paths,
-    resolve_any_project,
+    resolve_box_target,
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
@@ -196,7 +196,13 @@ def run_start(args: argparse.Namespace) -> int:
         # Default: persistent when the configured bootstrap program is available
         persistent = _bootstrap_available(_resolve_bootstrap_program())
     env_vars = getattr(args, "env", None) or []
-    project_dir = getattr(args, "project", None)
+    # Reconcile the positional subject with the blanket --box flag (same → warn,
+    # differ → error).  The winner is the path-or-name routed through
+    # resolve_box_target in _run_container.
+    from kanibako.commands.flags import resolve_subject_value
+    project_dir = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
     agent_args = getattr(args, "agent_args", [])
 
     # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
@@ -233,7 +239,10 @@ def run_start(args: argparse.Namespace) -> int:
 
 
 def run_shell(args: argparse.Namespace) -> int:
-    project_dir = getattr(args, "project", None)
+    from kanibako.commands.flags import resolve_subject_value
+    project_dir = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
     shell_args = getattr(args, "shell_args", [])
 
     entrypoint = getattr(args, "entrypoint", None)
@@ -571,7 +580,10 @@ def _run_container(
     # (behavior keys), distinct from the kanibako.yaml CONFIG file (system.* layout).
     system_settings_path = std.settings
 
-    proj = resolve_any_project(std, config, project_dir, initialize=True)
+    # project_dir is the reconciled subject (positional OR --box) computed in
+    # run_start/run_shell.  Route it through the path-or-name resolver so a bare
+    # registered box name selects that box even when not cwd (§Design 8).
+    proj = resolve_box_target(std, config, project_dir, initialize=True)
 
     # Hint about orphaned project data when initializing a new project
     if proj.is_new and proj.group is not None and proj.group.is_default:

@@ -437,6 +437,13 @@ def run_duplicate(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
+    # --box names the SUBJECT (the box being duplicated); reconcile with the
+    # source_path positional (same → warn / differ → error).
+    from kanibako.commands.flags import resolve_subject_value
+    args.source_path = resolve_subject_value(
+        getattr(args, "source_path", None), getattr(args, "box", None),
+    )
+
     # Refuse --bare on an external-connected source ONLY when the bare copy
     # would alias the same external dir.  connected.yaml is a 1:1 mapping
     # (external path -> one {workset, project}); a bare duplicate has no

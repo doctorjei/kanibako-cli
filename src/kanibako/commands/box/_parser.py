@@ -860,7 +860,11 @@ def run_rm(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    target = args.target
+    from kanibako.commands.flags import resolve_subject_value
+    target = resolve_subject_value(args.target, getattr(args, "box", None))
+    if not target:
+        print("Error: no box specified to remove.", file=sys.stderr)
+        return 1
     names = read_names(std.data_path)
 
     # Resolve target: try as a registered name first, then as a path.
@@ -1011,7 +1015,10 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    project_dir = getattr(args, "path", None)
+    from kanibako.commands.flags import resolve_subject_value
+    project_dir = resolve_subject_value(
+        getattr(args, "path", None), getattr(args, "box", None),
+    )
     raw = project_dir or os.getcwd()
     raw_dir = Path(raw).resolve()
 
@@ -1146,6 +1153,11 @@ def run_config(args: argparse.Namespace) -> int:
     else:
         print("Error: too many arguments (expected [project] [key[=value]])", file=sys.stderr)
         return 1
+
+    # --box names the subject project; reconcile with the positional [project]
+    # (same → warn / differ → error).
+    from kanibako.commands.flags import resolve_subject_value
+    project_dir = resolve_subject_value(project_dir, getattr(args, "box", None))
 
     # Handle --reset mode
     if args.reset is not None:

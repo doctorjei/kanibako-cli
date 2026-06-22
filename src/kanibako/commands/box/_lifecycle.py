@@ -1569,7 +1569,8 @@ def run_remap(args) -> int:
 
     config, std = _load_env()
 
-    old = getattr(args, "old", None)
+    from kanibako.commands.flags import resolve_subject_value
+    old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
     new = getattr(args, "new", None) or "./"
     new_path = Path(new).resolve()
 
@@ -1611,7 +1612,8 @@ def run_move(args) -> int:
 
     config, std = _load_env()
 
-    old = getattr(args, "old", None)
+    from kanibako.commands.flags import resolve_subject_value
+    old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
     new = getattr(args, "new", None)
     if not old or not new:
         print("Error: move requires both <old> and <new>.", file=sys.stderr)
@@ -1699,8 +1701,12 @@ def run_convert(args) -> int:
     else:
         location = Path(move_val).resolve()
 
+    from kanibako.commands.flags import resolve_subject_value
+    subject = resolve_subject_value(
+        getattr(args, "old", None), getattr(args, "box", None),
+    )
     try:
-        state = resolve_lifecycle_target(getattr(args, "old", None), std, config)
+        state = resolve_lifecycle_target(subject, std, config)
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

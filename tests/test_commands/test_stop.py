@@ -24,7 +24,7 @@ class TestStopOne:
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
         ):
             proj = MagicMock()
             proj.project_hash = "abcdef1234567890" * 4
@@ -42,7 +42,7 @@ class TestStopOne:
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
         ):
             proj = MagicMock()
             proj.project_hash = "abcdef1234567890" * 4
@@ -65,7 +65,7 @@ class TestStopOne:
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
         ):
             proj = MagicMock()
             proj.project_hash = "abcdef1234567890" * 4
@@ -82,7 +82,7 @@ class TestStopOne:
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
         ):
             proj = MagicMock()
             proj.project_hash = "abcdef1234567890" * 4
@@ -98,7 +98,7 @@ class TestStopOne:
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
-            patch("kanibako.commands.stop.resolve_any_project") as m_resolve,
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
         ):
             proj = MagicMock()
             proj.project_hash = "abcdef1234567890" * 4
