@@ -91,13 +91,39 @@ every scope (`system` / `agent.<agent>` / `workset` / `box`):
 | `<scope>.path.share_ro.<name>` | `<scope>.bindings.ro.<name>` (`host_src: box_dest`) |
 | `<scope>.path.share_rw.<name>` | `<scope>.bindings.rw.<name>` |
 | `<scope>.path.seeded.<name>` | `<scope>.seeded.<name>` (one-time copy at init) |
-| `shared.<name>` (cache dirs) | `<scope>.caches.<name>` (global at system, per-agent at agent scope) |
+| `[shared].<name>` (cache dirs) | `<scope>.caches.<name>` — **see ⚑⚑ below** |
 | `env.<VAR>` (`.env` files) | `<scope>.env.<VAR>` — **see ⚑ below** |
 | `resource.<path>` | **DROPPED** (subsumed by the box/workset category keys) |
 
 Additional categories: `<scope>.masks` (list of box paths to hide via tmpfs),
 `<scope>.shared` (rw across all instances in scope), `<scope>.synced` (two-way
 cred sync, applied by the agent plugin).
+
+⚑⚑ **THE `[shared]` CACHE TABLE IS RETIRED → the `caches` category.** The old
+`[shared]` table carried an *implicit* scope (it meant different things depending
+on which file it appeared in). The replacement makes scope **explicit in the key**:
+
+| Old `[shared]` location | Meant | New key |
+|---|---|---|
+| `[shared]` in the config cascade (`kanibako.yaml` / workset `config.yaml` / `settings.yaml`) | GLOBAL cache, mounted from `shared/global/<name>` | `system.caches.<name>` |
+| `[shared]` in an agent file (`agents/<agent>.yaml`, formerly `crabs/<agent>.yaml`) | per-agent cache, mounted from `shared/<agent>/<name>` | `agent.<agent>.caches.<name>` |
+
+Two behavioral changes you must account for when hand-migrating:
+
+- **The host source is now SPELLED OUT, not auto-rooted.** The old `[shared]`
+  value was only the *box-side* path; the host dir was implicitly
+  `<shared-store>/global/<name>` (or `<shared-store>/<agent>/<name>`). A `caches`
+  entry names BOTH sides explicitly (`host_src: box_dest`) — there is no longer a
+  shared-store dir under which sources are auto-located. Point each cache at the
+  real host directory you want mounted.
+- **Lazy → guarantee-create.** The legacy `[shared]` block mounted a cache *only
+  if the host dir already existed* (a missing dir was silently skipped). The
+  `caches` category emitter (rw) **creates a missing source** before binding it.
+  If you relied on the lazy "skip when absent" behavior, drop the key instead.
+
+There is **no migration code** — move your `[shared]` entries to `caches` keys by
+hand (and migrate any existing on-disk cache dirs yourself if you want to keep
+their contents).
 
 **Category precedence** (when two categories target the same `box_dest`, later wins):
 `seed → cache → binding → shared → synced → masks`. `seed`/`synced` are file copies;
@@ -193,6 +219,19 @@ The old default-agent selector `system.agent` is renamed to **`system.default_ag
 (to avoid the one-character clash with the `system.agents` store directory). It is a
 **setting** (behavior), not config — it lives in the settings file set despite its
 `system.*` name. `box.agent` falls back to it.
+
+### 3.2a Box-level `[paths]` keys removed
+
+The old box-level `[paths]` config table is gone. None of its keys are settable any
+more (`config set paths.* ` is rejected as unknown):
+
+| Old key | Status | Notes |
+|---|---|---|
+| `paths.shell` | **DELETED** (dead) | nothing read it |
+| `paths.vault` | **DELETED** | superseded by the vault bindings (`box.bindings.{ro,rw}.vault`) |
+| `paths.shared` | **DELETED** | was the shared-store dir-name leaf; the leaf is now the fixed internal name `shared` (no longer configurable). The shared-store machinery itself is unchanged — only the ability to rename the directory goes away. |
+
+Remove any `[paths]` table from your config/settings files.
 
 ### 3.3 XDG resolution
 
