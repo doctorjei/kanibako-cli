@@ -1,4 +1,4 @@
-"""E2E test for the ``rig create --template`` CLI path.
+"""E2E test for the ``rig prep <template>`` CLI path.
 
 A single end-to-end test proving the template-build wiring works against
 real podman: discovery → ``runtime.rebuild`` → image built → toolchain runs.
@@ -8,7 +8,6 @@ representative CLI-wiring smoke.
 The jvm template's Containerfile does ``FROM ...kanibako-oci:latest``; the
 session-scoped ``ensure_image_in_pinned_store`` fixture (conftest) pre-warms
 that image into the pinned store, so the FROM resolves inside the subprocess.
-We therefore run WITHOUT ``--base`` and let the template's declared base apply.
 """
 
 from __future__ import annotations
@@ -34,11 +33,11 @@ _podman = shutil.which("podman")
 BUILD_TIMEOUT = 600  # seconds
 
 
-class TestTemplateCreate:
-    """``rig create --template jvm`` builds a working JVM toolchain image."""
+class TestTemplatePrep:
+    """``rig prep jvm`` builds a working JVM toolchain image."""
 
-    def test_rig_create_template_jvm(self, e2e_env):
-        """create --template jvm → image exists and ``java -version`` runs.
+    def test_rig_prep_template_jvm(self, e2e_env):
+        """prep jvm → image exists and ``java -version`` runs.
 
         Uses conftest's ``run_kanibako`` helper (same isolated env that pins
         podman storage to the host store) but overrides its timeout to
@@ -46,21 +45,21 @@ class TestTemplateCreate:
         60s SUBPROCESS_TIMEOUT.
         """
         env = e2e_env["env"]
-        image_name = "kanibako-template-e2e-jvm"
+        image_name = "kanibako-template-jvm"
 
         assert _podman is not None, "podman required"
 
         try:
-            # 1. Build the template image via the real CLI (no --base: use the
-            #    template's declared base, which the pre-warmed oci image
-            #    satisfies). Long timeout for the toolchain install.
+            # 1. Build the bundled template image via the real CLI. The template's
+            #    declared base (the pre-warmed oci image) satisfies its FROM.
+            #    Long timeout for the toolchain install.
             result = run_kanibako(
-                ["rig", "create", "e2e-jvm", "--template", "jvm"],
+                ["rig", "prep", "jvm"],
                 env=env,
                 timeout=BUILD_TIMEOUT,
             )
             assert result.returncode == 0, (
-                f"rig create --template jvm failed (rc={result.returncode}):\n"
+                f"rig prep jvm failed (rc={result.returncode}):\n"
                 f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
             )
 

@@ -112,6 +112,16 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   the legacy `examples/kanibako-target-*` plugins, and the archived experimental
   Containerfiles are removed from the release tree (preserved on archival
   branches). A descriptor-based example will return later.
+- **Rename-class deprecation shims removed (clean break, no aliases left).**
+  - The `image` → `rig` and `container` → `box` command aliases are gone; use
+    `rig` and `box` directly.
+  - The deprecated `rig create` (and `rig create --template`) and `rig rebuild`
+    shims are removed. Use `rig prep <name>` to build/pull a rig, `rig prep
+    --force` to refresh one, and `rig extend` to build a custom rig
+    interactively. (Image-freshness notices now point to `rig prep --force`.)
+  - The `image` / `agent` short config-key aliases are removed; use the
+    canonical `box.image` / `box.agent`. The empty `_FIELD_ALIASES` config
+    scaffolding was also dropped.
 
 ### Added
 

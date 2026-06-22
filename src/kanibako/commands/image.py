@@ -1,4 +1,4 @@
-"""kanibako image: manage container images (list, create, info, rm, rebuild)."""
+"""kanibako rig: manage container rigs (prep, list, add, extend, info, rm)."""
 
 from __future__ import annotations
 
@@ -57,46 +57,13 @@ def _confirm(prompt: str) -> bool:
     return answer in ("y", "yes")
 
 
-def _deprecated(old: str, new: str) -> None:
-    """Print a one-line deprecation notice to stderr."""
-    print(f"note: '{old}' is deprecated; use '{new}'.", file=sys.stderr)
-
-
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "rig",
         help="Manage box rigs (images)",
-        description="Create, list, inspect, remove, or rebuild box rigs (container images).",
+        description="Prep, list, inspect, or remove box rigs (container images).",
     )
     image_sub = p.add_subparsers(dest="rig_command", metavar="COMMAND")
-
-    # kanibako image create
-    create_p = image_sub.add_parser(
-        "create",
-        help="Create a new template image from a base image",
-    )
-    create_p.add_argument("name", help="Template name (e.g. jvm, systems)")
-    create_p.add_argument(
-        "--base", default=None,
-        help="Base image to start from. With --template, defaults to the "
-             "template's declared base; without --template, defaults to "
-             "kanibako-oci.",
-    )
-    create_p.add_argument(
-        "--template",
-        help="Build a bundled template Containerfile (see 'kanibako rig list') "
-             "instead of an interactive session",
-    )
-    commit_group = create_p.add_mutually_exclusive_group()
-    commit_group.add_argument(
-        "--always-commit", action="store_true",
-        help="Commit template even if the container exits with an error",
-    )
-    commit_group.add_argument(
-        "--no-commit-on-error", action="store_true",
-        help="Skip commit if the container exits with an error",
-    )
-    create_p.set_defaults(func=run_create)
 
     # kanibako rig prep
     prep_p = image_sub.add_parser(
@@ -189,25 +156,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rm_p.set_defaults(func=run_rm)
 
-    # kanibako image rebuild
-    rebuild_p = image_sub.add_parser(
-        "rebuild",
-        help="Update container image(s) (pull or rebuild locally)",
-        description=(
-            "Pull the latest image from the registry, or rebuild locally\n"
-            "if a matching Containerfile is found."
-        ),
-    )
-    rebuild_p.add_argument(
-        "image", nargs="?", default=None,
-        help="Image to update (default: current configured image)",
-    )
-    rebuild_p.add_argument(
-        "--all", action="store_true", dest="all_images",
-        help="Update all local kanibako images",
-    )
-    rebuild_p.set_defaults(func=run_rebuild)
-
     # rig diagnose
     from kanibako.commands.diagnose import run_rig_diagnose
 
@@ -231,24 +179,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     # Default to list if no subcommand given
     p.set_defaults(func=run_list, quiet=False)
-
-
-def run_create(args: argparse.Namespace) -> int:
-    """Create a template image.
-
-    With ``--template`` builds a bundled ``Containerfile.template-<name>``;
-    otherwise runs an interactive container and commits it on exit.
-    """
-    if getattr(args, "template", None):
-        _deprecated("rig create --template", "rig prep")
-        return _create_from_template(args)
-
-    # Interactive create is now an alias for 'rig extend'. The base becomes the
-    # foundation rig, and the result is committed as kanibako-rig-<name> with a
-    # registry row -- that IS the migration.
-    _deprecated("rig create (interactive)", "rig extend")
-    args.from_ = args.base or "kanibako-oci"
-    return run_extend(args)
 
 
 def run_extend(args: argparse.Namespace) -> int:
@@ -384,71 +314,6 @@ def run_extend(args: argparse.Namespace) -> int:
         runtime.rm(container_name)
 
     return 0
-
-
-def _create_from_template(args: argparse.Namespace) -> int:
-    """Build a bundled template Containerfile into a local template image."""
-    template = args.template
-
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    containers_dir = std.data_path / "containers"
-
-    available = sorted(
-        t.name for t in list_bundled_templates(override_dir=containers_dir)
-    )
-    if template not in available:
-        print(
-            f"error: unknown template '{template}'. "
-            f"Available: {', '.join(available)}",
-            file=sys.stderr,
-        )
-        return 1
-
-    try:
-        image_name = template_image_name(args.name)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    containerfile = get_containerfile(f"template-{template}", containers_dir)
-    if containerfile is None:
-        print(
-            f"Error: Containerfile not found for template: {template}",
-            file=sys.stderr,
-        )
-        return 1
-
-    try:
-        runtime = ContainerRuntime()
-    except ContainerError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    build_args: dict[str, str] | None
-    if args.base is None:
-        # Let the Containerfile's declared ARG BASE_IMAGE default stand.
-        build_args = None
-        print(f"Building template '{template}' from its default base...")
-    else:
-        merged = load_merged_config(config_file, None)
-        base_image = resolve_image_name(args.base, merged.box_image)
-        build_args = {"BASE_IMAGE": base_image}
-        print(
-            f"Note: overriding template '{template}' default base "
-            f"with {base_image}."
-        )
-        print(f"Building template '{template}' from {base_image}...")
-    print()
-    rc = runtime.rebuild(image_name, containerfile, containerfile.parent, build_args=build_args)
-    if rc == 0:
-        print()
-        print(f"Template saved as {image_name}")
-    else:
-        print()
-        print(f"Build failed with exit code {rc}", file=sys.stderr)
-    return rc
 
 
 def _bare_repo(repo: str) -> str:
@@ -725,7 +590,7 @@ def run_rm(args: argparse.Namespace) -> int:
         if image_basename.startswith(_TEMPLATE_PREFIX):
             print(f"Rig '{image}' is a local template (not recoverable from registry).")
         else:
-            print(f"Rig '{image}' may be recoverable via 'kanibako rig rebuild'.")
+            print(f"Rig '{image}' may be recoverable via 'kanibako rig prep --force'.")
 
         if not _confirm(f"Remove image '{image}'?"):
             print("Cancelled.")
@@ -1048,33 +913,6 @@ def run_add(args: argparse.Namespace) -> int:
         f"Run 'kanibako rig prep {name}' to pull it."
     )
     return 0
-
-
-def run_rebuild(args: argparse.Namespace) -> int:
-    """Update container image(s): auto-detect local build vs registry pull."""
-    _deprecated("rig rebuild", "rig prep --force")
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    try:
-        runtime = ContainerRuntime()
-    except ContainerError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    if args.all_images:
-        return _update_all(runtime, std)
-
-    # Determine which image to update
-    merged = load_merged_config(config_file, None)
-    image = args.image
-    if image is None:
-        image = merged.box_image
-    else:
-        image = resolve_image_name(image, merged.box_image)
-
-    return _update_one(runtime, image, std)
 
 
 def _pull_one(runtime: ContainerRuntime, image: str, std=None) -> int:

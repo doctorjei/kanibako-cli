@@ -313,23 +313,23 @@ class TestParser:
         assert args.command == "rig"
         assert args.rig_command == "list"
 
-    def test_rig_rebuild(self):
+    def test_rig_prep(self):
         parser = build_parser()
-        args = parser.parse_args(["rig", "rebuild"])
+        args = parser.parse_args(["rig", "prep"])
         assert args.command == "rig"
-        assert args.rig_command == "rebuild"
-        assert args.image is None
-        assert args.all_images is False
+        assert args.rig_command == "prep"
 
-    def test_rig_rebuild_specific(self):
+    def test_rig_prep_force_all(self):
         parser = build_parser()
-        args = parser.parse_args(["rig", "rebuild", "kanibako-oci:latest"])
-        assert args.image == "kanibako-oci:latest"
-
-    def test_rig_rebuild_all(self):
-        parser = build_parser()
-        args = parser.parse_args(["rig", "rebuild", "--all"])
+        args = parser.parse_args(["rig", "prep", "--all", "--force"])
         assert args.all_images is True
+        assert args.force is True
+
+    def test_rig_rebuild_removed(self):
+        """W2a: the deprecated 'rig rebuild' shim was removed."""
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["rig", "rebuild"])
 
     def test_system_command(self):
         parser = build_parser()
@@ -833,8 +833,6 @@ class TestParser:
             "start", "stop", "shell", "ps", "list", "create", "rm",
             # Management commands
             "box", "rig", "workset", "agent", "system", "baseline",
-            # Command aliases (#62)
-            "image", "container",
             # Setup wizard
             "setup",
         }
@@ -844,20 +842,18 @@ class TestParser:
         from kanibako.cli import _SUBCOMMANDS
         assert "agent" in _SUBCOMMANDS
 
-    def test_rig_alias_in_subcommands(self):
+    def test_rig_in_subcommands(self):
         from kanibako.cli import _SUBCOMMANDS
         assert "rig" in _SUBCOMMANDS
 
-    def test_container_alias_in_subcommands(self):
+    def test_image_container_aliases_removed(self):
+        """W2a: the deprecated image→rig / container→box command aliases are gone."""
         from kanibako.cli import _SUBCOMMANDS
-        assert "container" in _SUBCOMMANDS
-
-    def test_command_aliases_mapping(self):
-        from kanibako.cli import _COMMAND_ALIASES
-        assert _COMMAND_ALIASES == {
-            "image": "rig",
-            "container": "box",
-        }
+        assert "image" not in _SUBCOMMANDS
+        assert "container" not in _SUBCOMMANDS
+        # The translation table itself was removed entirely.
+        import kanibako.cli as cli_mod
+        assert not hasattr(cli_mod, "_COMMAND_ALIASES")
 
 
 class TestLazyInitExemptions:
@@ -955,7 +951,8 @@ class TestVerboseFlag:
         parser = build_parser()
         assert "COMMANDS" in parser.epilog
         assert "SHORTCUTS" in parser.epilog
-        assert "ALIASES" in parser.epilog
+        # W2a: the image→rig / container→box ALIASES block was removed.
+        assert "ALIASES" not in parser.epilog
 
     def test_help_description(self):
         parser = build_parser()

@@ -50,10 +50,6 @@ _DEFAULTS = {
     "box_shell": "",
 }
 
-# Backward-compat aliases: old field name -> new field name.
-# Applied during load_config() so old config files still work.
-_FIELD_ALIASES: dict[str, str] = {}
-
 
 @dataclass
 class KanibakoConfig:
@@ -212,8 +208,6 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
     valid_keys = {fld.name for fld in fields(KanibakoConfig)}
     present: dict[str, object] = {}
     for k, v in flat.items():
-        # Apply backward-compat aliases.
-        k = _FIELD_ALIASES.get(k, k)
         if k in valid_keys:
             present[k] = v
     return present

@@ -16,10 +16,11 @@ class TestTemplateRemoved:
         except ModuleNotFoundError:
             pass
 
-    def test_rig_create_replaces_template_create(self):
+    def test_rig_prep_replaces_template_create(self):
+        """The live template path is 'rig prep' (W2a removed the 'rig create' shim)."""
         from kanibako.cli import build_parser
         parser = build_parser()
-        args = parser.parse_args(["rig", "create", "jvm"])
+        args = parser.parse_args(["rig", "prep", "jvm"])
         assert args.command == "rig"
-        assert args.rig_command == "create"
+        assert args.rig_command == "prep"
         assert args.name == "jvm"
