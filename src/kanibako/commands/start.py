@@ -1262,10 +1262,16 @@ def _run_container(
             # the single source of truth for the runtime base.
             _run_dir = std.runtime
             _run_dir.mkdir(parents=True, exist_ok=True)
-            # Socket name derives from the (globally unique) box name alone,
-            # bounded so a long standalone leaf can't overflow ``sun_path``.
+            # Socket name = ``<box>-<ws>`` (box name + workset-name token), so a
+            # project name reused across worksets gets a distinct socket.  The
+            # combined identity is bounded so a long name can't overflow
+            # ``sun_path``; reattach recomputes the same deterministic name.
+            from kanibako.channels import workset_name_token
             _box_name = proj.name if proj.name else short_hash(proj.project_hash)
-            socket_path = _run_dir / bounded_socket_name(_box_name, _run_dir)
+            _ws_token = workset_name_token(proj)
+            socket_path = _run_dir / bounded_socket_name(
+                f"{_box_name}-{_ws_token}", _run_dir,
+            )
             validate_socket_path(socket_path)
             _log_id = proj.name if proj.name else short_hash(proj.project_hash)
             log_dir = std.data_path / "logs" / _log_id
@@ -2409,20 +2415,22 @@ def _rotate_file(path: Path) -> None:
 _SOCKET_HASH_LEN = 16
 
 
-def bounded_socket_name(box_name: str, run_dir: Path) -> str:
-    """Return a bounded, deterministic ``.sock`` basename for *box_name*.
+def bounded_socket_name(identity: str, run_dir: Path) -> str:
+    """Return a bounded, deterministic ``.sock`` basename for *identity*.
 
-    The host helper socket lives at ``run_dir / <name>``.  ``box.meta.name`` is
-    already globally unique, so the socket name derives from it ALONE (no
-    redundant workset suffix).  When ``<box_name>.sock`` fits under the AF_UNIX
-    limit at *run_dir* it is used verbatim; otherwise the name is replaced by a
-    fixed-width SHA-256 prefix of *box_name* (deterministic per box — so a later
-    reattach computes the same socket — and collision-safe across boxes).
+    The host helper socket lives at ``run_dir / <name>``.  *identity* is the
+    combined ``<box>-<ws>`` string (box name + workset-name token, per
+    ``@system.runtime/<box>-<ws>.sock``) — the box name alone is NOT unique
+    across worksets that reuse a project name, so the ws token is required.
+    When ``<identity>.sock`` fits under the AF_UNIX limit at *run_dir* it is
+    used verbatim; otherwise the name is replaced by a fixed-width SHA-256
+    prefix of *identity* (deterministic per identity — so a later reattach
+    computes the same socket — and collision-safe across boxes).
     """
-    verbatim = f"{box_name}.sock"
+    verbatim = f"{identity}.sock"
     if len(str(run_dir / verbatim)) < _UNIX_SOCKET_PATH_LIMIT:
         return verbatim
-    return f"{short_hash(project_hash(box_name), _SOCKET_HASH_LEN)}.sock"
+    return f"{short_hash(project_hash(identity), _SOCKET_HASH_LEN)}.sock"
 
 
 def validate_socket_path(socket_path: Path) -> None:

@@ -603,6 +603,11 @@ unchanged. In-box tooling/scripts that referenced the old literal socket/log pat
 should use the XDG-derived path. No host-side hand-migration is required — these are
 recreated per box launch.
 
+The **host-side** helper socket basename is now `<box>-<ws>.sock` (was `<box>.sock`),
+where `<ws>` is the workset-name token (`__PRIMARY__` / `<named>` / `__STANDALONE__`),
+so a project name reused across worksets gets a distinct socket. It lives under
+`@system.runtime` and is recreated per launch — no hand-migration needed.
+
 ### 7.5 Move / convert relocates the owning box's partition (best-effort)
 
 A box's mailbox/share partition key is the workset name, so moving a box between

@@ -113,9 +113,24 @@ class TestBoundedSocketName:
     """``bounded_socket_name`` keeps the socket under the AF_UNIX limit."""
 
     def test_short_name_verbatim(self):
-        """A short box name is used verbatim as ``<name>.sock``."""
+        """A short combined identity is used verbatim as ``<identity>.sock``."""
         run_dir = Path("/run/user/1000/kanibako")
         assert bounded_socket_name("myproj", run_dir) == "myproj.sock"
+
+    def test_combined_box_ws_identity_verbatim(self):
+        """The host socket basename is ``<box>-<ws>.sock`` (FIX K)."""
+        run_dir = Path("/run/user/1000/kanibako")
+        assert (
+            bounded_socket_name("myproj-__PRIMARY__", run_dir)
+            == "myproj-__PRIMARY__.sock"
+        )
+
+    def test_same_box_distinct_ws_distinct_sockets(self):
+        """A box name reused across worksets gets distinct sockets via the token."""
+        run_dir = Path("/run/user/1000/kanibako")
+        primary = bounded_socket_name("app-__PRIMARY__", run_dir)
+        named = bounded_socket_name("app-myset", run_dir)
+        assert primary != named
 
     def test_worst_case_standalone_name_under_limit(self):
         """A ``<random24>_<32-char-leaf>`` name in a deep runtime dir fits."""
