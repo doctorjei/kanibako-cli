@@ -872,17 +872,17 @@ def _primary_box_paths(
 
 
 def _workset_box_paths(
-    metadata_path: Path, vault_base: Path,
+    metadata_path: Path, vault_base: Path, box_name: str,
 ) -> tuple[Path, Path, Path]:
     """Fixed NAMED-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
 
     Shell under the per-project box dir; vault under the workset's vault dir
-    (``<vault_base>/{ro,rw}``).  Matches the former ``robust`` workset layout
-    (the prior default for named worksets).
+    (``<vault_base>/{ro,rw}/<box_name>``).  The ro/rw split nests ABOVE the box
+    name to match PRIMARY (``vault/{ro,rw}/<box>``) and STANDALONE.
     """
     shell = metadata_path / "home"
-    vault_ro = vault_base / "ro"
-    vault_rw = vault_base / "rw"
+    vault_ro = vault_base / "ro" / box_name
+    vault_rw = vault_base / "rw" / box_name
     return shell, vault_ro, vault_rw
 
 
@@ -1201,7 +1201,7 @@ def resolve_workset_project(
     ``Workset`` object pass ``WorksetSpec.from_workset(ws)``.
 
     Phase 5: no layout axis — shell under the per-project box dir, vault under
-    the workset vault dir (``<ws.vault_dir>/<name>/{ro,rw}``).
+    the workset vault dir (``<ws.vault_dir>/{ro,rw}/<name>``).
 
     Raises ``WorksetError`` if *project_name* is not registered in *ws*.
     """
@@ -1225,7 +1225,7 @@ def resolve_workset_project(
     if meta and meta.get("workspace"):
         project_path = Path(meta["workspace"])
     _ws_shell, _ws_vro, _ws_vrw = _workset_box_paths(
-        metadata_path, ws.vault_dir / project_name,
+        metadata_path, ws.vault_dir, project_name,
     )
     if meta:
         shell_path = Path(meta["shell"]) if meta["shell"] else _ws_shell
