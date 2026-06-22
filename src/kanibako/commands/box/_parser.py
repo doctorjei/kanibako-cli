@@ -1052,13 +1052,24 @@ def run_info(args: argparse.Namespace) -> int:
 
     container_running, container_detail = _check_container_running(proj)
 
-    # Resolve target for credential check path
+    # Resolve target for credential check path.  This is an INFORMATIONAL
+    # display (box status), not an agent-requiring launch — so a resolution
+    # failure (no default + 2+ agents, 0 agents, adapter missing) degrades to
+    # "n/a (no target)" rather than erroring out.  Uses the unified
+    # resolve_agent cascade (workset_agent=None: merged.box_agent already folds
+    # the workset tier).
     try:
-        from kanibako.config import resolve_box_agent
-        # system.default_agent is a SETTING → system settings file.
-        target = resolve_target(resolve_box_agent(merged.box_agent, std.settings))
+        from kanibako.config import resolve_agent
+        agent_name = resolve_agent(
+            explicit_agent=None,
+            box_agent=merged.box_agent,
+            workset_agent=None,
+            system_default_path=std.settings,
+            project_path=proj.project_path,
+        )
+        target = resolve_target(agent_name, proj.project_path)
         creds_file = target.credential_check_path(proj.shell_path)
-    except (KeyError, Exception):
+    except Exception:
         creds_file = None
     cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
 
@@ -1209,12 +1220,20 @@ def run_config(args: argparse.Namespace) -> int:
                 workset_path=workset_path,
             )
             try:
-                from kanibako.config import resolve_box_agent
-                # system.default_agent is a SETTING → system settings file.
-                target = resolve_target(
-                    resolve_box_agent(merged.box_agent, std.settings)
+                from kanibako.config import resolve_agent
+                # Informational --effective display: tolerate a resolution
+                # failure (degrade to the "general" no-agent state below)
+                # rather than erroring.  Unified cascade; workset_agent=None
+                # since merged.box_agent already folds the workset tier.
+                agent_name = resolve_agent(
+                    explicit_agent=None,
+                    box_agent=merged.box_agent,
+                    workset_agent=None,
+                    system_default_path=std.settings,
+                    project_path=proj.project_path,
                 )
-            except (KeyError, Exception):
+                target = resolve_target(agent_name, proj.project_path)
+            except Exception:
                 target = None
             agent_id = target.name if target else "general"
             agent_cfg_path = agent_settings_path(std.agents, agent_id)

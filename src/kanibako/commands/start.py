@@ -204,32 +204,13 @@ def run_start(args: argparse.Namespace) -> int:
     safe_mode = secure
     autonomous = getattr(args, "autonomous", False)
 
-    # Check for agent before launching container.
-    # If no agent is detected, show a helpful message instead of silently
-    # launching a plain shell.  run_shell() is not affected.
-    from kanibako.targets.no_agent import NoAgentTarget
-    from kanibako.config import resolve_box_agent
-    _cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    # system.default_agent is a SETTING → read from @system.settings
-    # (global/settings.yaml), not the kanibako.yaml CONFIG file.
-    _sys_settings = load_std_paths(load_config(_cfg_file)).settings
-    try:
-        target = resolve_target(resolve_box_agent(None, _sys_settings))
-    except KeyError:
-        # A configured system.default_agent whose plugin is not installed:
-        # defer the actionable error to the real launch path; fall back to
-        # auto-detect for this pre-launch guard so the message stays friendly.
-        target = resolve_target()
-    if isinstance(target, NoAgentTarget):
-        print()
-        print("No agents detected.")
-        print()
-        print("  Install a plugin:  pip install kanibako-agent-claude")
-        print("  Run setup wizard:  kanibako setup")
-        print("  Health check:      kanibako system diagnose")
-        print("  Plain sandbox:     kanibako shell")
-        print()
-        return 0
+    # Agent resolution happens UP FRONT inside _run_container via the unified
+    # resolve_agent cascade (explicit > box > workset > system default → the
+    # installed-count rule).  Nothing-resolved on this agent-requiring command
+    # raises a typed AgentResolutionError (Gate-2a/2b) which the top-level
+    # cli.py handler surfaces verbatim with a non-zero exit — NEVER a silent
+    # drop to shell.  `kanibako shell` (run_shell) bypasses this entirely.
+    explicit_agent = getattr(args, "agent", None)  # Phase D seam (--agent flag)
 
     return _run_container(
         project_dir=project_dir,
@@ -247,6 +228,7 @@ def run_start(args: argparse.Namespace) -> int:
         persistent=persistent,
         model_override=model_override,
         cli_env=env_vars,
+        explicit_agent=explicit_agent,
     )
 
 
@@ -578,6 +560,7 @@ def _run_container(
     model_override: str | None = None,
     cli_env: list[str] | None = None,
     box_shell_mode: bool = False,
+    explicit_agent: str | None = None,
     _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -706,19 +689,22 @@ def _run_container(
     target = None
     install = None
     if is_agent_mode:
-        from kanibako.config import resolve_box_agent
-        # system.default_agent is a SETTING → read from the system settings file.
-        agent_name = resolve_box_agent(merged.box_agent, system_settings_path)
-        try:
-            target = resolve_target(agent_name)
-        except KeyError as e:
-            print(
-                f"Error: {e}\n"
-                f"Run 'kanibako agent list' to see available agents, or\n"
-                f"'kanibako system diagnose' for a full health check.",
-                file=sys.stderr,
-            )
-            return 1
+        from kanibako.config import resolve_agent
+        # Resolve the agent via the full cascade (explicit > box > workset >
+        # system default), then the installed-count rule.  workset_agent=None:
+        # merged.box_agent already folds the workset tier (load_merged_config
+        # overlays workset then box).  system.default_agent is a SETTING read
+        # from the system settings file.  resolve_agent raises typed
+        # AgentResolutionError subclasses (Gate-2a/2b / adapter-missing) which
+        # the top-level cli.py handler surfaces verbatim with a non-zero exit.
+        agent_name = resolve_agent(
+            explicit_agent=explicit_agent,
+            box_agent=merged.box_agent,
+            workset_agent=None,
+            system_default_path=system_settings_path,
+            project_path=proj.project_path,
+        )
+        target = resolve_target(agent_name, proj.project_path)
         logger.debug("Resolved target: %s", target.display_name)
         # First detect: early-out / "is the agent present on the host". The
         # "Using host ...:" line is deferred until after prepare_host() (the

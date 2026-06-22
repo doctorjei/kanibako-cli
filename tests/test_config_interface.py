@@ -763,43 +763,6 @@ class TestSystemConfigFileOnly:
         assert read_setup_completed(cf) == "1.6.0"
 
 
-class TestResolveBoxAgent:
-    """config.resolve_box_agent — the box.agent → system.default_agent chain."""
-
-    def test_explicit_box_agent_wins(self, tmp_path):
-        from kanibako.config import resolve_box_agent
-
-        cf = tmp_path / "kanibako.yaml"
-        _seed_default_agent(cf, "goose")
-        # Explicit box.agent overrides system.default_agent.
-        assert resolve_box_agent("claude", cf) == "claude"
-
-    def test_falls_back_to_system_default(self, tmp_path):
-        from kanibako.config import resolve_box_agent
-
-        cf = tmp_path / "kanibako.yaml"
-        _seed_default_agent(cf, "claude")
-        # box.agent empty -> system.default_agent.
-        assert resolve_box_agent("", cf) == "claude"
-        assert resolve_box_agent(None, cf) == "claude"
-
-    def test_both_unset_returns_none(self, tmp_path):
-        from kanibako.config import resolve_box_agent
-
-        cf = tmp_path / "kanibako.yaml"
-        cf.touch()
-        # Neither set -> None -> today's auto-detect (no regression).
-        assert resolve_box_agent("", cf) is None
-        assert resolve_box_agent(None, cf) is None
-
-    def test_no_config_file_returns_none(self, tmp_path):
-        from kanibako.config import resolve_box_agent
-
-        cf = tmp_path / "missing.yaml"
-        assert resolve_box_agent("", cf) is None
-        assert resolve_box_agent(None, None) is None
-
-
 class TestSystemSettingsTierSplit:
     """SYSTEM scope: SETTINGS route to @system.settings (global/settings.yaml),
     while system.* CONFIG keys stay in kanibako.yaml — the config/settings split.
@@ -900,12 +863,11 @@ class TestSystemSettingsTierSplit:
 
     def test_absent_settings_file_is_graceful(self, tmp_path):
         """Missing global/settings.yaml → empty system tier, no error."""
-        from kanibako.config import read_default_agent, resolve_box_agent
+        from kanibako.config import read_default_agent
 
         cf = tmp_path / "kanibako.yaml"
         ssp = tmp_path / "global" / "settings.yaml"  # never created
         assert read_default_agent(ssp) is None
-        assert resolve_box_agent(None, ssp) is None
         assert get_config_value(
             "system.default_agent", global_config_path=cf, system_settings_path=ssp,
         ) is None

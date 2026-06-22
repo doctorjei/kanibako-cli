@@ -364,7 +364,13 @@ def _show_agent_config(
 
 def run_reauth(args: argparse.Namespace) -> int:
     """Check authentication and login if needed."""
-    from kanibako.config import config_file_path, load_config
+    from kanibako.config import (
+        BOX_META_FILE,
+        config_file_path,
+        load_config,
+        load_merged_config,
+        resolve_agent,
+    )
     from kanibako.paths import xdg, load_std_paths, resolve_any_project
     from kanibako.targets import resolve_target
 
@@ -375,11 +381,28 @@ def run_reauth(args: argparse.Namespace) -> int:
     std = load_std_paths(config)
     proj = resolve_any_project(std, config, getattr(args, "project", None))
 
-    try:
-        target = resolve_target(config.box_agent or None)
-    except KeyError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    # Resolve the agent UP FRONT via the unified cascade (explicit > box >
+    # workset > system default → installed-count rule).  reauth is an
+    # agent-requiring command, so a resolution failure raises a typed
+    # AgentResolutionError that the top-level cli.py handler surfaces verbatim
+    # (Gate-2a/2b) with a non-zero exit — never a silent fall-through.
+    project_toml = proj.metadata_path / BOX_META_FILE
+    workset_path = (
+        (proj.group.root / "settings.yaml") if proj.group is not None else None
+    )
+    merged = load_merged_config(
+        config_file,
+        project_toml if project_toml.exists() else None,
+        workset_path=workset_path,
+    )
+    agent_name = resolve_agent(
+        explicit_agent=getattr(args, "agent", None),  # Phase D seam (--agent)
+        box_agent=merged.box_agent,
+        workset_agent=None,  # merged.box_agent already folds the workset tier
+        system_default_path=std.settings,
+        project_path=proj.project_path,
+    )
+    target = resolve_target(agent_name, proj.project_path)
 
     if not target.has_binary:
         print("No agent target configured.", file=sys.stderr)

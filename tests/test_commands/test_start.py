@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from kanibako.commands.start import _apply_tweakcc, _run_container, run_start
 
 
@@ -1698,7 +1700,14 @@ class TestBrowserSidecar:
 
 
 class TestNoAgentMessage:
-    """Verify run_start prints a message when no agent is detected."""
+    """Verify run_start's no-agent behavior under the W1 unified resolver.
+
+    The old pre-launch "No agents detected." guard (which returned 0) is GONE:
+    agent resolution now happens UP FRONT inside _run_container via
+    resolve_agent, which raises a typed AgentResolutionError (Gate-2a/2b) that
+    the top-level cli.py handler surfaces verbatim with a non-zero exit — never
+    a silent return 0 / drop to shell.
+    """
 
     @staticmethod
     def _make_start_args(**overrides):
@@ -1725,32 +1734,29 @@ class TestNoAgentMessage:
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
 
-    def test_start_no_agent_shows_message(self, capsys):
-        """When no agent is detected, run_start prints a helpful message and returns 0."""
-        from kanibako.targets.no_agent import NoAgentTarget
-
-        with patch("kanibako.commands.start.resolve_target", return_value=NoAgentTarget()):
+    def test_start_forwards_to_run_container(self):
+        """run_start no longer guards — it forwards straight to _run_container
+        (which owns resolution).  No 'No agents detected.' short-circuit."""
+        with patch("kanibako.commands.start._run_container", return_value=0) as mock_run:
             args = self._make_start_args()
             rc = run_start(args)
-
         assert rc == 0
-        captured = capsys.readouterr()
-        assert "No agents detected." in captured.out
-        assert "kanibako setup" in captured.out
-        assert "kanibako shell" in captured.out
-        assert "kanibako system diagnose" in captured.out
+        mock_run.assert_called_once()
+        # The --agent seam is threaded (None until Phase D wires the flag).
+        assert mock_run.call_args.kwargs["explicit_agent"] is None
 
-    def test_start_no_agent_does_not_launch_container(self, capsys):
-        """When no agent is detected, _run_container is never called."""
-        from kanibako.targets.no_agent import NoAgentTarget
+    def test_start_no_agent_resolution_error_propagates(self):
+        """0 agents installed → resolve_agent raises NoAgentInstalledError from
+        _run_container; run_start does NOT swallow it into a return 0."""
+        from kanibako.errors import NoAgentInstalledError
 
-        with (
-            patch("kanibako.commands.start.resolve_target", return_value=NoAgentTarget()),
-            patch("kanibako.commands.start._run_container") as mock_run,
+        with patch(
+            "kanibako.commands.start._run_container",
+            side_effect=NoAgentInstalledError("no agents"),
         ):
             args = self._make_start_args()
-            run_start(args)
-            mock_run.assert_not_called()
+            with pytest.raises(NoAgentInstalledError):
+                run_start(args)
 
     def test_shell_still_works_without_agent(self, start_mocks):
         """run_shell calls _run_container directly — no agent check."""
@@ -2607,6 +2613,25 @@ class TestRunShellBoxShell:
             m_resolve.assert_called_once()
             m.resolve_target.assert_not_called()
             assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/zsh"
+
+    def test_shell_bypasses_agent_resolution_with_no_or_many_agents(self, start_mocks):
+        """`kanibako shell` reaches the container even when agent resolution
+        WOULD fail (0 agents, or 2+ with no default).  box_shell_mode must never
+        call config.resolve_agent — so a Gate-2a/2b error can never abort shell."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m:
+            # If shell ever resolved an agent it would blow up here.
+            m.resolve_agent.side_effect = AssertionError(
+                "shell must not resolve an agent"
+            )
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/zsh", "box.shell"),
+            ):
+                rc = run_shell(self._args())
+            assert rc == 0
+            m.resolve_agent.assert_not_called()
+            m.resolve_target.assert_not_called()
 
     def test_persistent_wraps_resolved_shell(self, start_mocks):
         """`kanibako shell --persistent` bootstrap-wraps the resolved shell."""

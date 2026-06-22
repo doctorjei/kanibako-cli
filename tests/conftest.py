@@ -242,6 +242,15 @@ def start_mocks():
             patch("kanibako.commands.start.load_merged_config") as m_merged,
             patch("kanibako.commands.start.ContainerRuntime") as m_rt_cls,
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
+            # W1 unified resolver: _run_container resolves the agent name via
+            # config.resolve_agent (cascade + installed-count rule) BEFORE
+            # resolve_target.  Patch it to a fixed name so _run_container tests
+            # don't depend on the host's installed-agent set (which would
+            # otherwise trigger Gate-2a with the meta package's 3 adapters).
+            # Tests exercising the no-agent / ambiguous paths re-patch it.
+            patch(
+                "kanibako.config.resolve_agent", return_value="claude",
+            ) as m_resolve_agent,
             patch("kanibako.commands.start._upgrade_shell"),
             patch("kanibako.templates.apply_template_layers"),
             # Channel mounts run through the real category resolver + L7
@@ -390,6 +399,7 @@ def start_mocks():
                 proj=proj,
                 merged=merged,
                 resolve_target=m_resolve_target,
+                resolve_agent=m_resolve_agent,
                 target=target,
                 agent_cfg=agent_cfg,
                 load_agent_config=m_load_agent_cfg,
