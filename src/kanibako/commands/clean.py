@@ -6,9 +6,10 @@ import argparse
 import shutil
 import sys
 
-from kanibako.config import load_config
+from kanibako.config import BOX_META_FILE, load_config
 from kanibako.errors import UserCancelled
 from kanibako.paths import (
+    _STANDALONE_META_DIR,
     BoxMode,
     helper_log_path,
     load_std_paths,
@@ -109,7 +110,14 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     """Purge session data for a single project."""
     proj = resolve_any_project(std, config, project_dir=path, initialize=False)
 
-    if not proj.metadata_path.is_dir():
+    # For standalone, metadata_path IS the project root (drift I); the actual
+    # box metadata lives in box_data/ + the root settings.yaml + vault/.  "No
+    # session data" means no box_data/ marker dir (the root always exists).
+    if proj.mode is BoxMode.standalone:
+        if not (proj.metadata_path / _STANDALONE_META_DIR).is_dir():
+            print(f"No session data found for project {proj.project_path}")
+            return 0
+    elif not proj.metadata_path.is_dir():
         print(f"No session data found for project {proj.project_path}")
         return 0
 
@@ -128,18 +136,26 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             return 2
 
     print("Removing session data... ", end="", flush=True)
-    shutil.rmtree(proj.metadata_path)
-    # Phase 5: PRIMARY vault lives under @system.primary_workset (not under
-    # metadata_path), so remove the per-box ro/rw dirs explicitly.
-    if proj.mode is BoxMode.primary:
-        for vault_dir in (proj.vault_ro_path, proj.vault_rw_path):
-            if vault_dir.is_dir():
-                shutil.rmtree(vault_dir, ignore_errors=True)
-
-    # Remove the per-box helper log if it exists.  It now lives in the box's
-    # own workset/box tree (per-mode), not the old shared @system.data/logs/.
+    # Remove the per-box helper log first (its path is derived from the box's
+    # tree, which the rmtree below may take with it for standalone).
     log_file = helper_log_path(std, proj)
     log_file.unlink(missing_ok=True)
+
+    if proj.mode is BoxMode.standalone:
+        # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
+        # artifacts (box_data/ + root settings.yaml + vault/), never the root.
+        root = proj.metadata_path
+        shutil.rmtree(root / _STANDALONE_META_DIR, ignore_errors=True)
+        (root / BOX_META_FILE).unlink(missing_ok=True)
+        shutil.rmtree(root / "vault", ignore_errors=True)
+    else:
+        shutil.rmtree(proj.metadata_path)
+        # Phase 5: PRIMARY vault lives under @system.primary_workset (not under
+        # metadata_path), so remove the per-box ro/rw dirs explicitly.
+        if proj.mode is BoxMode.primary:
+            for vault_dir in (proj.vault_ro_path, proj.vault_rw_path):
+                if vault_dir.is_dir():
+                    shutil.rmtree(vault_dir, ignore_errors=True)
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
     # entry too — otherwise registry.{projects,standalone} keeps a dangling

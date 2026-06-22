@@ -202,8 +202,10 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_standalone=True))
         assert rc == 0
-        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
+        # Drift I: settings.yaml at the ROOT (box_data/ is the marker dir).
+        meta = read_project_meta(pdir / "settings.yaml")
         assert meta["mode"] == "standalone"
+        assert (pdir / "box_data").is_dir()
 
     def test_convert_to_default_inplace(self, env):
         config, std, tmp_home = env
@@ -234,7 +236,10 @@ class TestConvert:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest)))
         assert rc == 0
         assert dest.is_dir()
-        assert (dest / "box_data" / "settings.yaml").is_file()
+        # Drift I: settings.yaml at the root; drift H: files in workspace/ subdir.
+        assert (dest / "settings.yaml").is_file()
+        assert (dest / "box_data").is_dir()
+        assert (dest / "workspace" / "file.txt").read_text() == "cm"
         assert not pdir.exists()
 
     def test_convert_bare_move_into_workset(self, env):
@@ -336,7 +341,10 @@ class TestLockGuard:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest), force=True))
         assert rc == 0
         assert dest.is_dir()
-        assert (dest / "box_data" / "settings.yaml").is_file()
+        # Drift I: settings.yaml at the root; drift H: files in workspace/ subdir.
+        assert (dest / "settings.yaml").is_file()
+        assert (dest / "box_data").is_dir()
+        assert (dest / "workspace" / "file.txt").read_text() == "live"
         assert not pdir.exists()
 
 

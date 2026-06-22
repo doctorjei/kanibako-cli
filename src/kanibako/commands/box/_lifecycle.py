@@ -736,6 +736,20 @@ def _run_steps(
         # ws->ws repoint (handled in ownership). Treat dest as the new recorded
         # location only when it is the destination of an internalizing move.
         new_workspace = dest
+    elif (
+        not records_only
+        and not relocating
+        and state.mode is BoxMode.standalone
+        and target_mode is not BoxMode.standalone
+    ):
+        # Reverse of drift H: a standalone source roots its live workspace at the
+        # ``<root>/workspace`` SUBDIR, but a non-standalone box roots at the
+        # project dir itself.  On an in-place convert OUT of standalone, lift the
+        # workspace files back up to the root and root the converted box there
+        # (so the project stays at the dir the user is in, not a subdir).
+        root = state.workspace_path.parent
+        _unconsolidate_workspace_subdir(state.workspace_path, root, unwind)
+        new_workspace = root
 
     # ------------------------------------------------------------------
     # STEP 4 (ownership) is interleaved with STEP 3 (markers) because the
@@ -859,7 +873,10 @@ def _remove_old_metadata(
 ) -> None:
     """Remove the source project's metadata/shell (+ PRIMARY vault).
 
-    Standalone source: removes the in-tree ``.kanibako`` metadata dir.
+    Standalone source: removes the in-tree kanibako artifacts (the ``box_data/``
+    marker dir + the root ``settings.yaml`` + ``vault/``) — NOT the project root
+    itself (which for standalone IS ``metadata_path``: deleting it would wipe the
+    user's whole project dir + the already-converted destination).
     Primary source: unregisters the name, removes the boxes metadata dir and
     the PRIMARY-workset vault dir (which Phase 5 moved out of the workspace).
     Workset source: removes the workset registration (std-aware) so external
@@ -880,8 +897,18 @@ def _remove_old_metadata(
                 registry_store.unregister_standalone(std.data_path, state.name)
             except Exception:  # noqa: BLE001
                 pass
-        if state.metadata_path.is_dir():
-            shutil.rmtree(state.metadata_path, ignore_errors=True)
+        # metadata_path is the standalone ROOT (drift I); remove only the
+        # kanibako artifacts living in it, never the root itself.
+        root = state.metadata_path
+        box_data = root / _STANDALONE_META_DIR
+        if box_data.is_dir():
+            shutil.rmtree(box_data, ignore_errors=True)
+        settings = root / BOX_META_FILE
+        if settings.is_file():
+            settings.unlink()
+        vault = root / "vault"
+        if vault.is_dir():
+            shutil.rmtree(vault, ignore_errors=True)
         return
 
     if state.mode == BoxMode.primary:
@@ -997,6 +1024,99 @@ def _to_default(
     )
 
 
+#: Top-level entries that are kanibako artifacts (NOT workspace content) and so
+#: must stay at the standalone root rather than move into the ``workspace/``
+#: subdir during a convert (drift H consolidation).
+_STANDALONE_ROOT_ARTIFACTS = frozenset({
+    _STANDALONE_META_DIR,   # box_data/
+    "workspace",            # the subdir we are populating
+    "vault",                # vault/{ro,rw}
+    "settings.yaml",        # the box meta (drift I — at the root)
+    ".kanibako",            # legacy marker dir
+    "kanibako",             # legacy marker dir
+    ".kanibako.lock",       # lock file
+})
+
+
+def _consolidate_workspace_subdir(
+    root: Path,
+    workspace_subdir: Path,
+    unwind: _Unwind,
+) -> None:
+    """Move the project's top-level files into the ``workspace/`` subdir.
+
+    Drift H: a standalone box's live workspace is the ``<root>/workspace/``
+    SUBDIR, not the root itself.  On an in-place convert the user's project
+    files currently sit AT the root; relocate everything that is not a kanibako
+    artifact (see :data:`_STANDALONE_ROOT_ARTIFACTS`) into the subdir so the
+    bind source matches the resolved layout.  A no-op when there is nothing to
+    move (e.g. an empty root or files already consolidated).  Each move is
+    pushed onto *unwind* so a later failure restores the original placement.
+
+    *root* always holds the project's current files at this point in the convert
+    (in-place: the source dir; relocating: the copy STEP 2 made at *dest*;
+    external-in-place: the external dir that is BECOMING the standalone root), so
+    consolidation applies uniformly — the result roots the live workspace at the
+    ``workspace/`` subdir for every transition.
+    """
+    if not root.is_dir():
+        return
+
+    movable = [
+        child for child in root.iterdir()
+        if child.name not in _STANDALONE_ROOT_ARTIFACTS
+    ]
+    if not movable:
+        return
+
+    workspace_subdir.mkdir(parents=True, exist_ok=True)
+    unwind.push(lambda: _undo_consolidate(workspace_subdir, root, movable))
+    for child in movable:
+        shutil.move(str(child), str(workspace_subdir / child.name))
+
+
+def _undo_consolidate(
+    workspace_subdir: Path, root: Path, moved: list[Path],
+) -> None:
+    """Best-effort reversal of :func:`_consolidate_workspace_subdir`."""
+    for child in moved:
+        src = workspace_subdir / child.name
+        if src.exists():
+            try:
+                shutil.move(str(src), str(root / child.name))
+            except OSError:
+                pass
+
+
+def _unconsolidate_workspace_subdir(
+    workspace_subdir: Path,
+    root: Path,
+    unwind: _Unwind,
+) -> None:
+    """Lift the ``workspace/`` subdir's contents back up to *root*.
+
+    The inverse of :func:`_consolidate_workspace_subdir`: used when converting
+    OUT of standalone in place, so the workspace files return to the project
+    root (where a non-standalone box roots them) and the now-empty subdir is
+    removed.  A no-op when the subdir is absent or empty.  Each move is pushed
+    onto *unwind* for rollback on a later failure.
+    """
+    if not workspace_subdir.is_dir():
+        return
+    movable = list(workspace_subdir.iterdir())
+    moved: list[Path] = []
+    unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved))
+    for child in movable:
+        shutil.move(str(child), str(root / child.name))
+        moved.append(child)
+    # Drop the emptied subdir so the converted project does not keep a stray
+    # ``workspace/`` dir at its root.
+    try:
+        workspace_subdir.rmdir()
+    except OSError:
+        pass
+
+
 def _to_standalone(
     state: ProjectState,
     std: StandardPaths,
@@ -1029,24 +1149,40 @@ def _to_standalone(
     canonical id is generated instead.
     """
     from kanibako import registry_store
+    from kanibako.config import BOX_META_FILE
     from kanibako.paths import establish_standalone
 
-    new_workspace.mkdir(parents=True, exist_ok=True)
-    dst_metadata = new_workspace / _STANDALONE_META_DIR
+    # *new_workspace* is the standalone ROOT (the project dir).  Drift H+I: the
+    # standalone tree roots here with ``settings.yaml`` AT THE ROOT, a
+    # ``box_data/`` marker dir (home + helper log), ``vault/{ro,rw}/``, and the
+    # live workspace as a ``workspace/`` SUBDIR.  Consolidate the source's
+    # current top-level project files into that subdir first (in-place convert
+    # leaves them at the root otherwise), THEN lay down the kanibako artifacts.
+    root = new_workspace
+    root.mkdir(parents=True, exist_ok=True)
+    dst_metadata = root / _STANDALONE_META_DIR
+    workspace_subdir = root / "workspace"
+    _consolidate_workspace_subdir(root, workspace_subdir, unwind)
 
     dst_shell = _copy_metadata(
         state.metadata_path, state.shell_path, dst_metadata,
         shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
+    # The source settings.yaml copied into box_data/ (when the source's metadata
+    # dir held one) is an orphan now that the box meta lives at the ROOT; drop it
+    # so detection only ever sees the canonical <root>/settings.yaml (drift I).
+    stale = dst_metadata / BOX_META_FILE
+    if stale.exists():
+        stale.unlink()
 
     # Establish the standalone identity + meta + registration via the shared
     # core.  ``requested_name`` is the user's explicit ``--name`` (empty when
     # not given); establish_standalone routes it through resolve_standalone_name
     # (honor a free canonical id verbatim, refuse a taken one, else fresh prefix
     # over the supplied string; empty → fresh canonical from the root basename).
-    # The metadata dir was just populated by _copy_metadata above.
+    # It writes <root>/settings.yaml (mode=standalone) + registers the box.
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
-        std, new_workspace,
+        std, root,
         enable_vault=state.enable_vault,
         group_auth=state.group_auth,
         name=requested_name,
@@ -1055,8 +1191,9 @@ def _to_standalone(
         lambda: registry_store.unregister_standalone(std.data_path, box_name)
     )
 
-    write_project_gitignore(new_workspace)
-    vault_dir = new_workspace / "vault"
+    workspace_subdir.mkdir(parents=True, exist_ok=True)
+    write_project_gitignore(root)
+    vault_dir = root / "vault"
     if vault_dir.is_dir():
         gi = vault_dir / ".gitignore"
         if not gi.exists():
@@ -1066,7 +1203,7 @@ def _to_standalone(
 
     return ProjectState(
         owner="standalone", mode=BoxMode.standalone, name=box_name,
-        workspace_path=new_workspace, metadata_path=dst_metadata,
+        workspace_path=workspace_subdir, metadata_path=root,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
         enable_vault=state.enable_vault, group_auth=state.group_auth,

@@ -202,16 +202,16 @@ class TestArchiveExtended:
             assert any("data.txt" in n for n in names)
 
     def test_archive_standalone_project(self, config_file, tmp_home):
-        """Archive works for standalone projects (settings in box_data/)."""
+        """Archive works for standalone projects (settings at the root)."""
         from kanibako.commands.archive import run
 
         config = load_config(config_file)
         load_std_paths(config)
         project_dir = tmp_home / "project"
-        # Create standalone marker and some data
+        # Standalone marker: box_data/ dir + ROOT settings.yaml (drift I).
         kanibako_dir = project_dir / "box_data"
-        kanibako_dir.mkdir()
-        (kanibako_dir / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
+        kanibako_dir.mkdir(parents=True)
+        (project_dir / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
         (kanibako_dir / "data.txt").write_text("standalone-data")
 
         archive_path = str(tmp_home / "dec.txz")

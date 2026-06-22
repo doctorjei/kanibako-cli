@@ -139,13 +139,15 @@ class TestClean:
 
 class TestCleanExtended:
     def test_purge_standalone_project(self, config_file, tmp_home):
-        """Purge removes box_data/ for standalone projects."""
+        """Purge removes the in-tree artifacts (box_data/, root settings.yaml,
+        vault/) for a standalone project, leaving the project root itself."""
         from kanibako.commands.clean import run
 
         project_dir = tmp_home / "project"
         kanibako_dir = project_dir / "box_data"
-        kanibako_dir.mkdir()
-        (kanibako_dir / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
+        kanibako_dir.mkdir(parents=True)
+        # Standalone marker: box_data/ dir + ROOT settings.yaml (drift I).
+        (project_dir / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
         (kanibako_dir / "data.txt").write_text("session-data")
 
         args = argparse.Namespace(
@@ -154,6 +156,9 @@ class TestCleanExtended:
         rc = run(args)
         assert rc == 0
         assert not kanibako_dir.exists()
+        assert not (project_dir / "settings.yaml").exists()
+        # The project root itself is NOT deleted.
+        assert project_dir.is_dir()
 
     def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
         """--all only covers default-mode projects, not standalone."""
