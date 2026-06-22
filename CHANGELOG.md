@@ -170,6 +170,11 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   selector — operate on a box that is not your cwd, by box name (precedence) or path;
   it coexists with the `move`/`convert` destination group (`--default/--standalone/
   --workset`). Passing either flag to an unrelated command is an error.
+- **Deprecation-tracking mechanism** (`@deprecated` decorator + registry + CI gate)
+  for managing post-public deprecations under the major-only breaking-change rule.
+  Each deprecation records `{deprecated_in, remove_at (next major), replacement}`;
+  a pytest gate fails the build once `__version__` reaches a record's `remove_at`,
+  forcing the symbol's removal at the right release. The registry ships empty.
 - **Box-name validation.** New box names (creation / `--name`) are checked against a
   blocklist: unicode letters/digits plus interior `_ - .` are allowed; control chars,
   whitespace, ASCII punctuation except `_ - .`, `.`/`..`, leading `-`/`.`, trailing
