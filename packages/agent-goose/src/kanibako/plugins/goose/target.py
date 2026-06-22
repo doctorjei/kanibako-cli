@@ -16,7 +16,6 @@ from kanibako.targets.base import (
     Channel,
     CredFileSpec,
     HostSrcOrigin,
-    Mount,
     Operation,
     PluginDescriptor,
     ResourceMapping,
@@ -163,20 +162,6 @@ class GooseTarget(Target):
             install_dir=resolved.parent,
         )
 
-    def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Mount the goose binary into the container (read-only).
-
-        Validates that the binary exists to avoid Podman creating empty stubs.
-        """
-        mounts: list[Mount] = []
-        if install.binary.is_file():
-            mounts.append(Mount(
-                source=install.binary,
-                destination="/home/agent/.local/bin/goose",
-                options="ro",
-            ))
-        return mounts
-
     def credential_check_path(self, home: Path) -> Path | None:
         """Path to check for credential existence."""
         return home / ".config" / "goose" / "secrets.yaml"
@@ -298,29 +283,3 @@ class GooseTarget(Target):
             ResourceMapping("sessions.db", ResourceScope.PROJECT, "Session history database", base=".local/share/goose/sessions"),
         ]
 
-    def build_cli_args(
-        self,
-        *,
-        safe_mode: bool,
-        resume_mode: bool,
-        new_session: bool,
-        is_new_project: bool,
-        extra_args: list[str],
-    ) -> list[str]:
-        """Build CLI arguments for Goose.
-
-        Maps kanibako flags to goose CLI semantics:
-        - ``resume_mode=True`` -> ``session resume``
-        - default -> ``session start``
-        - ``safe_mode=False`` -> ``--approve-all`` (auto-approve)
-        """
-        if resume_mode:
-            args = ["session", "resume"]
-        else:
-            args = ["session", "start"]
-
-        if not safe_mode:
-            args.append("--approve-all")
-
-        args.extend(extra_args)
-        return args

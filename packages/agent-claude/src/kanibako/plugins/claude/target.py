@@ -20,7 +20,6 @@ from kanibako.targets.base import (
     Channel,
     CredFileSpec,
     HostSrcOrigin,
-    Mount,
     Operation,
     PluginDescriptor,
     ResourceMapping,
@@ -215,56 +214,6 @@ class ClaudeTarget(Target):
             install_dir=_INSTALL_DIR,
             launcher=_LAUNCHER,
         )
-
-    def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Return the two AS-IS host binds that deliver Claude to the box.
-
-        Host owns the binary + its update lifecycle; the container reflects it
-        faithfully via two binds and never freezes a resolved version:
-
-        1. ``~/.local/bin/claude`` bound **as-is** (the launcher symlink).  The
-           bind dereferences the source symlink itself and grabs the inode at
-           mount time, so the file is *pinned*: later host churn (prune /
-           repoint after a self-update) cannot pull it out from under the
-           running container.  One path, no ``lstat``, no link-vs-real-binary
-           branch.
-        2. ``~/.local/share/claude`` bound **whole** (the install dir / data
-           files — we do not assume the binary is self-contained).
-
-        The destinations are cleared to clean non-symlink mountpoints every
-        launch by the cli (``_precreate_mount_stubs``) so these binds actually
-        take instead of following a dest symlink into the share subtree.
-
-        Sources are validated to exist so a missing source produces a clean,
-        catchable kanibako error at mount-build time rather than a cryptic crun
-        dangling-exec crash.
-        """
-        mounts: list[Mount] = []
-
-        # Install-dir / data files: bind whole.
-        if install.install_dir.is_dir():
-            mounts.append(Mount(
-                source=install.install_dir,
-                destination="/home/agent/.local/share/claude",
-                options="ro",
-            ))
-
-        # The host launcher (the recorded contract path ~/.local/bin/claude)
-        # bound AS-IS — never re-resolved via $PATH/``which``.  The bind
-        # dereferences the source symlink and grabs the inode at mount time, so
-        # later host churn (prune/repoint after a self-update) cannot pull it
-        # out from under the running container.  Source-exists validation gives
-        # a clean safe-fail (start.py aborts on a vanished bind source) instead
-        # of a cryptic crun dangling-exec crash.
-        bin_source = install.launcher or install.binary
-        if bin_source.exists():
-            mounts.append(Mount(
-                source=bin_source,
-                destination="/home/agent/.local/bin/claude",
-                options="ro",
-            ))
-
-        return mounts
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Claude Code crab configuration."""
@@ -517,30 +466,3 @@ class ClaudeTarget(Target):
         project_creds = home / ".claude" / ".credentials.json"
 
         writeback_project_to_host(project_creds)
-
-    def build_cli_args(
-        self,
-        *,
-        safe_mode: bool,
-        resume_mode: bool,
-        new_session: bool,
-        is_new_project: bool,
-        extra_args: list[str],
-    ) -> list[str]:
-        """Build CLI arguments for Claude Code."""
-        cli_args: list[str] = []
-
-        if not safe_mode:
-            cli_args.append("--dangerously-skip-permissions")
-
-        if resume_mode:
-            cli_args.append("--resume")
-        else:
-            skip_continue = new_session or is_new_project
-            if any(a in ("--resume", "-r") for a in extra_args):
-                skip_continue = True
-            if not skip_continue:
-                cli_args.append("--continue")
-
-        cli_args.extend(extra_args)
-        return cli_args
