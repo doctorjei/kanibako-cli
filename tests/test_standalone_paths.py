@@ -159,26 +159,9 @@ class TestResolveStandaloneProject:
 # TestStandaloneCredentialFlow
 # ---------------------------------------------------------------------------
 
-class TestStandaloneGlobalSharedPath:
-    def test_standalone_has_no_global_shared_path(
-        self, std, config, project_dir, credentials_dir,
-    ):
-        """Standalone projects don't get shared caches."""
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        assert proj.global_shared_path is None
-
-
-class TestStandaloneLocalSharedPath:
-    def test_standalone_has_no_local_shared_path(
-        self, std, config, project_dir, credentials_dir,
-    ):
-        """Standalone projects don't get agent-level shared caches."""
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        assert proj.local_shared_path is None
+# The global/local shared-path fields were removed in 1.6.0 (Part 4): no
+# ``shared/`` dir exists in the target tree.  The no-shared-path assertions
+# (which only confirmed the now-deleted fields were None) are removed.
 
 
 class TestStandaloneCredentialFlow:

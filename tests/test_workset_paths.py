@@ -165,29 +165,9 @@ class TestResolveWorksetProject:
 # TestWorksetProjectCredentialFlow
 # ---------------------------------------------------------------------------
 
-class TestWorksetGlobalSharedPath:
-    def test_workset_has_global_shared_path(
-        self, workset_env, std, config, credentials_dir
-    ):
-        """Workset projects get a global shared path."""
-        ws, name = workset_env
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
-
-        expected = std.data_path / "shared" / "global"
-        assert proj.global_shared_path == expected
-
-
-class TestWorksetLocalSharedPath:
-    def test_workset_has_local_shared_path(
-        self, workset_env, std, config, credentials_dir
-    ):
-        """Workset projects get a local shared path under the workset root."""
-        ws, name = workset_env
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
-
-        from pathlib import Path
-        expected = Path(ws.root) / "shared"
-        assert proj.local_shared_path == expected
+# The global/local shared-path fields were removed in 1.6.0 (Part 4): no
+# ``shared/`` dir exists in the target tree; claude shared lives under
+# ``agents/<agent>/``.  The shared-path assertions are deleted.
 
 
 class TestWorksetProjectCredentialFlow:
@@ -354,8 +334,6 @@ class TestWorksetAuthOverrideChain:
             group_auth=False,
             metadata=meta["metadata"],
             project_hash=meta["project_hash"],
-            global_shared=meta["global_shared"],
-            local_shared=meta["local_shared"],
         )
 
         # Re-resolve: workset group_auth still True -> falls back to stored False.
