@@ -6,6 +6,8 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from kanibako.plugins.goose import GooseTarget
 from kanibako.targets import assembly
 from kanibako.targets.base import (
@@ -80,27 +82,38 @@ class TestDetect:
         assert result.name == "goose"
 
 
-class TestBinaryMounts:
+class TestDescriptorDeliveryMounts:
+    """goose's binary bind comes from its descriptor (the legacy ``binary_mounts``
+    hook was removed for the descriptor-only public release); core builds it via
+    ``descriptor_mounts``."""
+
     def test_single_mount(self, tmp_path: Path):
+        from kanibako.targets.assembly import descriptor_mounts
+
         binary = tmp_path / "goose"
         binary.write_text("#!/bin/sh\n")
         binary.chmod(0o755)
 
         install = AgentInstall(name="goose", binary=binary, install_dir=tmp_path)
-        mounts = GooseTarget().binary_mounts(install)
+        mounts = descriptor_mounts(
+            GooseTarget().descriptor, install, shared_store_root=None,
+        )
 
         assert len(mounts) == 1
         assert mounts[0].source == binary
         assert mounts[0].destination == "/home/agent/.local/bin/goose"
         assert mounts[0].options == "ro"
 
-    def test_no_mount_when_binary_missing(self, tmp_path: Path):
+    def test_safe_fails_when_binary_missing(self, tmp_path: Path):
+        from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
+
         binary = tmp_path / "goose"  # does not exist
 
         install = AgentInstall(name="goose", binary=binary, install_dir=tmp_path)
-        mounts = GooseTarget().binary_mounts(install)
-
-        assert mounts == []
+        with pytest.raises(BindingSourceError):
+            descriptor_mounts(
+                GooseTarget().descriptor, install, shared_store_root=None,
+            )
 
 
 class TestCredentialCheckPath:
@@ -252,38 +265,6 @@ class TestResourceMappings:
         assert mappings["sessions.db"].base == ".local/share/goose/sessions"
         # secrets stays relative to the config dir (no base).
         assert mappings["secrets.yaml"].base == ""
-
-
-class TestBuildCliArgs:
-    """Legacy build_cli_args is RETAINED (abstract method) but BYPASSED at launch.
-
-    Goose now launches via the descriptor (bare ``session`` / ``session
-    --resume``).  The legacy method still emits the old ``session start`` /
-    ``session resume`` text, but it is no longer on the launch path — these
-    tests just pin that the legacy method is still callable + unchanged so
-    nothing crashes if invoked.  The real grammar is asserted in
-    ``TestDescriptor`` / ``TestDescriptorAssembly``.
-    """
-
-    def _build(self, **overrides):
-        defaults = dict(
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-        )
-        defaults.update(overrides)
-        return GooseTarget().build_cli_args(**defaults)
-
-    def test_legacy_method_still_callable(self):
-        args = self._build()
-        assert isinstance(args, list)
-
-    def test_extra_args_passed_through(self):
-        args = self._build(extra_args=["--verbose", "--no-color"])
-        assert "--verbose" in args
-        assert "--no-color" in args
 
 
 class TestDescriptor:

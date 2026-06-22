@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 from kanibako.targets.base import (
     AgentInstall,
@@ -120,9 +122,18 @@ class TestDetect:
         assert result.install_dir == install_dir
 
 
-class TestBinaryMounts:
+# Claude's delivery binds + launch argv come from its descriptor (the legacy
+# ``binary_mounts`` / ``build_cli_args`` hooks were removed for the
+# descriptor-only public release).  The exhaustive descriptor-assembly behavior
+# is pinned in ``test_start_descriptor_assembly.py``; these tests assert the
+# claude plugin's own descriptor exposes the expected delivery binds.
+
+
+class TestDescriptorDeliveryMounts:
     def test_mounts(self, tmp_path):
-        """Returns the two AS-IS host binds: share dir + launcher (no which)."""
+        """The descriptor delivers the two AS-IS host binds: share dir + launcher."""
+        from kanibako.targets.assembly import descriptor_mounts
+
         t = ClaudeTarget()
         install_dir = tmp_path / "share" / "claude"
         install_dir.mkdir(parents=True)
@@ -137,12 +148,9 @@ class TestBinaryMounts:
             install_dir=install_dir,
             launcher=launcher,
         )
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            mounts = t.binary_mounts(install)
-        # No PATH resolution: which is never called.
-        m_which.assert_not_called()
+        mounts = descriptor_mounts(t.descriptor, install, shared_store_root=None)
+
         assert len(mounts) == 2
-        # No resolved-file entry: the bin bind is the recorded launcher as-is.
         assert mounts[0].source == install_dir
         assert mounts[0].destination == "/home/agent/.local/share/claude"
         assert mounts[0].options == "ro"
@@ -150,8 +158,10 @@ class TestBinaryMounts:
         assert mounts[1].destination == "/home/agent/.local/bin/claude"
         assert mounts[1].options == "ro"
 
-    def test_missing_source_skipped(self, tmp_path):
-        """Mounts with non-existent sources are not added (clean safe-fail)."""
+    def test_missing_source_safe_fails(self, tmp_path):
+        """A missing AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
+        from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
+
         t = ClaudeTarget()
         install = AgentInstall(
             name="claude",
@@ -159,89 +169,8 @@ class TestBinaryMounts:
             install_dir=tmp_path / "nonexistent" / "share",
             launcher=tmp_path / "nonexistent" / "bin" / "claude",
         )
-        with patch("kanibako.plugins.claude.target.shutil.which") as m_which:
-            mounts = t.binary_mounts(install)
-        m_which.assert_not_called()
-        assert len(mounts) == 0
-
-
-class TestBuildCliArgs:
-    def test_default(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=False,
-            new_session=False, is_new_project=False,
-            extra_args=[],
-        )
-        assert "--dangerously-skip-permissions" in args
-        assert "--continue" in args
-
-    def test_safe_mode(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=True, resume_mode=False,
-            new_session=False, is_new_project=False,
-            extra_args=[],
-        )
-        assert "--dangerously-skip-permissions" not in args
-        assert "--continue" in args
-
-    def test_resume_mode(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=True,
-            new_session=False, is_new_project=False,
-            extra_args=[],
-        )
-        assert "--resume" in args
-        assert "--continue" not in args
-
-    def test_new_session(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=False,
-            new_session=True, is_new_project=False,
-            extra_args=[],
-        )
-        assert "--continue" not in args
-
-    def test_new_project(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=False,
-            new_session=False, is_new_project=True,
-            extra_args=[],
-        )
-        assert "--continue" not in args
-
-    def test_extra_args_resume_flag(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=False,
-            new_session=False, is_new_project=False,
-            extra_args=["--resume"],
-        )
-        assert "--continue" not in args
-        assert "--resume" in args
-
-    def test_extra_args_passed_through(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=False,
-            new_session=False, is_new_project=False,
-            extra_args=["--foo", "bar"],
-        )
-        assert "--foo" in args
-        assert "bar" in args
-
-    def test_extra_args_r_flag(self):
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False, resume_mode=False,
-            new_session=False, is_new_project=False,
-            extra_args=["-r"],
-        )
-        assert "--continue" not in args
+        with pytest.raises(BindingSourceError):
+            descriptor_mounts(t.descriptor, install, shared_store_root=None)
 
 
 def _real_launcher(tmp_path):

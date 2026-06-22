@@ -500,8 +500,14 @@ class TestDistinctAuth:
             m.target.check_auth.assert_not_called()
 
     def test_shared_auth_calls_refresh(self, start_mocks):
-        """When proj.group_auth is True, refresh_credentials is called."""
+        """When proj.group_auth is True, refresh_credentials is called.
+
+        Pins the legacy (descriptor-less) credential hook: a descriptor-bearing
+        target routes refresh through the credsync engine instead, covered by
+        TestCredsyncRouting.test_descriptor_refresh_uses_refresh_cred_files.
+        """
         with start_mocks() as m:
+            m.target.descriptor = None
             m.proj.group_auth = True
             rc = _run_container(
                 project_dir=None,
@@ -928,8 +934,13 @@ class TestAgentConfigIntegration:
     """Verify agent config integration in _run_container."""
 
     def test_default_args_merged_into_cli(self, start_mocks):
-        """Agent default_args are prepended to extra_args."""
+        """Agent default_args are prepended to extra_args.
+
+        Descriptor path: assembly appends ``run_args + extra_args`` last in the
+        agent argv, so both reach runtime.run's cli_args in order.
+        """
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             m.agent_cfg.run_args = ["--verbose"]
             m.load_agent_config.return_value = m.agent_cfg
             _run_container(
@@ -937,13 +948,18 @@ class TestAgentConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=["--foo"],
             )
-            m.target.build_cli_args.assert_called_once()
-            call_kwargs = m.target.build_cli_args.call_args.kwargs
-            assert call_kwargs["extra_args"] == ["--verbose", "--foo"]
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            # run_args precede extra_args, both appended after the assembled flags.
+            assert cli_args[-2:] == ["--verbose", "--foo"]
 
     def test_apply_state_called(self, start_mocks):
-        """target.apply_state() is called with agent_cfg.state."""
+        """Crab state drives the agent argv via the descriptor (model -> --model).
+
+        The legacy apply_state hook is no longer dispatched; the model state
+        value is emitted as ``--model <value>`` by assembly's SettingArg path.
+        """
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             m.agent_cfg.state = {"model": "opus"}
             m.load_agent_config.return_value = m.agent_cfg
             _run_container(
@@ -951,12 +967,17 @@ class TestAgentConfigIntegration:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            m.target.apply_state.assert_called_once_with({"model": "opus"})
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args[cli_args.index("--model") + 1] == "opus"
+            # The legacy hook is bypassed on the descriptor path.
+            m.target.apply_state.assert_not_called()
 
     def test_state_args_appended_to_cli(self, start_mocks):
-        """CLI args from apply_state() are appended to the final cli_args."""
+        """State-derived flags (model) reach the final cli_args via assembly."""
         with start_mocks() as m:
-            m.target.apply_state.return_value = (["--model", "opus"], {})
+            m.target.setting_descriptors.return_value = []
+            m.agent_cfg.state = {"model": "opus"}
+            m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -980,16 +1001,21 @@ class TestAgentConfigIntegration:
             assert env.get("MY_VAR") == "hello"
 
     def test_state_env_merged_into_container_env(self, start_mocks):
-        """Env vars from apply_state() are included in container env."""
+        """Descriptor container_env is merged into the container env.
+
+        The legacy apply_state env return no longer feeds the launch; the
+        descriptor's ``container_env`` (claude: DISABLE_AUTOUPDATER=1) reaches
+        runtime.run via assemble_env -> state_env -> container_env.
+        """
         with start_mocks() as m:
-            m.target.apply_state.return_value = ([], {"STATE_VAR": "value"})
+            m.target.setting_descriptors.return_value = []
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
             env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert env.get("STATE_VAR") == "value"
+            assert env.get("DISABLE_AUTOUPDATER") == "1"
 
     def test_shell_mode_uses_general_agent(self, start_mocks):
         """Shell mode (entrypoint set) loads 'general' agent config."""
@@ -1223,8 +1249,14 @@ class TestTweakccIntegration:
                 mock_apply.assert_called_once()
 
     def test_patched_binary_used_in_mounts(self, start_mocks, tmp_path):
-        """When tweakcc returns a patched install, binary_mounts uses it."""
+        """When tweakcc returns a patched install, descriptor_mounts uses it.
+
+        The legacy binary_mounts hook is gone; delivery binds come from
+        ``descriptor_mounts(desc, install, ...)`` over the (patched) install, so
+        the patched binary appears as the launcher bind source.
+        """
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             m.agent_cfg.tweakcc = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
@@ -1233,10 +1265,12 @@ class TestTweakccIntegration:
 
             patched_binary = tmp_path / "patched"
             patched_binary.write_bytes(b"\x7fELF" + b"\x00" * 50)
+            install_dir = tmp_path / "install"
+            install_dir.mkdir()
             patched_install = AgentInstall(
                 name="claude",
                 binary=patched_binary,
-                install_dir=tmp_path / "install",
+                install_dir=install_dir,
             )
             fake_entry = CacheEntry(path=patched_binary, fd=-1)
             fake_cache = MagicMock()
@@ -1248,14 +1282,24 @@ class TestTweakccIntegration:
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-                # binary_mounts should be called with the patched install
-                m.target.binary_mounts.assert_called_once_with(patched_install)
+                # The patched install drives descriptor_mounts: its binary is the
+                # launcher bind source (claude has no separate launcher set).
+                mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+                sources = {getattr(mt, "source", None) for mt in mounts}
+                assert patched_binary in sources
+                assert install_dir in sources
                 # cache should be released after container exits
                 fake_cache.release.assert_called_once_with(fake_entry)
 
     def test_failure_falls_back(self, start_mocks):
-        """When tweakcc fails, original binary is used (graceful fallback)."""
+        """When tweakcc fails, the original (detected) install is used.
+
+        descriptor_mounts runs over the conftest default install, so its
+        launcher/install_dir appear as delivery bind sources (graceful fallback,
+        no patched binary involved).
+        """
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             m.agent_cfg.tweakcc = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
@@ -1267,8 +1311,12 @@ class TestTweakccIntegration:
                     extra_args=[],
                 )
                 assert rc == 0
-                # Original install used (binary_mounts called with mock install)
-                m.target.binary_mounts.assert_called_once()
+                # Original detected install delivered via descriptor_mounts.
+                install = m.target.detect.return_value
+                mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+                sources = {getattr(mt, "source", None) for mt in mounts}
+                assert install.launcher in sources
+                assert install.install_dir in sources
 
     def test_telemetry_disabled_for_claude(self, start_mocks):
         """CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 is carried by claude's descriptor.
@@ -1307,15 +1355,16 @@ class TestTweakccIntegration:
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "0"
 
     def test_apply_state_env_reaches_container(self, start_mocks):
-        """env_vars from target.apply_state() flow into the container env.
+        """The descriptor's container_env flows into the launched container env.
 
-        The Claude plugin returns DISABLE_AUTOUPDATER=1 here so the in-container
-        agent cannot self-update mid-session; verify core threads apply_state's
-        env into the launched container.
+        The Claude descriptor carries DISABLE_AUTOUPDATER=1 (so the in-container
+        agent cannot self-update mid-session); verify core threads the
+        descriptor-assembled env into the launched container.  (This replaces the
+        legacy apply_state env return, which is no longer dispatched.)
         """
         with start_mocks() as m:
             m.target.name = "claude"
-            m.target.apply_state.return_value = ([], {"DISABLE_AUTOUPDATER": "1"})
+            m.target.setting_descriptors.return_value = []
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1329,14 +1378,24 @@ class TestBinaryMountSafeFail:
     """A binary mount source missing at mount time -> clean kanibako error."""
 
     def test_missing_bind_source_fails_clean(self, start_mocks, capsys, tmp_path):
-        """A returned bind whose source vanished aborts with a clean error."""
-        from kanibako.targets.base import Mount
+        """An AGENT_CRITICAL bind whose source vanished aborts with a clean error.
+
+        descriptor_mounts raises BindingSourceError when a critical source no
+        longer exists; start.py catches it, prints the "mount source
+        disappeared" message, and returns 1 (no crun crash).
+        """
+        from kanibako.targets.base import AgentInstall
         with start_mocks() as m:
             m.target.name = "claude"
+            m.target.setting_descriptors.return_value = []
             gone = tmp_path / "pruned" / "claude"  # never created
-            m.target.binary_mounts.return_value = [
-                Mount(source=gone, destination="/home/agent/.local/bin/claude", options="ro"),
-            ]
+            # A detected install whose AGENT_CRITICAL sources do not exist.
+            m.target.detect.return_value = AgentInstall(
+                name="claude",
+                binary=gone,
+                install_dir=tmp_path / "pruned" / "share",  # never created
+                launcher=gone,
+            )
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1543,33 +1602,35 @@ class TestPrepareHostHook:
             )
             m.target.prepare_host.assert_not_called()
 
-    def test_redetect_after_update_feeds_validate_print_bind(self, start_mocks, capsys):
+    def test_redetect_after_update_feeds_validate_print_bind(self, start_mocks, capsys, tmp_path):
         """The post-update re-detect feeds validate, the print, and the bind.
 
         prepare_host()'s update gate can repoint/prune the host version, so
         start.py re-detects AFTER it; the ONE fresh install must be what
-        _validate_agent_binary, the "Using host ...:" line, and binary_mounts
-        all consume — never the stale first detect.
+        _validate_agent_binary, the "Using host ...:" line, and the descriptor
+        delivery mounts all consume — never the stale first detect.
         """
-        from pathlib import Path
-        from kanibako.targets.base import Mount
+        from kanibako.targets.base import AgentInstall
 
-        stale = MagicMock()
-        stale.binary = Path("/home/agent/.local/share/claude/versions/STALE")
-        stale.install_dir.exists.return_value = True
+        # Real, existing paths so descriptor_mounts' AGENT_CRITICAL existence
+        # checks pass; "STALE"/"FRESH" leaves make the bind source observable.
+        stale_dir = tmp_path / "versions" / "STALE"
+        stale_dir.mkdir(parents=True)
+        stale_bin = stale_dir / "claude"
+        stale_bin.write_bytes(b"\x7fELF" + b"\x00" * 50)
+        stale = AgentInstall(name="claude", binary=stale_bin, install_dir=stale_dir, launcher=stale_bin)
 
-        fresh = MagicMock()
-        fresh.binary = Path("/home/agent/.local/share/claude/versions/FRESH")
-        fresh.install_dir.exists.return_value = True
+        fresh_dir = tmp_path / "versions" / "FRESH"
+        fresh_dir.mkdir(parents=True)
+        fresh_bin = fresh_dir / "claude"
+        fresh_bin.write_bytes(b"\x7fELF" + b"\x00" * 50)
+        fresh = AgentInstall(name="claude", binary=fresh_bin, install_dir=fresh_dir, launcher=fresh_bin)
 
         with start_mocks() as m:
+            m.target.setting_descriptors.return_value = []
             # First detect (early-out) returns stale; the re-detect after the
             # update gate returns fresh.
             m.target.detect.side_effect = [stale, fresh]
-            # binary_mounts returns valid mounts so the launch proceeds.
-            m.target.binary_mounts.return_value = [
-                Mount(source=Path("/dev/null"), destination="/home/agent/.local/bin/claude", options="ro"),
-            ]
             _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -1583,9 +1644,15 @@ class TestPrepareHostHook:
             assert m.target.detect.call_count >= 2
             # prepare_host got the FIRST (stale) install.
             assert m.target.prepare_host.call_args.args[0] is stale
-            # validate + binary_mounts both ran on the FRESH (post-update) one.
+            # validate ran on the FRESH (post-update) binary.
             m.validate_binary.assert_called_with(fresh.binary)
-            m.target.binary_mounts.assert_called_once_with(fresh)
+            # The descriptor delivery mounts bind the FRESH install, not the stale.
+            mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+            sources = {getattr(mt, "source", None) for mt in mounts}
+            assert fresh_bin in sources
+            assert fresh_dir in sources
+            assert stale_bin not in sources
+            assert stale_dir not in sources
             # The "Using host ...:" line names the fresh version, not the stale.
             err = capsys.readouterr().err
             assert "FRESH" in err

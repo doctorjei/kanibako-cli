@@ -198,6 +198,11 @@ class TestStandaloneLaunch:
         proj.shell_path = project_path / ".kanibako" / "shell"
         proj.vault_ro_path = project_path / "vault" / "ro"
         proj.vault_rw_path = project_path / "vault" / "rw"
+        # No global/local shared store: keeps descriptor_mounts (now the default
+        # mock-target path) from resolving a MagicMock plugins source and
+        # mkdir'ing a literal MagicMock-named dir into the CWD.
+        proj.global_shared_path = None
+        proj.local_shared_path = None
         return proj
 
     def test_start_detects_standalone_project(self, start_mocks, tmp_path):
@@ -278,6 +283,9 @@ class TestStandaloneLaunch:
         (project / ".kanibako").mkdir()
 
         with start_mocks() as m:
+            # Pin the legacy credential-hook path: a descriptor-bearing target
+            # routes refresh/writeback through the credsync engine instead.
+            m.target.descriptor = None
             proj = self._make_standalone_proj(project)
             m.resolve_any_project.return_value = proj
 
@@ -392,6 +400,11 @@ class TestWorksetLaunch:
         proj.shell_path = ws_root / "kanibako" / project_name / "shell"
         proj.vault_ro_path = ws_root / "vault" / project_name / "ro"
         proj.vault_rw_path = ws_root / "vault" / project_name / "rw"
+        # No global/local shared store: keeps descriptor_mounts (now the default
+        # mock-target path) from resolving a MagicMock plugins source and
+        # mkdir'ing a literal MagicMock-named dir into the CWD.
+        proj.global_shared_path = None
+        proj.local_shared_path = None
         return proj
 
     def test_start_detects_workset_project(self, start_mocks, tmp_path):
@@ -473,6 +486,9 @@ class TestWorksetLaunch:
         workspace.mkdir(parents=True)
 
         with start_mocks() as m:
+            # Pin the legacy credential-hook path: a descriptor-bearing target
+            # routes refresh/writeback through the credsync engine instead.
+            m.target.descriptor = None
             proj = self._make_workset_proj(ws_root, "myproj")
             m.resolve_any_project.return_value = proj
 

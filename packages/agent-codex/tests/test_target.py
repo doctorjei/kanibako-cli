@@ -443,19 +443,14 @@ class TestDescriptor:
 
 
 class TestInheritedDefaults:
-    """codex implements NO legacy hooks -> step-3a concrete defaults apply."""
+    """codex is descriptor-only -> launch is fully assembly-driven.
 
-    def test_binary_mounts_default_empty(self):
-        from kanibako.targets.base import AgentInstall
-        install = AgentInstall(name="codex", binary=Path("/x"), install_dir=Path("/"))
-        assert CodexTarget().binary_mounts(install) == []
-
-    def test_build_cli_args_passthrough(self):
-        out = CodexTarget().build_cli_args(
-            safe_mode=True, resume_mode=False, new_session=False,
-            is_new_project=False, extra_args=["--foo"],
-        )
-        assert out == ["--foo"]
+    The legacy ``binary_mounts`` / ``build_cli_args`` hooks were removed for the
+    descriptor-only public release; codex's argv/env/binds all come from its
+    descriptor (covered by ``TestDescriptorAssembly`` below).  Only the
+    credential-lifecycle hooks remain (codex syncs via the credsync engine, so
+    these stay no-ops).
+    """
 
     def test_refresh_writeback_noop(self, project_home: Path):
         assert CodexTarget().refresh_credentials(project_home) is None

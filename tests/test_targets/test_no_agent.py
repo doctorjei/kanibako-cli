@@ -21,24 +21,11 @@ class TestNoAgentTarget:
     def test_detect_returns_none(self):
         assert self.target.detect() is None
 
-    def test_binary_mounts_empty(self):
-        assert self.target.binary_mounts(None) == []
-
     def test_refresh_credentials_is_noop(self, tmp_path):
         self.target.refresh_credentials(tmp_path)
 
     def test_writeback_credentials_is_noop(self, tmp_path):
         self.target.writeback_credentials(tmp_path)
-
-    def test_build_cli_args_empty(self):
-        result = self.target.build_cli_args(
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=["--foo"],
-        )
-        assert result == []
 
     def test_check_auth_returns_true(self):
         assert self.target.check_auth() is True

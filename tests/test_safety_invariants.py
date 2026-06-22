@@ -329,144 +329,134 @@ class TestMountValidation:
 
 
 # ── Contract tests: binary mount sources ──────────────────────────────
+#
+# Claude's delivery binds come from its descriptor (the legacy ``binary_mounts``
+# hook was removed for the descriptor-only public release); core builds them via
+# ``descriptor_mounts``.  The invariant under test is unchanged: an
+# AGENT_CRITICAL source that does not exist on the host must NOT silently produce
+# an empty/dangling bind — it raises ``BindingSourceError`` (the clean safe-fail
+# start.py converts to an actionable error).
+
 
 class TestBinaryMountContract:
-    """Binary mounts must only include sources that exist on the host."""
+    """Delivery binds: existing sources are delivered ro; a missing one safe-fails."""
 
-    def test_binary_mounts_all_exist(self, tmp_path, monkeypatch):
-        """When sources exist, both as-is binds are returned."""
-        import kanibako.plugins.claude.target as claude_mod
-        t = ClaudeTarget()
+    def _install(self, tmp_path, *, make_share=True, make_launcher=True):
         from kanibako.targets.base import AgentInstall
 
         install_dir = tmp_path / "share" / "claude"
-        install_dir.mkdir(parents=True)
-        # The host launcher (~/.local/bin/claude) is the as-is bin bind source.
         launcher = tmp_path / "bin" / "claude"
-        launcher.parent.mkdir(parents=True)
-        launcher.write_bytes(b"binary")
-        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: str(launcher))
+        if make_share:
+            install_dir.mkdir(parents=True)
+        if make_launcher:
+            launcher.parent.mkdir(parents=True, exist_ok=True)
+            launcher.write_bytes(b"binary")
+        return AgentInstall(
+            name="claude",
+            binary=launcher,
+            install_dir=install_dir,
+            launcher=launcher,
+        )
 
-        install = AgentInstall(name="claude", binary=launcher, install_dir=install_dir)
-        mounts = t.binary_mounts(install)
+    def test_delivery_mounts_all_exist(self, tmp_path):
+        """When sources exist, both ro delivery binds are returned."""
+        from kanibako.targets.assembly import descriptor_mounts
+
+        t = ClaudeTarget()
+        install = self._install(tmp_path)
+        mounts = descriptor_mounts(t.descriptor, install, shared_store_root=None)
 
         assert len(mounts) == 2
         for m in mounts:
             assert m.source.exists(), f"Mount source does not exist: {m.source}"
+            assert m.options == "ro"
 
-    def test_binary_mounts_missing_excluded(self, tmp_path, monkeypatch):
-        """When sources don't exist, mounts are not returned."""
-        import kanibako.plugins.claude.target as claude_mod
+    def test_missing_critical_source_safe_fails(self, tmp_path):
+        """A missing AGENT_CRITICAL source raises BindingSourceError (no dangling bind)."""
+        from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
+
         t = ClaudeTarget()
-        from kanibako.targets.base import AgentInstall
-
-        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: None)
-        install = AgentInstall(
-            name="claude",
-            binary=tmp_path / "missing" / "claude",
-            install_dir=tmp_path / "missing" / "share",
-        )
-        mounts = t.binary_mounts(install)
-
-        assert len(mounts) == 0
-
-    def test_partial_missing_only_existing_returned(self, tmp_path, monkeypatch):
-        """When only install_dir exists, only that mount is returned."""
-        import kanibako.plugins.claude.target as claude_mod
-        t = ClaudeTarget()
-        from kanibako.targets.base import AgentInstall
-
-        install_dir = tmp_path / "share" / "claude"
-        install_dir.mkdir(parents=True)
-
-        monkeypatch.setattr(claude_mod.shutil, "which", lambda _n: None)
-        install = AgentInstall(
-            name="claude",
-            binary=tmp_path / "missing" / "claude",
-            install_dir=install_dir,
-        )
-        mounts = t.binary_mounts(install)
-
-        assert len(mounts) == 1
-        assert mounts[0].source == install_dir
-        assert mounts[0].source.exists()
+        install = self._install(tmp_path, make_launcher=False)
+        with pytest.raises(BindingSourceError):
+            descriptor_mounts(t.descriptor, install, shared_store_root=None)
 
 
 # ── Contract tests: CLI args invariants ───────────────────────────────
+#
+# Claude's launch argv is assembled from its descriptor via
+# ``kanibako.targets.assembly`` (the legacy ``build_cli_args`` hook was removed
+# for the descriptor-only public release).  ``_claude_argv`` mirrors start.py's
+# descriptor argv assembly so these tests pin the same flag invariants.
+
+
+def _claude_argv(*, safe_mode, resume_mode, new_session, is_new_project, extra_args):
+    from kanibako.targets import assembly
+
+    desc = ClaudeTarget().descriptor
+    sb = desc.safe_bypass
+    persisted_access = (
+        "permissive" if sb is not None and sb.setting_key else ""
+    )
+    safe_off = assembly.effective_safe_mode_off(
+        secure=safe_mode, autonomous=False, persisted_access=persisted_access,
+    )
+    mode_key = assembly.resolve_mode(
+        resume_mode=resume_mode,
+        new_session=new_session,
+        is_new_project=is_new_project,
+        extra_args=extra_args,
+        available_modes=desc.mode.keys(),
+    )
+    return assembly.assemble_argv(
+        desc,
+        mode_key=mode_key,
+        safe_mode_off=safe_off,
+        setting_values={"model": "opus", "access": "permissive"},
+        op=None,
+        extra_args=extra_args,
+    )
+
 
 class TestCLIArgsContract:
     """CLI args must include expected flags for common scenarios."""
 
     def test_existing_project_gets_continue(self):
         """An existing (non-new) project must get --continue."""
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
+        args = _claude_argv(
+            safe_mode=False, resume_mode=False, new_session=False,
+            is_new_project=False, extra_args=[],
         )
         assert "--continue" in args
 
     def test_new_project_skips_continue(self):
         """A new project must NOT get --continue."""
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=True,
-            extra_args=[],
+        args = _claude_argv(
+            safe_mode=False, resume_mode=False, new_session=False,
+            is_new_project=True, extra_args=[],
         )
         assert "--continue" not in args
 
     def test_default_includes_dangerous_skip(self):
         """Default (non-safe) mode must include --dangerously-skip-permissions."""
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
+        args = _claude_argv(
+            safe_mode=False, resume_mode=False, new_session=False,
+            is_new_project=False, extra_args=[],
         )
         assert "--dangerously-skip-permissions" in args
 
     def test_safe_mode_excludes_dangerous_skip(self):
         """Safe mode must NOT include --dangerously-skip-permissions."""
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=True,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
+        args = _claude_argv(
+            safe_mode=True, resume_mode=False, new_session=False,
+            is_new_project=False, extra_args=[],
         )
         assert "--dangerously-skip-permissions" not in args
 
-    def test_resume_mode_includes_resume_flag(self):
-        """Resume mode must include --resume."""
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False,
-            resume_mode=True,
-            new_session=False,
-            is_new_project=False,
-            extra_args=[],
-        )
-        assert "--resume" in args
-        assert "--continue" not in args
-
     def test_extra_args_with_resume_skips_continue(self):
         """Passing --resume in extra_args must skip --continue."""
-        t = ClaudeTarget()
-        args = t.build_cli_args(
-            safe_mode=False,
-            resume_mode=False,
-            new_session=False,
-            is_new_project=False,
-            extra_args=["--resume"],
+        args = _claude_argv(
+            safe_mode=False, resume_mode=False, new_session=False,
+            is_new_project=False, extra_args=["--resume"],
         )
         assert "--continue" not in args
         assert "--resume" in args
