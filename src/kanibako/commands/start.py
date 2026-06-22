@@ -1069,17 +1069,13 @@ def _run_container(
                 # source raises BindingSourceError -> clean safe-fail (replaces
                 # the legacy "mount source disappeared" check), not a crun crash.
                 #
-                # SHARED_STORE bindings (e.g. claude's AGENT-scope `plugins`
-                # share) resolve under the agent-namespaced global shared store
-                # `global_shared/<agent_id>/<src_rel>`, unifying with SHARED
-                # resources.  When the project has NO global shared store,
-                # shared_store_root stays None and descriptor_mounts SKIPS those
-                # bindings (the no-shared-store case, unchanged).
-                shared_store_root = (
-                    proj.global_shared_path / agent_id
-                    if proj.global_shared_path
-                    else None
-                )
+                # Agent-scope shared dirs (e.g. claude's plugins/cache) are no
+                # longer descriptor bindings; they flow through the unified
+                # category resolver (``agent.shared.*`` from the plugin's
+                # ``default_shares()``, rooted at ``@system.agents/<agent>``) and
+                # are emitted by ``_build_share_mounts`` below — host-side dirs
+                # guarantee-created there (L7).
+                #
                 # Per-agent binding host-source overrides (agent.<name>.binding.<key>
                 # layered over agent.default.binding) resolved across the config
                 # cascade; an override redirects (and always wins for) a binding's
@@ -1091,23 +1087,9 @@ def _run_container(
                     global_config_path=config_file,
                     agent_name=agent_id,
                 )
-                # The `plugins` binding is rw (ro=False) AGENT scope, and
-                # descriptor_mounts SKIPS a MISSING agent source.  Pre-create the
-                # resolved host source dir best-effort (mirrors the legacy
-                # rw-share behavior) so podman binds a real, PERSISTENT dir
-                # instead of stubbing it.  A bad source must never crash launch.
-                plugins_src = binding_overrides.get("plugins")
-                if not plugins_src and shared_store_root is not None:
-                    plugins_src = str(shared_store_root / "plugins")
-                if plugins_src:
-                    try:
-                        Path(plugins_src).mkdir(parents=True, exist_ok=True)
-                    except OSError:
-                        pass
                 try:
                     binary_mnts = descriptor_mounts(
                         desc, install,
-                        shared_store_root=shared_store_root,
                         overrides=binding_overrides,
                     )
                 except BindingSourceError as exc:
@@ -1131,11 +1113,6 @@ def _run_container(
         # kanibako CLI bind-mount (package + entry script)
         kanibako_mnts = _kanibako_mounts()
         extra_mounts.extend(kanibako_mnts)
-
-        # Resource scope mounts (SHARED from target.resource_mappings())
-        if target and proj.global_shared_path:
-            resource_mounts = _build_resource_mounts(proj, target, agent_id)
-            extra_mounts.extend(resource_mounts)
 
         # Scoped bindings (settings-framework {scope}.bindings.{ro,rw}.*).
         # Additive: empty config → no mounts → no behavior change.
@@ -1967,9 +1944,16 @@ def _category_resolution_inputs(
     # the system.* reorg (subsumed by the workset vault / 'shared' category);
     # only the agent/workset scopes remain here.
     agent_share_root = str(std.agents / agent_name / "share")
+    # Agent-scope `shared`/`caches` root at the per-agent store dir
+    # ``@agent.<agent>.meta.path`` = ``@system.agents/<agent>`` (e.g. claude's
+    # plugins/cache live at ``<data>/agents/claude/{plugins,cache}``).  The
+    # category KEY name is the relative ``host_src`` joined under this root.
+    agent_store_root = str(std.agents / agent_name)
     scope_roots = {
         "agent.bindings.ro": agent_share_root,
         "agent.bindings.rw": agent_share_root,
+        "agent.shared": agent_store_root,
+        "agent.caches": agent_store_root,
     }
     if proj.group is not None and not proj.group.is_default:
         ws_root = str(proj.group.root)
@@ -2368,50 +2352,6 @@ def _kanibako_mounts():
         Mount(pkg_dir, "/opt/kanibako/kanibako", "ro"),
         Mount(entry_path, "/home/agent/.local/bin/kanibako", "ro"),
     ]
-
-
-def _build_resource_mounts(proj, target, agent_id: str):
-    """Build bind mounts from target resource_mappings().
-
-    - SHARED: mount shared dir over ``/home/agent/{config_dir}/{path}`` (read-write).
-    - PROJECT: no extra mount (already in shell_path).
-
-    NOTE: the SEEDED scope was removed in 1.6.0 — seeding a box's config from a
-    shared source is now owned by the layered seed-once template apply (Phase 7c),
-    so there is no SEEDED branch here.  The retired per-project ``settings.yaml``
-    scope override (a Phase-5 worksets casualty) is no longer read either.
-    """
-    from kanibako.targets.base import Mount, ResourceScope
-
-    mappings = target.resource_mappings()
-    if not mappings:
-        return []
-
-    shared_base = proj.global_shared_path
-    if not shared_base:
-        return []
-
-    config_dir = target.config_dir_name
-
-    mounts = []
-    for mapping in mappings:
-        if mapping.scope == ResourceScope.SHARED:
-            shared_path = shared_base / agent_id / mapping.path
-            if mapping.path.endswith("/"):
-                shared_path.mkdir(parents=True, exist_ok=True)
-            else:
-                # File resource: create parent dir and touch the file.
-                shared_path.parent.mkdir(parents=True, exist_ok=True)
-                if not shared_path.exists():
-                    shared_path.touch()
-            mounts.append(Mount(
-                source=shared_path,
-                destination=f"/home/agent/{config_dir}/{mapping.path}",
-                options="Z,U",
-            ))
-        # PROJECT scope: no extra mount needed.
-
-    return mounts
 
 
 # AF_UNIX ``sun_path`` length limit.  The platform value is 108 bytes on Linux

@@ -198,11 +198,6 @@ class TestStandaloneLaunch:
         proj.shell_path = project_path / ".kanibako" / "shell"
         proj.vault_ro_path = project_path / "vault" / "ro"
         proj.vault_rw_path = project_path / "vault" / "rw"
-        # No global/local shared store: keeps descriptor_mounts (now the default
-        # mock-target path) from resolving a MagicMock plugins source and
-        # mkdir'ing a literal MagicMock-named dir into the CWD.
-        proj.global_shared_path = None
-        proj.local_shared_path = None
         return proj
 
     def test_start_detects_standalone_project(self, start_mocks, tmp_path):
@@ -400,11 +395,6 @@ class TestWorksetLaunch:
         proj.shell_path = ws_root / "kanibako" / project_name / "shell"
         proj.vault_ro_path = ws_root / "vault" / project_name / "ro"
         proj.vault_rw_path = ws_root / "vault" / project_name / "rw"
-        # No global/local shared store: keeps descriptor_mounts (now the default
-        # mock-target path) from resolving a MagicMock plugins source and
-        # mkdir'ing a literal MagicMock-named dir into the CWD.
-        proj.global_shared_path = None
-        proj.local_shared_path = None
         return proj
 
     def test_start_detects_workset_project(self, start_mocks, tmp_path):

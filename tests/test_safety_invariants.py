@@ -364,7 +364,7 @@ class TestBinaryMountContract:
 
         t = ClaudeTarget()
         install = self._install(tmp_path)
-        mounts = descriptor_mounts(t.descriptor, install, shared_store_root=None)
+        mounts = descriptor_mounts(t.descriptor, install)
 
         assert len(mounts) == 2
         for m in mounts:
@@ -378,7 +378,7 @@ class TestBinaryMountContract:
         t = ClaudeTarget()
         install = self._install(tmp_path, make_launcher=False)
         with pytest.raises(BindingSourceError):
-            descriptor_mounts(t.descriptor, install, shared_store_root=None)
+            descriptor_mounts(t.descriptor, install)
 
 
 # ── Contract tests: CLI args invariants ───────────────────────────────

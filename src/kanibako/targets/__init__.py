@@ -9,11 +9,11 @@ import pkgutil
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from kanibako.targets.base import AgentInstall, Mount, ResourceMapping, ResourceScope, Target, TargetSetting
+from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.no_agent import NoAgentTarget
 
 __all__ = [
-    "AgentInstall", "Mount", "NoAgentTarget", "ResourceMapping", "ResourceScope",
+    "AgentInstall", "Mount", "NoAgentTarget",
     "Target", "TargetSetting",
     "discover_targets", "get_target", "resolve_target",
 ]

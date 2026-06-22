@@ -18,8 +18,6 @@ from kanibako.targets.base import (
     CredFileSpec,
     HostSrcOrigin,
     PluginDescriptor,
-    ResourceMapping,
-    ResourceScope,
     TargetSetting,
 )
 from kanibako.plugins.claude import ClaudeTarget
@@ -148,7 +146,7 @@ class TestDescriptorDeliveryMounts:
             install_dir=install_dir,
             launcher=launcher,
         )
-        mounts = descriptor_mounts(t.descriptor, install, shared_store_root=None)
+        mounts = descriptor_mounts(t.descriptor, install)
 
         assert len(mounts) == 2
         assert mounts[0].source == install_dir
@@ -170,7 +168,7 @@ class TestDescriptorDeliveryMounts:
             launcher=tmp_path / "nonexistent" / "bin" / "claude",
         )
         with pytest.raises(BindingSourceError):
-            descriptor_mounts(t.descriptor, install, shared_store_root=None)
+            descriptor_mounts(t.descriptor, install)
 
 
 def _real_launcher(tmp_path):
@@ -405,52 +403,29 @@ class TestRefreshCredentials:
         assert project_creds == home / ".claude" / ".credentials.json"
 
 
-class TestResourceMappings:
-    def test_returns_list(self):
-        t = ClaudeTarget()
-        mappings = t.resource_mappings()
-        assert isinstance(mappings, list)
-        assert len(mappings) > 0
+class TestDefaultShares:
+    """Part 3a: claude declares plugins + cache as AGENT-scope ``shared`` entries.
 
-    def test_all_entries_are_resource_mappings(self):
-        t = ClaudeTarget()
-        for m in t.resource_mappings():
-            assert isinstance(m, ResourceMapping)
+    The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
+    in the box home bind, fresh per box); plugins + cache are now category
+    ``agent.shared.*`` defaults rooted at ``@system.agents/claude``.
+    """
 
-    def test_no_shared_resources(self):
-        """Plugins moved to a crab-scoped default share; no SHARED mappings remain."""
+    def test_declares_plugins_and_cache(self):
         t = ClaudeTarget()
-        mappings = {m.path: m.scope for m in t.resource_mappings()}
-        assert "plugins/" not in mappings
-        shared = [p for p, s in mappings.items() if s == ResourceScope.SHARED]
-        assert shared == []
+        shares = t.default_shares()
+        assert shares == {
+            "agent.shared.plugins": "plugins:/home/agent/.claude/plugins",
+            "agent.shared.cache": "cache:/home/agent/.claude/cache",
+        }
 
-    def test_default_shares(self):
-        """Phase 1h: plugins moved off the legacy default-share path onto the
-        descriptor's AGENT-scope SHARED_STORE ``plugins`` binding, so claude
-        declares NO default shares (inherits the base ``{}``)."""
+    def test_share_values_are_relative_host_src(self):
+        """host_src is the relative key name (joined under the agent store root)."""
         t = ClaudeTarget()
-        assert t.default_shares() == {}
-
-    def test_no_seeded_resources(self):
-        """settings.json/CLAUDE.md are now template-seeded, not resource mappings."""
-        t = ClaudeTarget()
-        mappings = {m.path: m.scope for m in t.resource_mappings()}
-        assert "settings.json" not in mappings
-        assert "CLAUDE.md" not in mappings
-        assert ResourceScope.SEEDED not in {m.scope for m in t.resource_mappings()}
-
-    def test_project_resources(self):
-        """Session data, history, tasks, etc. are project-scoped."""
-        t = ClaudeTarget()
-        mappings = {m.path: m.scope for m in t.resource_mappings()}
-        project_paths = [
-            "projects/", "session-env/", "history.jsonl", "tasks/",
-            "todos/", "plans/", "file-history/", "backups/",
-            "debug/", "paste-cache/", "shell-snapshots/",
-        ]
-        for path in project_paths:
-            assert mappings[path] == ResourceScope.PROJECT, f"{path} should be PROJECT"
+        for value in t.default_shares().values():
+            host_src, box_dest = value.split(":", 1)
+            assert not host_src.startswith("/")
+            assert box_dest.startswith("/home/agent/.claude/")
 
 
 class TestSettingDescriptors:
@@ -562,7 +537,10 @@ class TestDescriptor:
     def test_bindings(self):
         d = ClaudeTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
-        assert set(bindings) == {"share", "launcher", "plugins"}
+        # Part 3a: the ``plugins`` SHARED_STORE binding was removed; plugins (and
+        # cache) are now AGENT-scope ``shared`` category entries (default_shares),
+        # so only the two AGENT_CRITICAL delivery binds remain.
+        assert set(bindings) == {"share", "launcher"}
 
         share = bindings["share"]
         assert share.origin == HostSrcOrigin.INSTALL_DIR
@@ -577,14 +555,6 @@ class TestDescriptor:
         assert launcher.kind == BindKind.FILE
         assert launcher.scope == BindScope.AGENT_CRITICAL
         assert launcher.ro is True
-
-        plugins = bindings["plugins"]
-        assert plugins.origin == HostSrcOrigin.SHARED_STORE
-        assert plugins.box_dest == "/home/agent/.claude/plugins"
-        assert plugins.kind == BindKind.DIR
-        assert plugins.scope == BindScope.AGENT
-        assert plugins.ro is False
-        assert plugins.src_rel == "plugins"
 
     def test_mode(self):
         d = ClaudeTarget().descriptor

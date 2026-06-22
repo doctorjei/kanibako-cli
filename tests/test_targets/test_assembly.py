@@ -558,19 +558,6 @@ def test_resolve_source_binary(tmp_path: Path) -> None:
     assert resolve_binding_source(b, install) == install.binary
 
 
-def test_resolve_source_shared_store_join(tmp_path: Path) -> None:
-    install = _install(tmp_path)
-    store = tmp_path / "store"
-    b = _binding(HostSrcOrigin.SHARED_STORE, src_rel="plugins/foo")
-    assert resolve_binding_source(b, install, shared_store_root=store) == store / "plugins/foo"
-
-
-def test_resolve_source_shared_store_without_root_is_none(tmp_path: Path) -> None:
-    install = _install(tmp_path)
-    b = _binding(HostSrcOrigin.SHARED_STORE, src_rel="plugins/foo")
-    assert resolve_binding_source(b, install) is None
-
-
 def test_resolve_source_literal(tmp_path: Path) -> None:
     install = _install(tmp_path)
     lit = tmp_path / "literal" / "thing"
@@ -638,9 +625,9 @@ def test_mounts_agent_critical_unresolvable_src_raises(tmp_path: Path) -> None:
         command=("a",),
         bindings=(
             Binding(
-                key="store_thing",
-                origin=HostSrcOrigin.SHARED_STORE,
-                src_rel="x",
+                key="lit_thing",
+                origin=HostSrcOrigin.LITERAL,
+                literal_src=None,  # unresolvable
                 box_dest="/box/x",
                 kind=BindKind.DIR,
                 scope=BindScope.AGENT_CRITICAL,
@@ -648,21 +635,21 @@ def test_mounts_agent_critical_unresolvable_src_raises(tmp_path: Path) -> None:
         ),
         mode={"start": ()},
     )
-    # SHARED_STORE with no root -> None -> raises for AGENT_CRITICAL.
+    # LITERAL with no literal_src -> None -> raises for AGENT_CRITICAL.
     with pytest.raises(BindingSourceError):
         descriptor_mounts(d, install)
 
 
 def test_mounts_agent_missing_src_skipped(tmp_path: Path) -> None:
-    store = tmp_path / "store"  # exists=False for the share
+    missing = tmp_path / "store" / "plugins"  # exists=False for the share
     install = _install(tmp_path)
     d = PluginDescriptor(
         command=("a",),
         bindings=(
             Binding(
                 key="plugins",
-                origin=HostSrcOrigin.SHARED_STORE,
-                src_rel="plugins",
+                origin=HostSrcOrigin.LITERAL,
+                literal_src=missing,
                 box_dest="/box/plugins",
                 kind=BindKind.DIR,
                 scope=BindScope.AGENT,
@@ -671,21 +658,21 @@ def test_mounts_agent_missing_src_skipped(tmp_path: Path) -> None:
         ),
         mode={"start": ()},
     )
-    mounts = descriptor_mounts(d, install, shared_store_root=store)
+    mounts = descriptor_mounts(d, install)
     assert mounts == []
 
 
 def test_mounts_agent_existing_src_rw_option(tmp_path: Path) -> None:
-    store = tmp_path / "store"
-    (store / "plugins").mkdir(parents=True)
+    share = tmp_path / "store" / "plugins"
+    share.mkdir(parents=True)
     install = _install(tmp_path)
     d = PluginDescriptor(
         command=("a",),
         bindings=(
             Binding(
                 key="plugins",
-                origin=HostSrcOrigin.SHARED_STORE,
-                src_rel="plugins",
+                origin=HostSrcOrigin.LITERAL,
+                literal_src=share,
                 box_dest="/box/plugins",
                 kind=BindKind.DIR,
                 scope=BindScope.AGENT,
@@ -694,8 +681,8 @@ def test_mounts_agent_existing_src_rw_option(tmp_path: Path) -> None:
         ),
         mode={"start": ()},
     )
-    mounts = descriptor_mounts(d, install, shared_store_root=store)
-    assert mounts == [Mount(store / "plugins", "/box/plugins", "")]
+    mounts = descriptor_mounts(d, install)
+    assert mounts == [Mount(share, "/box/plugins", "")]
 
 
 def test_mounts_order_preserved_and_override_applied(tmp_path: Path) -> None:
@@ -717,8 +704,8 @@ def test_mounts_order_preserved_and_override_applied(tmp_path: Path) -> None:
             ),
             Binding(
                 key="share",
-                origin=HostSrcOrigin.SHARED_STORE,
-                src_rel="unused",
+                origin=HostSrcOrigin.LITERAL,
+                literal_src=tmp_path / "unused",
                 box_dest="/box/share",
                 kind=BindKind.DIR,
                 scope=BindScope.AGENT,

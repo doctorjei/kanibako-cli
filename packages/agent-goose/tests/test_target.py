@@ -19,7 +19,6 @@ from kanibako.targets.base import (
     CredFileSpec,
     HostSrcOrigin,
     PluginDescriptor,
-    ResourceScope,
 )
 
 
@@ -96,7 +95,7 @@ class TestDescriptorDeliveryMounts:
 
         install = AgentInstall(name="goose", binary=binary, install_dir=tmp_path)
         mounts = descriptor_mounts(
-            GooseTarget().descriptor, install, shared_store_root=None,
+            GooseTarget().descriptor, install,
         )
 
         assert len(mounts) == 1
@@ -112,7 +111,7 @@ class TestDescriptorDeliveryMounts:
         install = AgentInstall(name="goose", binary=binary, install_dir=tmp_path)
         with pytest.raises(BindingSourceError):
             descriptor_mounts(
-                GooseTarget().descriptor, install, shared_store_root=None,
+                GooseTarget().descriptor, install,
             )
 
 
@@ -248,23 +247,12 @@ class TestSettingDescriptors:
         assert len(settings) == 2
 
 
-class TestResourceMappings:
-    def test_returns_expected_entries(self):
-        # config.yaml is now template-seeded (no SEEDED resource mapping).
-        mappings = GooseTarget().resource_mappings()
-        names = [m.path for m in mappings]
-        assert "config.yaml" not in names
-        assert "secrets.yaml" in names
-        assert "sessions.db" in names
-        assert len(mappings) == 2
-        assert ResourceScope.SEEDED not in {m.scope for m in mappings}
+class TestDefaultShares:
+    """Part 3b: the resource_mappings abstraction was deleted (all PROJECT —
+    those dirs live in the box home bind).  goose declares no agent shares."""
 
-    def test_sessions_db_anchored_to_data_dir(self):
-        """sessions.db lives under the data dir, anchored via `base`."""
-        mappings = {m.path: m for m in GooseTarget().resource_mappings()}
-        assert mappings["sessions.db"].base == ".local/share/goose/sessions"
-        # secrets stays relative to the config dir (no base).
-        assert mappings["secrets.yaml"].base == ""
+    def test_no_default_shares(self):
+        assert GooseTarget().default_shares() == {}
 
 
 class TestDescriptor:
