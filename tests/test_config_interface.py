@@ -783,3 +783,113 @@ class TestResolveBoxAgent:
         cf = tmp_path / "missing.yaml"
         assert resolve_box_agent("", cf) is None
         assert resolve_box_agent(None, None) is None
+
+
+class TestSystemSettingsTierSplit:
+    """SYSTEM scope: SETTINGS route to @system.settings (global/settings.yaml),
+    while system.* CONFIG keys stay in kanibako.yaml — the config/settings split.
+
+    The interface fns take an optional ``system_settings_path``; when set (the
+    SYSTEM scope) SETTINGS reads/writes go there, NOT to ``config_path`` /
+    ``global_config_path`` (which remain the CONFIG file for ``system.*``).
+    """
+
+    def test_default_agent_writes_to_settings_not_config(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"        # CONFIG file
+        ssp = tmp_path / "global" / "settings.yaml"  # SETTINGS file
+        msg = set_config_value(
+            "system.default_agent", "claude",
+            config_path=cf, system_settings_path=ssp,
+        )
+        assert msg == "Set system.default_agent=claude"
+        # The SETTING landed in the settings file's agent.default table.
+        assert load_doc(ssp)["agent"]["default"]["default_agent"] == "claude"
+        # The CONFIG file was NOT written.
+        assert not cf.exists()
+
+    def test_default_agent_round_trips_via_settings_file(self, tmp_path):
+        from kanibako.config import read_default_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        set_config_value(
+            "system.default_agent", "goose",
+            config_path=cf, system_settings_path=ssp,
+        )
+        # Read back via interface getter (system scope) + launch-time reader.
+        assert get_config_value(
+            "system.default_agent", global_config_path=cf, system_settings_path=ssp,
+        ) == "goose"
+        # The launch-time reader points at the SETTINGS file, not kanibako.yaml.
+        assert read_default_agent(ssp) == "goose"
+        # A stale value in kanibako.yaml's agent table does NOT feed the tier.
+        assert read_default_agent(cf) is None
+
+    def test_agent_setting_routes_to_settings_file(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        set_config_value(
+            "model", "gpt-5", config_path=cf, system_settings_path=ssp,
+        )
+        # Agent SETTING lands in the settings file, not the CONFIG file.
+        assert load_doc(ssp)["agent"]["default"]["model"] == "gpt-5"
+        assert not cf.exists()
+        assert get_config_value(
+            "model", global_config_path=cf, system_settings_path=ssp,
+        ) == "gpt-5"
+
+    def test_system_config_key_stays_in_config_file(self, tmp_path):
+        """system.* CONFIG read uses global_config_path (kanibako.yaml), even
+        when a settings file is supplied — config/settings stay separate."""
+        from kanibako.config_interface import _write_nested_toml_key
+
+        cf = tmp_path / "kanibako.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
+        assert get_config_value(
+            "system.data", global_config_path=cf, system_settings_path=ssp,
+        ) == "/custom/data"
+        # The settings file was never touched by a CONFIG read.
+        assert not ssp.exists()
+
+    def test_reset_default_agent_clears_settings_file(self, tmp_path):
+        from kanibako.config import read_default_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        set_config_value(
+            "system.default_agent", "claude",
+            config_path=cf, system_settings_path=ssp,
+        )
+        msg = reset_config_value(
+            "system.default_agent", config_path=cf, system_settings_path=ssp,
+        )
+        assert msg == "Reset system.default_agent"
+        assert read_default_agent(ssp) is None
+
+    def test_reset_all_clears_settings_and_config_separately(self, tmp_path):
+        from kanibako.config_interface import _write_nested_toml_key
+
+        cf = tmp_path / "kanibako.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        # A SETTING (settings file) + a config override (config file).
+        set_config_value(
+            "system.default_agent", "claude",
+            config_path=cf, system_settings_path=ssp,
+        )
+        _write_nested_toml_key(cf, ("box",), "image", "ghcr.io/x:1")
+        reset_all(config_path=cf, force=True, system_settings_path=ssp)
+        # The SETTING is gone from the settings file.
+        assert not load_doc(ssp).get("agent")
+
+    def test_absent_settings_file_is_graceful(self, tmp_path):
+        """Missing global/settings.yaml → empty system tier, no error."""
+        from kanibako.config import read_default_agent, resolve_box_agent
+
+        cf = tmp_path / "kanibako.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"  # never created
+        assert read_default_agent(ssp) is None
+        assert resolve_box_agent(None, ssp) is None
+        assert get_config_value(
+            "system.default_agent", global_config_path=cf, system_settings_path=ssp,
+        ) is None
