@@ -708,7 +708,7 @@ class TestResolveAnyProject:
 
         assert proj.mode is BoxMode.named
         assert proj.metadata_path == ws.projects_dir / "myproj"
-        assert proj.shell_path == ws.projects_dir / "myproj" / "shell"
+        assert proj.shell_path == ws.projects_dir / "myproj" / "home"
 
     def test_resolve_any_project_workset_subdirectory(self, config_file, tmp_home):
         """cwd is workspaces/proj/src/, still resolves correctly."""
@@ -918,7 +918,7 @@ class TestPrimaryVaultLocation:
         proj = resolve_project(
             std, config, project_dir=str(tmp_home / "project"), initialize=True,
         )
-        assert proj.shell_path == proj.metadata_path / "shell"
+        assert proj.shell_path == proj.metadata_path / "home"
         assert proj.metadata_path == std.boxes / proj.name
 
 

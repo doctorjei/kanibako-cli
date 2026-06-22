@@ -36,13 +36,13 @@ class TestMountStubs:
         )
         wait_for_container("kanibako-e2e-stubs", timeout=15)
 
-        # Find the shell directory (lives under boxes/<name>/shell/).
+        # Find the shell directory (lives under boxes/<name>/home/).
         boxes_dir = data_home / "kanibako" / "boxes"
         box_dirs = list(boxes_dir.iterdir()) if boxes_dir.exists() else []
         assert len(box_dirs) > 0, (
             f"No box directories found under {boxes_dir}"
         )
-        shell_path = box_dirs[0] / "shell"
+        shell_path = box_dirs[0] / "home"
         assert shell_path.is_dir(), (
             f"Shell dir missing: {shell_path} "
             f"(box contents: {list(box_dirs[0].iterdir())})"

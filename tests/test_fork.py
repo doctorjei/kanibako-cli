@@ -39,7 +39,7 @@ def fork_ctx(tmp_path):
     # Set up metadata dir (boxes/myapp/)
     meta_dir = data_path / "boxes" / "myapp"
     meta_dir.mkdir()
-    shell_dir = meta_dir / "shell"
+    shell_dir = meta_dir / "home"
     shell_dir.mkdir()
     (shell_dir / ".bashrc").write_text("# bashrc\n")
     vault_dir = meta_dir / "vault"
@@ -138,7 +138,7 @@ class TestHandleFork:
         # settings.yaml should be copied
         assert (new_meta / "settings.yaml").is_file()
         # shell should be copied
-        assert (new_meta / "shell" / ".bashrc").is_file()
+        assert (new_meta / "home" / ".bashrc").is_file()
         # vault should be copied
         assert (new_meta / "vault" / "ro").is_dir()
         # lock file should NOT be copied

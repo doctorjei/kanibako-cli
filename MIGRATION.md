@@ -358,6 +358,13 @@ $XDG_DATA_HOME/kanibako/primary_workset/   ← @system.primary_workset (= @works
 Move each primary box's home dir to `primary_workset/boxes/<box>/home/`, its vault to
 `primary_workset/vault/{ro,rw}/<box>/`, and its log to `primary_workset/logs/<box>.jsonl`.
 
+**Per-box state-dir leaf renamed `shell` → `home`.** The on-disk per-box state
+directory is now `boxes/<box>/home/` (was `boxes/<box>/shell/`) for PRIMARY and NAMED
+boxes, matching STANDALONE (which already used `home`). No auto-migration: manually
+`mv boxes/<box>/shell boxes/<box>/home` for each existing box. (The persisted
+`box.shell` *setting* — the login shell — and the stored-path `shell` metadata key are
+unchanged; only the directory leaf moved.)
+
 ### 4.4 NAMED workset layout
 
 ```

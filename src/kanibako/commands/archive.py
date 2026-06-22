@@ -220,7 +220,7 @@ def _stub_project(metadata_path, project_path, config):
         project_path=effective_path,
         project_hash=phash,
         metadata_path=metadata_path,
-        shell_path=metadata_path / "shell",
+        shell_path=metadata_path / "home",
         vault_ro_path=effective_path / "vault" / "ro",
         vault_rw_path=effective_path / "vault" / "rw",
         is_new=False,

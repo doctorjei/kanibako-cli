@@ -282,7 +282,7 @@ def _default_state_from_meta(
     meta = read_project_meta(metadata_path / BOX_META_FILE)
     if not meta:
         return None
-    shell_path = Path(meta["shell"]) if meta.get("shell") else metadata_path / "shell"
+    shell_path = Path(meta["shell"]) if meta.get("shell") else metadata_path / "home"
     vault_ro = Path(meta["vault_ro"]) if meta.get("vault_ro") else std.primary_vault_ro / name
     vault_rw = Path(meta["vault_rw"]) if meta.get("vault_rw") else std.primary_vault_rw / name
     return ProjectState(
@@ -401,12 +401,12 @@ def copy_into_workset(
         dst_project = ws.projects_dir / proj_name
         shutil.copytree(
             metadata_path, dst_project,
-            ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
+            ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
             dirs_exist_ok=True,
         )
 
         if shell_path.is_dir():
-            dst_shell = dst_project / "shell"
+            dst_shell = dst_project / "home"
             shutil.copytree(shell_path, dst_shell, dirs_exist_ok=True)
 
         if copy_workspace:
@@ -829,17 +829,17 @@ def _copy_metadata(
     dst_metadata: Path,
     *,
     shell_into_metadata: bool,
-    home_leaf: str = "shell",
+    home_leaf: str = "home",
     unwind: _Unwind,
 ) -> Path:
-    """Copy metadata (minus lock+shell) and shell into *dst_metadata*.
+    """Copy metadata (minus lock+home) and shell into *dst_metadata*.
 
     Returns the destination shell path (``dst_metadata / home_leaf``).  Pushes
     an rmtree of *dst_metadata* onto *unwind*.
     """
     shutil.copytree(
         src_metadata, dst_metadata,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
+        ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
     unwind.push(lambda: shutil.rmtree(dst_metadata, ignore_errors=True))
@@ -909,7 +909,7 @@ def _remove_old_metadata(
                 except ValueError:
                     continue
                 shutil.rmtree(vault_dir, ignore_errors=True)
-        if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "shell":
+        if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "home":
             try:
                 state.shell_path.relative_to(state.metadata_path)
             except ValueError:
@@ -1143,7 +1143,7 @@ def _to_workset(
                 dirs_exist_ok=True,
             )
         metadata_source = stash_boxes
-        shell_source = stash_boxes / "shell"
+        shell_source = stash_boxes / "home"
         remove_project(src_ws, src_name, remove_files=True, std=std)
 
         def _restore_source() -> None:
@@ -1166,13 +1166,13 @@ def _to_workset(
     )
 
     dst_project = target_ws.projects_dir / new_name
-    # Copy metadata (minus lock+shell) into the workset boxes dir.
+    # Copy metadata (minus lock+home) into the workset boxes dir.
     shutil.copytree(
         metadata_source, dst_project,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
+        ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
-    dst_shell = dst_project / "shell"
+    dst_shell = dst_project / "home"
     if shell_source.is_dir():
         shutil.copytree(shell_source, dst_shell, dirs_exist_ok=True)
 

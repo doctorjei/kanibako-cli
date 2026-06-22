@@ -608,7 +608,7 @@ def run_config(args: argparse.Namespace) -> int:
                     target = None
                 if target:
                     for proj in ws.projects:
-                        shell_path = ws.projects_dir / proj.name / "shell"
+                        shell_path = ws.projects_dir / proj.name / "home"
                         if shell_path.is_dir():
                             target.invalidate_credentials(shell_path)
                 print(

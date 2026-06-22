@@ -859,13 +859,13 @@ def _primary_box_paths(
 ) -> tuple[Path, Path, Path]:
     """Fixed PRIMARY-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
 
-    Shell lives under the per-box metadata dir (``boxes/<name>/shell``); the
+    Shell lives under the per-box metadata dir (``boxes/<name>/home``); the
     vault lives under the PRIMARY workset (``@system.primary_workset/vault/{ro,
     rw}/<name>``), NOT inside the user's workspace.  Phase 5 moved the PRIMARY
     vault out of the workspace so the PRIMARY workset owns boxes/vault/logs
     just like a named workset.
     """
-    shell = metadata_path / "shell"
+    shell = metadata_path / "home"
     vault_ro = std.primary_vault_ro / box_name
     vault_rw = std.primary_vault_rw / box_name
     return shell, vault_ro, vault_rw
@@ -880,7 +880,7 @@ def _workset_box_paths(
     (``<vault_base>/{ro,rw}``).  Matches the former ``robust`` workset layout
     (the prior default for named worksets).
     """
-    shell = metadata_path / "shell"
+    shell = metadata_path / "home"
     vault_ro = vault_base / "ro"
     vault_rw = vault_base / "rw"
     return shell, vault_ro, vault_rw
