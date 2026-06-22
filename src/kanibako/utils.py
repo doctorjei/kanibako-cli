@@ -57,10 +57,11 @@ def container_name_for(proj: ProjectPaths) -> str:
     - Local with name: ``kanibako-{name}``
     - Local without name (legacy): ``kanibako-{short_hash}``
     - Workset: ``kanibako-{short_hash}`` (name-based pending workset naming)
-    - Standalone: ``kanibako-ronin-{escape_path(project_path)}``
+    - Standalone: ``kanibako-ronin-{escape_path(root)}`` (the root, NOT the
+      ``workspace/`` subdir — ``metadata_path`` is the root for standalone)
     """
     if proj.mode.value == "standalone":
-        return f"kanibako-ronin-{escape_path(str(proj.project_path))}"
+        return f"kanibako-ronin-{escape_path(str(proj.metadata_path))}"
     if proj.name:
         return f"kanibako-{proj.name}"
     return f"kanibako-{short_hash(proj.project_hash)}"

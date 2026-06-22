@@ -84,16 +84,17 @@ class TestStandaloneImport:
     def test_handcreated_tree_mints_and_persists_name(
         self, std, config, project_dir, capsys,
     ):
-        # A hand-built standalone tree: box_data/settings.yaml with no name.
+        # A hand-built standalone tree: <root>/settings.yaml (drift I) with no
+        # name, plus the box_data/ marker dir.
         from kanibako.config import read_project_meta, write_project_meta
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
-        meta_file = box_data / "settings.yaml"
+        meta_file = project_dir / "settings.yaml"
         write_project_meta(
             meta_file,
             mode="standalone",
-            workspace=str(project_dir.resolve()),
+            workspace=str((project_dir / "workspace").resolve()),
             shell="", vault_ro="", vault_rw="",
             name="",  # no persisted identity
         )
@@ -140,7 +141,10 @@ class TestStandaloneImport:
         assert resolved.vault_ro_path == (moved / "vault" / "ro").resolve()
         assert resolved.vault_rw_path == (moved / "vault" / "rw").resolve()
         assert str(orig) not in str(resolved.shell_path)
-        assert resolved.metadata_path == (moved / "box_data").resolve()
+        # Drift I: metadata_path is the ROOT (settings.yaml lives there);
+        # the workspace is the <root>/workspace subdir.
+        assert resolved.metadata_path == moved.resolve()
+        assert resolved.project_path == (moved / "workspace").resolve()
 
 
 # ---------------------------------------------------------------------------

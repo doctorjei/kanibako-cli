@@ -84,9 +84,15 @@ class TestWorksetRoot:
         assert channels.workset_root(named_proj, std) == named_proj.group.root
 
     def test_standalone_roots_at_project_dir(self, standalone_proj, std):
+        # Drift H: the workset root is the project ROOT (metadata_path), NOT the
+        # workspace subdir (project_path = <root>/workspace).
         assert (
             channels.workset_root(standalone_proj, std)
-            == standalone_proj.project_path
+            == standalone_proj.metadata_path
+        )
+        assert (
+            standalone_proj.project_path
+            == standalone_proj.metadata_path / "workspace"
         )
 
 

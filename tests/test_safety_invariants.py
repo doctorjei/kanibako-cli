@@ -248,13 +248,13 @@ class TestDetectionFalsePositives:
     def test_box_data_marker_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """box_data/ with a real standalone settings.yaml is a valid marker."""
+        """box_data/ dir + a ROOT settings.yaml (drift I) is a valid marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
         (project_dir / "box_data").mkdir()
-        (project_dir / "box_data" / "settings.yaml").write_text(
+        (project_dir / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 

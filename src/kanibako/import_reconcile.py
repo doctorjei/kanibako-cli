@@ -94,16 +94,16 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
 
     * Already registered to *root* (by ``standalone_name_for_root``) → silent
       no-op, returns the registered name.
-    * The box's persisted ``name`` (from ``box_data/settings.yaml``) is missing
+    * The box's persisted ``name`` (from ``<root>/settings.yaml``) is missing
       or empty (a hand-created tree) → generate a fresh ``<random24>_<leaf>``
       name, persist it back into the metadata, register, alert, return it.
     * Otherwise the persisted name is registered to *root* + alerted, UNLESS it
       already maps to a DIFFERENT root → :class:`ImportConflictError` (refuse,
       no mutation).
 
-    *root* is the standalone project root (the dir containing ``box_data/``).
-    Returns the registered box name, or ``None`` when *root* has no readable
-    standalone metadata (nothing to import).
+    *root* is the standalone project root (the dir containing ``box_data/`` and,
+    at the root, ``settings.yaml``).  Returns the registered box name, or
+    ``None`` when *root* has no readable standalone metadata (nothing to import).
     """
     root = root.resolve()
     root_str = str(root)
@@ -113,7 +113,9 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
     if existing_name is not None:
         return existing_name
 
-    meta_path = root / "box_data" / BOX_META_FILE
+    # Box meta lives at the ROOT (the ``box_data/`` marker dir holds only home/
+    # + the helper log).
+    meta_path = root / BOX_META_FILE
     meta = read_project_meta(meta_path)
     if not meta:
         return None  # No standalone metadata on disk → nothing to import.

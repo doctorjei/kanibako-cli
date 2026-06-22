@@ -890,17 +890,20 @@ def _workset_box_paths(
 
 
 def _standalone_box_paths(
-    metadata_path: Path, project_path: Path,
+    root: Path,
 ) -> tuple[Path, Path, Path]:
     """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis).
 
-    All state stays inside the project dir under ``box_data/`` (the *metadata
-    path*): the agent home is ``box_data/home``, and the vault lives at
-    ``<project>/vault/{ro,rw}`` (per the §1c STANDALONE table).
+    All host state lives inside the project *root*: the agent home is
+    ``<root>/box_data/home`` (the ``box_data/`` marker dir also holds the
+    ``<box>.jsonl`` helper log), and the vault lives at ``<root>/vault/{ro,rw}``
+    (per the §2c STANDALONE table).  The box ``settings.yaml`` lives at
+    ``<root>/settings.yaml`` (the root, NOT ``box_data/``) and the workspace is
+    the ``<root>/workspace`` subdir — both handled by the callers, not here.
     """
-    home = metadata_path / "home"
-    vault_ro = project_path / "vault" / "ro"
-    vault_rw = project_path / "vault" / "rw"
+    home = root / _STANDALONE_META_DIR / "home"
+    vault_ro = root / "vault" / "ro"
+    vault_rw = root / "vault" / "rw"
     return home, vault_ro, vault_rw
 
 
@@ -920,9 +923,11 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
     """
     box = proj.name if proj.name else short_hash(proj.project_hash)
     if proj.mode is BoxMode.standalone:
-        # box_data/ is the standalone metadata dir; the log stays inside it so
-        # the whole standalone tree is drop-in portable.
-        return proj.metadata_path / f"{box}.jsonl"
+        # The standalone log stays inside the ``box_data/`` marker dir (settings
+        # itself now lives at the root, so the log is anchored explicitly under
+        # ``metadata_path/box_data`` rather than ``metadata_path``) so the whole
+        # standalone tree is drop-in portable.
+        return proj.metadata_path / _STANDALONE_META_DIR / f"{box}.jsonl"
     if proj.mode is BoxMode.named:
         # The workset root is carried on the project group (root=ws.root).
         ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
@@ -1082,14 +1087,15 @@ _STANDALONE_META_DIR = "box_data"
 def _is_standalone_meta_dir(root: Path) -> bool:
     """True only if *root* is a real standalone project root.
 
-    The walk marker is a ``box_data/`` directory under *root* carrying a box
-    metadata file that declares ``box.mode = "standalone"``.  A bare
-    ``box_data/`` directory is NOT sufficient (it must hold a parseable
-    standalone metadata file), so an unrelated directory of that name is never
-    mistaken for a standalone project marker.
+    The walk marker is a ``box_data/`` directory present under *root* PLUS a box
+    ``settings.yaml`` AT THE ROOT (``<root>/settings.yaml``, NOT inside
+    ``box_data/``) that declares ``box.mode = "standalone"``.  Requiring both
+    keeps an unrelated ``box_data/`` directory from ever being mistaken for a
+    standalone marker, and distinguishes standalone from a NAMED workset (whose
+    root ``settings.yaml`` carries ``workset.meta`` and has no ``box_data/``).
     """
     meta_dir = root / _STANDALONE_META_DIR
-    toml = meta_dir / BOX_META_FILE
+    toml = root / BOX_META_FILE
     if not meta_dir.is_dir() or not toml.is_file():
         return False
     try:
@@ -1603,23 +1609,24 @@ def establish_standalone(
        ``registry.standalone``) when *name* is empty, otherwise honoring the
        supplied (lowercased) ``--name``: a verbatim canonical id if free (else
        refuse), or a fresh prefix over the supplied string as the leaf;
-    2. writes the standalone ``box_data/settings.yaml`` meta (``mode=standalone``
-       + the fixed STANDALONE path table via :func:`_standalone_box_paths`);
+    2. writes the standalone ``<root>/settings.yaml`` meta (``mode=standalone``
+       + the fixed STANDALONE path table via :func:`_standalone_box_paths`); the
+       box ``settings.yaml`` lives at the ROOT (the ``box_data/`` marker dir
+       holds only ``home/`` + the ``<box>.jsonl`` helper log);
     3. registers the box in ``registry.standalone`` (``box_name`` → *root*).
 
-    *root* is the standalone project dir (the workspace).  The box-data dir
-    (``root/box_data``) must already exist (each caller creates/copies it before
-    calling).  Returns ``(box_name, shell_path, vault_ro, vault_rw)`` so callers
-    can build their result state without recomputing the table.  Callers own
-    their own surrounding concerns (file copies, unwind registration, old-name
+    *root* is the standalone project dir.  The box-data dir (``root/box_data``)
+    must already exist (each caller creates/copies it before calling).  Returns
+    ``(box_name, shell_path, vault_ro, vault_rw)`` so callers can build their
+    result state without recomputing the table.  Callers own their own
+    surrounding concerns (file copies, unwind registration, old-name
     unregister) — only the identity/meta/register core lives here.
     """
     from kanibako import box_identity, registry_store
 
-    metadata_path = root / _STANDALONE_META_DIR
-    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(
-        metadata_path, root,
-    )
+    box_data = root / _STANDALONE_META_DIR
+    workspace = root / "workspace"
+    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
     # phash derives from the resolved root (a standalone tree is drop-in
     # portable); the on-disk string fields below use *root* verbatim, matching
     # each call site's prior behavior.
@@ -1629,15 +1636,15 @@ def establish_standalone(
     box_name = box_identity.resolve_standalone_name(root, name, existing)
 
     write_project_meta(
-        metadata_path / BOX_META_FILE,
+        root / BOX_META_FILE,
         mode="standalone",
-        workspace=str(root),
+        workspace=str(workspace),
         shell=str(shell_path),
         vault_ro=str(vault_ro_path),
         vault_rw=str(vault_rw_path),
         enable_vault=enable_vault,
         group_auth=group_auth,
-        metadata=str(metadata_path),
+        metadata=str(box_data),
         project_hash=phash,
         name=box_name,
     )
@@ -1660,26 +1667,34 @@ def resolve_standalone_project(
     All project state lives inside *project_dir* itself.
     No data is written to ``$XDG_DATA_HOME``.
 
-    Phase 5d: no layout axis.  Standalone metadata lives under ``box_data/`` in
-    the project root (home at ``box_data/home``, vault at ``<root>/vault/...``).
-    The box identity is ``<random24>_<sanitized leaf>`` (generated + registered
-    in ``registry.standalone`` at create time; reused from the stored meta
-    afterwards).
+    Phase 5d/Part 3 (drift H+I): no layout axis.  The project *root* (the
+    runtime dir) is the standalone workset root and holds, in fixed positions:
+    ``settings.yaml`` (the box meta, AT THE ROOT — ``metadata_path``), a
+    ``workspace/`` subdir (the live workspace → ``~/workspace`` — the
+    ``project_path``), a ``box_data/`` marker dir holding ``home/`` + the
+    ``<box>.jsonl`` helper log, and ``vault/{ro,rw}/``.  The box identity is
+    ``<random24>_<sanitized leaf>`` (generated + registered in
+    ``registry.standalone`` at create time; reused from the stored meta after).
     """
     raw = project_dir or os.getcwd()
-    project_path = Path(raw).resolve()
+    root = Path(raw).resolve()
 
-    if not project_path.is_dir():
-        raise ProjectError(f"Project path '{project_path}' does not exist.")
+    if not root.is_dir():
+        raise ProjectError(f"Project path '{root}' does not exist.")
 
-    phash = project_hash(str(project_path))
+    # The hash + identity key off the ROOT (the standalone workset root), which
+    # is stable; the workspace subdir is the bind source, not the identity.
+    phash = project_hash(str(root))
 
-    # Metadata dir: box_data/ under the project root (the §1c STANDALONE table).
-    metadata_path = project_path / _STANDALONE_META_DIR
-    project_toml = metadata_path / BOX_META_FILE
+    # Metadata at the ROOT (settings.yaml); the ``box_data/`` marker dir holds
+    # home/ + the helper log.  ``project_path`` is the ``workspace/`` subdir.
+    metadata_path = root
+    box_data = root / _STANDALONE_META_DIR
+    project_path = root / "workspace"
+    project_toml = root / BOX_META_FILE
 
     meta = None
-    if metadata_path.is_dir():
+    if box_data.is_dir() and project_toml.is_file():
         meta = read_project_meta(project_toml)
 
     # STANDALONE paths are ALWAYS derived from the (current) root, never the
@@ -1687,9 +1702,7 @@ def resolve_standalone_project(
     # imported tree must resolve against its new location.  The resolved.*
     # section in settings.yaml is advisory only (BUG#1 fix); home/vault always
     # live at the fixed box_data/home + <root>/vault/{ro,rw} positions.
-    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(
-        metadata_path, project_path,
-    )
+    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
     if meta:
         actual_vault_enabled = (
             meta.get("enable_vault", True) if enable_vault is None else enable_vault
@@ -1715,7 +1728,9 @@ def resolve_standalone_project(
     )
 
     is_new = False
-    if initialize and not metadata_path.is_dir():
+    if initialize and not box_data.is_dir():
+        # Not-yet-initialized iff the ``box_data/`` marker dir is absent (the
+        # root itself always exists — it is the runtime dir).
         # Pre-flight the requested --name BEFORE any FS mutation so a doomed
         # create (a verbatim-canonical name already taken) refuses up front
         # rather than leaving an orphaned half-created box_data/ + vault/ tree
@@ -1727,7 +1742,7 @@ def resolve_standalone_project(
             registry_store.standalone_box_names(std.data_path),
         )
         _init_standalone_project(
-            std, metadata_path, shell_path,
+            std, box_data, shell_path,
             vault_ro_path, vault_rw_path, project_path,
             enable_vault=actual_vault_enabled,
         )
@@ -1735,7 +1750,7 @@ def resolve_standalone_project(
         # init block is only reached when no meta exists, so the identity is
         # resolved fresh from the user-supplied --name (empty → fresh canonical).
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
-            std, project_path,
+            std, root,
             enable_vault=actual_vault_enabled,
             group_auth=actual_group_auth,
             name=requested_name,
@@ -1743,10 +1758,11 @@ def resolve_standalone_project(
         is_new = True
 
     if initialize:
-        # Recovery: ensure home exists.
+        # Recovery: ensure home + workspace exist.
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
+        project_path.mkdir(parents=True, exist_ok=True)
 
     return ProjectPaths(
         project_path=project_path,
@@ -1780,9 +1796,15 @@ def _init_standalone_project(
 
     Credential copy is handled separately by ``target.init_home()`` in
     ``start.py``, after template application.
+
+    *metadata_path* is the ``box_data/`` marker dir (home + helper log);
+    *project_path* is the ``workspace/`` subdir (the live workspace), which is
+    created here so the bind source exists.
     """
     _init_common(
         std, metadata_path, shell_path,
         vault_ro_path, vault_rw_path, project_path,
         enable_vault=enable_vault,
     )
+    # The workspace is a SUBDIR of the root (drift H); create the bind source.
+    project_path.mkdir(parents=True, exist_ok=True)
