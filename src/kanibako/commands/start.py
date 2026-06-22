@@ -210,8 +210,11 @@ def run_start(args: argparse.Namespace) -> int:
     from kanibako.targets.no_agent import NoAgentTarget
     from kanibako.config import resolve_box_agent
     _cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    # system.default_agent is a SETTING → read from @system.settings
+    # (global/settings.yaml), not the kanibako.yaml CONFIG file.
+    _sys_settings = load_std_paths(load_config(_cfg_file)).settings
     try:
-        target = resolve_target(resolve_box_agent(None, _cfg_file))
+        target = resolve_target(resolve_box_agent(None, _sys_settings))
     except KeyError:
         # A configured system.default_agent whose plugin is not installed:
         # defer the actionable error to the real launch path; fall back to
@@ -581,6 +584,9 @@ def _run_container(
     config = load_config(config_file)
 
     std = load_std_paths(config)
+    # SYSTEM tier of the SETTINGS cascade = @system.settings = global/settings.yaml
+    # (behavior keys), distinct from the kanibako.yaml CONFIG file (system.* layout).
+    system_settings_path = std.settings
 
     proj = resolve_any_project(std, config, project_dir, initialize=True)
 
@@ -701,7 +707,8 @@ def _run_container(
     install = None
     if is_agent_mode:
         from kanibako.config import resolve_box_agent
-        agent_name = resolve_box_agent(merged.box_agent, config_file)
+        # system.default_agent is a SETTING → read from the system settings file.
+        agent_name = resolve_box_agent(merged.box_agent, system_settings_path)
         try:
             target = resolve_target(agent_name)
         except KeyError as e:
@@ -876,7 +883,7 @@ def _run_container(
         if seed_box:
             _apply_init_seeds(
                 std=std, proj=proj, agent_name=agent_id, target=target,
-                global_config_path=config_file, project_toml=project_toml,
+                global_config_path=system_settings_path, project_toml=project_toml,
                 workset_config_path=workset_path, agent_config_path=agent_cfg_path,
                 logger=logger, group_auth=proj.group_auth,
             )
@@ -895,7 +902,7 @@ def _run_container(
         # gate (D-M4) suppresses every synced entry when group_auth is False.
         _apply_synced_copies(
             std=std, proj=proj, agent_name=agent_id, target=target,
-            global_config_path=config_file, project_toml=project_toml,
+            global_config_path=system_settings_path, project_toml=project_toml,
             workset_config_path=workset_path, agent_config_path=agent_cfg_path,
             logger=logger, group_auth=proj.group_auth,
         )
@@ -993,7 +1000,7 @@ def _run_container(
                 target,
                 agent_cfg,
                 project_toml,
-                global_config_path=config_file,
+                global_config_path=system_settings_path,
                 workset_config_path=workset_path,
             )
             # Apply model override from -M/--model flag
@@ -1084,7 +1091,7 @@ def _run_container(
                     project_toml=project_toml,
                     workset_config_path=workset_path,
                     agent_config_path=agent_cfg_path,
-                    global_config_path=config_file,
+                    global_config_path=system_settings_path,
                     agent_name=agent_id,
                 )
                 try:
@@ -1120,7 +1127,7 @@ def _run_container(
             std=std,
             proj=proj,
             agent_name=agent_id,
-            global_config_path=config_file,
+            global_config_path=system_settings_path,
             project_toml=project_toml,
             workset_config_path=workset_path,
             agent_config_path=agent_cfg_path,
@@ -1139,7 +1146,7 @@ def _run_container(
             std=std,
             proj=proj,
             agent_name=agent_id,
-            global_config_path=config_file,
+            global_config_path=system_settings_path,
             project_toml=project_toml,
             workset_config_path=workset_path,
             agent_config_path=agent_cfg_path,
@@ -1172,7 +1179,7 @@ def _run_container(
             std=std,
             proj=proj,
             agent_name=agent_id,
-            global_config_path=config_file,
+            global_config_path=system_settings_path,
             project_toml=project_toml,
             workset_config_path=workset_path,
             agent_config_path=agent_cfg_path,
@@ -1206,7 +1213,7 @@ def _run_container(
                 std=std,
                 proj=proj,
                 agent_name=agent_id,
-                global_config_path=config_file,
+                global_config_path=system_settings_path,
                 project_toml=project_toml,
                 workset_config_path=workset_path,
                 agent_config_path=agent_cfg_path,
@@ -1616,7 +1623,8 @@ def _build_effective_state(
       * **box**     — ``agent.<name>`` (over ``agent.default``) in settings.yaml
       * **workset** — ``agent.<name>`` in the workset's config.yaml (if any)
       * **agent**   — the agent config's own state dict (already per-agent)
-      * **system**  — ``agent.<name>`` in the global kanibako.yaml
+      * **system**  — ``agent.<name>`` in the system settings file
+        (``@system.settings`` = ``global/settings.yaml``)
       * **floor**   — target ``setting_descriptors()`` defaults
 
     The box/workset/system/machine override sections are keyed per agent
@@ -1930,7 +1938,8 @@ def _category_resolution_inputs(
     Reads every level's scope-category keys (the unified
     masks/bindings/caches/seeded/shared/synced/env primitive) from its config
     file and assembles the 5 precedence levels (most-specific first; machine
-    ``/etc`` below the user-global system config).  *default_categories* are
+    ``/etc`` below the system settings tier — ``global_config_path`` =
+    ``@system.settings`` = ``global/settings.yaml``).  *default_categories* are
     injected as the AGENT level's declared defaults (e.g. a target's
     ``default_shares()`` / ``default_seeds()`` plus core mask defaults).
     """
