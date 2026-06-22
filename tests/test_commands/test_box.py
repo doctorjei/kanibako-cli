@@ -1075,7 +1075,7 @@ class TestBoxDuplicateExternal:
         assert (dup_ws / "code.py").read_text() == "print('hello')"
         # Metadata + shell copied.
         assert (ws.projects_dir / "int_src" / "marker.txt").read_text() == "ac-marker"
-        assert (ws.projects_dir / "int_src" / "shell" / "custom.sh").exists()
+        assert (ws.projects_dir / "int_src" / "home" / "custom.sh").exists()
         # No external wiring — duplicate is a copy, not a connection.
         assert _load_connected(std) == {}
 

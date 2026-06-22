@@ -152,7 +152,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
         shutil.rmtree(dst_metadata)
     shutil.copytree(
         src_proj.metadata_path, dst_metadata,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "shell"),
+        ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
     )
 
     if src_proj.shell_path.is_dir():
@@ -223,7 +223,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
 
         # Ensure home is inside the project dir.
         if src_proj.shell_path.is_dir():
-            dst_home = dst_project / "shell"
+            dst_home = dst_project / "home"
             if not dst_home.is_dir():
                 shutil.copytree(src_proj.shell_path, dst_home)
     except BaseException:

@@ -397,7 +397,7 @@ class HelperHub:
                     source_meta_dir = candidate
                 break
 
-        # Fallback: derive from shell_path (shell_path is typically boxes/{name}/shell/)
+        # Fallback: derive from shell_path (shell_path is typically boxes/{name}/home/)
         if source_meta_dir is None:
             candidate = ctx.shell_path.parent
             if candidate.is_dir() and candidate.parent.name == "boxes":

@@ -63,7 +63,7 @@ class TestResolveWorksetProject:
 
         assert proj.project_path == ws.workspaces_dir / name
         assert proj.metadata_path == ws.projects_dir / name
-        assert proj.shell_path == ws.projects_dir / name / "shell"
+        assert proj.shell_path == ws.projects_dir / name / "home"
         assert proj.vault_ro_path == ws.vault_dir / name / "ro"
         assert proj.vault_rw_path == ws.vault_dir / name / "rw"
 
@@ -363,6 +363,6 @@ class TestWorksetFixedPaths:
         assert proj.project_path == workspace
         assert proj.metadata_path == ws.projects_dir / name
         # Fixed NAMED table: shell under the box dir, vault under the workset.
-        assert proj.shell_path == ws.projects_dir / name / "shell"
+        assert proj.shell_path == ws.projects_dir / name / "home"
         assert proj.vault_ro_path == ws.vault_dir / name / "ro"
         assert proj.vault_rw_path == ws.vault_dir / name / "rw"
