@@ -714,6 +714,130 @@ def load_settings(
     return SettingsResolver(levels, ctx)
 
 
+def resolve_agent(
+    *,
+    explicit_agent: str | None,
+    box_agent: str | None,
+    workset_agent: str | None,
+    system_default_path: Path | None,
+    project_path: Path | None = None,
+) -> str:
+    """Resolve the effective agent name (cascade + installed-count rule).
+
+    Cascade precedence (highest first): *explicit_agent* > *box_agent* >
+    *workset_agent* > system default (read from *system_default_path* via
+    :func:`read_default_agent`).  The FIRST non-empty tier "resolves a name".
+
+    A resolved name is validated against the installed set
+    (``discover_targets`` keys — exactly what ``agent list`` uses):
+
+    * installed -> return it;
+    * not installed -> raise :class:`~kanibako.errors.AgentNotInstalledError`
+      (actionable: names the agent + how to install it).
+
+    Nothing resolved -> the installed-count rule (NO ordering, NO tie-break):
+
+    * exactly 1 installed -> return that name;
+    * 0 installed -> raise :class:`~kanibako.errors.NoAgentInstalledError` (Gate-2b);
+    * 2+ installed -> raise :class:`~kanibako.errors.NoAgentSelectedError` (Gate-2a).
+    """
+    # Lazy import: kanibako.targets imports paths/config indirectly, so importing
+    # it at module scope risks a cycle. Mirror discover_targets' use elsewhere.
+    from kanibako.errors import (
+        AgentNotInstalledError,
+        NoAgentInstalledError,
+        NoAgentSelectedError,
+    )
+    from kanibako.install_method import install_command
+    from kanibako.targets import discover_targets
+
+    def _clean(value: str | None) -> str:
+        return (value or "").strip()
+
+    installed = set(discover_targets(project_path).keys())
+
+    # Cascade: first non-empty tier resolves a name.
+    resolved = (
+        _clean(explicit_agent)
+        or _clean(box_agent)
+        or _clean(workset_agent)
+        or _clean(read_default_agent(system_default_path))
+    )
+
+    if resolved:
+        if resolved in installed:
+            return resolved
+        raise AgentNotInstalledError(
+            f"Agent '{resolved}' is not installed. Install it with:\n"
+            f"  {install_command(f'kanibako-agent-{resolved}')}\n"
+            f"Or run 'kanibako agent list' to see installed agents."
+        )
+
+    # Nothing resolved -> installed-count rule.
+    if len(installed) == 1:
+        return next(iter(installed))
+    if len(installed) == 0:
+        raise NoAgentInstalledError(
+            "No agent plugins are installed. Install one, e.g.:\n"
+            f"  {install_command('kanibako-agent-claude')}\n"
+            "Access via shell: kanibako shell"
+        )
+    raise NoAgentSelectedError(
+        "No agent selected; run 'kanibako setup' to select one or "
+        "'kanibako shell' to access the container via command shell."
+    )
+
+
+def resolve_and_load_settings(
+    *,
+    explicit_agent: str | None,
+    box_agent: str | None,
+    workset_agent: str | None,
+    system_default_path: Path | None,
+    project_path: Path | None = None,
+    agent_state: Mapping[str, str] | None = None,
+    workset_path: Path | None = None,
+    box_path: Path | None = None,
+    agent_path: Path | None = None,
+    floor: Mapping[str, str] | None = None,
+    host_home: str | None = None,
+    workset_name: str | None = None,
+    xdg: dict[str, str] | None = None,
+) -> tuple[str, SettingsResolver]:
+    """Resolve the agent name (cascade + installed-count), then load its settings.
+
+    The two-pass mechanism (§Design 6): the agent NAME must be resolved FIRST,
+    because the settings cascade has a per-agent tier (``agent.<name>``)
+    sandwiched between ``system`` and ``workset``/``box``.  :func:`load_settings`
+    already builds that cascade correctly given the name, with workset/box tiers
+    MORE specific than the agent tier — so a box/workset override naturally
+    re-applies ON TOP of the agent default (precedence box > workset > agent).
+
+    Returns ``(agent_name, resolver)``.  Resolution failures propagate from
+    :func:`resolve_agent` (typed :class:`~kanibako.errors.AgentResolutionError`).
+    """
+    name = resolve_agent(
+        explicit_agent=explicit_agent,
+        box_agent=box_agent,
+        workset_agent=workset_agent,
+        system_default_path=system_default_path,
+        project_path=project_path,
+    )
+    resolver = load_settings(
+        name,
+        system_path=system_default_path,
+        agent_state=agent_state,
+        workset_path=workset_path,
+        box_path=box_path,
+        agent_path=agent_path,
+        floor=floor,
+        host_home=host_home,
+        workset_name=workset_name,
+        xdg=xdg,
+    )
+    return name, resolver
+
+
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:
     """Write a single agent-state override under ``agent.<agent_name>``.
 
