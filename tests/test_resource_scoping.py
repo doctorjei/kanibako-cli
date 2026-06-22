@@ -1,166 +1,17 @@
-"""Tests for resource scoping: _build_resource_mounts, resource overrides, and effective state."""
+"""Tests for resource scoping: kanibako mounts and effective-state precedence.
+
+The ``_build_resource_mounts`` / ``ResourceMapping`` / ``ResourceScope`` resource
+abstraction was DELETED in 1.6.0 (Part 3b): every shipped mapping was PROJECT
+(lives in the box home bind, no mount), and claude's only shared dirs (plugins +
+cache) are now ``agent.shared.*`` category entries.  Those tests are removed.
+"""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from kanibako.agent_config import AgentConfig
-from kanibako.targets.base import ResourceMapping, ResourceScope, TargetSetting
-
-
-class TestBuildResourceMounts:
-    """Tests for _build_resource_mounts() in start.py."""
-
-    def _make_proj(self, tmp_path):
-        """Create a minimal ProjectPaths-like object."""
-        metadata = tmp_path / "metadata"
-        metadata.mkdir()
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        (shell / ".claude").mkdir()
-        global_shared = tmp_path / "shared" / "global"
-        global_shared.mkdir(parents=True)
-        return SimpleNamespace(
-            metadata_path=metadata,
-            shell_path=shell,
-            global_shared_path=global_shared,
-        )
-
-    def _make_target(self, mappings):
-        target = MagicMock()
-        target.resource_mappings.return_value = mappings
-        target.config_dir_name = ".claude"
-        return target
-
-    def test_shared_resource_creates_mount(self, tmp_path):
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        mappings = [ResourceMapping("plugins/", ResourceScope.SHARED, "Plugin binaries")]
-        target = self._make_target(mappings)
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        assert len(mounts) == 1
-        assert mounts[0].destination == "/home/agent/.claude/plugins/"
-        assert "claude/plugins" in str(mounts[0].source)
-
-    def test_project_resource_no_mount(self, tmp_path):
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        mappings = [ResourceMapping("projects/", ResourceScope.PROJECT, "Session data")]
-        target = self._make_target(mappings)
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        assert len(mounts) == 0
-
-    # NOTE: the SEEDED scope was removed from _build_resource_mounts in 1.6.0
-    # (now owned by the layered seed-once template apply, Phase 7c), so the
-    # SEEDED copy tests are deleted.
-
-    def test_no_mappings_returns_empty(self, tmp_path):
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        target = self._make_target([])
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        assert mounts == []
-
-    def test_shared_file_resource_creates_file_not_dir(self, tmp_path):
-        """A SHARED resource without trailing slash is created as a file, not a directory."""
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        mappings = [ResourceMapping("stats-cache.json", ResourceScope.SHARED, "Stats")]
-        target = self._make_target(mappings)
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        assert len(mounts) == 1
-        assert mounts[0].destination == "/home/agent/.claude/stats-cache.json"
-        source = mounts[0].source
-        assert source.is_file(), f"Expected file, got directory: {source}"
-
-    def test_no_shared_base_returns_empty(self, tmp_path):
-        from kanibako.commands.start import _build_resource_mounts
-
-        proj = self._make_proj(tmp_path)
-        proj.global_shared_path = None
-        mappings = [ResourceMapping("plugins/", ResourceScope.SHARED, "Plugins")]
-        target = self._make_target(mappings)
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        assert mounts == []
-
-
-class TestResourceOverrideInMounts:
-    """Resource scope overrides no longer change mount behavior.
-
-    The per-project settings.yaml scope-override read was removed from
-    _build_resource_mounts in 1.6.0 (a retired Phase-5 worksets straggler):
-    _build_resource_mounts honors the plugin's declared scope only.  The
-    settings.yaml override read/write helpers still exist in config (their broader
-    retirement is separate); the tests that asserted the OVERRIDE-changes-mount
-    behavior are deleted.
-    """
-
-    def _make_proj(self, tmp_path):
-        metadata = tmp_path / "metadata"
-        metadata.mkdir()
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        (shell / ".claude").mkdir()
-        global_shared = tmp_path / "shared" / "global"
-        global_shared.mkdir(parents=True)
-        return SimpleNamespace(
-            metadata_path=metadata,
-            shell_path=shell,
-            global_shared_path=global_shared,
-        )
-
-    def test_declared_scope_honored_ignoring_override(self, tmp_path):
-        """A settings.yaml scope override is IGNORED — the declared scope wins."""
-        from kanibako.commands.start import _build_resource_mounts
-        from kanibako.config import write_project_meta, write_resource_override
-
-        proj = self._make_proj(tmp_path)
-        project_toml = proj.metadata_path / "settings.yaml"
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
-        # Override SHARED->project: must be ignored now (declared SHARED wins).
-        write_resource_override(project_toml, "plugins/", "project")
-
-        mappings = [ResourceMapping("plugins/", ResourceScope.SHARED, "Plugins")]
-        target = MagicMock()
-        target.resource_mappings.return_value = mappings
-        target.config_dir_name = ".claude"
-
-        mounts = _build_resource_mounts(proj, target, "claude")
-        # Override no longer read -> the declared SHARED scope still mounts.
-        assert len(mounts) == 1
-        assert mounts[0].destination == "/home/agent/.claude/plugins/"
-
-    def test_invalid_path_rejected_by_cli(self, tmp_path):
-        """Resource override with a path not in resource_mappings should be rejected by CLI."""
-        # This tests the CLI validation in #12B — just verify read_resource_overrides works.
-        from kanibako.config import read_resource_overrides, write_resource_override
-
-        project_toml = tmp_path / "settings.yaml"
-        project_toml.write_text(
-            'project:\n  mode: "default"\n  layout: "default"\n'
-            '  enable_vault: true\n  group_auth: true\n'
-            'resolved:\n  workspace: "/w"\n  shell: "/s"\n'
-            '  vault_ro: "/ro"\n  vault_rw: "/rw"\n'
-            '  metadata: ""\n  project_hash: ""\n'
-            '  global_shared: ""\n  local_shared: ""\n'
-        )
-        write_resource_override(project_toml, "nonexistent/", "shared")
-        overrides = read_resource_overrides(project_toml)
-        assert overrides == {"nonexistent/": "shared"}
+from kanibako.targets.base import TargetSetting
 
 
 class TestKanibakoMounts:

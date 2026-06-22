@@ -13,30 +13,6 @@ if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
 
 
-class ResourceScope(Enum):
-    """How an agent resource is shared across projects."""
-
-    SHARED = "shared"    # Shared across a workset (or the default workset)
-    PROJECT = "project"  # Per-project, starts fresh
-    SEEDED = "seeded"    # Per-project, seeded from workset template at creation
-
-
-@dataclass(frozen=True)
-class ResourceMapping:
-    """Maps an agent resource path to its sharing scope.
-
-    *base* anchors *path*: empty keeps the current behavior (relative to the
-    agent config dir); non-empty roots *path* at the project home under that
-    prefix (e.g. ".local/share/goose/sessions").
-    """
-
-    path: str                    # Relative path within agent home (e.g. "plugins/")
-    scope: ResourceScope         # How this resource is shared
-    description: str = ""        # Human-readable description
-    base: str = ""               # anchor for `path`: "" = relative to the agent config dir (current behavior);
-                                 # non-empty = relative to the project home under this prefix (e.g. ".local/share/goose/sessions")
-
-
 @dataclass(frozen=True)
 class TargetSetting:
     """Declares a runtime setting that a target plugin supports.
@@ -92,7 +68,6 @@ class HostSrcOrigin(Enum):
     LAUNCHER = "launcher"        # AgentInstall.launcher (detection-derived)
     INSTALL_DIR = "install_dir"  # AgentInstall.install_dir
     BINARY = "binary"            # AgentInstall.binary
-    SHARED_STORE = "shared_store"  # kanibako shared storage, agent-namespaced (global_shared/<agent_id>/<src_rel>)
     LITERAL = "literal"          # a fixed Path in the descriptor (literal_src)
 
 
@@ -108,9 +83,9 @@ class Binding:
     """One bound element (delivery binary/launcher/share or an agent share).
 
     The resolved host source = user cascade override (agent.<name>.binding.<key>) ELSE the *origin*:
-    a detection field (LAUNCHER/INSTALL_DIR/BINARY), shared-store/<agent_id>/<src_rel> (SHARED_STORE),
-    or literal_src (LITERAL).  AGENT_CRITICAL bindings keep source-exists safe-fail + bind-as-is inode-pin
-    + core dest-symlink clearing; AGENT shares are best-effort (a missing/suppressed share is fine).
+    a detection field (LAUNCHER/INSTALL_DIR/BINARY) or literal_src (LITERAL).  AGENT_CRITICAL bindings
+    keep source-exists safe-fail + bind-as-is inode-pin + core dest-symlink clearing; AGENT shares are
+    best-effort (a missing/suppressed share is fine).
     """
 
     key: str                          # stable override key -> agent.<name>.binding.<key>
@@ -119,7 +94,6 @@ class Binding:
     kind: BindKind
     scope: BindScope
     ro: bool = True
-    src_rel: str = ""                 # rel path under the shared store (SHARED_STORE only); ignored otherwise
     literal_src: Path | None = None   # only when origin == LITERAL
 
 
@@ -342,21 +316,6 @@ class Target(ABC):
         kanibako data dir (for auth cookie storage).  Default: no-op.
         """
         return None
-
-    def resource_mappings(self) -> list[ResourceMapping]:
-        """Declare how agent resources are shared across projects.
-
-        Returns a list of ResourceMapping entries describing which paths
-        within the agent's home directory are shared, project-scoped, or
-        seeded from workset defaults.
-
-        The default returns an empty list, meaning all agent resources
-        are treated as project-scoped (the current behavior).
-
-        Paths are relative to the agent's config directory within the
-        project shell (e.g. ".claude/" for ClaudeTarget).
-        """
-        return []
 
     def default_shares(self) -> dict[str, str]:
         """Declare default AGENT-scope shares/caches for this agent.

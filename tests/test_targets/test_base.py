@@ -19,45 +19,11 @@ from kanibako.targets.base import (
     Mount,
     Operation,
     PluginDescriptor,
-    ResourceMapping,
-    ResourceScope,
     SafeBypass,
     SettingArg,
     Target,
     _validate_agent_binary,
 )
-
-
-class TestResourceScope:
-    def test_enum_values(self):
-        assert ResourceScope.SHARED.value == "shared"
-        assert ResourceScope.PROJECT.value == "project"
-        assert ResourceScope.SEEDED.value == "seeded"
-
-
-class TestResourceMapping:
-    def test_fields(self):
-        rm = ResourceMapping(
-            path="plugins/",
-            scope=ResourceScope.SHARED,
-            description="Plugin binaries and registry",
-        )
-        assert rm.path == "plugins/"
-        assert rm.scope == ResourceScope.SHARED
-        assert rm.description == "Plugin binaries and registry"
-
-    def test_frozen(self):
-        rm = ResourceMapping(
-            path="plugins/",
-            scope=ResourceScope.SHARED,
-            description="test",
-        )
-        with pytest.raises(AttributeError):
-            rm.path = "other/"  # type: ignore[misc]
-
-    def test_no_description(self):
-        rm = ResourceMapping(path="cache/", scope=ResourceScope.SHARED)
-        assert rm.description == ""
 
 
 class TestMount:
@@ -170,31 +136,7 @@ class TestTargetABC:
         assert t.display_name == "Dummy Agent"
         assert t.detect() is None
         assert t.check_auth() is True  # default no-op returns True
-        assert t.resource_mappings() == []
-
-    def test_default_resource_mappings(self):
-        """Default resource_mappings returns empty list."""
-
-        class MinimalTarget(Target):
-            @property
-            def name(self) -> str:
-                return "minimal"
-
-            @property
-            def display_name(self) -> str:
-                return "Minimal"
-
-            def detect(self):
-                return None
-
-            def refresh_credentials(self, home):
-                pass
-
-            def writeback_credentials(self, home):
-                pass
-
-        t = MinimalTarget()
-        assert t.resource_mappings() == []
+        assert t.default_shares() == {}
 
     def test_default_seeds(self):
         """Default default_seeds() returns empty dict (no seeds)."""
@@ -294,28 +236,11 @@ class TestApplyState:
 
 
 class TestPublicExports:
-    def test_resource_types_importable_from_package(self):
-        from kanibako.targets import ResourceMapping, ResourceScope
-        assert ResourceScope.SHARED.value == "shared"
-        rm = ResourceMapping(path="x", scope=ResourceScope.PROJECT)
-        assert rm.path == "x"
-
-
-class TestResourceMappingBase:
-    """The additive `base` anchor field on ResourceMapping."""
-
-    def test_base_defaults_empty(self):
-        rm = ResourceMapping(path="plugins/", scope=ResourceScope.SHARED)
-        assert rm.base == ""
-
-    def test_base_preserved_when_set(self):
-        rm = ResourceMapping(
-            path="sessions",
-            scope=ResourceScope.PROJECT,
-            base=".local/share/goose",
-        )
-        assert rm.base == ".local/share/goose"
-        assert rm.path == "sessions"
+    def test_core_types_importable_from_package(self):
+        from kanibako.targets import AgentInstall, Mount, TargetSetting
+        assert AgentInstall is not None
+        assert Mount is not None
+        assert TargetSetting is not None
 
 
 class TestPluginDescriptorDataclasses:
@@ -325,7 +250,6 @@ class TestPluginDescriptorDataclasses:
         assert BindKind.FILE.value == "file"
         assert BindKind.DIR.value == "dir"
         assert HostSrcOrigin.LAUNCHER.value == "launcher"
-        assert HostSrcOrigin.SHARED_STORE.value == "shared_store"
         assert HostSrcOrigin.LITERAL.value == "literal"
         assert BindScope.AGENT_CRITICAL.value == "agent_critical"
         assert BindScope.AGENT.value == "agent"
@@ -349,7 +273,6 @@ class TestPluginDescriptorDataclasses:
         assert b.scope is BindScope.AGENT_CRITICAL
         # defaults
         assert b.ro is True
-        assert b.src_rel == ""
         assert b.literal_src is None
 
     def test_binding_frozen(self):

@@ -651,110 +651,70 @@ class TestDescriptorLaunchPath:
             assert "/home/agent/.local/bin/claude" in dests
 
 
-class TestPluginsBinding:
-    """Phase 1h: the claude ``plugins`` share is delivered via the descriptor's
-    AGENT-scope SHARED_STORE binding from ``global_shared/<agent_id>/plugins``,
-    NOT the legacy ``default_shares`` / ``_build_share_mounts`` path.
+class TestPluginsAndCacheShares:
+    """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``shared``
+    category entries (the plugin's ``default_shares()``), rooted at
+    ``@system.agents/claude`` = ``<data>/agents/claude`` and bound rw to
+    ``~/.claude/{plugins,cache}`` — NOT the old SHARED_STORE descriptor binding.
+
+    Driven directly through ``_build_share_mounts`` (the category-resolver path)
+    with a REAL ``std`` so the scope-root join + host paths are exercised.
     """
 
-    _DEST = "/home/agent/.claude/plugins"
+    _PLUGINS_DEST = "/home/agent/.claude/plugins"
+    _CACHE_DEST = "/home/agent/.claude/cache"
 
-    def _drive(self, m):
-        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
-        m.target.name = "claude"
-        m.target.descriptor = _CLAUDE_DESCRIPTOR
-        m.target.setting_descriptors.return_value = []
-        # Match the real ClaudeTarget after 1h: no legacy plugins default share,
-        # so the only contributor to the plugins dest is the descriptor binding.
-        m.target.default_shares.return_value = {}
-        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
-        m.load_agent_config.return_value = m.agent_cfg
+    def _proj(self, std):
+        from kanibako.paths import ProjectGroup
+        proj = MagicMock()
+        proj.group = ProjectGroup(
+            name="default", root=std.data, is_default=True,
+            local_shared_base=std.data,
+        )
+        proj.group_auth = True
+        return proj
 
-    def _launch(self):
-        _run_container(
-            project_dir=None, entrypoint=None, image_override=None,
-            new_session=False, safe_mode=False, resume_mode=False,
-            extra_args=[],
+    def _build(self, std, config_file, tmp_path):
+        from kanibako.commands.start import _build_share_mounts
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        empty = tmp_path / "empty.yaml"  # absent config files -> no overrides
+        return _build_share_mounts(
+            std=std,
+            proj=self._proj(std),
+            agent_name="claude",
+            global_config_path=config_file,
+            project_toml=empty,
+            workset_config_path=empty,
+            agent_config_path=empty,
+            target=ClaudeTarget(),
+            group_auth=True,
         )
 
-    def _plugins_mounts(self, m):
-        mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
-        return [
-            mt for mt in mounts
-            if getattr(mt, "destination", None) == self._DEST
-        ]
+    def _by_dest(self, mounts, dest):
+        return [mt for mt in mounts if getattr(mt, "destination", None) == dest]
 
-    def test_mounted_from_global_shared(self, start_mocks, tmp_path):
-        """(a) With a global shared store, plugins mount rw from
-        global_shared/<agent_id>/plugins, and the host source is pre-created."""
-        with start_mocks() as m:
-            self._drive(m)
-            m.proj.global_shared_path = tmp_path
-            self._launch()
-            pm = self._plugins_mounts(m)
-            assert len(pm) == 1
-            assert pm[0].source == tmp_path / "claude" / "plugins"
-            assert pm[0].options == ""  # rw
-            # Pre-created best-effort so podman binds a real, persistent dir.
-            assert (tmp_path / "claude" / "plugins").is_dir()
+    def test_plugins_mounted_from_agent_store(self, std, config_file, tmp_path):
+        mounts = self._build(std, config_file, tmp_path)
+        pm = self._by_dest(mounts, self._PLUGINS_DEST)
+        assert len(pm) == 1
+        assert pm[0].source == std.agents / "claude" / "plugins"
+        assert pm[0].options == "Z,U"  # rw
+        # Host source guarantee-created (L7) so podman binds a real persistent dir.
+        assert (std.agents / "claude" / "plugins").is_dir()
 
-    def test_no_double_mount(self, start_mocks, tmp_path):
-        """(d) Exactly one mount targets the plugins dest — the legacy
-        default_shares path no longer contributes one."""
-        with start_mocks() as m:
-            self._drive(m)
-            m.proj.global_shared_path = tmp_path
-            self._launch()
-            assert len(self._plugins_mounts(m)) == 1
+    def test_cache_mounted_from_agent_store(self, std, config_file, tmp_path):
+        mounts = self._build(std, config_file, tmp_path)
+        cm = self._by_dest(mounts, self._CACHE_DEST)
+        assert len(cm) == 1
+        assert cm[0].source == std.agents / "claude" / "cache"
+        assert cm[0].options == "Z,U"  # rw
+        assert (std.agents / "claude" / "cache").is_dir()
 
-    def test_no_shared_store_skips_plugins(self, start_mocks):
-        """No global shared store (default) -> the AGENT plugins binding is
-        skipped (preserves the pre-1h no-shared-store behavior)."""
-        with start_mocks() as m:
-            self._drive(m)
-            m.proj.global_shared_path = None
-            self._launch()
-            assert self._plugins_mounts(m) == []
-
-    def test_agent_override_redirects_source(self, start_mocks, tmp_path):
-        """(b) agent.<name>.binding.plugins redirects the host source."""
-        from kanibako.config import dump_doc
-        with start_mocks() as m:
-            self._drive(m)
-            meta = tmp_path / "meta"
-            meta.mkdir()
-            m.proj.metadata_path = meta
-            m.proj.global_shared_path = tmp_path / "shared"
-            override = tmp_path / "custom-plugins"
-            dump_doc(
-                meta / "settings.yaml",
-                {"agent": {"claude": {"binding": {"plugins": str(override)}}}},
-            )
-            self._launch()
-            pm = self._plugins_mounts(m)
-            assert len(pm) == 1
-            assert pm[0].source == override
-            assert override.is_dir()  # override source pre-created best-effort
-
-    def test_default_tier_override_applies(self, start_mocks, tmp_path):
-        """(c) agent.default.binding.plugins applies when no agent-specific
-        override is present."""
-        from kanibako.config import dump_doc
-        with start_mocks() as m:
-            self._drive(m)
-            meta = tmp_path / "meta"
-            meta.mkdir()
-            m.proj.metadata_path = meta
-            m.proj.global_shared_path = tmp_path / "shared"
-            override = tmp_path / "default-plugins"
-            dump_doc(
-                meta / "settings.yaml",
-                {"agent": {"default": {"binding": {"plugins": str(override)}}}},
-            )
-            self._launch()
-            pm = self._plugins_mounts(m)
-            assert len(pm) == 1
-            assert pm[0].source == override
+    def test_single_mount_per_dest(self, std, config_file, tmp_path):
+        mounts = self._build(std, config_file, tmp_path)
+        assert len(self._by_dest(mounts, self._PLUGINS_DEST)) == 1
+        assert len(self._by_dest(mounts, self._CACHE_DEST)) == 1
 
 
 class TestCredsyncRouting:

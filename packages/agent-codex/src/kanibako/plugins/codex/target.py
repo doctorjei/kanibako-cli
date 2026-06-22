@@ -22,8 +22,7 @@ the interface was designed.  It implements ONLY the irreducible surface:
 * ``descriptor`` — the declarative :class:`PluginDescriptor`; core ``start.py``
   assembles launch argv / env / delivery binds / credential lifecycle from it.
 * ``check_auth`` — lenient credential presence check.
-* the declarative helpers ``setting_descriptors`` / ``generate_agent_config`` /
-  ``resource_mappings``.
+* the declarative helpers ``setting_descriptors`` / ``generate_agent_config``.
 
 Everything else (``build_cli_args`` / ``binary_mounts`` /
 ``refresh_credentials`` / ``writeback_credentials`` / ``transform_cred``) is
@@ -61,8 +60,6 @@ from kanibako.targets.base import (
     HostSrcOrigin,
     Operation,
     PluginDescriptor,
-    ResourceMapping,
-    ResourceScope,
     SafeBypass,
     SettingArg,
     Target,
@@ -409,22 +406,4 @@ class CodexTarget(Target):
                 description="Model to use",
                 default="gpt-5.5",
             ),
-        ]
-
-    def resource_mappings(self) -> list[ResourceMapping]:
-        """Declare Codex resource sharing scopes.
-
-        Codex's live mutating state under ``~/.codex`` is per-project and is NOT
-        core-mounted (PROJECT scope is documentation/correctness; the ``.codex``
-        dir itself is created via the descriptor's ``init_dirs``).  We anchor
-        these via ``base=".codex"`` so they root at the project home under
-        ``.codex`` rather than the config dir.
-
-        * ``auth.json`` is handled by the credsync engine (SYNC), not listed
-          here as a shared resource.
-        * ``sessions/`` + the sqlite/WAL state files are project-local.
-        """
-        return [
-            ResourceMapping("sessions", ResourceScope.PROJECT, "Per-project session logs (sessions/YYYY/MM/DD/*.jsonl)", base=".codex"),
-            ResourceMapping("state.sqlite", ResourceScope.PROJECT, "Project-local sqlite/WAL state (state_*/logs_*/goals_*/memories_*)", base=".codex"),
         ]

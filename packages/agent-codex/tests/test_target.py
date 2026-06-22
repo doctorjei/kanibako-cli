@@ -13,7 +13,6 @@ from kanibako.targets.base import (
     Channel,
     HostSrcOrigin,
     PluginDescriptor,
-    ResourceScope,
 )
 
 from conftest import make_vendored_tree
@@ -361,15 +360,12 @@ class TestSettingDescriptors:
         assert "access" not in keys
 
 
-class TestResourceMappings:
-    def test_project_scope_anchored_to_codex(self):
-        mappings = CodexTarget().resource_mappings()
-        assert len(mappings) >= 1
-        for m in mappings:
-            assert m.scope == ResourceScope.PROJECT
-            assert m.base == ".codex"
-        paths = {m.path for m in mappings}
-        assert "sessions" in paths
+class TestDefaultShares:
+    """Part 3b: the resource_mappings abstraction was deleted (all PROJECT —
+    those dirs live in the box home bind).  codex declares no agent shares."""
+
+    def test_no_default_shares(self):
+        assert CodexTarget().default_shares() == {}
 
 
 class TestDescriptor:

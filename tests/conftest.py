@@ -296,8 +296,6 @@ def start_mocks():
             proj.shell_path = MagicMock()
             proj.shell_path.__truediv__ = MagicMock(return_value=MagicMock())
             proj.name = "testproject"
-            proj.global_shared_path = None
-            proj.local_shared_path = None
             m_resolve_any.return_value = proj
 
             merged = MagicMock()
@@ -361,9 +359,9 @@ def start_mocks():
             # AGENT_CRITICAL bindings (share -> install_dir, launcher -> launcher)
             # require a host source whose ``.exists()`` is True and that survives
             # ``Mount(src, dest, opts)`` construction, so use REAL paths under a
-            # temp dir (created here so they actually exist on disk).  The
-            # ``plugins`` SHARED_STORE binding is skipped when shared_store_root
-            # is None (the conftest default: proj.global_shared_path = None).
+            # temp dir (created here so they actually exist on disk).  Plugins +
+            # cache are no longer descriptor bindings (Part 3a) — they flow
+            # through the category resolver from ``default_shares()``.
             import tempfile
             _install_root = Path(tempfile.mkdtemp(prefix="kanibako-test-install-"))
             _install_dir = _install_root / "share" / "claude"

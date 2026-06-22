@@ -22,8 +22,6 @@ from kanibako.targets.base import (
     HostSrcOrigin,
     Operation,
     PluginDescriptor,
-    ResourceMapping,
-    ResourceScope,
     SafeBypass,
     SettingArg,
     Target,
@@ -73,7 +71,6 @@ _CLAUDE_DESCRIPTOR = PluginDescriptor(
     bindings=(
         Binding("share",    HostSrcOrigin.INSTALL_DIR,  "/home/agent/.local/share/claude", BindKind.DIR,  BindScope.AGENT_CRITICAL, ro=True),
         Binding("launcher", HostSrcOrigin.LAUNCHER,     "/home/agent/.local/bin/claude",   BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
-        Binding("plugins",  HostSrcOrigin.SHARED_STORE, "/home/agent/.claude/plugins",     BindKind.DIR,  BindScope.AGENT, ro=False, src_rel="plugins"),
     ),
     mode={"start": (), "continue": ("--continue",)},
     operations={"exec": Operation(("-p",))},
@@ -224,12 +221,28 @@ class ClaudeTarget(Target):
             state={"model": "opus", "access": "permissive"},
         )
 
-    # NOTE: no ``default_shares`` override.  Plugins are no longer delivered as a
-    # crab-scoped legacy share; they are an AGENT-scope SHARED_STORE ``Binding``
-    # in ``_CLAUDE_DESCRIPTOR`` (key ``plugins``), mounted by core start.py from
-    # ``global_shared/<agent_id>/plugins`` via ``descriptor_mounts`` (phase 1h).
-    # The base ``Target.default_shares()`` returns ``{}``, so ``_build_share_mounts``
-    # injects no plugins share for claude — preventing a double-mount.
+    def default_shares(self) -> dict[str, str]:
+        """Declare claude's AGENT-scope shared dirs (plugins + cache).
+
+        Both are shared across every box that runs claude and rooted under the
+        per-agent store dir ``@agent.claude.meta.path`` = ``@system.agents/claude``
+        (core's ``agent.shared`` scope-root).  The relative ``host_src`` (the key
+        name) joins under that root, so the resolved host paths are
+        ``<data>/agents/claude/{plugins,cache}`` bound rw to ``~/.claude/{plugins,cache}``:
+
+        * ``plugins`` — installed claude plugins (was an AGENT-scope SHARED_STORE
+          ``Binding`` under the removed ``shared/<agent_id>/`` store).
+        * ``cache``   — general cache (just changelog.md); promoted from a PROJECT
+          ``ResourceMapping`` so it persists across boxes of this agent.
+
+        The base ``default_shares()`` returns ``{}``; this override injects these
+        as the AGENT level's declared defaults (overridable/suppressible by the
+        user at a more-specific level).
+        """
+        return {
+            "agent.shared.plugins": "plugins:/home/agent/.claude/plugins",
+            "agent.shared.cache": "cache:/home/agent/.claude/cache",
+        }
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.
@@ -397,38 +410,6 @@ class ClaudeTarget(Target):
                     logger.debug("Auto-auth skipped: %s", auto_result.error)
             except Exception as exc:
                 logger.debug("Auto-auth failed: %s", exc)
-
-    def resource_mappings(self) -> list[ResourceMapping]:
-        """Declare Claude Code resource sharing scopes.
-
-        settings.json + CLAUDE.md are seeded into the box home at creation by
-        the layered seed-once template apply (the curated @agent.claude.template
-        layer), so they are NOT resource mappings — there is no SEEDED scope here.
-        Project: everything else (caches, stats, telemetry, session data, tasks).
-
-        Plugins are served separately as an AGENT-scope SHARED_STORE binding in
-        the descriptor (key ``plugins``), mounted from
-        ``global_shared/<agent_id>/plugins`` by ``descriptor_mounts`` — not as a
-        SHARED resource mapping or a legacy crab-scoped share.
-        """
-        return [
-            ResourceMapping("cache/", ResourceScope.PROJECT, "General cache"),
-            ResourceMapping("stats-cache.json", ResourceScope.PROJECT, "Usage stats cache"),
-            ResourceMapping("statsig/", ResourceScope.PROJECT, "Feature flags"),
-            ResourceMapping("telemetry/", ResourceScope.PROJECT, "Telemetry data"),
-            # Project-specific (fresh per project)
-            ResourceMapping("projects/", ResourceScope.PROJECT, "Session data and memory"),
-            ResourceMapping("session-env/", ResourceScope.PROJECT, "Session environment state"),
-            ResourceMapping("history.jsonl", ResourceScope.PROJECT, "Conversation history"),
-            ResourceMapping("tasks/", ResourceScope.PROJECT, "Task tracking"),
-            ResourceMapping("todos/", ResourceScope.PROJECT, "Todo lists"),
-            ResourceMapping("plans/", ResourceScope.PROJECT, "Plan mode files"),
-            ResourceMapping("file-history/", ResourceScope.PROJECT, "File edit history"),
-            ResourceMapping("backups/", ResourceScope.PROJECT, "File backups"),
-            ResourceMapping("debug/", ResourceScope.PROJECT, "Debug logs"),
-            ResourceMapping("paste-cache/", ResourceScope.PROJECT, "Clipboard state"),
-            ResourceMapping("shell-snapshots/", ResourceScope.PROJECT, "Shell state snapshots"),
-        ]
 
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Claude Code runtime settings.

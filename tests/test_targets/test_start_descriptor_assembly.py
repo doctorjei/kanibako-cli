@@ -379,7 +379,7 @@ class TestDescriptorMounts:
         install = self._install(tmp_path)
 
         new = descriptor_mounts(
-            target.descriptor, install, shared_store_root=None,
+            target.descriptor, install,
         )
 
         # Deliver the share (install_dir) + launcher, ro, and SKIP plugins.
@@ -391,14 +391,19 @@ class TestDescriptorMounts:
             "/home/agent/.local/bin/claude",
         }
 
-    def test_plugins_share_skipped_without_store_root(self, tmp_path):
-        """The AGENT plugins binding is skipped when shared_store_root is None."""
+    def test_plugins_not_a_descriptor_binding(self, tmp_path):
+        """Part 3a: plugins is an ``agent.shared`` category entry, not a binding.
+
+        The descriptor's delivery binds no longer include plugins (or cache);
+        those flow through the category resolver from ``default_shares()``.
+        """
         target = ClaudeTarget()
         install = self._install(tmp_path)
         new = descriptor_mounts(
-            target.descriptor, install, shared_store_root=None,
+            target.descriptor, install,
         )
         assert all("plugins" not in m.destination for m in new)
+        assert "plugins" not in {b.key for b in target.descriptor.bindings}
 
     def test_missing_source_raises_binding_source_error(self, tmp_path):
         """A vanished AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
@@ -407,4 +412,4 @@ class TestDescriptorMounts:
         # Remove the launcher source after building the install.
         install.launcher.unlink()
         with pytest.raises(BindingSourceError):
-            descriptor_mounts(target.descriptor, install, shared_store_root=None)
+            descriptor_mounts(target.descriptor, install)

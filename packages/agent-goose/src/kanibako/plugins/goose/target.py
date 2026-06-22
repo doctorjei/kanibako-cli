@@ -18,8 +18,6 @@ from kanibako.targets.base import (
     HostSrcOrigin,
     Operation,
     PluginDescriptor,
-    ResourceMapping,
-    ResourceScope,
     SafeBypass,
     SettingArg,
     Target,
@@ -262,24 +260,5 @@ class GooseTarget(Target):
                 description="Model to use",
                 default="claude-sonnet-4-20250514",
             ),
-        ]
-
-    def resource_mappings(self) -> list[ResourceMapping]:
-        """Declare Goose resource sharing scopes.
-
-        Paths are relative to config_dir_name (.config/goose/).
-        """
-        return [
-            # config.yaml is seeded into the box home at creation by the layered
-            # seed-once template apply (the curated agent template layer), so it
-            # is NOT a resource mapping — there is no SEEDED scope here.
-            # Project-specific
-            ResourceMapping("secrets.yaml", ResourceScope.PROJECT, "API keys and secrets"),
-            # Session DB lives under the data dir, NOT the config dir: anchor it
-            # via `base` to ~/.local/share/goose/sessions (goose 1.37.0 — no
-            # Block/ segment).  PROJECT-scope resources aren't core-mounted, so
-            # this is correctness/cosmetic; the dir itself is created by the
-            # descriptor's init_dirs.
-            ResourceMapping("sessions.db", ResourceScope.PROJECT, "Session history database", base=".local/share/goose/sessions"),
         ]
 

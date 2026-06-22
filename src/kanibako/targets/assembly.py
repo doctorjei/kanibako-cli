@@ -238,7 +238,6 @@ def resolve_binding_source(
     binding: Binding,
     install: AgentInstall,
     *,
-    shared_store_root: Path | None = None,
     override: str = "",
 ) -> Path | None:
     """Resolve a binding's host source path (no existence check here).
@@ -250,8 +249,6 @@ def resolve_binding_source(
     * ``LAUNCHER`` -> ``install.launcher`` (falling back to ``install.binary``).
     * ``INSTALL_DIR`` -> ``install.install_dir``.
     * ``BINARY`` -> ``install.binary``.
-    * ``SHARED_STORE`` -> ``shared_store_root / binding.src_rel`` when a root is
-      given, else ``None`` (unresolvable without a store root).
     * ``LITERAL`` -> ``binding.literal_src``.
 
     Returns ``None`` when the source cannot be resolved.
@@ -266,10 +263,6 @@ def resolve_binding_source(
         return install.install_dir
     if origin is HostSrcOrigin.BINARY:
         return install.binary
-    if origin is HostSrcOrigin.SHARED_STORE:
-        if shared_store_root is None:
-            return None
-        return shared_store_root / binding.src_rel
     if origin is HostSrcOrigin.LITERAL:
         return binding.literal_src
 
@@ -280,7 +273,6 @@ def descriptor_mounts(
     descriptor: PluginDescriptor,
     install: AgentInstall,
     *,
-    shared_store_root: Path | None = None,
     overrides: dict[str, str] | None = None,
 ) -> list[Mount]:
     """Build the ordered host->box mounts for a descriptor's bindings.
@@ -293,9 +285,11 @@ def descriptor_mounts(
       exist, else :class:`BindingSourceError` is raised — the clean safe-fail
       that replaces a crun crash on a dangling bind source.  It is then bound
       as-is (podman inode-pins it at mount time).
-    * ``AGENT`` (e.g. plugins): best-effort.  A source that is unresolvable or
-      missing is skipped (a missing/suppressed agent share is fine) with a debug
-      log; otherwise it is appended.
+    * ``AGENT`` (best-effort): a source that is unresolvable or missing is
+      skipped (a missing/suppressed agent share is fine) with a debug log;
+      otherwise it is appended.  (No shipped plugin currently declares an AGENT
+      binding — agent-scope shared dirs flow through the category resolver — but
+      the branch is kept for the general binding contract.)
 
     Mount options are ``"ro"`` when ``binding.ro`` is set, else ``""`` (rw).
 
@@ -309,7 +303,6 @@ def descriptor_mounts(
         src = resolve_binding_source(
             binding,
             install,
-            shared_store_root=shared_store_root,
             override=override_map.get(binding.key, ""),
         )
         options = "ro" if binding.ro else ""
