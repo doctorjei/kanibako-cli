@@ -1591,6 +1591,99 @@ def resolve_any_project(
     return resolve_project(std, config, project_dir=root_str, initialize=initialize)
 
 
+def resolve_box_target(
+    std: StandardPaths,
+    config: KanibakoConfig,
+    value: str | None = None,
+    *,
+    initialize: bool = False,
+) -> ProjectPaths:
+    """Resolve a ``--box`` value (a box NAME or a path) to its :class:`ProjectPaths`.
+
+    The single path-or-name resolver behind the ``--box`` selector and the
+    ``start``/``shell``/``refresh``/``workset disconnect`` targeting (§Design 8).
+    Returns the SAME :class:`ProjectPaths` the positional-``project`` path
+    returns, so callers swap cleanly.
+
+    *value* is EITHER a box NAME or a filesystem path.  **Box NAME takes
+    precedence in ambiguous cases** — names cannot contain ``/`` so true
+    ambiguity is rare (a bare token that is both a registered name and a
+    relative directory in cwd resolves to the NAME).  Resolution order:
+
+    1. **NAME first.**  A bare token (no path separator) is tried as a name:
+
+       * a **standalone box name** in ``registry.standalone`` (the canonical-id
+         domain — closes the gap that :func:`resolve_any_project` does NOT cover,
+         since :func:`resolve_name` only indexes the projects/worksets sections);
+       * else the registry projects/worksets names + qualified ``ws/project``
+         names, which :func:`resolve_any_project` already resolves.
+
+    2. **PATH otherwise.**  Anything that is not a name (contains ``/``, or no
+       name matched) is resolved as a filesystem path via
+       :func:`resolve_any_project` — reusing the existing path-resolution +
+       ancestor-walk discovery (``detect_project_mode``).  No detection is
+       reimplemented here.
+
+    A pre-existing box whose name does not satisfy the §Design 8 blocklist still
+    resolves (the matcher is structural, not policy-gated); FLAGGING that is the
+    caller's job via :func:`kanibako.box_identity.is_valid_box_name` — this
+    resolver does not reject on name shape.
+
+    ``None`` / empty *value* resolves the cwd box (delegates to
+    :func:`resolve_any_project`), matching the positional-``project`` default.
+    """
+    # Empty / None -> cwd resolution (same as a bare positional default).
+    if not value:
+        return _flag_nonconforming(
+            resolve_any_project(std, config, value, initialize=initialize)
+        )
+
+    # NAME-first: a bare token (no separator) that names a registered STANDALONE
+    # box wins over a same-named relative path.  resolve_any_project covers the
+    # projects/worksets registry + paths, but NOT the standalone-name domain, so
+    # check it here before falling through.
+    if "/" not in value:
+        from kanibako import registry_store
+
+        standalone = registry_store.load_standalone(std.data_path)
+        # Box names are lowercase (R2); fold the query for the lookup.
+        root_str = standalone.get(value.lower())
+        if root_str is not None:
+            return _flag_nonconforming(
+                resolve_standalone_project(
+                    std, config, root_str, initialize=initialize,
+                )
+            )
+
+    # Else: NAME (projects/worksets/qualified) or PATH, both via the existing
+    # resolver (name-precedence for bare tokens is already handled there).
+    return _flag_nonconforming(
+        resolve_any_project(std, config, value, initialize=initialize)
+    )
+
+
+def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths:
+    """Warn (do NOT reject) when a resolved box's name violates the blocklist.
+
+    Pre-existing boxes created before the §Design 8 box-name constraint still
+    resolve (the canonical-id/registry matchers are structural, not policy-
+    gated); but a non-conforming name is FLAGGED on use so the drift is visible.
+    Returns *proj* unchanged.
+    """
+    from kanibako.box_identity import box_name_reason
+
+    if proj.name:
+        reason = box_name_reason(proj.name)
+        if reason is not None:
+            get_logger(__name__).warning(
+                "box name '%s' does not meet the naming rules (%s); it still "
+                "resolves, but rename it when convenient.",
+                proj.name,
+                reason,
+            )
+    return proj
+
+
 def establish_standalone(
     std: StandardPaths,
     root: Path,

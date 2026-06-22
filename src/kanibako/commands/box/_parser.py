@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kanibako.box_identity import validate_box_name
 from kanibako.config import (
     BOX_META_FILE,
     config_file_path,
@@ -429,8 +430,10 @@ def run_create(args: argparse.Namespace) -> int:
     project_dir = args.path
 
     # R2: every box name is lowercase — silently fold a user-supplied --name.
+    # After folding, a NEW box's --name is held to the §Design 8 blocklist.
     if getattr(args, "name", None):
         args.name = args.name.lower()
+        validate_box_name(args.name)
 
     # $HOME guard: a home-directory project mounts the entire home tree, so it
     # must be (a) standalone and (b) an explicit opt-in via --allow-home. Local

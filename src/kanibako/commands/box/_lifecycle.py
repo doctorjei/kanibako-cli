@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from kanibako.box_identity import validate_box_name
 from kanibako.config import (
     BOX_META_FILE,
     KanibakoConfig,
@@ -1487,10 +1488,16 @@ def _lower_name(args) -> str | None:
     """Return the user's ``--name`` folded to lowercase (R2), or ``None``.
 
     Every box name is lowercase, so a user-supplied ``--name`` is silently
-    lowercased on acceptance (no rejection of mixed-case input).
+    lowercased on acceptance (no rejection of mixed-case input).  After folding,
+    the name is validated against the §Design 8 blocklist (NEW/renamed boxes are
+    held to the constraint); an invalid name raises ``ProjectError``.
     """
     name = getattr(args, "name", None)
-    return name.lower() if name else name
+    if not name:
+        return name
+    folded = name.lower()
+    validate_box_name(folded)
+    return folded
 
 
 def _make_confirm(force: bool, summary: str):
