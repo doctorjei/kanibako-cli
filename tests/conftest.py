@@ -238,7 +238,7 @@ def start_mocks():
         with (
             patch("kanibako.commands.start.load_config") as m_load_config,
             patch("kanibako.commands.start.load_std_paths") as m_load_std,
-            patch("kanibako.commands.start.resolve_any_project") as m_resolve_any,
+            patch("kanibako.commands.start.resolve_box_target") as m_resolve_any,
             patch("kanibako.commands.start.load_merged_config") as m_merged,
             patch("kanibako.commands.start.ContainerRuntime") as m_rt_cls,
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,

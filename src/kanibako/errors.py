@@ -33,6 +33,10 @@ class UserCancelled(KanibakoError):
     """User cancelled an interactive prompt."""
 
 
+class SubjectConflictError(KanibakoError):
+    """A positional box subject and ``--box`` named DIFFERENT targets (§Design 8)."""
+
+
 class AgentResolutionError(KanibakoError):
     """Agent could not be resolved for an agent-requiring command.
 

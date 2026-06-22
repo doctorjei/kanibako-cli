@@ -17,9 +17,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Verify agent authentication status and run interactive "
         "login if credentials are expired or missing.",
     )
-    p.add_argument(
-        "-p", "--project", default=None, help="Target a specific project directory",
-    )
+    # -p/--project was REMOVED outright in 1.6.0 (CLEAN BREAK, no deprecation
+    # alias — §Design 8).  The target now comes from the blanket --box flag
+    # (added by the parent-parser injection) or the cwd ancestor-walk.
     p.set_defaults(func=run)
 
 
@@ -27,11 +27,12 @@ def run(args: argparse.Namespace) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
 
-    # Resolve project to check auth mode.
+    # Resolve project to check auth mode.  Target comes from --box (or cwd);
+    # -p/--project was removed (clean break).
     from kanibako.config import BOX_META_FILE, load_merged_config, resolve_agent
-    from kanibako.paths import load_std_paths, resolve_any_project
+    from kanibako.paths import load_std_paths, resolve_box_target
     std = load_std_paths(config)
-    proj = resolve_any_project(std, config, getattr(args, "project", None))
+    proj = resolve_box_target(std, config, getattr(args, "box", None))
 
     # Resolve the agent UP FRONT via the unified cascade (explicit > box >
     # workset > system default → installed-count rule).  Typed

@@ -169,6 +169,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_system_parser(subparsers)
     add_baseline_parser(subparsers)
 
+    # Blanket --agent / --box flags (W1 Phase D): add them to every leaf
+    # subcommand AFTER the whole tree is built, so they PARSE everywhere.
+    # Relevance is enforced post-parse in main() via check_flag_relevance.
+    from kanibako.commands.flags import inject_blanket_flags
+    inject_blanket_flags(parser)
+
     return parser
 
 
@@ -335,6 +341,17 @@ def main(argv: list[str] | None = None) -> None:
             effective = effective[:idx]
 
         args = parser.parse_args(effective)
+
+        # Relevance check for the blanket --agent/--box flags: they parse on
+        # every command, but passing one to an UNRELATED command is an error
+        # (not a silent no-op).
+        from kanibako.commands.flags import FlagRelevanceError, check_flag_relevance
+        try:
+            check_flag_relevance(args)
+        except FlagRelevanceError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
+
         if args.command == "start":
             args.agent_args = post_dash or []
         elif args.command == "shell":

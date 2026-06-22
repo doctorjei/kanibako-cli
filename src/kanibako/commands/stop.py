@@ -8,7 +8,7 @@ import sys
 from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
-from kanibako.paths import xdg, load_std_paths, resolve_any_project
+from kanibako.paths import xdg, load_std_paths, resolve_box_target
 from kanibako.utils import container_name_for
 
 
@@ -47,7 +47,11 @@ def run(args: argparse.Namespace) -> int:
     if args.all_containers:
         return _stop_all(runtime, force=getattr(args, "force", False))
 
-    return _stop_one(runtime, project_dir=getattr(args, "project", None))
+    from kanibako.commands.flags import resolve_subject_value
+    subject = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
+    return _stop_one(runtime, project_dir=subject)
 
 
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
@@ -56,7 +60,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    proj = resolve_any_project(std, config, project_dir, initialize=False)
+    proj = resolve_box_target(std, config, project_dir, initialize=False)
     container_name = container_name_for(proj)
 
     lock_file = proj.metadata_path / ".kanibako.lock"

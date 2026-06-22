@@ -371,15 +371,22 @@ def run_reauth(args: argparse.Namespace) -> int:
         load_merged_config,
         resolve_agent,
     )
-    from kanibako.paths import xdg, load_std_paths, resolve_any_project
+    from kanibako.paths import xdg, load_std_paths
     from kanibako.targets import resolve_target
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
 
-    # Resolve project to check auth mode.
+    # Resolve project to check auth mode.  Reconcile the positional subject with
+    # the blanket --box flag (same → warn / differ → error), then route through
+    # the path-or-name resolver.
+    from kanibako.commands.flags import resolve_subject_value
+    from kanibako.paths import resolve_box_target
     std = load_std_paths(config)
-    proj = resolve_any_project(std, config, getattr(args, "project", None))
+    subject = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
+    proj = resolve_box_target(std, config, subject)
 
     # Resolve the agent UP FRONT via the unified cascade (explicit > box >
     # workset > system default → installed-count rule).  reauth is an
