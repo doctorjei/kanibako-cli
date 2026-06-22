@@ -106,7 +106,7 @@ on which file it appeared in). The replacement makes scope **explicit in the key
 | Old `[shared]` location | Meant | New key |
 |---|---|---|
 | `[shared]` in the config cascade (`kanibako.yaml` / workset `config.yaml` / `settings.yaml`) | GLOBAL cache, mounted from `shared/global/<name>` | `system.caches.<name>` |
-| `[shared]` in an agent file (`agents/<agent>.yaml`, formerly `crabs/<agent>.yaml`) | per-agent cache, mounted from `shared/<agent>/<name>` | `agent.<agent>.caches.<name>` |
+| `[shared]` in an agent file (`agents/<agent>/settings.yaml`, formerly `agents/<agent>.yaml` / `crabs/<agent>.yaml`) | per-agent cache, mounted from `shared/<agent>/<name>` | `agent.<agent>.caches.<name>` |
 
 Two behavioral changes you must account for when hand-migrating:
 
@@ -182,6 +182,43 @@ The `crab` command is **CUT**. Its verbs split between `agent` (config) and `box
 | `crab diagnose` | `box diagnose` |
 
 Update any scripts, aliases, or muscle memory that invoked `crab ...`.
+
+### 2.5 Per-agent settings file moved INTO the store dir
+
+The per-agent settings file (`name`, `run_args`, `model`, `env`, … — the
+`agent.<agent>` cascade tier) now lives **inside** the per-agent store directory
+as `settings.yaml`, instead of as a sibling file next to it. This makes
+`agents/<agent>/` a uniform store dir (alongside `template/`, and the
+`plugins/`/`cache/` stores) rather than a `<agent>.yaml` file sitting next to an
+`<agent>/` directory.
+
+| Old | New |
+|---|---|
+| `@system.data/agents/<agent>.yaml` (sibling file) | `@system.data/agents/<agent>/settings.yaml` (inside the store dir) |
+
+This is the `agent.<agent>.meta.settings` key (= `@agent.<agent>.meta.path/settings.yaml`,
+where `@agent.<agent>.meta.path` = `@system.data/agents/<agent>`).
+
+**Manual move (no automatic migration):** for each per-agent file you already
+have, move it into the matching store dir, e.g.
+
+```sh
+cd "${XDG_DATA_HOME:-$HOME/.local/share}/kanibako/agents"
+for f in *.yaml; do
+  [ -e "$f" ] || continue
+  name="${f%.yaml}"
+  mkdir -p "$name"
+  mv "$f" "$name/settings.yaml"
+done
+```
+
+(The default `general.yaml` likewise becomes `general/settings.yaml`.) If you
+skip the move, kanibako simply regenerates a fresh default settings file in the
+new location and your old `<agent>.yaml` overrides are ignored until moved.
+
+> `agent.<agent>.meta.name` (the plugin's identifier, e.g. `claude`) is now
+> REQUIRED — every agent plugin must declare a non-empty name; one that does not
+> is rejected at launch rather than silently misbehaving.
 
 ---
 
