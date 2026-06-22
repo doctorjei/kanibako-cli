@@ -31,3 +31,23 @@ class WorksetError(KanibakoError):
 
 class UserCancelled(KanibakoError):
     """User cancelled an interactive prompt."""
+
+
+class AgentResolutionError(KanibakoError):
+    """Agent could not be resolved for an agent-requiring command.
+
+    The ``str()`` of the exception (and its subclasses) IS the user-facing
+    message — callers surface it verbatim.
+    """
+
+
+class NoAgentSelectedError(AgentResolutionError):
+    """Gate-2a: 2+ agents installed but none was chosen (no default)."""
+
+
+class NoAgentInstalledError(AgentResolutionError):
+    """Gate-2b: zero agent plugins are installed."""
+
+
+class AgentNotInstalledError(AgentResolutionError):
+    """A name resolved (cascade/default) but that agent adapter is not installed."""
