@@ -252,3 +252,111 @@ class TestValidateStandaloneName:
             box_identity.resolve_standalone_name(
                 Path("/x/p"), supplied, {supplied}
             )
+
+
+# ---------------------------------------------------------------------------
+# Box-name BLOCKLIST validation (W1 Phase D, §Design 8)
+# ---------------------------------------------------------------------------
+
+import string  # noqa: E402
+
+from kanibako.errors import ProjectError  # noqa: E402
+
+
+class TestValidateBoxName:
+    # --- accepted ---------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "myapp",
+            "my-app",
+            "my_app",
+            "my.app",          # interior dot allowed
+            "app1",
+            "a",               # min length 1
+            "x" * 64,          # max length 64
+            "1.2.3",
+            "a.b-c_d",
+            "café",            # unicode letters allowed
+            "über_box",
+            "日本語",           # unicode CJK allowed
+            "项目1",
+            "ab2c3_proj",      # a canonical standalone id is a valid name
+        ],
+    )
+    def test_accepts_valid(self, name: str) -> None:
+        assert box_identity.is_valid_box_name(name) is True
+        assert box_identity.box_name_reason(name) is None
+        box_identity.validate_box_name(name)  # does not raise
+
+    # --- control chars ----------------------------------------------------
+
+    @pytest.mark.parametrize("cp", [0x00, 0x01, 0x09, 0x0A, 0x0D, 0x1F, 0x7F])
+    def test_rejects_control_chars(self, cp: int) -> None:
+        name = f"a{chr(cp)}b"
+        assert box_identity.is_valid_box_name(name) is False
+        with pytest.raises(ProjectError):
+            box_identity.validate_box_name(name)
+
+    # --- whitespace -------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "a b",             # ASCII space
+            "a\tb",            # tab
+            "a b",        # NBSP (unicode whitespace, not just ' ')
+            "a b",        # em space
+        ],
+    )
+    def test_rejects_whitespace(self, name: str) -> None:
+        assert box_identity.is_valid_box_name(name) is False
+
+    # --- ASCII punctuation: every blocked char rejected -------------------
+
+    @pytest.mark.parametrize(
+        "ch", sorted(set(string.punctuation) - set("_-."))
+    )
+    def test_rejects_each_blocked_punct(self, ch: str) -> None:
+        name = f"a{ch}b"
+        assert box_identity.is_valid_box_name(name) is False, ch
+
+    @pytest.mark.parametrize("ch", ["_", "-", "."])
+    def test_allows_surviving_punct_interior(self, ch: str) -> None:
+        assert box_identity.is_valid_box_name(f"a{ch}b") is True
+
+    # --- structural rules -------------------------------------------------
+
+    @pytest.mark.parametrize("name", [".", ".."])
+    def test_rejects_dot_and_dotdot(self, name: str) -> None:
+        assert box_identity.is_valid_box_name(name) is False
+
+    def test_rejects_leading_dash(self) -> None:
+        assert box_identity.is_valid_box_name("-x") is False
+
+    def test_rejects_leading_dot(self) -> None:
+        assert box_identity.is_valid_box_name(".hidden") is False
+
+    def test_rejects_trailing_dot(self) -> None:
+        assert box_identity.is_valid_box_name("x.") is False
+
+    def test_rejects_trailing_whitespace(self) -> None:
+        assert box_identity.is_valid_box_name("x ") is False
+
+    def test_rejects_empty(self) -> None:
+        assert box_identity.is_valid_box_name("") is False
+
+    def test_rejects_too_long(self) -> None:
+        assert box_identity.is_valid_box_name("x" * 65) is False
+
+    # --- uppercase folds (accepted post-fold), NOT blocked on case --------
+
+    def test_uppercase_folded_is_valid(self) -> None:
+        # The --name invariant folds BEFORE validation; the folded form is valid.
+        folded = "MyApp".lower()
+        assert box_identity.is_valid_box_name(folded) is True
+
+    def test_validate_raises_actionable_message(self) -> None:
+        with pytest.raises(ProjectError, match=r"Invalid box name 'a/b'"):
+            box_identity.validate_box_name("a/b")

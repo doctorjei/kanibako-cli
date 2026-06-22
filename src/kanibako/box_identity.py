@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+import string
 from pathlib import Path
 
 from kanibako.errors import ProjectError
@@ -41,6 +42,106 @@ _MAX_REGEN_ATTEMPTS = 1000
 # is the verbatim shape the generator emits, so it is also what a user may
 # assert by passing a fully-formed ``--name``.
 _CANONICAL_NAME_RE = re.compile(r"^[a-z2-7]{5}_[a-z0-9._-]{1,32}$")
+
+# ---------------------------------------------------------------------------
+# Box-name BLOCKLIST validation (W1 Phase D, §Design 8).
+#
+# A box name is REJECTED if it contains any blocked character or violates a
+# structural rule; everything else is permitted (so unicode letters/digits and
+# interior ``.`` ARE allowed — the reason this is a blocklist, not an allowlist).
+# The blocked sets are defined by standard categories so the rule is COMPLETE:
+#
+#   * Control chars ``U+0000-U+001F`` and ``U+007F``.
+#   * All whitespace (ASCII space + any Unicode whitespace, via ``str.isspace``).
+#   * ASCII punctuation EXCEPT ``_ - .`` (this single set subsumes both the
+#     Windows-reserved chars ``< > : " / \ | ? *`` and the POSIX shell
+#     metacharacters).
+#   * Structural: not ``.``/``..``; no leading ``-`` (CLI-flag collision) or
+#     leading ``.`` (hidden/relative); no trailing ``.`` or whitespace
+#     (Windows); length 1-64.
+#
+# Uppercase ASCII is NOT blocked — it is folded to lowercase by the ``--name``
+# invariant (R2) BEFORE validation runs, so validate a name post-fold.
+# ---------------------------------------------------------------------------
+
+# ASCII punctuation that survives (the ONLY ASCII punctuation permitted).
+_ALLOWED_PUNCT = frozenset("_-.")
+# ASCII punctuation that is blocked = string.punctuation minus the survivors.
+_BLOCKED_ASCII_PUNCT = frozenset(string.punctuation) - _ALLOWED_PUNCT
+
+# Suggested length bound.
+_NAME_MIN_LEN = 1
+_NAME_MAX_LEN = 64
+
+
+def _box_name_violation(name: str) -> str | None:
+    """Return a human-readable reason *name* is an invalid box name, else ``None``.
+
+    Pure and side-effect free.  Implements the §Design 8 blocklist + structural
+    rules.  Callers pass a name that has ALREADY been lowercase-folded (the R2
+    ``--name`` invariant); uppercase is not itself a violation.
+    """
+    if len(name) < _NAME_MIN_LEN:
+        return "box name must not be empty"
+    if len(name) > _NAME_MAX_LEN:
+        return f"box name must be at most {_NAME_MAX_LEN} characters"
+
+    # Structural: reserved relative-path names.
+    if name in (".", ".."):
+        return f"box name must not be '{name}'"
+
+    # Per-character blocklist.
+    for ch in name:
+        codepoint = ord(ch)
+        if codepoint <= 0x1F or codepoint == 0x7F:
+            return (
+                f"box name must not contain control character U+{codepoint:04X}"
+            )
+        if ch.isspace():
+            return "box name must not contain whitespace"
+        if ch in _BLOCKED_ASCII_PUNCT:
+            return f"box name must not contain '{ch}'"
+
+    # Structural: leading/trailing rules.
+    if name.startswith("-"):
+        return "box name must not start with '-' (collides with CLI flags)"
+    if name.startswith("."):
+        return "box name must not start with '.' (hidden/relative)"
+    if name.endswith("."):
+        return "box name must not end with '.'"
+    # A trailing-whitespace check is redundant with the per-char whitespace
+    # block above, but kept explicit for the Windows-portability intent.
+    if name != name.rstrip():
+        return "box name must not end with whitespace"
+
+    return None
+
+
+def is_valid_box_name(name: str) -> bool:
+    """Return ``True`` when *name* passes the §Design 8 box-name blocklist.
+
+    Non-raising companion to :func:`validate_box_name` for the "flag, don't
+    reject" case (pre-existing non-conforming boxes still resolve but get
+    warned).  Validate a name AFTER lowercase-folding (R2 invariant).
+    """
+    return _box_name_violation(name) is None
+
+
+def box_name_reason(name: str) -> str | None:
+    """Return the reason *name* is invalid (for a warning message), else ``None``."""
+    return _box_name_violation(name)
+
+
+def validate_box_name(name: str) -> None:
+    """Raise :class:`~kanibako.errors.ProjectError` if *name* is an invalid box name.
+
+    Enforced at creation / ``--name`` (NEW names).  Pure and side-effect free.
+    Validate a name AFTER lowercase-folding (R2 invariant) — uppercase is not a
+    violation, it is folded upstream.
+    """
+    reason = _box_name_violation(name)
+    if reason is not None:
+        raise ProjectError(f"Invalid box name '{name}': {reason}")
 
 
 def random24() -> str:
