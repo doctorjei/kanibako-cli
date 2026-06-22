@@ -56,6 +56,17 @@ class _DetectableTarget(_FakeTarget):
         return AgentInstall(name="detectable", binary=Path("/bin/x"), install_dir=Path("/opt/x"))
 
 
+class _NoNameTarget(_FakeTarget):
+    """Target with an empty meta.name (invalid — has no store dir)."""
+
+    @property
+    def name(self) -> str:
+        return ""
+
+    def detect(self):
+        return None
+
+
 def _mock_entry_point(name: str, cls: type) -> MagicMock:
     ep = MagicMock()
     ep.name = name
@@ -134,6 +145,14 @@ class TestResolveTarget:
         with patch("kanibako.targets.entry_points", return_value=[]):
             t = resolve_target()
         assert isinstance(t, NoAgentTarget)
+
+    def test_resolve_by_name_requires_meta_name(self):
+        # agent.<agent>.meta.name (the plugin's `name`) is REQUIRED; an empty
+        # name has no resolvable store dir / cascade key -> fail loudly.
+        ep = _mock_entry_point("blank", _NoNameTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            with pytest.raises(ValueError, match="meta.name"):
+                resolve_target("blank")
 
 
 # ── Helpers for file-drop plugin tests ──────────────────────────────

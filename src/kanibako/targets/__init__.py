@@ -150,6 +150,27 @@ def get_target(name: str, project_path: Path | None = None) -> type[Target]:
     return targets[name]
 
 
+def _require_meta_name(target: Target) -> Target:
+    """Enforce that a resolved target declares ``agent.<agent>.meta.name``.
+
+    The plugin's ``name`` property IS ``agent.<agent>.meta.name`` — it is
+    REQUIRED (D-2026-06-22): it identifies the per-agent store dir
+    (``agents/<name>/``) and the agent cascade key.  An agent with no
+    resolvable name has no store dir and no cascade slot, so fail loudly
+    rather than silently writing to ``agents//settings.yaml``.
+    """
+    meta_name = getattr(target, "name", None)
+    if not (isinstance(meta_name, str) and meta_name.strip()):
+        cls = type(target)
+        raise ValueError(
+            f"Agent plugin {cls.__module__}.{cls.__qualname__} does not "
+            f"declare agent.<agent>.meta.name (its 'name' property is empty); "
+            f"a plugin MUST provide a non-empty name to identify its store dir "
+            f"and cascade key."
+        )
+    return target
+
+
 def resolve_target(
     name: str | None = None, project_path: Path | None = None,
 ) -> Target:
@@ -159,17 +180,18 @@ def resolve_target(
     If *name* is None, iterates all discovered targets and returns the first
     one whose ``detect()`` succeeds.
 
-    Raises ``KeyError`` if no matching target is found.
+    Raises ``KeyError`` if no matching target is found.  Raises ``ValueError``
+    if the resolved target does not declare ``agent.<agent>.meta.name``.
     """
     if name:
         cls = get_target(name, project_path)
-        return cls()
+        return _require_meta_name(cls())
 
     # Auto-detect: try each target's detect() and return the first match.
     targets = discover_targets(project_path)
     for target_name, cls in targets.items():
         instance = cls()
         if instance.detect() is not None:
-            return instance
+            return _require_meta_name(instance)
 
-    return NoAgentTarget()
+    return _require_meta_name(NoAgentTarget())
