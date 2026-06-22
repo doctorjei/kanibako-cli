@@ -1,88 +1,238 @@
 # Writing Target Plugins
 
 This guide explains how to create a kanibako target plugin so that kanibako
-can launch your preferred AI coding agent inside a container.
+can launch your preferred AI coding agent inside a box (container).
 
 ## Overview
 
 Kanibako is agent-agnostic.  All agent-specific logic lives in **target
-plugins** — Python classes that implement the `Target` abstract base class.
+plugins** — Python classes that subclass `kanibako.targets.base.Target`.
 Kanibako discovers installed targets at runtime via Python entry points and
 by scanning the `kanibako.plugins` namespace package.
 
+As of 1.6.0 the plugin system is **descriptor-only**.  A target exposes a
+single declarative `PluginDescriptor` (via the `descriptor` property) and
+kanibako's core assembles everything from it: the launch argv, the bind
+mounts that deliver the agent binary, the container environment, and the
+credential-sync lifecycle.  The old per-method launch hooks
+(`build_cli_args`, `binary_mounts`, `init_home`, `generate_crab_config`) and
+the `ResourceMapping` / `ResourceScope` / `resource_mappings()` abstraction
+have been **removed**.
+
 A target is responsible for:
 
-1. **Detecting** the agent binary on the host
-2. **Mounting** the agent binary/installation into the container
-3. **Initializing** agent-specific config in the project home directory
-4. **Checking authentication** before launch
-5. **Syncing credentials** between host and project home
-6. **Building CLI arguments** for the agent entrypoint
+1. **Detecting** the agent binary on the host (`detect`)
+2. **Describing** its launch contract declaratively (`descriptor`)
+3. **Checking authentication** before launch (`check_auth`, optional)
+4. **Transforming** credential payloads where a plain copy won't do
+   (`transform_cred`, optional)
+
+Everything else — argv assembly, binary delivery binds, container env, and
+the credential-sync engine — is driven by core from the descriptor.
 
 ## The `Target` ABC
 
-All targets subclass `kanibako.targets.base.Target`.  Here is the full
-interface:
+All targets subclass `kanibako.targets.base.Target`.  Only a few members are
+abstract or commonly overridden:
 
 ```python
-from kanibako.targets.base import Target, AgentInstall, Mount
+from kanibako.targets.base import Target, AgentInstall, PluginDescriptor
 
 class MyTarget(Target):
     @property
-    def name(self) -> str: ...
+    def name(self) -> str: ...              # abstract: short id, e.g. "myagent"
     @property
-    def display_name(self) -> str: ...
-    def detect(self) -> AgentInstall | None: ...
-    def binary_mounts(self, install: AgentInstall) -> list[Mount]: ...
-    def init_home(self, home: Path, *, group_auth: bool = True) -> None: ...
-    def check_auth(self) -> bool: ...
-    def refresh_credentials(self, home: Path) -> None: ...
-    def writeback_credentials(self, home: Path) -> None: ...
-    def build_cli_args(self, *, safe_mode, resume_mode, new_session,
-                       is_new_project, extra_args) -> list[str]: ...
-    def generate_crab_config(self) -> CrabConfig: ...
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]: ...
-    def setting_descriptors(self) -> list[TargetSetting]: ...
+    def display_name(self) -> str: ...      # abstract: e.g. "My Agent"
+    def detect(self) -> AgentInstall | None: ...  # abstract
+
+    @property
+    def descriptor(self) -> PluginDescriptor | None: ...  # the declarative contract
 ```
 
-### Supporting dataclasses
+Optional overrides (sensible defaults provided by the base class):
 
-**`Mount(source, destination, options="")`** — A single container volume
-mount.  `source` is a host `Path`, `destination` is an absolute container
-path string, and `options` is an optional mount option like `"ro"`.  Call
-`mount.to_volume_arg()` to get the `-v` argument string.
+| Member | Default | When to override |
+|---|---|---|
+| `has_binary` | `True` | Set `False` for a pure pip/python tool with no host binary |
+| `check_auth()` | `True` | Validate host auth before launch |
+| `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
+| `default_shares()` | `{}` | Declare default `agent.shared.*` / `agent.caches.*` binds |
+| `default_seeds()` | `{}` | Declare default `agent.seeded.*` copy-once seeds |
+| `setting_descriptors()` | `[]` | Advertise runtime settings (key, default, choices) |
+| `generate_agent_config()` | `AgentConfig(name=display_name)` | Agent-specific config defaults |
+| `default_entrypoint` | `None` (bash) | The box entrypoint binary name |
+| `should_retry_new_session(output)` | `False` | Detect a failed `--continue` and retry fresh |
+| `config_dir_name` | `.{name}` | The agent's config dir under home |
+| `transform_cred(spec, src, dst, direction)` | plain copy | Filter/merge a `filtered=True` cred file |
 
-**`AgentInstall(name, binary, install_dir)`** — Describes where the agent
-lives on the host.  `binary` is the host path to the executable (may be a
-symlink).  `install_dir` is the root of the installation tree.
+## The `PluginDescriptor`
 
-**`TargetSetting(key, description, default="", choices=())`** — Declares a
-runtime setting that the target supports.  `key` is the setting name (must
-match a key in the crab TOML `[state]` section).  `description` is
-human-readable.  `default` is the value used when neither the crab TOML
-nor a project override specifies one.  `choices` constrains allowed values;
-leave empty for freeform input.
+`PluginDescriptor` (in `kanibako.targets.base`) is the heart of a plugin.
+Core's assembly and credsync engines read it to launch the agent.
+
+```python
+@dataclass(frozen=True)
+class PluginDescriptor:
+    command: tuple[str, ...]                      # box argv prefix, e.g. ("codex",)
+    bindings: tuple[Binding, ...]                 # all bound elements; ordered; >= 1
+    mode: dict[str, tuple[str, ...]]             # interactive modes: {"start": (...), "continue": (...)}
+    operations: dict[str, Operation] = {}        # standalone ops, e.g. {"exec": ...}
+    safe_bypass: SafeBypass | None = None        # the -A/-S safe-mode toggle
+    settings: tuple[SettingArg, ...] = ()        # value-bearing settings -> flag/env
+    container_env: dict[str, str] = {}           # static env injected into the box
+    cred_files: tuple[CredFileSpec, ...] = ()    # credential/config file lifecycle
+    host_prep: bool = False                      # call prepare_host() before mounts
+    init_dirs: tuple[str, ...] = ()              # home-relative dirs to mkdir (e.g. (".codex",))
+```
+
+### Supporting types
+
+**`Binding(key, origin, box_dest, kind, scope, ro=True, literal_src=None)`** —
+one bound element that delivers the agent into the box.
+
+- `key` — stable override key; a user can redirect the host source via
+  `agent.<agent>.binding.<key>`.
+- `origin` — a `HostSrcOrigin`: `LAUNCHER` / `INSTALL_DIR` / `BINARY` (taken
+  from the detected `AgentInstall`) or `LITERAL` (use `literal_src`).
+- `box_dest` — absolute path inside the box (e.g.
+  `/home/agent/.local/bin/codex`).
+- `kind` — `BindKind.FILE` or `BindKind.DIR`.
+- `scope` — a `BindScope`: `AGENT_CRITICAL` (delivery is essential —
+  source-exists is safe-fail, bound read-only as-is with inode pinning) or
+  `AGENT` (a per-agent share, best-effort, may be rw).
+
+**`Mode` entries** — `mode` maps an *interactive* launch mode name to the argv
+fragment appended after `command`.  Always provide `"start"` (new session) and
+`"continue"` (resume last).  There is no dedicated resume *picker* mode; `-R` /
+`--resume` falls through to `continue`.
+
+**`Operation(fragment)`** — a standalone, session-less invocation spliced after
+`command` (e.g. `{"exec": Operation(("exec",))}` for headless runs).
+
+**`SettingArg(setting_key, channel, flag=(), env_var="")`** — routes a
+value-bearing setting (e.g. `model`) to a `Channel.FLAG` argv flag
+(`("--model",)`) or a `Channel.ENV` environment variable (`"GOOSE_MODEL"`).
+
+**`SafeBypass(channel, flag=(), env_var="", env_value="", secure_env_value="",
+secure_flag=(), setting_key="")`** — the `-A` (autonomous) / `-S` (secure)
+toggle, with symmetric emissions for both polarities.  Empty *secure* fields
+emit nothing on `-S`, which is correct for an agent whose unset default is
+already safe (claude/codex).  An agent whose unset default is *unsafe* (goose:
+`GOOSE_MODE` defaults to `auto`) MUST set `secure_env_value` so `-S` actually
+restricts it.  A non-empty `setting_key` makes the toggle a persisted default
+(claude `access`); empty means per-launch only.
+
+**`CredFileSpec(home_rel, host_rel, cadence=SYNC, mtime_gate=True,
+filtered=False)`** — one credential/config file's lifecycle.
+
+- `cadence` — `Cadence.SYNC` (bidirectional, mtime-gated each launch — for
+  tokens/credentials) or `Cadence.SEED_ONCE` (one-way host→box at init).
+- `filtered` — when `True`, core calls your `transform_cred` hook instead of a
+  wholesale copy (use it to allowlist portable fields or merge).
+
+**`Binding` host source resolution.** The effective host source for a binding
+is the user cascade override (`agent.<agent>.binding.<key>`) if set, else the
+`origin`: a field of the detected `AgentInstall` (`LAUNCHER` / `INSTALL_DIR` /
+`BINARY`) or `literal_src` (`LITERAL`).
+
+**`AgentInstall(name, binary, install_dir, launcher=None)`** — where the agent
+lives on the host.  `binary` is the executable path; `install_dir` is the
+install tree root; `launcher` is the optional on-disk entrypoint the plugin
+owns and binds as-is.
+
+## A complete example
+
+The shipped **Codex** plugin is the canonical descriptor-only reference (it was
+written *after* the interface, proving the contract generalizes).  Its
+descriptor:
+
+```python
+from kanibako.targets.base import (
+    AgentInstall, BindKind, Binding, BindScope, Cadence, Channel,
+    CredFileSpec, HostSrcOrigin, Operation, PluginDescriptor, SafeBypass,
+    SettingArg, Target, TargetSetting,
+)
+
+_CODEX_DESCRIPTOR = PluginDescriptor(
+    command=("codex",),
+    bindings=(
+        Binding(
+            "binary", HostSrcOrigin.BINARY,
+            "/home/agent/.local/bin/codex",
+            BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True,
+        ),
+    ),
+    mode={"start": (), "continue": ("resume", "--last")},
+    operations={"exec": Operation(("exec",))},
+    safe_bypass=SafeBypass(
+        Channel.FLAG,
+        flag=("--dangerously-bypass-approvals-and-sandbox",),
+        setting_key="",
+    ),
+    settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
+    cred_files=(
+        CredFileSpec(".codex/auth.json", ".codex/auth.json",
+                     cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
+    ),
+    init_dirs=(".codex",),
+)
+
+
+class CodexTarget(Target):
+    @property
+    def name(self) -> str:
+        return "codex"
+
+    @property
+    def display_name(self) -> str:
+        return "OpenAI Codex CLI"
+
+    @property
+    def descriptor(self) -> PluginDescriptor | None:
+        return _CODEX_DESCRIPTOR
+
+    @property
+    def default_entrypoint(self) -> str | None:
+        return "codex"
+
+    def detect(self) -> AgentInstall | None:
+        import shutil
+        from pathlib import Path
+        path = shutil.which("codex")
+        if not path:
+            return None
+        binary = Path(path).resolve()
+        return AgentInstall(name="codex", binary=binary, install_dir=binary.parent)
+
+    def setting_descriptors(self) -> list[TargetSetting]:
+        return [TargetSetting(key="model", description="Model to use", default="gpt-5.5")]
+```
+
+Codex overrides nothing else: both its credential files are wholesale copies
+(so no `transform_cred`), the descriptor's `init_dirs` creates `.codex`, and
+core assembles its argv / binds / env / credential sync from the descriptor.
+
+For agents whose host config or auth files mix portable and non-portable
+fields, set `filtered=True` on the relevant `CredFileSpec` and override
+`transform_cred` to allowlist or merge (Claude and Goose do this).  Note that
+in 1.6.0 kanibako no longer imports your **host** agent config into a box — a
+box's non-credential config comes from the agent's curated template
+(`@agent.<agent>.template`), not the host.
 
 ## Method reference
 
-### `name` (property)
+### `name` / `display_name` (properties, abstract)
 
-Short machine-readable identifier for this target, e.g. `"claude"`,
-`"aider"`, `"goose"`.  Used in configuration (`crab_name = "aider"`) and
-entry point registration.  Must be unique across all installed targets.
-
-### `display_name` (property)
-
-Human-readable name shown in status output, e.g. `"Claude Code"`,
-`"Aider"`, `"Goose"`.
+`name` is the short machine-readable identifier (`"codex"`, `"goose"`), used in
+configuration (`box.agent=codex`) and entry-point registration; it must be
+unique.  `display_name` is the human-readable name shown in status output.
 
 ### `detect() -> AgentInstall | None`
 
-Auto-detect the agent on the host system.  Return an `AgentInstall`
-describing the binary location and installation root, or `None` if the
-agent is not installed.
-
-Typical implementation:
+Auto-detect the agent on the host.  Return an `AgentInstall` describing the
+binary location and install root, or `None` if the agent is not installed.
+This is usually the only genuinely agent-specific procedural code a plugin
+needs.
 
 ```python
 import shutil
@@ -92,281 +242,80 @@ def detect(self) -> AgentInstall | None:
     path = shutil.which("myagent")
     if not path:
         return None
-    binary = Path(path)
-    resolved = binary.resolve()
-    # Find the installation root (agent-specific logic here)
-    install_dir = resolved.parent
-    return AgentInstall(name="myagent", binary=binary, install_dir=install_dir)
+    binary = Path(path).resolve()
+    return AgentInstall(name="myagent", binary=binary, install_dir=binary.parent)
 ```
 
-For agents installed via a package manager (npm, pip), you typically walk
-up from the resolved binary to find the package root directory.  For single
-standalone binaries, `install_dir` can equal `resolved.parent`.
+For agents with a fixed contract path (claude, goose), anchor to that path
+rather than `$PATH` to avoid PATH-injection of the binary you bind into the
+box.  For agents whose install location is genuinely user-chosen (codex), a
+`$PATH` lookup is appropriate — verify the resolved file before trusting it.
 
-### `binary_mounts(install: AgentInstall) -> list[Mount]`
+### `descriptor` (property)
 
-Return volume mounts that make the agent binary available inside the
-container.  The container's `PATH` includes `/home/agent/.local/bin/`, so
-mount the main executable there.  Larger install trees go under
-`/home/agent/.local/share/`.
-
-```python
-def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-    return [
-        Mount(
-            source=install.install_dir,
-            destination="/home/agent/.local/share/myagent",
-            options="ro",
-        ),
-        Mount(
-            source=install.binary,
-            destination="/home/agent/.local/bin/myagent",
-            options="ro",
-        ),
-    ]
-```
-
-For a single standalone binary (no install tree), return only the binary
-mount:
-
-```python
-def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-    return [
-        Mount(
-            source=install.binary.resolve(),
-            destination="/home/agent/.local/bin/myagent",
-            options="ro",
-        ),
-    ]
-```
-
-Mount everything read-only (`"ro"`) — the container should not modify the
-host's agent installation.
-
-For pip-installed Python tools that don't need binary mounting (they run
-from the container's own Python environment), return an empty list.
-
-### `init_home(home: Path, *, group_auth: bool = True) -> None`
-
-Initialize agent-specific configuration in the project home directory.
-Called from `start.py` for new projects (`proj.is_new`), after shell
-template application and target resolution.
-
-The `group_auth` parameter indicates the project's authentication mode:
-- `True` — copy credentials from host (default; shared across the group)
-- `False` — skip credential copy (project manages its own credentials)
-
-Always perform non-credential setup (config directories, default files)
-regardless of auth mode.
-
-Typical work: create config directories, copy/generate default config
-files, copy credentials from host (if `group_auth` is true).
-
-```python
-def init_home(self, home: Path, *, group_auth: bool = True) -> None:
-    config_dir = home / ".config" / "myagent"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    config_file = config_dir / "config.json"
-    if not config_file.exists():
-        config_file.write_text("{}\n")
-    if group_auth:
-        # Copy credentials from host
-        ...
-```
+Return the agent's `PluginDescriptor` (see above).  The default returns `None`,
+which is reserved for the built-in `NoAgentTarget` (plain shell, no agent
+binary, no credentials).  Every real agent plugin returns a descriptor.
 
 ### `check_auth() -> bool`
 
-Called **before** container launch (after detection, before credential
-sync).  Verify that the agent is authenticated on the host.  Return
-`True` if authentication is valid, `False` if it failed.
+Called before box launch.  Return `True` if the agent is authenticated on the
+host (or if you cannot tell — stay lenient and don't block the launch), `False`
+to abort.  The default returns `True`.
 
-The default implementation returns `True` (no-op).  Override this for
-agents that require pre-launch auth validation.
+### `prepare_host(install, *, auto_auth, data_path) -> None`
 
-For agents that use interactive login flows, `check_auth()` can trigger
-a login attempt and return the result:
+Plugin-owned pre-launch host work, run before mounts are built (enable it with
+`descriptor.host_prep=True`).  Use it for agent-specific host preparation such
+as a synchronous binary-update gate or host auth refresh.  Must not crash the
+launch — log and swallow failures.
 
-```python
-def check_auth(self) -> bool:
-    result = subprocess.run(
-        ["myagent", "auth", "status"],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0:
-        return True
-    # Trigger interactive login
-    subprocess.run(["myagent", "auth", "login"])
-    # Re-check
-    result = subprocess.run(
-        ["myagent", "auth", "status"],
-        capture_output=True, text=True,
-    )
-    return result.returncode == 0
-```
+### `default_shares() / default_seeds() -> dict[str, str]`
 
-For agents that use environment variables for API keys, this can be a
-no-op (the default `return True` is sufficient).
-
-### `refresh_credentials(home: Path) -> None`
-
-Called **before** container launch (after `check_auth()`).  Copy or sync
-credentials from the host into the project home so the agent can
-authenticate inside the container.
-
-Must handle the first-run case where credential files don't exist yet on
-either side.  Keep the implementation simple — copy if source is newer, or
-unconditionally overwrite.
-
-For agents that use environment variables for API keys (e.g. `OPENAI_API_KEY`),
-this can be a no-op.
+Declare the agent's default shares/caches and copy-once seeds as full scoped
+category keys mapped to `host_src:box_dest` bind expressions:
 
 ```python
-def refresh_credentials(self, home: Path) -> None:
-    pass  # API keys passed via environment variables
+def default_shares(self) -> dict[str, str]:
+    return {
+        "agent.shared.plugins": "@agent.claude.path/plugins:.claude/plugins",
+        "agent.caches.cache":   "@agent.claude.path/cache:.claude/cache",
+    }
 ```
 
-### `writeback_credentials(home: Path) -> None`
-
-Called **after** the container exits.  Copy any updated credentials from
-the project home back to the host.  For example, if the agent refreshed an
-OAuth token during the session.
-
-Same first-run handling as `refresh_credentials()`.
-
-```python
-def writeback_credentials(self, home: Path) -> None:
-    pass  # Nothing to write back
-```
-
-### `build_cli_args(...) -> list[str]`
-
-Build the command-line arguments passed to the agent binary inside the
-container.  Parameters:
-
-| Parameter | Type | Meaning |
-|---|---|---|
-| `safe_mode` | `bool` | User requested safe/sandboxed mode (no auto-approve) |
-| `resume_mode` | `bool` | Resume a previous conversation |
-| `new_session` | `bool` | Force a new session (don't continue) |
-| `is_new_project` | `bool` | First launch for this project |
-| `extra_args` | `list[str]` | Raw extra arguments from the user's command line |
-
-Map these to your agent's CLI flags.  Always pass through `extra_args` at
-the end.
-
-```python
-def build_cli_args(self, *, safe_mode, resume_mode, new_session,
-                   is_new_project, extra_args) -> list[str]:
-    args = []
-    if not safe_mode:
-        args.append("--auto-approve")
-    if resume_mode:
-        args.append("--resume")
-    args.extend(extra_args)
-    return args
-```
-
-### `generate_crab_config() -> CrabConfig`
-
-Return a default `CrabConfig` for this target.  Called on first use or during
-first project creation to generate the crab TOML file.  The base implementation
-returns a `CrabConfig` with `name` set to `self.display_name` and all other
-fields at their defaults.
-
-Subclasses should override to provide agent-specific defaults — template
-variant, state knobs, shared cache paths, etc.
-
-```python
-from kanibako.crabs import CrabConfig
-
-def generate_crab_config(self) -> CrabConfig:
-    return CrabConfig(
-        name="MyAgent",
-        shell="standard",
-        state={"access": "permissive"},
-        shared_caches={"plugins": ".config/myagent/plugins"},
-    )
-```
-
-### `apply_state(state: dict[str, str]) -> tuple[list[str], dict[str, str]]`
-
-Translate `[state]` section values from the crab TOML into CLI arguments and
-environment variables.  Returns a tuple of `(cli_args, env_vars)`.
-
-The base implementation returns `([], {})` — all state keys are silently
-ignored.  Subclasses override to handle known keys.
-
-For example, the built-in Claude target maps the `model` key to the
-`--model` CLI flag:
-
-```python
-def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-    cli_args: list[str] = []
-    env_vars: dict[str, str] = {}
-    if "model" in state:
-        cli_args.extend(["--model", state["model"]])
-    return cli_args, env_vars
-```
-
-### `resource_mappings() -> list[ResourceMapping]`
-
-*Optional.* Declare how agent resources should be shared across projects.
-
-Returns a list of `ResourceMapping` entries, each mapping a path within
-the agent's config directory to a `ResourceScope`:
-
-- `SHARED` — shared across a workset (or the default workset) (e.g. plugin binaries)
-- `PROJECT` — per-project, starts fresh (e.g. conversation history)
-- `SEEDED` — per-project, but seeded from the workset template at
-  project creation (e.g. agent settings)
-
-The default returns an empty list, meaning all agent resources are
-treated as project-scoped.
-
-```python
-from kanibako.targets.base import ResourceMapping, ResourceScope
-
-def resource_mappings(self) -> list[ResourceMapping]:
-    return [
-        ResourceMapping("plugins/", ResourceScope.SHARED, "Shared plugins"),
-        ResourceMapping("config.json", ResourceScope.SEEDED, "Agent config"),
-        ResourceMapping("history/", ResourceScope.PROJECT, "Session history"),
-    ]
-```
+These are injected as the AGENT level's declared defaults in the category
+resolver; a user can override or suppress (terminal `""`) any of them at a
+more-specific scope.  The defaults return `{}`.
 
 ### `setting_descriptors() -> list[TargetSetting]`
 
-*Optional.* Declare what runtime settings this target supports, along with
-defaults and (optionally) valid choices.
-
-Users can override settings per-project via `kanibako box config`.
-The effective value follows a 3-tier resolution: project override > agent
-config state > target default.
+Advertise runtime settings (key, default, optional `choices`).  Users override
+them per-box via `kanibako box config`.  Constrained settings (non-empty
+`choices`) reject out-of-range values at the CLI; freeform settings accept any
+value.
 
 ```python
-from kanibako.targets.base import TargetSetting
-
 def setting_descriptors(self) -> list[TargetSetting]:
     return [
-        TargetSetting(
-            key="model",
-            description="AI model to use",
-            default="default-model",
-        ),
-        TargetSetting(
-            key="access",
-            description="Permission mode",
-            default="permissive",
-            choices=("permissive", "default"),  # constrained
-        ),
+        TargetSetting(key="model", description="AI model", default="default-model"),
+        TargetSetting(key="access", description="Permission mode",
+                      default="permissive", choices=("permissive", "default")),
     ]
 ```
 
-Freeform settings (empty `choices`) accept any value.  Constrained settings
-reject values not in the `choices` tuple at the CLI level.
+### `transform_cred(spec, src, dst, direction) -> None`
 
-The default returns an empty list (no declared settings).  When no
-descriptors exist, `apply_state()` receives the crab config state as-is.
+Called by the credential-sync engine only for `CredFileSpec`s with
+`filtered=True`.  `direction` is `"in"` (host→box: seed/refresh) or `"out"`
+(box→host: writeback).  `src` is `None` when no source is available — decide
+whether to write a default `dst` or do nothing.  The default is a plain copy
+when `src` exists; override to allowlist or merge (e.g. allowlist portable
+fields out of an auth file, or merge an OAuth blob).
+
+### `generate_agent_config() -> AgentConfig`
+
+Return a default `AgentConfig` for this target (agent-specific state knobs,
+etc.).  The base returns `AgentConfig(name=self.display_name)`.
 
 ## Discovery and registration
 
@@ -382,46 +331,38 @@ Register your target class under the `kanibako.agents` group in your
 myagent = "my_package:MyTarget"
 ```
 
-The entry point **name** (left of `=`) is the target's identifier, matching
-what `Target.name` returns.  The entry point **value** (right of `=`)
-points to the `Target` subclass.
+The entry-point **name** (left of `=`) is the target identifier, matching
+`Target.name`.  The **value** (right of `=`) points to the `Target` subclass.
 
 ### 2. Namespace scan (bind-mounted plugins)
 
-Kanibako also scans `kanibako.plugins.*` for `Target` subclasses.  This
-allows plugins that live inside the `kanibako/plugins/` directory to be
-discovered automatically — even without pip metadata (dist-info).
+Kanibako also scans `kanibako.plugins.*` for `Target` subclasses.  This lets a
+plugin that lives under `kanibako/plugins/` be discovered automatically — even
+without pip metadata — and travel with kanibako's bind-mount into nested boxes.
+This is how the shipped Claude/Goose/Codex plugins work
+(`packages/agent-*/src/kanibako/plugins/<name>/`).
 
-This is how the built-in Claude plugin works: it lives at
-`kanibako.plugins.claude` and travels with the kanibako bind-mount into
-nested containers without needing a separate pip install.
-
-To use this approach, place your target module under
-`kanibako/plugins/yourplugin/` with a `Target` subclass.
-
-Entry-point-discovered targets take priority — the namespace scan only
-adds targets not already found via entry points.
+Entry-point-discovered targets take priority; the namespace scan only adds
+targets not already found via entry points.
 
 ### Resolution
 
-When a user runs `kanibako start`, kanibako calls `discover_targets()` which
-loads all registered entry points and scans `kanibako.plugins.*`.  If no
-`crab_name` is set in the project config, kanibako calls `detect()` on each
-target and uses the first one that returns an `AgentInstall`.  If no target's
-`detect()` succeeds, kanibako falls back to `NoAgentTarget` — a built-in
-target that launches a plain shell without any agent binary or credentials.
+When a user runs `kanibako start`, kanibako calls `discover_targets()`, which
+loads all registered entry points and scans `kanibako.plugins.*`.  The active
+agent for a box resolves from `box.agent` (and the agent cascade); if nothing
+is set, kanibako calls `detect()` on each target.  If no target detects, it
+falls back to `NoAgentTarget` — a plain shell with no agent binary or
+credentials.
 
-Users can explicitly select a target for a project:
+Select a target for a box explicitly:
 
 ```bash
-kanibako box config crab_name=myagent
+kanibako box config box.agent=myagent
 ```
 
 ## Packaging
 
 ### Standalone package (recommended for third-party plugins)
-
-Recommended package layout:
 
 ```
 kanibako-target-myagent/
@@ -455,16 +396,12 @@ myagent = "kanibako_target_myagent:MyTarget"
 where = ["src"]
 ```
 
-Install in development mode with:
-
-```
-pip install -e kanibako-target-myagent/
-```
+Install in development mode with `pip install -e kanibako-target-myagent/`.
 
 ### Namespace plugin (for bind-mount propagation)
 
-If your plugin needs to travel with kanibako's bind-mount into nested
-containers, place it under the `kanibako.plugins` namespace instead:
+If your plugin needs to travel with kanibako's bind-mount into nested boxes,
+place it under the `kanibako.plugins` namespace instead:
 
 ```
 packages/plugin-myagent/
@@ -478,66 +415,48 @@ packages/plugin-myagent/
 ```
 
 The `kanibako/` and `plugins/` directories must **not** have `__init__.py`
-files — the base package owns those.  Only your leaf package
-(`myagent/`) gets an `__init__.py`.
+files — the base package owns those.  Only your leaf package (`myagent/`) gets
+an `__init__.py`.
 
 ## Testing
 
-Use `unittest.mock.patch` to mock `shutil.which` and filesystem state.
-Use `tmp_path` for isolated home directories.  See `tests/test_targets/test_claude.py`
-in the kanibako repository for the canonical test patterns.
-
-Key patterns:
+Use `unittest.mock.patch` to mock `shutil.which` and filesystem state, and
+`tmp_path` for isolated homes.  The shipped plugins' tests
+(`packages/agent-*/tests/`) are the canonical patterns: assert what your
+`detect()` resolves, and assert the shape of your `descriptor` (its
+`command`, `mode`, `bindings`, `settings`, `cred_files`).
 
 ```python
 from unittest.mock import patch
-from kanibako.targets.base import AgentInstall
 from kanibako_target_myagent import MyTarget
 
-class TestDetect:
-    def test_found(self, tmp_path):
-        binary = tmp_path / "myagent"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
+def test_detect_found(tmp_path):
+    binary = tmp_path / "myagent"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    with patch("shutil.which", return_value=str(binary)):
+        result = MyTarget().detect()
+    assert result is not None and result.name == "myagent"
 
-        with patch("shutil.which", return_value=str(binary)):
-            result = MyTarget().detect()
-
-        assert result is not None
-        assert result.name == "myagent"
-
-    def test_not_found(self):
-        with patch("shutil.which", return_value=None):
-            assert MyTarget().detect() is None
-
-class TestBuildCliArgs:
-    def test_safe_mode(self):
-        args = MyTarget().build_cli_args(
-            safe_mode=True, resume_mode=False,
-            new_session=False, is_new_project=False,
-            extra_args=[],
-        )
-        assert "--auto-approve" not in args
+def test_descriptor_modes():
+    desc = MyTarget().descriptor
+    assert desc is not None
+    assert "start" in desc.mode and "continue" in desc.mode
 ```
 
-## Container environment
+## Box environment
 
-Your agent runs inside a rootless Podman (or Docker) container with:
+Your agent runs inside a rootless Podman (or Docker) box with:
 
 - **Home directory**: `/home/agent`
 - **Working directory**: `/home/agent/workspace` (bind-mounted project)
 - **PATH includes**: `/home/agent/.local/bin`
 - **User**: `agent` (non-root, UID mapped to host user)
-- **Network**: Available (the container has network access)
-- **Shared volumes**:
-  - `/home/agent/share-ro/` — read-only vault (shared files from host)
-  - `/home/agent/share-rw/` — read-write vault
+- **Network**: available
+- **Vault**:
+  - `/home/agent/vault/ro/` — read-only vault (shared files from host)
+  - `/home/agent/vault/rw/` — read-write vault
+- **Channels**: `/home/agent/channels/` — the inter-box channel tree
 
-Your binary mounts go into `/home/agent/.local/bin/` (executables) and
-`/home/agent/.local/share/` (larger install trees).
-
-## Examples
-
-A worked, descriptor-based example target will be provided here in a future
-release. In the meantime, the bundled agent plugins under
-`packages/agent-*/` serve as real-world references.
+Deliver your binary into `/home/agent/.local/bin/` (executable) and larger
+install trees under `/home/agent/.local/share/` via descriptor `bindings`.
