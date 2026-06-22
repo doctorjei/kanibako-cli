@@ -1055,7 +1055,8 @@ def run_info(args: argparse.Namespace) -> int:
     # Resolve target for credential check path
     try:
         from kanibako.config import resolve_box_agent
-        target = resolve_target(resolve_box_agent(merged.box_agent, config_file))
+        # system.default_agent is a SETTING → system settings file.
+        target = resolve_target(resolve_box_agent(merged.box_agent, std.settings))
         creds_file = target.credential_check_path(proj.shell_path)
     except (KeyError, Exception):
         creds_file = None
@@ -1209,8 +1210,9 @@ def run_config(args: argparse.Namespace) -> int:
             )
             try:
                 from kanibako.config import resolve_box_agent
+                # system.default_agent is a SETTING → system settings file.
                 target = resolve_target(
-                    resolve_box_agent(merged.box_agent, config_file)
+                    resolve_box_agent(merged.box_agent, std.settings)
                 )
             except (KeyError, Exception):
                 target = None
@@ -1225,7 +1227,7 @@ def run_config(args: argparse.Namespace) -> int:
             if target is not None and agent_cfg is not None:
                 agent_state = _build_effective_state(
                     target, agent_cfg, project_toml,
-                    global_config_path=config_file,
+                    global_config_path=std.settings,
                     workset_config_path=workset_path,
                 )
             workset_env_path = (

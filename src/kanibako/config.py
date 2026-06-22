@@ -555,11 +555,13 @@ def read_default_agent(system_path: Path | None) -> str | None:
     """Read the ``system.default_agent`` SETTING from the system settings tier.
 
     ``system.default_agent`` is the lone ``system.*``-named key that lives in the
-    SETTINGS file set (it is behavior, not a config path).  Transitionally its
-    system tier physically lives in the user-global ``~/.config/kanibako.yaml``,
-    in the reserved any-agent ``agent.default`` table (the same place the system
-    settings tier of :func:`load_settings` reads from), under the key
-    ``default_agent``.  Phase 5 re-points this to ``@system.settings``.
+    SETTINGS file set (it is behavior, not a config path).  Its system tier reads
+    from ``@system.settings`` = ``global/settings.yaml`` (the ``std.settings``
+    path) — the same place the system settings tier of :func:`load_settings`
+    reads from — in the reserved any-agent ``agent.default`` table, under the key
+    ``default_agent``.  Callers pass that settings-file path as *system_path*
+    (NOT the ``~/.config/kanibako.yaml`` CONFIG file, which holds only
+    ``system.*`` layout keys).
 
     Returns the configured agent name, or ``None`` when unset/empty (meaning
     "no system default" — callers fall through to today's auto-detect).
@@ -631,9 +633,11 @@ def load_settings(
 
     * ``settings_base`` tier  → ``/etc/kanibako/settings_base.yaml``  (NEW;
       additive — empty by default, so its absence preserves current behavior).
-    * ``system`` tier  → *system_path* = today's user-global
-      ``~/.config/kanibako.yaml`` ``[agent]`` table.  (TARGET ``system.settings``
-      = ``@system.global/settings.yaml`` — re-pointed in Phase 5.)
+    * ``system`` tier  → *system_path* = ``@system.settings`` =
+      ``global/settings.yaml`` (the ``std.settings`` path), ``[agent]`` table.
+      This is the SYSTEM tier of the SETTINGS cascade — distinct from the
+      ``~/.config/kanibako.yaml`` CONFIG file (which holds only ``system.*``
+      layout/path keys).
     * ``agent.<agent>`` tier → *agent_state* (the per-agent state dict, already
       ``agent.<name>``-keyed, loaded from ``agents/<name>/settings.yaml``)
       overlaid by
