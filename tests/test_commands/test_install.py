@@ -91,7 +91,9 @@ class TestInstallAgentTomls:
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
-        general_toml = self._data_path(tmp_home) / "agents" / "general.yaml"
+        general_toml = (
+            self._data_path(tmp_home) / "agents" / "general" / "settings.yaml"
+        )
         assert general_toml.is_file()
         cfg = load_agent_config(general_toml)
         assert cfg.name == "Shell"
@@ -102,8 +104,11 @@ class TestInstallAgentTomls:
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())
 
-        # The claude target is registered via entry points, so claude.yaml should exist
-        claude_toml = self._data_path(tmp_home) / "agents" / "claude.yaml"
+        # The claude target is registered via entry points, so its settings file
+        # should exist inside the per-agent store dir agents/claude/.
+        claude_toml = (
+            self._data_path(tmp_home) / "agents" / "claude" / "settings.yaml"
+        )
         assert claude_toml.is_file()
         cfg = load_agent_config(claude_toml)
         assert cfg.name == "Claude Code"
@@ -116,8 +121,9 @@ class TestInstallAgentTomls:
         agents_dir = data_path / "agents"
         agents_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write a custom general.yaml before setup
-        general_toml = agents_dir / "general.yaml"
+        # Write a custom general settings file before setup
+        general_toml = agents_dir / "general" / "settings.yaml"
+        general_toml.parent.mkdir(parents=True, exist_ok=True)
         general_toml.write_text('agent:\n  name: "Custom Shell"\n')
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):

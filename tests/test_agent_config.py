@@ -5,6 +5,7 @@ from __future__ import annotations
 from kanibako.agent_config import (
     AgentConfig,
     agent_config_path,
+    agent_settings_path,
     agents_dir,
     load_agent_config,
     write_agent_config,
@@ -48,16 +49,29 @@ class TestAgentsDir:
 
 class TestAgentConfigPath:
     def test_path(self, tmp_path):
+        # Per-agent settings live INSIDE the store dir: agents/<agent>/settings.yaml
         result = agent_config_path(tmp_path, "claude")
-        assert result == tmp_path / "agents" / "claude.yaml"
+        assert result == tmp_path / "agents" / "claude" / "settings.yaml"
 
     def test_custom_agents_dir(self, tmp_path):
         result = agent_config_path(tmp_path, "claude", "my-crabs")
-        assert result == tmp_path / "my-crabs" / "claude.yaml"
+        assert result == tmp_path / "my-crabs" / "claude" / "settings.yaml"
 
     def test_general_agent(self, tmp_path):
         result = agent_config_path(tmp_path, "general")
-        assert result == tmp_path / "agents" / "general.yaml"
+        assert result == tmp_path / "agents" / "general" / "settings.yaml"
+
+
+class TestAgentSettingsPath:
+    def test_path(self, tmp_path):
+        agents_root = tmp_path / "agents"
+        result = agent_settings_path(agents_root, "claude")
+        assert result == agents_root / "claude" / "settings.yaml"
+
+    def test_general(self, tmp_path):
+        agents_root = tmp_path / "agents"
+        result = agent_settings_path(agents_root, "general")
+        assert result == agents_root / "general" / "settings.yaml"
 
 
 class TestLoadAgentConfig:

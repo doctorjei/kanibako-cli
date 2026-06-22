@@ -126,8 +126,11 @@ def run_list(args: argparse.Namespace) -> int:
             print("No agents configured.")
         return 0
 
-    toml_files = sorted(adir.glob("*.yaml"))
-    if not toml_files:
+    # Each agent's settings live inside its store dir: agents/<agent>/settings.yaml.
+    settings_files = sorted(
+        p for p in adir.glob("*/settings.yaml") if p.is_file()
+    )
+    if not settings_files:
         quiet = getattr(args, "quiet", False)
         if not quiet:
             print("No agents configured.")
@@ -135,14 +138,14 @@ def run_list(args: argparse.Namespace) -> int:
 
     quiet = getattr(args, "quiet", False)
     if quiet:
-        for f in toml_files:
-            print(f.stem)
+        for f in settings_files:
+            print(f.parent.name)
         return 0
 
     print(f"{'NAME':<20} {'MODEL'}")
-    for f in toml_files:
+    for f in settings_files:
         cfg = load_agent_config(f)
-        name = f.stem
+        name = f.parent.name
         model = cfg.state.get("model", "-")
         print(f"{name:<20} {model}")
     return 0
@@ -150,7 +153,7 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     """Show agent configuration details."""
-    from kanibako.agent_config import load_agent_config
+    from kanibako.agent_config import agent_settings_path, load_agent_config
 
     try:
         std = _load_std()
@@ -159,7 +162,7 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     agent_id = args.agent_id
-    path = std.agents / f"{agent_id}.yaml"
+    path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
         print(f"Error: agent '{agent_id}' not found ({path})", file=sys.stderr)
         return 1
@@ -196,7 +199,11 @@ def run_config(args: argparse.Namespace) -> int:
       env.X                   -> [env]
       shell, run_args, name   -> identity keys
     """
-    from kanibako.agent_config import load_agent_config, write_agent_config
+    from kanibako.agent_config import (
+        agent_settings_path,
+        load_agent_config,
+        write_agent_config,
+    )
 
     try:
         std = _load_std()
@@ -205,7 +212,7 @@ def run_config(args: argparse.Namespace) -> int:
         return 1
 
     agent_id = args.agent_id
-    path = std.agents / f"{agent_id}.yaml"
+    path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
         print(f"Error: agent '{agent_id}' not found ({path})", file=sys.stderr)
         return 1

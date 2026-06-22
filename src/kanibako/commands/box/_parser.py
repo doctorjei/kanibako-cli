@@ -1189,7 +1189,10 @@ def run_config(args: argparse.Namespace) -> int:
         env_resolved = None
         if args.effective:
             from kanibako.config import load_merged_config
-            from kanibako.agent_config import load_agent_config
+            from kanibako.agent_config import (
+                agent_settings_path,
+                load_agent_config,
+            )
             from kanibako.targets import resolve_target
             from kanibako.commands.start import (
                 _build_config_env,
@@ -1207,7 +1210,7 @@ def run_config(args: argparse.Namespace) -> int:
             except (KeyError, Exception):
                 target = None
             agent_id = target.name if target else "general"
-            agent_cfg_path = std.agents / f"{agent_id}.yaml"
+            agent_cfg_path = agent_settings_path(std.agents, agent_id)
             if target and not agent_cfg_path.exists():
                 agent_cfg = target.generate_agent_config()
             elif agent_cfg_path.exists():
