@@ -376,6 +376,11 @@ unchanged; only the directory leaf moved.)
 └── logs/<box>.jsonl
 ```
 
+**NAMED workset vault path order changed `vault/<box>/{ro,rw}` → `vault/{ro,rw}/<box>`.**
+The ro/rw split now nests ABOVE the box name, matching PRIMARY and STANDALONE. No
+auto-migration: for each named-workset box, move `vault/<box>/ro` → `vault/ro/<box>` and
+`vault/<box>/rw` → `vault/rw/<box>`.
+
 **NAMED workset name uniqueness:** a workset name is now a user-typed shared address
 and must be unique. On a collision at create/import time, kanibako **refuses** (it
 does not auto-suffix). The names `__PRIMARY__` and `__STANDALONE__` (and legacy

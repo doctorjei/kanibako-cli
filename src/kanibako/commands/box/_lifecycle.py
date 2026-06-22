@@ -1190,8 +1190,8 @@ def _to_workset(
         recorded_workspace = new_workspace
     phash = project_hash(str(recorded_workspace.resolve()))
 
-    vault_ro = target_ws.vault_dir / new_name / "ro"
-    vault_rw = target_ws.vault_dir / new_name / "rw"
+    vault_ro = target_ws.vault_dir / "ro" / new_name
+    vault_rw = target_ws.vault_dir / "rw" / new_name
 
     # Rewrite settings.yaml.  add_project (external) already wrote a minimal
     # settings.yaml with the workspace override; we overwrite with full content.

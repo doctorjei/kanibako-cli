@@ -10,8 +10,8 @@ single root directory chosen by the user.  The layout is:
             settings.yaml          ← per-project config
             .kanibako.lock        ← concurrency lock
         workspaces/{name}/        ← per-project workspace (source tree)
-        vault/{name}/ro/    ← per-project read-only vault
-        vault/{name}/rw/    ← per-project read-write vault
+        vault/ro/{name}/    ← per-project read-only vault
+        vault/rw/{name}/    ← per-project read-write vault
 
 A global registry at ``$XDG_DATA_HOME/kanibako/worksets.yaml`` maps workset
 names to root paths so they can be discovered from anywhere.
@@ -524,12 +524,19 @@ def add_project(
         if not existed_box:
             unwind.push(lambda: shutil.rmtree(proj_box, ignore_errors=True))
 
-        vault_proj = ws.vault_dir / name
-        existed_vault = vault_proj.exists()
-        (vault_proj / "ro").mkdir(parents=True, exist_ok=True)
-        (vault_proj / "rw").mkdir(parents=True, exist_ok=True)
-        if not existed_vault:
-            unwind.push(lambda: shutil.rmtree(vault_proj, ignore_errors=True))
+        # Vault ro/rw split nests ABOVE the box name (vault/{ro,rw}/<name>) to
+        # match PRIMARY and STANDALONE.  Unwind removes the per-box ro/rw leaves
+        # only — never the shared vault/ro or vault/rw parents.
+        vault_ro_proj = ws.vault_dir / "ro" / name
+        vault_rw_proj = ws.vault_dir / "rw" / name
+        existed_vault_ro = vault_ro_proj.exists()
+        existed_vault_rw = vault_rw_proj.exists()
+        vault_ro_proj.mkdir(parents=True, exist_ok=True)
+        vault_rw_proj.mkdir(parents=True, exist_ok=True)
+        if not existed_vault_ro:
+            unwind.push(lambda: shutil.rmtree(vault_ro_proj, ignore_errors=True))
+        if not existed_vault_rw:
+            unwind.push(lambda: shutil.rmtree(vault_rw_proj, ignore_errors=True))
 
         if is_external:
             # External: workspaces/{name} is a self-documenting symlink to the
@@ -661,8 +668,16 @@ def remove_project(
     _write_workset_toml(ws)
 
     if remove_files:
-        for parent in (ws.projects_dir, ws.workspaces_dir, ws.vault_dir):
-            proj_dir = parent / name
+        # Vault now nests ro/rw ABOVE the box name (vault/{ro,rw}/<name>), so
+        # remove those per-box leaves — never the shared vault/ro or vault/rw
+        # parents (they hold every box's vault).
+        targets = (
+            ws.projects_dir / name,
+            ws.workspaces_dir / name,
+            ws.vault_dir / "ro" / name,
+            ws.vault_dir / "rw" / name,
+        )
+        for proj_dir in targets:
             if proj_dir.is_symlink():
                 # Defensive: only the link is removed, never its target.
                 proj_dir.unlink()

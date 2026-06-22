@@ -290,8 +290,8 @@ class TestAddProject:
         resolved = root.resolve()
         assert (resolved / "boxes" / "cool-app").is_dir()
         assert (resolved / "workspaces" / "cool-app").is_dir()
-        assert (resolved / "vault" / "cool-app" / "ro").is_dir()
-        assert (resolved / "vault" / "cool-app" / "rw").is_dir()
+        assert (resolved / "vault" / "ro" / "cool-app").is_dir()
+        assert (resolved / "vault" / "rw" / "cool-app").is_dir()
 
     def test_persists_to_toml(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"
@@ -418,7 +418,8 @@ class TestRemoveProject:
         resolved = root.resolve()
         assert not (resolved / "boxes" / "proj").exists()
         assert not (resolved / "workspaces" / "proj").exists()
-        assert not (resolved / "vault" / "proj").exists()
+        assert not (resolved / "vault" / "ro" / "proj").exists()
+        assert not (resolved / "vault" / "rw" / "proj").exists()
 
     def test_unknown_project_raises(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"
@@ -612,7 +613,8 @@ class TestAddProjectFailConsistent:
         resolved = root.resolve()
         assert not (resolved / "boxes" / "proj").exists()
         assert not (resolved / "workspaces" / "proj").exists()
-        assert not (resolved / "vault" / "proj").exists()
+        assert not (resolved / "vault" / "ro" / "proj").exists()
+        assert not (resolved / "vault" / "rw" / "proj").exists()
         assert all(p.name != "proj" for p in ws.projects)
         assert all(p.name != "proj" for p in load_workset(root).projects)
 
