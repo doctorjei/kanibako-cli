@@ -447,6 +447,29 @@ Any in-box scripts, aliases, or agent instructions that reference `~/share-ro` /
 tooling — `kanibako vault snapshot/restore` — is unaffected; it operates on the
 host vault rw directory, not the box dest.)
 
+### 4.8 Helper message log relocated: shared `data/logs/<id>/` → per-box, per-mode
+
+The per-box helper message log (the host source of the read-only
+`$XDG_STATE_HOME/kanibako/helpers.jsonl` bind inside the box) previously landed in a
+SINGLE shared host location for every mode:
+`@system.data/logs/<box-or-hash>/helper-messages.jsonl`. It now lives inside each
+box's own workset/box tree, one file per box:
+
+| Mode | New host helper-log path |
+|---|---|
+| PRIMARY | `@system.primary_workset/logs/<box>.jsonl` |
+| NAMED | `@workset.meta.root/logs/<box>.jsonl` |
+| STANDALONE | `@workset.meta.root/box_data/<box>.jsonl` |
+
+The box-side dest is unchanged (`$XDG_STATE_HOME/kanibako/helpers.jsonl`, read-only),
+and the in-box `kanibako box helper log` command is unaffected. NAMED worksets now get
+a `logs/` dir created at workset-creation time (alongside `boxes/`, `workspaces/`,
+`vault/`). The shared top-level `data/logs/` tree (and the `.../helper-messages.jsonl`
+filename) is gone. No auto-migration: the log is regenerated on the next launch; to
+preserve history, move `data/logs/<id>/helper-messages.jsonl` to the per-mode path
+above (renaming it `<box>.jsonl`). The standalone log now stays inside `box_data/`,
+so a moved/imported standalone tree carries its helper log with it.
+
 ---
 
 ## 5. Registry consolidation
