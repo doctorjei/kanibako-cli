@@ -286,7 +286,7 @@ more (`config set paths.* ` is rejected as unknown):
 |---|---|---|
 | `paths.shell` | **DELETED** (dead) | nothing read it |
 | `paths.vault` | **DELETED** | superseded by the vault bindings (`box.bindings.{ro,rw}.vault`) |
-| `paths.shared` | **DELETED** | was the shared-store dir-name leaf; the leaf is now the fixed internal name `shared` (no longer configurable). The shared-store machinery itself is unchanged — only the ability to rename the directory goes away. |
+| `paths.shared` | **DELETED** | was the shared-store dir-name leaf. The top-level `<data>/shared/` store is gone entirely (§1.5): per-agent plugins/caches now live under the per-agent store `agents/<agent>/{plugins,cache}` (`agent.<agent>.shared.*`). There is no shared-store dir to rename. |
 
 Remove any `[paths]` table from your config/settings files.
 
@@ -826,8 +826,6 @@ resolved:
   vault_rw: <host vault rw path>
   metadata: <metadata path>
   project_hash: <hash>
-  global_shared: <path>
-  local_shared: <path>
 ```
 
 When migrating an old `project.yaml`: rename the file to `settings.yaml`, **drop any
