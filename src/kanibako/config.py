@@ -45,7 +45,6 @@ def coerce_bool(value: object) -> bool | None:
 _DEFAULTS = {
     "paths_project_toml": BOX_META_FILE,
     "paths_shared": "shared",
-    "paths_shell": "shell",
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_agent": "",
     "box_bootstrap_program": "tmux",
@@ -63,7 +62,6 @@ class KanibakoConfig:
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     paths_shared: str = _DEFAULTS["paths_shared"]
-    paths_shell: str = _DEFAULTS["paths_shell"]
     box_image: str = _DEFAULTS["box_image"]
     box_agent: str = _DEFAULTS["box_agent"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]

@@ -61,7 +61,6 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "start_mode",
     "autonomous",
     "model",
-    "persistence",
     # Box
     "box.image",
     "box.agent",
@@ -70,7 +69,6 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "box.bootstrap_program",
     # Auth / project
     "group_auth",
-    "layout",
     "mode",
     # Vault
     "vault.enabled",
@@ -92,10 +90,6 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # config path).  Routed to the SYSTEM settings tier (the agent.default
     # table), NOT the [system] config table — handled explicitly below.
     "system.default_agent",
-    # Box-level path settings (flat KanibakoConfig.paths_* fields)
-    "paths.shell",
-    "paths.vault",
-    "paths.shared",
     # Helpers
     "allow_helpers",
 })
@@ -139,22 +133,16 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "box.shell": (("box",), "shell"),
     "box.bootstrap_program": (("box",), "bootstrap_program"),
     "box.share_images": (("box",), "share_images"),
-    # Project section ([project] table) — group_auth/mode/layout/vault.* are read
-    # back by read_project_meta(); vault.enabled lands in its real stored key
+    # Project section ([project] table) — group_auth/mode/vault.* are read back
+    # by read_project_meta(); vault.enabled lands in its real stored key
     # ``enable_vault`` (the H1 alias fix).
     "group_auth": (("project",), "group_auth"),
     "mode": (("project",), "mode"),
-    "layout": (("project",), "layout"),
     "vault.enabled": (("project",), "enable_vault"),
     "vault.ro": (("project",), "vault_ro"),
     "vault.rw": (("project",), "vault_rw"),
     # Top-level scalar fields (flat KanibakoConfig fields).
     "allow_helpers": ((), "allow_helpers"),
-    "persistence": ((), "persistence"),
-    # Box-level path fields ([paths] table → flat paths_* KanibakoConfig fields).
-    "paths.shell": (("paths",), "shell"),
-    "paths.vault": (("paths",), "vault"),
-    "paths.shared": (("paths",), "shared"),
 }
 
 # Keys whose values must be coerced to a real type before writing (the H2 fix).
@@ -291,16 +279,13 @@ def _system_key_sections(key: str) -> tuple[tuple[str, ...], str]:
 
 def _dot_to_flat(key: str) -> str:
     """Convert ``vault.enabled`` to ``enable_vault``, etc."""
-    # For paths.* keys, convert to the flat KanibakoConfig field name.
-    if key.startswith("paths."):
-        return "paths_" + key[6:]
     return key.replace(".", "_")
 
 
 # Reverse of _dot_to_flat for the routing table: the CLI surface (and prior
-# code) also accepts the flat underscore form of a key (``box_image``,
-# ``paths_shell``).  Normalise it to the canonical routing key so get/set/reset
-# all hit the SAME _KEY_ROUTES entry regardless of which spelling was given.
+# code) also accepts the flat underscore form of a key (``box_image``).
+# Normalise it to the canonical routing key so get/set/reset all hit the SAME
+# _KEY_ROUTES entry regardless of which spelling was given.
 _FLAT_TO_CANONICAL: dict[str, str] = {
     _dot_to_flat(canonical): canonical
     for canonical in _KEY_ROUTES
@@ -390,8 +375,7 @@ def get_config_value(
         return None
 
     # Keys backed by a flat KanibakoConfig field use the merged config so
-    # defaults + inheritance apply (box.*, paths.*, allow_helpers,
-    # box.share_images).
+    # defaults + inheritance apply (box.*, allow_helpers, box.share_images).
     flat = _dot_to_flat(routed)
     cfg = load_merged_config(global_config_path, project_toml)
     valid = {fld.name for fld in fields(cfg)}
@@ -401,8 +385,8 @@ def get_config_value(
             return str(val).lower()
         return str(val) if val else None
 
-    # Keys with no flat field (group_auth, mode, layout, vault.*, persistence)
-    # land in [project]/root — read the raw set-value from the routed location.
+    # Keys with no flat field (group_auth, mode, vault.*) land in [project]/root
+    # — read the raw set-value from the routed location.
     sections, leaf = route
     for src in (project_toml, global_config_path):
         if src is None or not src.exists():
