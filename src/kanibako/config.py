@@ -573,6 +573,30 @@ def read_default_agent(system_path: Path | None) -> str | None:
     return value or None
 
 
+def read_setup_completed(config_path: Path | None) -> str | None:
+    """Read the ``system.setup_completed`` marker from the CONFIG file.
+
+    ``system.setup_completed`` is a host-global ``system.*`` value recording the
+    build version at which ``kanibako setup`` last succeeded (W1).  Unlike
+    ``system.default_agent`` it is a plain ``[system]`` leaf in
+    ``~/.config/kanibako.yaml`` (NOT a settings-tier value), and the typed loader
+    (``load_config`` → ``KanibakoConfig``) maps only KNOWN system leaves and
+    ignores unknown ones — so this RAW reader is required for the setup-completion
+    gate to read it back.  *config_path* is the kanibako.yaml CONFIG file.
+
+    Returns the stored version string, or ``None`` when the file/key is absent or
+    empty (meaning "setup never run" — the gate then re-nudges).
+    """
+    if config_path is None or not config_path.exists():
+        return None
+    data = load_doc(config_path)
+    system = data.get("system")
+    if not isinstance(system, dict):
+        return None
+    value = str(system.get("setup_completed", "")).strip()
+    return value or None
+
+
 def resolve_box_agent(box_agent: str | None, system_path: Path | None) -> str | None:
     """Resolve the effective agent name for a box launch.
 

@@ -464,21 +464,13 @@ def set_config_value(
         _write_nested_toml_key(settings_dest, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
-    # system.default_agent — the SETTING.  Write it into the SYSTEM settings
-    # tier (the agent.default table) of the system settings file, NOT the
-    # [system] config table of kanibako.yaml.
-    if _is_default_agent_key(canonical):
-        _write_nested_toml_key(
-            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF, value,
-        )
-        return f"Set {canonical}={value}"
-
-    # system.* keys — these are STRUCTURAL CONFIG (layout), not behavior
-    # settings.  They are FILE-ONLY: the CLI reads/shows them but refuses to
-    # write them (config == system.* exactly).  Edit the config file directly
-    # (or re-run ``kanibako setup``).  ``system.default_agent`` is excluded
-    # above — it is a SETTING, not a config path.
-    if _is_system_path_key(canonical):
+    # system.* keys (INCLUDING system.default_agent) — FILE-ONLY host-global
+    # config (W1, option (a) narrow scope).  The CLI reads/shows them but
+    # refuses to SET them: edit the config file directly, or run
+    # ``kanibako setup`` (which writes ``default_agent`` programmatically via
+    # write_system_value, bypassing this guard).  ``default_agent`` joins this
+    # rule per §Design 1 — it is the host-global default and stays in system.*.
+    if _is_default_agent_key(canonical) or _is_system_path_key(canonical):
         return _system_key_refusal(canonical, config_path)
 
     # Regular config keys — route via the single known-key table (the H1 fix:
@@ -541,18 +533,10 @@ def reset_config_value(
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
-    # system.default_agent — the SETTING.  Remove it from the SYSTEM settings
-    # tier (the agent.default table) of the system settings file.
-    if _is_default_agent_key(canonical):
-        if _remove_nested_toml_key(
-            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
-        ):
-            return f"Reset {canonical}"
-        return f"No override for {canonical}"
-
-    # system.* keys — FILE-ONLY structural config (see set_config_value).  The
-    # CLI refuses to reset them; edit the config file directly.
-    if _is_system_path_key(canonical):
+    # system.* keys (INCLUDING system.default_agent) — FILE-ONLY host-global
+    # config (see set_config_value).  The CLI refuses to RESET them too (for
+    # symmetry); edit the config file directly or re-run ``kanibako setup``.
+    if _is_default_agent_key(canonical) or _is_system_path_key(canonical):
         return _system_key_refusal(canonical, config_path)
 
     # Regular config keys — route via the same known-key table as set/get
@@ -572,6 +556,22 @@ def reset_config_value(
         default_val = _DEFAULTS.get(flat, "(none)")
         return f"Reset {flat} (reverts to default: {default_val})"
     return f"No override for {flat}"
+
+
+def write_system_value(config_path: Path, leaf: str, value: object) -> None:
+    """Programmatically write a ``[system] <leaf>`` key to the CONFIG file.
+
+    This is the PROGRAM editing the config file on the user's behalf — it
+    bypasses the file-only CLI guard in :func:`set_config_value` (which refuses
+    ``system.*`` keys).  Used by ``kanibako setup`` to record host-global values
+    (e.g. ``system.setup_completed`` → ``[system] setup_completed``) that the CLI
+    deliberately will not let a user SET directly.
+
+    *leaf* is the bare key name under the ``[system]`` table (NOT prefixed with
+    ``system.``).  Writes preserve all other config content (read-modify-write
+    via :func:`_write_nested_toml_key`).
+    """
+    _write_nested_toml_key(config_path, ("system",), leaf, value)
 
 
 def reset_all(
