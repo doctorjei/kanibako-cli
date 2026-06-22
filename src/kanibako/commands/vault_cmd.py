@@ -26,16 +26,6 @@ def add_vault_subparser(parent_sub: argparse._SubParsersAction) -> None:
     _add_vault_subcommands(p)
 
 
-def add_parser(subparsers: argparse._SubParsersAction) -> None:
-    """Register vault as a top-level command (kept for backward compat during transition)."""
-    p = subparsers.add_parser(
-        "vault",
-        help="Vault snapshot commands (snapshot, list, restore, prune)",
-        description="Manage vault share-rw snapshots.",
-    )
-    _add_vault_subcommands(p)
-
-
 def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
     vs = p.add_subparsers(dest="vault_command", metavar="COMMAND")
 

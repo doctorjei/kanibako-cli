@@ -449,8 +449,7 @@ def _diagnose_baseline(args: object) -> None:
     """Probe the image baseline executables and print the result.
 
     Honors ``--all`` (every local kanibako image), ``--only PKG`` and
-    ``--skip PKG`` (default = the single configured ``box_image``, mirroring
-    ``rig rebuild``'s default-is-configured-image behavior).  Reuses
+    ``--skip PKG`` (default = the single configured ``box_image``).  Reuses
     :func:`probe_missing_executables` so a single ephemeral container checks all
     baseline executables per image.
     """

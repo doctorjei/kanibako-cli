@@ -158,12 +158,12 @@ toolchains you need:
 
 ```bash
 # 1. Build the bundled C/C++ + Rust toolchain template
-kanibako rig create my-systems --template systems
-# (or build one interactively without --template, installing tools by hand)
+kanibako rig prep systems
+# (or build one interactively with: kanibako rig extend my-systems --from kanibako-oci)
 
 # 2. Use it for your project
 cd ~/my-rust-project
-kanibako --image kanibako-template-my-systems
+kanibako --image kanibako-template-systems
 ```
 
 After the first run, Kanibako remembers the rig choice for this project,
@@ -247,11 +247,14 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `rig create <name>` | Create rig interactively, or build a bundled template non-interactively with `--template <name>` (`--base` defaults to the template's declared base when `--template` is used; `--template`, `--always-commit`, `--no-commit-on-error`) |
-| `rig list` / `rig ls` | List available rigs (`-q`) |
+| `rig prep [name]` / `rig prepare` | Materialize a rig: build a bundled template or pull a prefab (`--force` to re-prep, `--all` for every local rig) |
+| `rig add <source>` | Register a foreign rig (prefab image ref/tar or Containerfile); does not pull/build — run `rig prep` after (`--name`, `--as`, `--force`) |
+| `rig extend <name> --from <rig>` | Build a custom rig interactively from a foundation rig, committed as `kanibako-rig-<name>` (`--always-commit`, `--no-commit-on-error`) |
+| `rig export <name>` | Export an extended rig to a portable `.rig.tgz` (`--out`) |
+| `rig import <file>` | Import an extended rig from a `.rig.tgz` |
+| `rig list` / `rig ls` | List available rigs (`-q`, `--json`) |
 | `rig info` / `rig inspect` | Rig details (source, size, recoverability) |
 | `rig rm` / `rig delete` | Remove rig (`--force`) |
-| `rig rebuild [rig]` | Rebuild a template, or pull a prefab/base from the registry (`--all`) |
 | `rig diagnose` | Check rig (image) status |
 
 ### `workset` Subcommands
@@ -529,15 +532,16 @@ Kanibako at the resulting local image via `--image` / `box_image`. Toolchain
 
 ```bash
 kanibako rig list                     # show local rigs
-kanibako rig rebuild                  # build the current template / pull the current base
-kanibako rig rebuild --all            # update all known rigs
+kanibako rig prep jvm                  # build the bundled jvm template (or pull a prefab)
+kanibako rig prep --force             # re-prep the configured rig
+kanibako rig prep --all               # update all known local rigs
 ```
 
 ### Custom Rigs
 
-There are two ways to make a custom rig with `rig create`: build a bundled
-toolchain template non-interactively with `--template`, or install tools
-interactively and commit the result.
+There are two ways to make a custom rig: prep a bundled toolchain template
+(`rig prep`), or build one interactively from a foundation rig and commit it
+(`rig extend`).
 
 #### Bundled templates
 
@@ -552,41 +556,40 @@ List them with `rig list` (shown under "Example templates"):
 | `dotnet` | .NET SDK (LTS) |
 | `js` | Node tooling: yarn, pnpm, bun, TypeScript |
 
-Build one with `rig create --template`.  The bundled template is built
+Build one with `rig prep <template>`.  The bundled template is built
 **locally on your host** -- non-interactively on its declared base -- producing a
-local image named after the positional argument:
+local image named `kanibako-template-<template>`:
 
 ```bash
-kanibako rig create my-jvm --template jvm                 # build jvm toolchain on the template's declared base
-kanibako rig create my-jvm --template jvm --base kanibako-lxc   # override the base
-# -> local image kanibako-template-my-jvm
+kanibako rig prep jvm                  # build jvm toolchain on the template's declared base
+# -> local image kanibako-template-jvm
 ```
 
 Each template is tied to a single declared base via an `ARG BASE_IMAGE` line in
-its Containerfile (default `kanibako-oci`).  `rig create --template` uses that
-declared base by default; passing `--base <image>` overrides it (and prints a
-note).  There is no per-variant matrix -- a template targets one base; to build
-on a different flavor, fork its Containerfile.
+its Containerfile (default `kanibako-oci`).  There is no per-variant matrix -- a
+template targets one base; to build on a different flavor, fork its
+Containerfile.
 
 These bundled templates are **not published to any registry**.  CI builds them
 and runs their toolchain smoke checks (each Containerfile lists smoke commands
 via a `# kanibako-template-check:` header) so that they are verified to build and
-run, but the resulting images stay local to whoever runs `rig create`.
+run, but the resulting images stay local to whoever preps them.
 
 New templates are discovered automatically: dropping a
 `Containerfile.template-<name>` (with a `# kanibako-template: <description>`
 header, and optionally a `# kanibako-template-check: <cmd>` smoke-check header)
 into the package makes it show up in `rig list`, become buildable via
-`rig create --template <name>`, and get build+smoke-verified by CI (not
+`rig prep <name>`, and get build+smoke-verified by CI (not
 published) -- no code or workflow edits needed.
 
 #### Interactive rigs
 
-Without `--template`, `rig create` drops you into an interactive container on
-the base rig; install tools by hand, then commit the result on exit:
+`rig extend` drops you into an interactive container on a foundation rig (auto-
+prepped if needed); install tools by hand, then commit the result on exit as an
+extended rig (`kanibako-rig-<name>`):
 
 ```bash
-kanibako rig create custom            # start from kanibako-oci, install tools
+kanibako rig extend custom --from kanibako-oci   # start from oci, install tools
 # (inside container: apt install openjdk-21-jdk maven, etc.)
 # exit when done
 

@@ -97,16 +97,10 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
 # Prefixes for dynamic keys (env vars, resources).
 DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.")
 
-# Map friendly short names to canonical flat config keys.
-_KEY_ALIASES: dict[str, str] = {
-    "image": "box.image",
-    "agent": "box.agent",
-}
-
 
 def is_known_key(arg: str) -> bool:
     """Return True if *arg* looks like a config key (not a project name)."""
-    if arg in KNOWN_CONFIG_KEYS or arg in _KEY_ALIASES:
+    if arg in KNOWN_CONFIG_KEYS:
         return True
     return any(arg.startswith(p) for p in DYNAMIC_PREFIXES)
 
@@ -214,14 +208,12 @@ def parse_config_arg(arg: str | None) -> tuple[ConfigAction, str, str]:
 # ---------------------------------------------------------------------------
 
 def _resolve_key(raw: str) -> str:
-    """Map a user-supplied key name to the canonical form.
+    """Return the canonical config key for a user-supplied key name.
 
-    Accepts aliases (``image`` → ``box.image``), dot-notation
-    (``vault.enabled``), or the raw flat key.  Returns the key unchanged
-    if no alias exists.
+    Config keys are already canonical (dot-notation like ``box.image`` or
+    ``vault.enabled``, or a raw flat key); this is the single canonicalization
+    seam every get/set/reset path routes through.
     """
-    if raw in _KEY_ALIASES:
-        return _KEY_ALIASES[raw]
     return raw
 
 

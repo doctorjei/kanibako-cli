@@ -40,10 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
             "    stop        Stop a running box session\n"
             "    shell       Open a shell in a box\n"
             "\n"
-            "ALIASES:\n"
-            "    container   → box\n"
-            "    image       → rig\n"
-            "\n"
             "common switches (for 'start' command):\n"
             "  -N, --new           start a new conversation\n"
             "  -C, --continue      continue the most recent conversation (default)\n"
@@ -178,18 +174,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-_COMMAND_ALIASES: dict[str, str] = {
-    "image": "rig",
-    "container": "box",
-}
-
 _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
     "start", "stop", "shell", "ps", "list", "create", "rm",
     # Management commands.
     "box", "rig", "workset", "agent", "system", "baseline",
-    # Command aliases (#62).
-    "image", "container",
     # Setup wizard.
     "setup",
 }
@@ -353,9 +342,6 @@ def main(argv: list[str] | None = None) -> None:
         # If the first arg isn't a known subcommand, default to "start".
         if not effective or effective[0] not in _SUBCOMMANDS:
             effective = ["start"] + effective
-        # Translate command aliases (e.g. image→rig, container→box).
-        if effective and effective[0] in _COMMAND_ALIASES:
-            effective[0] = _COMMAND_ALIASES[effective[0]]
 
         # For start/shell, split args at '--' so flags after the project
         # positional still work (REMAINDER would otherwise swallow them).

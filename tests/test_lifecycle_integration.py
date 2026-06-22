@@ -93,25 +93,25 @@ class TestKanibakoLazyInit:
 
 @pytest.mark.integration
 class TestKanibakoImageOps:
-    """Verify kanibako image commands."""
+    """Verify kanibako rig commands."""
 
-    def test_image_list_runs(self, cli_env):
-        """kanibako image list exits 0 (lazy init triggers automatically)."""
+    def test_rig_list_runs(self, cli_env):
+        """kanibako rig list exits 0 (lazy init triggers automatically)."""
         result = _run_kanibako(
-            "image", "list", env=cli_env["env"], cwd=str(cli_env["project"])
+            "rig", "list", env=cli_env["env"], cwd=str(cli_env["project"])
         )
         assert result.returncode == 0
 
     @requires_runtime
-    def test_image_build_base(self, cli_env):
-        """kanibako image rebuild oci builds from bundled Containerfile."""
+    def test_rig_prep_base(self, cli_env):
+        """kanibako rig prep oci builds/pulls from bundled Containerfile."""
         result = _run_kanibako(
-            "image", "rebuild", "oci",
+            "rig", "prep", "oci",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
             timeout=600,
         )
-        assert result.returncode == 0, f"image build failed: {result.stderr}"
+        assert result.returncode == 0, f"rig prep failed: {result.stderr}"
 
 
 # =========================================================================

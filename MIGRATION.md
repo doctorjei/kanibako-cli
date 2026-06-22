@@ -946,3 +946,24 @@ whitespace, every ASCII punctuation char except `_ - .`, the names `.` and `..`,
 leading `-` or `.`, a trailing `.` or whitespace, and length over 64. Uppercase ASCII
 folds to lowercase. Pre-existing non-conforming boxes still resolve but are **flagged**
 (warned), not rejected — rename them at your convenience.
+
+## 11. Removed deprecation shims (rename-class; clean break)
+
+The transitional aliases that bridged the old naming to the frozen
+`box` / `agent` / `rig` model are **removed outright** — there are no deprecation
+warnings or fallbacks left. Update to the canonical forms:
+
+| Old (removed)                     | Use instead                                  |
+|-----------------------------------|----------------------------------------------|
+| `kanibako image ...`              | `kanibako rig ...`                            |
+| `kanibako container ...`          | `kanibako box ...`                            |
+| `kanibako rig create <name>`      | `kanibako rig extend <name> --from <rig>`     |
+| `kanibako rig create --template T`| `kanibako rig prep T`                         |
+| `kanibako rig rebuild [<img>]`    | `kanibako rig prep [<name>] --force`          |
+| `... config image[=...]`          | `... config box.image[=...]`                  |
+| `... config agent[=...]`          | `... config box.agent[=...]`                  |
+
+The `image` / `agent` short config-key names no longer resolve to anything; only
+the canonical `box.image` / `box.agent` keys are recognized (setting an `image`
+or `agent` key is now an "unknown key" error). Image-freshness notices that used
+to suggest `kanibako rig rebuild` now point to `kanibako rig prep --force`.

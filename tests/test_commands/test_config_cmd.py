@@ -129,7 +129,7 @@ class TestBoxConfigGet:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            args=[project_dir, "image"], effective=False, reset=None,
+            args=[project_dir, "box.image"], effective=False, reset=None,
             reset_all=False, force=False, local=False,
         )
         rc = run_config(args)
@@ -150,7 +150,7 @@ class TestBoxConfigGet:
         # known key as first arg => get operation (project defaults to cwd)
         # In tests the project_dir fixture is not cwd, so use 2-arg form.
         args2 = argparse.Namespace(
-            args=[project_dir, "image"], effective=False, reset=None,
+            args=[project_dir, "box.image"], effective=False, reset=None,
             reset_all=False, force=False, local=False,
         )
         rc = run_config(args2)
@@ -190,7 +190,7 @@ class TestBoxConfigSet:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            args=[project_dir, "image=new-image:v1"], effective=False, reset=None,
+            args=[project_dir, "box.image=new-image:v1"], effective=False, reset=None,
             reset_all=False, force=False, local=False,
         )
         rc = run_config(args)
@@ -349,7 +349,7 @@ class TestBoxConfigLocal:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            args=[project_dir, "image"], effective=False, reset=None,
+            args=[project_dir, "box.image"], effective=False, reset=None,
             reset_all=False, force=False, local=True,
         )
         rc = run_config(args)

@@ -67,9 +67,14 @@ class TestIsKnownKey:
     """Tests for the known-key heuristic."""
 
     def test_known_static_key(self):
-        assert is_known_key("image") is True
+        assert is_known_key("box.image") is True
         assert is_known_key("model") is True
         assert is_known_key("group_auth") is True
+
+    def test_short_aliases_no_longer_known(self):
+        """W2a: the image/agent short-name aliases were removed (canonical only)."""
+        assert is_known_key("image") is False
+        assert is_known_key("agent") is False
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
@@ -117,13 +122,13 @@ class TestRegularConfigKeys:
     """Tests for regular (KanibakoConfig) config keys."""
 
     def test_get_default_image(self, tmp_path):
-        """Reading image with no overrides returns the global default."""
+        """Reading box.image with no overrides returns the global default."""
         global_cfg = tmp_path / "kanibako.yaml"
         global_cfg.write_text('box:\n  image: "my-image:latest"\n')
         project_toml = tmp_path / "settings.yaml"
 
         val = get_config_value(
-            "image",
+            "box.image",
             global_config_path=global_cfg,
             project_toml=project_toml,
         )
@@ -136,14 +141,14 @@ class TestRegularConfigKeys:
         project_toml = tmp_path / "settings.yaml"
 
         msg = set_config_value(
-            "image", "custom:v2",
+            "box.image", "custom:v2",
             config_path=project_toml,
         )
         assert "Set" in msg
         assert "custom:v2" in msg
 
         val = get_config_value(
-            "image",
+            "box.image",
             global_config_path=global_cfg,
             project_toml=project_toml,
         )
@@ -155,14 +160,14 @@ class TestRegularConfigKeys:
         global_cfg.write_text('box:\n  image: "default:latest"\n')
         project_toml = tmp_path / "settings.yaml"
 
-        set_config_value("image", "custom:v2", config_path=project_toml)
-        msg = reset_config_value("image", config_path=project_toml)
+        set_config_value("box.image", "custom:v2", config_path=project_toml)
+        msg = reset_config_value("box.image", config_path=project_toml)
         assert "Reset" in msg
 
     def test_reset_nonexistent_key(self, tmp_path):
         """Resetting a key that has no override returns informative message."""
         project_toml = tmp_path / "settings.yaml"
-        msg = reset_config_value("image", config_path=project_toml)
+        msg = reset_config_value("box.image", config_path=project_toml)
         assert "No override" in msg
 
     def test_get_box_shell_unset_returns_none(self, tmp_path):

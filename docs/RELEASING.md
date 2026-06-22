@@ -53,7 +53,7 @@ decoupled.
 **Templates** (one per `src/kanibako/containers/Containerfile.template-*`;
 currently `jvm`, `systems`, `android`, `dotnet`, `js`) are **not published** to
 any registry. They are built **locally** on the user's host via
-`kanibako rig create <name> --template <name>`. `build-images.yml` on `main`
+`kanibako rig prep <name>`. `build-images.yml` on `main`
 pushes runs a dynamic `discover-templates` → `build-templates` matrix that
 **build-verifies** each template (building it and running its toolchain smoke
 checks, declared via `# kanibako-template-check:` headers) but does **not** push

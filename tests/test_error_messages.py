@@ -188,8 +188,8 @@ class TestContainerStartFailureMessage:
 class TestFreshnessTerminology:
     """Verify freshness warning uses new rig terminology."""
 
-    def test_freshness_uses_rig_rebuild(self, capsys):
-        """Freshness warning says 'kanibako rig rebuild'."""
+    def test_freshness_uses_rig_prep(self, capsys):
+        """Freshness warning says 'kanibako rig prep --force' (W2a: rebuild gone)."""
         from kanibako.freshness import _check
 
         mock_runtime = MagicMock()
@@ -204,7 +204,8 @@ class TestFreshnessTerminology:
             _check(mock_runtime, "kanibako-oci:latest", cache_path)
 
         err = capsys.readouterr().err
-        assert "kanibako rig rebuild" in err
+        assert "kanibako rig prep --force" in err
+        assert "rig rebuild" not in err
         assert "kanibako image rebuild" not in err
 
 

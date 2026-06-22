@@ -41,7 +41,7 @@ def _check(runtime: ContainerRuntime, image: str, cache_path: Path) -> None:
     if set(local_digests).isdisjoint(remote_acceptable):
         print(
             f"Note: A newer version of {image} is available. "
-            f"Run 'kanibako rig rebuild' to update.",
+            f"Run 'kanibako rig prep --force' to update.",
             file=sys.stderr,
         )
 
