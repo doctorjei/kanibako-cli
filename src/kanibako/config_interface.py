@@ -90,17 +90,12 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # config path).  Routed to the SYSTEM settings tier (the agent.default
     # table), NOT the [system] config table — handled explicitly below.
     "system.default_agent",
-    # Box-level path setting (flat KanibakoConfig.paths_shared field). The shared
-    # store's directory-name leaf — still a LIVE behavioral knob (paths.py /
-    # box/_lifecycle.py read config.paths_shared to build the global/local shared
-    # dirs).  paths.shell/paths.vault were removed (dead); this one stays.
-    "paths.shared",
     # Helpers
     "allow_helpers",
 })
 
-# Prefixes for dynamic keys (env vars, resources, shared caches).
-DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.", "shared.")
+# Prefixes for dynamic keys (env vars, resources).
+DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.")
 
 # Map friendly short names to canonical flat config keys.
 _KEY_ALIASES: dict[str, str] = {
@@ -123,7 +118,7 @@ def is_known_key(arg: str) -> bool:
 # The single source of truth for HOW every non-dynamic, non-env config key is
 # stored.  ``get``/``set``/``reset`` all consult this table so the same key set
 # is recognised on every path (no "get-validated, set-unguarded" asymmetry that
-# crashed H1).  A key absent from here (and not env./resource./shared./agent.*/
+# crashed H1).  A key absent from here (and not env./resource./agent.*/
 # system.path.*) is UNKNOWN — the writer returns an error string, never raises.
 #
 # Each entry maps the canonical key → the nested config location it lands in:
@@ -148,9 +143,6 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "vault.rw": (("project",), "vault_rw"),
     # Top-level scalar fields (flat KanibakoConfig fields).
     "allow_helpers": ((), "allow_helpers"),
-    # Box-level path field ([paths] table → flat paths_shared KanibakoConfig
-    # field).  LIVE: config.paths_shared drives the shared-store dir name.
-    "paths.shared": (("paths",), "shared"),
 }
 
 # Keys whose values must be coerced to a real type before writing (the H2 fix).
@@ -239,10 +231,6 @@ def _is_env_key(key: str) -> bool:
 
 def _is_resource_key(key: str) -> bool:
     return key.startswith("resource.")
-
-
-def _is_shared_key(key: str) -> bool:
-    return key.startswith("shared.")
 
 
 def _is_agent_setting(key: str) -> bool:
@@ -343,12 +331,6 @@ def get_config_value(
             return str(overrides.get(resource_name, "")) or None
         return None
 
-    # shared.* keys — read from [shared] in global config or project
-    if _is_shared_key(canonical):
-        cache_name = canonical[7:]  # strip "shared."
-        cfg = load_merged_config(global_config_path, project_toml)
-        return cfg.shared_caches.get(cache_name)
-
     # target settings (model, start_mode, autonomous)
     if _is_agent_setting(canonical):
         # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
@@ -448,12 +430,6 @@ def set_config_value(
         _write_toml_key(config_path, "resource_overrides", resource_name, value)
         return f"Set resource.{resource_name}={value}"
 
-    # shared.* keys — write to [shared]
-    if _is_shared_key(canonical):
-        cache_name = canonical[7:]
-        _write_toml_key(config_path, "shared", cache_name, value)
-        return f"Set shared.{cache_name}={value}"
-
     # target settings — the agent-agnostic CLI writes the any-agent
     # ``agent.default`` tier (per-agent overrides live under ``agent.<name>``).
     if _is_agent_setting(canonical):
@@ -518,13 +494,6 @@ def reset_config_value(
         if _remove_toml_key(config_path, "resource_overrides", resource_name):
             return f"Reset resource.{resource_name}"
         return f"No override for resource.{resource_name}"
-
-    # shared.* keys
-    if _is_shared_key(canonical):
-        cache_name = canonical[7:]
-        if _remove_toml_key(config_path, "shared", cache_name):
-            return f"Reset shared.{cache_name}"
-        return f"No override for shared.{cache_name}"
 
     # target settings — reset the any-agent ``agent.default`` tier.
     if _is_agent_setting(canonical):

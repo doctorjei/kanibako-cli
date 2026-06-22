@@ -44,7 +44,6 @@ def coerce_bool(value: object) -> bool | None:
 
 _DEFAULTS = {
     "paths_project_toml": BOX_META_FILE,
-    "paths_shared": "shared",
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_agent": "",
     "box_bootstrap_program": "tmux",
@@ -61,14 +60,12 @@ class KanibakoConfig:
     """Merged configuration (hardcoded defaults < kanibako.yaml < settings.yaml < CLI)."""
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
-    paths_shared: str = _DEFAULTS["paths_shared"]
     box_image: str = _DEFAULTS["box_image"]
     box_agent: str = _DEFAULTS["box_agent"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
     box_shell: str = _DEFAULTS["box_shell"]
     allow_helpers: bool = True
     box_share_images: bool = False
-    shared_caches: dict[str, str] = field(default_factory=dict)
     # System-level config tier: raw set-values keyed by full dotted name
     # (bare "system.<leaf>"), read from the file's flat [system] table.
     # System-only (never supplied by project/workset configs).
@@ -201,8 +198,8 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
     "reset to built-in default" sentinel; callers must distinguish it from an
     absent key (which simply won't appear in the returned dict).
 
-    The dict fields (``shared_caches``, ``system_paths``) are NOT included here;
-    they keep their own dedicated parsing/merge logic.
+    The dict field (``system_paths``) is NOT included here; it keeps its own
+    dedicated parsing/merge logic.
     """
     if not path.exists():
         return {}
@@ -210,7 +207,6 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
     # Drop the sections handled by dedicated logic so they don't leak into the
     # scalar field overlay.  The whole [system] table is the config tier
     # (handled by load_config's system_paths extraction), not flat fields.
-    data.pop("shared", None)
     data.pop("system", None)
     flat = _flatten_toml(data)
     valid_keys = {fld.name for fld in fields(KanibakoConfig)}
@@ -228,9 +224,6 @@ def load_config(path: Path) -> KanibakoConfig:
     cfg = KanibakoConfig()
     if path.exists():
         data = load_doc(path)
-        # Extract [shared] section before flattening (it's a key-value dict,
-        # not nested config fields).
-        shared = data.get("shared", {})
         # Extract the [system] table: the system-level config tier (resolver
         # expressions), keyed by bare ``system.<leaf>`` dotted names.  The table
         # is flattened so nested sub-keys (e.g. ``system.channels.commons``)
@@ -247,7 +240,6 @@ def load_config(path: Path) -> KanibakoConfig:
                 setattr(cfg, k, getattr(KanibakoConfig(), k))
             else:
                 setattr(cfg, k, v)
-        cfg.shared_caches = {k: str(v) for k, v in shared.items()}
     return cfg
 
 
@@ -290,25 +282,15 @@ def load_merged_config(
     cfg = load_config(machine_config_path())
     glob = load_config(global_path)
     _overlay_scalars(cfg, global_path)
-    # shared_caches (DICT field): keep the existing merge — a layer that supplies
-    # a non-empty mapping wins over the underlying one (last non-empty wins).
-    if glob.shared_caches != defaults.shared_caches:
-        cfg.shared_caches = glob.shared_caches
     # system_paths: the global config wins when it supplies one (matches the
     # prior behavior where load_config(global_path) was the base); else keep
     # whatever the machine layer provided.
     if glob.system_paths:
         cfg.system_paths = glob.system_paths
     if workset_path and workset_path.exists():
-        ws = load_config(workset_path)
         _overlay_scalars(cfg, workset_path)
-        if ws.shared_caches != defaults.shared_caches:
-            cfg.shared_caches = ws.shared_caches
     if project_path and project_path.exists():
-        proj = load_config(project_path)
         _overlay_scalars(cfg, project_path)
-        if proj.shared_caches != defaults.shared_caches:
-            cfg.shared_caches = proj.shared_caches
     if cli_overrides:
         valid_keys = {fld.name for fld in fields(cfg)}
         for k, v in cli_overrides.items():
@@ -348,8 +330,6 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
             "agent": cfg.box_agent,
             "share_images": cfg.box_share_images,
         },
-        # Global shared caches (lazy: only mounted if the dir exists on host).
-        "shared": {},
     }
     dump_doc(path, data)
 

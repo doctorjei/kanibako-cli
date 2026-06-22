@@ -1128,30 +1128,6 @@ def _run_container(
         kanibako_mnts = _kanibako_mounts()
         extra_mounts.extend(kanibako_mnts)
 
-        # Shared cache mounts (global, lazy — only mount if dir exists)
-        if proj.global_shared_path:
-            from kanibako.targets.base import Mount
-            for cache_name, container_rel in merged.shared_caches.items():
-                host_dir = proj.global_shared_path / cache_name
-                if host_dir.is_dir():
-                    extra_mounts.append(Mount(
-                        source=host_dir,
-                        destination=f"/home/agent/{container_rel}",
-                        options="Z,U",
-                    ))
-
-        # Agent-level shared cache mounts (lazy — only mount if dir exists)
-        if proj.local_shared_path and agent_cfg.shared_caches:
-            from kanibako.targets.base import Mount as _Mount
-            for cache_name, container_rel in agent_cfg.shared_caches.items():
-                host_dir = proj.local_shared_path / agent_id / cache_name
-                if host_dir.is_dir():
-                    extra_mounts.append(_Mount(
-                        source=host_dir,
-                        destination=f"/home/agent/{container_rel}",
-                        options="Z,U",
-                    ))
-
         # Resource scope mounts (SHARED from target.resource_mappings())
         if target and proj.global_shared_path:
             resource_mounts = _build_resource_mounts(proj, target, agent_id)
