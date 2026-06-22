@@ -68,7 +68,4 @@ The current version line is recorded in [`VERSION`](VERSION); see
 ## Repository layout
 
 - `containers/` — `Containerfile.kanibako` (the four base variants) + `tmux.conf`.
-- `containers/archive/` — retired experimental Containerfiles, not part of the
-  `kanibako-*` base matrix (see its README).
-- `host/` — dev-host images consumed elsewhere, not base variants (see its README).
 - `.github/workflows/` — `release.yml`, `build-images.yml`, `prune-tags.yml`.
