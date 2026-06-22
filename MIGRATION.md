@@ -125,6 +125,15 @@ There is **no migration code** — move your `[shared]` entries to `caches` keys
 hand (and migrate any existing on-disk cache dirs yourself if you want to keep
 their contents).
 
+⚑ **Claude `plugins` + `cache` MOVED on disk (no migration code).** They were
+served from the retired global shared store at `<data>/shared/<agent>/plugins`;
+they are now AGENT-scope `agent.claude.shared.{plugins,cache}` entries rooted at
+the per-agent store dir — host `<data>/agents/claude/{plugins,cache}`, bound rw
+to `~/.claude/{plugins,cache}` in the box. The top-level `<data>/shared/` dir no
+longer exists. If you want to keep installed plugins, move
+`<data>/shared/<agent>/plugins` → `<data>/agents/claude/plugins` by hand (else a
+fresh empty dir is created on next launch).
+
 **Category precedence** (when two categories target the same `box_dest`, later wins):
 `seed → cache → binding → shared → synced → masks`. `seed`/`synced` are file copies;
 `cache`/`binding`/`shared`/`masks` are mounts. A `synced` and a `binding` naming the
