@@ -9,8 +9,10 @@
 |--------|------|
 | `cli.py` | Argparse tree, main() entry, `-v` flag |
 | `log.py` | Logging setup (`-v` enables debug output) |
-| `config.py` | YAML config loading, defaults, merge logic (`system.*` config tier) |
-| `config_interface.py` | Unified config/settings engine (get/set/reset/show across box, workset, agent, system) |
+| `config.py` | YAML config loading, defaults, merge logic (`system.*` config tier); agent resolution (`resolve_agent` cascade + installed-count rule, `resolve_and_load_settings` two-pass), setup-marker reader |
+| `config_interface.py` | Unified config/settings engine (get/set/reset/show across box, workset, agent, system); `system.*` keys are file-only (refused at set/reset) with a programmatic `write_system_value` for `setup` |
+| `errors.py` | Kanibako exception hierarchy (incl. `AgentResolutionError` / `NoAgentSelectedError` / `NoAgentInstalledError` / `AgentNotInstalledError`, surfaced verbatim by the top-level handler) |
+| `install_method.py` | Detect kanibako's own install method (pipx/uv/pip) to tailor the "install a plugin" command in agent-resolution errors |
 | `paths.py` | XDG resolution, mode detection (primary/named/standalone), box/workset init |
 | `container.py` | Box runtime (detect, pull, build, run, stop, detach) |
 | `shellenv.py` | Environment variable file handling |
@@ -34,5 +36,6 @@
 | `helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `helper_client.py` | Container-side socket client for hub communication |
 | `commands/` | CLI subcommand implementations |
+| `commands/flags.py` | Injects the blanket `--agent`/`--box` flags onto every leaf subparser, checks per-command flag relevance, and reconciles a positional subject against `--box` |
 | `containers/` | Bundled `Containerfile.template-<name>` toolchain templates (jvm/systems/js/dotnet/android) + `tmux.conf` (base rig images live in the kanibako-images repo) |
 | `scripts/` | Bundled scripts: `helper-init.sh` (entrypoint wrapper), `kanibako-entry` (container CLI) |

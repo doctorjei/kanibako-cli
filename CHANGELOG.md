@@ -87,7 +87,14 @@ The revamp is **one breaking change set** with **no automatic migration** — se
 - **`system.*` config keys are now file-only.** The CLI reads and shows them but
   **refuses to set/reset** them (`kanibako system config system.<key> <value>`
   errors with a pointer to the config file); `setup` and programmatic writers
-  still write them. `box.*` and other behavior settings stay CLI-settable.
+  still write them. This now includes `system.default_agent` — choose it with
+  `kanibako setup` or by editing the file. `box.*` and other non-`system.` behavior
+  settings stay CLI-settable.
+- **Arbitrary agent auto-pick removed.** `start` no longer silently launches the
+  first installed agent when none is chosen and 2+ are installed — it errors instead
+  (see Changed). The single-agent implicit case is unchanged.
+- **`refresh -p`/`--project` removed (clean break).** No deprecation alias — use the
+  blanket `--box <name-or-path>` selector instead.
 - **Legacy plugin hooks removed (descriptor-only).** The legacy `Target` launch
   hooks (`build_cli_args` / `binary_mounts` / `init_home` / `generate_crab_config`)
   and the core legacy assembly branch are gone — every plugin is now driven by its
@@ -126,6 +133,27 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   skip-existing semantics so a re-run whose version is unchanged is skipped rather
   than failing. A `workflow_dispatch` `agent` input lets a single agent package be
   published on demand without releasing the whole train.
+- **`setup` now selects a default agent.** `kanibako setup` gained an interactive
+  numbered menu of detected agents (the only interactive prompt in the CLI) and a
+  non-interactive `setup --agent <name>` flag. A "skip" option is offered; with 2+
+  agents installed it is gated behind a warning + explicit `y`/`yes` confirm, else it
+  re-prompts. Non-TTY runs skip selection gracefully (no prompt). The chosen default
+  is written programmatically (`system.*` is otherwise file-only).
+- **Setup-completion marker + nudge.** `setup` records a completion marker
+  (`system.setup_completed`, the build version); agent-requiring commands print a
+  **non-blocking** stderr nudge when setup has never been run (or its recorded version
+  predates a setup-affecting change), then proceed.
+- **Blanket `--agent` and `--box` flags.** `--agent <name>` is a uniform,
+  top-precedence, ephemeral (this-invocation) agent override available on every
+  agent-touching command. `--box <name-or-path>` is a universal subject/anchor
+  selector — operate on a box that is not your cwd, by box name (precedence) or path;
+  it coexists with the `move`/`convert` destination group (`--default/--standalone/
+  --workset`). Passing either flag to an unrelated command is an error.
+- **Box-name validation.** New box names (creation / `--name`) are checked against a
+  blocklist: unicode letters/digits plus interior `_ - .` are allowed; control chars,
+  whitespace, ASCII punctuation except `_ - .`, `.`/`..`, leading `-`/`.`, trailing
+  `.`/whitespace, and length over 64 are rejected. Uppercase ASCII folds to lowercase.
+  Pre-existing non-conforming names are flagged (warned), not rejected.
 
 ### Changed
 
@@ -148,6 +176,15 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   provider.)
 - **CI now type-checks the plugin packages** (Claude, Goose, and Codex), closing
   the gap where only the core was type-checked and a plugin could regress silently.
+- **Agent resolution is now deterministic — 2+ agents with no choice errors
+  (BREAKING).** A single resolver applies the cascade `--agent > box > workset >
+  system default` across all agent-requiring commands; when nothing resolves, an
+  **installed-count rule** decides with no ordering and no tie-break: exactly 1
+  installed → used implicitly; 0 → error (install a plugin); **2+ → error (pick one
+  via `setup` or `--agent`)**. This replaces the old behavior where `start` would
+  arbitrarily launch the first installed agent in plugin-discovery order (the
+  "goose-by-luck" footgun under the all-three meta-package). `kanibako shell` is the
+  sole no-agent path and never errors on agent resolution.
 
 ### Fixed
 
