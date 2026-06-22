@@ -90,6 +90,11 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # config path).  Routed to the SYSTEM settings tier (the agent.default
     # table), NOT the [system] config table — handled explicitly below.
     "system.default_agent",
+    # Box-level path setting (flat KanibakoConfig.paths_shared field). The shared
+    # store's directory-name leaf — still a LIVE behavioral knob (paths.py /
+    # box/_lifecycle.py read config.paths_shared to build the global/local shared
+    # dirs).  paths.shell/paths.vault were removed (dead); this one stays.
+    "paths.shared",
     # Helpers
     "allow_helpers",
 })
@@ -143,6 +148,9 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "vault.rw": (("project",), "vault_rw"),
     # Top-level scalar fields (flat KanibakoConfig fields).
     "allow_helpers": ((), "allow_helpers"),
+    # Box-level path field ([paths] table → flat paths_shared KanibakoConfig
+    # field).  LIVE: config.paths_shared drives the shared-store dir name.
+    "paths.shared": (("paths",), "shared"),
 }
 
 # Keys whose values must be coerced to a real type before writing (the H2 fix).
@@ -266,15 +274,18 @@ def _is_system_path_key(key: str) -> bool:
     return key.startswith("system.") and not _is_default_agent_key(key)
 
 
-def _system_key_sections(key: str) -> tuple[tuple[str, ...], str]:
-    """Split a ``system.<a>.<b>...`` key into (nested sections, leaf).
+def _system_key_refusal(key: str, config_path: Path) -> str:
+    """Error string refusing a CLI write to a FILE-ONLY ``system.*`` config key.
 
-    ``system.data`` → ``(("system",), "data")``;
-    ``system.channels.commons`` → ``(("system", "channels"), "commons")``.
+    ``system.*`` keys are STRUCTURAL config (layout), not behavior settings, so
+    they are file-only: editable in the config file (or via ``kanibako setup``)
+    but never via ``config set``/``--reset``.  Points the user at the file.
     """
-    parts = key.split(".")  # ["system", "<a>", ...]
-    *sections, leaf = parts
-    return tuple(sections), leaf
+    return (
+        f"Error: '{key}' is a structural config key and is not settable from "
+        f"the CLI. Edit the config file directly:\n  {config_path}\n"
+        f"(or re-run 'kanibako setup')."
+    )
 
 
 def _dot_to_flat(key: str) -> str:
@@ -457,11 +468,13 @@ def set_config_value(
         )
         return f"Set {canonical}={value}"
 
-    # system.* keys — write into the [system] config table.
+    # system.* keys — these are STRUCTURAL CONFIG (layout), not behavior
+    # settings.  They are FILE-ONLY: the CLI reads/shows them but refuses to
+    # write them (config == system.* exactly).  Edit the config file directly
+    # (or re-run ``kanibako setup``).  ``system.default_agent`` is excluded
+    # above — it is a SETTING, not a config path.
     if _is_system_path_key(canonical):
-        sections, leaf = _system_key_sections(canonical)
-        _write_nested_toml_key(config_path, sections, leaf, value)
-        return f"Set {canonical}={value}"
+        return _system_key_refusal(canonical, config_path)
 
     # Regular config keys — route via the single known-key table (the H1 fix:
     # an unknown key returns an error string and NEVER raises).  Accept either
@@ -528,12 +541,10 @@ def reset_config_value(
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
-    # system.* keys — remove from the [system] config table.
+    # system.* keys — FILE-ONLY structural config (see set_config_value).  The
+    # CLI refuses to reset them; edit the config file directly.
     if _is_system_path_key(canonical):
-        sections, leaf = _system_key_sections(canonical)
-        if _remove_nested_toml_key(config_path, sections, leaf):
-            return f"Reset {canonical}"
-        return f"No override for {canonical}"
+        return _system_key_refusal(canonical, config_path)
 
     # Regular config keys — route via the same known-key table as set/get
     # (no get-validated/set-unguarded asymmetry).
