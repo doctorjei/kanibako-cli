@@ -688,6 +688,16 @@ def load_settings(
     return SettingsResolver(levels, ctx)
 
 
+# Pseudo / catch-all agents that are NOT real launchable agents: ``no_agent``
+# is the built-in shell fallback target (entry-point registered, so it appears
+# in ``discover_targets``); ``general`` is the no-agent settings-namespace label
+# (NOT a registered target today, included defensively).  They are EXCLUDED from
+# the implicit installed-count rule (so a host with one real agent + no_agent is
+# unambiguous, not "2+"), but remain EXPLICITLY selectable via the cascade
+# (``--agent no_agent`` / ``box.agent``).
+_PSEUDO_AGENTS = frozenset({"no_agent", "general"})
+
+
 def resolve_agent(
     *,
     explicit_agent: str | None,
@@ -729,6 +739,14 @@ def resolve_agent(
         return (value or "").strip()
 
     installed = set(discover_targets(project_path).keys())
+    # The implicit installed-count rule (1->use / 0->error / 2+->error)
+    # considers only REAL launchable agents — pseudo/catch-all targets
+    # (``no_agent``, ``general``) are EXCLUDED so a host with exactly one real
+    # agent plus the built-in shell fallback is unambiguous (not "2+"), and a
+    # host with zero real agents reports Gate-2b (not "use no_agent").  Pseudo
+    # agents stay EXPLICITLY selectable via the cascade (handled below against
+    # the full `installed` set).
+    real_installed = installed - _PSEUDO_AGENTS
 
     # Cascade: first non-empty tier resolves a name.
     resolved = (
@@ -739,6 +757,8 @@ def resolve_agent(
     )
 
     if resolved:
+        # An explicitly-named agent (incl. a pseudo agent like ``no_agent``)
+        # validates against the FULL installed set.
         if resolved in installed:
             return resolved
         raise AgentNotInstalledError(
@@ -747,10 +767,10 @@ def resolve_agent(
             f"Or run 'kanibako agent list' to see installed agents."
         )
 
-    # Nothing resolved -> installed-count rule.
-    if len(installed) == 1:
-        return next(iter(installed))
-    if len(installed) == 0:
+    # Nothing resolved -> installed-count rule (REAL agents only).
+    if len(real_installed) == 1:
+        return next(iter(real_installed))
+    if len(real_installed) == 0:
         raise NoAgentInstalledError(
             "No agent plugins are installed. Install one, e.g.:\n"
             f"  {install_command('kanibako-agent-claude')}\n"

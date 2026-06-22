@@ -94,7 +94,7 @@ class TestSystemConfig:
         from kanibako.commands.system_cmd import run_config
 
         args = argparse.Namespace(
-            key_value="image", effective=False, reset=False,
+            key_value="box.image", effective=False, reset=False,
             all_keys=False, force=False,
         )
         rc = run_config(args)
@@ -116,7 +116,7 @@ class TestSystemConfig:
         from kanibako.commands.system_cmd import run_config
 
         args = argparse.Namespace(
-            key_value="image=custom:v2", effective=False, reset=False,
+            key_value="box.image=custom:v2", effective=False, reset=False,
             all_keys=False, force=False,
         )
         rc = run_config(args)

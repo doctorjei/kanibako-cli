@@ -102,6 +102,54 @@ class TestTargetWarnings:
         assert "Warning:" not in captured.err
 
 
+class TestResolveBeforeImage:
+    """Agent resolution must run BEFORE image pull + the tmux baseline check.
+
+    W1 §Design 7: "resolve config FIRST ... before anything else."  A user with
+    2+ agents and no default must hit the Gate-2a "pick an agent" error
+    immediately — not after paying a full image pull (ensure_image) and then a
+    tmux baseline error.
+    """
+
+    def test_gate2a_raises_before_image_and_baseline(self, start_mocks):
+        from kanibako.errors import NoAgentSelectedError
+
+        with start_mocks() as m:
+            m.resolve_agent.side_effect = NoAgentSelectedError("pick one")
+            with pytest.raises(NoAgentSelectedError):
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                )
+            # Resolution failed up front: neither the image pull nor the tmux
+            # baseline probe was reached.
+            m.runtime.ensure_image.assert_not_called()
+            m.launch_check.assert_not_called()
+
+    def test_shell_mode_skips_resolution(self, start_mocks):
+        """`kanibako shell` (box_shell_mode) never calls resolve_agent."""
+        with start_mocks() as m:
+            m.resolve_agent.side_effect = AssertionError("must not resolve")
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+                box_shell_mode=True,
+            )
+            assert rc == 0
+            m.resolve_agent.assert_not_called()
+
+
 class TestImageReferenceResolution:
     """Verify a bare configured image is resolved before ensure_image (#81)."""
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +24,7 @@ from kanibako.paths import (
     iter_workset_projects,
     load_std_paths,
     resolve_any_project,
+    resolve_box_target,
     resolve_project,
     resolve_standalone_project,
 )
@@ -1019,16 +1019,14 @@ def run_info(args: argparse.Namespace) -> int:
     project_dir = resolve_subject_value(
         getattr(args, "path", None), getattr(args, "box", None),
     )
-    raw = project_dir or os.getcwd()
-    raw_dir = Path(raw).resolve()
 
-    if not raw_dir.is_dir():
-        print(f"Error: directory does not exist: {raw_dir}", file=sys.stderr)
-        return 1
-
-    # Detect mode and resolve project paths (without initializing).
+    # Route the subject (positional path OR ``--box`` value) through the unified
+    # path-or-name resolver (name-precedence), the same way the sibling box
+    # commands / D2 wiring do — so a bare registered box NAME selects that box
+    # instead of being treated as a (nonexistent) relative directory.  The old
+    # premature ``Path(raw).is_dir()`` check rejected every name here.
     try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+        proj = resolve_box_target(std, config, project_dir, initialize=False)
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

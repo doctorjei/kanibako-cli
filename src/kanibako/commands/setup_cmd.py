@@ -6,6 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from kanibako.errors import ConfigError
+
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Register ``setup``'s arguments on *parser*.
@@ -262,17 +264,16 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
     if requested:
         if requested not in _known_target_names():
             available = ", ".join(_known_target_names()) or "(none installed)"
-            print(
-                f"  [!!] Unknown agent '{requested}'. "
-                f"Installed agents: {available}.",
-                file=sys.stderr,
+            # Hard error: an unknown agent must NOT be treated as a graceful
+            # skip — return non-zero and write NEITHER the default NOR the
+            # setup-completion marker.  Raising a KanibakoError aborts
+            # ``run_setup`` BEFORE the marker write; cli.py surfaces the
+            # message verbatim with a non-zero exit.
+            raise ConfigError(
+                f"Unknown agent '{requested}'. Installed agents: {available}.\n"
+                "Install the plugin (e.g. pip install kanibako-agent-"
+                f"{requested}) or pick from the list above."
             )
-            print(
-                "       Install the plugin (e.g. pip install kanibako-agent-"
-                f"{requested}) or pick from the list above.",
-                file=sys.stderr,
-            )
-            return None
         _write_default_agent(requested)
         print(f"  [ok] Default agent set to '{requested}'.")
         return requested

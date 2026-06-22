@@ -63,13 +63,42 @@ def test_agent_flag_valid_writes_default(tmp_home, config_file, monkeypatch):
     assert read_default_agent(ssp) == "claude"
 
 
-def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch, capsys):
+def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch):
+    import pytest
+
+    from kanibako.errors import ConfigError
+
     _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    selected = setup_cmd._run_agent_selection(_ns(agent="bogus"))
-    assert selected is None
-    err = capsys.readouterr().err
-    assert "Unknown agent 'bogus'" in err
+    # An unknown --agent is a HARD error, not a graceful skip: raises so that
+    # run_setup aborts BEFORE writing the default or the completion marker.
+    with pytest.raises(ConfigError) as exc_info:
+        setup_cmd._run_agent_selection(_ns(agent="bogus"))
+    assert "Unknown agent 'bogus'" in str(exc_info.value)
     _, ssp = _config_paths(tmp_home)
+    assert read_default_agent(ssp) is None
+
+
+def test_full_setup_bogus_agent_nonzero_no_marker_no_default(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """`setup --agent bogus` → nonzero rc, NO marker, NO default written."""
+    import pytest
+
+    from kanibako.errors import ConfigError
+
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    monkeypatch.setattr(
+        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
+    )
+    monkeypatch.setattr(
+        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
+    )
+    # run_setup lets the ConfigError propagate (cli.py turns it into rc=1);
+    # critically, the marker write at the end of run_setup is never reached.
+    with pytest.raises(ConfigError):
+        setup_cmd.run_setup(_ns(agent="bogus"))
+    cf, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(cf) is None
     assert read_default_agent(ssp) is None
 
 
