@@ -185,13 +185,6 @@ def run_info(args: argparse.Namespace) -> int:
     else:
         print("Env:          (none)")
 
-    if cfg.shared_caches:
-        print("Shared:")
-        for k, v in sorted(cfg.shared_caches.items()):
-            print(f"  {k} = {v}")
-    else:
-        print("Shared:       (none)")
-
     return 0
 
 
@@ -201,7 +194,6 @@ def run_config(args: argparse.Namespace) -> int:
     Maps config keys to agent config sections:
       model, start_mode, etc. -> state keys
       env.X                   -> [env]
-      shared.X                -> [shared]
       shell, run_args, name   -> identity keys
     """
     from kanibako.agent_config import load_agent_config, write_agent_config
@@ -238,7 +230,6 @@ def run_config(args: argparse.Namespace) -> int:
             # Reset to defaults
             cfg.state.clear()
             cfg.env.clear()
-            cfg.shared_caches.clear()
             cfg.run_args.clear()
             write_agent_config(path, cfg)
             print("Reset all agent config overrides.")
@@ -288,9 +279,6 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     if key.startswith("env."):
         env_name = key[4:]
         return cfg.env.get(env_name)
-    if key.startswith("shared."):
-        cache_name = key[7:]
-        return cfg.shared_caches.get(cache_name)
     if key == "name":
         return cfg.name or None
     if key == "run_args":
@@ -304,9 +292,6 @@ def _set_agent_key(cfg: AgentConfig, key: str, value: str) -> None:
     if key.startswith("env."):
         env_name = key[4:]
         cfg.env[env_name] = value
-    elif key.startswith("shared."):
-        cache_name = key[7:]
-        cfg.shared_caches[cache_name] = value
     elif key == "name":
         cfg.name = value
     elif key == "run_args":
@@ -322,12 +307,6 @@ def _reset_agent_key(cfg: AgentConfig, key: str) -> bool:
         env_name = key[4:]
         if env_name in cfg.env:
             del cfg.env[env_name]
-            return True
-        return False
-    if key.startswith("shared."):
-        cache_name = key[7:]
-        if cache_name in cfg.shared_caches:
-            del cfg.shared_caches[cache_name]
             return True
         return False
     if key == "name":
@@ -368,12 +347,6 @@ def _show_agent_config(
     if cfg.env:
         for k, v in sorted(cfg.env.items()):
             print(f"  env.{k} = {v}")
-        has_output = True
-
-    # [shared] section
-    if cfg.shared_caches:
-        for k, v in sorted(cfg.shared_caches.items()):
-            print(f"  shared.{k} = {v}")
         has_output = True
 
     if not has_output:

@@ -19,14 +19,12 @@ class AgentConfig:
       agent  — identity (name, run_args) plus agent-state knobs
                (model, access, start_mode, autonomous, …)
       env    — raw env vars injected into container
-      shared — agent-level shared cache paths
     """
 
     name: str = ""
     run_args: list[str] = field(default_factory=list)
     state: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
-    shared_caches: dict[str, str] = field(default_factory=dict)
     tweakcc: dict = field(default_factory=dict)
 
 
@@ -62,7 +60,6 @@ def load_agent_config(path: Path) -> AgentConfig:
         k: str(v) for k, v in agent_sec.items() if k not in IDENTITY_KEYS
     }
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
-    cfg.shared_caches = {k: str(v) for k, v in data.get("shared", {}).items()}
     cfg.tweakcc = dict(data.get("tweakcc", {}))
 
     return cfg
@@ -80,7 +77,6 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
     data: dict = {
         "agent": agent_sec,
         "env": dict(cfg.env),
-        "shared": dict(cfg.shared_caches),
         "tweakcc": dict(cfg.tweakcc),
     }
     dump_doc(path, data)

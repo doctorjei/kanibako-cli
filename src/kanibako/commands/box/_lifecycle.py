@@ -966,8 +966,8 @@ def _to_default(
     vault_ro = std.primary_vault_ro / project_name
     vault_rw = std.primary_vault_rw / project_name
 
-    _global_shared = std.data_path / config.paths_shared / "global"
-    _local_shared = std.data_path / config.paths_shared
+    _global_shared = std.data_path / "shared" / "global"
+    _local_shared = std.data_path / "shared"
     write_project_meta(
         dst_metadata / BOX_META_FILE,
         mode="primary",
@@ -1196,8 +1196,8 @@ def _to_workset(
 
     vault_ro = target_ws.vault_dir / new_name / "ro"
     vault_rw = target_ws.vault_dir / new_name / "rw"
-    _global_shared = std.data_path / config.paths_shared / "global"
-    _local_shared = target_ws.root / config.paths_shared
+    _global_shared = std.data_path / "shared" / "global"
+    _local_shared = target_ws.root / "shared"
 
     # Rewrite settings.yaml.  add_project (external) already wrote a minimal
     # settings.yaml with the workspace override; we overwrite with full content.
