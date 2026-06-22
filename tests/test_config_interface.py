@@ -73,10 +73,17 @@ class TestIsKnownKey:
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
-        assert is_known_key("paths.shell") is True
+        assert is_known_key("paths.shared") is True
         assert is_known_key("system.data") is True
         assert is_known_key("system.agents") is True
         assert is_known_key("system.default_agent") is True
+
+    def test_dead_keys_no_longer_known(self):
+        """W4: paths.shell/paths.vault, layout, persistence were deleted."""
+        assert is_known_key("paths.shell") is False
+        assert is_known_key("paths.vault") is False
+        assert is_known_key("layout") is False
+        assert is_known_key("persistence") is False
 
     def test_box_shell_is_known(self):
         """box.shell must be a known GET key (set/--reset bypass is_known_key)."""
@@ -569,13 +576,18 @@ class TestH1NoCrashOnAdvertisedKeys:
         data = load_doc(project_toml)
         assert data["project"]["enable_vault"] is False
 
-    def test_set_mode_and_layout_no_crash(self, tmp_path):
+    def test_set_mode_no_crash(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
         assert set_config_value("mode", "primary", config_path=project_toml).startswith("Set")
-        assert set_config_value("layout", "robust", config_path=project_toml).startswith("Set")
         data = load_doc(project_toml)
         assert data["project"]["mode"] == "primary"
-        assert data["project"]["layout"] == "robust"
+
+    def test_set_dead_layout_key_rejected(self, tmp_path):
+        """W4: layout is a deleted dead key — now an unknown-key error."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value("layout", "robust", config_path=project_toml)
+        assert msg.startswith("Error:")
+        assert "unknown config key" in msg
 
     def test_set_unknown_key_returns_error_not_raise(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
@@ -599,7 +611,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         for key, val in [
             ("group_auth", "false"),
             ("mode", "default"),
-            ("layout", "robust"),
+            ("paths.shared", "myshared"),
             ("vault.ro", "/ro"),
         ]:
             set_config_value(key, val, config_path=project_toml)
@@ -701,14 +713,63 @@ class TestSystemDefaultAgent:
         assert read_default_agent(cf) is None
 
     def test_not_confused_with_system_path_keys(self, tmp_path):
-        """system.data still lands in the [system] config table, not settings."""
+        """system.data (config) is FILE-ONLY (refused) but default_agent (a
+        SETTING) is still CLI-settable — the two are not conflated (W4)."""
+        from kanibako.config_interface import _write_nested_toml_key
+
         cf = tmp_path / "kanibako.yaml"
-        set_config_value("system.data", "/custom/data", config_path=cf)
+        # system.data is structural config: refused at the CLI with a file pointer.
+        msg = set_config_value("system.data", "/custom/data", config_path=cf)
+        assert msg.startswith("Error:")
+        assert "structural config key" in msg
+        # The programmatic writer (what setup uses) still lands it in [system].
+        _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
+        # system.default_agent (a SETTING) is still settable via the CLI.
         set_config_value("system.default_agent", "claude", config_path=cf)
 
         data = load_doc(cf)
         assert data["system"]["data"] == "/custom/data"
         assert data["agent"]["default"]["default_agent"] == "claude"
+
+
+class TestSystemConfigFileOnly:
+    """W4: system.* CONFIG keys are FILE-ONLY (CLI set/reset refused).
+
+    config == system.* (structural layout); the CLI reads/shows them but
+    refuses to write, pointing at the config file.  system.default_agent (a
+    SETTING) is the lone system.*-named exception and stays CLI-settable.
+    """
+
+    def test_set_system_config_key_refused(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        for key in ("system.data", "system.agents", "system.channels.commons"):
+            msg = set_config_value(key, "x", config_path=cf)
+            assert msg.startswith("Error:"), key
+            assert "structural config key" in msg
+            assert str(cf) in msg  # pointer to the file
+        # Nothing was written to the file.
+        assert not cf.exists() or "system" not in load_doc(cf)
+
+    def test_reset_system_config_key_refused(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        msg = reset_config_value("system.data", config_path=cf)
+        assert msg.startswith("Error:")
+        assert "structural config key" in msg
+
+    def test_get_system_config_key_still_reads(self, tmp_path):
+        """Reads/shows are unaffected — only writes are refused."""
+        from kanibako.config_interface import _write_nested_toml_key
+
+        cf = tmp_path / "kanibako.yaml"
+        _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
+        assert get_config_value("system.data", global_config_path=cf) == "/custom/data"
+
+    def test_default_agent_setting_still_settable(self, tmp_path):
+        """system.default_agent is a SETTING, not config — still CLI-settable."""
+        cf = tmp_path / "kanibako.yaml"
+        assert set_config_value(
+            "system.default_agent", "goose", config_path=cf,
+        ).startswith("Set")
 
 
 class TestResolveBoxAgent:

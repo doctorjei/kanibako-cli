@@ -30,7 +30,7 @@ class TestLoadConfig:
     def test_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.yaml")
         assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
-        assert cfg.paths_shell == "shell"
+        assert cfg.paths_shared == "shared"
         assert cfg.system_paths == {}
 
     def test_round_trip(self, tmp_path):
