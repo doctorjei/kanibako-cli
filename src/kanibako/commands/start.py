@@ -1040,16 +1040,13 @@ def _run_container(
                     setting_values=effective_state,
                 )
             else:
-                # Legacy path (unchanged): apply_state + build_cli_args.
-                state_args, state_env = target.apply_state(effective_state)
-                cli_args = target.build_cli_args(
-                    safe_mode=safe_mode,
-                    resume_mode=resume_mode,
-                    new_session=new_session,
-                    is_new_project=proj.is_new,
-                    extra_args=all_extra,
-                )
-                cli_args.extend(state_args)
+                # Descriptor-less target: the only one is NoAgentTarget (the
+                # `kanibako shell` fallback), which launches a plain shell with
+                # no agent argv and no state env.  The legacy build_cli_args /
+                # apply_state hook dispatch was removed for the public release
+                # (descriptor-only plugin system); a no-agent box needs neither.
+                cli_args = []
+                state_env = {}
         else:
             state_env = {}
             cli_args = list(extra_args)
@@ -1122,39 +1119,10 @@ def _run_container(
                     )
                     return 1
                 extra_mounts.extend(binary_mnts)
-            else:
-                binary_mnts = target.binary_mounts(install)
-                if not binary_mnts:
-                    print(
-                        f"Error: {target.display_name} binary detected at "
-                        f"{install.binary} but mount sources are missing.\n"
-                        f"  binary:      {install.binary} "
-                        f"({'exists' if install.binary.exists() else 'MISSING'})\n"
-                        f"  install_dir: {install.install_dir} "
-                        f"({'exists' if install.install_dir.exists() else 'MISSING'})\n"
-                        f"The container would launch without the agent binary.",
-                        file=sys.stderr,
-                    )
-                    return 1
-                # Safe-fail: every agent bind source must still exist at mount
-                # time.  If the host churned (prune/repoint mid-flight) between
-                # detection and here, fail with a clean, actionable kanibako
-                # error instead of letting crun crash on a dangling bind source.
-                missing = [m for m in binary_mnts if not m.source.exists()]
-                if missing:
-                    detail = "\n".join(
-                        f"  {m.source} → {m.destination}" for m in missing
-                    )
-                    print(
-                        f"Error: {target.display_name} mount source disappeared "
-                        f"before launch:\n{detail}\n"
-                        f"The host agent install changed while starting (e.g. an "
-                        f"update pruned a version). Retry the launch.\n"
-                        f"Run 'kanibako system diagnose' for a full health check.",
-                        file=sys.stderr,
-                    )
-                    return 1
-                extra_mounts.extend(binary_mnts)
+            # No descriptor-less branch: every target with a host `install` is
+            # descriptor-bearing (all shipped plugins), so its delivery binds
+            # come from descriptor_mounts above.  NoAgentTarget has no binary
+            # (install is None), so it never reaches this block at all.
 
         # kanibako CLI bind-mount (package + entry script)
         kanibako_mnts = _kanibako_mounts()
@@ -1351,10 +1319,15 @@ def _run_container(
             helpers_dir = proj.shell_path / "helpers"
             helpers_dir.mkdir(exist_ok=True)
 
-            # Build context for helper container launches
+            # Build context for helper container launches.  Helpers reuse the
+            # agent's delivery binds so an in-helper agent finds the same binary;
+            # `binary_mnts` is the descriptor-assembled delivery mount list built
+            # above (only set when a descriptor-bearing target has a host
+            # install — NoAgentTarget has none, so helpers get just the kanibako
+            # binds).
             binary_mounts = list(kanibako_mnts)
             if target and install:
-                binary_mounts.extend(target.binary_mounts(install))
+                binary_mounts.extend(binary_mnts)
 
             # Share tweakcc cache with helpers so they reuse patched binaries
             if tweakcc_entry is not None:

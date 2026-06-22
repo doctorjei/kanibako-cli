@@ -302,15 +302,6 @@ class Target(ABC):
         """
         ...
 
-    def binary_mounts(self, install: AgentInstall) -> list[Mount]:
-        """Return volume mounts to make the agent binary available in the container.
-
-        Default: ``[]``.  Descriptor-native plugins declare their delivery binds
-        in ``descriptor.bindings`` (core builds them via ``descriptor_mounts``)
-        and need not override this; legacy plugins override it.
-        """
-        return []
-
     @property
     def has_binary(self) -> bool:
         """Whether this target requires a host-installed binary."""
@@ -318,12 +309,14 @@ class Target(ABC):
 
     @property
     def descriptor(self) -> "PluginDescriptor | None":
-        """Declarative plugin descriptor, or None for legacy plugins.
+        """Declarative plugin descriptor; None only for the built-in no-agent shell.
 
-        When non-None, kanibako core assembles launch argv, bindings, container
-        env, and credential sync declaratively from this descriptor instead of
-        the legacy per-method hooks (build_cli_args / binary_mounts / ...).
-        Default None keeps every existing plugin on the legacy path unchanged.
+        kanibako core assembles launch argv, bindings, container env, and
+        credential sync declaratively from this descriptor (the descriptor-only
+        plugin system; the legacy per-method launch hooks were removed for the
+        public release).  Every shipped agent plugin returns a descriptor; the
+        sole descriptor-less target is :class:`~kanibako.targets.no_agent.NoAgentTarget`,
+        which launches a plain shell with no agent argv and no delivery binds.
         """
         return None
 
@@ -478,20 +471,3 @@ class Target(ABC):
         ``descriptor.cred_files`` (core's credsync engine); legacy plugins override.
         """
         return None
-
-    def build_cli_args(
-        self,
-        *,
-        safe_mode: bool,
-        resume_mode: bool,
-        new_session: bool,
-        is_new_project: bool,
-        extra_args: list[str],
-    ) -> list[str]:
-        """Build command-line arguments for the agent entrypoint.
-
-        Default: ``list(extra_args)`` (passthrough only).  Descriptor-native
-        plugins assemble argv declaratively from ``descriptor`` (core's
-        ``assemble_argv``) and never call this; legacy plugins override it.
-        """
-        return list(extra_args)

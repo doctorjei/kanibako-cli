@@ -1,10 +1,11 @@
 """Agent-agnostic, declarative assembly of an agent launch from a PluginDescriptor.
 
-This module is the data-driven core that replaces the per-plugin
-``build_cli_args`` / ``binary_mounts`` hooks: given a plugin's
-:class:`~kanibako.targets.base.PluginDescriptor` plus the resolved host
-:class:`~kanibako.targets.base.AgentInstall` and a handful of per-launch knobs,
-it assembles the agent argv, container env, and host->box mounts.
+This module is the data-driven core of the descriptor-only plugin system: given
+a plugin's :class:`~kanibako.targets.base.PluginDescriptor` plus the resolved
+host :class:`~kanibako.targets.base.AgentInstall` and a handful of per-launch
+knobs, it assembles the agent argv, container env, and host->box mounts.  (It
+superseded the per-plugin ``build_cli_args`` / ``binary_mounts`` hooks, which
+were removed for the public release.)
 
 Everything here is pure and side-effect-free apart from filesystem *existence*
 checks in :func:`descriptor_mounts` / :func:`resolve_binding_source` (which only
@@ -15,8 +16,9 @@ plugin ``Target`` hook methods.
 LIVE: this module is wired into ``commands/start.py`` for every descriptor-bearing
 target (all three first-party agents).  ``resolve_mode`` / ``assemble_argv`` /
 ``assemble_env`` build the launch argv + container env, and ``descriptor_mounts``
-emits the delivery binds; the legacy ``build_cli_args`` / ``binary_mounts`` hooks
-are bypassed when a target exposes a descriptor.
+emits the delivery binds.  The only descriptor-less target is ``NoAgentTarget``
+(the ``kanibako shell`` fallback), which launches a plain shell with no agent
+argv and no delivery binds.
 """
 
 from __future__ import annotations
