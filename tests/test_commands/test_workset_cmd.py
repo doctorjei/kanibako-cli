@@ -155,13 +155,15 @@ class TestWorksetCreate:
         rc = run_create(args)
         assert rc == 0
 
-        # Verify config.yaml was written with image
+        # The image cascade setting AND the workset.meta identity coexist in the
+        # single root settings.yaml.
         import yaml
-        config_yaml = ws_root.resolve() / "config.yaml"
-        assert config_yaml.exists()
-        with open(config_yaml) as f:
+        settings_yaml = ws_root.resolve() / "settings.yaml"
+        assert settings_yaml.exists()
+        with open(settings_yaml) as f:
             data = yaml.safe_load(f)
         assert data["box"]["image"] == "custom:latest"
+        assert data["workset"]["meta"]["name"] == "imagews"
 
 
 class TestWorksetList:
@@ -595,7 +597,7 @@ class TestWorksetConfig:
         assert "no overrides" in out
 
     def test_config_get_auth(self, config_file, tmp_home, capsys):
-        """Getting group_auth key returns value from workset.yaml."""
+        """Getting group_auth key returns value from the workset.meta identity."""
         from kanibako.commands.workset_cmd import run_config
 
         config = load_config(config_file)
@@ -613,7 +615,7 @@ class TestWorksetConfig:
         assert "True" in out
 
     def test_config_set_auth_distinct(self, config_file, tmp_home, capsys):
-        """Setting group_auth=false updates workset.yaml and clears credentials."""
+        """Setting group_auth=false updates the workset.meta identity and clears credentials."""
         from kanibako.commands.workset_cmd import run_config
         from unittest.mock import MagicMock, patch
 
@@ -638,7 +640,7 @@ class TestWorksetConfig:
         out = capsys.readouterr().out
         assert "distinct" in out
 
-        # Verify workset.yaml was updated
+        # Verify the workset.meta identity was updated
         from kanibako.workset import load_workset
         ws = load_workset((tmp_home / "ws_setauth").resolve())
         assert ws.group_auth is False

@@ -79,7 +79,7 @@ class TestBoxConfigShow:
     def test_show_effective_reflects_workset_tier(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
-        """A value set ONLY in the workset config.yaml shows in --effective.
+        """A value set ONLY in the workset settings.yaml shows in --effective.
 
         This is the P3.7 parity fix: ``box config --effective`` must reflect
         the workset tier that ``start`` resolves (previously it skipped it).
@@ -96,8 +96,14 @@ class TestBoxConfigShow:
         src.mkdir()
         add_project(ws, "myproj", src)
 
-        # Set a box.* value ONLY at the workset level.
-        (ws.root / "config.yaml").write_text('box:\n  image: "ws-tier-img:1"\n')
+        # Set a box.* value ONLY at the workset level.  The workset settings now
+        # live in the SAME settings.yaml that carries the workset.meta identity,
+        # so merge the cascade key in rather than clobbering the file.
+        from kanibako.config_io import dump_doc, load_doc
+        ws_settings = ws.root / "settings.yaml"
+        data = load_doc(ws_settings) if ws_settings.is_file() else {}
+        data["box"] = {"image": "ws-tier-img:1"}
+        dump_doc(ws_settings, data)
 
         # Resolve via cwd inside the project's workspace dir.
         monkeypatch.chdir(ws.workspaces_dir / "myproj")
