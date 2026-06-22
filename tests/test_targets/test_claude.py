@@ -481,7 +481,6 @@ class TestGenerateAgentConfig:
         cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
         assert cfg.state == {"model": "opus", "access": "permissive"}
-        assert cfg.shared_caches == {}
         assert cfg.run_args == []
         assert cfg.env == {}
 

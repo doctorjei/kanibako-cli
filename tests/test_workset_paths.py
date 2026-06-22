@@ -173,7 +173,7 @@ class TestWorksetGlobalSharedPath:
         ws, name = workset_env
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
-        expected = std.data_path / config.paths_shared / "global"
+        expected = std.data_path / "shared" / "global"
         assert proj.global_shared_path == expected
 
 
@@ -186,7 +186,7 @@ class TestWorksetLocalSharedPath:
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config, initialize=True)
 
         from pathlib import Path
-        expected = Path(ws.root) / config.paths_shared
+        expected = Path(ws.root) / "shared"
         assert proj.local_shared_path == expected
 
 
