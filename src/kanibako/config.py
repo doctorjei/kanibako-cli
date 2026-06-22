@@ -351,8 +351,6 @@ def write_project_meta(
     group_auth: bool = True,
     metadata: str = "",
     project_hash: str = "",
-    global_shared: str = "",
-    local_shared: str = "",
     name: str = "",
 ) -> None:
     """Write resolved project metadata to settings.yaml, preserving other sections.
@@ -383,8 +381,6 @@ def write_project_meta(
     existing["resolved"]["vault_rw"] = vault_rw
     existing["resolved"]["metadata"] = metadata
     existing["resolved"]["project_hash"] = project_hash
-    existing["resolved"]["global_shared"] = global_shared
-    existing["resolved"]["local_shared"] = local_shared
 
     dump_doc(path, existing)
 
@@ -422,8 +418,6 @@ def read_project_meta(path: Path) -> dict | None:
         "vault_rw": resolved_sec.get("vault_rw", ""),
         "metadata": resolved_sec.get("metadata", ""),
         "project_hash": resolved_sec.get("project_hash", ""),
-        "global_shared": resolved_sec.get("global_shared", ""),
-        "local_shared": resolved_sec.get("local_shared", ""),
     }
 
 

@@ -266,60 +266,9 @@ class TestProjectMeta:
         assert meta is not None
         assert meta["mode"] == "primary"
 
-    def test_stored_shared_paths_used(self, config_file, tmp_home, credentials_dir):
-        """Stored global_shared/local_shared in settings.yaml override computed values."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        # Override shared paths in settings.yaml.
-        custom_global = tmp_home / "custom_global_shared"
-        custom_local = tmp_home / "custom_local_shared"
-        from kanibako.config import read_project_meta, write_project_meta
-        project_toml = proj.metadata_path / "settings.yaml"
-        meta = read_project_meta(project_toml)
-        write_project_meta(
-            project_toml,
-            mode=meta["mode"],
-            workspace=meta["workspace"], shell=meta["shell"],
-            vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
-            enable_vault=meta["enable_vault"], group_auth=meta["group_auth"],
-            metadata=meta["metadata"], project_hash=meta["project_hash"],
-            global_shared=str(custom_global),
-            local_shared=str(custom_local),
-        )
-
-        proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
-        assert proj2.global_shared_path == custom_global
-        assert proj2.local_shared_path == custom_local
-
-    def test_shared_paths_fallback_when_missing(self, config_file, tmp_home, credentials_dir):
-        """When stored shared paths are empty, fall back to computed values."""
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-
-        # Initialize to create metadata, then clear stored shared paths.
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        project_toml = proj.metadata_path / "settings.yaml"
-        from kanibako.config import read_project_meta, write_project_meta
-        meta = read_project_meta(project_toml)
-        write_project_meta(
-            project_toml,
-            mode=meta["mode"],
-            workspace=meta["workspace"], shell=meta["shell"],
-            vault_ro=meta["vault_ro"], vault_rw=meta["vault_rw"],
-            enable_vault=meta["enable_vault"], group_auth=meta["group_auth"],
-            metadata=meta["metadata"], project_hash=meta["project_hash"],
-            global_shared="",
-            local_shared="",
-        )
-
-        proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
-        # Should use computed defaults (not None, not empty).
-        assert proj2.global_shared_path == std.data_path / "shared" / "global"
-        assert proj2.local_shared_path == std.data_path / "shared"
+    # The stored/computed global_shared/local_shared paths were removed in
+    # 1.6.0 (Part 4): no ``shared/`` dir exists in the target tree, so the
+    # shared-path persistence/fallback tests are deleted.
 
 
 class TestDetectBoxMode:
@@ -1066,40 +1015,9 @@ class TestUpgradeShell:
         assert lines[0] == "# no trailing newline"
 
 
-class TestGlobalSharedPath:
-    """Tests for global_shared_path on ProjectPaths."""
-
-    def test_local_has_global_shared_path(self, config_file, tmp_home, credentials_dir):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        expected = std.data_path / "shared" / "global"
-        assert proj.global_shared_path == expected
-
-    def test_local_no_init_has_global_shared_path(self, config_file, tmp_home):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=False)
-
-        assert proj.global_shared_path is not None
-        assert "shared" in str(proj.global_shared_path)
-        assert str(proj.global_shared_path).endswith("/global")
-
-
-class TestLocalSharedPath:
-    """Tests for local_shared_path on ProjectPaths."""
-
-    def test_local_has_local_shared_path(self, config_file, tmp_home, credentials_dir):
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        expected = std.data_path / "shared"
-        assert proj.local_shared_path == expected
+# The global_shared_path / local_shared_path fields on ProjectPaths were removed
+# in 1.6.0 (Part 4): the target tree has no top-level ``shared/`` dir (claude
+# shared dirs live under ``agents/<agent>/``).  Their tests are deleted.
 
 
 class TestConnectedExternal:

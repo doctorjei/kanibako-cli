@@ -1066,10 +1066,6 @@ def run_info(args: argparse.Namespace) -> int:
         ("Vault RO", str(proj.vault_ro_path)),
         ("Vault RW", str(proj.vault_rw_path)),
     ]
-    if proj.global_shared_path:
-        rows.append(("Shared", str(proj.global_shared_path)))
-    if proj.local_shared_path:
-        rows.append(("Local", str(proj.local_shared_path)))
     rows.extend([
         ("Image", merged.box_image),
         ("Lock", "ACTIVE" if lock_held else "none"),

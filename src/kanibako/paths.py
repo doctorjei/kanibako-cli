@@ -181,8 +181,6 @@ class ProjectPaths:
     enable_vault: bool = field(default=True)
     group_auth: bool = field(default=True)
     name: str = field(default="")
-    global_shared_path: Path | None = field(default=None)
-    local_shared_path: Path | None = field(default=None)
     group: ProjectGroup | None = field(default=None)
 
 
@@ -772,8 +770,6 @@ def resolve_project(
             vault_ro_path, vault_rw_path, project_path,
             enable_vault=actual_vault_enabled,
         )
-        _global_shared = std.data_path / "shared" / "global"
-        _local_shared = std.data_path / "shared"
         write_project_meta(
             project_toml,
             mode="primary",
@@ -784,8 +780,6 @@ def resolve_project(
             enable_vault=actual_vault_enabled,
             metadata=str(metadata_path),
             project_hash=phash,
-            global_shared=str(_global_shared),
-            local_shared=str(_local_shared),
             name=project_name,
         )
         import sys
@@ -799,8 +793,6 @@ def resolve_project(
             _bootstrap_shell(shell_path)
         # Backfill settings.yaml for old-format projects (pre-v0.8).
         if metadata_path.is_dir() and read_project_meta(metadata_path / BOX_META_FILE) is None:
-            _global_shared_bf = std.data_path / "shared" / "global"
-            _local_shared_bf = std.data_path / "shared"
             # Use directory name as project name (name-based dirs).
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
@@ -813,18 +805,8 @@ def resolve_project(
                 enable_vault=actual_vault_enabled,
                 metadata=str(metadata_path),
                 project_hash=phash,
-                global_shared=str(_global_shared_bf),
-                local_shared=str(_local_shared_bf),
                 name=_bf_name,
             )
-
-    # Resolve shared paths: prefer stored values (enables user overrides).
-    _computed_global_shared = std.data_path / "shared" / "global"
-    _computed_local_shared = std.data_path / "shared"
-    if meta and meta.get("global_shared"):
-        _computed_global_shared = Path(meta["global_shared"])
-    if meta and meta.get("local_shared"):
-        _computed_local_shared = Path(meta["local_shared"])
 
     return ProjectPaths(
         project_path=project_path,
@@ -838,8 +820,6 @@ def resolve_project(
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
         name=project_name,
-        global_shared_path=_computed_global_shared,
-        local_shared_path=_computed_local_shared,
         group=ProjectGroup(
             name="default",
             root=std.data_path,
@@ -1267,8 +1247,6 @@ def resolve_workset_project(
     is_new = False
     if initialize and not shell_path.is_dir():
         _init_workset_project(std, metadata_path, shell_path)
-        _ws_global_shared = std.data_path / "shared" / "global"
-        _ws_local_shared = ws.root / "shared"
         write_project_meta(
             project_toml,
             mode="named",
@@ -1280,8 +1258,6 @@ def resolve_workset_project(
             group_auth=actual_group_auth,
             metadata=str(metadata_path),
             project_hash=phash,
-            global_shared=str(_ws_global_shared),
-            local_shared=str(_ws_local_shared),
         )
         is_new = True
 
@@ -1290,14 +1266,6 @@ def resolve_workset_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-
-    # Resolve shared paths: prefer stored values (enables user overrides).
-    _ws_computed_global = std.data_path / "shared" / "global"
-    _ws_computed_local = ws.root / "shared"
-    if meta and meta.get("global_shared"):
-        _ws_computed_global = Path(meta["global_shared"])
-    if meta and meta.get("local_shared"):
-        _ws_computed_local = Path(meta["local_shared"])
 
     return ProjectPaths(
         project_path=project_path,
@@ -1311,8 +1279,6 @@ def resolve_workset_project(
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
         name=project_name,
-        global_shared_path=_ws_computed_global,
-        local_shared_path=_ws_computed_local,
         group=ProjectGroup(
             name=ws.name,
             root=ws.root,
@@ -1760,7 +1726,6 @@ def resolve_standalone_project(
         enable_vault=actual_vault_enabled,
         group_auth=actual_group_auth,
         name=box_name,
-        global_shared_path=None,
     )
 
 

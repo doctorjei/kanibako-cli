@@ -423,7 +423,11 @@ class TestProjectMeta:
         assert meta["workspace"] == "/new"
 
     def test_new_fields_round_trip(self, tmp_path):
-        """New fields (metadata, project_hash, global_shared, local_shared) round-trip."""
+        """New fields (metadata, project_hash) round-trip.
+
+        The global_shared/local_shared resolved keys were removed in 1.6.0
+        (Part 4): no ``shared/`` dir exists in the target tree.
+        """
         toml_path = tmp_path / "settings.yaml"
         write_project_meta(
             toml_path,
@@ -434,16 +438,14 @@ class TestProjectMeta:
             vault_rw="/home/user/proj/vault/rw",
             metadata="/data/boxes/abc",
             project_hash="abc123def456",
-            global_shared="/data/shared/global",
-            local_shared="/data/shared",
         )
 
         meta = read_project_meta(toml_path)
         assert meta is not None
         assert meta["metadata"] == "/data/boxes/abc"
         assert meta["project_hash"] == "abc123def456"
-        assert meta["global_shared"] == "/data/shared/global"
-        assert meta["local_shared"] == "/data/shared"
+        assert "global_shared" not in meta
+        assert "local_shared" not in meta
 
     def test_backward_compat_missing_new_fields(self, tmp_path):
         """Old settings.yaml without new fields returns empty strings."""
@@ -460,8 +462,8 @@ class TestProjectMeta:
         assert meta is not None
         assert meta["metadata"] == ""
         assert meta["project_hash"] == ""
-        assert meta["global_shared"] == ""
-        assert meta["local_shared"] == ""
+        assert "global_shared" not in meta
+        assert "local_shared" not in meta
 
     def test_mode_token_read_verbatim(self, tmp_path):
         """The on-disk ``box.mode`` token is read verbatim (no back-compat).
@@ -492,14 +494,14 @@ class TestProjectMeta:
             vault_ro="/ws/vault/proj/ro",
             vault_rw="/ws/vault/proj/rw",
             metadata="/ws/data/proj",
-            # project_hash, global_shared, local_shared not passed → default ""
+            # project_hash not passed → default ""
         )
 
         meta = read_project_meta(toml_path)
         assert meta["metadata"] == "/ws/data/proj"
         assert meta["project_hash"] == ""
-        assert meta["global_shared"] == ""
-        assert meta["local_shared"] == ""
+        assert "global_shared" not in meta
+        assert "local_shared" not in meta
 
 
 class TestConfigFilePath:
