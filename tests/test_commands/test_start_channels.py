@@ -193,22 +193,22 @@ class TestChannelDefaultCategories:
     def test_primary_keys(self, primary_proj, std):
         cats = _channel_default_categories(std, primary_proj)
         assert set(cats) == {
-            "box.bindings.rw.ch_commons",
-            "box.bindings.rw.ch_chat",
-            "box.bindings.rw.ch_share",
-            "box.bindings.rw.ch_mailboxes",
+            "box.bindings.rw.global_commons",
+            "box.bindings.rw.global_chat",
+            "box.bindings.rw.global_share",
+            "box.bindings.rw.mailboxes",
             "box.bindings.rw.inbox",
-            "box.bindings.rw.wch_commons",
-            "box.bindings.rw.wch_chat",
-            "box.bindings.rw.wch_share",
+            "box.bindings.rw.workset_commons",
+            "box.bindings.rw.workset_chat",
+            "box.bindings.rw.workset_share",
         }
 
     def test_standalone_keys_omit_workset(self, standalone_proj, std):
         cats = _channel_default_categories(std, standalone_proj)
         assert set(cats) == {
-            "box.bindings.rw.ch_commons",
-            "box.bindings.rw.ch_chat",
-            "box.bindings.rw.ch_share",
-            "box.bindings.rw.ch_mailboxes",
+            "box.bindings.rw.global_commons",
+            "box.bindings.rw.global_chat",
+            "box.bindings.rw.global_share",
+            "box.bindings.rw.mailboxes",
             "box.bindings.rw.inbox",
         }

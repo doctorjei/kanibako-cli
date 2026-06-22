@@ -2221,16 +2221,16 @@ def _channel_default_categories(std, proj) -> dict[str, str]:
 
     binds: dict[str, str] = {
         # System channel type roots (every mode).
-        "box.bindings.rw.ch_commons": _ch_bind(
+        "box.bindings.rw.global_commons": _ch_bind(
             std.channels_commons, f"{_CH_SYSTEM_BASE}/commons"
         ),
-        "box.bindings.rw.ch_chat": _ch_bind(
+        "box.bindings.rw.global_chat": _ch_bind(
             std.channels_chat, f"{_CH_SYSTEM_BASE}/chat"
         ),
-        "box.bindings.rw.ch_share": _ch_bind(
+        "box.bindings.rw.global_share": _ch_bind(
             std.channels_share, f"{_CH_SYSTEM_BASE}/share"
         ),
-        "box.bindings.rw.ch_mailboxes": _ch_bind(
+        "box.bindings.rw.mailboxes": _ch_bind(
             std.channels_mailboxes, f"{_CH_SYSTEM_BASE}/mailboxes"
         ),
         # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced
@@ -2244,13 +2244,13 @@ def _channel_default_categories(std, proj) -> dict[str, str]:
     wch = _ch.workset_channel_paths(proj, std)
     if wch is not None:
         # Workset-local channels (primary + named only; standalone omits).
-        binds["box.bindings.rw.wch_commons"] = _ch_bind(
+        binds["box.bindings.rw.workset_commons"] = _ch_bind(
             wch.commons, f"{_CH_WORKSET_BASE}/commons"
         )
-        binds["box.bindings.rw.wch_chat"] = _ch_bind(
+        binds["box.bindings.rw.workset_chat"] = _ch_bind(
             wch.chat, f"{_CH_WORKSET_BASE}/chat"
         )
-        binds["box.bindings.rw.wch_share"] = _ch_bind(
+        binds["box.bindings.rw.workset_share"] = _ch_bind(
             wch.share, f"{_CH_WORKSET_BASE}/share"
         )
 
