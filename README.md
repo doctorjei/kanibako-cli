@@ -519,11 +519,6 @@ Custom rigs are standard OCI images -- push them to any registry for sharing:
 podman push kanibako-template-custom ghcr.io/myorg/kanibako-template-custom
 ```
 
-### Host Deployment
-
-For always-on deployments using LXC, VMs, or nested OCI containers, see
-[docs/host-deployment.md](docs/host-deployment.md).
-
 ## Container Layout
 
 Inside the container, the agent sees:
@@ -743,15 +738,14 @@ plugins directory and Kanibako picks it up automatically -- no packaging or
 Kanibako itself.  Only place files you trust in plugin directories.
 
 See [docs/writing-targets.md](docs/writing-targets.md) for the full developer
-guide, and [examples/](examples/) for three graduated example plugins (Aider,
-Codex CLI, Goose).
+guide.
 
 ```bash
 # Install a third-party target
-pip install kanibako-target-aider
+pip install kanibako-target-myagent
 
 # Use a specific target
-kanibako box config box.agent=aider
+kanibako box config box.agent=myagent
 kanibako start
 ```
 
