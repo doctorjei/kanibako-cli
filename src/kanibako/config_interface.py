@@ -308,11 +308,19 @@ def get_config_value(
     project_toml: Path | None = None,
     env_global: Path | None = None,
     env_project: Path | None = None,
+    system_settings_path: Path | None = None,
 ) -> str | None:
     """Read a single config value from the appropriate store.
 
     Returns the resolved (merged) value as a string, or None if the key
     is not set.
+
+    *system_settings_path*, when supplied (the SYSTEM scope), is the file used
+    for SETTINGS reads (``system.default_agent`` + agent settings) — i.e.
+    ``@system.settings`` = ``global/settings.yaml``.  When None (box/workset
+    scope) the existing ``project_toml``/``global_config_path`` paths are used,
+    so those scopes keep their own ``settings.yaml`` behavior.  CONFIG
+    (``system.*`` layout) reads always use ``global_config_path``.
     """
     canonical = _resolve_key(key)
 
@@ -335,17 +343,28 @@ def get_config_value(
     if _is_agent_setting(canonical):
         # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
         # ``agent.default`` tier; per-agent overrides live under ``agent.<name>``
-        # and are resolved by the launch-time effective-state cascade.
-        if project_toml and project_toml.exists():
-            settings = read_agent_settings(project_toml, "default")
+        # and are resolved by the launch-time effective-state cascade.  For the
+        # SYSTEM scope these are SETTINGS that live in the system settings file
+        # (system_settings_path), not the kanibako.yaml CONFIG file.
+        setting_src = (
+            system_settings_path if system_settings_path is not None else project_toml
+        )
+        if setting_src and setting_src.exists():
+            settings = read_agent_settings(setting_src, "default")
             if canonical in settings:
                 return settings[canonical]
         return None
 
     # system.default_agent — the SETTING (not a config path).  Read it from the
-    # system settings tier (the global config's agent.default table).
+    # system settings tier: ``@system.settings`` = ``global/settings.yaml``
+    # (system_settings_path) for the SYSTEM scope, else the project/global paths.
     if _is_default_agent_key(canonical):
-        for src in (project_toml, global_config_path):
+        sources = (
+            (project_toml, system_settings_path)
+            if system_settings_path is not None
+            else (project_toml, global_config_path)
+        )
+        for src in sources:
             if src is None or not src.exists():
                 continue
             settings = read_agent_settings(src, "default")
@@ -405,13 +424,21 @@ def set_config_value(
     config_path: Path,
     env_path: Path | None = None,
     is_system: bool = False,
+    system_settings_path: Path | None = None,
 ) -> str:
     """Write a config value to the appropriate store.
 
     *config_path* is the settings.yaml (for box/workset) or kanibako.yaml
-    (for system).  Returns a human-readable confirmation message.
+    (for system).  *system_settings_path*, when supplied (the SYSTEM scope), is
+    the file SETTINGS (``system.default_agent`` + agent settings) are written to
+    — ``@system.settings`` = ``global/settings.yaml`` — keeping them out of the
+    kanibako.yaml CONFIG file.  When None (box/workset) writes go to
+    ``config_path`` as before.  Returns a human-readable confirmation message.
     """
     canonical = _resolve_key(key)
+    settings_dest = (
+        system_settings_path if system_settings_path is not None else config_path
+    )
 
     # env.* keys
     if _is_env_key(canonical):
@@ -432,15 +459,17 @@ def set_config_value(
 
     # target settings — the agent-agnostic CLI writes the any-agent
     # ``agent.default`` tier (per-agent overrides live under ``agent.<name>``).
+    # SYSTEM scope routes to the system settings file (settings_dest).
     if _is_agent_setting(canonical):
-        _write_nested_toml_key(config_path, ("agent", "default"), canonical, value)
+        _write_nested_toml_key(settings_dest, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
     # system.default_agent — the SETTING.  Write it into the SYSTEM settings
-    # tier (the agent.default table), NOT the [system] config table.
+    # tier (the agent.default table) of the system settings file, NOT the
+    # [system] config table of kanibako.yaml.
     if _is_default_agent_key(canonical):
         _write_nested_toml_key(
-            config_path, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF, value,
+            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF, value,
         )
         return f"Set {canonical}={value}"
 
@@ -477,9 +506,19 @@ def reset_config_value(
     *,
     config_path: Path,
     env_path: Path | None = None,
+    system_settings_path: Path | None = None,
 ) -> str:
-    """Remove an override for a single key.  Returns confirmation message."""
+    """Remove an override for a single key.  Returns confirmation message.
+
+    *system_settings_path*, when supplied (SYSTEM scope), is where SETTINGS
+    (``system.default_agent`` + agent settings) are removed from
+    (``@system.settings`` = ``global/settings.yaml``); when None (box/workset)
+    they are removed from ``config_path`` as before.
+    """
     canonical = _resolve_key(key)
+    settings_dest = (
+        system_settings_path if system_settings_path is not None else config_path
+    )
 
     # env.* keys
     if _is_env_key(canonical):
@@ -495,17 +534,18 @@ def reset_config_value(
             return f"Reset resource.{resource_name}"
         return f"No override for resource.{resource_name}"
 
-    # target settings — reset the any-agent ``agent.default`` tier.
+    # target settings — reset the any-agent ``agent.default`` tier (SYSTEM scope
+    # routes to the system settings file).
     if _is_agent_setting(canonical):
-        if _remove_nested_toml_key(config_path, ("agent", "default"), canonical):
+        if _remove_nested_toml_key(settings_dest, ("agent", "default"), canonical):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
     # system.default_agent — the SETTING.  Remove it from the SYSTEM settings
-    # tier (the agent.default table).
+    # tier (the agent.default table) of the system settings file.
     if _is_default_agent_key(canonical):
         if _remove_nested_toml_key(
-            config_path, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
+            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
         ):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
@@ -539,8 +579,16 @@ def reset_all(
     config_path: Path,
     env_path: Path | None = None,
     force: bool = False,
+    system_settings_path: Path | None = None,
 ) -> str:
-    """Remove all overrides at this config level.  Confirms unless *force*."""
+    """Remove all overrides at this config level.  Confirms unless *force*.
+
+    *system_settings_path*, when supplied (SYSTEM scope), is where the SETTINGS
+    (the ``agent`` table + ``resource_overrides``) are cleared from
+    (``@system.settings`` = ``global/settings.yaml``), while CONFIG overrides are
+    cleared from ``config_path``.  When None (box/workset) everything is cleared
+    from ``config_path`` as before.
+    """
     if not force:
         try:
             confirm_prompt("Remove all config overrides? Type 'yes' to proceed: ")
@@ -549,15 +597,19 @@ def reset_all(
 
     count = 0
 
-    # Clear project-level config overrides
+    # Clear project-level config overrides (always from config_path).
     overrides = load_project_overrides(config_path)
     for key in overrides:
         unset_project_config_key(config_path, key)
         count += 1
 
-    # Clear target settings
-    if config_path.exists():
-        data = load_doc(config_path)
+    # Clear target settings + resource overrides.  SYSTEM scope keeps these in
+    # the system settings file (settings_dest); box/workset use config_path.
+    settings_dest = (
+        system_settings_path if system_settings_path is not None else config_path
+    )
+    if settings_dest.exists():
+        data = load_doc(settings_dest)
         agent_tbl = data.get("agent")
         if isinstance(agent_tbl, dict):
             # agent table is agent-keyed: {<agent>: {key: val}}; clear every
@@ -565,11 +617,11 @@ def reset_all(
             for agent, sec in list(agent_tbl.items()):
                 if isinstance(sec, dict):
                     for k in list(sec):
-                        _remove_nested_toml_key(config_path, ("agent", agent), k)
+                        _remove_nested_toml_key(settings_dest, ("agent", agent), k)
                         count += 1
         if data.get("resource_overrides"):
             for k in list(data["resource_overrides"]):
-                _remove_toml_key(config_path, "resource_overrides", k)
+                _remove_toml_key(settings_dest, "resource_overrides", k)
                 count += 1
 
     # Clear env file
@@ -593,13 +645,25 @@ def show_config(
     workset_path: Path | None = None,
     agent_state: dict[str, str] | None = None,
     env_resolved: dict[str, str] | None = None,
+    system_settings_path: Path | None = None,
 ) -> int:
     """Display config values.  Returns exit code.
 
     - *effective=False*: show only overrides at this level.
     - *effective=True*: show all resolved values including inherited defaults.
+
+    *system_settings_path*, when supplied (SYSTEM scope), is the file the agent
+    SETTINGS + ``system.default_agent`` are DISPLAYED from (``@system.settings``
+    = ``global/settings.yaml``); the ``system.*`` CONFIG display always uses
+    ``global_config_path``.  When None (box/workset) settings display reads
+    ``config_path`` as before.
     """
     out = file or sys.stdout
+    # The file agent SETTINGS are read from for display: system settings file for
+    # the SYSTEM scope, else the level's own config_path (box/workset).
+    settings_src = (
+        system_settings_path if system_settings_path is not None else config_path
+    )
 
     if effective:
         # Show all resolved values
@@ -617,8 +681,8 @@ def show_config(
         # Otherwise fall back to the project-level overrides (today's behavior).
         if agent_state is not None:
             proj_agent = (
-                read_agent_settings(config_path, "default")
-                if config_path and config_path.exists()
+                read_agent_settings(settings_src, "default")
+                if settings_src and settings_src.exists()
                 else {}
             )
             if agent_state:
@@ -626,8 +690,8 @@ def show_config(
                 for k, v in sorted(agent_state.items()):
                     marker = " (override)" if k in proj_agent else ""
                     print(f"  {k} = {v}{marker}", file=out)
-        elif config_path and config_path.exists():
-            settings = read_agent_settings(config_path, "default")
+        elif settings_src and settings_src.exists():
+            settings = read_agent_settings(settings_src, "default")
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
@@ -653,8 +717,8 @@ def show_config(
             print(f"  {k} = {v}", file=out)
             has_output = True
 
-        if config_path and config_path.exists():
-            settings = read_agent_settings(config_path, "default")
+        if settings_src and settings_src.exists():
+            settings = read_agent_settings(settings_src, "default")
             for k, v in sorted(settings.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True

@@ -158,9 +158,20 @@ def run_info(args: argparse.Namespace) -> int:
 
 
 def run_config(args: argparse.Namespace) -> int:
-    """View or modify global configuration."""
+    """View or modify global configuration.
+
+    The SYSTEM scope keeps CONFIG (``system.*`` layout) in the
+    ``~/.config/kanibako.yaml`` CONFIG file (``cf``) and routes behavior SETTINGS
+    (``system.default_agent`` + agent settings) to ``@system.settings`` =
+    ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg.
+    """
+    from kanibako.paths import load_std_paths
+
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
+    # The system SETTINGS file (separate from the kanibako.yaml CONFIG file).
+    std = load_std_paths(load_config(cf))
+    ssp = std.settings
 
     from kanibako.config_interface import (
         ConfigAction,
@@ -178,7 +189,7 @@ def run_config(args: argparse.Namespace) -> int:
 
     # --reset --all
     if args.reset and getattr(args, "all_keys", False):
-        msg = reset_all(config_path=cf, force=args.force)
+        msg = reset_all(config_path=cf, force=args.force, system_settings_path=ssp)
         print(msg)
         return 0
 
@@ -190,7 +201,9 @@ def run_config(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        msg = reset_config_value(key, config_path=cf)
+        # Ensure the system settings dir exists for SETTINGS removals.
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        msg = reset_config_value(key, config_path=cf, system_settings_path=ssp)
         print(msg)
         return 0
 
@@ -200,6 +213,7 @@ def run_config(args: argparse.Namespace) -> int:
             global_config_path=cf,
             config_path=cf,
             effective=args.effective,
+            system_settings_path=ssp,
         )
         return 0
 
@@ -208,7 +222,7 @@ def run_config(args: argparse.Namespace) -> int:
         if not is_known_key(key):
             print(f"Error: unknown config key: {key}", file=sys.stderr)
             return 1
-        val = get_config_value(key, global_config_path=cf)
+        val = get_config_value(key, global_config_path=cf, system_settings_path=ssp)
         if val is None:
             print(f"{key}: (not set)")
         else:
@@ -217,7 +231,11 @@ def run_config(args: argparse.Namespace) -> int:
 
     # set
     if action == ConfigAction.set:
-        msg = set_config_value(key, value, config_path=cf, is_system=True)
+        # Ensure the system settings dir exists for SETTINGS writes.
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        msg = set_config_value(
+            key, value, config_path=cf, is_system=True, system_settings_path=ssp,
+        )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
             return 1
