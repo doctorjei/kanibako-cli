@@ -98,7 +98,8 @@ class TestResolveTarget:
         state = resolve_lifecycle_target(str(pdir), std, config)
         assert state.owner == "standalone"
         assert state.mode == BoxMode.standalone
-        assert state.metadata_path == (pdir / "box_data").resolve()
+        # Drift I: metadata (settings.yaml) is at the ROOT.
+        assert state.metadata_path == pdir.resolve()
         assert not state.is_external
 
     def test_workset_internal(self, env):
@@ -190,8 +191,11 @@ class TestConvertInPlace:
             std, config, confirm=_conf_yes(),
         )
         assert new.mode == BoxMode.standalone
-        assert (pdir / "box_data" / "settings.yaml").is_file()
-        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
+        # Drift I: settings.yaml at the ROOT; box_data/ is the marker dir.
+        assert (pdir / "settings.yaml").is_file()
+        assert (pdir / "box_data").is_dir()
+        assert not (pdir / "box_data" / "settings.yaml").exists()
+        meta = read_project_meta(pdir / "settings.yaml")
         assert meta["mode"] == "standalone"
         # default-mode name unregistered.
         assert str(pdir) not in read_names(std.data_path)["projects"].values()
@@ -204,8 +208,10 @@ class TestConvertInPlace:
             state, TargetSpec(location=INPLACE, ownership="standalone"),
             std, config, confirm=_conf_yes(),
         )
-        # Canonical box_data/ marker, not legacy .kanibako/.
-        assert (pdir / "box_data" / "settings.yaml").is_file()
+        # Canonical box_data/ marker dir + root settings.yaml (drift I), not
+        # legacy .kanibako/.
+        assert (pdir / "settings.yaml").is_file()
+        assert (pdir / "box_data").is_dir()
         assert not (pdir / ".kanibako").exists()
         # Detection recognizes the converted box.
         result = detect_project_mode(pdir, std, config)
@@ -237,7 +243,7 @@ class TestConvertInPlace:
 
         # (2) Metadata declares mode=standalone with a fresh canonical name
         #     (NOT the source's primary name).
-        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
+        meta = read_project_meta(pdir / "settings.yaml")
         assert meta is not None
         assert meta["mode"] == "standalone"
         new_name = meta["name"]
@@ -288,7 +294,7 @@ class TestConvertInPlace:
         )
         assert new.mode is BoxMode.standalone
         assert new.name == "ab2c3_proj"
-        meta = read_project_meta(pdir / "box_data" / "settings.yaml")
+        meta = read_project_meta(pdir / "settings.yaml")
         assert meta["name"] == "ab2c3_proj"
         standalone = load_standalone(std.data_path)
         assert standalone["ab2c3_proj"] == str(pdir)
@@ -438,7 +444,11 @@ class TestConvertInPlace:
         )
         assert new.mode == BoxMode.standalone
         assert external.is_dir()
-        assert (external / "box_data" / "settings.yaml").is_file()
+        # Drift I: settings.yaml at the ROOT; drift H: the external dir becomes
+        # the standalone root and its files move into the workspace/ subdir.
+        assert (external / "settings.yaml").is_file()
+        assert (external / "box_data").is_dir()
+        assert (external / "workspace").is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -532,8 +542,11 @@ class TestCombo:
         )
         assert new.mode == BoxMode.standalone
         assert dest.is_dir()
-        assert (dest / "file.txt").read_text() == "combo"
-        assert (dest / "box_data" / "settings.yaml").is_file()
+        # Drift H: the workspace files land in the workspace/ subdir; drift I:
+        # settings.yaml at the root.
+        assert (dest / "workspace" / "file.txt").read_text() == "combo"
+        assert (dest / "settings.yaml").is_file()
+        assert (dest / "box_data").is_dir()
         assert not pdir.exists()
 
     def test_bare_into_workset(self, env):

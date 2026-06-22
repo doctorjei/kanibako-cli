@@ -595,10 +595,14 @@ class TestBoxDuplicateCrossMode:
         rc = run_duplicate(args)
         assert rc == 0
 
-        # Destination should have standalone layout.
+        # Destination should have standalone layout: box_data/ marker dir holds
+        # session data; settings.yaml at the ROOT (drift I); the workspace files
+        # land in the workspace/ subdir (drift H).
         assert (dst_dir / "box_data").is_dir()
         assert (dst_dir / "box_data" / "marker.txt").read_text() == "ac-data"
-        assert (dst_dir / "code.py").read_text() == "print('hello')"
+        assert (dst_dir / "settings.yaml").is_file()
+        assert not (dst_dir / "box_data" / "settings.yaml").exists()
+        assert (dst_dir / "workspace" / "code.py").read_text() == "print('hello')"
         # No breadcrumb in standalone.
         assert not (dst_dir / "box_data" / "project-path.txt").exists()
 
@@ -610,11 +614,13 @@ class TestBoxDuplicateCrossMode:
 
         src_dir = tmp_home / "dup_dec_src"
         src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('dec')")
         proj = resolve_standalone_project(
             std, config, project_dir=str(src_dir), initialize=True,
         )
-        (proj.metadata_path / "marker.txt").write_text("dec-data")
+        # Workspace files live in the workspace/ subdir; session data (marker)
+        # lives in the box_data/ marker dir (drift H+I).
+        (proj.project_path / "code.py").write_text("print('dec')")
+        (proj.shell_path.parent / "marker.txt").write_text("dec-data")
 
         dst_dir = tmp_home / "dup_dec_dst"
 
@@ -622,7 +628,8 @@ class TestBoxDuplicateCrossMode:
         rc = run_duplicate(args)
         assert rc == 0
 
-        # Destination should have local layout.
+        # Destination should have local layout (box metadata under boxes/<name>,
+        # workspace files at the destination root).
         projects_base = std.boxes
         ac_project = projects_base / "dup_dec_dst"
         assert ac_project.is_dir()
@@ -765,8 +772,9 @@ class TestBoxDuplicateCrossMode:
         result = detect_project_mode(dst_dir, std, config)
         assert result.mode == BoxMode.standalone
 
-        # (2) Metadata declares mode=standalone with a fresh <random24>_<leaf> name.
-        meta = read_project_meta(dst_dir / "box_data" / BOX_META_FILE)
+        # (2) Metadata declares mode=standalone with a fresh <random24>_<leaf>
+        #     name; settings.yaml lives at the ROOT (drift I).
+        meta = read_project_meta(dst_dir / BOX_META_FILE)
         assert meta is not None
         assert meta["mode"] == "standalone"
         new_name = meta["name"]
@@ -1472,18 +1480,21 @@ class TestBoxDuplicateNoToMode:
 
         src_dir = tmp_home / "sa_src"
         src_dir.mkdir()
-        (src_dir / "code.py").write_text("print('sa')")
         src_proj = resolve_standalone_project(
             std, config, str(src_dir), initialize=True,
         )
+        # The live workspace is the <root>/workspace subdir (drift H).
+        (src_proj.project_path / "code.py").write_text("print('sa')")
 
         dst_dir = tmp_home / "sa_dst"
         rc = run_duplicate(self._make_args(src_dir, dst_dir))
         assert rc == 0
 
-        # Workspace copied + a fresh standalone box established at the dst.
-        assert (dst_dir / "code.py").read_text() == "print('sa')"
+        # Workspace copied into the dst workspace/ subdir + a fresh standalone
+        # box established at the dst root.
+        assert (dst_dir / "workspace" / "code.py").read_text() == "print('sa')"
         assert (dst_dir / "box_data").is_dir()
+        assert (dst_dir / "settings.yaml").is_file()
         sa = registry_store.load_standalone(std.data_path)
         dst_names = [n for n, root in sa.items() if root == str(dst_dir.resolve())]
         assert len(dst_names) == 1

@@ -487,9 +487,11 @@ def run_create(args: argparse.Namespace) -> int:
     project_toml = proj.metadata_path / BOX_META_FILE
     write_project_config(project_toml, image)
 
-    # Write .gitignore for standalone projects only.
+    # Write .gitignore for standalone projects only — at the project ROOT
+    # (metadata_path), where box_data/ + vault/ live and need ignoring (drift
+    # H+I: project_path is the workspace subdir, not the root).
     if args.standalone:
-        write_project_gitignore(proj.project_path)
+        write_project_gitignore(proj.metadata_path)
 
     mode = "standalone" if args.standalone else "default"
     print(f"Created {mode} project in {proj.project_path}")
@@ -819,6 +821,12 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                     return 2
             if _purge_dir(metadata_dir):
                 print(f"Removed metadata: {metadata_dir}")
+                # Drift I: the box settings.yaml lives at the ROOT, not in
+                # box_data/ — drop it too so the box is not re-detected.
+                settings_file = Path(root) / BOX_META_FILE
+                if settings_file.is_file():
+                    settings_file.unlink()
+                    print(f"Removed metadata: {settings_file}")
                 vault_dir = Path(root) / "vault"
                 if vault_dir.is_dir():
                     _purge_dir(vault_dir)

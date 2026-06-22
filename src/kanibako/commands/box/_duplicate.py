@@ -109,9 +109,21 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Copy workspace (unless --bare).
-    if not args.bare:
-        shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
+    # Copy workspace (unless --bare).  The copy SOURCE is the source box's live
+    # workspace (``src_proj.project_path``) — for a standalone source that is the
+    # ``<root>/workspace`` subdir, NOT the root (which holds kanibako artifacts);
+    # for a primary source it is the project root.  For a standalone TARGET the
+    # files land in the destination's ``workspace/`` subdir (drift H), since the
+    # destination root holds the standalone artifacts (settings.yaml, box_data/,
+    # vault/).
+    workspace_src = src_proj.project_path
+    if not args.bare and workspace_src.is_dir():
+        if target_mode == BoxMode.standalone:
+            shutil.copytree(
+                workspace_src, new_path / "workspace", dirs_exist_ok=args.force,
+            )
+        else:
+            shutil.copytree(workspace_src, new_path, dirs_exist_ok=args.force)
 
     # Copy metadata into target mode layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
@@ -130,29 +142,38 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     """Establish a fresh standalone box at *new_path*.
 
     A duplicate is a NEW box, so this mirrors ``create --standalone`` /
-    ``convert --standalone`` rather than copying the source verbatim: the source
-    metadata is copied for its agent/home state, then the destination
-    ``box_data/settings.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
+    ``convert --standalone`` rather than copying the source verbatim: the
+    source's box metadata (agent/session state, minus the lock + home + the
+    source ``settings.yaml``) is copied into ``box_data/``, its home into
+    ``box_data/home``, and its ``settings.yaml`` to the destination ROOT (drift
+    I — settings live at ``<root>/settings.yaml``, NOT in ``box_data/``), then
+    that root ``settings.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
     generated ``<random24>_<leaf>`` identity (never the source's name), and the
     standalone path table — and the box is registered in ``registry.standalone``.
     Without this the dest would keep the source's ``mode`` (e.g. ``primary``) and
     name, so standalone detection (``_is_standalone_meta_dir`` requires
     ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
     """
+    from kanibako.config import BOX_META_FILE
     from kanibako.paths import establish_standalone
     from kanibako.utils import write_project_gitignore
 
     dst_metadata = new_path / _STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
+    dst_settings = new_path / BOX_META_FILE
 
     # Ensure new_path exists for bare duplicates.
     new_path.mkdir(parents=True, exist_ok=True)
 
+    # Copy the source box metadata into box_data/ — preserving misc session
+    # files — but NOT the lock, the home (copied separately below), or the
+    # source settings.yaml (which is relocated to the ROOT, drift I).
     if force and dst_metadata.is_dir():
         shutil.rmtree(dst_metadata)
     shutil.copytree(
         src_proj.metadata_path, dst_metadata,
-        ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
+        ignore=shutil.ignore_patterns(".kanibako.lock", "home", BOX_META_FILE),
+        dirs_exist_ok=True,
     )
 
     if src_proj.shell_path.is_dir():
@@ -160,11 +181,21 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
             shutil.rmtree(dst_shell)
         shutil.copytree(src_proj.shell_path, dst_shell)
 
+    # Copy the source settings.yaml to the destination ROOT so establish can
+    # preserve any non-identity sections (e.g. agent config) when it rewrites
+    # the meta in place.
+    src_settings = src_proj.metadata_path / BOX_META_FILE
+    if src_settings.is_file():
+        if force and dst_settings.exists():
+            dst_settings.unlink()
+        if not dst_settings.exists():
+            shutil.copy2(src_settings, dst_settings)
+
     # Establish the canonical standalone shape (mode=standalone, a FRESH
     # <random24>_<leaf> identity even from a standalone source, the standalone
-    # path table) + register it, via the shared core.  The dest metadata dir was
-    # just copied/rewritten above; establish overwrites its meta in place,
-    # preserving any other sections copied from the source.
+    # path table) + register it, via the shared core.  The root settings.yaml
+    # was just copied above; establish overwrites its meta in place, preserving
+    # any other sections copied from the source.
     establish_standalone(
         std, new_path,
         enable_vault=src_proj.enable_vault,
@@ -202,11 +233,26 @@ def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
 
 def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into default-mode layout for new_path."""
+    from kanibako.config import BOX_META_FILE
+    from kanibako.paths import BoxMode
+
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
     project_name = assign_name(std.data_path, str(new_path))
     projects_base = std.boxes
     dst_project = projects_base / project_name
+
+    # The source box's metadata dir (home + agent/session state + settings.yaml):
+    # for primary/named it is ``metadata_path`` (boxes/<name>/), but for a
+    # standalone source ``metadata_path`` is the project ROOT — its box metadata
+    # lives in ``box_data/`` with settings.yaml at the root.  Copy from the right
+    # place per mode so the workspace tree is not dragged into the box dir.
+    if src_proj.mode is BoxMode.standalone:
+        src_meta_dir = src_proj.shell_path.parent   # <root>/box_data
+        src_settings = src_proj.metadata_path / BOX_META_FILE  # <root>/settings.yaml
+    else:
+        src_meta_dir = src_proj.metadata_path
+        src_settings = src_proj.metadata_path / BOX_META_FILE
 
     # Failure-consistency: a crash AFTER assign_name (which registers the name)
     # but DURING the metadata/shell copy below would otherwise strand a
@@ -217,9 +263,13 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
         if force and dst_project.is_dir():
             shutil.rmtree(dst_project)
         shutil.copytree(
-            src_proj.metadata_path, dst_project,
+            src_meta_dir, dst_project,
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )
+        # Place the source settings.yaml at the box dir root (for a standalone
+        # source it lived at the project root, not inside box_data/).
+        if src_settings.is_file():
+            shutil.copy2(src_settings, dst_project / BOX_META_FILE)
 
         # Ensure home is inside the project dir.
         if src_proj.shell_path.is_dir():
