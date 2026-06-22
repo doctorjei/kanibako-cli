@@ -361,8 +361,8 @@ class HelperHub:
         ctx = self._ctx
         if ctx is None:
             return {"status": "error", "message": "no context"}
-        if ctx.project_path is None or ctx.data_path is None:
-            return {"status": "error", "message": "fork requires project_path and data_path"}
+        if ctx.project_path is None or ctx.data_path is None or ctx.boxes is None:
+            return {"status": "error", "message": "fork requires project_path, data_path and boxes"}
 
         name = request.get("name", "")
         if not name:
@@ -387,7 +387,7 @@ class HelperHub:
         # Resolve source metadata dir via names.yaml reverse lookup
         from kanibako.names import assign_name, read_names
 
-        boxes_base = ctx.boxes or (ctx.data_path / "boxes")
+        boxes_base = ctx.boxes
         source_meta_dir: Path | None = None
         names = read_names(ctx.data_path)
         for rname, rpath in names["projects"].items():

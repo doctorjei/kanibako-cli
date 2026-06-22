@@ -39,7 +39,7 @@ from kanibako.names import (
     resolve_name,
     resolve_qualified_name,
 )
-from kanibako.utils import project_hash
+from kanibako.utils import project_hash, short_hash
 
 
 class BoxMode(Enum):
@@ -204,6 +204,9 @@ class _WorksetLike(Protocol):
 
     @property
     def vault_dir(self) -> Path: ...
+
+    @property
+    def logs_dir(self) -> Path: ...
 
     @property
     def projects(self) -> Sequence[_WorksetProjectLike]: ...
@@ -899,6 +902,33 @@ def _standalone_box_paths(
     vault_ro = project_path / "vault" / "ro"
     vault_rw = project_path / "vault" / "rw"
     return home, vault_ro, vault_rw
+
+
+def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
+    """Per-box, per-mode HOST path for the helper message log.
+
+    The log is the host source of the read-only ``helpers.jsonl`` bind into the
+    box; it lives inside the box's own workset/box tree (never the old shared
+    ``@system.data/logs/<id>/`` location):
+
+    * PRIMARY    → ``@system.primary_workset/logs/<box>.jsonl`` (``std.primary_logs``)
+    * NAMED      → ``@workset.logs/<box>.jsonl`` (``<workset_root>/logs/<box>``)
+    * STANDALONE → ``@workset.meta.root/box_data/<box>.jsonl`` (inside ``box_data/``)
+
+    The caller is responsible for guarantee-creating the parent dir before the
+    bind (L7).  The box-side dest stays ``$XDG_STATE_HOME/kanibako/helpers.jsonl``.
+    """
+    box = proj.name if proj.name else short_hash(proj.project_hash)
+    if proj.mode is BoxMode.standalone:
+        # box_data/ is the standalone metadata dir; the log stays inside it so
+        # the whole standalone tree is drop-in portable.
+        return proj.metadata_path / f"{box}.jsonl"
+    if proj.mode is BoxMode.named:
+        # The workset root is carried on the project group (root=ws.root).
+        ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
+        return ws_root / "logs" / f"{box}.jsonl"
+    # PRIMARY: the PRIMARY workset's logs dir.
+    return std.primary_logs / f"{box}.jsonl"
 
 
 _SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'

@@ -1273,10 +1273,14 @@ def _run_container(
                 f"{_box_name}-{_ws_token}", _run_dir,
             )
             validate_socket_path(socket_path)
-            _log_id = proj.name if proj.name else short_hash(proj.project_hash)
-            log_dir = std.data_path / "logs" / _log_id
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log_path = log_dir / "helper-messages.jsonl"
+            # Per-box, per-mode HOST helper log — lives inside the box's own
+            # workset/box tree (PRIMARY → primary_workset/logs/<box>.jsonl,
+            # NAMED → <workset_root>/logs/<box>.jsonl, STANDALONE →
+            # box_data/<box>.jsonl), not the old shared @system.data/logs/<id>/
+            # location.  Guarantee-create the parent before the ro bind (L7).
+            from kanibako.paths import helper_log_path
+            log_path = helper_log_path(std, proj)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Ensure helpers/ dir exists in shell_path
             helpers_dir = proj.shell_path / "helpers"
