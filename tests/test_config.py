@@ -14,6 +14,7 @@ from kanibako.config import (
     read_project_meta,
     read_resource_overrides,
     read_seeds,
+    read_setup_completed,
     read_shares,
     read_agent_settings,
     remove_resource_override,
@@ -62,6 +63,59 @@ class TestLoadConfig:
         path.write_text('system:\n  agents: "/x"\n')
         cfg = load_config(path)
         assert cfg.system_paths == {"system.agents": "/x"}
+
+
+class TestSetupVersionConstant:
+    """OLDEST_COMPATIBLE_SETUP_VERSION is a PEP-440-parseable version string."""
+
+    def test_constant_present_and_parseable(self):
+        from packaging.version import Version
+
+        from kanibako import OLDEST_COMPATIBLE_SETUP_VERSION, __version__
+
+        assert OLDEST_COMPATIBLE_SETUP_VERSION == "1.6.0"
+        # It must never be NEWER than the running build (would self-nudge).
+        assert Version(OLDEST_COMPATIBLE_SETUP_VERSION) <= Version(__version__)
+
+
+class TestReadSetupCompleted:
+    """read_setup_completed: raw [system] setup_completed reader (W1 gate)."""
+
+    def test_reads_stored_string(self, tmp_path):
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        write_system_value(cf, "setup_completed", "1.6.0")
+        assert read_setup_completed(cf) == "1.6.0"
+
+    def test_absent_key_returns_none(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        write_global_config(cf)  # has [system] but no setup_completed
+        assert read_setup_completed(cf) is None
+
+    def test_missing_file_returns_none(self, tmp_path):
+        assert read_setup_completed(tmp_path / "nope.yaml") is None
+        assert read_setup_completed(None) is None
+
+    def test_empty_value_returns_none(self, tmp_path):
+        cf = tmp_path / "kanibako.yaml"
+        cf.write_text("system:\n  setup_completed: ''\n")
+        assert read_setup_completed(cf) is None
+
+    def test_init_writes_no_setup_completed_or_default_agent(self, tmp_path):
+        """Fresh init leaves both ABSENT — no default_agent, no marker, no 'none'."""
+        from kanibako.config_io import load_doc
+
+        cf = tmp_path / "kanibako.yaml"
+        write_global_config(cf)
+        data = load_doc(cf)
+        # No setup marker on a fresh config.
+        assert "setup_completed" not in data.get("system", {})
+        assert read_setup_completed(cf) is None
+        # No system default agent written (box.agent default is empty, not 'none').
+        assert "agent" not in data
+        assert data["box"]["agent"] == ""
+        assert data["box"]["agent"] != "none"
 
 
 class TestMergedConfig:

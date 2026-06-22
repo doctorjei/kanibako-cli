@@ -204,6 +204,9 @@ def run_config(args: argparse.Namespace) -> int:
         # Ensure the system settings dir exists for SETTINGS removals.
         ssp.parent.mkdir(parents=True, exist_ok=True)
         msg = reset_config_value(key, config_path=cf, system_settings_path=ssp)
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
         print(msg)
         return 0
 
