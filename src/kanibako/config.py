@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -90,20 +89,11 @@ def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
 
 
 def config_file_path(config_home: Path) -> Path:
-    """Return the path to kanibako.yaml, checking new then old location.
+    """Return the path to kanibako.yaml.
 
-    New: ``$XDG_CONFIG_HOME/kanibako.yaml``
-    Old: ``$XDG_CONFIG_HOME/kanibako/kanibako.yaml``
-
-    Returns the new path if neither exists (for first-time setup).
+    Location: ``$XDG_CONFIG_HOME/kanibako.yaml``.
     """
-    new_path = config_home / "kanibako.yaml"
-    if new_path.exists():
-        return new_path
-    old_path = config_home / "kanibako" / "kanibako.yaml"
-    if old_path.exists():
-        return old_path
-    return new_path
+    return config_home / "kanibako.yaml"
 
 
 def machine_config_path() -> Path:
@@ -159,31 +149,6 @@ def settings_required_path() -> Path:
     behavior).
     """
     return Path("/etc/kanibako/settings_required.yaml")
-
-
-def migrate_config(config_home: Path) -> Path:
-    """Migrate config file from old location to new, if needed.
-
-    Returns the final config file path (new location).
-    Prints a notice to stderr when migration occurs.
-    """
-    new_path = config_home / "kanibako.yaml"
-    old_path = config_home / "kanibako" / "kanibako.yaml"
-    if old_path.exists() and not new_path.exists():
-        import shutil
-        shutil.move(str(old_path), str(new_path))
-        print(
-            f"Migrated config: {old_path} → {new_path}",
-            file=sys.stderr,
-        )
-        # Remove empty old config dir if it's now empty.
-        old_dir = old_path.parent
-        try:
-            if old_dir.is_dir() and not any(old_dir.iterdir()):
-                old_dir.rmdir()
-        except OSError:
-            pass
-    return new_path
 
 
 def _present_scalar_fields(path: Path) -> dict[str, object]:

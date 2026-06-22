@@ -152,7 +152,8 @@ class TestVaultList:
 
         assert rc == 0
         captured = capsys.readouterr()
-        assert ".tar.xz" in captured.out
+        # Directory snapshot name is a bare UTC timestamp.
+        assert "Z" in captured.out
         assert "UTC" in captured.out
 
     def test_list_quiet(
@@ -240,14 +241,17 @@ class TestVaultPrune:
     ):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
-        # Create multiple snapshots
-        import tarfile
+        # Create multiple directory snapshots
+        import shutil
         versions = proj.vault_rw_path.parent / ".versions"
         versions.mkdir(parents=True, exist_ok=True)
         for i in range(5):
-            name = f"2026010{i + 1}T000000Z.tar.xz"
-            with tarfile.open(versions / name, "w:xz") as tar:
-                tar.add(str(proj.vault_rw_path / "data.txt"), arcname="data.txt")
+            name = f"2026010{i + 1}T000000Z"
+            snap_dir = versions / name
+            snap_dir.mkdir()
+            shutil.copy2(
+                proj.vault_rw_path / "data.txt", snap_dir / "data.txt",
+            )
 
         parser = build_parser()
         args = parser.parse_args([

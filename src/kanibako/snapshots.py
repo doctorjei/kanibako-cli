@@ -1,14 +1,13 @@
 """Snapshot engine for vault share-rw directories.
 
 Provides point-in-time backups of ``share-rw/`` stored in a ``.versions/``
-sibling directory.  Three strategies are supported:
+sibling directory.  Two strategies are supported, both producing directory
+snapshots:
 
 * **reflink** -- copy-on-write clone (instant, space-efficient; requires a
   COW filesystem such as Btrfs or XFS with reflink support).
 * **hardlink** -- ``rsync --link-dest`` so unchanged files share inodes
   (fast, moderate space; works on any POSIX filesystem).
-* **tarxz** -- compressed tar archive (slow but universally portable; legacy
-  default).
 
 ``detect_snapshot_strategy`` probes the filesystem and picks the best option
 automatically.  Automatic snapshots can be triggered before each container
@@ -19,7 +18,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,7 +59,7 @@ def _test_reflink(path: Path) -> bool:
 def detect_snapshot_strategy(vault_path: Path) -> str:
     """Detect the best snapshot strategy for the given path.
 
-    Returns ``"reflink"``, ``"hardlink"``, or ``"tarxz"``.
+    Returns ``"reflink"`` or ``"hardlink"``.
     """
     if _test_reflink(vault_path):
         return "reflink"
@@ -72,15 +70,6 @@ def detect_snapshot_strategy(vault_path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Strategy implementations
 # ---------------------------------------------------------------------------
-
-
-def _snapshot_tarxz(vault_rw_path: Path, versions: Path, ts: str) -> Path:
-    """Create a tar.xz snapshot (original behaviour)."""
-    archive = versions / f"{ts}.tar.xz"
-    with tarfile.open(archive, "w:xz") as tar:
-        for item in sorted(vault_rw_path.iterdir()):
-            tar.add(str(item), arcname=item.name)
-    return archive
 
 
 def _snapshot_reflink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
@@ -123,12 +112,12 @@ def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
 
 
 def create_snapshot(
-    vault_rw_path: Path, strategy: str = "tarxz",
+    vault_rw_path: Path, strategy: str = "hardlink",
 ) -> Path | None:
-    """Create a snapshot using the given strategy.
+    """Create a directory snapshot using the given strategy.
 
-    Returns the path to the snapshot (archive or directory), or ``None`` if
-    the directory is empty (nothing to snapshot).
+    Returns the path to the snapshot directory, or ``None`` if the directory
+    is empty (nothing to snapshot).
     """
     if not vault_rw_path.is_dir():
         return None
@@ -145,18 +134,14 @@ def create_snapshot(
 
     if strategy == "reflink":
         return _snapshot_reflink(vault_rw_path, versions, ts)
-    elif strategy == "hardlink":
-        return _snapshot_hardlink(vault_rw_path, versions, ts)
-    else:
-        return _snapshot_tarxz(vault_rw_path, versions, ts)
+    return _snapshot_hardlink(vault_rw_path, versions, ts)
 
 
 def list_snapshots(vault_rw_path: Path) -> list[tuple[str, str, int]]:
     """List snapshots for *vault_rw_path*.
 
     Returns a list of ``(name, timestamp_iso, size_bytes)`` sorted by time
-    (oldest first).  Both directory snapshots (reflink / hardlink) and
-    legacy tar.xz archives are included.
+    (oldest first).  Only directory snapshots (reflink / hardlink) are listed.
     """
     versions = _versions_dir(vault_rw_path)
     if not versions.is_dir():
@@ -180,25 +165,14 @@ def list_snapshots(vault_rw_path: Path) -> list[tuple[str, str, int]]:
             except Exception:
                 size = 0
             snapshots.append((name, ts_iso, size))
-        elif entry.name.endswith(".tar.xz"):
-            # Legacy tar.xz snapshot.
-            stem = name.removesuffix(".tar.xz")
-            try:
-                dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ")
-                ts_iso = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-            except ValueError:
-                ts_iso = stem
-            size = entry.stat().st_size
-            snapshots.append((name, ts_iso, size))
 
     return snapshots
 
 
 def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
-    """Restore *vault_rw_path* from the named snapshot.
+    """Restore *vault_rw_path* from the named directory snapshot.
 
-    Handles both directory snapshots and legacy tar.xz archives.  The
-    current contents of share-rw are replaced with the snapshot contents.
+    The current contents of share-rw are replaced with the snapshot contents.
     Raises ``FileNotFoundError`` if the snapshot does not exist.
 
     The restore is rollback-safe: the snapshot contents are first built in
@@ -212,9 +186,7 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
     versions = _versions_dir(vault_rw_path)
     snapshot = versions / snapshot_name
 
-    is_dir_snapshot = snapshot.is_dir()
-    is_tarxz_snapshot = snapshot.is_file() and snapshot_name.endswith(".tar.xz")
-    if not (is_dir_snapshot or is_tarxz_snapshot):
+    if not snapshot.is_dir():
         raise FileNotFoundError(f"Snapshot not found: {snapshot_name}")
 
     vault_rw_path.mkdir(parents=True, exist_ok=True)
@@ -231,16 +203,12 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
 
     try:
         # Build the new contents in the staging directory.
-        if is_dir_snapshot:
-            for item in snapshot.iterdir():
-                dest = staging / item.name
-                if item.is_dir():
-                    shutil.copytree(item, dest)
-                else:
-                    shutil.copy2(item, dest)
-        else:
-            with tarfile.open(snapshot, "r:xz") as tar:
-                tar.extractall(path=str(staging), filter="data")
+        for item in snapshot.iterdir():
+            dest = staging / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest)
+            else:
+                shutil.copy2(item, dest)
 
         # Move the live contents aside (preserves the mount point itself).
         backup.mkdir(parents=True)
@@ -271,40 +239,31 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
 def prune_snapshots(
     vault_rw_path: Path, max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
 ) -> int:
-    """Remove old snapshots, keeping at most *max_keep*.
+    """Remove old directory snapshots, keeping at most *max_keep*.
 
-    Handles both directory snapshots and legacy tar.xz archives.
     Returns the number of snapshots removed.
     """
     versions = _versions_dir(vault_rw_path)
     if not versions.is_dir():
         return 0
 
-    # Collect all snapshots (dirs and tar.xz files).
     all_snapshots = sorted(
-        (
-            f
-            for f in versions.iterdir()
-            if f.is_dir() or f.name.endswith(".tar.xz")
-        ),
-        key=lambda p: p.name.removesuffix(".tar.xz"),
+        (f for f in versions.iterdir() if f.is_dir()),
+        key=lambda p: p.name,
     )
     if max_keep <= 0:
         to_remove = all_snapshots
     else:
         to_remove = all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
     for old in to_remove:
-        if old.is_dir():
-            shutil.rmtree(old)
-        else:
-            old.unlink()
+        shutil.rmtree(old)
     return len(to_remove)
 
 
 def auto_snapshot(
     vault_rw_path: Path,
     *,
-    strategy: str = "tarxz",
+    strategy: str = "hardlink",
     max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
 ) -> Path | None:
     """Create a snapshot and prune old ones.

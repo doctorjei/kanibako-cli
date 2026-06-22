@@ -122,6 +122,17 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   - The `image` / `agent` short config-key aliases are removed; use the
     canonical `box.image` / `box.agent`. The empty `_FIELD_ALIASES` config
     scaffolding was also dropped.
+- **Data-relocation shims removed (clean break, no auto-migration left).**
+  - **Snapshot `.tar.xz` support.** Vault snapshots are now directory snapshots
+    only (`reflink` / `hardlink`); the legacy compressed-archive format is no
+    longer created, listed, restored, or pruned. Pre-existing `.tar.xz`
+    archives are simply ignored — migrate them manually.
+  - **Config-file auto-migration from the old location.** `config_file_path`
+    now resolves only `$XDG_CONFIG_HOME/kanibako.yaml`; a file left at the old
+    `$XDG_CONFIG_HOME/kanibako/kanibako.yaml` is no longer detected or moved.
+  - **Global env-file auto-migration from the old location.** An `env` file at
+    the old `$XDG_CONFIG_HOME/kanibako/env` is no longer moved to
+    `<data>/env`. Move it manually.
 
 ### Added
 
