@@ -151,6 +151,74 @@ def test_multi_installed_gate2a(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# 4b. Pseudo/catch-all agents (no_agent, general) excluded from installed-count
+# ---------------------------------------------------------------------------
+
+
+def test_one_real_plus_pseudo_autopicks_real(monkeypatch):
+    # One real agent + the built-in shell fallback (and the catch-all label)
+    # must be UNAMBIGUOUS — the real agent is auto-picked, not Gate-2a.
+    _patch_targets(monkeypatch, ["claude", "no_agent", "general"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(
+            explicit_agent=None,
+            box_agent=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+        == "claude"
+    )
+
+
+def test_two_real_plus_pseudo_still_gate2a(monkeypatch):
+    # Two real agents + a pseudo agent -> still ambiguous -> Gate-2a.
+    _patch_targets(monkeypatch, ["claude", "goose", "no_agent"])
+    _no_default(monkeypatch)
+    with pytest.raises(NoAgentSelectedError):
+        resolve_agent(
+            explicit_agent=None,
+            box_agent=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+
+
+def test_only_pseudo_installed_gate2b(monkeypatch):
+    # Zero REAL agents (only the pseudo/no_agent target) -> Gate-2b, NOT
+    # "use no_agent".
+    _patch_targets(monkeypatch, ["no_agent", "general"])
+    _no_default(monkeypatch)
+    for var in ("PIPX_HOME", "PIPX_BIN_DIR", "UV_TOOL_DIR"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("sys.prefix", "/usr")
+    monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
+    with pytest.raises(NoAgentInstalledError):
+        resolve_agent(
+            explicit_agent=None,
+            box_agent=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+
+
+def test_explicit_pseudo_agent_still_selectable(monkeypatch):
+    # A pseudo agent stays EXPLICITLY selectable (--agent no_agent), even though
+    # it is excluded from the implicit count.
+    _patch_targets(monkeypatch, ["claude", "no_agent"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(
+            explicit_agent="no_agent",
+            box_agent=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+        == "no_agent"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 5. Name resolves but adapter not installed -> AgentNotInstalledError
 # ---------------------------------------------------------------------------
 

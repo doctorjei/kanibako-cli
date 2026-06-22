@@ -533,6 +533,35 @@ class TestBoxInfo:
         out = capsys.readouterr().out
         assert "standalone" in out
 
+    def test_info_by_box_name(self, config_file, tmp_home, credentials_dir, capsys):
+        """`box info --box <registered-name>` resolves by NAME, not as a path.
+
+        Regression: run_info used to do .is_dir() on the raw --box value before
+        the path-or-name resolver, so a bare box name failed with "directory
+        does not exist".
+        """
+        from kanibako.commands.box import run_info
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "named_sa"
+        root.mkdir()
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+        box_name = proj.name
+
+        # --box carries a bare NAME (no path separator); positional path absent.
+        args = argparse.Namespace(path=None, box=box_name)
+        with patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            rc = run_info(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "standalone" in out
+        # Resolved to the box's real root, not cwd/<name>.
+        assert str(root) in out
+
     def test_info_no_data(self, config_file, tmp_home, capsys):
         from kanibako.commands.box import run_info
 

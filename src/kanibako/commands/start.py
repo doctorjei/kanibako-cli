@@ -616,6 +616,53 @@ def _run_container(
         from kanibako.config import write_project_config
         write_project_config(project_toml, image_override)
 
+    # Resolve target (agent plugin) and detect installation.
+    #
+    # W1 §Design 7: "resolve config FIRST ... before anything else."  Agent
+    # resolution depends only on config/settings (merged config + system
+    # default), NOT on the image being pulled or the bootstrap baseline.  So
+    # resolve it up front — BEFORE ensure_image (image pull) and the tmux
+    # baseline check below — so a user with 2+ agents and no default hits the
+    # Gate-2a "pick an agent" error immediately, rather than paying a full
+    # image pull and then a tmux baseline error.
+    #
+    # `kanibako shell` (box_shell_mode) and explicit-entrypoint launches skip
+    # resolution entirely (they need no agent); this is unchanged.
+    logger = get_logger("start")
+    is_agent_mode = entrypoint is None and not box_shell_mode
+    target = None
+    install = None
+    if is_agent_mode:
+        from kanibako.config import resolve_agent
+        # Resolve the agent via the full cascade (explicit > box > workset >
+        # system default), then the installed-count rule.  workset_agent=None:
+        # merged.box_agent already folds the workset tier (load_merged_config
+        # overlays workset then box).  system.default_agent is a SETTING read
+        # from the system settings file.  resolve_agent raises typed
+        # AgentResolutionError subclasses (Gate-2a/2b / adapter-missing) which
+        # the top-level cli.py handler surfaces verbatim with a non-zero exit.
+        agent_name = resolve_agent(
+            explicit_agent=explicit_agent,
+            box_agent=merged.box_agent,
+            workset_agent=None,
+            system_default_path=system_settings_path,
+            project_path=proj.project_path,
+        )
+        target = resolve_target(agent_name, proj.project_path)
+        logger.debug("Resolved target: %s", target.display_name)
+        # First detect: early-out / "is the agent present on the host". The
+        # "Using host ...:" line is deferred until after prepare_host() (the
+        # update gate) so it names the real, post-update version — see the
+        # re-detect below.
+        install = target.detect()
+        if not install and target.has_binary:
+            print(
+                f"Warning: {target.display_name} binary not found on host. "
+                f"Launching without agent.",
+                file=sys.stderr,
+            )
+            logger.debug("target.detect() returned None for %s", target.name)
+
     # Detect container runtime and ensure image is available
     try:
         runtime = ContainerRuntime()
@@ -694,42 +741,6 @@ def _run_container(
             runtime, image, bootstrap_program, container_name_for(proj), std,
         ) is _BOOTSTRAP_MISSING:
             return 1
-
-    # Resolve target (agent plugin) and detect installation
-    logger = get_logger("start")
-    is_agent_mode = entrypoint is None and not box_shell_mode
-    target = None
-    install = None
-    if is_agent_mode:
-        from kanibako.config import resolve_agent
-        # Resolve the agent via the full cascade (explicit > box > workset >
-        # system default), then the installed-count rule.  workset_agent=None:
-        # merged.box_agent already folds the workset tier (load_merged_config
-        # overlays workset then box).  system.default_agent is a SETTING read
-        # from the system settings file.  resolve_agent raises typed
-        # AgentResolutionError subclasses (Gate-2a/2b / adapter-missing) which
-        # the top-level cli.py handler surfaces verbatim with a non-zero exit.
-        agent_name = resolve_agent(
-            explicit_agent=explicit_agent,
-            box_agent=merged.box_agent,
-            workset_agent=None,
-            system_default_path=system_settings_path,
-            project_path=proj.project_path,
-        )
-        target = resolve_target(agent_name, proj.project_path)
-        logger.debug("Resolved target: %s", target.display_name)
-        # First detect: early-out / "is the agent present on the host". The
-        # "Using host ...:" line is deferred until after prepare_host() (the
-        # update gate) so it names the real, post-update version — see the
-        # re-detect below.
-        install = target.detect()
-        if not install and target.has_binary:
-            print(
-                f"Warning: {target.display_name} binary not found on host. "
-                f"Launching without agent.",
-                file=sys.stderr,
-            )
-            logger.debug("target.detect() returned None for %s", target.name)
 
     # Load agent config
     agent_id = target.name if target else "general"
