@@ -29,7 +29,8 @@ design-review A8 resolution we derive them HERE from ``proj.mode`` + ``proj.
 group`` rather than widening the resolver's public shape: PRIMARY roots at
 ``@system.primary_workset`` with token ``__PRIMARY__``; NAMED roots at
 ``proj.group.root`` with token ``proj.group.name``; STANDALONE roots at
-``proj.project_path`` with token ``__STANDALONE__``.
+``proj.metadata_path`` (the root; the workspace is a subdir) with token
+``__STANDALONE__``.
 """
 
 from __future__ import annotations
@@ -164,15 +165,16 @@ def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
     """Return ``@workset.meta.root`` for *proj*.
 
     PRIMARY → ``@system.primary_workset``; NAMED → the named workset root
-    (``proj.group.root``); STANDALONE → the project dir itself
-    (``proj.project_path``).
+    (``proj.group.root``); STANDALONE → the project root itself
+    (``proj.metadata_path``, which for standalone IS the root — the workspace is
+    a ``workspace/`` subdir under it, so ``project_path`` is not the root).
     """
     from kanibako.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
         return std.primary_workset
     if proj.mode is BoxMode.standalone:
-        return proj.project_path
+        return proj.metadata_path
     if proj.group is None:
         raise ValueError(
             "NAMED box is missing its workset group; cannot derive the workset "

@@ -180,6 +180,7 @@ class TestEscapePath:
 # ---------------------------------------------------------------------------
 
 def _mock_proj(*, mode="primary", name="", project_path="/home/user/proj",
+               metadata_path=None,
                project_hash="abcdef1234567890abcdef1234567890"):
     """Create a duck-typed ProjectPaths-like object for testing."""
     mode_ns = SimpleNamespace(value=mode)
@@ -187,6 +188,9 @@ def _mock_proj(*, mode="primary", name="", project_path="/home/user/proj",
         mode=mode_ns,
         name=name,
         project_path=Path(project_path),
+        # For standalone, metadata_path is the ROOT (project_path is the
+        # workspace subdir); container naming keys off the root.
+        metadata_path=Path(metadata_path if metadata_path is not None else project_path),
         project_hash=project_hash,
     )
 
@@ -205,7 +209,12 @@ class TestContainerNameFor:
         assert container_name_for(proj) == f"kanibako-{short_hash(proj.project_hash)}"
 
     def test_standalone_uses_escaped_path(self):
-        proj = _mock_proj(mode="standalone", project_path="/home/user/my-project")
+        # Standalone names off the ROOT (metadata_path), not the workspace subdir.
+        proj = _mock_proj(
+            mode="standalone",
+            metadata_path="/home/user/my-project",
+            project_path="/home/user/my-project/workspace",
+        )
         result = container_name_for(proj)
         assert result == f"kanibako-ronin-{escape_path('/home/user/my-project')}"
         assert result == "kanibako-ronin-home-user-my-.project"
@@ -213,7 +222,8 @@ class TestContainerNameFor:
     def test_standalone_ignores_name(self):
         """Even if a standalone project has a name, use escaped path."""
         proj = _mock_proj(mode="standalone", name="myapp",
-                          project_path="/home/user/proj")
+                          metadata_path="/home/user/proj",
+                          project_path="/home/user/proj/workspace")
         result = container_name_for(proj)
         assert result.startswith("kanibako-ronin-")
         assert "myapp" not in result

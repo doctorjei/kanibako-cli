@@ -11,6 +11,7 @@ from kanibako.errors import ProjectError
 from kanibako.paths import (
     BoxMode,
     detect_project_mode,
+    helper_log_path,
     resolve_standalone_project,
 )
 from kanibako.utils import project_hash
@@ -32,8 +33,10 @@ class TestResolveStandaloneProject:
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
-        assert proj.project_path == resolved
-        assert proj.metadata_path == resolved / "box_data"
+        # Drift H: workspace is the <root>/workspace SUBDIR (mount source).
+        assert proj.project_path == resolved / "workspace"
+        # Drift I: metadata (settings.yaml) is at the ROOT.
+        assert proj.metadata_path == resolved
         assert proj.shell_path == resolved / "box_data" / "home"
         assert proj.vault_ro_path == resolved / "vault" / "ro"
         assert proj.vault_rw_path == resolved / "vault" / "rw"
@@ -53,7 +56,9 @@ class TestResolveStandaloneProject:
     def test_defaults_to_cwd(self, std, config, project_dir, monkeypatch):
         monkeypatch.chdir(project_dir)
         proj = resolve_standalone_project(std, config, project_dir=None)
-        assert proj.project_path == project_dir.resolve()
+        # The workspace is the <root>/workspace subdir; the root is cwd.
+        assert proj.project_path == project_dir.resolve() / "workspace"
+        assert proj.metadata_path == project_dir.resolve()
 
     def test_initialize_creates_metadata_and_home(
         self, std, config, project_dir, credentials_dir,
@@ -106,7 +111,9 @@ class TestResolveStandaloneProject:
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=False,
         )
-        assert not proj.metadata_path.is_dir()
+        # metadata_path is the root (always exists); the box_data/ marker dir is
+        # what signals an initialized standalone box, and it must be absent.
+        assert not (proj.metadata_path / "box_data").is_dir()
         assert not proj.is_new
 
     def test_is_new_true_on_first_init(
@@ -213,9 +220,10 @@ class TestStandaloneCredentialFlow:
 class TestStandaloneFixedPaths:
     """Pin the concrete paths the STANDALONE fixed table produces.
 
-    Standalone metadata lives under ``box_data/`` in the project root; the
-    agent home is ``box_data/home``; vault lives in the workspace
-    (``{project}/vault/...``).  (5d: ``box_data/`` marker + random-id identity.)
+    Drift H+I: the box ``settings.yaml`` lives at the ROOT (``metadata_path`` is
+    the root), the live workspace is the ``<root>/workspace`` subdir, the agent
+    home is ``box_data/home`` (the ``box_data/`` marker dir also holds the
+    helper log), and the vault lives at ``<root>/vault/{ro,rw}``.
     """
 
     def test_standalone_paths(self, std, config, project_dir, credentials_dir):
@@ -224,10 +232,28 @@ class TestStandaloneFixedPaths:
         )
         resolved = project_dir.resolve()
 
-        assert proj.metadata_path == resolved / "box_data"
+        assert proj.metadata_path == resolved
+        assert proj.project_path == resolved / "workspace"
         assert proj.shell_path == resolved / "box_data" / "home"
         assert proj.vault_ro_path == resolved / "vault" / "ro"
         assert proj.vault_rw_path == resolved / "vault" / "rw"
+        # Settings at root; box_data holds home + (after launch) the helper log.
+        assert (resolved / "settings.yaml").is_file()
+        assert (resolved / "box_data").is_dir()
+        assert not (resolved / "box_data" / "settings.yaml").exists()
+
+    def test_helper_log_stays_in_box_data(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """The helper log lives INSIDE box_data/ (drift critical interaction):
+        settings moved to the root, but the <box>.jsonl log is anchored under
+        box_data/ so the whole standalone tree stays drop-in portable."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        log = helper_log_path(std, proj)
+        assert log == resolved / "box_data" / f"{proj.name}.jsonl"
 
 
 # ---------------------------------------------------------------------------

@@ -298,8 +298,9 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir()
-        (project_dir / "box_data" / "settings.yaml").write_text(
+        # Drift I marker: a box_data/ dir + a ROOT settings.yaml (mode=standalone).
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -398,8 +399,8 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir()
-        (project_dir / "box_data" / "settings.yaml").write_text(
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -417,18 +418,18 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Outer project has box_data marker
+        # Outer project has box_data marker + root settings.yaml
         outer = tmp_home / "project"
-        (outer / "box_data").mkdir()
-        (outer / "box_data" / "settings.yaml").write_text(
+        (outer / "box_data").mkdir(parents=True)
+        (outer / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
-        # Inner project also has box_data marker
+        # Inner project also has box_data marker + root settings.yaml
         inner = outer / "subproject"
         inner.mkdir()
         (inner / "box_data").mkdir()
-        (inner / "box_data" / "settings.yaml").write_text(
+        (inner / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -672,15 +673,16 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir()
-        (project_dir / "box_data" / "settings.yaml").write_text(
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
         proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
 
         assert proj.mode is BoxMode.standalone
-        assert proj.metadata_path == project_dir.resolve() / "box_data"
+        # Drift I: metadata_path is the ROOT (settings.yaml lives there).
+        assert proj.metadata_path == project_dir.resolve()
 
     def test_resolve_any_project_default_cwd(self, config_file, tmp_home, credentials_dir):
         """Uses cwd when project_dir is None."""
@@ -774,8 +776,8 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        (project_dir / "box_data").mkdir()
-        (project_dir / "box_data" / "settings.yaml").write_text(
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "settings.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
 
@@ -784,7 +786,9 @@ class TestResolveAnyProject:
 
         proj = resolve_any_project(std, config, project_dir=str(subdir), initialize=False)
         assert proj.mode is BoxMode.standalone
-        assert proj.project_path == project_dir.resolve()
+        # Drift H: project_path is the <root>/workspace subdir; metadata is root.
+        assert proj.metadata_path == project_dir.resolve()
+        assert proj.project_path == project_dir.resolve() / "workspace"
 
 
 class TestFindWorksetForPath:
