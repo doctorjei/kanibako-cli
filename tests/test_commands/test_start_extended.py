@@ -1169,3 +1169,139 @@ class TestCheckLaunchBaselineUnit:
         assert probed[0] == "tmux"
         assert probed.count("tmux") == 1
         assert "rg" in probed
+
+
+# ---------------------------------------------------------------------------
+# Reattach: source the agent from the running container (no Gate-2a)
+# ---------------------------------------------------------------------------
+
+class TestReattachAgentSourcing:
+    """A persistent box that is ALREADY RUNNING reattaches by sourcing its
+    agent from the container's KANIBAKO_AGENT stamp, bypassing resolve_agent's
+    Gate-2a (which would otherwise fire with 2+ agents and no default)."""
+
+    def _gate2a_unless_explicit(self):
+        """resolve_agent stand-in: raises Gate-2a unless an explicit agent is
+        supplied — i.e. only the container-sourced injection can satisfy it."""
+        from kanibako.errors import NoAgentSelectedError
+
+        def _fn(*, explicit_agent, **kw):
+            if explicit_agent:
+                return explicit_agent
+            raise NoAgentSelectedError("pick an agent")
+        return _fn
+
+    def test_reattach_sources_stored_agent_no_gate2a(self, start_mocks, capsys):
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = "claude"
+            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent=None,
+            )
+            assert rc == 0
+            # Reattach exec'd (not a fresh run).
+            assert m.runtime.exec.called
+            assert not m.runtime.run.called
+            # Cred refresh ran for the sourced agent (descriptor path).
+            assert m.credsync.refresh_cred_files.called
+            # Heads-up went to STDERR, names the box + agent.
+            err = capsys.readouterr().err
+            assert "Reattaching to running box 'testproject'" in err
+            assert "agent: claude" in err
+
+    def test_reattach_matching_explicit_agent_ok(self, start_mocks):
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = "claude"
+            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent="claude",
+            )
+            assert rc == 0
+            assert m.runtime.exec.called
+
+    def test_reattach_mismatched_explicit_agent_errors(self, start_mocks):
+        from kanibako.errors import KanibakoError
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = "claude"
+            with pytest.raises(KanibakoError) as exc:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, explicit_agent="goose",
+                )
+            msg = str(exc.value)
+            assert "already running agent 'claude'" in msg
+            assert "--agent 'goose'" in msg
+            assert "kanibako stop testproject" in msg
+
+    def test_reattach_differing_default_superseded_silently(
+        self, start_mocks, capsys
+    ):
+        """A differing system DEFAULT (not an explicit --agent) does NOT error;
+        the running box's stored agent wins."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = "claude"
+            # explicit_agent is None (default would resolve to something else),
+            # so the stored agent is injected and used — no error.
+            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent=None,
+            )
+            assert rc == 0
+            # resolve_agent saw the injected stored agent.
+            assert m.resolve_agent.call_args.kwargs["explicit_agent"] == "claude"
+
+    def test_preexisting_running_box_no_stamp_falls_back(self, start_mocks):
+        """A box running before this change has no KANIBAKO_AGENT (inspect_env
+        -> None): no injection, normal resolution applies (Gate-2a if no
+        default — unchanged behavior)."""
+        from kanibako.errors import NoAgentSelectedError
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = None
+            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            with pytest.raises(NoAgentSelectedError):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, explicit_agent=None,
+                )
+
+
+# ---------------------------------------------------------------------------
+# Fresh launch stamps KANIBAKO_AGENT on the container
+# ---------------------------------------------------------------------------
+
+class TestAgentStamp:
+    def test_fresh_launch_stamps_agent_env(self, start_mocks):
+        """A real agent launch sets KANIBAKO_AGENT=<agent> in the built env."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert env["KANIBAKO_AGENT"] == "claude"
+
+    def test_shell_launch_does_not_stamp_agent_env(self, start_mocks):
+        """A no-agent / shell launch (target None) carries no KANIBAKO_AGENT."""
+        with start_mocks() as m:
+            m.resolve_target.return_value.descriptor = None
+            _run_container(
+                project_dir=None, entrypoint="bash", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, box_shell_mode=True,
+            )
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert "KANIBAKO_AGENT" not in env

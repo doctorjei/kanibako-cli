@@ -338,6 +338,56 @@ class TestRmAndIsRunning:
             assert rt.is_running("nonexistent") is False
 
 
+class TestInspectEnv:
+    """Test inspect_env() — reads a container's recorded .Config.Env."""
+
+    def test_returns_value_for_present_key(self):
+        import json
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        env = json.dumps(["PATH=/usr/bin", "KANIBAKO_AGENT=claude", "TERM=xterm"])
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=env)
+            assert rt.inspect_env("box", "KANIBAKO_AGENT") == "claude"
+            cmd = m.call_args[0][0]
+            assert cmd == [
+                "/usr/bin/podman", "inspect",
+                "--format", "{{json .Config.Env}}", "box",
+            ]
+
+    def test_returns_none_for_absent_key(self):
+        import json
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        env = json.dumps(["PATH=/usr/bin", "TERM=xterm"])
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=env)
+            assert rt.inspect_env("box", "KANIBAKO_AGENT") is None
+
+    def test_returns_none_when_inspect_fails(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1, stdout="")
+            assert rt.inspect_env("nope", "KANIBAKO_AGENT") is None
+
+    def test_returns_none_on_bad_json(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="not json")
+            assert rt.inspect_env("box", "KANIBAKO_AGENT") is None
+
+    def test_value_with_equals_sign_preserved(self):
+        import json
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        env = json.dumps(["FOO=a=b=c"])
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=env)
+            assert rt.inspect_env("box", "FOO") == "a=b=c"
+
+
 class TestExec:
     """Test exec() method."""
 
