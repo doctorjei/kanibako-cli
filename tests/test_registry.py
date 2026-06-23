@@ -11,8 +11,11 @@ from kanibako.registry import (
     _fetch_manifest_digest,
     _get_anonymous_token,
     _parse_image_ref,
+    get_remote_created,
     get_remote_digest,
     get_remote_digests,
+    get_remote_tag_digest,
+    list_remote_tags,
 )
 
 
@@ -225,3 +228,133 @@ class TestGetRemoteDigests:
     def test_failure_returns_empty_set(self):
         with patch("kanibako.registry._parse_image_ref", side_effect=OSError("boom")):
             assert get_remote_digests("ghcr.io/o/r:latest", "linux/amd64") == set()
+
+
+class TestListRemoteTags:
+    def test_returns_tag_list(self):
+        body = _resp(body={"name": "o/r", "tags": ["1.0", "1.1", "latest"]})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch("kanibako.registry.urllib.request.urlopen", return_value=body) as m,
+        ):
+            tags = list_remote_tags("ghcr.io/o/r:latest")
+        assert tags == ["1.0", "1.1", "latest"]
+        # URL targets the tags/list endpoint on the repo (tag ignored).
+        assert m.call_args[0][0].full_url == "https://ghcr.io/v2/o/r/tags/list"
+
+    def test_filters_non_strings(self):
+        body = _resp(body={"tags": ["1.0", 5, None, "latest"]})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value=None),
+            patch("kanibako.registry.urllib.request.urlopen", return_value=body),
+        ):
+            assert list_remote_tags("ghcr.io/o/r:latest") == ["1.0", "latest"]
+
+    def test_missing_tags_key(self):
+        body = _resp(body={"name": "o/r"})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value=None),
+            patch("kanibako.registry.urllib.request.urlopen", return_value=body),
+        ):
+            assert list_remote_tags("ghcr.io/o/r:latest") == []
+
+    def test_network_error_returns_empty(self):
+        with patch("kanibako.registry._parse_image_ref", side_effect=OSError("x")):
+            assert list_remote_tags("ghcr.io/o/r:latest") == []
+
+    def test_parse_error_returns_empty(self):
+        assert list_remote_tags("localimage") == []
+
+
+class TestGetRemoteTagDigest:
+    def test_overrides_tag(self):
+        head = _resp(headers={"Docker-Content-Digest": "sha256:v16"})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch("kanibako.registry.urllib.request.urlopen", return_value=head) as m,
+        ):
+            digest = get_remote_tag_digest("ghcr.io/o/r:latest", "1.6.0")
+        assert digest == "sha256:v16"
+        # The provided tag, not the ref's :latest, is fetched.
+        assert m.call_args[0][0].full_url == "https://ghcr.io/v2/o/r/manifests/1.6.0"
+
+    def test_failure_returns_none(self):
+        with patch("kanibako.registry._parse_image_ref", side_effect=OSError("x")):
+            assert get_remote_tag_digest("ghcr.io/o/r:latest", "1.6.0") is None
+
+
+class TestGetRemoteCreated:
+    def test_index_resolves_child_then_config(self):
+        """Index tag -> child manifest -> config blob -> created."""
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:idx", "Content-Type": _OCI_INDEX},
+        )
+        index_body = _resp(body={
+            "manifests": [
+                {"digest": "sha256:child",
+                 "platform": {"os": "linux", "architecture": "amd64"}},
+            ]
+        })
+        manifest_body = _resp(body={"config": {"digest": "sha256:cfg"}})
+        config_body = _resp(body={"created": "2026-06-01T00:00:00Z"})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch(
+                "kanibako.registry.urllib.request.urlopen",
+                side_effect=[head, index_body, manifest_body, config_body],
+            ),
+        ):
+            created = get_remote_created("ghcr.io/o/r:latest", "linux/amd64")
+        assert created == "2026-06-01T00:00:00Z"
+
+    def test_plain_manifest_config(self):
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:m", "Content-Type": _OCI_MANIFEST},
+        )
+        manifest_body = _resp(body={"config": {"digest": "sha256:cfg"}})
+        config_body = _resp(body={"created": "2026-01-02T03:04:05Z"})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value=None),
+            patch(
+                "kanibako.registry.urllib.request.urlopen",
+                side_effect=[head, manifest_body, config_body],
+            ),
+        ):
+            created = get_remote_created("ghcr.io/o/r:latest", "linux/amd64")
+        assert created == "2026-01-02T03:04:05Z"
+
+    def test_index_no_child_returns_none(self):
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:idx", "Content-Type": _OCI_INDEX},
+        )
+        index_body = _resp(body={"manifests": [
+            {"digest": "sha256:arm",
+             "platform": {"os": "linux", "architecture": "arm64"}},
+        ]})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
+            patch(
+                "kanibako.registry.urllib.request.urlopen",
+                side_effect=[head, index_body],
+            ),
+        ):
+            assert get_remote_created("ghcr.io/o/r:latest", "linux/amd64") is None
+
+    def test_missing_created_returns_none(self):
+        head = _resp(
+            headers={"Docker-Content-Digest": "sha256:m", "Content-Type": _OCI_MANIFEST},
+        )
+        manifest_body = _resp(body={"config": {"digest": "sha256:cfg"}})
+        config_body = _resp(body={"architecture": "amd64"})
+        with (
+            patch("kanibako.registry._get_anonymous_token", return_value=None),
+            patch(
+                "kanibako.registry.urllib.request.urlopen",
+                side_effect=[head, manifest_body, config_body],
+            ),
+        ):
+            assert get_remote_created("ghcr.io/o/r:latest", "linux/amd64") is None
+
+    def test_failure_returns_none(self):
+        with patch("kanibako.registry._parse_image_ref", side_effect=OSError("x")):
+            assert get_remote_created("ghcr.io/o/r:latest", "linux/amd64") is None

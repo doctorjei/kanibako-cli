@@ -965,3 +965,72 @@ class TestPrecreateMountStubs:
         )
         assert not link.is_symlink()
         assert link.is_dir()
+
+
+class TestLocalImageMetadata:
+    """get_local_created / get_local_tags / get_local_label (via image_inspect)."""
+
+    @staticmethod
+    def _inspect(data):
+        import json
+        from unittest.mock import MagicMock
+        m = MagicMock(returncode=0, stdout=json.dumps([data]))
+        return patch("kanibako.container.subprocess.run", return_value=m)
+
+    def test_get_local_created(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({"Created": "2026-06-01T00:00:00Z"}):
+            assert rt.get_local_created("img:latest") == "2026-06-01T00:00:00Z"
+
+    def test_get_local_created_missing(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({}):
+            assert rt.get_local_created("img:latest") is None
+
+    def test_get_local_created_empty_string(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({"Created": ""}):
+            assert rt.get_local_created("img:latest") is None
+
+    def test_get_local_created_inspect_fail(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="echo")
+        with patch(
+            "kanibako.container.subprocess.run",
+            return_value=MagicMock(returncode=1, stdout=""),
+        ):
+            assert rt.get_local_created("img:latest") is None
+
+    def test_get_local_tags(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({"RepoTags": ["img:latest", "img:1.6.0"]}):
+            assert rt.get_local_tags("img:latest") == ["img:latest", "img:1.6.0"]
+
+    def test_get_local_tags_none(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({"RepoTags": None}):
+            assert rt.get_local_tags("img:latest") == []
+
+    def test_get_local_label_from_config(self):
+        rt = ContainerRuntime(command="echo")
+        data = {"Config": {"Labels": {"org.opencontainers.image.version": "1.6.0"}}}
+        with self._inspect(data):
+            assert rt.get_local_label(
+                "img:latest", "org.opencontainers.image.version"
+            ) == "1.6.0"
+
+    def test_get_local_label_top_level_fallback(self):
+        rt = ContainerRuntime(command="echo")
+        data = {"Config": {}, "Labels": {"x": "y"}}
+        with self._inspect(data):
+            assert rt.get_local_label("img:latest", "x") == "y"
+
+    def test_get_local_label_absent(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({"Config": {"Labels": {}}}):
+            assert rt.get_local_label("img:latest", "nope") is None
+
+    def test_get_local_label_no_labels(self):
+        rt = ContainerRuntime(command="echo")
+        with self._inspect({"Config": {}}):
+            assert rt.get_local_label("img:latest", "x") is None

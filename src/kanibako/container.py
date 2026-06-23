@@ -483,6 +483,48 @@ class ContainerRuntime:
         digests = self.get_local_digests(image)
         return digests[0] if digests else None
 
+    def get_local_created(self, image: str) -> str | None:
+        """Return the local image build timestamp (``.Created``), or None.
+
+        ``image inspect`` reports ``Created`` as an RFC3339 string. Returns
+        None on any failure or when the field is absent/empty.
+        """
+        data = self.image_inspect(image)
+        if not data:
+            return None
+        created = data.get("Created")
+        return created if isinstance(created, str) and created else None
+
+    def get_local_tags(self, image: str) -> list[str]:
+        """Return the local image's ``RepoTags`` (``repo:tag`` strings).
+
+        Returns an empty list on any failure or when the image has no repo
+        tags (e.g. an image referenced only by digest).
+        """
+        data = self.image_inspect(image)
+        if not data:
+            return []
+        tags = data.get("RepoTags") or []
+        return [t for t in tags if isinstance(t, str)]
+
+    def get_local_label(self, image: str, label: str) -> str | None:
+        """Return the value of *label* from the local image's config, or None.
+
+        Reads ``Config.Labels`` (or top-level ``Labels`` as a fallback).
+        Returns None on any failure or when the label is absent/empty.
+        """
+        data = self.image_inspect(image)
+        if not data:
+            return None
+        config = data.get("Config")
+        labels = config.get("Labels") if isinstance(config, dict) else None
+        if not isinstance(labels, dict):
+            labels = data.get("Labels")
+        if not isinstance(labels, dict):
+            return None
+        value = labels.get(label)
+        return value if isinstance(value, str) and value else None
+
     def get_local_platform(self, image: str) -> str | None:
         """Return the local image platform as ``os/arch[/variant]``, or None.
 
