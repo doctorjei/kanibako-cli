@@ -33,6 +33,20 @@ class TestProperties:
         assert GooseTarget().config_dir_name == ".config/goose"
 
 
+class TestShouldRetryNewSession:
+    def test_true_on_resume_failure(self):
+        # goose's verbatim stderr when ``session --resume`` finds no prior session.
+        assert GooseTarget().should_retry_new_session(
+            "Error: No session found to resume"
+        )
+
+    def test_false_on_unrelated_output(self):
+        assert not GooseTarget().should_retry_new_session("some other output")
+
+    def test_false_on_empty_output(self):
+        assert not GooseTarget().should_retry_new_session("")
+
+
 def _anchor_contract(monkeypatch, binary):
     """Point the goose plugin's contract constant at a tmp binary.
 
