@@ -188,20 +188,32 @@ class TestContainerStartFailureMessage:
 class TestFreshnessTerminology:
     """Verify freshness warning uses new rig terminology."""
 
-    def test_freshness_uses_rig_prep(self, capsys):
+    def test_freshness_uses_rig_prep(self, tmp_path, capsys):
         """Freshness warning says 'kanibako rig prep --force' (W2a: rebuild gone)."""
-        from kanibako.freshness import _check
+        from kanibako.freshness import check_image_freshness
 
         mock_runtime = MagicMock()
         mock_runtime.get_local_digests.return_value = ["sha256:old"]
         mock_runtime.get_local_platform.return_value = "linux/amd64"
-        cache_path = MagicMock()
+        mock_runtime.get_local_label.return_value = "1.5.0"  # local version
+        mock_runtime.get_local_tags.return_value = []
+        mock_runtime.get_local_created.return_value = None
 
-        with patch(
-            "kanibako.freshness._cached_remote_digests",
-            return_value={"sha256:new"},
+        with (
+            patch(
+                "kanibako.freshness._cached_remote_digests",
+                return_value={"sha256:new"},
+            ),
+            patch(
+                "kanibako.freshness._cached_remote_tags",
+                return_value=["1.5.0", "1.6.0", "latest"],
+            ),
+            patch(
+                "kanibako.freshness._cached_tag_digest",
+                side_effect=lambda img, tag, cp: {"1.6.0": "sha256:new"}.get(tag),
+            ),
         ):
-            _check(mock_runtime, "kanibako-oci:latest", cache_path)
+            check_image_freshness(mock_runtime, "kanibako-oci:latest", tmp_path)
 
         err = capsys.readouterr().err
         assert "kanibako rig prep --force" in err
