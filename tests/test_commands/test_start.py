@@ -2852,8 +2852,13 @@ class TestInBoxSetupAtAuthProbe:
             )
             assert self._setup_runs(m)
 
-    def test_setup_failure_and_recheck_fails_errors(self, start_mocks, capsys):
-        """Setup exits non-zero AND re-probe still fails -> error, no normal launch."""
+    def test_setup_crash_fast_fails_no_launch(self, start_mocks, capsys):
+        """Refined FIX 2: setup exits NON-ZERO (crashed) -> fast-fail, NO launch.
+
+        The setup command's exit code is a CRASH check only.  A non-zero exit
+        means the setup itself failed/aborted, so we never reach the real launch
+        — regardless of what the host ``check_auth`` re-probe would say (it is no
+        longer consulted on the launch path)."""
         with start_mocks() as m:
             self._drive_setup_target(m, check_auth=False)
 
@@ -2870,12 +2875,32 @@ class TestInBoxSetupAtAuthProbe:
             assert rc == 7
             err = capsys.readouterr().err
             assert "setup did not complete" in err
-            # No normal (detach=True) launch after the failure.
+            # No normal (detach=True) launch after the crash.
             launch_runs = [
                 c for c in m.runtime.run.call_args_list
                 if c.kwargs.get("detach") is True
             ]
             assert not launch_runs
+
+    def test_setup_exit_zero_proceeds_to_launch(self, start_mocks):
+        """Refined FIX 2: setup exits 0 -> proceed to the REAL launch even though
+        host ``check_auth`` is still False (box-only config).  The launch — not a
+        host re-probe — is the validator."""
+        with start_mocks() as m:
+            # check_auth stays False (box-only goose config); setup run returns 0.
+            self._drive_setup_target(m, check_auth=False)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent="goose",
+            )
+            assert self._setup_runs(m), "expected the in-box `goose configure` run"
+            # The real (detach=True) launch happened despite check_auth False.
+            launch_runs = [
+                c for c in m.runtime.run.call_args_list
+                if c.kwargs.get("detach") is True
+            ]
+            assert launch_runs, "setup exit 0 must proceed to the real launch"
 
     def test_no_setup_when_entrypoint_none_keeps_error(self, start_mocks, capsys):
         """claude default: setup_entrypoint is None + check_auth fails -> standard
@@ -2905,6 +2930,94 @@ class TestInBoxSetupAtAuthProbe:
                 extra_args=[], persistent=True, explicit_agent="goose",
             )
             assert not self._setup_runs(m)
+
+
+class TestPostLaunchSetupDetection:
+    """Refined FIX 2: the LAUNCH validates the config (ground truth).
+
+    After the in-box setup runs and the real session launches, the persistent
+    post-session log-check site consults ``target.should_run_setup(logs)``.  A
+    match means the config did NOT take -> a clear error + return.  BOUNDED:
+    setup already ran ONCE this invocation, so the post-launch detection only
+    ERRORS — it must NOT loop back into another setup run.
+    """
+
+    def _drive_setup_target(self, m, *, check_auth=False):
+        from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
+        m.target.name = "goose"
+        m.target.display_name = "Goose"
+        m.target.default_entrypoint = "goose"
+        m.target.descriptor = _GOOSE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        m.target.setup_entrypoint = "goose"
+        m.target.setup_args = ["configure"]
+        m.target.check_auth.return_value = check_auth
+        m.target.should_retry_new_session.return_value = False
+        m.agent_cfg.state = {}
+        m.load_agent_config.return_value = m.agent_cfg
+
+    def _setup_runs(self, m):
+        return [
+            c for c in m.runtime.run.call_args_list
+            if c.kwargs.get("entrypoint") == "goose"
+            and c.kwargs.get("cli_args") == ["configure"]
+            and c.kwargs.get("detach") is False
+        ]
+
+    def test_logs_match_errors_with_exactly_one_setup(self, start_mocks, capsys):
+        """Launch logs match should_run_setup -> error, return 1, ONE setup run,
+        no loop back into setup."""
+        with start_mocks() as m:
+            self._drive_setup_target(m, check_auth=False)
+            # The launched session reports it is still not configured.
+            m.target.should_run_setup.return_value = True
+            # Force the "container never comes up" branch so logs are inspected.
+            m.runtime.run.side_effect = None
+            m.runtime.run.return_value = 0
+            m.runtime.is_running.return_value = False
+            with patch(
+                "kanibako.commands.start._container_logs",
+                return_value=(
+                    "Goose is not configured. Run 'goose configure' to set up."
+                ),
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, explicit_agent="goose",
+                )
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert "did not produce a working configuration" in err
+            # BOUNDED: exactly ONE in-box setup run for the whole invocation.
+            assert len(self._setup_runs(m)) == 1, (
+                "post-launch detection must NOT loop back into another setup"
+            )
+
+    def test_logs_dont_match_normal_success(self, start_mocks, capsys):
+        """Launch logs do NOT match should_run_setup -> normal flow (no error)."""
+        with start_mocks() as m:
+            self._drive_setup_target(m, check_auth=False)
+            m.target.should_run_setup.return_value = False
+            with patch(
+                "kanibako.commands.start._container_logs",
+                return_value="goose session started",
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, explicit_agent="goose",
+                )
+            err = capsys.readouterr().err
+            assert "did not produce a working configuration" not in err
+            assert rc is not None
+            # The real launch ran after the single setup.
+            launch_runs = [
+                c for c in m.runtime.run.call_args_list
+                if c.kwargs.get("detach") is True
+            ]
+            assert launch_runs
+            assert len(self._setup_runs(m)) == 1
 
 
 class TestWritebackAllPaths:

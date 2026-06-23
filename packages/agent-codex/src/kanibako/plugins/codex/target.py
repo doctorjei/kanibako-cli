@@ -306,6 +306,24 @@ class CodexTarget(Target):
     def setup_args(self) -> list[str]:
         return ["login"]
 
+    def should_run_setup(self, output: str) -> bool:
+        # Launch-time ground truth that ``codex login`` did NOT produce a bootable
+        # auth state: codex's session reports it needs a login / authentication
+        # failed.  Match case-insensitively on codex's known login-needed signals
+        # ("not logged in", the "codex login" remediation hint, "please log in",
+        # "authentication failed", "401 unauthorized") so a phrasing change in any
+        # one of them still trips the detector.
+        low = output.lower()
+        return (
+            "not logged in" in low
+            or "run 'codex login'" in low
+            or "codex login" in low
+            or "please log in" in low
+            or "please sign in" in low
+            or "authentication failed" in low
+            or "401 unauthorized" in low
+        )
+
     def detect(self) -> AgentInstall | None:
         """Detect the Codex installation, resolving a directly-bindable binary.
 
