@@ -82,10 +82,15 @@ _GOOSE_DESCRIPTOR = PluginDescriptor(
     mode={"start": ("session",), "continue": ("session", "--resume")},
     operations={"exec": Operation(("run", "--no-session", "-t"))},
     safe_bypass=SafeBypass(Channel.ENV, env_var="GOOSE_MODE", env_value="auto", secure_env_value="approve", setting_key=""),
-    # The SettingArg only wires the ENV CHANNEL (the env-var NAME); the default
-    # VALUES (GOOSE_MODEL="claude-sonnet-4-20250514", GOOSE_PROVIDER="anthropic",
-    # per settings-keyspace §2d) are supplied by ``setting_descriptors()`` below
-    # (the resolver's least-specific "floor" tier in start.py), not here.
+    # The SettingArg only wires the ENV CHANNEL (the env-var NAME).  There is
+    # deliberately NO default VALUE for provider/model: ``setting_descriptors()``
+    # below declares them with an EMPTY default, so the resolver floor yields ""
+    # when the user hasn't set ``agent.goose.provider`` / ``agent.goose.model``,
+    # and ``assemble_env`` (``if value:``) then OMITS GOOSE_PROVIDER/GOOSE_MODEL
+    # entirely — goose falls back to its own config.yaml (driven by ``goose
+    # configure``).  Pinning a default here / in setting_descriptors would
+    # override the user's in-box ``goose configure`` choice (goose env vars win
+    # over config.yaml), so we don't.  An EXPLICIT setting still emits the var.
     settings=(
         SettingArg("model", Channel.ENV, env_var="GOOSE_MODEL"),
         SettingArg("provider", Channel.ENV, env_var="GOOSE_PROVIDER"),
@@ -255,13 +260,22 @@ class GooseTarget(Target):
         return True
 
     def generate_agent_config(self) -> AgentConfig:
-        """Return default Goose crab configuration."""
+        """Return default Goose crab configuration.
+
+        ``state`` is intentionally EMPTY: kanibako must NOT pin goose's
+        provider/model.  Forcing GOOSE_PROVIDER/GOOSE_MODEL as defaults
+        overrides the user's in-box ``goose configure`` choice (goose env vars
+        win over its own config.yaml), which would clobber a provider/key the
+        user selected interactively.  When the user has NOT explicitly set
+        ``agent.goose.provider`` / ``agent.goose.model`` in kanibako settings,
+        the env vars are omitted entirely and goose falls back to its own
+        config.yaml (driven by ``goose configure``).  An explicit setting still
+        emits the env var (see :meth:`setting_descriptors` / the descriptor's
+        provider/model SettingArgs).
+        """
         from kanibako.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(
-            name="Goose",
-            state={"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
-        )
+        return _AgentConfig(name="Goose", state={})
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Goose state values into CLI args and env vars.
@@ -286,17 +300,29 @@ class GooseTarget(Target):
         return cli_args, env_vars
 
     def setting_descriptors(self) -> list[TargetSetting]:
-        """Declare Goose runtime settings."""
+        """Declare Goose runtime settings.
+
+        provider/model carry NO default (empty ``default=""``): kanibako must
+        not pin goose's provider/model.  goose's env vars (GOOSE_PROVIDER /
+        GOOSE_MODEL) override its own config.yaml, so a forced default would
+        clobber the user's in-box ``goose configure`` choice.  The resolver
+        floor therefore resolves these to empty when unset, and
+        ``assemble_env`` (``if value:``) omits the env vars entirely — goose
+        then reads provider/model from its config.yaml.  An EXPLICIT
+        ``agent.goose.provider`` / ``agent.goose.model`` setting still wins the
+        cascade and IS emitted, so a user who wants to pin a provider via
+        kanibako settings still can.
+        """
         return [
             TargetSetting(
                 key="provider",
-                description="LLM provider",
-                default="anthropic",
+                description="LLM provider (unset = use goose configure / config.yaml)",
+                default="",
             ),
             TargetSetting(
                 key="model",
-                description="Model to use",
-                default="claude-sonnet-4-20250514",
+                description="Model to use (unset = use goose configure / config.yaml)",
+                default="",
             ),
         ]
 
