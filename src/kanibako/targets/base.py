@@ -378,6 +378,24 @@ class Target(ABC):
         """Check if agent output indicates ``--continue`` failed and a new session should be started."""
         return False
 
+    def should_run_setup(self, output: str) -> bool:
+        """Check if a launched session's output proves the config did NOT take.
+
+        The LAUNCH is ground truth for a bootable config: a clean ``check_auth``
+        probe (host-side) and even a clean in-box setup exit code cannot
+        guarantee the agent will actually start (partial-config case).  After the
+        in-box setup has run and the real session has launched, ``start.py``
+        consults this matcher against the captured session logs.  A match means
+        the agent reported it is still not configured/authenticated (e.g. goose's
+        "Goose is not configured. Run 'goose configure' to set up."); ``start.py``
+        then surfaces a clear error and returns.
+
+        BOUNDED: setup already ran ONCE this invocation, so a post-launch match
+        only ERRORS — it never loops back into setup.  Default ``False`` (claude
+        has no setup step, so it never re-triggers this path).
+        """
+        return False
+
     @property
     def setup_entrypoint(self) -> str | None:
         """Container entrypoint (binary) for the one-time interactive setup.

@@ -1480,16 +1480,18 @@ def _run_container(
         # ``login``).  Run it FOREGROUND in the now-assembled box (same
         # image/mounts/tmpfs/env as the real launch) so the user can configure /
         # log in IN THE BOX; the result lands in box-state and persists across
-        # reattach (1.6.0 "no host-config import" design).  Then re-probe auth:
-        # if it now passes, proceed; otherwise, surface the standard error.
+        # reattach (1.6.0 "no host-config import" design).
         #
-        # NOTE: ``check_auth`` is HOST-side, so for an agent whose setup writes
-        # only box-state (goose/codex), the re-probe will still report "not
-        # authed".  The setup command's OWN exit code is therefore the primary
-        # gate — a clean exit means the box is configured and we proceed; a
-        # non-zero exit (user aborted) falls through to the host re-probe and the
-        # standard error.  (For an agent whose setup also updates the host, the
-        # re-probe flips True and serves as a positive confirmation.)
+        # GATING (refined FIX 2): the setup command's exit code is treated as a
+        # CRASH check ONLY — a non-zero exit means the setup itself failed/aborted,
+        # so we fast-fail and do NOT launch.  A clean (rc 0) exit does NOT prove a
+        # bootable config (partial-config case), so we DON'T gate on it here: we
+        # proceed to the REAL launch and let it validate the config.  A
+        # post-launch :meth:`Target.should_run_setup` match against the session
+        # logs (below, at the same persistent-path site as the resume retry) is
+        # the ground-truth detector for "config did not take".  ``check_auth`` is
+        # HOST-side and cannot see box-only state (goose/codex), so it is NOT
+        # re-probed on the launch path.
         if target is not None and needs_inbox_setup:
             setup_ep = target.setup_entrypoint
             assert setup_ep is not None  # needs_inbox_setup implies it is set
@@ -1511,10 +1513,11 @@ def _run_container(
                 tmpfs_masks=tmpfs_masks,
                 container_env=container_env,
             )
-            if setup_rc != 0 and not target.check_auth():
+            # Fast-fail: the setup command CRASHED (non-zero exit) -> don't launch.
+            if setup_rc != 0:
                 print(
                     f"Error: {target.display_name} setup did not complete "
-                    f"(exit {setup_rc}) and authentication still fails.\n"
+                    f"(exit {setup_rc}).\n"
                     "  Re-run:      kanibako start\n"
                     "  Re-auth:     kanibako agent reauth\n"
                     "  Skip agent:  kanibako shell",
@@ -1522,13 +1525,21 @@ def _run_container(
                 )
                 return setup_rc or 1
             if setup_only:
-                # ``agent reauth`` path: run the in-box setup and stop — do NOT
-                # drop into a full agent session.  A clean setup exit (rc 0) is
-                # success; a non-zero exit reached here means the host re-probe
-                # nonetheless passed (host-updating setup), also success.
-                print(
-                    f"{target.display_name}: setup complete.", file=sys.stderr,
-                )
+                # ``agent reauth`` path (setup_only): run the in-box setup and stop
+                # — do NOT drop into a full agent session, and there is no launch
+                # to validate against, so this path CANNOT use launch-detection.
+                # A clean setup exit (rc 0) is success.  Best-effort host re-probe:
+                # if the setup also updated host-readable state, surface a positive
+                # confirmation; otherwise just report setup complete (box-only
+                # state — host ``check_auth`` legitimately cannot see it).
+                if target.check_auth():
+                    print(
+                        f"{target.display_name}: authenticated.", file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"{target.display_name}: setup complete.", file=sys.stderr,
+                    )
                 return 0
 
         # ``agent reauth`` reaches here only when setup was NOT needed (auth was
@@ -1628,6 +1639,14 @@ def _run_container(
                         explicit_agent=explicit_agent,
                         _is_retry=True,
                     )
+                # FIX 2 (launch-validation): the launched session is GROUND TRUTH
+                # for a bootable config.  If its logs say the agent is still not
+                # configured/authenticated, the in-box setup did NOT take.  This is
+                # BOUNDED — setup already ran once this invocation, so we only ERROR
+                # here, never loop back into setup.
+                if target and logs and target.should_run_setup(logs):
+                    _print_setup_did_not_take(target)
+                    return 1
                 print(
                     "Error: Container exited before session could attach.\n"
                     "Check the logs above, or run 'kanibako system diagnose'.",
@@ -1696,6 +1715,16 @@ def _run_container(
                             explicit_agent=explicit_agent,
                             _is_retry=True,
                         )
+                # FIX 2 (launch-validation): the launched session is GROUND TRUTH
+                # for a bootable config.  If its logs say the agent is still not
+                # configured/authenticated, the in-box setup did NOT take.  BOUNDED
+                # — setup already ran once this invocation, so we only ERROR here,
+                # never loop back into setup.  Still write back first: a partial
+                # in-box login may have produced credentials worth propagating.
+                if target and logs and target.should_run_setup(logs):
+                    writeback_session_credentials(target, proj)
+                    _print_setup_did_not_take(target)
+                    return 1
 
             # FIX 1: writeback on the persistent session-end paths — DETACH
             # (container still running) AND clean exit (container stopped).  The
@@ -1727,6 +1756,24 @@ def _run_container(
         if lock_fd is not None:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
+
+
+def _print_setup_did_not_take(target) -> None:
+    """Error for the FIX-2 post-launch detection: the in-box config didn't boot.
+
+    The launch is ground truth — its logs matched :meth:`Target.should_run_setup`,
+    so the setup we already ran this invocation did not produce a working
+    configuration.  This is the BOUNDED terminus: we surface remediation and
+    return; we never loop back into setup.
+    """
+    print(
+        f"Error: {target.display_name} setup did not produce a working "
+        f"configuration.\n"
+        "  Re-run:    kanibako start\n"
+        "  Re-auth:   kanibako agent reauth\n"
+        "  Skip:      kanibako shell",
+        file=sys.stderr,
+    )
 
 
 def writeback_session_credentials(target, proj) -> None:

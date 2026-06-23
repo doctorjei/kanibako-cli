@@ -134,6 +134,15 @@ class GooseTarget(Target):
         # start.py's fallback to relaunch with a new (bare ``session``) session.
         return "No session found to resume" in output
 
+    def should_run_setup(self, output: str) -> bool:
+        # Launch-time ground truth that goose configure did NOT produce a bootable
+        # config: goose's verbatim line is "Goose is not configured. Run 'goose
+        # configure' to set up."  Match case-insensitively on either the "not
+        # configured" phrase or the "goose configure" remediation hint so a
+        # phrasing tweak in either half still trips the detector.
+        low = output.lower()
+        return "not configured" in low or "run 'goose configure'" in low
+
     @property
     def setup_entrypoint(self) -> str | None:
         """``goose configure`` is goose's one-time interactive provider setup.

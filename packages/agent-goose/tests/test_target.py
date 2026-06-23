@@ -51,13 +51,37 @@ class TestSetupCommand:
     """In-box setup command (``goose configure``) declared via the base hooks.
 
     start.py runs this interactively in the box when the pre-launch check_auth
-    probe fails (goose unconfigured) — there is no output-matcher anymore.
+    probe fails (goose unconfigured).
     """
 
     def test_setup_entrypoint_is_goose_configure(self):
         t = GooseTarget()
         assert t.setup_entrypoint == "goose"
         assert t.setup_args == ["configure"]
+
+
+class TestShouldRunSetup:
+    """Post-launch matcher: launch logs prove the config did NOT take."""
+
+    def test_true_on_not_configured_line(self):
+        # goose's verbatim launch stderr when unconfigured.
+        assert GooseTarget().should_run_setup(
+            "Goose is not configured. Run 'goose configure' to set up."
+        )
+
+    def test_case_insensitive(self):
+        assert GooseTarget().should_run_setup("GOOSE IS NOT CONFIGURED.")
+
+    def test_true_on_configure_hint_alone(self):
+        assert GooseTarget().should_run_setup(
+            "please run 'goose configure' first"
+        )
+
+    def test_false_on_unrelated_output(self):
+        assert not GooseTarget().should_run_setup("goose session started")
+
+    def test_false_on_empty_output(self):
+        assert not GooseTarget().should_run_setup("")
 
 
 def _anchor_contract(monkeypatch, binary):

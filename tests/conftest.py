@@ -361,6 +361,12 @@ def start_mocks():
             target.setup_args = []
             target.check_auth.return_value = True
             target.writeback_extra.return_value = None
+            # Post-launch config-validation matcher (refined FIX 2) is opt-in:
+            # default False so the launch-validation branch only fires for tests
+            # that explicitly drive it (otherwise a truthy MagicMock would trip
+            # it whenever container logs are non-empty).
+            target.should_run_setup.return_value = False
+            target.should_retry_new_session.return_value = False
             # Default the mock target to the DESCRIPTOR path using claude's REAL
             # descriptor: the descriptor-only plugin system means a target with a
             # host `install` ALWAYS has a descriptor (the legacy

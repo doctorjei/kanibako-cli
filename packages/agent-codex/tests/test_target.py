@@ -344,6 +344,40 @@ class TestCheckAuth:
         assert CodexTarget().check_auth() is True
 
 
+class TestSetupCommand:
+    """In-box setup command (``codex login``) declared via the base hooks."""
+
+    def test_setup_entrypoint_is_codex_login(self):
+        t = CodexTarget()
+        assert t.setup_entrypoint == "codex"
+        assert t.setup_args == ["login"]
+
+
+class TestShouldRunSetup:
+    """Post-launch matcher: launch logs prove the login did NOT take."""
+
+    def test_true_on_not_logged_in(self):
+        assert CodexTarget().should_run_setup("Error: Not logged in.")
+
+    def test_true_on_login_hint(self):
+        assert CodexTarget().should_run_setup("Please run 'codex login' first.")
+
+    def test_true_on_authentication_failed(self):
+        assert CodexTarget().should_run_setup("Authentication failed (401).")
+
+    def test_true_on_401_unauthorized(self):
+        assert CodexTarget().should_run_setup("HTTP 401 Unauthorized")
+
+    def test_case_insensitive(self):
+        assert CodexTarget().should_run_setup("NOT LOGGED IN")
+
+    def test_false_on_unrelated_output(self):
+        assert not CodexTarget().should_run_setup("codex session ready")
+
+    def test_false_on_empty_output(self):
+        assert not CodexTarget().should_run_setup("")
+
+
 class TestGenerateAgentConfig:
     def test_defaults(self):
         config = CodexTarget().generate_agent_config()
