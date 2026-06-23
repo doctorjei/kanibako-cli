@@ -128,6 +128,12 @@ class GooseTarget(Target):
         """Goose binary as container entrypoint."""
         return "goose"
 
+    def should_retry_new_session(self, output: str) -> bool:
+        # ``continue`` builds ``goose session --resume``; on a fresh box there is
+        # no prior session to resume, so goose exits with this stderr.  Signal
+        # start.py's fallback to relaunch with a new (bare ``session``) session.
+        return "No session found to resume" in output
+
     def detect(self) -> AgentInstall | None:
         """Detect Goose installation on the host.
 
