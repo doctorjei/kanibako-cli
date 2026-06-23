@@ -8,6 +8,7 @@ import time
 
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.claude.credentials import (
+    merge_oauth_account_out,
     refresh_host_to_project,
     writeback_project_to_host,
 )
@@ -208,6 +209,102 @@ class TestWriteback:
         # No host creds created
         host_creds = home / ".claude" / ".credentials.json"
         assert not host_creds.exists()
+
+
+class TestMergeOauthAccountOut:
+    """FIX 1: reverse-merge box ``.claude.json`` oauthAccount into the host's."""
+
+    def test_creates_host_when_absent(self, tmp_path):
+        box = tmp_path / "box" / ".claude.json"
+        box.parent.mkdir(parents=True)
+        box.write_text(json.dumps({"oauthAccount": {"emailAddress": "a@b.c"}}))
+        host = tmp_path / "home" / ".claude.json"  # absent
+
+        assert merge_oauth_account_out(box, host) is True
+        assert host.exists()
+        data = json.loads(host.read_text())
+        assert data["oauthAccount"]["emailAddress"] == "a@b.c"
+
+    def test_merges_without_clobbering_machine_fields(self, tmp_path):
+        box = tmp_path / "box" / ".claude.json"
+        box.parent.mkdir(parents=True)
+        # Box also has machine-specific fields that MUST NOT reach the host.
+        box.write_text(json.dumps({
+            "oauthAccount": {"emailAddress": "new@b.c"},
+            "machineID": "box-machine",
+            "userID": "box-user",
+            "projects": {"/box/path": {}},
+        }))
+        host = tmp_path / "home" / ".claude.json"
+        host.parent.mkdir(parents=True)
+        host.write_text(json.dumps({
+            "oauthAccount": {"emailAddress": "old@b.c"},
+            "machineID": "host-machine",
+            "userID": "host-user",
+            "projects": {"/host/path": {}},
+            "otherHostKey": 123,
+        }))
+
+        assert merge_oauth_account_out(box, host) is True
+        data = json.loads(host.read_text())
+        # oauthAccount updated...
+        assert data["oauthAccount"]["emailAddress"] == "new@b.c"
+        # ...but host machine-specific fields untouched (NOT clobbered).
+        assert data["machineID"] == "host-machine"
+        assert data["userID"] == "host-user"
+        assert data["projects"] == {"/host/path": {}}
+        assert data["otherHostKey"] == 123
+
+    def test_noop_when_box_file_absent(self, tmp_path):
+        box = tmp_path / "box" / ".claude.json"  # absent
+        host = tmp_path / "home" / ".claude.json"
+        assert merge_oauth_account_out(box, host) is False
+        assert not host.exists()
+
+    def test_noop_when_no_oauth_account_key(self, tmp_path):
+        box = tmp_path / "box" / ".claude.json"
+        box.parent.mkdir(parents=True)
+        box.write_text(json.dumps({"machineID": "x"}))
+        host = tmp_path / "home" / ".claude.json"
+        assert merge_oauth_account_out(box, host) is False
+        assert not host.exists()
+
+    def test_malformed_box_json_is_safe(self, tmp_path):
+        box = tmp_path / "box" / ".claude.json"
+        box.parent.mkdir(parents=True)
+        box.write_text("{not json")
+        host = tmp_path / "home" / ".claude.json"
+        assert merge_oauth_account_out(box, host) is False
+
+    def test_unreadable_host_not_clobbered(self, tmp_path):
+        box = tmp_path / "box" / ".claude.json"
+        box.parent.mkdir(parents=True)
+        box.write_text(json.dumps({"oauthAccount": {"e": 1}}))
+        host = tmp_path / "home" / ".claude.json"
+        host.parent.mkdir(parents=True)
+        host.write_text("{corrupt")
+        # Bails rather than overwrite an unreadable host file.
+        assert merge_oauth_account_out(box, host) is False
+        assert host.read_text() == "{corrupt"
+
+
+class TestWritebackExtra:
+    """ClaudeTarget.writeback_extra wires merge_oauth_account_out."""
+
+    def test_writeback_extra_merges_oauth_account(self, tmp_path):
+        project_home = tmp_path / "project"
+        host_home = tmp_path / "host"
+        (project_home).mkdir()
+        (host_home).mkdir()
+        (project_home / ".claude.json").write_text(
+            json.dumps({"oauthAccount": {"emailAddress": "z@z.z"}})
+        )
+        ClaudeTarget().writeback_extra(
+            project_home=project_home, host_home=host_home,
+        )
+        host = host_home / ".claude.json"
+        assert host.exists()
+        assert json.loads(host.read_text())["oauthAccount"]["emailAddress"] == "z@z.z"
 
 
 class TestInvalidateCredentials:

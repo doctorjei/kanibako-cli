@@ -16,6 +16,8 @@ def mock_runtime():
     rt.list_running.return_value = []
     rt.container_exists.return_value = False
     rt.rm.return_value = True
+    # Default: no running container -> the on-stop writeback (FIX 1) is skipped.
+    rt.is_running.return_value = False
     return rt
 
 
@@ -226,3 +228,58 @@ class TestRunDispatch:
             assert rc == 1
             err = capsys.readouterr().err
             assert "No container runtime found" in err
+
+
+class TestStopWriteback:
+    """FIX 1: `kanibako stop` writes the box's creds back to the host first."""
+
+    def test_writeback_runs_for_running_agent_box(self, mock_runtime, capsys):
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = "claude"
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.targets.resolve_target") as m_resolve_target,
+            patch(
+                "kanibako.commands.start.writeback_session_credentials"
+            ) as m_wb,
+        ):
+            proj = MagicMock()
+            m_resolve.return_value = proj
+            target = MagicMock()
+            m_resolve_target.return_value = target
+
+            rc = _stop_one(mock_runtime, project_dir=None)
+            assert rc == 0
+            mock_runtime.inspect_env.assert_called_once()
+            m_wb.assert_called_once_with(target, proj)
+
+    def test_no_writeback_without_agent_stamp(self, mock_runtime):
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None  # unstamped box
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch(
+                "kanibako.commands.start.writeback_session_credentials"
+            ) as m_wb,
+        ):
+            m_resolve.return_value = MagicMock()
+            _stop_one(mock_runtime, project_dir=None)
+            m_wb.assert_not_called()
+
+    def test_no_writeback_when_not_running(self, mock_runtime):
+        mock_runtime.is_running.return_value = False
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch(
+                "kanibako.commands.start.writeback_session_credentials"
+            ) as m_wb,
+        ):
+            m_resolve.return_value = MagicMock()
+            _stop_one(mock_runtime, project_dir=None)
+            m_wb.assert_not_called()

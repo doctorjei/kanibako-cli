@@ -438,6 +438,28 @@ def run_reauth(args: argparse.Namespace) -> int:
             target.refresh_credentials(proj.shell_path)
         print(f"{target.display_name}: authenticated.", file=sys.stderr)
         return 0
-    else:
-        print(f"{target.display_name}: authentication failed.", file=sys.stderr)
-        return 1
+
+    # Auth failed.  If the agent declares an interactive in-box setup command
+    # (goose ``configure`` / codex ``login``), run it in the box so the user can
+    # configure / log in there (host-side reauth can't do it — the credential
+    # lives in box-state), then re-check.  ``_run_container(setup_only=True)``
+    # assembles the box, hits the same FIX-2 in-box-setup path, and returns
+    # WITHOUT launching a full agent session.  Agents with no setup command
+    # (claude by default) fall through to the existing failure message.
+    if target.setup_entrypoint is not None:
+        from kanibako.commands.start import _run_container
+        return _run_container(
+            project_dir=subject,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+            persistent=False,
+            explicit_agent=getattr(args, "agent", None),
+            setup_only=True,
+        )
+
+    print(f"{target.display_name}: authentication failed.", file=sys.stderr)
+    return 1

@@ -570,6 +570,7 @@ def _run_container(
     cli_env: list[str] | None = None,
     box_shell_mode: bool = False,
     explicit_agent: str | None = None,
+    setup_only: bool = False,
     _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -822,9 +823,15 @@ def _run_container(
                     )
                 else:
                     target.refresh_credentials(proj.shell_path)
-            return runtime.exec(
+            reattach_rc = runtime.exec(
                 container_name, _bootstrap_attach(bootstrap_program)
             )
+            # FIX 1: the reattach session has ended (detach or in-box exit).
+            # An in-box login during this attach must reach the host, so write
+            # back here too — the reattach path (4a32871) previously skipped the
+            # post-session cred lifecycle entirely.
+            writeback_session_credentials(target, proj)
+            return reattach_rc
         # Stale stopped container: remove before recreating
         if runtime.container_exists(container_name):
             runtime.rm(container_name)
@@ -1016,16 +1023,27 @@ def _run_container(
                 )
                 return 1
 
-        # Pre-launch auth check (skip for distinct auth — creds live in project)
+        # Pre-launch auth check (skip for distinct auth — creds live in project).
+        #
+        # On failure: if the target declares an in-box setup command
+        # (``setup_entrypoint`` — goose ``configure`` / codex ``login``), DEFER the
+        # error and run that command interactively IN THE BOX just before launch
+        # (the box must be assembled first — image/mounts/env are built below).  An
+        # agent with no setup command (claude, by default) errors out here as
+        # before.  ``needs_inbox_setup`` carries the decision to the launch block.
+        needs_inbox_setup = False
         if target and install and proj.group_auth:
             if not target.check_auth():
-                print(
-                    "Error: Authentication failed.\n"
-                    "  Re-authenticate:  kanibako agent reauth\n"
-                    "  Skip agent:       kanibako shell",
-                    file=sys.stderr,
-                )
-                return 1
+                if target.setup_entrypoint is not None:
+                    needs_inbox_setup = True
+                else:
+                    print(
+                        "Error: Authentication failed.\n"
+                        "  Re-authenticate:  kanibako agent reauth\n"
+                        "  Skip agent:       kanibako shell",
+                        file=sys.stderr,
+                    )
+                    return 1
 
         # Credential refresh via target (skip for distinct auth)
         if target and proj.group_auth:
@@ -1457,6 +1475,67 @@ def _run_container(
         # real agent sets a non-None entrypoint here and is left untouched —
         # box_shell only feeds the no-agent launch below.
 
+        # In-box setup (FIX 2): the pre-launch auth probe failed AND the target
+        # declares an interactive setup command (goose ``configure`` / codex
+        # ``login``).  Run it FOREGROUND in the now-assembled box (same
+        # image/mounts/tmpfs/env as the real launch) so the user can configure /
+        # log in IN THE BOX; the result lands in box-state and persists across
+        # reattach (1.6.0 "no host-config import" design).  Then re-probe auth:
+        # if it now passes, proceed; otherwise, surface the standard error.
+        #
+        # NOTE: ``check_auth`` is HOST-side, so for an agent whose setup writes
+        # only box-state (goose/codex), the re-probe will still report "not
+        # authed".  The setup command's OWN exit code is therefore the primary
+        # gate — a clean exit means the box is configured and we proceed; a
+        # non-zero exit (user aborted) falls through to the host re-probe and the
+        # standard error.  (For an agent whose setup also updates the host, the
+        # re-probe flips True and serves as a positive confirmation.)
+        if target is not None and needs_inbox_setup:
+            setup_ep = target.setup_entrypoint
+            assert setup_ep is not None  # needs_inbox_setup implies it is set
+            setup_args = list(target.setup_args)
+            print(
+                f"{target.display_name} is not configured; running "
+                f"'{setup_ep} {' '.join(setup_args)}' in the box. "
+                f"Complete the prompts to continue.",
+                file=sys.stderr,
+            )
+            setup_rc = _run_setup_command(
+                runtime=runtime,
+                image=image,
+                proj=proj,
+                container_name=container_name,
+                setup_entrypoint=setup_ep,
+                setup_args=setup_args,
+                extra_mounts=extra_mounts,
+                tmpfs_masks=tmpfs_masks,
+                container_env=container_env,
+            )
+            if setup_rc != 0 and not target.check_auth():
+                print(
+                    f"Error: {target.display_name} setup did not complete "
+                    f"(exit {setup_rc}) and authentication still fails.\n"
+                    "  Re-run:      kanibako start\n"
+                    "  Re-auth:     kanibako agent reauth\n"
+                    "  Skip agent:  kanibako shell",
+                    file=sys.stderr,
+                )
+                return setup_rc or 1
+            if setup_only:
+                # ``agent reauth`` path: run the in-box setup and stop — do NOT
+                # drop into a full agent session.  A clean setup exit (rc 0) is
+                # success; a non-zero exit reached here means the host re-probe
+                # nonetheless passed (host-updating setup), also success.
+                print(
+                    f"{target.display_name}: setup complete.", file=sys.stderr,
+                )
+                return 0
+
+        # ``agent reauth`` reaches here only when setup was NOT needed (auth was
+        # already OK); nothing more to do — don't launch a session.
+        if setup_only:
+            return 0
+
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
             # box_shell is None only on a real-agent launch, but that path
@@ -1617,16 +1696,18 @@ def _run_container(
                             explicit_agent=explicit_agent,
                             _is_retry=True,
                         )
+
+            # FIX 1: writeback on the persistent session-end paths — DETACH
+            # (container still running) AND clean exit (container stopped).  The
+            # box's home is a host mount, so the in-box creds are readable
+            # whether or not the container is still up; both are writeback
+            # moments so an in-box login reaches the host.  (The new-session
+            # retry above returns early and re-enters this function, which writes
+            # back on its own teardown.)
+            writeback_session_credentials(target, proj)
         else:
-            # Write back refreshed credentials via target (skip for distinct auth)
-            if target and proj.group_auth:
-                if desc is not None:
-                    credsync.writeback_cred_files(
-                        desc, target, host_home=Path.home(),
-                        project_home=proj.shell_path, group_auth=proj.group_auth,
-                    )
-                else:
-                    target.writeback_credentials(proj.shell_path)
+            # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
+            writeback_session_credentials(target, proj)
 
             # Hint when agent exits non-zero and --continue/--resume was used
             if rc != 0 and is_agent_mode and not new_session:
@@ -1646,6 +1727,45 @@ def _run_container(
         if lock_fd is not None:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
+
+
+def writeback_session_credentials(target, proj) -> None:
+    """Project -> host credential writeback for a finished/detached session.
+
+    The SINGLE writeback site for ALL session-end paths (FIX 1): clean exit,
+    DETACH, reattach-exit, and ``kanibako stop``.  An in-box login must reach the
+    host regardless of how the session ends, so every path that releases a box
+    funnels through here.
+
+    Gated on ``proj.group_auth`` (the shared-auth contract — default True): under
+    distinct auth, the box's credentials are private to the project and never
+    propagate to the host.  No-ops when *target* is None (no-agent box) or has no
+    credential lifecycle.
+
+    Writes the descriptor's SYNC ``cred_files`` back (creating a missing host
+    destination — a deauthed host has no ``~/.claude/.credentials.json``) and the
+    plugin's :meth:`~kanibako.targets.base.Target.writeback_extra` (claude merges
+    ``oauthAccount`` from the box's ``.claude.json`` into the host's without
+    clobbering machine-specific fields).  Best-effort: a writeback failure must
+    never crash the lifecycle path that called it.
+    """
+    if target is None or not getattr(proj, "group_auth", False):
+        return
+    desc = target.descriptor
+    try:
+        if desc is not None:
+            credsync.writeback_cred_files(
+                desc, target, host_home=Path.home(),
+                project_home=proj.shell_path, group_auth=proj.group_auth,
+            )
+        else:
+            target.writeback_credentials(proj.shell_path)
+        # Plugin-specific writeback beyond the cred_files specs (e.g. claude's
+        # .claude.json oauthAccount merge-back, not modelled as a cred_file
+        # because its host->project IMPORT was removed in 1.6.0).
+        target.writeback_extra(project_home=proj.shell_path, host_home=Path.home())
+    except Exception as exc:  # never crash a teardown path on writeback
+        get_logger("start").warning("Credential writeback failed: %s", exc)
 
 
 def _build_config_env(
@@ -2444,6 +2564,53 @@ def _kanibako_mounts():
 # never the larger value, which would let a Linux-only path slip past and then
 # fail on macOS.
 _UNIX_SOCKET_PATH_LIMIT = 104
+
+
+def _run_setup_command(
+    *,
+    runtime: ContainerRuntime,
+    image: str,
+    proj,
+    container_name: str,
+    setup_entrypoint: str,
+    setup_args: list[str],
+    extra_mounts: list,
+    tmpfs_masks,
+    container_env: dict[str, str],
+) -> int:
+    """Run a target's one-time interactive setup command in a fresh box.
+
+    Mirrors the normal launch ``runtime.run`` (same image/mounts/env so the
+    setup writes into the box's mounted home), but with the SETUP entrypoint
+    (e.g. ``goose configure``) and run in the FOREGROUND (``detach=False``) so
+    it inherits stdio and the user can answer its prompts.  Any prior container
+    under *container_name* is removed first; the setup container is removed on
+    completion so the subsequent normal relaunch starts clean.
+
+    Returns the setup command's exit code.
+    """
+    # Clear any leftover (exited) container occupying the name.
+    if runtime.container_exists(container_name):
+        runtime.rm(container_name)
+    rc = runtime.run(
+        image,
+        shell_path=proj.shell_path,
+        project_path=proj.project_path,
+        vault_ro_path=proj.vault_ro_path,
+        vault_rw_path=proj.vault_rw_path,
+        extra_mounts=extra_mounts or None,
+        tmpfs_masks=tmpfs_masks or None,
+        enable_vault=proj.enable_vault,
+        env=container_env,
+        name=container_name,
+        entrypoint=setup_entrypoint,
+        cli_args=setup_args or None,
+        detach=False,
+    )
+    # Remove the setup container so the relaunch recreates it fresh.
+    if runtime.container_exists(container_name):
+        runtime.rm(container_name)
+    return rc
 
 
 def _container_logs(runtime: ContainerRuntime, name: str) -> str:

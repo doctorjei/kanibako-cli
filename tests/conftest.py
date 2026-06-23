@@ -353,6 +353,14 @@ def start_mocks():
             target.name = "claude"
             target.default_entrypoint = "claude"
             target.config_dir_name = ".claude"
+            # In-box setup is opt-in (base default: no setup). Mirror the real
+            # claude default (setup_entrypoint=None) so the auth-probe setup
+            # branch never fires for the default mock target; check_auth passes
+            # by default. Tests exercising the in-box-setup path re-set these.
+            target.setup_entrypoint = None
+            target.setup_args = []
+            target.check_auth.return_value = True
+            target.writeback_extra.return_value = None
             # Default the mock target to the DESCRIPTOR path using claude's REAL
             # descriptor: the descriptor-only plugin system means a target with a
             # host `install` ALWAYS has a descriptor (the legacy

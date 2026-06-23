@@ -29,6 +29,7 @@ from kanibako.targets.base import (
 )
 
 from kanibako.plugins.claude.credentials import (
+    merge_oauth_account_out,
     merge_oauth_in,
     refresh_host_to_project,
     writeback_project_to_host,
@@ -151,6 +152,20 @@ class ClaudeTarget(Target):
             if src is not None and Path(src).is_file():
                 merge_oauth_in(src, dst)
             return
+
+    def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
+        """Merge the box's ``.claude.json`` ``oauthAccount`` back to the host.
+
+        After an in-box login, the box's ``~/.claude.json`` carries the
+        ``oauthAccount`` block; the ``.credentials.json`` writeback (a cred_file
+        spec) carries the token, but the account info lives only here.  We splice
+        JUST ``oauthAccount`` into the host ``~/.claude.json`` — never a wholesale
+        copy, which would clobber the host's machine-specific ``machineID`` /
+        ``userID`` / ``projects``.  Defensive (never raises).
+        """
+        merge_oauth_account_out(
+            project_home / ".claude.json", host_home / ".claude.json",
+        )
 
     @property
     def default_entrypoint(self) -> str | None:

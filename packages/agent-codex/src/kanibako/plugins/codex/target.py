@@ -291,6 +291,21 @@ class CodexTarget(Target):
         """Codex binary as container entrypoint."""
         return "codex"
 
+    @property
+    def setup_entrypoint(self) -> str | None:
+        """``codex login`` is codex's interactive in-box login.
+
+        When the pre-launch :meth:`check_auth` probe fails (no ``auth.json`` and
+        no ``OPENAI_API_KEY``), ``start.py`` runs ``codex login`` interactively
+        IN THE BOX so the user can complete the ChatGPT/OAuth flow, then proceeds
+        with launch.  Box-state persists across reattach.
+        """
+        return "codex"
+
+    @property
+    def setup_args(self) -> list[str]:
+        return ["login"]
+
     def detect(self) -> AgentInstall | None:
         """Detect the Codex installation, resolving a directly-bindable binary.
 

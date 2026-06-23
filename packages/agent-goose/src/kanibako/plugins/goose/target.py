@@ -134,6 +134,21 @@ class GooseTarget(Target):
         # start.py's fallback to relaunch with a new (bare ``session``) session.
         return "No session found to resume" in output
 
+    @property
+    def setup_entrypoint(self) -> str | None:
+        """``goose configure`` is goose's one-time interactive provider setup.
+
+        When the pre-launch :meth:`check_auth` probe fails (goose unconfigured),
+        ``start.py`` runs ``goose configure`` interactively IN THE BOX so the user
+        can select a provider/model and enter a key, then proceeds with launch.
+        Box-state persists across reattach, so this is a one-time step per box.
+        """
+        return "goose"
+
+    @property
+    def setup_args(self) -> list[str]:
+        return ["configure"]
+
     def detect(self) -> AgentInstall | None:
         """Detect Goose installation on the host.
 
