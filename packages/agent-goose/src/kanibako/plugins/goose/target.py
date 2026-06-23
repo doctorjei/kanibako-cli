@@ -90,7 +90,15 @@ _GOOSE_DESCRIPTOR = PluginDescriptor(
         SettingArg("model", Channel.ENV, env_var="GOOSE_MODEL"),
         SettingArg("provider", Channel.ENV, env_var="GOOSE_PROVIDER"),
     ),
-    container_env={},
+    # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
+    # setting): inside the box the OS keyring / D-Bus secret-service is
+    # unavailable/broken (rootful goose errors "Unable to create DBus keyring
+    # when setuid"), so ``goose configure`` cannot store the provider API key and
+    # launch then fails with "Configuration value not found: ANTHROPIC_API_KEY".
+    # goose's documented remedy makes it store/read secrets in the file
+    # ``~/.config/goose/secrets.yaml`` instead — the file kanibako already syncs
+    # host<->box and writes back (see cred_files / writeback_secrets).
+    container_env={"GOOSE_DISABLE_KEYRING": "true"},
     cred_files=(
         CredFileSpec(".config/goose/secrets.yaml", ".config/goose/secrets.yaml", cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
     ),

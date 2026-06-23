@@ -365,8 +365,13 @@ class TestDescriptor:
         assert settings["provider"].channel == Channel.ENV
         assert settings["provider"].env_var == "GOOSE_PROVIDER"
 
-    def test_container_env_empty(self):
-        assert GooseTarget().descriptor.container_env == {}
+    def test_container_env_disables_keyring(self):
+        # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
+        # setting): the in-box OS keyring/D-Bus secret-service is unavailable, so
+        # goose must store secrets in the file ~/.config/goose/secrets.yaml.
+        assert GooseTarget().descriptor.container_env == {
+            "GOOSE_DISABLE_KEYRING": "true"
+        }
 
     def test_cred_files(self):
         # The host config.yaml IMPORT (SEED_ONCE, filtered) was removed in 1.6.0;
@@ -507,3 +512,20 @@ class TestDescriptorAssembly:
         )
         assert env["GOOSE_MODEL"] == "claude-4"
         assert env["GOOSE_PROVIDER"] == "anthropic"
+
+    def test_env_always_disables_keyring(self):
+        """GOOSE_DISABLE_KEYRING=true is in the assembled box env unconditionally.
+
+        It is a static container_env constant, so it survives every assembly path
+        regardless of safe-mode or settings (in-box keyring unavailable -> goose
+        falls back to file-based ~/.config/goose/secrets.yaml).
+        """
+        d = GooseTarget().descriptor
+        for safe_off in (True, False):
+            env = assembly.assemble_env(d, safe_mode_off=safe_off, setting_values={})
+            assert env["GOOSE_DISABLE_KEYRING"] == "true"
+        env = assembly.assemble_env(
+            d, safe_mode_off=True,
+            setting_values={"model": "claude-4", "provider": "anthropic"},
+        )
+        assert env["GOOSE_DISABLE_KEYRING"] == "true"
