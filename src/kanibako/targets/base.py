@@ -379,6 +379,28 @@ class Target(ABC):
         return False
 
     @property
+    def setup_entrypoint(self) -> str | None:
+        """Container entrypoint (binary) for the one-time interactive setup.
+
+        ``None`` (the default) means the target declares no setup step; the
+        auth-probe setup branch in ``start.py`` (and ``agent reauth``) is skipped
+        entirely — a failed :meth:`check_auth` then errors out as before.  A
+        target that needs an in-box setup (e.g. goose -> ``goose configure``)
+        returns its setup binary here and the sub-command in :attr:`setup_args`.
+        When :meth:`check_auth` fails for such a target, ``start.py`` runs this
+        command INTERACTIVELY in the box (inherits stdio) so the user can complete
+        configuration/login in-box, then proceeds with the normal launch.  Setup
+        runs in box-state, which persists across reattach (1.6.0 "no host-config
+        import" design).
+        """
+        return None
+
+    @property
+    def setup_args(self) -> list[str]:
+        """Arguments for the one-time setup command (see :attr:`setup_entrypoint`)."""
+        return []
+
+    @property
     def config_dir_name(self) -> str:
         """Agent config dir relative to home (e.g. '.claude'). Default: '.{name}'."""
         return f".{self.name}"
@@ -428,5 +450,22 @@ class Target(ABC):
 
         Default: no-op.  Descriptor-native plugins sync creds via
         ``descriptor.cred_files`` (core's credsync engine); legacy plugins override.
+        """
+        return None
+
+    def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
+        """Plugin-specific post-session writeback BEYOND ``cred_files`` specs.
+
+        Called by core on every session-end path (clean exit, detach, reattach-
+        exit, ``kanibako stop``) AFTER the descriptor ``cred_files`` writeback,
+        for state that can't be modelled as a SYNC ``CredFileSpec``.  The motivating
+        case is claude's ``~/.claude.json`` ``oauthAccount``: the box's login writes
+        the account block there, and it must reach the host, but the file can't be a
+        normal SYNC spec because that would also IMPORT host->project (removed in
+        1.6.0) AND a wholesale copy would clobber host-specific ``machineID`` /
+        ``userID`` / ``projects``.  So the plugin MERGES just its own keys back.
+
+        Default: no-op.  MUST be defensive — never raise on a malformed/absent file
+        (core wraps it but a clean teardown is the contract).
         """
         return None

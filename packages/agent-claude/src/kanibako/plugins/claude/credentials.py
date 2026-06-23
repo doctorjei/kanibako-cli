@@ -92,3 +92,60 @@ def writeback_project_to_host(project_creds: Path) -> None:
         return
     host_creds = Path.home() / ".claude" / ".credentials.json"
     cp_if_newer(project_creds, host_creds)
+
+
+def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool:
+    """Merge ``oauthAccount`` from the box's ``.claude.json`` into the host's.
+
+    The REVERSE of the (removed) host->project oauthAccount import: after an
+    in-box login, the box's ``~/.claude.json`` carries the ``oauthAccount`` block
+    (account id/email).  That account info must reach the host so the host claude
+    knows who is logged in — but ``.claude.json`` ALSO carries machine-specific
+    ``machineID`` / ``userID`` / ``projects`` (and much else) that must NOT
+    clobber the host's.  So this splices ONLY ``oauthAccount`` (the gate-free
+    content op; the caller owns any gating).
+
+    Behaviour:
+
+    * box file absent / unreadable / no ``oauthAccount`` -> no-op (return False).
+    * host file absent -> create ``~/.claude.json`` with just ``{"oauthAccount": ...}``.
+    * host file present -> read it, splice ``oauthAccount`` in (preserving every
+      other host key), write via temp+rename.
+
+    Defensive throughout: never raises on a malformed file.
+
+    Returns ``True`` when the host file was written, ``False`` otherwise.
+    """
+    if not project_json.is_file():
+        return False
+    try:
+        box_data = json.loads(project_json.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    if not isinstance(box_data, dict):
+        return False
+    oauth = box_data.get("oauthAccount")
+    if oauth is None:
+        return False
+
+    if host_json.is_file():
+        try:
+            host_data = json.loads(host_json.read_text())
+            if not isinstance(host_data, dict):
+                host_data = {}
+        except (json.JSONDecodeError, OSError):
+            # Don't clobber an unreadable host file wholesale; bail.
+            return False
+    else:
+        host_data = {}
+
+    host_data["oauthAccount"] = oauth
+
+    try:
+        host_json.parent.mkdir(parents=True, exist_ok=True)
+        tmp = host_json.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(host_data, indent=2) + "\n")
+        tmp.replace(host_json)
+    except OSError:
+        return False
+    return True

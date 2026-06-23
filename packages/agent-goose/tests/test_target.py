@@ -47,6 +47,19 @@ class TestShouldRetryNewSession:
         assert not GooseTarget().should_retry_new_session("")
 
 
+class TestSetupCommand:
+    """In-box setup command (``goose configure``) declared via the base hooks.
+
+    start.py runs this interactively in the box when the pre-launch check_auth
+    probe fails (goose unconfigured) — there is no output-matcher anymore.
+    """
+
+    def test_setup_entrypoint_is_goose_configure(self):
+        t = GooseTarget()
+        assert t.setup_entrypoint == "goose"
+        assert t.setup_args == ["configure"]
+
+
 def _anchor_contract(monkeypatch, binary):
     """Point the goose plugin's contract constant at a tmp binary.
 

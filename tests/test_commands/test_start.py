@@ -2785,3 +2785,194 @@ class TestNewSessionRetryPreservesAgent:
             assert m.resolve_agent.call_count >= 2
             for call in m.resolve_agent.call_args_list:
                 assert call.kwargs.get("explicit_agent") is None
+
+
+class TestInBoxSetupAtAuthProbe:
+    """FIX 2: in-box setup runs at the check_auth-FAILURE point (pre-launch).
+
+    When the pre-launch ``check_auth`` probe fails AND the target declares a
+    ``setup_entrypoint`` (goose ``configure`` / codex ``login``), _run_container
+    runs that command FOREGROUND in the assembled box, then proceeds to the
+    normal launch.  A target with no setup command (claude default) keeps the
+    existing "Authentication failed" error.  The setup runs AFTER run-config
+    assembly (it needs image/mounts/env), not at the bare probe.
+    """
+
+    def _drive_setup_target(self, m, *, check_auth=False):
+        """Configure the mock target to need an in-box setup like goose."""
+        from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
+        m.target.name = "goose"
+        m.target.display_name = "Goose"
+        m.target.default_entrypoint = "goose"
+        m.target.descriptor = _GOOSE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        m.target.setup_entrypoint = "goose"
+        m.target.setup_args = ["configure"]
+        m.target.check_auth.return_value = check_auth
+        m.target.should_retry_new_session.return_value = False
+        m.agent_cfg.state = {}
+        m.load_agent_config.return_value = m.agent_cfg
+
+    def _setup_runs(self, m):
+        return [
+            c for c in m.runtime.run.call_args_list
+            if c.kwargs.get("entrypoint") == "goose"
+            and c.kwargs.get("cli_args") == ["configure"]
+            and c.kwargs.get("detach") is False
+        ]
+
+    def test_setup_runs_then_launch_proceeds(self, start_mocks, capsys):
+        """check_auth fails + setup declared -> goose configure runs, launch proceeds."""
+        with start_mocks() as m:
+            self._drive_setup_target(m, check_auth=False)
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent="goose",
+            )
+            assert self._setup_runs(m), "expected a foreground `goose configure` run"
+            # The real (bootstrap-wrapped) launch happened too: a detach=True run.
+            launch_runs = [
+                c for c in m.runtime.run.call_args_list
+                if c.kwargs.get("detach") is True
+            ]
+            assert launch_runs, "expected the normal launch after setup"
+            err = capsys.readouterr().err
+            assert "is not configured" in err
+            assert rc is not None
+
+    def test_setup_runs_for_ephemeral_launch(self, start_mocks):
+        """Non-persistent launch path also runs the in-box setup."""
+        with start_mocks() as m:
+            self._drive_setup_target(m, check_auth=False)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False, explicit_agent="goose",
+            )
+            assert self._setup_runs(m)
+
+    def test_setup_failure_and_recheck_fails_errors(self, start_mocks, capsys):
+        """Setup exits non-zero AND re-probe still fails -> error, no normal launch."""
+        with start_mocks() as m:
+            self._drive_setup_target(m, check_auth=False)
+
+            def _run_side(*a, **kw):
+                if kw.get("cli_args") == ["configure"]:
+                    return 7
+                return 0
+            m.runtime.run.side_effect = _run_side
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent="goose",
+            )
+            assert rc == 7
+            err = capsys.readouterr().err
+            assert "setup did not complete" in err
+            # No normal (detach=True) launch after the failure.
+            launch_runs = [
+                c for c in m.runtime.run.call_args_list
+                if c.kwargs.get("detach") is True
+            ]
+            assert not launch_runs
+
+    def test_no_setup_when_entrypoint_none_keeps_error(self, start_mocks, capsys):
+        """claude default: setup_entrypoint is None + check_auth fails -> standard
+        'Authentication failed' error, return 1, NO setup run, NO launch."""
+        with start_mocks() as m:
+            # Default mock target is claude-like; just fail auth, no setup cmd.
+            m.target.setup_entrypoint = None
+            m.target.check_auth.return_value = False
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent="claude",
+            )
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert "Authentication failed" in err
+            # Errored at the probe BEFORE assembly/launch: runtime.run never ran.
+            assert not m.runtime.run.called
+
+    def test_no_setup_when_auth_ok(self, start_mocks):
+        """check_auth passes -> no setup run even if a setup command is declared."""
+        with start_mocks() as m:
+            self._drive_setup_target(m, check_auth=True)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent="goose",
+            )
+            assert not self._setup_runs(m)
+
+
+class TestWritebackAllPaths:
+    """FIX 1: project -> host credential writeback fires on EVERY session-end path.
+
+    The descriptor path routes through ``credsync.writeback_cred_files`` (mocked
+    in ``start_mocks``), plus the plugin ``writeback_extra`` hook.  group_auth is
+    truthy on the mock proj by default; a test sets it False to assert the gate.
+    """
+
+    def test_writeback_on_ephemeral_exit(self, start_mocks):
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False,
+            )
+            assert m.credsync.writeback_cred_files.called
+            assert m.target.writeback_extra.called
+
+    def test_writeback_on_persistent_detach_or_exit(self, start_mocks):
+        """Genuine launch then detach/exit (NOT the reattach fast path) ->
+        writeback fires.  is_running is False at entry (so we launch, not
+        reattach) and the harness flips it True after run() (container up =
+        a DETACH return from the attach exec)."""
+        with start_mocks() as m:
+            # Default harness: is_running False at entry, True after run().
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert m.credsync.writeback_cred_files.called
+            assert m.target.writeback_extra.called
+
+    def test_writeback_on_reattach_exit(self, start_mocks):
+        """Reattach to an already-running box -> writeback after the attach."""
+        with start_mocks() as m:
+            # A persistent box already running at entry => reattach fast path.
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = "claude"
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert m.credsync.writeback_cred_files.called
+            assert m.target.writeback_extra.called
+
+    def test_no_writeback_when_group_auth_false(self, start_mocks):
+        """Distinct auth (group_auth=False) -> NO writeback on any path."""
+        with start_mocks() as m:
+            m.proj.group_auth = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False,
+            )
+            assert not m.credsync.writeback_cred_files.called
+            assert not m.target.writeback_extra.called
+
+    def test_writeback_is_best_effort(self, start_mocks):
+        """A writeback exception must not crash the teardown path."""
+        with start_mocks() as m:
+            m.credsync.writeback_cred_files.side_effect = RuntimeError("boom")
+            # Should not raise.
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False,
+            )

@@ -54,6 +54,30 @@ def run(args: argparse.Namespace) -> int:
     return _stop_one(runtime, project_dir=subject)
 
 
+def _writeback_on_stop(runtime, proj, container_name: str) -> None:
+    """Run project -> host credential writeback for a box about to be stopped.
+
+    Sources the box's agent from its ``KANIBAKO_AGENT`` launch stamp (set on the
+    container at launch), resolves that plugin's target, and funnels through the
+    shared :func:`~kanibako.commands.start.writeback_session_credentials` helper.
+    Best-effort: a stop must succeed even if writeback can't run (e.g. no stamp,
+    no agent, container already gone).
+    """
+    if not runtime.is_running(container_name):
+        return
+    agent = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
+    if not agent:
+        return
+    try:
+        from kanibako.commands.start import writeback_session_credentials
+        from kanibako.targets import resolve_target
+        target = resolve_target(agent, proj.project_path)
+        writeback_session_credentials(target, proj)
+    except Exception:
+        # Never let a writeback problem block the stop.
+        pass
+
+
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     """Stop the container for a single project."""
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -64,6 +88,13 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     container_name = container_name_for(proj)
 
     lock_file = proj.metadata_path / ".kanibako.lock"
+
+    # FIX 1: writeback BEFORE stopping — an in-box login must reach the host on
+    # `kanibako stop` too.  The box's home is a host mount, so creds are readable
+    # while the container is still up.  Source the box's agent from its launch
+    # stamp (KANIBAKO_AGENT) so we know which plugin's cred lifecycle to run; a
+    # box launched before stamping (or a no-agent box) has no stamp -> skip.
+    _writeback_on_stop(runtime, proj, container_name)
 
     if runtime.stop(container_name):
         print(f"Stopped {container_name}")

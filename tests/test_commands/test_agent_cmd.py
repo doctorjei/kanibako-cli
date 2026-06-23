@@ -423,6 +423,73 @@ class TestRunReauth:
         assert rc == 0
         target.refresh_credentials.assert_not_called()
 
+    def test_reauth_runs_inbox_setup_when_auth_fails_and_setup_declared(
+        self, config_file, tmp_home, capsys,
+    ):
+        """FIX 2: check_auth fails + target declares setup_entrypoint -> reauth
+        delegates to _run_container(setup_only=True) (the in-box setup path)
+        instead of just printing 'authentication failed'."""
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with (
+            patch("kanibako.config.resolve_agent", return_value="goose"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+            patch(
+                "kanibako.commands.start._run_container", return_value=0,
+            ) as m_run,
+        ):
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = False
+            target.setup_entrypoint = "goose"
+            target.display_name = "Goose"
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                proj.group_auth = True
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        assert rc == 0
+        m_run.assert_called_once()
+        assert m_run.call_args.kwargs.get("setup_only") is True
+
+    def test_reauth_no_setup_when_auth_fails_and_no_setup_cmd(
+        self, config_file, tmp_home, capsys,
+    ):
+        """check_auth fails + no setup command (claude) -> standard failure, rc 1."""
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+            patch(
+                "kanibako.commands.start._run_container",
+            ) as m_run,
+        ):
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = False
+            target.setup_entrypoint = None
+            target.display_name = "Claude Code"
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                proj.group_auth = True
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        assert rc == 1
+        m_run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "authentication failed" in err.lower()
+
 
 # ---------------------------------------------------------------------------
 # Parser / alias tests
