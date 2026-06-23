@@ -265,11 +265,15 @@ class TestCheckAuth:
 
 
 class TestGenerateAgentConfig:
-    def test_returns_correct_defaults(self):
+    def test_returns_empty_state_no_pinned_provider_model(self):
+        # kanibako must NOT pin goose's provider/model: an agent-level state would
+        # win the resolver cascade and force GOOSE_PROVIDER/GOOSE_MODEL, which
+        # override the user's in-box ``goose configure`` choice.  State is empty.
         config = GooseTarget().generate_agent_config()
         assert config.name == "Goose"
-        assert config.state["provider"] == "anthropic"
-        assert "model" in config.state
+        assert config.state == {}
+        assert "provider" not in config.state
+        assert "model" not in config.state
 
 
 class TestApplyState:
@@ -296,6 +300,14 @@ class TestSettingDescriptors:
         assert "provider" in keys
         assert "model" in keys
         assert len(settings) == 2
+
+    def test_provider_and_model_have_no_default(self):
+        # The keys stay declared/settable, but with EMPTY defaults so the
+        # resolver floor yields "" (omitted by assemble_env) when unset — goose
+        # then reads provider/model from its own config.yaml (goose configure).
+        settings = {s.key: s for s in GooseTarget().setting_descriptors()}
+        assert settings["provider"].default == ""
+        assert settings["model"].default == ""
 
 
 class TestDefaultShares:
@@ -512,6 +524,33 @@ class TestDescriptorAssembly:
         )
         assert env["GOOSE_MODEL"] == "claude-4"
         assert env["GOOSE_PROVIDER"] == "anthropic"
+
+    def test_env_omits_provider_model_when_unset(self):
+        """No provider/model setting -> GOOSE_PROVIDER/GOOSE_MODEL NOT emitted.
+
+        This is the in-box-``goose configure`` fix: kanibako must not force the
+        provider/model env vars (they override goose's config.yaml).  With no
+        setting, assemble_env (``if value:``) omits both — but GOOSE_MODE and
+        GOOSE_DISABLE_KEYRING still emit.
+        """
+        d = GooseTarget().descriptor
+        env = assembly.assemble_env(d, safe_mode_off=True, setting_values={})
+        assert "GOOSE_PROVIDER" not in env
+        assert "GOOSE_MODEL" not in env
+        assert env["GOOSE_MODE"] == "auto"
+        assert env["GOOSE_DISABLE_KEYRING"] == "true"
+
+    def test_env_omits_provider_model_when_empty_string(self):
+        """Empty-string values (the resolver floor for the unset case) are
+        falsy and so are omitted, exactly like a missing key."""
+        d = GooseTarget().descriptor
+        env = assembly.assemble_env(
+            d, safe_mode_off=True,
+            setting_values={"model": "", "provider": ""},
+        )
+        assert "GOOSE_PROVIDER" not in env
+        assert "GOOSE_MODEL" not in env
+        assert env["GOOSE_DISABLE_KEYRING"] == "true"
 
     def test_env_always_disables_keyring(self):
         """GOOSE_DISABLE_KEYRING=true is in the assembled box env unconditionally.
