@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -370,6 +371,33 @@ class ContainerRuntime:
             text=True,
         )
         return result.returncode == 0 and result.stdout.strip() == "true"
+
+    def inspect_env(self, name: str, key: str) -> str | None:
+        """Return the value of env var *key* on container *name*, or None.
+
+        Reads the container's recorded ``.Config.Env`` (the env baked in at
+        ``run`` time) and returns the first ``KEY=VALUE`` whose KEY matches.
+        Returns None if the container does not exist, the var is unset, or the
+        inspect fails — callers fall back to normal resolution in that case.
+        """
+        result = subprocess.run(
+            [self.cmd, "inspect", "--format", "{{json .Config.Env}}", name],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        try:
+            env_list = json.loads(result.stdout.strip() or "null")
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(env_list, list):
+            return None
+        prefix = f"{key}="
+        for item in env_list:
+            if isinstance(item, str) and item.startswith(prefix):
+                return item[len(prefix):]
+        return None
 
     def list_running(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
         """Return running containers matching *prefix* as (name, image, status) tuples."""

@@ -22,7 +22,7 @@ from kanibako.config import (
     load_merged_config,
 )
 from kanibako.container import ContainerRuntime
-from kanibako.errors import ContainerError
+from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
@@ -629,6 +629,51 @@ def _run_container(
     # `kanibako shell` (box_shell_mode) and explicit-entrypoint launches skip
     # resolution entirely (they need no agent); this is unchanged.
     logger = get_logger("start")
+
+    # Detect the container runtime up front: agent resolution below needs it to
+    # honour a REATTACH to an already-running persistent box (the box's stored
+    # agent supersedes the cascade), and the image step further down needs it
+    # too.  Detection is cheap and side-effect-free.
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError:
+        print(
+            "Error: No container runtime found.\n"
+            "Install podman (https://podman.io/) or Docker, then try again.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Reattach fast-source: for a PERSISTENT box that is ALREADY RUNNING, the
+    # box's identity is its container name (agent-independent) and `kanibako
+    # start` should simply reattach.  The reattach path needs an agent only for
+    # the per-agent credential refresh below.  W1's resolve_agent would Gate-2a
+    # ("pick an agent") when 2+ agents exist with no default — even though the
+    # box is happily running with a known agent.  So source that agent from the
+    # container's KANIBAKO_AGENT stamp (set at launch) and feed it into the
+    # cascade as the explicit choice.  The RUNNING BOX WINS over a differing
+    # system default (silently); a differing EXPLICIT --agent is a hard error
+    # (stop the box to relaunch with a different agent).  Boxes launched before
+    # this change have no stamp -> inspect_env returns None -> normal resolution
+    # (a default/--agent is then required, unchanged behaviour).
+    reattach_running = False
+    stored_agent: str | None = None
+    if persistent and runtime.is_running(container_name_for(proj)):
+        reattach_running = True
+        stored_agent = runtime.inspect_env(
+            container_name_for(proj), "KANIBAKO_AGENT"
+        )
+        if stored_agent:
+            if explicit_agent is not None and explicit_agent != stored_agent:
+                raise KanibakoError(
+                    f"Box '{proj.name}' is already running agent "
+                    f"'{stored_agent}'; cannot reattach with --agent "
+                    f"'{explicit_agent}'. Stop it first "
+                    f"(`kanibako stop {proj.name}`) to relaunch with a "
+                    f"different agent."
+                )
+            explicit_agent = stored_agent
+
     is_agent_mode = entrypoint is None and not box_shell_mode
     target = None
     install = None
@@ -662,17 +707,6 @@ def _run_container(
                 file=sys.stderr,
             )
             logger.debug("target.detect() returned None for %s", target.name)
-
-    # Detect container runtime and ensure image is available
-    try:
-        runtime = ContainerRuntime()
-    except ContainerError:
-        print(
-            "Error: No container runtime found.\n"
-            "Install podman (https://podman.io/) or Docker, then try again.",
-            file=sys.stderr,
-        )
-        return 1
 
     # Resolve the rig name to a kind + prep action, then materialize it.
     # Templates BUILD their Containerfile; prefabs/bases are pull-only via
@@ -769,6 +803,16 @@ def _run_container(
     # Persistent mode: reattach if already running, clean up stale containers
     if persistent:
         if runtime.is_running(container_name):
+            # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
+            # stream we're about to attach to).
+            agent_label = target.name if target else (
+                stored_agent if reattach_running and stored_agent else "shell"
+            )
+            print(
+                f"Reattaching to running box '{proj.name}' "
+                f"(agent: {agent_label}).",
+                file=sys.stderr,
+            )
             # Refresh credentials before reattaching
             if target and proj.group_auth:
                 if desc is not None:
@@ -1242,6 +1286,16 @@ def _run_container(
         # Inject instance identity for peer communication.
         if proj.name:
             container_env["KANIBAKO_NAME"] = proj.name
+
+        # Stamp the resolved agent ON THE CONTAINER (NOT durable config — keeps
+        # `--agent` ephemeral).  On a later `kanibako start` against this running
+        # persistent box, the reattach fast-source reads this back so it can
+        # refresh creds + attach without re-running the resolution cascade (which
+        # would otherwise Gate-2a when there are 2+ agents and no default).  Only
+        # stamped for a real agent launch; no-agent/shell launches (target is
+        # None) carry no agent, so the var is left unset.
+        if target is not None:
+            container_env["KANIBAKO_AGENT"] = target.name
 
         # Helper hub: start listener before director, mount socket
         hub = None
