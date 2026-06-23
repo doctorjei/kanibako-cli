@@ -1492,6 +1492,7 @@ def _run_container(
                         persistent=persistent,
                         model_override=model_override,
                         cli_env=cli_env,
+                        explicit_agent=explicit_agent,
                         _is_retry=True,
                     )
                 print(
@@ -1559,6 +1560,7 @@ def _run_container(
                             persistent=persistent,
                             model_override=model_override,
                             cli_env=cli_env,
+                            explicit_agent=explicit_agent,
                             _is_retry=True,
                         )
         else:

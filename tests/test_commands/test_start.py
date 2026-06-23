@@ -2711,3 +2711,77 @@ class TestRunShellBoxShell:
             m.runtime.run.assert_not_called()
             exec_cmd = m.runtime.exec.call_args.args[1]
             assert exec_cmd == ["/bin/zsh"]
+
+
+class TestNewSessionRetryPreservesAgent:
+    """W1 regression: the new-session retry must carry the explicit --agent.
+
+    When the box's agent exits and the target asks for a new-session retry
+    ("Restarting with a new session."), _run_container recurses with
+    new_session=True.  The recursion must thread the in-scope ``explicit_agent``
+    through, otherwise the retry re-resolves with explicit_agent=None and the
+    user's --agent is dropped -> resolve_agent's Gate-2a (NoAgentSelectedError)
+    kills the box.  See the two recursive call sites in start.py.
+    """
+
+    def _drive(self, m):
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+        m.target.name = "claude"
+        m.target.descriptor = _CLAUDE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.load_agent_config.return_value = m.agent_cfg
+        # Target requests exactly one new-session retry.
+        m.target.should_retry_new_session.return_value = True
+
+    def test_retry_threads_explicit_agent(self, start_mocks):
+        with start_mocks() as m:
+            self._drive(m)
+            # Simulate "container never comes up" so the for...else retry block
+            # fires: keep is_running False even after run() (override the
+            # fixture's side-effect that flips it True).
+            m.runtime.run.side_effect = None
+            m.runtime.run.return_value = 0
+            m.runtime.is_running.return_value = False
+
+            # The retry only triggers when there are container logs to inspect;
+            # the conftest default stubs _container_logs to "".  Give it real
+            # output once so should_retry_new_session is consulted.
+            with patch(
+                "kanibako.commands.start._container_logs",
+                return_value="No conversation found to continue",
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, explicit_agent="claude",
+                )
+
+            # No Gate-2a was raised (it would propagate out of _run_container).
+            assert rc is not None
+            # resolve_agent was invoked on BOTH the initial launch and the
+            # retry, and BOTH carried the explicit agent — the retry did not
+            # drop it back to None.
+            assert m.resolve_agent.call_count >= 2
+            for call in m.resolve_agent.call_args_list:
+                assert call.kwargs.get("explicit_agent") == "claude"
+
+    def test_retry_without_explicit_agent_stays_none(self, start_mocks):
+        """Control: when no --agent was given, the retry must NOT invent one."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.runtime.run.side_effect = None
+            m.runtime.run.return_value = 0
+            m.runtime.is_running.return_value = False
+            with patch(
+                "kanibako.commands.start._container_logs",
+                return_value="No conversation found to continue",
+            ):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True,
+                )
+            assert m.resolve_agent.call_count >= 2
+            for call in m.resolve_agent.call_args_list:
+                assert call.kwargs.get("explicit_agent") is None
