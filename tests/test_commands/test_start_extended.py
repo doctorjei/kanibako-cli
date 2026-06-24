@@ -884,18 +884,17 @@ class TestSecureAutonomousFlags:
 # ---------------------------------------------------------------------------
 
 class TestVaultTmpfsMode:
-    """Pin the UNCONDITIONAL vault tmpfs mask (config-core 4c, decision B).
+    """Pin that there is NO default tmpfs mask in any box mode.
 
-    The vault mask is generalized into the ``box.masks`` category with an
-    unconditional default of ``~/workspace/vault`` (config-core revamp,
-    decision B / design-review m6).  start.py resolves the mask through the
-    category model and passes the result to ``runtime.run(tmpfs_masks=...)``.
-    Unlike the old default-workset-only flag, the mask is now ON in EVERY box
-    mode (default / workset / standalone), unless a box suppresses it via a
-    terminal ``""`` on ``box.masks``.
+    The old unconditional ``~/workspace/vault`` mask default was DROPPED in
+    1.6.0 — the vault was relocated out of the workspace, so there is nothing in
+    ``~/workspace`` to mask.  start.py resolves masks through the ``box.masks``
+    category model with no default, so with no config the mask list is empty in
+    every box mode (default / workset / standalone).  A box (or any scope) may
+    still declare masks via ``box.masks`` / ``<scope>.masks``.
     """
 
-    def test_default_mode_uses_tmpfs_vault(self, start_mocks):
+    def test_default_mode_has_no_mask(self, start_mocks):
         from pathlib import Path
 
         from kanibako.paths import ProjectGroup, BoxMode
@@ -911,10 +910,13 @@ class TestVaultTmpfsMode:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
+            # Empty mask list -> runtime.run is passed tmpfs_masks=None
+            # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
+            # args are emitted.
             masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
-            assert masks == ["/home/agent/workspace/vault"]
+            assert masks is None
 
-    def test_workset_mode_now_also_uses_tmpfs_vault(self, start_mocks):
+    def test_workset_mode_has_no_mask(self, start_mocks):
         from pathlib import Path
 
         from kanibako.paths import ProjectGroup, BoxMode
@@ -930,11 +932,13 @@ class TestVaultTmpfsMode:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # Decision B: the mask is now unconditional (was False pre-4c).
+            # Empty mask list -> runtime.run is passed tmpfs_masks=None
+            # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
+            # args are emitted.
             masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
-            assert masks == ["/home/agent/workspace/vault"]
+            assert masks is None
 
-    def test_standalone_mode_now_also_uses_tmpfs_vault(self, start_mocks):
+    def test_standalone_mode_has_no_mask(self, start_mocks):
         from kanibako.paths import BoxMode
 
         with start_mocks() as m:
@@ -945,9 +949,11 @@ class TestVaultTmpfsMode:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # Decision B: the mask is now unconditional (was False pre-4c).
+            # Empty mask list -> runtime.run is passed tmpfs_masks=None
+            # (``tmpfs_masks or None`` at the call site), so no tmpfs mount
+            # args are emitted.
             masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
-            assert masks == ["/home/agent/workspace/vault"]
+            assert masks is None
 
 
 class TestConfigurableBootstrap:

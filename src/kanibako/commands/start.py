@@ -1207,12 +1207,11 @@ def _run_container(
         )
         extra_mounts.extend(share_mounts)
 
-        # Masks (decision B): resolve the ``box.masks`` tmpfs mask LIST through
-        # the category model.  The vault mask (~/workspace/vault) is injected
-        # unconditionally (every box mode); a box may add masks or suppress all
-        # via a terminal "" on box.masks.  The result drives
-        # runtime.run(tmpfs_masks=...) below — generalizing the old hardcoded,
-        # single, default-workset-only flag.
+        # Masks: resolve the ``box.masks`` tmpfs mask LIST through the category
+        # model.  There is NO default mask (the old ~/workspace/vault default was
+        # dropped — the vault moved out of the workspace in 1.6.0); a box (or any
+        # scope) may declare masks via ``box.masks`` / ``<scope>.masks``.  The
+        # result drives runtime.run(tmpfs_masks=...) below.
         tmpfs_masks = _resolve_masks(
             std=std,
             proj=proj,
@@ -2144,16 +2143,6 @@ def _apply_synced_copies(
             shutil.copy2(str(src), str(dest))
 
 
-# Default vault tmpfs mask (decision B): the local ``~/workspace/vault`` is
-# hidden behind an UNCONDITIONAL read-only tmpfs in every box mode.  It flows
-# through the category resolver as a ``box.masks`` default so a box may add to
-# or suppress (terminal ``""``) it like any other category.  (The old behavior
-# was conditional on the default-workset mode; the mask is now unconditional —
-# design decision B, design-review m6.  The ``.gitignore`` overlay that rode on
-# the old tmpfs is DROPPED.)
-VAULT_MASK_DEST = "~/workspace/vault"
-
-
 def _category_resolution_inputs(
     *,
     std,
@@ -2383,15 +2372,13 @@ def _resolve_masks(
 ) -> list[str]:
     """Resolve the active tmpfs masks (the ``box.masks`` category) as box-dests.
 
-    Masks flow through the category resolver; the unconditional default
-    (:data:`VAULT_MASK_DEST` → ``~/workspace/vault``) is injected so the local
-    vault is hidden behind a read-only tmpfs in every box mode (decision B).  A
-    box may add masks or suppress all of them with a terminal ``""``.  Returns
-    the reconciled mask box-dest LIST (``@``-expanded, e.g.
-    ``/home/agent/workspace/vault``) — generalizing the old hardcoded single
-    ``vault_tmpfs`` flag.  The default (no extra masks) yields exactly
-    ``["/home/agent/workspace/vault"]`` so the emitted podman args are
-    byte-identical to the pre-list behavior.
+    Masks flow through the category resolver with NO default.  A box (or any
+    scope) may declare ``box.masks`` / ``<scope>.masks`` to hide a guest path
+    behind a read-only tmpfs; with nothing declared the result is an empty list
+    and no mask is applied.  (The old unconditional ``~/workspace/vault`` default
+    was dropped: the vault was relocated OUT of the workspace in 1.6.0 — there is
+    nothing in ``~/workspace`` to mask in any box mode.)  Returns the reconciled
+    mask box-dest LIST (``@``-expanded).
     """
     reconciled = _resolve_launch_categories(
         std=std,
@@ -2401,7 +2388,6 @@ def _resolve_masks(
         project_toml=project_toml,
         workset_config_path=workset_config_path,
         agent_config_path=agent_config_path,
-        default_categories={"box.masks": VAULT_MASK_DEST},
     )
     return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
 
