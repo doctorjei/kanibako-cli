@@ -40,8 +40,22 @@ class TestShouldRetryNewSession:
             "Error: No session found to resume"
         )
 
+    def test_true_case_insensitive(self):
+        # The exact casing of goose's stderr is not pinned by the repo, so the
+        # detector matches case-insensitively and still fires on a casing tweak.
+        assert GooseTarget().should_retry_new_session(
+            "ERROR: NO SESSION FOUND TO RESUME"
+        )
+
     def test_false_on_unrelated_output(self):
         assert not GooseTarget().should_retry_new_session("some other output")
+
+    def test_false_on_other_failure_no_spurious_retry(self):
+        # A different goose failure (unconfigured) must NOT trigger a new-session
+        # retry — that path is handled by should_run_setup, not a relaunch.
+        assert not GooseTarget().should_retry_new_session(
+            "Goose is not configured. Run 'goose configure' to set up."
+        )
 
     def test_false_on_empty_output(self):
         assert not GooseTarget().should_retry_new_session("")
