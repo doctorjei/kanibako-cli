@@ -184,6 +184,16 @@ def run_setup(args: argparse.Namespace) -> int:
     for name, cls in targets.items():
         try:
             instance = cls()
+            if not getattr(instance, "has_binary", True):
+                # The binary-less "Shell" no-agent target needs no host binary;
+                # it ships in the image and is always available -- never flag it
+                # as "not found" (mirrors `system diagnose`).
+                print(
+                    f"  [ok] {instance.display_name} "
+                    "(image default; no host binary needed)"
+                )
+                found_any = True
+                continue
             install = instance.detect()
             if install is not None:
                 print(f"  [ok] {instance.display_name} detected")
