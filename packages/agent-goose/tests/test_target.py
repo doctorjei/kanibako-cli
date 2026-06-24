@@ -263,6 +263,41 @@ class TestCheckAuth:
             assert GooseTarget().check_auth() is True
         m_which.assert_not_called()
 
+    def test_returns_false_when_config_missing(self, tmp_path: Path, fake_host: Path, monkeypatch):
+        """The bug condition: secrets present but host config.yaml absent -> False.
+
+        Before the config-persistence fix this was the steady state after every
+        in-box ``goose configure`` (config.yaml lived only in the box), so the
+        host check_auth re-failed and kanibako re-ran setup on each start.
+        """
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
+        _anchor_contract(monkeypatch, _real_binary(tmp_path))
+
+        secrets = fake_host / ".config" / "goose" / "secrets.yaml"
+        secrets.write_text("key: secret\n")
+        # No config.yaml on the host.
+
+        assert GooseTarget().check_auth() is False
+
+    def test_loop_closes_after_config_written_back(self, tmp_path: Path, fake_host: Path, monkeypatch):
+        """End-to-end of the fix: once writeback lands config.yaml on the host (in
+        addition to the already-synced secrets.yaml), the NEXT-start check_auth
+        passes -> no re-prompt.  This simulates writeback_cred_files having mirrored
+        the box's config.yaml back to the host.
+        """
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
+        _anchor_contract(monkeypatch, _real_binary(tmp_path))
+
+        # secrets.yaml is synced today; before the fix config.yaml was not.
+        (fake_host / ".config" / "goose" / "secrets.yaml").write_text("key: secret\n")
+        assert GooseTarget().check_auth() is False  # bug state: config absent
+
+        # writeback now mirrors the box's config.yaml to the host.
+        (fake_host / ".config" / "goose" / "config.yaml").write_text(
+            "GOOSE_PROVIDER: custom_navigator\nGOOSE_MODEL: gemma-4-31b-it\n"
+        )
+        assert GooseTarget().check_auth() is True  # fixed: no re-prompt
+
 
 class TestGenerateAgentConfig:
     def test_returns_empty_state_no_pinned_provider_model(self):
@@ -386,17 +421,37 @@ class TestDescriptor:
         }
 
     def test_cred_files(self):
-        # The host config.yaml IMPORT (SEED_ONCE, filtered) was removed in 1.6.0;
-        # only the synced secrets.yaml remains.
+        # The old host config.yaml IMPORT (SEED_ONCE, filtered) stays removed.
+        # As of the 2026-06-24 config-persistence fix, goose two-way SYNCs three
+        # things: secrets.yaml + config.yaml (files) and custom_providers/ (dir),
+        # so in-box ``goose configure`` persists back to the host (host check_auth
+        # then passes -> no re-prompt).  All unfiltered.
         d = GooseTarget().descriptor
         specs = {s.home_rel: s for s in d.cred_files}
-        assert set(specs) == {".config/goose/secrets.yaml"}
+        assert set(specs) == {
+            ".config/goose/secrets.yaml",
+            ".config/goose/config.yaml",
+            ".config/goose/custom_providers",
+        }
 
         secrets = specs[".config/goose/secrets.yaml"]
         assert secrets.host_rel == ".config/goose/secrets.yaml"
         assert secrets.cadence == Cadence.SYNC
         assert secrets.mtime_gate is True
         assert secrets.filtered is False
+        assert secrets.is_dir is False
+
+        config = specs[".config/goose/config.yaml"]
+        assert config.host_rel == ".config/goose/config.yaml"
+        assert config.cadence == Cadence.SYNC
+        assert config.filtered is False
+        assert config.is_dir is False
+
+        providers = specs[".config/goose/custom_providers"]
+        assert providers.host_rel == ".config/goose/custom_providers"
+        assert providers.cadence == Cadence.SYNC
+        assert providers.filtered is False
+        assert providers.is_dir is True
 
     def test_host_prep_and_init_dirs(self):
         d = GooseTarget().descriptor

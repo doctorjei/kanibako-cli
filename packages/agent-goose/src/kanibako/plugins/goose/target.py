@@ -69,11 +69,24 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 #     --model/--provider exist only on `goose run`.
 #   * binary binding uses the BINARY origin (install.binary) — goose has no
 #     separate launcher symlink, so there is no LAUNCHER binding.
-#   * secrets.yaml syncs bidirectionally (SYNC).  The host config.yaml IMPORT
-#     (extensions/instructions allowlist seed) was removed in 1.6.0: a box gets
-#     its curated config.yaml (extensions/instructions) from the agent template,
-#     and provider/model from the GOOSE_PROVIDER/GOOSE_MODEL env settings — not
-#     from the host config (D-M15: no host-extensions carve-out).
+#   * secrets.yaml syncs bidirectionally (SYNC).
+#   * config.yaml + custom_providers/ ALSO sync bidirectionally (SYNC) as of the
+#     2026-06-24 goose-config-persistence fix.  This intentionally revisits the
+#     1.6.0 D-M15 "no host-config" stance for goose's PROVIDER config (Jei-
+#     approved): the user configures goose interactively IN THE BOX (``goose
+#     configure`` writes provider/model into config.yaml + any custom_providers/
+#     entry); without writeback the box-only config is invisible to the host-side
+#     ``check_auth`` (which reads ~/.config/goose/config.yaml), so kanibako re-ran
+#     ``goose configure`` on EVERY start.  Syncing config.yaml + custom_providers/
+#     back to the host fixes the re-prompt and gives goose PARITY with how claude
+#     (.credentials.json) and codex (auth.json) write back to the host.  These
+#     files reference the provider API key by env-var NAME, not by value (the
+#     value lives in secrets.yaml under GOOSE_DISABLE_KEYRING), so they are
+#     unfiltered wholesale copies — no secret leaks into config.yaml/
+#     custom_providers/.  The OLD 1.6.0 host config.yaml IMPORT (the
+#     extensions/instructions allowlist seed) stays removed; this is a plain SYNC
+#     of the box's own config, not a re-introduction of the host-extensions
+#     carve-out.
 _GOOSE_DESCRIPTOR = PluginDescriptor(
     command=("goose",),
     bindings=(
@@ -106,6 +119,14 @@ _GOOSE_DESCRIPTOR = PluginDescriptor(
     container_env={"GOOSE_DISABLE_KEYRING": "true"},
     cred_files=(
         CredFileSpec(".config/goose/secrets.yaml", ".config/goose/secrets.yaml", cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
+        # config.yaml: provider/model selection + base config from in-box ``goose
+        # configure``.  SYNC so it persists back to the host -> host check_auth
+        # passes on the next start (no re-prompt).  Unfiltered (key-by-NAME only).
+        CredFileSpec(".config/goose/config.yaml", ".config/goose/config.yaml", cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
+        # custom_providers/: the custom-provider DEFINITIONS dir (e.g.
+        # custom_navigator.json — base URL, model list, the api_key ENV-VAR NAME).
+        # is_dir -> recursive sync (no mtime gate); credsync mirrors it both ways.
+        CredFileSpec(".config/goose/custom_providers", ".config/goose/custom_providers", cadence=Cadence.SYNC, mtime_gate=True, filtered=False, is_dir=True),
     ),
     host_prep=False,
     init_dirs=(".config/goose", ".local/share/goose/sessions"),
@@ -119,10 +140,11 @@ class GooseTarget(Target):
     def descriptor(self) -> PluginDescriptor | None:
         return _GOOSE_DESCRIPTOR
 
-    # NOTE: no ``transform_cred`` override.  The host config.yaml IMPORT (the
-    # extensions/instructions allowlist filter) was removed in 1.6.0; goose's
-    # only cred file is the unfiltered ``secrets.yaml`` (SYNC), which the credsync
-    # engine wholesale-copies + chmods 0600 without ever calling transform_cred.
+    # NOTE: no ``transform_cred`` override.  The old host config.yaml IMPORT
+    # (extensions/instructions allowlist filter) stays removed; all of goose's
+    # cred specs are UNFILTERED SYNC entries — secrets.yaml + config.yaml (files)
+    # and custom_providers/ (dir) — which the credsync engine wholesale-copies +
+    # chmods 0600 without ever calling transform_cred.
 
     @property
     def name(self) -> str:
