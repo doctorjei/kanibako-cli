@@ -275,6 +275,10 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   two-prong test (compare versions when both resolve via PEP 440, else compare
   build `created` timestamps only when neither side resolves a version, else
   stay silent) and never nags on uncertainty.
+- **Box home seeding is now non-destructive.** A box whose home is already
+  populated but lacks the `.seeded` marker (e.g. a migrated box) no longer has
+  its existing home files overwritten on launch; cross-layer template last-wins
+  is preserved. Prevents re-seed data loss.
 
 ## [1.5.1] - 2026-06-16
 
