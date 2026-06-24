@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`kanibako rig update [<name>]`** — the everyday "get the latest" path for a
+  rig. For a pulled/prefab rig it pulls the newer upstream image; for a
+  template/built rig it rebuilds on the refreshed base. With no name it targets
+  the configured `box.image` rig; `--all` updates every local rig. `rig prep
+  --force` is kept as the full rebuild-from-scratch path.
+
+### Changed
+
+- Image-freshness notices now suggest `kanibako rig update` (was `kanibako rig
+  prep --force`).
+
 ## [1.6.0] - 2026-06-17
 
 This release generalizes kanibako's agent-plugin interface so that any agent is

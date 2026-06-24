@@ -43,7 +43,7 @@ _MAX_VERSION_TAG_PROBES = 12
 
 _BANNER = (
     "Note: A newer version of {image} is available. "
-    "Run 'kanibako rig prep --force' to update."
+    "Run 'kanibako rig update' to update."
 )
 
 

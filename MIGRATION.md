@@ -974,7 +974,7 @@ warnings or fallbacks left. Update to the canonical forms:
 The `image` / `agent` short config-key names no longer resolve to anything; only
 the canonical `box.image` / `box.agent` keys are recognized (setting an `image`
 or `agent` key is now an "unknown key" error). Image-freshness notices that used
-to suggest `kanibako rig rebuild` now point to `kanibako rig prep --force`.
+to suggest `kanibako rig rebuild` now point to `kanibako rig update`.
 
 ---
 
