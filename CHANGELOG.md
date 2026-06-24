@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A persistent box now tears down (credential writeback + container removal) when
+  its in-box session exits; a `Ctrl-b d` detach (or a dropped client) keeps it
+  running and reattachable with `kanibako start`. Previously a clean exit left a
+  stopped container behind, which blocked the next `kanibako shell`/`start`.
 - Image-freshness notices now suggest `kanibako rig update` (was `kanibako rig
   prep --force`).
 

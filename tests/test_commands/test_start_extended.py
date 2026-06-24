@@ -597,6 +597,153 @@ class TestPersistentMode:
             assert "attempt 4/5" in captured.err
             assert "attempt 5/5" not in captured.err
 
+    @staticmethod
+    def _drive_fresh_exit(m, exit_rc: int = 0):
+        """Model a fresh persistent launch that EXITS after attach.
+
+        Fresh start => no stale container at the top (``container_exists`` False,
+        so the pre-launch cleanup never fires).  ``run`` creates it (is_running
+        True, exists True).  The attach exec returns and the box has exited
+        (is_running False) but the container record still exists until removed,
+        so the teardown can remove it.
+        """
+        exists = {"v": False}
+        m.runtime.container_exists.side_effect = lambda *a, **kw: exists["v"]
+        _orig_run = m.runtime.run.side_effect
+
+        def _run_side(*a, **kw):
+            exists["v"] = True
+            return _orig_run(*a, **kw) if _orig_run else 0
+        m.runtime.run.side_effect = _run_side
+
+        def _exec_then_exit(*a, **kw):
+            m.runtime.is_running.return_value = False  # tmux session ended
+            return exit_rc
+        m.runtime.exec.side_effect = _exec_then_exit
+
+        def _rm_side(*a, **kw):
+            exists["v"] = False
+            return True
+        m.runtime.rm.side_effect = _rm_side
+
+    def test_persistent_removes_box_on_clean_exit(self, start_mocks):
+        """Two-state lifecycle: an exited box is torn down after writeback.
+
+        The in-box shell/agent exited -> tmux session ended -> container is not
+        running after attach returns.  Writeback runs, then the container is
+        removed so the next start/shell is fresh.
+        """
+        with start_mocks() as m:
+            self._drive_fresh_exit(m)
+            wb = MagicMock()
+            with patch(
+                "kanibako.commands.start.writeback_session_credentials", wb
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True,
+                )
+            assert rc == 0
+            m.runtime.rm.assert_called_once()
+            assert wb.called
+
+    def test_persistent_writeback_before_remove(self, start_mocks):
+        """On clean exit, writeback is invoked before the container is removed."""
+        with start_mocks() as m:
+            self._drive_fresh_exit(m)
+            events: list[str] = []
+            _rm_state = m.runtime.rm.side_effect
+
+            def _rm_side(*a, **kw):
+                events.append("rm")
+                return _rm_state(*a, **kw)
+            m.runtime.rm.side_effect = _rm_side
+            with patch(
+                "kanibako.commands.start.writeback_session_credentials",
+                side_effect=lambda *a, **kw: events.append("writeback"),
+            ):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True,
+                )
+            assert events == ["writeback", "rm"]
+
+    def test_persistent_keeps_box_on_detach(self, start_mocks):
+        """A detached box (still running after attach) is kept, not removed."""
+        with start_mocks() as m:
+            # After the detached launch + attach, the container is STILL running
+            # (Ctrl-b d / dropped client): is_running stays True (run side-effect
+            # sets it True and exec doesn't clear it).
+            m.runtime.exec.return_value = 0  # attach returns, container alive
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            m.runtime.rm.assert_not_called()
+
+    def test_persistent_removes_box_on_nonzero_exit(self, start_mocks):
+        """Crisp model: a non-zero in-box exit still tears down the box."""
+        with start_mocks() as m:
+            self._drive_fresh_exit(m, exit_rc=3)
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 3
+            m.runtime.rm.assert_called_once()
+
+    def test_persistent_remove_failure_does_not_crash(self, start_mocks, capsys):
+        """A removal failure logs a warning, never crashes or changes exit code."""
+        with start_mocks() as m:
+            self._drive_fresh_exit(m)
+            m.runtime.rm.side_effect = RuntimeError("boom")
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            # Exit code preserved; no exception propagated.
+            assert rc == 0
+
+    def test_persistent_reattach_removes_box_on_exit(self, start_mocks):
+        """Reattach path also tears down an exited box after writeback."""
+        with start_mocks() as m:
+            # Container already running -> reattach branch.
+            m.runtime.is_running.return_value = True
+
+            def _exec_then_exit(*a, **kw):
+                m.runtime.is_running.return_value = False
+                return 0
+            m.runtime.exec.side_effect = _exec_then_exit
+            m.runtime.container_exists.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            m.runtime.run.assert_not_called()  # reattach, no new launch
+            m.runtime.rm.assert_called_once()
+
+    def test_persistent_reattach_keeps_box_on_detach(self, start_mocks):
+        """Reattach + detach (still running) keeps the box."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True  # stays running (detach)
+            m.runtime.exec.return_value = 0
+            m.runtime.container_exists.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            m.runtime.rm.assert_not_called()
+
 
 class TestNoConversationHint:
     """Hint when agent exits non-zero with --continue/--resume."""
@@ -665,7 +812,7 @@ class TestInteractivePersistentGuard:
             assert rc == 1
             m.runtime.run.assert_not_called()
         captured = capsys.readouterr()
-        assert "container already exists" in captured.err.lower()
+        assert "already running" in captured.err.lower()
         assert "kanibako start" in captured.err
 
     def test_no_container_proceeds_normally(self, start_mocks):
