@@ -81,7 +81,18 @@ def _is_newer_available(
     if remote_version is not None and local_version is not None:
         return remote_version > local_version
 
-    # --- Prong 2: dates -----------------------------------------------------
+    # If *either* side has a resolvable version we stop here and stay silent.
+    # Dates can't tell "newer" apart from "merely rebuilt": a same-version
+    # rebuild of remote ``:latest`` (e.g. a base-image refresh) carries a fresh
+    # ``created`` stamp, and a locally-built/retagged/pinned image carries its
+    # own build time -- both would read as "remote newer" on dates alone. So
+    # the date prong is reserved for the case where *neither* side resolves a
+    # version (a genuinely custom image); a known local version that we can't
+    # prove is behind is treated as up-to-date.
+    if remote_version is not None or local_version is not None:
+        return False
+
+    # --- Prong 2: dates (only when neither side has a version) --------------
     local_created = _parse_ts(runtime.get_local_created(image))
     remote_created = _parse_ts(_cached_remote_created(image, platform, cache_path))
     if local_created is not None and remote_created is not None:
