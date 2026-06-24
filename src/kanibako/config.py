@@ -583,7 +583,13 @@ def setup_nudge_message(config_path: Path | None) -> str | None:
     from packaging.version import InvalidVersion, Version
 
     try:
-        if Version(marker) < Version(OLDEST_COMPATIBLE_SETUP_VERSION):
+        # Compare by BASE version so a dev/rc/pre-release build of the same (or
+        # newer) base as the constant does NOT nag (PEP 440 makes
+        # ``1.6.0.dev26 < 1.6.0`` True, which would nag every dev build right
+        # after setup).  Genuinely older releases (e.g. ``1.5.0``) still nag.
+        if Version(Version(marker).base_version) < Version(
+            OLDEST_COMPATIBLE_SETUP_VERSION
+        ):
             return "kanibako setup is out of date — re-run 'kanibako setup'."
     except InvalidVersion:
         # Hand-edited / unrecognized marker: assume the user knows what they're
