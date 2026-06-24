@@ -286,11 +286,9 @@ class ContainerRuntime:
             if vault_rw_path.is_dir():
                 cmd += ["-v", f"{vault_rw_path}:/home/agent/vault/rw:Z,U"]
             # Local masking: a read-only tmpfs over each box-dest in the
-            # ``box.masks`` category (resolved in start.py, decision B).  The
-            # default mask is ``~/workspace/vault`` (the old single hardcoded
-            # vault tmpfs); a box may add masks or suppress via a terminal "".
-            # The ``.gitignore`` overlay that used to ride on the vault tmpfs is
-            # DROPPED (unconditional mask, no special-case overlay).
+            # ``box.masks`` category (resolved in start.py).  There is no default
+            # mask; a box (or any scope) may declare masks via ``box.masks`` /
+            # ``<scope>.masks``.  Empty list -> no tmpfs masks emitted.
             for mask in masks:
                 cmd += ["--mount", f"type=tmpfs,dst={mask},ro"]
         # Extra mounts (target binary mounts, etc.)
@@ -667,8 +665,7 @@ def _precreate_mount_stubs(
         # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
         # Map each box-dest to its host side the same way extra mounts are
         # mapped (under project_path for workspace dests, shell_path for other
-        # home dests).  The default mask ``/home/agent/workspace/vault`` maps to
-        # ``project_path / "vault"`` — byte-identical to the old single stub.
+        # home dests).  Empty list (the default — no masks) -> no stubs.
         for mask in tmpfs_masks:
             if mask.startswith(WORKSPACE):
                 _ensure_dir(project_path / mask[len(WORKSPACE):])

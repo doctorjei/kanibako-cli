@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image-freshness notices now suggest `kanibako rig update` (was `kanibako rig
   prep --force`).
 
+### Removed
+
+- Dropped the vestigial default `~/workspace/vault` tmpfs mask. It only existed
+  to hide the vault back when it lived inside the workspace; the vault moved out
+  of the workspace in 1.6.0, so no mask is applied by default. Boxes can still
+  declare explicit tmpfs masks via the `box.masks` (or `<scope>.masks`) category.
+
 ## [1.6.0] - 2026-06-17
 
 This release generalizes kanibako's agent-plugin interface so that any agent is
