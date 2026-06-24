@@ -297,8 +297,13 @@ class TestIndeterminateSilent:
         check_image_freshness(rt, "img:latest", tmp_path)
         assert _err(capsys) == ""
 
-    def test_only_local_version_resolves_falls_to_dates(self, tmp_path, capsys):
-        """Local version known but remote version unresolved -> use dates."""
+    def test_only_local_version_resolves_stays_silent(self, tmp_path, capsys):
+        """Local version known, remote version unresolved -> silent (no dates).
+
+        Dates are NOT consulted once either side has a version: a resolvable
+        local version that we can't *prove* is behind is treated as up to date,
+        so a newer remote ``created`` stamp must not nag.
+        """
         rt = _runtime(label="1.5.0", created="2026-01-01T00:00:00Z")
         with (
             patch(
@@ -320,7 +325,46 @@ class TestIndeterminateSilent:
             ),
         ):
             check_image_freshness(rt, "img:latest", tmp_path)
-        assert "newer version" in _err(capsys)
+        assert "newer version" not in _err(capsys)
+
+    def test_local_dev_retag_vs_rebuilt_prod_latest_silent(self, tmp_path, capsys):
+        """Real false-positive: a locally-built/retagged dev image vs a remote
+        prod ``:latest`` that was rebuilt more recently (same prod version).
+
+        The local image carries a higher dev version label but is NOT remote
+        ``:latest`` (digests disjoint), and remote ``:latest``'s digest matches
+        no probed version tag -> remote version unresolved. The local build is
+        older by *date* than the freshly-rebuilt remote prod image. This must
+        stay silent: 1.6.0.dev25 is not behind 1.5.3, and dates must not lie.
+        """
+        rt = _runtime(
+            local_digests=["sha256:devbuild"],
+            label="1.6.0.dev25",
+            tags=["img:latest"],
+            created="2026-05-01T00:00:00Z",  # local built earlier
+        )
+        with (
+            patch(
+                "kanibako.freshness._cached_remote_digests",
+                return_value={"sha256:prodlatest"},
+            ),
+            # remote :latest digest matches none of the probed version tags
+            patch(
+                "kanibako.freshness._cached_remote_tags",
+                return_value=["1.5.2", "1.5.3", "latest"],
+            ),
+            patch(
+                "kanibako.freshness._cached_tag_digest",
+                return_value="sha256:unrelated",
+            ),
+            # remote prod :latest rebuilt more recently than the local build
+            patch(
+                "kanibako.freshness._cached_remote_created",
+                return_value="2026-06-20T00:00:00Z",
+            ),
+        ):
+            check_image_freshness(rt, "img:latest", tmp_path)
+        assert "newer version" not in _err(capsys)
 
 
 class TestParseTs:
