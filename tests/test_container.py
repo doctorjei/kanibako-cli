@@ -296,6 +296,63 @@ class TestDetachMode:
             assert "--rm" in cmd
             assert "-d" not in cmd
 
+    def test_detach_captures_stdout_so_id_not_leaked(self):
+        """detach=True captures stdout (container id stays off the terminal)."""
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(
+                returncode=0, stdout="57c49acad8fb" * 4, stderr=""
+            )
+            rc = rt.run(
+                "test:latest",
+                shell_path=Path("/tmp/shell"),
+                project_path=Path("/tmp/project"),
+                vault_ro_path=Path("/tmp/vault-ro"),
+                vault_rw_path=Path("/tmp/vault-rw"),
+                enable_vault=False,
+                detach=True,
+            )
+            assert rc == 0
+            assert m.call_args.kwargs.get("capture_output") is True
+
+    def test_interactive_does_not_capture_stdout(self):
+        """detach=False stays foreground (no capture) so stdio is inherited."""
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rc = rt.run(
+                "test:latest",
+                shell_path=Path("/tmp/shell"),
+                project_path=Path("/tmp/project"),
+                vault_ro_path=Path("/tmp/vault-ro"),
+                vault_rw_path=Path("/tmp/vault-rw"),
+                enable_vault=False,
+                detach=False,
+            )
+            assert rc == 0
+            assert m.call_args.kwargs.get("capture_output") is not True
+
+    def test_detach_propagates_failure_returncode(self):
+        """A failed detached launch still propagates its non-zero return code."""
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(
+                returncode=125, stdout="", stderr="Error: boom\n"
+            )
+            rc = rt.run(
+                "test:latest",
+                shell_path=Path("/tmp/shell"),
+                project_path=Path("/tmp/project"),
+                vault_ro_path=Path("/tmp/vault-ro"),
+                vault_rw_path=Path("/tmp/vault-rw"),
+                enable_vault=False,
+                detach=True,
+            )
+            assert rc == 125
+
 
 class TestRmAndIsRunning:
     """Test rm() and is_running() methods."""

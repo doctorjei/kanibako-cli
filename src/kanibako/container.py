@@ -310,8 +310,29 @@ class ContainerRuntime:
 
         logger.debug("Container command: %s", cmd)
 
-        result = subprocess.run(cmd)
-        return result.returncode
+        if detach:
+            # ``podman run -d`` prints the new container's full SHA id to
+            # stdout. The caller reattaches by NAME (runtime.exec), so the id
+            # is not needed; capture it to keep it off the user's terminal and
+            # surface it only at DEBUG (``-v``). A genuine launch failure must
+            # still be reported, so echo captured stderr on a non-zero return.
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(
+                    "Detached container launch failed (exit %s)", result.returncode
+                )
+                if result.stderr:
+                    sys.stderr.write(result.stderr)
+            else:
+                logger.debug(
+                    "Detached container started: %s", (result.stdout or "").strip()
+                )
+            return result.returncode
+
+        # Interactive foreground path: inherit the terminal so the agent /
+        # shell (and tmux attach) get the real stdio/tty.
+        fg_result = subprocess.run(cmd)
+        return fg_result.returncode
 
     def exec(
         self,
