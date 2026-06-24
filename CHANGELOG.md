@@ -122,6 +122,8 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   - The `image` / `agent` short config-key aliases are removed; use the
     canonical `box.image` / `box.agent`. The empty `_FIELD_ALIASES` config
     scaffolding was also dropped.
+  - The top-level `kanibako vault` command alias is removed; vault snapshot
+    commands now live only under `kanibako box vault …`.
 - **Data-relocation shims removed (clean break, no auto-migration left).**
   - **Snapshot `.tar.xz` support.** Vault snapshots are now directory snapshots
     only (`reflink` / `hardlink`); the legacy compressed-archive format is no
@@ -211,6 +213,14 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   arbitrarily launch the first installed agent in plugin-discovery order (the
   "goose-by-luck" footgun under the all-three meta-package). `kanibako shell` is the
   sole no-agent path and never errors on agent resolution.
+- **Reattaching to a running box no longer hits the "pick an agent" error.**
+  `kanibako start` against an already-running persistent box now reattaches
+  even when 2+ agents are installed with no default: the resolved agent is
+  stamped on the container at launch (ephemeral env, not durable config) and
+  sourced back on reattach for the per-agent credential refresh, so agent
+  resolution succeeds. A matching `--agent` is fine; a differing explicit
+  `--agent` is a hard error; a differing system default is superseded (the
+  running box wins). A brief reattach heads-up is printed to stderr.
 
 ### Fixed
 
@@ -218,6 +228,53 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   start` form that 1.37.0 removed, so launching Goose failed. The grammar is
   rewritten to the verified 1.37.0 tokens. (The previous Goose plugin was an
   unpublished `0.1.0`, so this is not a regression.)
+- **Credential writeback now runs on every session-end path.** A box's
+  in-box agent config/credentials are written back to the host on **exit,
+  detach, reattach-exit, and `stop`** (previously some paths skipped it), the
+  host credential file is created when absent, and for Claude the in-box
+  `oauthAccount` is **merged** back into the host `~/.claude.json` without
+  clobbering the machine identity.
+- **Agent auth/config is now detected by launch, not a setup exit code.** When
+  the pre-launch `check_auth` probe fails and an agent declares an interactive
+  setup command, kanibako runs it **in-box** (`goose configure` / `codex
+  login`) — also via `agent reauth` — then proceeds to the real launch and
+  inspects its output for a config failure (bounded: it errors if still
+  unconfigured, never loops). This replaces the post-launch output-matcher
+  approach, which could not fire for agents that exit at the auth probe.
+- **Goose secrets now work inside a box (`GOOSE_DISABLE_KEYRING`).** The OS
+  keyring / D-Bus secret-service is unavailable in a box, so `goose configure`
+  could save `config.yaml` but fail to store the provider API key, and launch
+  then failed with `Configuration value not found`. Goose boxes now set
+  `GOOSE_DISABLE_KEYRING=true`, so Goose stores/reads secrets in
+  `~/.config/goose/secrets.yaml` (a file kanibako already syncs host↔box).
+- **Goose no longer forces a provider/model.** The Goose target previously
+  emitted hardcoded `GOOSE_PROVIDER`/`GOOSE_MODEL` defaults, which override
+  Goose's own `config.yaml` and clobbered an in-box `goose configure` choice
+  (leading to `Configuration value not found`). Unset provider/model now emit
+  no env var, so Goose falls back to its own config; an explicit
+  `agent.goose.provider` / `agent.goose.model` still wins the cascade and is
+  emitted.
+- **Goose `config.yaml` + `custom_providers/` now sync back to the host.**
+  In-box `goose configure` writes provider/model (and any custom-provider
+  definitions) into the box home; previously only `secrets.yaml` synced back,
+  so the host-side auth gate never saw a configured Goose and re-ran
+  `goose configure` on every start. These are now two-way sync targets (with
+  directory support added to the credential-sync engine), so an in-box Goose
+  configuration persists across restarts — parity with Claude/Codex. (This is
+  a plain sync of the box's own config; the 1.6.0 host-config *import* stays
+  removed.)
+- **Goose now falls back to a new session when none exists to resume.** Goose's
+  continue mode launches `goose session --resume`; on a fresh box there was no
+  prior session, so Goose exited with `No session found to resume` and the box
+  closed immediately. Goose now opts into the existing no-session fallback
+  (matched case-insensitively) and relaunches with a fresh session.
+- **Image-freshness banner only warns when the remote is provably newer.** The
+  check previously warned whenever the local and remote `:latest` digests
+  differed, so any pinned, locally-built, or retagged image — or a same-version
+  rebuild of remote `:latest` — nagged on every start. Freshness now uses a
+  two-prong test (compare versions when both resolve via PEP 440, else compare
+  build `created` timestamps only when neither side resolves a version, else
+  stay silent) and never nags on uncertainty.
 
 ## [1.5.1] - 2026-06-16
 
