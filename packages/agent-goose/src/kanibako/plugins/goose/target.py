@@ -167,7 +167,10 @@ class GooseTarget(Target):
         # ``continue`` builds ``goose session --resume``; on a fresh box there is
         # no prior session to resume, so goose exits with this stderr.  Signal
         # start.py's fallback to relaunch with a new (bare ``session``) session.
-        return "No session found to resume" in output
+        # Matched case-insensitively: the exact casing of goose's stderr is not
+        # pinned by the repo, so a phrasing-casing tweak still trips the detector
+        # (the secure default is conservative — only this specific phrase fires).
+        return "no session found to resume" in output.lower()
 
     def should_run_setup(self, output: str) -> bool:
         # Launch-time ground truth that goose configure did NOT produce a bootable
