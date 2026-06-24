@@ -87,10 +87,17 @@ class TestRelevance:
         with pytest.raises(FlagRelevanceError):
             check_flag_relevance(_parse(parser, ["list", "--agent", "claude"]))
 
-    def test_agent_irrelevant_on_shell_errors(self, parser):
-        # shell bypasses agent resolution entirely → --agent is irrelevant.
-        with pytest.raises(FlagRelevanceError):
-            check_flag_relevance(_parse(parser, ["shell", "--agent", "claude"]))
+    def test_agent_ignored_on_shell_with_note(self, parser, capsys):
+        # shell never launches an agent: --agent is IGNORED with a note to
+        # stderr (product decision), NOT a hard FlagRelevanceError.
+        check_flag_relevance(_parse(parser, ["shell", "--agent", "claude"]))
+        assert "--agent is ignored for 'shell'" in capsys.readouterr().err
+
+    def test_agent_ignored_on_box_shell_with_note(self, parser, capsys):
+        check_flag_relevance(
+            _parse(parser, ["box", "shell", "--agent", "claude"])
+        )
+        assert "--agent is ignored for 'shell'" in capsys.readouterr().err
 
     def test_box_relevant_on_start(self, parser):
         check_flag_relevance(_parse(parser, ["start", "--box", "foo"]))
