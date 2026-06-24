@@ -831,6 +831,8 @@ def _run_container(
             # back here too — the reattach path (4a32871) previously skipped the
             # post-session cred lifecycle entirely.
             writeback_session_credentials(target, proj)
+            # Two-state lifecycle ("d"): tear down on exit, keep on detach.
+            _teardown_persistent_box(runtime, container_name)
             return reattach_rc
         # Stale stopped container: remove before recreating
         if runtime.container_exists(container_name):
@@ -853,7 +855,7 @@ def _run_container(
             )
         if runtime.container_exists(container_name):
             print(
-                "Error: A container already exists for this project.\n"
+                "Error: A box is already running for this project.\n"
                 "  Reattach:  kanibako start\n"
                 "  Stop it:   kanibako stop",
                 file=sys.stderr,
@@ -1746,6 +1748,10 @@ def _run_container(
             # retry above returns early and re-enters this function, which writes
             # back on its own teardown.)
             writeback_session_credentials(target, proj)
+            # Two-state lifecycle ("d"): an exited box (tmux session ended ->
+            # container not running) is torn down so the next start/shell is
+            # fresh; a detached box (still running) is kept reattachable.
+            _teardown_persistent_box(runtime, container_name)
         else:
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
             writeback_session_credentials(target, proj)
@@ -1825,6 +1831,32 @@ def writeback_session_credentials(target, proj) -> None:
         target.writeback_extra(project_home=proj.shell_path, host_home=Path.home())
     except Exception as exc:  # never crash a teardown path on writeback
         get_logger("start").warning("Credential writeback failed: %s", exc)
+
+
+def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> None:
+    """Remove a persistent box once its session has truly ended.
+
+    Two-state lifecycle ("d"): a persistent box TEARS DOWN on exit but a DETACH
+    keeps it running and reattachable.  After the attach exec returns, the
+    container being NOT running is GROUND TRUTH that the in-box shell/agent
+    exited (the tmux session ended); a still-running container means the client
+    detached (Ctrl-b d or a dropped client) and must be kept.
+
+    Call AFTER the exited-logs reprint and writeback.  Best-effort: a removal
+    failure logs a warning and never crashes the CLI or changes the exit code.
+    Never touches a still-running (detached) container.
+    """
+    if runtime.is_running(container_name):
+        # Detached (or dropped client) — keep it running and reattachable.
+        return
+    if not runtime.container_exists(container_name):
+        return
+    try:
+        runtime.rm(container_name)
+    except Exception as exc:  # never crash the lifecycle on cleanup
+        get_logger("start").warning(
+            "Could not remove exited box %s: %s", container_name, exc
+        )
 
 
 def _build_config_env(
