@@ -62,44 +62,6 @@ def workset_template_dir(proj: ProjectPaths, std: StandardPaths) -> Path | None:
     return workset_root(proj, std) / "template"
 
 
-#: Sentinel filename (under the box metadata dir) recording that the seed-once
-#: home content (templates + credential seeds + init seeds) has been applied.
-#: Its presence — NOT ``proj.is_new`` — is what gates seed-once application, so a
-#: box made via the two-step ``box create`` then ``start`` flow (which creates
-#: the metadata dir at CREATE time, leaving ``is_new`` False at START) is still
-#: seeded exactly once on its first ``start`` (BUG-D).
-SEED_MARKER = ".seeded"
-
-
-def seed_marker_path(metadata_path: Path) -> Path:
-    """Return the seed-once sentinel path under *metadata_path*."""
-    return metadata_path / SEED_MARKER
-
-
-def needs_seed(metadata_path: Path, *, is_new: bool) -> bool:
-    """True when the box still needs its one-time home seeding.
-
-    A box needs seeding when it is freshly created (*is_new*) OR when it was
-    created earlier (e.g. via ``box create``) but never seeded — detected by the
-    absence of the :data:`SEED_MARKER` sentinel under *metadata_path*.  Once the
-    sentinel exists the box is never re-seeded, so user edits to seeded files
-    survive subsequent launches (D-B6).
-    """
-    if is_new:
-        return True
-    return not seed_marker_path(metadata_path).exists()
-
-
-def mark_seeded(metadata_path: Path) -> None:
-    """Record that the box's one-time home seeding has completed.
-
-    Writes the :data:`SEED_MARKER` sentinel under *metadata_path* so a later
-    launch's :func:`needs_seed` returns False.  Idempotent.
-    """
-    metadata_path.mkdir(parents=True, exist_ok=True)
-    seed_marker_path(metadata_path).touch()
-
-
 def apply_template_layers(
     home: Path,
     layers: list[Path | None],
@@ -109,10 +71,11 @@ def apply_template_layers(
     The 1.6.0 home-seed model layers ordered template sources into the box home
     at creation (base -> agent -> workset; later overlays earlier).  The copy is
     NON-DESTRUCTIVE toward files that ALREADY EXIST in *home* before this seed
-    pass begins: such a pre-existing file (a user-edited home file on a
-    marker-less migrated box) is NEVER clobbered.  This is the guard against
-    re-seed DATA LOSS — a box whose home is already populated but lacks the
-    ``.seeded`` marker would otherwise have its files overwritten.
+    pass begins: such a pre-existing file (a user-edited home file on a box that
+    detection mis-flags as un-seeded) is NEVER clobbered.  This is the guard
+    against re-seed DATA LOSS — a box whose home is already populated but which
+    detection (the per-box registry flag + inbox backstop) fails to recognise as
+    seeded would otherwise have its files overwritten.
 
     Within a SINGLE seed pass, cross-layer LAST-WINS is still honoured: a file
     written by an earlier layer during this pass IS overwritten by a later
@@ -122,12 +85,14 @@ def apply_template_layers(
     are skipped (a ``<None>`` / absent layer contributes nothing — e.g.
     STANDALONE boxes have no workset layer).
 
-    This is SEED-ONCE: callers invoke it only when the box still
-    :func:`needs_seed`.  It does NOT special-case or merge any file — every file
-    is a plain ordered copy (the CLAUDE.md merge special-case is gone, D-B5).
-    The caller is responsible for never re-running it once the box is marked
-    seeded so user edits made inside the box survive (D-B6); the non-destructive
-    copy here is an additional safety net for the marker-less re-seed case.
+    This is SEED-ONCE: callers invoke it only when the box still needs seeding
+    (the launch gate detects an already-seeded box via the per-box registry flag
+    OR the existing-inbox backstop).  It does NOT special-case or merge any file
+    — every file is a plain ordered copy (the CLAUDE.md merge special-case is
+    gone, D-B5).  The caller is responsible for never re-running it once the box
+    is recorded seeded so user edits made inside the box survive (D-B6); the
+    non-destructive copy here is an additional safety net against a re-seed
+    caused by mis-detection.
     """
     written: set[Path] = set()
     for layer in layers:

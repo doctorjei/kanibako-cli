@@ -270,6 +270,16 @@ def start_mocks():
             patch("builtins.open", MagicMock()) as m_open,
             patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,
             patch("kanibako.commands.start.registry_path"),
+            # Seed-once detection (BUG-D redesign).  The gate records seed
+            # completion (and adopt-stamps a legacy box) via ``mark_box_seeded``.
+            # Driven with the MagicMock ``std`` here, a real ``mark_box_seeded``
+            # would rewrite the registry under a MagicMock ``std.data_path``,
+            # mkdir-ing a literal ``<MagicMock ...>`` dir in the CWD.  No-op it.
+            # Detection itself (``_box_already_seeded``) returns truthy here (the
+            # inbox-backstop ``.exists()`` is a truthy MagicMock), so seeding is
+            # skipped — matching the old mocked behavior.  Tests exercising the
+            # first-start seed path re-patch ``_box_already_seeded`` -> False.
+            patch("kanibako.box_seed.mark_box_seeded"),
             # Credential-sync engine (descriptor path).  Default to a no-op mock
             # so descriptor-bearing targets driven through _run_container don't
             # perform real filesystem credential ops against MagicMock project

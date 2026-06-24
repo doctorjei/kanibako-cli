@@ -364,11 +364,16 @@ class TestAgentConfigFirstUse:
         with start_mocks() as m:
             m.proj.is_new = True
             m.load_agent_config.return_value = m.agent_cfg
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
+            # First-start seed path: the gate detects an UN-seeded box.
+            with patch(
+                "kanibako.commands.start._box_already_seeded",
+                return_value=False,
+            ):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
             # The already-patched apply_template_layers should have been called
             # once with (home, [base, agent, workset]) — three ordered layers
             # when an agent target is bound.

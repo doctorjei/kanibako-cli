@@ -105,6 +105,25 @@ def test_named_missing_group_is_defensive(std, tmp_home):
     assert box_seed.box_is_seeded(proj, std) is False
 
 
+def test_named_unloadable_workset_is_defensive(std, tmp_home):
+    """A named box whose workset root has no settings.yaml reads unseeded.
+
+    The seed gate calls ``box_is_seeded``/``mark_box_seeded`` early in launch; a
+    named box whose workset cannot be loaded (e.g. a not-yet-materialised root)
+    must NOT raise — it reads as unseeded and the mark is a no-op.
+    """
+    bare_root = tmp_home / "no-such-workset"
+    bare_root.mkdir()
+    group = ProjectGroup(
+        name="ghostset", root=bare_root, is_default=False, local_shared_base=bare_root,
+    )
+    proj = _make_proj(BoxMode.named, "projname", group)
+
+    assert box_seed.box_is_seeded(proj, std) is False  # must not raise
+    box_seed.mark_box_seeded(proj, std)  # must not raise
+    assert box_seed.box_is_seeded(proj, std) is False
+
+
 def test_marking_one_mode_leaves_others_empty(std, tmp_home):
     """Marking the primary box does not touch the standalone domain or worksets."""
     ws = create_workset("myset", tmp_home / "worksets" / "myset", std)

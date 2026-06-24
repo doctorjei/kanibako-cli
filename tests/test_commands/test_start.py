@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.commands.start import _apply_tweakcc, _run_container, run_start
+from kanibako import box_seed, channels
+from kanibako.commands.start import (
+    _apply_tweakcc,
+    _box_already_seeded,
+    _run_container,
+    run_start,
+)
+from kanibako.paths import BoxMode, ProjectGroup, ProjectPaths
 
 
 class TestTargetWarnings:
@@ -793,7 +801,14 @@ class TestCredsyncRouting:
             self._drive_descriptor(m)
             m.proj.is_new = True
             m.proj.group_auth = True
-            with patch("kanibako.commands.start.credsync") as m_credsync:
+            # First-start seed path: the gate detects an UN-seeded box.
+            with (
+                patch("kanibako.commands.start.credsync") as m_credsync,
+                patch(
+                    "kanibako.commands.start._box_already_seeded",
+                    return_value=False,
+                ),
+            ):
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -874,7 +889,14 @@ class TestCredsyncRouting:
             self._drive_descriptor(m)
             m.proj.is_new = True
             m.proj.group_auth = False
-            with patch("kanibako.commands.start.credsync") as m_credsync:
+            # First-start seed path: the gate detects an UN-seeded box.
+            with (
+                patch("kanibako.commands.start.credsync") as m_credsync,
+                patch(
+                    "kanibako.commands.start._box_already_seeded",
+                    return_value=False,
+                ),
+            ):
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -3137,3 +3159,100 @@ class TestWritebackAllPaths:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=False,
             )
+
+
+# ---------------------------------------------------------------------------
+# Seed-once detection (BUG-D seed-once redesign, Step 3).
+#
+# `start()`'s seed gate delegates detection to `_box_already_seeded`, which ORs
+# the authoritative per-box `seeded` registry flag with an existing-inbox
+# backstop (the latter covers LEGACY boxes that predate the flag).  These tests
+# exercise that helper directly — it IS the real gate logic — across the three
+# cases the gate must distinguish, plus the gate's adopt-on-detect stamping.
+# ---------------------------------------------------------------------------
+
+
+def _seed_proj(mode: BoxMode, name: str, group: ProjectGroup | None) -> ProjectPaths:
+    """Minimal ProjectPaths carrying the fields detection/channels need."""
+    dummy = Path("/nonexistent")
+    return ProjectPaths(
+        project_path=dummy,
+        project_hash="0" * 16,
+        metadata_path=dummy,
+        shell_path=dummy,
+        vault_ro_path=dummy,
+        vault_rw_path=dummy,
+        mode=mode,
+        name=name,
+        group=group,
+    )
+
+
+def _seed_primary_group(std) -> ProjectGroup:
+    return ProjectGroup(
+        name="default",
+        root=std.data_path,
+        is_default=True,
+        local_shared_base=std.data_path,
+    )
+
+
+class TestBoxAlreadySeededDetection:
+    """`_box_already_seeded` ORs the registry flag with the existing-inbox backstop."""
+
+    def test_brand_new_box_is_not_seeded(self, std, tmp_home):
+        """No flag + no inbox dir → detection False (the box WOULD be seeded)."""
+        proj = _seed_proj(BoxMode.primary, "freshbox", _seed_primary_group(std))
+
+        # Sanity: neither signal is present.
+        assert box_seed.box_is_seeded(proj, std) is False
+        assert channels.box_channel_addresses(proj, std).inbox.exists() is False
+
+        assert _box_already_seeded(proj, std) is False
+
+        # Simulate seed completion (what the gate does after seeding).
+        box_seed.mark_box_seeded(proj, std)
+        assert box_seed.box_is_seeded(proj, std) is True
+
+    def test_seeded_via_flag(self, std, tmp_home):
+        """Registry flag set + inbox absent → detection True (seed SKIPPED)."""
+        proj = _seed_proj(BoxMode.primary, "flagbox", _seed_primary_group(std))
+        box_seed.mark_box_seeded(proj, std)
+
+        assert channels.box_channel_addresses(proj, std).inbox.exists() is False
+        assert _box_already_seeded(proj, std) is True
+
+    def test_legacy_box_detected_via_inbox(self, std, tmp_home):
+        """Flag False but the box's inbox dir exists → detection True (LEGACY box).
+
+        `_box_already_seeded` itself does NOT adopt-on-detect (stamp the flag);
+        that step lives in the `start()` gate body (see `test_adopt_on_detect`).
+        """
+        proj = _seed_proj(BoxMode.primary, "legacybox", _seed_primary_group(std))
+        inbox = channels.box_channel_addresses(proj, std).inbox
+        inbox.mkdir(parents=True)
+
+        assert box_seed.box_is_seeded(proj, std) is False
+        assert _box_already_seeded(proj, std) is True
+
+    def test_adopt_on_detect_stamps_flag(self, std, tmp_home):
+        """The gate's adopt step: flag False + inbox exists → stamping makes it True.
+
+        This mirrors the `start()` gate body's adopt-on-detect (flag not set, but
+        detected seeded via the inbox backstop): `mark_box_seeded` is called once
+        so future detection uses the authoritative flag.
+        """
+        proj = _seed_proj(BoxMode.primary, "adoptbox", _seed_primary_group(std))
+        inbox = channels.box_channel_addresses(proj, std).inbox
+        inbox.mkdir(parents=True)
+
+        flag_seeded = box_seed.box_is_seeded(proj, std)
+        already_seeded = _box_already_seeded(proj, std)
+        assert flag_seeded is False
+        assert already_seeded is True
+
+        # The gate stamps the flag when detected-but-not-via-flag.
+        if not flag_seeded and already_seeded:
+            box_seed.mark_box_seeded(proj, std)
+
+        assert box_seed.box_is_seeded(proj, std) is True

@@ -14,8 +14,9 @@ the box:
   workset's ``settings.yaml`` (located via ``proj.group.root``).
 
 It is the explicit, registry-resident successor to the brittle ``.seeded``
-sentinel file (still present, owned by ``templates.py`` — this module does not
-touch it; wiring detection over to here is Step 3).  Layering: this module
+sentinel file (now REMOVED): Step 3 wired launch-time detection over to here,
+ORing this registry flag with an existing-inbox backstop for legacy boxes.
+Layering: this module
 depends on ``paths`` (types only), ``registry_store``, and ``workset``; none of
 those import ``box_seed``, so there is no import cycle.
 """
@@ -40,9 +41,15 @@ def box_is_seeded(proj: ProjectPaths, std: StandardPaths) -> bool:
     # BoxMode.named: the flag lives on the WorksetProject.
     if proj.group is None:
         return False
+    from kanibako.errors import WorksetError
     from kanibako.workset import load_workset
 
-    ws = load_workset(proj.group.root)
+    try:
+        ws = load_workset(proj.group.root)
+    except WorksetError:
+        # Defensive: a named box whose workset cannot be loaded (e.g. its
+        # settings.yaml is absent or not yet materialised) reads as unseeded.
+        return False
     for p in ws.projects:
         if p.name == proj.name:
             return p.seeded
@@ -65,7 +72,13 @@ def mark_box_seeded(proj: ProjectPaths, std: StandardPaths) -> None:
     # BoxMode.named: persist on the WorksetProject via the workset's public API.
     if proj.group is None:
         return
+    from kanibako.errors import WorksetError
     from kanibako.workset import load_workset, set_project_seeded
 
-    ws = load_workset(proj.group.root)
-    set_project_seeded(ws, proj.name)
+    try:
+        ws = load_workset(proj.group.root)
+        set_project_seeded(ws, proj.name)
+    except WorksetError:
+        # Defensive: a named box whose workset cannot be loaded/updated is a
+        # no-op (mirrors the missing-group guard above).
+        return
