@@ -37,6 +37,31 @@ from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 from kanibako.utils import container_name_for, project_hash, short_hash
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kanibako.paths import ProjectPaths, StandardPaths
+
+
+def _box_already_seeded(proj: ProjectPaths, std: StandardPaths) -> bool:
+    """True when *proj*'s box has already had its one-time home seed applied.
+
+    Two ORed signals decide this:
+
+    * the authoritative per-box ``seeded`` registry flag
+      (:func:`kanibako.box_seed.box_is_seeded`); and
+    * the backstop that the box's own mailbox (inbox) dir already exists
+      — that dir is created during launch AFTER the seed gate, so on a first
+      launch it is absent (→ seed) and on every later launch it is present
+      (→ skip).  The inbox backstop also covers LEGACY boxes created before
+      the registry flag existed.
+    """
+    from kanibako import box_seed, channels
+
+    if box_seed.box_is_seeded(proj, std):
+        return True
+    return channels.box_channel_addresses(proj, std).inbox.exists()
+
 
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
@@ -902,13 +927,28 @@ def _run_container(
                 logger.info(action)
 
         # Seed-once gate (BUG-D): seed the box home exactly once, on its FIRST
-        # start — whether the box was created by this very `start` (proj.is_new)
-        # or earlier by `box create` (which makes the metadata dir, leaving
-        # is_new False at start time).  The `.seeded` sentinel under the metadata
-        # dir records completion so subsequent launches never re-seed (user edits
-        # to seeded files survive, D-B6).
-        from kanibako.templates import mark_seeded, needs_seed
-        seed_box = needs_seed(proj.metadata_path, is_new=proj.is_new)
+        # start — whether the box was created by this very `start` or earlier by
+        # `box create`.  Detection ORs two signals (see `_box_already_seeded`):
+        # the authoritative per-box `seeded` registry flag, plus a backstop that
+        # the box's mailbox (inbox) already exists.  The inbox dir is created
+        # later in launch (after this gate), so it is absent on a first start
+        # (→ seed) and present on every later start (→ skip), and it also covers
+        # LEGACY boxes that predate the registry flag.  This replaces the brittle
+        # `.seeded` sentinel file (removed); the non-destructive create-if-absent
+        # template/seed application (S1) is the failsafe so a mis-detection can
+        # never clobber user edits.
+        from kanibako.box_seed import box_is_seeded, mark_box_seeded
+        flag_seeded = box_is_seeded(proj, std)
+        already_seeded = _box_already_seeded(proj, std)
+        seed_box = not already_seeded
+        # ADOPT-ON-DETECT: a legacy box detected seeded only via its existing
+        # inbox (flag still False) gets the authoritative flag stamped once, so
+        # future detection uses the flag.  Cheap + idempotent; never fatal.
+        if not flag_seeded and already_seeded:
+            try:
+                mark_box_seeded(proj, std)
+            except Exception:  # pragma: no cover - adopt is best-effort
+                logger.debug("adopt-on-detect: could not stamp seeded flag", exc_info=True)
 
         # Template application + agent init for new projects.
         if seed_box:
@@ -948,10 +988,11 @@ def _run_container(
                 logger=logger, group_auth=proj.group_auth,
             )
 
-        # Record seed-once completion so subsequent launches skip the blocks
-        # above (idempotent; only the first start writes meaningful content).
+        # Record seed-once completion via the authoritative per-box registry
+        # flag so subsequent launches skip the blocks above (idempotent; only the
+        # first start writes meaningful content).
         if seed_box:
-            mark_seeded(proj.metadata_path)
+            mark_box_seeded(proj, std)
 
         # Synced copies (the `<scope>.synced.<name>` category) — applied on
         # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
