@@ -66,6 +66,7 @@ _SECTIONS: tuple[str, ...] = (
     "workset_roots",
     "connected",
     "standalone",
+    "seeded",
     "rigs",
     "image_shells",
 )
@@ -95,6 +96,9 @@ def load_registry(data_path: Path) -> dict[str, dict]:
     """
     path = registry_path(data_path)
     data = load_doc(path) if path.is_file() else {}
+    seeded_raw = data.get("seeded", {})
+    if not isinstance(seeded_raw, dict):
+        seeded_raw = {}
     return {
         "projects": {
             k: str(v) for k, v in dict(data.get("projects", {})).items()
@@ -107,6 +111,16 @@ def load_registry(data_path: Path) -> dict[str, dict]:
         },
         "connected": dict(data.get("connected", {})),
         "standalone": dict(data.get("standalone", {})),
+        "seeded": {
+            "projects": {
+                k: bool(v)
+                for k, v in dict(seeded_raw.get("projects", {})).items()
+            },
+            "standalone": {
+                k: bool(v)
+                for k, v in dict(seeded_raw.get("standalone", {})).items()
+            },
+        },
         "rigs": dict(data.get("rigs", {})),
         "image_shells": dict(data.get("image_shells", {})),
     }
@@ -122,7 +136,17 @@ def save_registry(data_path: Path, registry: dict[str, dict]) -> None:
     data: dict = {}
     for section in _SECTIONS:
         entries = registry.get(section, {}) or {}
-        if section in _NAME_SECTIONS:
+        if section == "seeded":
+            # Nested ``{domain: {name: bool}}`` shape (NOT a name->path map):
+            # persist each domain with its inner keys sorted for stable diffs.
+            data[section] = {
+                domain: {
+                    name: bool(entries.get(domain, {})[name])
+                    for name in sorted(entries.get(domain, {}))
+                }
+                for domain in ("projects", "standalone")
+            }
+        elif section in _NAME_SECTIONS:
             data[section] = {name: entries[name] for name in sorted(entries)}
         else:
             data[section] = dict(entries)
@@ -224,3 +248,38 @@ def standalone_name_for_root(data_path: Path, root: Path) -> str | None:
         if root_str == target:
             return name
     return None
+
+
+# ---------------------------------------------------------------------------
+# Seeded-flag helpers (``seeded`` section: {domain: {box_name: bool}})
+# ---------------------------------------------------------------------------
+#
+# These are the per-box seed-once read/write primitives for the PRIMARY
+# (``domain == "projects"``) and STANDALONE (``domain == "standalone"``)
+# registries, the explicit successor to the brittle ``.seeded`` sentinel file.
+# The named-workset seeded flag lives on ``WorksetProject.seeded`` instead.
+# The uniform launch-path API that dispatches across all three lives in
+# :mod:`kanibako.box_seed`.
+
+
+def is_box_seeded(data_path: Path, domain: str, box_name: str) -> bool:
+    """Return whether *box_name* in *domain* has completed its one-time seed.
+
+    *domain* is ``"projects"`` (PRIMARY) or ``"standalone"``.  False when the
+    section/domain/name is absent (a fresh or legacy registry).
+    """
+    return bool(
+        load_registry(data_path)["seeded"].get(domain, {}).get(box_name, False)
+    )
+
+
+def mark_box_seeded_entry(data_path: Path, domain: str, box_name: str) -> None:
+    """Record that *box_name* in *domain* has completed its one-time seed.
+
+    Idempotent; preserves every sibling section (whole-file rewrite via
+    ``save_registry``).  Reuses ``load_registry``/``save_registry`` — no extra
+    YAML I/O.
+    """
+    registry = load_registry(data_path)
+    registry["seeded"].setdefault(domain, {})[box_name] = True
+    save_registry(data_path, registry)
