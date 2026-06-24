@@ -48,6 +48,21 @@ def _chmod_600(path: Path) -> None:
         logger.debug("credsync: chmod 0600 failed for %s: %s", path, exc)
 
 
+def _copy_dir(src: Path, dst: Path) -> None:
+    """Recursively copy directory *src* into *dst*, merging into an existing dst.
+
+    Used for ``is_dir`` cred specs (e.g. goose ``custom_providers/``).  A
+    directory has no single mtime to gate on, so dir specs are NOT mtime-gated:
+    the source tree is the authority and is mirrored wholesale on every sync.
+    Each copied file is chmod 0600 (these dirs hold config that may reference
+    secrets, so we keep the same conservative perms as the file path).
+    """
+    shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+    for child in dst.rglob("*"):
+        if child.is_file():
+            _chmod_600(child)
+
+
 def seed_cred_files(
     descriptor: PluginDescriptor,
     target: Target,
@@ -76,6 +91,13 @@ def seed_cred_files(
         dst = project_home / spec.home_rel
         src = host_home / spec.host_rel
         dst.parent.mkdir(parents=True, exist_ok=True)
+
+        if spec.is_dir:
+            # Directory spec (e.g. goose custom_providers/): recursive copy when
+            # a host source dir exists under group auth.  Never filtered.
+            if group_auth and src.is_dir():
+                _copy_dir(src, dst)
+            continue
 
         src_ok = group_auth and src.is_file()
 
@@ -113,6 +135,13 @@ def refresh_cred_files(
             continue
         src = host_home / spec.host_rel
         dst = project_home / spec.home_rel
+        if spec.is_dir:
+            # Directory spec: mirror the host dir into the box (no mtime gate;
+            # see _copy_dir).  Skip silently when the host dir is absent.
+            if src.is_dir():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                _copy_dir(src, dst)
+            continue
         if not src.is_file():
             continue
         if (
@@ -157,6 +186,13 @@ def writeback_cred_files(
             continue
         src = project_home / spec.home_rel
         dst = host_home / spec.host_rel
+        if spec.is_dir:
+            # Directory spec: mirror the box dir back to the host (no mtime
+            # gate; see _copy_dir).  Skip silently when the box dir is absent.
+            if src.is_dir():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                _copy_dir(src, dst)
+            continue
         if not src.is_file():
             continue
         if (

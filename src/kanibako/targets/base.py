@@ -165,6 +165,7 @@ class CredFileSpec:
     cadence: Cadence = Cadence.SYNC
     mtime_gate: bool = True           # only meaningful for SYNC
     filtered: bool = False            # True -> plugin transform_cred hook runs
+    is_dir: bool = False              # True -> spec is a DIRECTORY (recursive copy, no mtime gate, no filter)
 
 
 @dataclass(frozen=True)

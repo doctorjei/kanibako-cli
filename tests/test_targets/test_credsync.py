@@ -150,6 +150,26 @@ GOOSE_DESC = PluginDescriptor(
 )
 
 
+# A descriptor exercising the is_dir spec path (mirrors the real goose
+# custom_providers/ DIRECTORY sync added in the 2026-06-24 config-persistence fix).
+DIR_DESC = PluginDescriptor(
+    command=("goose",),
+    bindings=(),
+    mode={},
+    init_dirs=(".config/goose",),
+    cred_files=(
+        CredFileSpec(
+            home_rel=".config/goose/custom_providers",
+            host_rel=".config/goose/custom_providers",
+            cadence=Cadence.SYNC,
+            mtime_gate=True,
+            filtered=False,
+            is_dir=True,
+        ),
+    ),
+)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -463,3 +483,102 @@ class TestBaseTransformDefault:
         spec = CredFileSpec(home_rel="x", host_rel="x", filtered=True)
         _StubTarget().transform_cred(spec, tmp_path / "nope.json", dst, "in")
         assert not dst.exists()
+
+
+# ---------------------------------------------------------------------------
+# Directory specs (is_dir) — goose custom_providers/ both directions
+# ---------------------------------------------------------------------------
+
+
+class TestDirSpec:
+    def _host_provider(self, host: Path, text: str = "PROVIDER") -> Path:
+        return _write(host / ".config/goose/custom_providers/navigator.json", text)
+
+    def _proj_provider(self, proj: Path, text: str = "PROVIDER") -> Path:
+        return _write(proj / ".config/goose/custom_providers/navigator.json", text)
+
+    def test_seed_copies_dir_when_host_present(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        self._host_provider(host, "SEED")
+        seed_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        dst = proj / ".config/goose/custom_providers/navigator.json"
+        assert dst.read_text() == "SEED"
+        assert _mode(dst) == 0o600
+
+    def test_seed_skips_dir_when_not_group_auth(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        self._host_provider(host)
+        seed_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=False,
+        )
+        assert not (proj / ".config/goose/custom_providers").exists()
+
+    def test_seed_skips_dir_when_host_absent(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        seed_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        assert not (proj / ".config/goose/custom_providers/navigator.json").exists()
+
+    def test_refresh_mirrors_dir_host_to_project(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        self._host_provider(host, "HOSTVAL")
+        refresh_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        assert (proj / ".config/goose/custom_providers/navigator.json").read_text() == "HOSTVAL"
+
+    def test_refresh_dir_noop_when_host_absent(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        self._proj_provider(proj, "KEEP")
+        refresh_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        # No crash; existing project file untouched (host dir absent).
+        assert (proj / ".config/goose/custom_providers/navigator.json").read_text() == "KEEP"
+
+    def test_writeback_mirrors_dir_project_to_host(self, tmp_path: Path) -> None:
+        """The loop-closing direction: box custom_providers/ -> host."""
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        self._proj_provider(proj, "BOXVAL")
+        writeback_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        assert (host / ".config/goose/custom_providers/navigator.json").read_text() == "BOXVAL"
+
+    def test_writeback_dir_merges_into_existing_host(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".config/goose/custom_providers/old.json", "OLD")
+        self._proj_provider(proj, "NEW")
+        writeback_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        # New box file lands; pre-existing host file is preserved (dirs_exist_ok).
+        assert (host / ".config/goose/custom_providers/navigator.json").read_text() == "NEW"
+        assert (host / ".config/goose/custom_providers/old.json").read_text() == "OLD"
+
+    def test_writeback_dir_noop_when_not_group_auth(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        self._proj_provider(proj, "BOXVAL")
+        writeback_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=False,
+        )
+        assert not (host / ".config/goose/custom_providers").exists()
+
+    def test_writeback_dir_noop_when_project_absent(self, tmp_path: Path) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        writeback_cred_files(
+            DIR_DESC, _StubTarget(),
+            host_home=host, project_home=proj, group_auth=True,
+        )
+        assert not (host / ".config/goose/custom_providers").exists()

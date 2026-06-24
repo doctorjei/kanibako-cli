@@ -778,9 +778,17 @@ What you must now do instead:
 - **any agent:** to ship custom per-agent config into boxes, put it in that agent's
   template dir (`@system.agents/<agent>/template`) — it seeds via layer 2.
 
-**Credential SYNC is unchanged** (this is separate from host-config import): claude
-`.credentials.json`, codex `auth.json`, and goose `secrets.yaml` are still two-way
-synced on every launch.
+**Credential SYNC** (separate from host-config import): claude `.credentials.json`,
+codex `auth.json`, and goose `secrets.yaml` are two-way synced on every launch.
+
+> **Update (post-1.6.0):** goose additionally two-way syncs `~/.config/goose/config.yaml`
+> and `~/.config/goose/custom_providers/`. This is *not* the removed host-config
+> import (which seeded your host config into a fresh box at init). Instead, when you
+> run `goose configure` **inside a box**, the provider/model selection and any custom
+> provider definition now persist back to the host so the host-side auth check sees a
+> configured goose on the next start (no repeated `goose configure` prompt) — parity
+> with how claude/codex write their config back. The values these files reference are
+> env-var *names*; the secret value still lives only in `secrets.yaml`.
 
 ---
 
