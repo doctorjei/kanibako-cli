@@ -107,26 +107,47 @@ def apply_template_layers(
     """Seed *home* once by copying the ordered template *layers* in order.
 
     The 1.6.0 home-seed model layers ordered template sources into the box home
-    at creation (base -> agent -> workset; later overlays earlier).  Each layer
-    in *layers* is copied into *home* in sequence with ``dirs_exist_ok=True`` so
-    a later layer's file overwrites an earlier layer's file at the same relative
-    path (per-file LAST-WINS).  Layers that do not exist on disk are skipped (a
-    ``<None>`` / absent layer contributes nothing — e.g. STANDALONE boxes have
-    no workset layer).
+    at creation (base -> agent -> workset; later overlays earlier).  The copy is
+    NON-DESTRUCTIVE toward files that ALREADY EXIST in *home* before this seed
+    pass begins: such a pre-existing file (a user-edited home file on a
+    marker-less migrated box) is NEVER clobbered.  This is the guard against
+    re-seed DATA LOSS — a box whose home is already populated but lacks the
+    ``.seeded`` marker would otherwise have its files overwritten.
 
-    This is SEED-ONCE: callers invoke it only on box creation
-    (``proj.is_new``).  It does NOT special-case or merge any file — every file
+    Within a SINGLE seed pass, cross-layer LAST-WINS is still honoured: a file
+    written by an earlier layer during this pass IS overwritten by a later
+    layer's file at the same relative path.  A per-pass ``written`` set of
+    relative paths distinguishes "created earlier this pass" (override OK) from
+    "pre-existed before the pass" (preserve).  Layers that do not exist on disk
+    are skipped (a ``<None>`` / absent layer contributes nothing — e.g.
+    STANDALONE boxes have no workset layer).
+
+    This is SEED-ONCE: callers invoke it only when the box still
+    :func:`needs_seed`.  It does NOT special-case or merge any file — every file
     is a plain ordered copy (the CLAUDE.md merge special-case is gone, D-B5).
-    The caller is responsible for never re-running it on a subsequent launch so
-    user edits made inside the box survive (D-B6).
+    The caller is responsible for never re-running it once the box is marked
+    seeded so user edits made inside the box survive (D-B6); the non-destructive
+    copy here is an additional safety net for the marker-less re-seed case.
     """
+    written: set[Path] = set()
     for layer in layers:
         if layer is None:
             continue
         if not layer.is_dir():
             continue
-        home.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(str(layer), str(home), dirs_exist_ok=True)
+        for entry in sorted(layer.rglob("*")):
+            if not entry.is_file():
+                continue
+            rel = entry.relative_to(layer)
+            target = home / rel
+            # Write when an earlier layer in THIS pass created the file
+            # (last-wins override) OR the target does not yet exist.  Skip a
+            # target that pre-existed the pass (a user/pre-existing file).
+            if rel not in written and target.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(entry), str(target))
+            written.add(rel)
 
 
 # ---------------------------------------------------------------------------

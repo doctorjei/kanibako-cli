@@ -76,6 +76,70 @@ class TestApplyTemplateLayers:
         assert (home / "user-edited.txt").read_text() == "user changes"
         assert (home / "base-only.txt").read_text() == "base"
 
+    def test_existing_home_file_not_clobbered_by_same_path_layer(self, tmp_path):
+        """A pre-existing home file is preserved even when a layer ships the same path.
+
+        This is the re-seed DATA-LOSS guard: a marker-less migrated box has a
+        home full of user-edited files; a layer with a file at the same relative
+        path must NOT overwrite the user's content.
+        """
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "shared.txt").write_text("user changes")
+        base = self._layer(tmp_path, "base", {
+            "shared.txt": "base version",
+            "base-only.txt": "base",
+        })
+
+        apply_template_layers(home, [base])
+
+        # Pre-existing file preserved (NOT clobbered by the layer's same-path file).
+        assert (home / "shared.txt").read_text() == "user changes"
+        # New file from the layer still lands.
+        assert (home / "base-only.txt").read_text() == "base"
+
+    def test_cross_layer_last_wins_when_home_absent(self, tmp_path):
+        """Two layers both shipping foo.txt -> later layer wins (home didn't have it)."""
+        home = tmp_path / "home"
+        home.mkdir()
+        base = self._layer(tmp_path, "base", {"foo.txt": "base version"})
+        agent = self._layer(tmp_path, "agent", {"foo.txt": "agent version"})
+
+        apply_template_layers(home, [base, agent])
+
+        # Later layer overrides the earlier layer's file written THIS pass.
+        assert (home / "foo.txt").read_text() == "agent version"
+
+    def test_new_layer_files_land_in_nonempty_home(self, tmp_path):
+        """Files unique to a layer are copied into an existing non-empty home."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "user-edited.txt").write_text("user changes")
+        base = self._layer(tmp_path, "base", {
+            "base-only.txt": "base",
+            "nested/deep.txt": "deep",
+        })
+
+        apply_template_layers(home, [base])
+
+        # Pre-existing user file untouched.
+        assert (home / "user-edited.txt").read_text() == "user changes"
+        # New unique files (including nested) land.
+        assert (home / "base-only.txt").read_text() == "base"
+        assert (home / "nested" / "deep.txt").read_text() == "deep"
+
+    def test_existing_nested_file_not_clobbered(self, tmp_path):
+        """A pre-existing file in a nested home subdir is preserved against a layer."""
+        home = tmp_path / "home"
+        nested = home / ".claude"
+        nested.mkdir(parents=True)
+        (nested / "settings.json").write_text("user settings")
+        agent = self._layer(tmp_path, "agent", {".claude/settings.json": "shipped"})
+
+        apply_template_layers(home, [agent])
+
+        assert (home / ".claude" / "settings.json").read_text() == "user settings"
+
     def test_none_and_missing_layers_skipped(self, tmp_path):
         """A None layer or a layer dir that doesn't exist contributes nothing."""
         home = tmp_path / "home"
