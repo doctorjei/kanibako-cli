@@ -7,10 +7,13 @@ from unittest.mock import MagicMock, patch
 
 from kanibako.image_sharing import (
     SHARED_STORE_CONTAINER_PATH,
+    VIRTIOFS_GRAPHROOT_MESSAGE,
     _STORAGE_CONF_CONTAINER_PATH,
     build_image_sharing_mounts,
     detect_graph_root,
     generate_storage_conf,
+    is_rootless_podman,
+    virtiofs_graphroot_message,
 )
 
 
@@ -349,6 +352,236 @@ class TestImageSharingInRunContainer:
                     share_images=True,
                 )
                 mock_build.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# is_rootless_podman
+# ---------------------------------------------------------------------------
+
+class TestIsRootlessPodman:
+    """Tests for is_rootless_podman()."""
+
+    def test_true_for_rootless_podman(self):
+        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="true\n")
+            assert is_rootless_podman("podman") is True
+            cmd = mock_run.call_args[0][0]
+            assert cmd == [
+                "podman", "info", "--format", "{{.Host.Security.Rootless}}",
+            ]
+
+    def test_false_for_rootful_podman(self):
+        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="false\n")
+            assert is_rootless_podman("/usr/bin/podman") is False
+
+    def test_false_for_docker_without_query(self):
+        """docker is never the rootless-overlay case; no info call is made."""
+        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+            assert is_rootless_podman("/usr/bin/docker") is False
+            mock_run.assert_not_called()
+
+    def test_none_on_command_failure(self):
+        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr="boom")
+            assert is_rootless_podman("podman") is None
+
+    def test_none_on_unparseable_output(self):
+        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="maybe\n")
+            assert is_rootless_podman("podman") is None
+
+    def test_none_on_oserror(self):
+        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError("nope")
+            assert is_rootless_podman("podman") is None
+
+
+# ---------------------------------------------------------------------------
+# path_fstype
+# ---------------------------------------------------------------------------
+
+class TestPathFstype:
+    """Tests for path_fstype() (procfs-based fstype lookup)."""
+
+    _MOUNTINFO = (
+        "21 0 0:20 / / rw - ext4 /dev/root rw\n"
+        "22 21 0:21 / /mnt/share rw - virtiofs myfs rw\n"
+    )
+
+    def test_returns_fstype_of_longest_match(self, tmp_path):
+        from kanibako.image_sharing import path_fstype
+        from unittest.mock import mock_open
+
+        with patch("kanibako.image_sharing.os.path.realpath",
+                   return_value="/mnt/share/overlay"):
+            with patch("builtins.open", mock_open(read_data=self._MOUNTINFO)):
+                assert path_fstype(Path("/mnt/share/overlay")) == "virtiofs"
+
+    def test_returns_root_fstype_for_unmatched_subpath(self):
+        from kanibako.image_sharing import path_fstype
+        from unittest.mock import mock_open
+
+        with patch("kanibako.image_sharing.os.path.realpath",
+                   return_value="/home/agent/.local/share"):
+            with patch("builtins.open", mock_open(read_data=self._MOUNTINFO)):
+                assert path_fstype(Path("/home/agent/.local/share")) == "ext4"
+
+    def test_none_when_mountinfo_unreadable(self):
+        from kanibako.image_sharing import path_fstype
+
+        with patch("kanibako.image_sharing.os.path.realpath",
+                   return_value="/x"):
+            with patch("builtins.open", side_effect=OSError("no procfs")):
+                assert path_fstype(Path("/x")) is None
+
+
+# ---------------------------------------------------------------------------
+# virtiofs_graphroot_message
+# ---------------------------------------------------------------------------
+
+class TestVirtiofsGraphrootMessage:
+    """Tests for the rootless-podman-on-virtiofs preflight diagnostic."""
+
+    def _patches(self, *, rootless, graph_root, fstype, docker_cmd=None):
+        env = {} if docker_cmd is None else {"KANIBAKO_DOCKER_CMD": docker_cmd}
+        return (
+            patch.dict("os.environ", env, clear=False),
+            patch(
+                "kanibako.image_sharing.is_rootless_podman",
+                return_value=rootless,
+            ),
+            patch(
+                "kanibako.image_sharing.detect_graph_root",
+                return_value=graph_root,
+            ),
+            patch(
+                "kanibako.image_sharing.path_fstype",
+                return_value=fstype,
+            ),
+        )
+
+    def test_fires_for_rootless_virtiofs(self, tmp_path):
+        """Rootless podman + virtiofs graph root -> the diagnostic message."""
+        gr = tmp_path / "overlay"
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=True, graph_root=gr, fstype="virtiofs",
+        )
+        with p_env, p_root, p_gr, p_fs:
+            msg = virtiofs_graphroot_message("podman")
+        assert msg is not None
+        assert "virtiofs" in msg
+        assert "kento" in msg
+        assert "pivot_root" in msg
+        assert "KANIBAKO_DOCKER_CMD" in msg
+        assert "unsupported" in msg
+        assert str(gr) in msg
+
+    def test_silent_for_non_virtiofs(self, tmp_path):
+        """A normal (ext4) graph root -> no message."""
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=True, graph_root=tmp_path, fstype="ext4",
+        )
+        with p_env, p_root, p_gr, p_fs:
+            assert virtiofs_graphroot_message("podman") is None
+
+    def test_silent_for_rootful(self, tmp_path):
+        """Rootful podman handles virtiofs fine -> no message."""
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=False, graph_root=tmp_path, fstype="virtiofs",
+        )
+        with p_env, p_root, p_gr, p_fs:
+            assert virtiofs_graphroot_message("podman") is None
+
+    def test_silent_when_rootless_unknown(self, tmp_path):
+        """Rootless state undeterminable -> no message (no false positive)."""
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=None, graph_root=tmp_path, fstype="virtiofs",
+        )
+        with p_env, p_root, p_gr, p_fs:
+            assert virtiofs_graphroot_message("podman") is None
+
+    def test_silent_when_shim_active(self, tmp_path):
+        """A KANIBAKO_DOCKER_CMD rootful shim suppresses the check entirely."""
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=True, graph_root=tmp_path, fstype="virtiofs",
+            docker_cmd="/usr/bin/sudo-podman",
+        )
+        with p_env, p_root, p_gr, p_fs:
+            assert virtiofs_graphroot_message("podman") is None
+
+    def test_silent_when_graph_root_undetectable(self):
+        """No detectable graph root -> no message."""
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=True, graph_root=None, fstype="virtiofs",
+        )
+        with p_env, p_root, p_gr, p_fs:
+            assert virtiofs_graphroot_message("podman") is None
+
+    def test_silent_when_fstype_undeterminable(self, tmp_path):
+        """fstype undeterminable -> no message, no crash."""
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=True, graph_root=tmp_path, fstype=None,
+        )
+        with p_env, p_root, p_gr, p_fs:
+            assert virtiofs_graphroot_message("podman") is None
+
+    def test_message_constant_mentions_kento_and_virtiofs(self):
+        """The message template names the load-bearing concepts."""
+        assert "virtiofs" in VIRTIOFS_GRAPHROOT_MESSAGE
+        assert "kento" in VIRTIOFS_GRAPHROOT_MESSAGE
+        assert "{graph_root}" in VIRTIOFS_GRAPHROOT_MESSAGE
+
+
+# ---------------------------------------------------------------------------
+# Preflight integration with start.py (_run_container)
+# ---------------------------------------------------------------------------
+
+class TestVirtiofsPreflightInRunContainer:
+    """Tests for the virtiofs preflight wired into _run_container."""
+
+    def test_preflight_blocks_launch(self, start_mocks, capsys):
+        """When the diagnostic applies, the launch is blocked (rc 1)."""
+        from kanibako.commands.start import _run_container
+
+        with start_mocks() as m:
+            m.virtiofs_check.return_value = (
+                "Error: podman's image storage is on a virtiofs filesystem.\n"
+                "  This can happen if you use kento to compose VM images."
+            )
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "virtiofs" in captured.err
+        assert "kento" in captured.err
+
+    def test_no_preflight_allows_launch(self, start_mocks):
+        """When the diagnostic does not apply, the launch proceeds normally."""
+        from kanibako.commands.start import _run_container
+
+        with start_mocks() as m:
+            m.virtiofs_check.return_value = None
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m.runtime.run.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

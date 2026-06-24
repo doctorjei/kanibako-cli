@@ -1561,6 +1561,19 @@ def _run_container(
             # of deferring to the image's default entrypoint.
             entrypoint = box_shell
 
+        # Preflight: rootless podman cannot overlay/pivot_root on a virtiofs
+        # graph root, so the launch would die with a cryptic runtime error.
+        # virtiofs-rootless is an unsupported configuration — fail gracefully
+        # with an actionable message instead.  The check is cheap and only
+        # fires when the runtime is rootless podman AND the graph root is
+        # virtiofs; it stays silent (and never blocks a normal launch) under a
+        # rootful shim, on docker, or whenever the state can't be determined.
+        from kanibako.image_sharing import virtiofs_graphroot_message
+        virtiofs_msg = virtiofs_graphroot_message(runtime.cmd)
+        if virtiofs_msg is not None:
+            print(virtiofs_msg, file=sys.stderr)
+            return 1
+
         try:
             # Run the container
             rc = runtime.run(
