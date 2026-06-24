@@ -2233,6 +2233,54 @@ class TestApplyInitSeeds:
         assert not (shell / "gone").exists()
         assert list(shell.iterdir()) == []
 
+    def test_seed_never_clobbers_existing_home_file(self, tmp_path):
+        """A re-seed must NOT overwrite user-edited home content (the playbook
+        clobber): existing dest files survive, absent ones are gap-filled.
+
+        Reproduces the real bug where re-launching a box re-applied the
+        ``seeded`` category over an owned ``~/playbook`` and wiped user edits.
+        Seeds are now create-if-absent.
+        """
+        shell = self._shell(tmp_path)
+        # Pre-existing, user-edited home content the box owns.
+        home_pb = shell / "playbook"
+        home_pb.mkdir()
+        (home_pb / "devnotes.md").write_text("USER EDIT")
+
+        # The seed source ships the SAME relative path (different content) plus
+        # a file the home does not yet have.
+        src = tmp_path / "src"
+        (src / "playbook").mkdir(parents=True)
+        (src / "playbook" / "devnotes.md").write_text("TEMPLATE")
+        (src / "playbook" / "STARTUP.md").write_text("NEW")
+
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  seeded:\n    pb: "{src}:~/"\n'
+        )
+        self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
+
+        # (a) the pre-existing edited file is NOT clobbered.
+        assert (home_pb / "devnotes.md").read_text() == "USER EDIT"
+        # (b) the absent file is gap-filled.
+        assert (home_pb / "STARTUP.md").read_text() == "NEW"
+
+    def test_single_file_seed_does_not_clobber_existing_dest(self, tmp_path):
+        """A single-FILE seed whose dest already exists is left unchanged."""
+        shell = self._shell(tmp_path)
+        # Pre-existing dest file the box owns.
+        (shell / "note.md").write_text("USER EDIT")
+
+        src = tmp_path / "note_src.md"
+        src.write_text("TEMPLATE")
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  seeded:\n    note: "{src}:~/note.md"\n'
+        )
+        self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
+
+        assert (shell / "note.md").read_text() == "USER EDIT"
+
     def test_non_credential_seed_copied_even_when_group_auth_false(self, tmp_path):
         """group_auth=False suppresses only credential-flagged seeds; a plain
         config seed (is_credential False) still copies (D-M4 gate is scoped)."""

@@ -189,6 +189,11 @@ def _copy_resource_tree_if_absent(src: Path, dest: Path) -> None:
         shutil.copy2(str(entry), str(target))
 
 
+# Public alias so other modules (e.g. the seed-once apply in commands.start)
+# can reuse the create-if-absent tree copy without reaching for a private name.
+copy_resource_tree_if_absent = _copy_resource_tree_if_absent
+
+
 def _packaged_base_template() -> Path | None:
     """Locate the packaged base-template content (``kanibako.data/templates/base``)."""
     try:

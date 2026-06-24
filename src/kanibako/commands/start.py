@@ -2010,6 +2010,7 @@ def _apply_init_seeds(
     import shutil
 
     from kanibako.settings_resolve import GUEST_HOME
+    from kanibako.templates import copy_resource_tree_if_absent
 
     default_seeds = target.default_seeds() if target is not None else {}
 
@@ -2050,8 +2051,11 @@ def _apply_init_seeds(
             continue
         if src.is_dir():
             dest.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
-        else:
+            # Create-if-absent: a seed delivers content ONCE; existing home
+            # content is owned by the box and must never be overwritten by a
+            # re-seed (the playbook-clobber bug).
+            copy_resource_tree_if_absent(src, dest)
+        elif not dest.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dest))
 
