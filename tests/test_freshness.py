@@ -69,7 +69,11 @@ class TestProngVersion:
             ),
         ):
             check_image_freshness(rt, "img:latest", tmp_path)
-        assert "newer version" in _err(capsys)
+        err = _err(capsys)
+        assert "newer version" in err
+        # Banner points at the new 'rig update' verb, not 'rig prep --force'.
+        assert "kanibako rig update" in err
+        assert "prep --force" not in err
 
     def test_remote_older_silent_dev_case(self, tmp_path, capsys):
         """Our dev25 local vs prod 1.5.x remote :latest -> silent (remote<local)."""
