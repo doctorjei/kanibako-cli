@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template/built rig it rebuilds on the refreshed base. With no name it targets
   the configured `box.image` rig; `--all` updates every local rig. `rig prep
   --force` is kept as the full rebuild-from-scratch path.
+- Friendly preflight error when rootless podman's storage (graph root) is on a
+  **virtiofs** filesystem — an unsupported configuration where the box can't
+  launch (overlay/`pivot_root` is denied). Instead of a cryptic runtime crash,
+  kanibako now explains the problem and suggests fixes (back the graph root with
+  a real filesystem, or use a rootful `KANIBAKO_DOCKER_CMD` shim). The check is
+  silent under a rootful shim, on docker, or whenever the state can't be
+  determined, so it never blocks a normal launch.
 
 ### Changed
 

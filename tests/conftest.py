@@ -290,6 +290,13 @@ def start_mocks():
                 "kanibako.targets.base._validate_agent_binary",
                 return_value=None,
             ) as m_validate_binary,
+            # Virtiofs-graphroot preflight: default to "not applicable" so the
+            # MagicMock runtime never triggers a real podman info / procfs read.
+            # Tests exercising the diagnostic override its return value.
+            patch(
+                "kanibako.image_sharing.virtiofs_graphroot_message",
+                return_value=None,
+            ) as m_virtiofs_check,
         ):
             proj = MagicMock()
             proj.is_new = False
@@ -425,6 +432,7 @@ def start_mocks():
                 validate_binary=m_validate_binary,
                 credsync=m_credsync,
                 build_channel_mounts=m_build_channel_mounts,
+                virtiofs_check=m_virtiofs_check,
             )
 
     return _make
