@@ -1,8 +1,6 @@
 """Tests for kanibako.image_sharing module."""
 
 from __future__ import annotations
-
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from kanibako.image_sharing import (
@@ -229,8 +227,14 @@ class TestBuildImageSharingMounts:
 class TestImageSharingInRunContainer:
     """Tests for image sharing integration in _run_container."""
 
-    def test_share_images_flag_triggers_mounts(self, start_mocks):
-        """--share-images adds image sharing mounts to the container."""
+    def test_share_images_flag_triggers_mounts(self, start_mocks, tmp_path):
+        """--share-images adds image sharing mounts to the container.
+
+        The image binds now route through the reconcile path
+        (``box.bindings.ro.images*``), whose L7 ro-branch DROPS a bind with a
+        missing host source.  A real (existing) source dir is used here so the
+        bind survives reconcile and reaches ``runtime.run`` — exercising the new
+        keyed route end-to-end."""
         from kanibako.commands.start import _run_container
 
         with start_mocks() as m:
@@ -238,8 +242,10 @@ class TestImageSharingInRunContainer:
                 "kanibako.image_sharing.build_image_sharing_mounts",
             ) as mock_build:
                 from kanibako.targets.base import Mount
+                graph_src = tmp_path / "graph"
+                graph_src.mkdir()
                 fake_mount = Mount(
-                    source=Path("/fake/graph"),
+                    source=graph_src,
                     destination=SHARED_STORE_CONTAINER_PATH,
                     options="ro",
                 )

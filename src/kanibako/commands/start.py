@@ -1227,9 +1227,12 @@ def _run_container(
             # come from descriptor_mounts above.  NoAgentTarget has no binary
             # (install is None), so it never reaches this block at all.
 
-        # kanibako CLI bind-mount (package + entry script)
+        # kanibako CLI bind-mount (package + entry script).  These now route
+        # through the core binding keys (box.bindings.ro.kani_{pkg,bin}, emitted
+        # by _build_core_mounts below) rather than a hardwired extra_mounts
+        # extend.  ``kanibako_mnts`` is still computed here because the in-helper
+        # binary_mounts reuse it directly (the helper spawn path is a follow-up).
         kanibako_mnts = _kanibako_mounts()
-        extra_mounts.extend(kanibako_mnts)
 
         # Core box mounts (settings-framework box.bindings.* §2c): home /
         # workspace / vault ro+rw.  These USED to be hardwired raw ``-v`` strings
@@ -1279,12 +1282,21 @@ def _run_container(
             agent_config_path=agent_cfg_path,
         )
 
-        # Image sharing: mount host image storage read-only into child.
+        # Image sharing: mount host image storage read-only into child.  Routed
+        # through the core binding keys (box.bindings.ro.images*) via the reconcile
+        # path rather than appended as hardwired Mounts.
         if share_images or merged.box_share_images:
-            from kanibako.image_sharing import build_image_sharing_mounts
             staging = proj.metadata_path / ".image-sharing"
-            img_mounts = build_image_sharing_mounts(
-                runtime.cmd, staging,
+            img_mounts = _build_image_mounts(
+                std=std,
+                proj=proj,
+                agent_name=agent_id,
+                global_config_path=system_settings_path,
+                project_toml=project_toml,
+                workset_config_path=workset_path,
+                agent_config_path=agent_cfg_path,
+                runtime_cmd=runtime.cmd,
+                staging_dir=staging,
             )
             if img_mounts:
                 extra_mounts.extend(img_mounts)
@@ -2652,6 +2664,22 @@ def _core_default_categories(std, proj) -> dict[str, str]:
             binds["box.bindings.rw.vault"] = _ch_bind(
                 proj.vault_rw_path, f"{GUEST_HOME}/vault/rw"
             )
+
+    # kanibako CLI binds (package dir + entry script), both read-only — formerly
+    # the hardwired ``_kanibako_mounts()`` raw Mounts.  Routed here as ro binding
+    # keys so they too flow through reconcile.  ``_kanibako_mounts()`` is RETAINED
+    # as the source of truth for the in-helper ``binary_mounts`` reuse (the helper
+    # spawn path is a follow-up, sub-step 7); this only replaces the MAIN launch
+    # path's hardwired ``extra_mounts.extend(_kanibako_mounts())``.
+    for m in _kanibako_mounts():
+        # Mount.destination is an absolute guest path (no colon) → use verbatim;
+        # _ch_bind escapes any colon in the host source.
+        key = (
+            "box.bindings.ro.kani_pkg"
+            if m.destination.startswith("/opt/")
+            else "box.bindings.ro.kani_bin"
+        )
+        binds[key] = _ch_bind(m.source, m.destination)
     return binds
 
 
@@ -2685,6 +2713,55 @@ def _build_core_mounts(
         default_categories=_core_default_categories(std, proj),
     )
     return _emit_reconciled_mounts(reconciled, label="core")
+
+
+def _build_image_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    runtime_cmd: str,
+    staging_dir,
+) -> list:
+    """Resolve the image-sharing binds (§2c ``box.bindings.ro.images``) → Mounts.
+
+    The host graph-root + the GENERATED ``storage.conf`` are produced by
+    :func:`kanibako.image_sharing.build_image_sharing_mounts` (D-M8: the host
+    source is a runtime ``podman info`` graphroot probe, and the inert store mount
+    needs the generated config beside it).  Instead of appending those raw Mounts
+    directly, their already-resolved absolute (host_src, box_dest) pairs are
+    injected as ``box.bindings.ro.images*`` defaults and routed through the same
+    reconcile path as the other core binds — so image sharing appears in reconcile
+    output and is overridable/suppressible like any other binding.  Returns ``[]``
+    when detection fails (host storage undetectable) — the caller warns.
+    """
+    from kanibako.image_sharing import build_image_sharing_mounts
+
+    raw = build_image_sharing_mounts(runtime_cmd, staging_dir)
+    if not raw:
+        return []
+
+    binds: dict[str, str] = {}
+    for idx, m in enumerate(raw):
+        # Distinct key per image bind; box_dest is an absolute guest path (no
+        # colon) used verbatim, host source colon-escaped by _ch_bind.
+        binds[f"box.bindings.ro.images_{idx}"] = _ch_bind(m.source, m.destination)
+
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=binds,
+    )
+    return _emit_reconciled_mounts(reconciled, label="images")
 
 
 def _resolve_config_env(

@@ -128,9 +128,30 @@ class TestCoreMountAssembly:
             "/home/agent/vault/ro"
         )
 
-    def test_vault_disabled_emits_only_home_and_workspace(self, primary_proj, std):
+    def test_kanibako_cli_binds_are_ro(self, primary_proj, std):
+        """The kanibako package + entry script route as ro core binds
+        (box.bindings.ro.kani_{pkg,bin}), replacing the old hardwired
+        _kanibako_mounts() raw Mounts in the MAIN launch path."""
+        cats = _core_default_categories(std, primary_proj)
+        assert "box.bindings.ro.kani_pkg" in cats
+        assert "box.bindings.ro.kani_bin" in cats
+        assert cats["box.bindings.ro.kani_pkg"].endswith(":/opt/kanibako/kanibako")
+        assert cats["box.bindings.ro.kani_bin"].endswith(
+            ":/home/agent/.local/bin/kanibako"
+        )
+        # Emitted (sources exist in the dev install) as ro mounts.
+        by_dest, _ = _build(std, primary_proj)
+        assert by_dest["/opt/kanibako/kanibako"][1] == "ro"
+        assert by_dest["/home/agent/.local/bin/kanibako"][1] == "ro"
+
+    def test_vault_disabled_drops_only_vault_binds(self, primary_proj, std):
+        """enable_vault=False removes the two vault dests but keeps home /
+        workspace / the kanibako CLI binds."""
         import dataclasses
 
         proj = dataclasses.replace(primary_proj, enable_vault=False)
         by_dest, _ = _build(std, proj)
-        assert set(by_dest) == {"/home/agent", "/home/agent/workspace"}
+        assert "/home/agent/vault/ro" not in by_dest
+        assert "/home/agent/vault/rw" not in by_dest
+        assert "/home/agent" in by_dest
+        assert "/home/agent/workspace" in by_dest
