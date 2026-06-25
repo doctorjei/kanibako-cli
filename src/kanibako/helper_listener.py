@@ -500,7 +500,50 @@ def _send_json(conn: socket.socket, data: dict) -> None:
 
 def _build_helper_mounts(ctx: HelperContext, helper_num: int,
                          helpers_dir: Path) -> list[Mount]:
-    """Build bind mounts for a helper container."""
+    """Build bind mounts for a helper container.
+
+    DOCUMENTED BLOCKER (core-mounts-bindings Phase C — bespoke route kept by
+    design, per the plan's "lower priority / possible follow-up").  The core box
+    launch (Phases A/B) routes its mounts through the category keyspace via
+    ``commands.start._resolve_launch_categories`` →
+    ``_category_resolution_inputs`` → ``reconcile_categories``.  The invariant
+    permits a bespoke route HERE because reaching that seam from the IN-BOX
+    ``crab helper`` spawn path is disproportionate, for three concrete reasons:
+
+    1. CONTEXT DATA IS ABSENT.  ``reconcile_categories`` is driven by
+       ``_category_resolution_inputs``, which requires ``std`` (StandardPaths:
+       ``.agents``/``.data``/``.data_home``/``.channels``/…), ``proj``
+       (ProjectPaths, incl. ``.group`` for the workset scope roots),
+       ``agent_name``, AND the FOUR per-level config-file paths
+       (``global_config_path``/``project_toml``/``workset_config_path``/
+       ``agent_config_path``).  ``HelperContext`` — what the hub carries host-side
+       across the box's lifetime — deliberately holds only a flat subset
+       (runtime/image/shell_path/helpers_dir/socket_path/binary_mounts/env/…).
+       None of std/proj/agent_name/the config paths are present, so the seam is
+       not reachable without threading the entire launch context into the hub.
+
+    2. WRONG TOPOLOGY EVEN IF THREADED.  A helper has NO ``ProjectPaths`` of its
+       own: its home/workspace/vault are a DERIVED sub-tree under
+       ``helpers/<N>/`` (``helper_root`` below), not ``proj.shell_path`` /
+       ``proj.project_path`` / ``proj.vault_*_path``.  ``_category_resolution_inputs``
+       hardwires the director box's std/proj paths and the ``proj.group`` scope
+       roots, so feeding it the box's std/proj would resolve the WRONG sources;
+       a helper-specific inputs builder would be a large bespoke bridge — exactly
+       what this sub-step is told not to force.
+
+    3. CIRCULAR DEPENDENCY.  The seam (``_resolve_launch_categories`` /
+       ``_emit_reconciled_mounts`` / ``_category_resolution_inputs``) lives in
+       ``commands.start``, which already imports this module
+       (``from kanibako.helper_listener import HelperContext, HelperHub``).  This
+       module is a lean socket server depending only on container/log/
+       settings_resolve/targets.base; importing the seam back the other way would
+       introduce a ``commands.start`` ↔ ``helper_listener`` import cycle.
+
+    The socket bind below intentionally mirrors Phase A/B's empty mount options
+    for a LIVE unix socket (``""`` — a ``Z``/``U`` relabel/chown would break the
+    shared socket topology), so the bespoke list stays consistent with the keyed
+    route even though it does not flow through it.
+    """
     helper_root = helpers_dir / str(helper_num)
     mounts: list[Mount] = []
 
