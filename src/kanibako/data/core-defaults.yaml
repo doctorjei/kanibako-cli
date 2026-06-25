@@ -128,3 +128,65 @@ core:
     box_dest: "~/vault/rw"
     options: "Z,U"
     scope: vault
+
+# kanibako CLI binds (Phase B).  The in-box kanibako package + entry script,
+# routed through the category resolver instead of the hardwired `_kanibako_mounts`
+# `-v` list.  Both are UNCONDITIONAL ro binds in every box mode; their host
+# SOURCES are import-resolved at the seam (`kanibako.__file__` parent +
+# `importlib.resources` `kanibako-entry`) and injected into each keyed entry (the
+# file names them SYMBOLICALLY).  box-side destinations + options are STATIC here.
+kani:
+  # Package dir → /opt/kanibako/kanibako (ro).
+  - key: kani_pkg
+    category: bindings.ro
+    source: kani_pkg
+    box_dest: "/opt/kanibako/kanibako"
+    options: "ro"
+  # Entry script → ~/.local/bin/kanibako (ro).
+  - key: kani_bin
+    category: bindings.ro
+    source: kani_bin
+    box_dest: "~/.local/bin/kanibako"
+    options: "ro"
+
+# Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
+# message LOG, routed through the category resolver instead of the hardwired
+# `_HMount` appends inside the `helpers_enabled` block.  Both box-side
+# destinations are DYNAMIC (derived from the box's `box_state_home(container_env)`
+# at launch) and injected at the seam; the host SOURCES (socket_path / log_path)
+# are runtime-probed and gated on `.exists()` at the seam too.
+#
+# ⚠ helper_sock options MUST be "" (empty) — it is a LIVE unix socket the hub
+# listens on; a Z/U relabel/chown would break the shared socket topology.  The
+# per-entry empty-options 3rd slot is exactly what makes this routable.
+helpers:
+  # Live helper unix socket → <box_state_kanibako>/helper.sock (rw, options="").
+  - key: helper_sock
+    category: bindings.rw
+    source: helper_sock
+    options: ""
+  # Per-box helper message log → <box_state_kanibako>/helpers.jsonl (ro).
+  - key: helper_log
+    category: bindings.ro
+    source: helper_log
+    options: "ro"
+
+# Image-sharing bind (Phase B, D-M8).  The host image graph root + the GENERATED
+# `storage.conf` (additionalImageStores), routed through the category resolver
+# instead of the hardwired Mounts that `image_sharing.build_image_sharing_mounts`
+# returned.  GATED: emitted only when image-sharing applies AND the host graph
+# root is detectable.  box-side destinations + options are STATIC; the host
+# SOURCES (probed graph root + generated conf path) are injected at the seam.
+images:
+  # Host graph root → /var/lib/shared-images (ro).
+  - key: images_store
+    category: bindings.ro
+    source: images_store
+    box_dest: "/var/lib/shared-images"
+    options: "ro"
+  # Generated storage.conf → ~/.config/containers/storage.conf (ro).
+  - key: images_conf
+    category: bindings.ro
+    source: images_conf
+    box_dest: "~/.config/containers/storage.conf"
+    options: "ro"

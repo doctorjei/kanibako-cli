@@ -1229,9 +1229,22 @@ def _run_container(
             # come from descriptor_mounts above.  NoAgentTarget has no binary
             # (install is None), so it never reaches this block at all.
 
-        # kanibako CLI bind-mount (package + entry script)
-        kanibako_mnts = _kanibako_mounts()
-        extra_mounts.extend(kanibako_mnts)
+        # kanibako CLI bind-mount (package + entry script): routed through the
+        # category resolver (Phase B) instead of a hardwired ``-v`` list, so the
+        # box's kani binds flow through the keyspace like every other mount.  The
+        # in-helper-container variant (`binary_mounts` below) still resolves the
+        # same two sources directly via `_kanibako_mounts()` — helpers assemble
+        # their own mount list, a separate seam from the box launch.
+        kani_mounts = _build_kani_mounts(
+            std=std,
+            proj=proj,
+            agent_name=agent_id,
+            global_config_path=system_settings_path,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            agent_config_path=agent_cfg_path,
+        )
+        extra_mounts.extend(kani_mounts)
 
         # Core box mounts (step 3): the box's own home + workspace + vault binds,
         # routed through the category resolver instead of hardwired podman ``-v``
@@ -1282,14 +1295,30 @@ def _run_container(
             agent_config_path=agent_cfg_path,
         )
 
-        # Image sharing: mount host image storage read-only into child.
+        # Image sharing: mount host image storage read-only into child, routed
+        # through the category resolver (Phase B, D-M8) instead of hardwired
+        # Mounts.  The graph root is runtime-probed and the storage.conf is
+        # GENERATED+written by ``prepare_image_sharing_sources`` (still the SOURCE
+        # of the bind); those probed/generated paths are injected at the seam into
+        # the keyed ``box.bindings.ro.images_*`` binds.  CONDITIONAL: only when
+        # sharing is requested AND the host graph root is detectable.
         if share_images or merged.box_share_images:
-            from kanibako.image_sharing import build_image_sharing_mounts
+            from kanibako.image_sharing import prepare_image_sharing_sources
             staging = proj.metadata_path / ".image-sharing"
-            img_mounts = build_image_sharing_mounts(
-                runtime.cmd, staging,
-            )
-            if img_mounts:
+            img_sources = prepare_image_sharing_sources(runtime.cmd, staging)
+            if img_sources is not None:
+                graph_root, storage_conf_path = img_sources
+                img_mounts = _build_image_mounts(
+                    std=std,
+                    proj=proj,
+                    agent_name=agent_id,
+                    global_config_path=system_settings_path,
+                    project_toml=project_toml,
+                    workset_config_path=workset_path,
+                    agent_config_path=agent_cfg_path,
+                    graph_root=graph_root,
+                    storage_conf_path=storage_conf_path,
+                )
                 extra_mounts.extend(img_mounts)
                 logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
             else:
@@ -1439,7 +1468,7 @@ def _run_container(
             # above (only set when a descriptor-bearing target has a host
             # install — NoAgentTarget has none, so helpers get just the kanibako
             # binds).
-            binary_mounts = list(kanibako_mnts)
+            binary_mounts = _kanibako_mounts()
             if target and install:
                 binary_mounts.extend(binary_mnts)
 
@@ -1481,23 +1510,28 @@ def _run_container(
             # the in-box CLI (``xdg``) so host and box agree by construction.
             box_state_kanibako = box_state_home(container_env) / "kanibako"
 
-            # Mount the socket into the container (only if hub started)
+            # Mount the live helper socket + the per-box message log into the box,
+            # routed through the category resolver (Phase B) instead of hardwired
+            # ``_HMount`` appends.  The runtime-derived box destinations
+            # (``<box_state_kanibako>/helper.sock`` / ``…/helpers.jsonl``) and the
+            # ``.exists()`` skip-if-missing gate are applied in the loader; the
+            # socket keeps options="" (a LIVE unix socket the hub listens on — a
+            # Z/U relabel/chown would break the shared socket topology).
             kanibako_dir = proj.shell_path / ".local" / "state" / "kanibako"
             kanibako_dir.mkdir(parents=True, exist_ok=True)
-            if socket_path.exists():
-                extra_mounts.append(_HMount(
-                    source=socket_path,
-                    destination=str(box_state_kanibako / "helper.sock"),
-                    options="",
-                ))
-
-            # Mount the helper message log for the in-box `log` command
-            if log_path.exists():
-                extra_mounts.append(_HMount(
-                    source=log_path,
-                    destination=str(box_state_kanibako / "helpers.jsonl"),
-                    options="ro",
-                ))
+            helper_hub_mounts = _build_helper_hub_mounts(
+                std=std,
+                proj=proj,
+                agent_name=agent_id,
+                global_config_path=system_settings_path,
+                project_toml=project_toml,
+                workset_config_path=workset_path,
+                agent_config_path=agent_cfg_path,
+                box_state_kanibako=str(box_state_kanibako),
+                socket_path=socket_path,
+                log_path=log_path,
+            )
+            extra_mounts.extend(helper_hub_mounts)
 
         # Pre-launch validation: warn about missing mount sources.
         _validate_mounts(extra_mounts, logger)
@@ -2605,6 +2639,117 @@ def _build_core_mounts(
         default_categories=_core_default_categories(std, proj),
     )
     return _emit_reconciled_mounts(reconciled, label="core")
+
+
+def _build_kani_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+) -> list:
+    """Resolve the kanibako CLI binds (package + entry) and emit as :class:`Mount`s.
+
+    Replaces the hardwired ``_kanibako_mounts`` ``-v`` list (pkg → ``/opt/kanibako/
+    kanibako`` ro, entry → ``~/.local/bin/kanibako`` ro).  Injects the kani bind
+    table (:func:`kanibako.core_defaults.kani_default_categories`) through the
+    category resolver as the AGENT level's declared defaults — so the binds flow
+    through the D-B1 precedence + depth-sort + L7 guarantee-create exactly like
+    core/masks/shares/channels.  A box may override or suppress either bind at a
+    more-specific level.
+    """
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=core_defaults.kani_default_categories(),
+    )
+    return _emit_reconciled_mounts(reconciled, label="kani")
+
+
+def _build_helper_hub_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    box_state_kanibako: str,
+    socket_path,
+    log_path,
+) -> list:
+    """Resolve the helper hub binds (live socket + message log) and emit as Mounts.
+
+    Replaces the two hardwired ``_HMount`` appends inside the ``helpers_enabled``
+    block (socket → ``<box_state_kanibako>/helper.sock`` options="", log →
+    ``<box_state_kanibako>/helpers.jsonl`` ro).  Injects the helper bind table
+    (:func:`kanibako.core_defaults.helper_default_categories`) through the category
+    resolver — the runtime-derived box destinations + the ``.exists()`` skip-if-
+    missing gate are applied in the loader.  ``helper_sock`` keeps options="" (a
+    LIVE unix socket; a Z/U relabel/chown would break the shared socket topology).
+    """
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=core_defaults.helper_default_categories(
+            box_state_kanibako=box_state_kanibako,
+            socket_path=socket_path,
+            log_path=log_path,
+        ),
+    )
+    return _emit_reconciled_mounts(reconciled, label="helper")
+
+
+def _build_image_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+    graph_root,
+    storage_conf_path,
+) -> list:
+    """Resolve the image-sharing binds (graph root + storage.conf) and emit as Mounts.
+
+    Replaces the hardwired Mounts returned by
+    :func:`kanibako.image_sharing.build_image_sharing_mounts`.  Injects the image
+    bind table (:func:`kanibako.core_defaults.image_default_categories`) through the
+    category resolver — the GENERATED ``storage.conf`` stays the SOURCE (spec D-M8 =
+    generated+bound), bound as a keyed ``box.bindings.ro.images_conf`` rather than a
+    hardwired Mount.  The caller applies the CONDITIONAL gate (image-sharing
+    requested AND graph root detectable) before invoking this.
+    """
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=core_defaults.image_default_categories(
+            graph_root=graph_root,
+            storage_conf_path=storage_conf_path,
+        ),
+    )
+    return _emit_reconciled_mounts(reconciled, label="images")
 
 
 def _resolve_config_env(
