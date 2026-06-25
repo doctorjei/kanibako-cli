@@ -24,6 +24,7 @@ import subprocess
 from pathlib import Path
 
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import Mount
 
 logger = get_logger("image_sharing")
@@ -32,7 +33,7 @@ logger = get_logger("image_sharing")
 SHARED_STORE_CONTAINER_PATH = "/var/lib/shared-images"
 
 # Container-side storage.conf path (rootless podman).
-_STORAGE_CONF_CONTAINER_PATH = "/home/agent/.config/containers/storage.conf"
+_STORAGE_CONF_CONTAINER_PATH = f"{GUEST_HOME}/.config/containers/storage.conf"
 
 
 def detect_graph_root(runtime_cmd: str) -> Path | None:
