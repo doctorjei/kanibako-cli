@@ -14,6 +14,7 @@ import pytest
 
 from tests.e2e.conftest import (
     e2e_requires,
+    resolve_box_dir,
     run_kanibako,
     wait_for_container,
 )
@@ -90,7 +91,6 @@ class TestRmLifecycle:
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        data_home = e2e_env["data_home"]
         name = "e2e-rm"
         container_name = f"kanibako-{name}"
 
@@ -106,8 +106,11 @@ class TestRmLifecycle:
         )
         wait_for_container(container_name, timeout=15)
 
-        # The box metadata dir should exist after start.
-        box_dir = data_home / "kanibako" / "boxes" / name
+        # The box metadata dir should exist after start.  Resolve it THROUGH the
+        # real path resolver (boxes are workset-scoped:
+        # .../kanibako/<workset>/boxes/<name>, not the legacy
+        # .../kanibako/boxes/<name>).
+        box_dir = resolve_box_dir(env, project)
         assert box_dir.is_dir(), f"Box dir missing after start: {box_dir}"
 
         # Stop removes the container.
