@@ -308,9 +308,10 @@ def resolve_categories(
 
         # Structured unpack (spec §2a): a category binding value is a 2-/3-element
         # list/tuple, NOT a colon-string. The optional 3rd element is the
-        # per-entry options override, captured here; it is THREADED into the
-        # entry's mount options in a later phase (P3) — for now MOUNT options come
-        # from the category default and ``opts_override`` is captured but unused.
+        # per-entry options override (``opts_override``): when PRESENT (a 3-element
+        # entry — incl. an explicit empty string ``""``) it OVERRIDES the category
+        # default for THIS entry; when absent (``None``, a 2-element entry) the
+        # category default applies.
         try:
             host_src_raw, guest_dest_raw, opts_override = unpack_bind(rv.value)
         except SettingsError as exc:
@@ -325,8 +326,14 @@ def resolve_categories(
             root = expand_expr(root_expr, space="host", ctx=ctx, lookup=lookup)
             host_src = f"{root.rstrip('/')}/{host_src}"
 
-        del opts_override  # P3 threads this into ``options``; captured now per spec.
-        options = _bind_options(category) if delivery == MOUNT else ""
+        # Per-entry options override (spec §2a): an explicit 3rd element wins for
+        # this MOUNT entry (incl. an explicit ``""`` — no relabel); a 2-element
+        # entry (``opts_override is None``) falls back to the category default.
+        # COPY / ENV deliveries carry no mount flags (options stays ``""``).
+        if delivery == MOUNT:
+            options = opts_override if opts_override is not None else _bind_options(category)
+        else:
+            options = ""
         sort_key = (_SCOPE_APPLY_ORDER[scope], category, name)
         entries.append(
             (
