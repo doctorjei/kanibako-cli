@@ -488,8 +488,10 @@ def resolve_system_paths(
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
             raise SettingsError(f"Unknown @-reference: {ref}")
+        # system.* config paths are always scalar strings (no structured
+        # category leaves at this tier); narrow the now-``object``-typed value.
         return expand_expr(
-            rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain,
+            str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain,
         )
 
     resolved: dict[str, Path] = {}
@@ -497,7 +499,7 @@ def resolve_system_paths(
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
             raise SettingsError(f"Unresolvable system path: {key}")
-        expanded = expand_expr(rv.value, space="host", ctx=ctx, lookup=lookup)
+        expanded = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
         resolved[key] = Path(expanded)
 
     # PRIMARY-workset box/vault/logs roots, derived from the resolved PRIMARY

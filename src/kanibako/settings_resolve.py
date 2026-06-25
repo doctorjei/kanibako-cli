@@ -80,11 +80,19 @@ class LevelView:
     *name* is the level name (e.g. ``"box"``).  *values* holds values the user
     explicitly set at this level; *defaults* holds defaults declared at this
     level.
+
+    A value is typically a scalar ``str`` (a behavior setting, an ``env`` value,
+    or a legacy colon-string bind), but for the path-delivery CATEGORIES it may
+    be a STRUCTURED leaf — a binding pair/tuple ``[host_src, box_dest[, opts]]``
+    or a ``masks`` list (spec §2a; preserved at load by
+    :func:`kanibako.config.read_categories`).  Hence ``object``, not ``str``.
+    The structural unpacking of those leaves lands on the resolve path in a
+    later phase; the scalar behavior path is unchanged.
     """
 
     name: str
-    values: Mapping[str, str]
-    defaults: Mapping[str, str] = field(default_factory=dict)
+    values: Mapping[str, object]
+    defaults: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -96,9 +104,14 @@ class ResolvedValue:
     value came from a declared default rather than an explicit set.  *terminal*
     is True when the winning value was an explicit ``""`` (a terminal
     suppression that does not fall through to defaults).
+
+    *value* is ``object`` because a CATEGORY value may be a structured leaf (a
+    binding pair/tuple, a ``masks`` list) preserved through load (spec §2a); the
+    common case is a scalar ``str``.  Consumers that need a string narrow at
+    their site (the structural unpacking of category leaves lands later).
     """
 
-    value: str
+    value: object
     level: str
     is_default: bool = False
     terminal: bool = False
@@ -369,11 +382,15 @@ class SettingsResolver:
         Returns the most-specific set value (or a declared default) for *key*.
         When *key* resolves to nothing (UNSET), returns *default*.  An explicit
         terminal ``""`` resolves to ``""`` (it is a set value, not UNSET).
+
+        Behavior settings are scalars; this convenience accessor narrows the
+        resolved value to ``str``.  (Structured CATEGORY leaves are read through
+        :func:`resolve_value` / the category resolver, not this accessor.)
         """
         rv = self.resolve(key)
         if isinstance(rv, _Unset):
             return default
-        return rv.value
+        return rv.value if isinstance(rv.value, str) else str(rv.value)
 
     def keys(self) -> set[str]:
         """Return every key set or defaulted at any level in the cascade."""
@@ -387,13 +404,14 @@ class SettingsResolver:
         """Return ``{key: resolved value}`` for every resolvable key.
 
         The cascade-collapsed view of the behavior settings (the successor to
-        ``start.py``'s ad-hoc precedence walk into an ``effective`` dict).
+        ``start.py``'s ad-hoc precedence walk into an ``effective`` dict).  This
+        is the SCALAR behavior-settings view; values are narrowed to ``str``.
         """
         out: dict[str, str] = {}
         for key in self.keys():
             rv = self.resolve(key)
             if not isinstance(rv, _Unset):
-                out[key] = rv.value
+                out[key] = rv.value if isinstance(rv.value, str) else str(rv.value)
         return out
 
     def categories(self) -> object:

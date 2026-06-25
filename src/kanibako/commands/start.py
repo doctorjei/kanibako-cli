@@ -1980,7 +1980,9 @@ def _build_effective_state(
     for key in keys:
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=_no_lookup)
         if not isinstance(rv, _Unset):
-            effective[key] = rv.value
+            # Agent BEHAVIOR settings are scalars; narrow the now-``object``-typed
+            # resolved value (structured leaves belong to the category path).
+            effective[key] = rv.value if isinstance(rv.value, str) else str(rv.value)
 
     return effective
 

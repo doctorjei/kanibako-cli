@@ -864,7 +864,7 @@ def run_share_list(args: argparse.Namespace) -> int:
         m = SHARE_KEY_RE.match(key)
         if m is None:
             continue
-        rows.append((m.group("name"), m.group("mode"), value))
+        rows.append((m.group("name"), m.group("mode"), str(value)))
     rows.sort(key=lambda r: (r[1], r[0]))
 
     print(f"Shares for working set '{ws.name}':")

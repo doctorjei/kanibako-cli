@@ -901,16 +901,30 @@ class TestReadBindingOverrides:
 
 class TestReadShares:
     def test_reads_dotted_share_keys(self, tmp_path):
+        # NEW structured form (spec §2a): each binding value is a YAML list /
+        # tuple ``[host_src, box_dest]`` — NOT a colon-joined string. The reader
+        # preserves it verbatim (no str()-coercion).
         p = tmp_path / "kanibako.yaml"
         p.write_text(
             "system:\n  bindings:\n    rw:\n"
-            '      foo: "h:g"\n'
-            '      bar: "/abs:~/bar"\n'
+            "      foo: [h, g]\n"
+            "      bar: [/abs, ~/bar]\n"
         )
         shares = read_shares(p)
         assert shares == {
-            "system.bindings.rw.foo": "h:g",
-            "system.bindings.rw.bar": "/abs:~/bar",
+            "system.bindings.rw.foo": ["h", "g"],
+            "system.bindings.rw.bar": ["/abs", "~/bar"],
+        }
+
+    def test_three_element_options_tuple_preserved(self, tmp_path):
+        # 3-element form carries a per-entry mount-options override (spec §2a).
+        p = tmp_path / "kanibako.yaml"
+        p.write_text(
+            "box:\n  bindings:\n    rw:\n"
+            '      helper_sock: [/run/h.sock, ~/h.sock, "z"]\n'
+        )
+        assert read_shares(p) == {
+            "box.bindings.rw.helper_sock": ["/run/h.sock", "~/h.sock", "z"],
         }
 
     def test_no_share_keys_returns_empty(self, tmp_path):
@@ -931,12 +945,12 @@ class TestReadShares:
             "agent:\n"
             '  model: "haiku"\n'
             "  bindings:\n    ro:\n"
-            '      docs: "/host/docs:/srv/docs"\n'
+            "      docs: [/host/docs, /srv/docs]\n"
             "system:\n"
             '  data: "/d"\n'
         )
         assert read_shares(p) == {
-            "agent.bindings.ro.docs": "/host/docs:/srv/docs",
+            "agent.bindings.ro.docs": ["/host/docs", "/srv/docs"],
         }
 
     def test_suppression_empty_value_returned(self, tmp_path):
@@ -953,15 +967,16 @@ class TestReadShares:
 
 class TestReadSeeds:
     def test_reads_dotted_seed_keys(self, tmp_path):
+        # NEW structured form (spec §2a): seed values are YAML lists, preserved.
         p = tmp_path / "kanibako.yaml"
         p.write_text(
             "agent:\n  seeded:\n"
-            '    foo: "/src:~/foo"\n'
-            '    bar: "/abs:/home/agent/bar"\n'
+            "    foo: [/src, ~/foo]\n"
+            "    bar: [/abs, /home/agent/bar]\n"
         )
         assert read_seeds(p) == {
-            "agent.seeded.foo": "/src:~/foo",
-            "agent.seeded.bar": "/abs:/home/agent/bar",
+            "agent.seeded.foo": ["/src", "~/foo"],
+            "agent.seeded.bar": ["/abs", "/home/agent/bar"],
         }
 
     def test_no_seed_keys_returns_empty(self, tmp_path):
@@ -982,14 +997,14 @@ class TestReadSeeds:
             "agent:\n"
             '  model: "haiku"\n'
             "  bindings:\n    ro:\n"
-            '      docs: "/host/docs:/srv/docs"\n'
+            "      docs: [/host/docs, /srv/docs]\n"
             "system:\n"
             '  data: "/d"\n'
             "box:\n  seeded:\n"
-            '    init: "/host/init:~/init"\n'
+            "    init: [/host/init, ~/init]\n"
         )
         assert read_seeds(p) == {
-            "box.seeded.init": "/host/init:~/init",
+            "box.seeded.init": ["/host/init", "~/init"],
         }
 
     def test_suppression_empty_value_returned(self, tmp_path):
@@ -1002,3 +1017,80 @@ class TestReadSeeds:
         p = tmp_path / "bad.yaml"
         p.write_text("this: is: : not valid yaml [[[\n")
         assert read_seeds(p) == {}
+
+
+class TestReadCategoriesRepresentation:
+    """LOAD-layer representation restoration (P1, spec §2a).
+
+    A YAML list/tuple CATEGORY value must survive load UNCHANGED — it is a
+    structured leaf (a binding pair/tuple, a ``masks`` list), NOT a
+    ``str()``-coerced colon/comma string. Scalar leaves (``env`` values, the
+    legacy colon-string bind form) still pass through as ``str``.
+    """
+
+    def test_binding_pair_survives_as_list(self, tmp_path):
+        from kanibako.config import read_categories
+
+        p = tmp_path / "settings.yaml"
+        p.write_text("box:\n  bindings:\n    rw:\n      home: [/host/home, ~/]\n")
+        cats = read_categories(p)
+        # The value is the SAME list YAML produced — not "['/host/home', '~/']".
+        assert cats == {"box.bindings.rw.home": ["/host/home", "~/"]}
+        assert isinstance(cats["box.bindings.rw.home"], list)
+
+    def test_three_element_binding_with_options_survives(self, tmp_path):
+        from kanibako.config import read_categories
+
+        p = tmp_path / "settings.yaml"
+        p.write_text(
+            "box:\n  bindings:\n    rw:\n"
+            '      helper_sock: [/run/h.sock, ~/h.sock, "z"]\n'
+        )
+        cats = read_categories(p)
+        assert cats == {
+            "box.bindings.rw.helper_sock": ["/run/h.sock", "~/h.sock", "z"],
+        }
+
+    def test_masks_list_survives_as_list_not_comma_string(self, tmp_path):
+        from kanibako.config import read_categories
+
+        p = tmp_path / "settings.yaml"
+        p.write_text("box:\n  masks:\n    - ~/workspace/vault\n    - ~/secret\n")
+        cats = read_categories(p)
+        # masks is a REAL list[box_dest], NOT a comma-joined string.
+        assert cats == {"box.masks": ["~/workspace/vault", "~/secret"]}
+        assert isinstance(cats["box.masks"], list)
+
+    def test_round_trip_value_is_unchanged_object(self, tmp_path):
+        from kanibako.config import read_categories
+        from kanibako.config_io import dump_doc, load_doc
+
+        p = tmp_path / "settings.yaml"
+        original = ["/host/data", "/home/agent/data", "Z,U"]
+        data = {"workset": {"bindings": {"rw": {"data": original}}}}
+        dump_doc(p, data)
+        # The loaded leaf equals the in-memory list (round-trips through YAML).
+        assert load_doc(p)["workset"]["bindings"]["rw"]["data"] == original
+        cats = read_categories(p)
+        assert cats["workset.bindings.rw.data"] == original
+
+    def test_scalar_env_value_still_stringified(self, tmp_path):
+        from kanibako.config import read_categories
+
+        p = tmp_path / "settings.yaml"
+        # An env value is a SCALAR — it keeps the historic str() behavior.
+        p.write_text("box:\n  env:\n    DEBUG: 1\n")
+        cats = read_categories(p)
+        assert cats == {"box.env.DEBUG": "1"}
+        assert isinstance(cats["box.env.DEBUG"], str)
+
+    def test_legacy_colon_string_scalar_passes_through(self, tmp_path):
+        from kanibako.config import read_categories
+
+        p = tmp_path / "settings.yaml"
+        # A scalar (legacy colon-string) bind value is NOT a list → still a str,
+        # untouched by the structured-leaf preservation.
+        p.write_text('system:\n  bindings:\n    rw:\n      foo: "h:g"\n')
+        cats = read_categories(p)
+        assert cats == {"system.bindings.rw.foo": "h:g"}
+        assert isinstance(cats["system.bindings.rw.foo"], str)

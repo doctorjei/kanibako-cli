@@ -198,6 +198,20 @@ def is_category_key(key: str) -> bool:
     )
 
 
+def _as_scalar(value: object) -> str:
+    """Narrow a resolved category value to its scalar ``str`` form.
+
+    The LOAD layer now preserves structured category leaves (binding pair/tuple,
+    ``masks`` list — spec §2a), so a resolved value is typed ``object``.  This
+    resolve path still consumes the legacy SCALAR form (a colon-string bind, a
+    comma-string ``masks``, an ``env`` value); a real ``str`` passes through
+    untouched.  The STRUCTURAL unpacking of list/tuple leaves replaces these
+    call sites in a later phase — until then this is the single narrowing seam,
+    behavior-identical for the scalar values that flow today.
+    """
+    return value if isinstance(value, str) else str(value)
+
+
 def _bind_options(category: str) -> str:
     """Mount options for a bind-shaped MOUNT category.
 
@@ -290,7 +304,7 @@ def resolve_categories(
             # "empty" sentinel disables a COPY (seed/synced) entry.
             continue
 
-        host_src_raw, guest_dest_raw = split_bind(rv.value)
+        host_src_raw, guest_dest_raw = split_bind(_as_scalar(rv.value))
         if guest_dest_raw is None:
             raise SettingsError(
                 f"Category '{key}' must specify 'host_src:guest_dest' "
@@ -332,7 +346,7 @@ def resolve_categories(
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset) or rv.terminal:
             continue
-        for idx, raw_dest in enumerate(_split_into_list(rv.value)):
+        for idx, raw_dest in enumerate(_split_into_list(_as_scalar(rv.value))):
             box_dest = expand_expr(raw_dest, space="guest", ctx=ctx, lookup=lookup)
             sort_key = (_SCOPE_APPLY_ORDER[scope], "masks", f"{idx:04d}:{box_dest}")
             entries.append(
@@ -360,7 +374,7 @@ def resolve_categories(
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset) or rv.terminal:
             continue
-        value = expand_expr(rv.value, space="guest", ctx=ctx, lookup=lookup)
+        value = expand_expr(_as_scalar(rv.value), space="guest", ctx=ctx, lookup=lookup)
         sort_key = (_SCOPE_APPLY_ORDER[scope], "env", var)
         entries.append(
             (
