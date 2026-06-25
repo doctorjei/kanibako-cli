@@ -12,6 +12,7 @@ from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 
 logger = get_logger("container")
 
@@ -273,24 +274,21 @@ class ContainerRuntime:
             run_flags = [tty_flag, "--rm", "--userns=keep-id"]
         cmd: list[str] = [
             self.cmd, "run", *run_flags,
-            # Persistent agent home
-            "-v", f"{shell_path}:/home/agent:Z,U",
-            # Project workspace
-            "-v", f"{project_path}:/home/agent/workspace:Z,U",
-            "-w", "/home/agent/workspace",
+            # Working directory inside the box.  The home + workspace + vault binds
+            # are NO LONGER hardwired here — they flow in via *extra_mounts* (the
+            # core box mounts the caller routes through the category resolver,
+            # ``start._build_core_mounts``), so nothing is bound into a box except
+            # through the keyspace.  Only ``-w`` (a flag, not a mount) stays.
+            "-w", f"{GUEST_HOME}/workspace",
         ]
-        # Vault mounts (only if directories exist and vault is enabled)
+        # Local masking is still emitted here (tmpfs has no host source, so it is
+        # not a category MOUNT the caller pre-builds): a read-only tmpfs over each
+        # box-dest in the ``box.masks`` category (resolved in start.py, decision
+        # B).  The default mask is ``~/workspace/vault`` (the old single hardcoded
+        # vault tmpfs); a box may add masks or suppress via a terminal "".  The
+        # ``.gitignore`` overlay that used to ride on the vault tmpfs is DROPPED
+        # (unconditional mask, no special-case overlay).
         if enable_vault:
-            if vault_ro_path.is_dir():
-                cmd += ["-v", f"{vault_ro_path}:/home/agent/vault/ro:ro"]
-            if vault_rw_path.is_dir():
-                cmd += ["-v", f"{vault_rw_path}:/home/agent/vault/rw:Z,U"]
-            # Local masking: a read-only tmpfs over each box-dest in the
-            # ``box.masks`` category (resolved in start.py, decision B).  The
-            # default mask is ``~/workspace/vault`` (the old single hardcoded
-            # vault tmpfs); a box may add masks or suppress via a terminal "".
-            # The ``.gitignore`` overlay that used to ride on the vault tmpfs is
-            # DROPPED (unconditional mask, no special-case overlay).
             for mask in masks:
                 cmd += ["--mount", f"type=tmpfs,dst={mask},ro"]
         # Extra mounts (target binary mounts, etc.)
@@ -596,8 +594,8 @@ def _precreate_mount_stubs(
     relative to *project_path*; other destinations under ``/home/agent/``
     are created relative to *shell_path*.
     """
-    AGENT_HOME = "/home/agent/"
-    WORKSPACE = "/home/agent/workspace/"
+    AGENT_HOME = GUEST_HOME + "/"
+    WORKSPACE = GUEST_HOME + "/workspace/"
 
     def _clear_symlink(p: Path) -> None:
         """Remove *p* if it is a symlink so a bind lands on a clean mountpoint.

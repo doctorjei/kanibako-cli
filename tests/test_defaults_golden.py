@@ -186,6 +186,35 @@ class TestCoreDefaultsShape:
                 entry["box_dest"], f"core channel {entry['key']} box_dest"
             )
 
+    def test_core_entries_are_structured(self):
+        """Each core box-mount default carries the structural fields + clean dest.
+
+        The core mounts' HOST sources are runtime-probed off ``ProjectPaths``
+        (injected at the seam), so the file names them symbolically; what must be
+        structured here is each entry's shape (key/category/source/box_dest/
+        options/scope) and its box-side destination + options (the per-entry mount
+        OPTIONS being the binding tuple's 3rd slot, spec §2a).
+        """
+        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        core = doc["core"]
+        assert isinstance(core, list) and core
+        for entry in core:
+            assert isinstance(entry, dict), f"core entry must be a mapping: {entry!r}"
+            for fld in ("key", "category", "source", "box_dest", "options", "scope"):
+                assert fld in entry, f"core entry missing {fld!r}: {entry!r}"
+                assert isinstance(entry[fld], str), (
+                    f"core {fld} must be str: {entry!r}"
+                )
+            assert entry["category"] in ("bindings.ro", "bindings.rw"), (
+                f"core category must be a bindings.* token: {entry!r}"
+            )
+            assert entry["scope"] in ("system", "vault"), (
+                f"core scope must be system|vault: {entry!r}"
+            )
+            _assert_no_joined_string(
+                entry["box_dest"], f"core mount {entry['key']} box_dest"
+            )
+
 
 # --------------------------------------------------------------------------- #
 # 1. SPECCED-SHAPE ASSERTIONS — per-agent defaults files

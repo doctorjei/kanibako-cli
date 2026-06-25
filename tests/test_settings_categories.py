@@ -781,3 +781,132 @@ class TestReconcilePartition:
         rec = reconcile_categories([env, binding])
         assert len(rec.mounts) == 1
         assert len(rec.envs) == 1
+
+
+# ---------------------------------------------------------------------------
+# core_default_categories (step 3) — the core box mounts (home/workspace/vault)
+# routed through the resolver as AGENT-level default_categories.
+# ---------------------------------------------------------------------------
+
+
+class _FakeProj:
+    """Minimal ProjectPaths stand-in for core_default_categories."""
+
+    def __init__(self, tmp_path, *, vault_dirs: bool):
+        from pathlib import Path
+
+        self.shell_path = Path("/host/shell")
+        self.project_path = Path("/host/proj")
+        self.vault_ro_path = tmp_path / "vro"
+        self.vault_rw_path = tmp_path / "vrw"
+        if vault_dirs:
+            self.vault_ro_path.mkdir()
+            self.vault_rw_path.mkdir()
+
+
+class TestCoreDefaultCategories:
+    """core_defaults.core_default_categories emits the structured core binds."""
+
+    def test_home_and_workspace_structured_triples(self, tmp_path):
+        from kanibako import core_defaults
+
+        proj = _FakeProj(tmp_path, vault_dirs=True)
+        binds = core_defaults.core_default_categories(None, proj, enable_vault=True)
+        # home: rw bind, dest ~ , options Z,U (the structured 3-tuple's 3rd slot).
+        assert binds["box.bindings.rw.home"] == ("/host/shell", "~", "Z,U")
+        # workspace: rw bind, dest ~/workspace, options Z,U.
+        assert binds["box.bindings.rw.workspace"] == (
+            "/host/proj",
+            "~/workspace",
+            "Z,U",
+        )
+        # Every value is a structured 3-tuple (spec §2a), never a colon-string.
+        for v in binds.values():
+            assert isinstance(v, tuple) and len(v) == 3
+            assert ":" not in v[1]
+
+    def test_vault_keys_present_when_enabled_and_dirs_exist(self, tmp_path):
+        from kanibako import core_defaults
+
+        proj = _FakeProj(tmp_path, vault_dirs=True)
+        binds = core_defaults.core_default_categories(None, proj, enable_vault=True)
+        # vault_ro -> bindings.ro with ro options; vault_rw -> bindings.rw Z,U.
+        assert binds["box.bindings.ro.vault"] == (
+            str(proj.vault_ro_path),
+            "~/vault/ro",
+            "ro",
+        )
+        assert binds["box.bindings.rw.vault"] == (
+            str(proj.vault_rw_path),
+            "~/vault/rw",
+            "Z,U",
+        )
+
+    def test_vault_keys_absent_when_disabled(self, tmp_path):
+        from kanibako import core_defaults
+
+        proj = _FakeProj(tmp_path, vault_dirs=True)
+        binds = core_defaults.core_default_categories(None, proj, enable_vault=False)
+        assert "box.bindings.ro.vault" not in binds
+        assert "box.bindings.rw.vault" not in binds
+        # home + workspace stay unconditional.
+        assert "box.bindings.rw.home" in binds
+        assert "box.bindings.rw.workspace" in binds
+
+    def test_vault_keys_absent_when_source_missing(self, tmp_path):
+        from kanibako import core_defaults
+
+        proj = _FakeProj(tmp_path, vault_dirs=False)  # vault dirs do NOT exist
+        binds = core_defaults.core_default_categories(None, proj, enable_vault=True)
+        assert "box.bindings.ro.vault" not in binds
+        assert "box.bindings.rw.vault" not in binds
+        assert "box.bindings.rw.home" in binds
+        assert "box.bindings.rw.workspace" in binds
+
+    def test_options_flow_through_resolver_to_entry(self, tmp_path):
+        """The 3rd-slot options survive resolve_categories as the entry options.
+
+        Injected as AGENT-level defaults, the structured triples resolve to
+        CategoryEntry with the per-entry options override applied (so vault_ro keeps
+        ``ro`` and the rw binds keep ``Z,U``) — proving the options slot flows
+        end-to-end to the emitted Mount.
+        """
+        from kanibako import core_defaults
+
+        proj = _FakeProj(tmp_path, vault_dirs=True)
+        defaults = core_defaults.core_default_categories(
+            None, proj, enable_vault=True
+        )
+        ctx = make_ctx()
+        levels = [
+            LevelView("box", {}),
+            LevelView("agent", {}, defaults=defaults),
+        ]
+        entries = _resolve(levels, ctx)
+        by_dest = {e.box_dest: e for e in entries}
+        assert by_dest["/home/agent"].options == "Z,U"
+        assert by_dest["/home/agent"].category == "bindings.rw"
+        assert by_dest["/home/agent/workspace"].options == "Z,U"
+        assert by_dest["/home/agent/vault/ro"].options == "ro"
+        assert by_dest["/home/agent/vault/ro"].category == "bindings.ro"
+        assert by_dest["/home/agent/vault/rw"].options == "Z,U"
+
+    def test_home_and_workspace_depth_order_keeps_both(self, tmp_path):
+        """reconcile depth-sort keeps BOTH the nested home + workspace binds."""
+        from kanibako import core_defaults
+
+        proj = _FakeProj(tmp_path, vault_dirs=True)
+        defaults = core_defaults.core_default_categories(
+            None, proj, enable_vault=True
+        )
+        ctx = make_ctx()
+        levels = [
+            LevelView("box", {}),
+            LevelView("agent", {}, defaults=defaults),
+        ]
+        rec = _reconcile(levels, ctx)
+        dests = [m.box_dest for m in rec.mounts]
+        # Both kept; home (shallower) emitted before workspace (deeper).
+        assert "/home/agent" in dests
+        assert "/home/agent/workspace" in dests
+        assert dests.index("/home/agent") < dests.index("/home/agent/workspace")
