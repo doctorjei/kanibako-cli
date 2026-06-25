@@ -2110,9 +2110,15 @@ class TestResolveVaultMask:
         assert self._call(tmp_path, project_toml=ptoml) == []
 
     def test_box_adds_extra_mask(self, tmp_path):
-        """A box may add a mask alongside the default vault mask."""
+        """A box may add a mask alongside the default vault mask.
+
+        ``masks`` is a real YAML list (spec §2a — preserved verbatim at load),
+        NOT a comma-string; a two-element list resolves to two box-dest entries.
+        """
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  masks: "~/workspace/vault,~/.secret"\n')
+        ptoml.write_text(
+            'box:\n  masks:\n    - "~/workspace/vault"\n    - "~/.secret"\n'
+        )
         masks = self._call(tmp_path, project_toml=ptoml)
         assert set(masks) == {
             "/home/agent/workspace/vault",

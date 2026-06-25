@@ -200,15 +200,14 @@ def is_category_key(key: str) -> bool:
 
 
 def _as_scalar(value: object) -> str:
-    """Narrow a resolved category value to its scalar ``str`` form.
+    """Narrow a resolved ``env`` value to its scalar ``str`` form.
 
-    The LOAD layer now preserves structured category leaves (binding pair/tuple,
-    ``masks`` list — spec §2a), so a resolved value is typed ``object``.  This
-    resolve path still consumes the legacy SCALAR form (a colon-string bind, a
-    comma-string ``masks``, an ``env`` value); a real ``str`` passes through
-    untouched.  The STRUCTURAL unpacking of list/tuple leaves replaces these
-    call sites in a later phase — until then this is the single narrowing seam,
-    behavior-identical for the scalar values that flow today.
+    The LOAD layer preserves structured category leaves (binding pair/tuple,
+    ``masks`` list — spec §2a), so a resolved value is typed ``object``.  ``env``
+    is the one remaining scalar category (its value is a plain VAR value); this
+    narrows it to ``str`` (a real ``str`` passes through untouched).  Binding and
+    ``masks`` leaves are unpacked structurally (:func:`unpack_bind` /
+    :func:`_mask_dests`) and do NOT pass through here.
     """
     return value if isinstance(value, str) else str(value)
 
@@ -236,33 +235,19 @@ def _discover(levels: list[LevelView], pred: Callable[[str], bool]) -> set[str]:
     return keys
 
 
-def _split_into_list(value: str) -> list[str]:
-    """Split a ``masks`` scalar into a list of box-dest paths.
+def _mask_dests(value: object) -> list[str]:
+    """Narrow a resolved ``masks`` value to its real ``list[box_dest]``.
 
-    A masks value is rendered by ``_flatten_dotted`` from a YAML list; this
-    module sees the already-flattened scalar.  Commas separate elements; a
-    backslash escapes a comma.  Empty elements are dropped.  (A single path with
-    no comma is one element.)
+    Per spec §2a ``masks`` is a real ``list[box_dest]`` — the LOAD layer (P1)
+    preserves a YAML list verbatim, so the common case is an actual ``list`` /
+    ``tuple`` whose elements ARE the box-dest paths (each kept as-is, NOT
+    re-derived from a flattened string — the old comma-string shim
+    ``str()``-reprd a preserved list into garbage, the latent corruption this
+    closes).  A bare scalar ``str`` (a single-mask config or in-code default) is
+    a one-element list.  Empty / whitespace-only elements are dropped.
     """
-    out: list[str] = []
-    cur: list[str] = []
-    i = 0
-    n = len(value)
-    while i < n:
-        c = value[i]
-        if c == "\\" and i + 1 < n:
-            cur.append(value[i + 1])
-            i += 2
-            continue
-        if c == ",":
-            out.append("".join(cur))
-            cur = []
-            i += 1
-            continue
-        cur.append(c)
-        i += 1
-    out.append("".join(cur))
-    return [e for e in (s.strip() for s in out) if e]
+    raw = value if isinstance(value, (list, tuple)) else [value]
+    return [s for s in (str(e).strip() for e in raw) if s]
 
 
 def resolve_categories(
@@ -359,7 +344,7 @@ def resolve_categories(
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset) or rv.terminal:
             continue
-        for idx, raw_dest in enumerate(_split_into_list(_as_scalar(rv.value))):
+        for idx, raw_dest in enumerate(_mask_dests(rv.value)):
             box_dest = expand_expr(raw_dest, space="guest", ctx=ctx, lookup=lookup)
             sort_key = (_SCOPE_APPLY_ORDER[scope], "masks", f"{idx:04d}:{box_dest}")
             entries.append(
