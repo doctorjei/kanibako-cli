@@ -1766,23 +1766,45 @@ def _run_container(
             # (podman race: "container state improper").  Retry a few times.
             _max_exec_attempts = 5
             for _exec_attempt in range(1, _max_exec_attempts + 1):
-                # If the agent crashed instantly on launch, the container is
-                # already dead.  Skip the exec entirely so podman never leaks
-                # its raw "container state improper" error to the user; fall
-                # through to the log-showing code below, which surfaces the
-                # agent's actual crash reason instead.
-                if not runtime.is_running(container_name):
-                    break
+                # Readiness probe (CAPTURED) before the TTY-inheriting
+                # interactive exec.  exec_ready runs the same operation with
+                # output captured, so podman's raw "container state improper"
+                # race error is swallowed instead of leaking to the user's TTY.
+                # Only hand off to the interactive attach once a probe has just
+                # succeeded; otherwise fall through to the log-showing path
+                # (instant agent crash) or retry the transient startup race.
+                if not runtime.exec_ready(container_name):
+                    if not runtime.is_running(container_name):
+                        # Container already died (e.g. instant agent crash)
+                        # before we could attach.  The bootstrap session never
+                        # ran, so rc still holds the launch value (0).  Adopt
+                        # the container's real exit code (falling back to 1 —
+                        # tmux often masks the inner program's code) so a
+                        # crash-on-launch surfaces as a non-zero kanibako exit
+                        # instead of a misleading success.
+                        # Fall through to the log-showing path below.
+                        rc = _container_exit_code(runtime, container_name) or 1
+                        break
+                    # Still running but not yet ready: transient startup race.
+                    if _exec_attempt < _max_exec_attempts:
+                        print(
+                            f"Warning: container not ready for exec "
+                            f"(attempt {_exec_attempt}/{_max_exec_attempts}), "
+                            f"retrying...",
+                            file=sys.stderr,
+                        )
+                        time.sleep(0.5)
+                    continue
                 rc = runtime.exec(
                     container_name, _bootstrap_attach(bootstrap_program)
                 )
                 if rc == 0:
                     break
-                # Non-zero exit — check if the container is still alive.
+                # Non-zero interactive exec exit — if the container died, fall
+                # through to the log-showing code; otherwise (still running)
+                # retry.
                 if not runtime.is_running(container_name):
-                    # Container died; fall through to the log-showing code.
                     break
-                # Container still running but exec failed (transient race).
                 if _exec_attempt < _max_exec_attempts:
                     print(
                         f"Warning: container not ready for exec "
@@ -2920,6 +2942,20 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str:
         capture_output=True, text=True,
     )
     return (result.stdout + result.stderr).strip() if result.returncode == 0 else ""
+
+
+def _container_exit_code(runtime: ContainerRuntime, name: str) -> int:
+    """Return the container's last exit code, or 0 if undeterminable."""
+    result = subprocess.run(
+        [runtime.cmd, "inspect", "--format", "{{.State.ExitCode}}", name],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return 0
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return 0
 
 
 def _validate_mounts(mounts: list, logger) -> None:

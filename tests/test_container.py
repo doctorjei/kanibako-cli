@@ -500,6 +500,37 @@ class TestExec:
             ]
 
 
+class TestExecReady:
+    """Test exec_ready() — CAPTURED readiness probe for the interactive exec."""
+
+    def test_exec_ready_true_when_rc_zero(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.exec_ready("mycontainer") is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "exec", "mycontainer", "true"]
+
+    def test_exec_ready_false_when_rc_nonzero(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.exec_ready("mycontainer") is False
+
+    def test_exec_ready_captures_output_so_race_error_cannot_leak(self):
+        """The probe MUST capture output, or podman's raw "container state
+        improper" race line would leak to the user's TTY/stderr — the exact
+        bug this method closes."""
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.exec_ready("mycontainer")
+            assert m.call_args.kwargs.get("capture_output") is True
+
+
 class TestContainerExists:
     """Test container_exists() method."""
 
