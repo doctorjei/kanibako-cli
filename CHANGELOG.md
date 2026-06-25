@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`kanibako rig update [<name>]`** — the everyday "get the latest" path for a
+  rig. For a pulled/prefab rig it pulls the newer upstream image; for a
+  template/built rig it rebuilds on the refreshed base. With no name it targets
+  the configured `box.image` rig; `--all` updates every local rig. `rig prep
+  --force` is kept as the full rebuild-from-scratch path.
+- Friendly preflight error when rootless podman's storage (graph root) is on a
+  **virtiofs** filesystem — an unsupported configuration where the box can't
+  launch (overlay/`pivot_root` is denied). Instead of a cryptic runtime crash,
+  kanibako now explains the problem and suggests fixes (back the graph root with
+  a real filesystem, or use a rootful `KANIBAKO_DOCKER_CMD` shim). The check is
+  silent under a rootful shim, on docker, or whenever the state can't be
+  determined, so it never blocks a normal launch.
+
+### Changed
+
+- A persistent box now tears down (credential writeback + container removal) when
+  its in-box session exits; a `Ctrl-b d` detach (or a dropped client) keeps it
+  running and reattachable with `kanibako start`. Previously a clean exit left a
+  stopped container behind, which blocked the next `kanibako shell`/`start`.
+- Image-freshness notices now suggest `kanibako rig update` (was `kanibako rig
+  prep --force`).
+
+### Removed
+
+- Dropped the vestigial default `~/workspace/vault` tmpfs mask. It only existed
+  to hide the vault back when it lived inside the workspace; the vault moved out
+  of the workspace in 1.6.0, so no mask is applied by default. Boxes can still
+  declare explicit tmpfs masks via the `box.masks` (or `<scope>.masks`) category.
+
 ## [1.6.0] - 2026-06-17
 
 This release generalizes kanibako's agent-plugin interface so that any agent is

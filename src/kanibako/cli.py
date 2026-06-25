@@ -184,6 +184,44 @@ _SUBCOMMANDS = {
 }
 
 
+def _normalize_command(effective: list[str]) -> list[str]:
+    """Reorder argv so a leading global-style flag doesn't swallow a subcommand.
+
+    The dispatcher's fallback rule ``effective[0] not in _SUBCOMMANDS -> prepend
+    "start"`` treats a LEADING flag (e.g. ``--agent goose shell``) as a bare
+    ``start`` with that flag — turning ``--agent goose shell`` into ``start
+    shell`` with ``project="shell"``, which both launches the wrong thing and
+    fires the Gate-1 setup nudge.
+
+    To honour the blanket-flag design (``kanibako --agent X <subcommand>`` ==
+    ``kanibako <subcommand> --agent X``), when ``effective[0]`` is an option
+    (starts with ``-``) and a KNOWN subcommand appears later, move the FIRST such
+    subcommand token to the front, preserving the relative order of everything
+    else.  ``--agent goose shell`` -> ``["shell", "--agent", "goose"]``.
+
+    Heuristic (kept simple, matches the documented design where flags normally
+    follow the subcommand): scan for the first token that is a ``_SUBCOMMANDS``
+    member.  A flag VALUE that happens to equal a subcommand name (e.g.
+    ``--box shell start`` where a box is literally named "shell") would be
+    matched as the subcommand; this is an accepted edge case.
+
+    The genuinely-no-subcommand cases are left untouched here so the caller's
+    existing ``prepend "start"`` rule still handles them: ``kanibako myproject``
+    (bare positional) and ``kanibako -A`` / ``kanibako -N`` (leading flags, no
+    subcommand) both fall through unchanged.
+    """
+    if not effective or not effective[0].startswith("-"):
+        return effective
+    sub_idx = next(
+        (i for i, tok in enumerate(effective) if tok in _SUBCOMMANDS),
+        None,
+    )
+    if sub_idx is None:
+        return effective
+    sub = effective[sub_idx]
+    return [sub] + effective[:sub_idx] + effective[sub_idx + 1:]
+
+
 def _ensure_initialized() -> None:
     """Ensure kanibako is initialized (create config + data dirs on first run)."""
     from kanibako.config import (
@@ -340,6 +378,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"kanibako {__version__}")
         sys.exit(0)
     else:
+        # Reorder a leading global-style flag ahead of a later subcommand so
+        # `kanibako --agent goose shell` dispatches as `shell` (not `start` with
+        # project="shell").  Must run BEFORE the prepend-"start" fallback and the
+        # `--` split below.
+        effective = _normalize_command(effective)
+
         # If the first arg isn't a known subcommand, default to "start".
         if not effective or effective[0] not in _SUBCOMMANDS:
             effective = ["start"] + effective

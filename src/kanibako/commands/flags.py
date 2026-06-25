@@ -249,6 +249,17 @@ def check_flag_relevance(args: argparse.Namespace) -> None:
     # the excluded commands entirely.  Only a real string value counts as "set"
     # (a non-str sentinel from a MagicMock test stub is ignored).
     if isinstance(agent, str) and key not in _AGENT_FLAG_EXCLUDE:
+        # `shell` (and `box shell`) is a shell — it never launches an agent, so
+        # `--agent` is meaningless rather than wrong.  Product decision: IGNORE
+        # it with a clear note (don't hard-error), then proceed to open a plain
+        # shell.  run_shell never reads args.agent, so the value is dropped here.
+        if key in ("shell", "box shell"):
+            print(
+                "Note: --agent is ignored for 'shell' "
+                "(a shell never launches an agent).",
+                file=sys.stderr,
+            )
+            return
         if key not in AGENT_FLAG_COMMANDS:
             raise FlagRelevanceError(
                 f"--agent is not valid for '{key}'. It applies to agent "

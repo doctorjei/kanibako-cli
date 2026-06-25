@@ -123,6 +123,112 @@ class TestCreateSnapshot:
 
 
 # ---------------------------------------------------------------------------
+# Fallback / degrade path (coverage gap #3)
+#
+# The snapshot engine degrades gracefully so a full snapshot is still produced
+# on filesystems / hosts that lack the faster primitive:
+#
+#   reflink  -- chosen only when detect_snapshot_strategy's probe succeeds;
+#               on a no-reflink fs (e.g. ext4) detection returns "hardlink"
+#               so the reflink path is never executed (it has no in-path
+#               fallback -- a forced reflink failure raises).
+#   hardlink -- ``rsync --link-dest``; if rsync is missing or fails the
+#               helper falls back to ``shutil.copytree`` (a full copy).
+# ---------------------------------------------------------------------------
+
+
+def _assert_full_snapshot(snap: Path | None, vault_rw: Path) -> None:
+    """Assert *snap* is a complete copy of *vault_rw* (file set + contents)."""
+    assert snap is not None
+    assert snap.is_dir()
+
+    def rel_files(root: Path) -> dict[str, str]:
+        return {
+            str(f.relative_to(root)): f.read_text()
+            for f in root.rglob("*")
+            if f.is_file()
+        }
+
+    assert rel_files(snap) == rel_files(vault_rw)
+
+
+class TestSnapshotFallbackChain:
+    def test_hardlink_rsync_failure_falls_back_to_copy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """rsync returning non-zero -> copytree fallback -> full snapshot."""
+        import subprocess
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        real_run = subprocess.run
+
+        def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+            # Simulate an rsync that fails (e.g. EXDEV on --link-dest).
+            if cmd and cmd[0] == "rsync":
+                raise subprocess.CalledProcessError(1, cmd)
+            return real_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+
+        result = create_snapshot(vault_rw, strategy="hardlink")
+        _assert_full_snapshot(result, vault_rw)
+
+    def test_hardlink_rsync_missing_falls_back_to_copy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """rsync not installed (FileNotFoundError) -> copytree fallback."""
+        import subprocess
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        real_run = subprocess.run
+
+        def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if cmd and cmd[0] == "rsync":
+                raise FileNotFoundError("rsync not found")
+            return real_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+
+        result = create_snapshot(vault_rw, strategy="hardlink")
+        _assert_full_snapshot(result, vault_rw)
+
+    def test_no_reflink_fs_detects_hardlink_and_snapshots(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No-reflink fs: detection returns hardlink, snapshot still complete.
+
+        This mirrors the real launch path (start.py): detect the strategy,
+        then create_snapshot with it.  On a filesystem whose reflink probe
+        fails, detection must pick ``hardlink`` so the reflink path -- which
+        has no in-path fallback -- is never executed.
+        """
+        import subprocess
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        real_run = subprocess.run
+
+        def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+            # Make the `cp --reflink=always` probe report no reflink support.
+            if cmd and cmd[0] == "cp" and "--reflink=always" in cmd:
+                return subprocess.CompletedProcess(cmd, 1, b"", b"unsupported")
+            return real_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+
+        strategy = detect_snapshot_strategy(vault_rw)
+        assert strategy == "hardlink"
+
+        result = create_snapshot(vault_rw, strategy=strategy)
+        _assert_full_snapshot(result, vault_rw)
+
+
+# ---------------------------------------------------------------------------
 # detect_snapshot_strategy
 # ---------------------------------------------------------------------------
 

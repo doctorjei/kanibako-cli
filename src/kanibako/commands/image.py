@@ -33,7 +33,7 @@ from kanibako.rig_registry import (
     remove as registry_remove,
     upsert,
 )
-from kanibako.rig_resolve import resolve_rig
+from kanibako.rig_resolve import RigResolution, resolve_rig
 from kanibako.rig_source import derive_name, detect_source_kind, fetch_to_temp
 from kanibako.shells import capture_image_shell
 from kanibako.templates_image import (
@@ -75,6 +75,30 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     prep_p.add_argument("--force", action="store_true", help="Re-prep even if already prepped")
     prep_p.add_argument("--all", action="store_true", dest="all_images", help="Prep all local kanibako rigs")
     prep_p.set_defaults(func=run_prep)
+
+    # kanibako rig update
+    update_p = image_sub.add_parser(
+        "update",
+        help="Bring a rig up to date: pull a newer image (or rebuild on it)",
+        description=(
+            "Refresh a rig to the latest image. For a pulled/prefab rig, pull "
+            "the newer upstream image; for a template/built rig, rebuild it on "
+            "top of the refreshed base. Defaults to the current box's rig "
+            "(box.image) when no name is given. This is the everyday "
+            "'get the latest' path; use 'rig prep --force' to rebuild from "
+            "scratch."
+        ),
+    )
+    update_p.add_argument(
+        "name", nargs="?", default=None,
+        help="Rig name to update (omit to update the configured box.image rig; "
+             "use --all for every local kanibako rig)",
+    )
+    update_p.add_argument(
+        "--all", action="store_true", dest="all_images",
+        help="Update all local kanibako rigs (pull each)",
+    )
+    update_p.set_defaults(func=run_update)
 
     # kanibako rig add
     add_p = image_sub.add_parser(
@@ -778,25 +802,106 @@ def run_prep(args: argparse.Namespace) -> int:
         return 0
 
     if res.kind == "template":
-        cf = res.containerfile or get_containerfile(
-            f"template-{args.name}", containers_dir,
+        return _build_template(
+            runtime, res, args.name, containers_dir, std,
         )
-        if cf is None:
-            print(
-                f"error: Containerfile not found for template '{args.name}'.",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"Building rig '{args.name}' from {cf.name}...")
-        rc = runtime.rebuild(res.image, cf, cf.parent, build_args=None)
-        if rc == 0:
-            print(f"Rig '{args.name}' prepped as {res.image}")
-            capture_image_shell(runtime, res.image, std)
-        else:
-            print(f"Build failed with exit code {rc}", file=sys.stderr)
-        return rc
 
     # prefab: pull (same as rebuild).
+    return _update_one(runtime, res.image, std)
+
+
+def _build_template(
+    runtime: ContainerRuntime,
+    res: RigResolution,
+    name: str,
+    containers_dir: Path,
+    std,
+) -> int:
+    """Build a template rig from its Containerfile and capture its image shell.
+
+    Shared by ``rig prep`` (build/--force-rebuild paths) and ``rig update``
+    (rebuild-on-refreshed-base path). The build always reads ``FROM`` afresh, so
+    a rebuild naturally picks up a newer base image.
+    """
+    cf = res.containerfile or get_containerfile(
+        f"template-{name}", containers_dir,
+    )
+    if cf is None:
+        print(
+            f"error: Containerfile not found for template '{name}'.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Building rig '{name}' from {cf.name}...")
+    rc = runtime.rebuild(res.image, cf, cf.parent, build_args=None)
+    if rc == 0:
+        print(f"Rig '{name}' prepped as {res.image}")
+        capture_image_shell(runtime, res.image, std)
+    else:
+        print(f"Build failed with exit code {rc}", file=sys.stderr)
+    return rc
+
+
+def run_update(args: argparse.Namespace) -> int:
+    """Bring a rig up to date with the latest image.
+
+    Unlike ``prep`` (which short-circuits an already-prepped rig) and
+    ``prep --force`` (which rebuilds from scratch), ``update`` is the everyday
+    "get the latest" path:
+
+    * **prefab / pulled base** -> pull the upstream image again (idempotent;
+      podman reports whether the layers changed);
+    * **template / built rig** -> rebuild it, which reads ``FROM`` afresh and so
+      lands on the refreshed base;
+    * **extended (interactive)** -> has no reproducible recipe; report that it
+      can't be auto-updated.
+
+    With no *name*, the target defaults to the configured ``box.image`` rig (the
+    current box's rig). ``--all`` pulls every local kanibako rig.
+    """
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    containers_dir = std.data_path / "containers"
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.all_images:
+        return _update_all(runtime, std)
+
+    merged = load_merged_config(config_file, None)
+
+    # Default target: the configured box.image rig (the current box's rig).
+    name = args.name if args.name is not None else merged.box_image
+
+    registry = load_registry(registry_path(std))
+    res = resolve_rig(name, runtime, std, merged, registry=registry)
+
+    if res.kind == "extended":
+        if res.prep_action == "none":
+            print(
+                f"Rig '{name}' is an extended (interactive) rig with no recipe "
+                f"to rebuild; nothing to update. Re-create it with 'rig extend', "
+                f"or move a fresh build with 'rig export'/'rig import'.",
+            )
+            return 0
+        print(
+            f"error: extended rig '{name}' image is missing and has no recipe "
+            f"to rebuild (use 'rig export'/'rig import' or 'rig extend').",
+            file=sys.stderr,
+        )
+        return 1
+
+    if res.kind == "template":
+        # Rebuild on the refreshed base (FROM is re-read on every build).
+        return _build_template(runtime, res, name, containers_dir, std)
+
+    # prefab / pulled base: always pull, even if already local -- the whole
+    # point of update is to fetch a possibly-newer upstream image.
     return _update_one(runtime, res.image, std)
 
 

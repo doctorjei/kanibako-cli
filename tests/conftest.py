@@ -274,17 +274,23 @@ def start_mocks():
             # + tests/test_container_extended.py.  Combined into ONE
             # ``patch.multiple`` to keep this large ``with`` under Python's
             # statically-nested-block limit.
+            # Several same-module ``kanibako.commands.start`` patches are folded
+            # into ONE ``patch.multiple`` to keep this large ``with`` under
+            # Python's statically-nested-block limit (20).  The mount-builder
+            # stubs (``_build_channel_mounts``/``_build_core_mounts``) emit an
+            # empty mount set; ``_container_logs``/``registry_path`` are the
+            # anonymous no-op stubs that need no ``as`` binding.
             patch.multiple(
                 "kanibako.commands.start",
                 _build_channel_mounts=DEFAULT,
                 _build_core_mounts=DEFAULT,
+                _container_logs=DEFAULT,
+                registry_path=DEFAULT,
             ) as m_launch_mount_stubs,
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
-            patch("kanibako.commands.start._container_logs", return_value=""),
             patch("builtins.open", MagicMock()) as m_open,
             patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,
-            patch("kanibako.commands.start.registry_path"),
             # Seed-once detection (BUG-D redesign).  The gate records seed
             # completion (and adopt-stamps a legacy box) via ``mark_box_seeded``.
             # Driven with the MagicMock ``std`` here, a real ``mark_box_seeded``
@@ -315,11 +321,19 @@ def start_mocks():
                 "kanibako.targets.base._validate_agent_binary",
                 return_value=None,
             ) as m_validate_binary,
+            # Virtiofs-graphroot preflight: default to "not applicable" so the
+            # MagicMock runtime never triggers a real podman info / procfs read.
+            # Tests exercising the diagnostic override its return value.
+            patch(
+                "kanibako.image_sharing.virtiofs_graphroot_message",
+                return_value=None,
+            ) as m_virtiofs_check,
         ):
             # Both launch-mount builder stubs emit an empty mount set (see the
             # patch.multiple rationale above).
             m_launch_mount_stubs["_build_channel_mounts"].return_value = []
             m_launch_mount_stubs["_build_core_mounts"].return_value = []
+            m_launch_mount_stubs["_container_logs"].return_value = ""
 
             proj = MagicMock()
             proj.is_new = False
@@ -456,6 +470,7 @@ def start_mocks():
                 credsync=m_credsync,
                 build_channel_mounts=m_launch_mount_stubs["_build_channel_mounts"],
                 build_core_mounts=m_launch_mount_stubs["_build_core_mounts"],
+                virtiofs_check=m_virtiofs_check,
             )
 
     return _make

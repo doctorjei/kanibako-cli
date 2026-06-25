@@ -856,6 +856,54 @@ class TestParser:
         assert not hasattr(cli_mod, "_COMMAND_ALIASES")
 
 
+class TestNormalizeCommand:
+    """Dispatcher reorder: a leading flag must not swallow a later subcommand."""
+
+    def test_leading_agent_flag_before_shell_reorders(self):
+        from kanibako.cli import _normalize_command
+        # `kanibako --agent goose shell` -> shell leads, flags preserved.
+        assert _normalize_command(["--agent", "goose", "shell"]) == [
+            "shell", "--agent", "goose",
+        ]
+
+    def test_leading_box_flag_before_stop_reorders(self):
+        from kanibako.cli import _normalize_command
+        assert _normalize_command(["--box", "foo", "stop"]) == [
+            "stop", "--box", "foo",
+        ]
+
+    def test_bare_positional_unchanged(self):
+        from kanibako.cli import _normalize_command
+        # `kanibako myproject` -> no subcommand anywhere; caller prepends start.
+        assert _normalize_command(["myproject"]) == ["myproject"]
+
+    def test_leading_short_flag_no_subcommand_unchanged(self):
+        from kanibako.cli import _normalize_command
+        # `kanibako -A` -> leading flag, no subcommand; caller prepends start.
+        assert _normalize_command(["-A"]) == ["-A"]
+        assert _normalize_command(["-N"]) == ["-N"]
+
+    def test_subcommand_already_leading_unchanged(self):
+        from kanibako.cli import _normalize_command
+        assert _normalize_command(["shell"]) == ["shell"]
+        assert _normalize_command(["start", "x"]) == ["start", "x"]
+        assert _normalize_command(["shell", "--agent", "goose"]) == [
+            "shell", "--agent", "goose",
+        ]
+
+    def test_empty_unchanged(self):
+        from kanibako.cli import _normalize_command
+        assert _normalize_command([]) == []
+
+    def test_reordered_agent_goose_shell_parses_as_shell(self):
+        # End-to-end: after the reorder, build_parser yields command="shell".
+        from kanibako.cli import _normalize_command
+        parser = build_parser()
+        args = parser.parse_args(_normalize_command(["--agent", "goose", "shell"]))
+        assert args.command == "shell"
+        assert args.agent == "goose"
+
+
 class TestLazyInitExemptions:
     """Commands that skip lazy initialization."""
 
@@ -1052,4 +1100,67 @@ class TestSetupNudge:
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("list"))
             _setup_nudge(self._ns("agent", agent_command="list"))
+        assert capsys.readouterr().err == ""
+
+
+class TestShellAgentFlagIgnored:
+    """shell + --agent is IGNORED with a note (not a hard FlagRelevanceError)."""
+
+    def test_shell_with_agent_does_not_raise_and_notes(self, capsys):
+        import argparse
+
+        from kanibako.commands.flags import check_flag_relevance
+
+        ns = argparse.Namespace(command="shell", agent="goose", box=None)
+        # Must NOT raise.
+        check_flag_relevance(ns)
+        err = capsys.readouterr().err
+        assert "--agent is ignored for 'shell'" in err
+
+    def test_box_shell_with_agent_does_not_raise_and_notes(self, capsys):
+        import argparse
+
+        from kanibako.commands.flags import check_flag_relevance
+
+        ns = argparse.Namespace(
+            command="box", box_command="shell", agent="goose", box=None,
+        )
+        check_flag_relevance(ns)
+        err = capsys.readouterr().err
+        assert "--agent is ignored for 'shell'" in err
+
+    def test_shell_with_agent_and_box_both_ok(self, capsys):
+        """--box is relevant for shell; combined with --agent must still pass."""
+        import argparse
+
+        from kanibako.commands.flags import check_flag_relevance
+
+        ns = argparse.Namespace(command="shell", agent="goose", box="myproj")
+        check_flag_relevance(ns)  # no raise
+        assert "--agent is ignored for 'shell'" in capsys.readouterr().err
+
+    def test_unrelated_command_with_agent_still_raises(self):
+        """--agent for a non-agent, non-shell command STILL hard-errors."""
+        import argparse
+
+        from kanibako.commands.flags import (
+            FlagRelevanceError,
+            check_flag_relevance,
+        )
+
+        ns = argparse.Namespace(command="list", agent="goose", box=None)
+        with pytest.raises(FlagRelevanceError):
+            check_flag_relevance(ns)
+
+    def test_shell_never_nudges_after_reorder(self, tmp_path, capsys):
+        """Regression: shell stays nudge-silent (Gate-1 excludes it)."""
+        import argparse
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako.yaml"  # absent marker
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(argparse.Namespace(command="shell"))
         assert capsys.readouterr().err == ""

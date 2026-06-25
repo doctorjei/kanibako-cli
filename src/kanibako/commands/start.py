@@ -858,6 +858,8 @@ def _run_container(
             # back here too — the reattach path (4a32871) previously skipped the
             # post-session cred lifecycle entirely.
             writeback_session_credentials(target, proj)
+            # Two-state lifecycle ("d"): tear down on exit, keep on detach.
+            _teardown_persistent_box(runtime, container_name)
             return reattach_rc
         # Stale stopped container: remove before recreating
         if runtime.container_exists(container_name):
@@ -880,7 +882,7 @@ def _run_container(
             )
         if runtime.container_exists(container_name):
             print(
-                "Error: A container already exists for this project.\n"
+                "Error: A box is already running for this project.\n"
                 "  Reattach:  kanibako start\n"
                 "  Stop it:   kanibako stop",
                 file=sys.stderr,
@@ -1279,12 +1281,11 @@ def _run_container(
         )
         extra_mounts.extend(share_mounts)
 
-        # Masks (decision B): resolve the ``box.masks`` tmpfs mask LIST through
-        # the category model.  The vault mask (~/workspace/vault) is injected
-        # unconditionally (every box mode); a box may add masks or suppress all
-        # via a terminal "" on box.masks.  The result drives
-        # runtime.run(tmpfs_masks=...) below — generalizing the old hardcoded,
-        # single, default-workset-only flag.
+        # Masks: resolve the ``box.masks`` tmpfs mask LIST through the category
+        # model.  There is NO default mask (the old ~/workspace/vault default was
+        # dropped — the vault moved out of the workspace in 1.6.0); a box (or any
+        # scope) may declare masks via ``box.masks`` / ``<scope>.masks``.  The
+        # result drives runtime.run(tmpfs_masks=...) below.
         tmpfs_masks = _resolve_masks(
             std=std,
             proj=proj,
@@ -1655,6 +1656,19 @@ def _run_container(
             # of deferring to the image's default entrypoint.
             entrypoint = box_shell
 
+        # Preflight: rootless podman cannot overlay/pivot_root on a virtiofs
+        # graph root, so the launch would die with a cryptic runtime error.
+        # virtiofs-rootless is an unsupported configuration — fail gracefully
+        # with an actionable message instead.  The check is cheap and only
+        # fires when the runtime is rootless podman AND the graph root is
+        # virtiofs; it stays silent (and never blocks a normal launch) under a
+        # rootful shim, on docker, or whenever the state can't be determined.
+        from kanibako.image_sharing import virtiofs_graphroot_message
+        virtiofs_msg = virtiofs_graphroot_message(runtime.cmd)
+        if virtiofs_msg is not None:
+            print(virtiofs_msg, file=sys.stderr)
+            return 1
+
         try:
             # Run the container
             rc = runtime.run(
@@ -1827,6 +1841,10 @@ def _run_container(
             # retry above returns early and re-enters this function, which writes
             # back on its own teardown.)
             writeback_session_credentials(target, proj)
+            # Two-state lifecycle ("d"): an exited box (tmux session ended ->
+            # container not running) is torn down so the next start/shell is
+            # fresh; a detached box (still running) is kept reattachable.
+            _teardown_persistent_box(runtime, container_name)
         else:
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
             writeback_session_credentials(target, proj)
@@ -1906,6 +1924,32 @@ def writeback_session_credentials(target, proj) -> None:
         target.writeback_extra(project_home=proj.shell_path, host_home=Path.home())
     except Exception as exc:  # never crash a teardown path on writeback
         get_logger("start").warning("Credential writeback failed: %s", exc)
+
+
+def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> None:
+    """Remove a persistent box once its session has truly ended.
+
+    Two-state lifecycle ("d"): a persistent box TEARS DOWN on exit but a DETACH
+    keeps it running and reattachable.  After the attach exec returns, the
+    container being NOT running is GROUND TRUTH that the in-box shell/agent
+    exited (the tmux session ended); a still-running container means the client
+    detached (Ctrl-b d or a dropped client) and must be kept.
+
+    Call AFTER the exited-logs reprint and writeback.  Best-effort: a removal
+    failure logs a warning and never crashes the CLI or changes the exit code.
+    Never touches a still-running (detached) container.
+    """
+    if runtime.is_running(container_name):
+        # Detached (or dropped client) — keep it running and reattachable.
+        return
+    if not runtime.container_exists(container_name):
+        return
+    try:
+        runtime.rm(container_name)
+    except Exception as exc:  # never crash the lifecycle on cleanup
+        get_logger("start").warning(
+            "Could not remove exited box %s: %s", container_name, exc
+        )
 
 
 def _build_config_env(
@@ -2243,18 +2287,18 @@ def _apply_synced_copies(
             shutil.copy2(str(src), str(dest))
 
 
-# Default vault tmpfs mask (decision B): the local ``~/workspace/vault`` is
-# hidden behind an UNCONDITIONAL read-only tmpfs in every box mode.  It flows
-# through the category resolver as a ``box.masks`` default so a box may add to
-# or suppress (terminal ``""``) it like any other category.  (The old behavior
-# was conditional on the default-workset mode; the mask is now unconditional —
-# design decision B, design-review m6.  The ``.gitignore`` overlay that rode on
-# the old tmpfs is DROPPED.)
+# Default ``box.masks`` (decision B): there is NO default tmpfs mask.  The vault
+# moved OUT of ``~/workspace`` in 1.6.0, so there is nothing in the workspace to
+# hide behind a tmpfs; the old vestigial ``~/workspace/vault`` mask is DROPPED.
+# The seam is kept so a box (or any scope) may still declare masks via
+# ``box.masks`` / ``<scope>.masks`` — the category resolver injects this default
+# (empty) at the AGENT level and reconciles any explicit declarations on top.
 #
 # Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
-# the default is a LIST — the resolver iterates it as real entries.  The STATIC
-# value now lives in the shipped system/core defaults file (P6b coalesce); this
-# module is a thin reader (:func:`kanibako.core_defaults.vault_mask_default`).
+# the default is a LIST (empty) — the resolver iterates it as real entries.  The
+# STATIC value lives in the shipped system/core defaults file (P6b coalesce);
+# this module is a thin reader (:func:`kanibako.core_defaults.vault_mask_default`),
+# which now returns an empty list.
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 
 
@@ -2487,15 +2531,13 @@ def _resolve_masks(
 ) -> list[str]:
     """Resolve the active tmpfs masks (the ``box.masks`` category) as box-dests.
 
-    Masks flow through the category resolver; the unconditional default
-    (:data:`VAULT_MASK_DEST` → ``~/workspace/vault``) is injected so the local
-    vault is hidden behind a read-only tmpfs in every box mode (decision B).  A
-    box may add masks or suppress all of them with a terminal ``""``.  Returns
-    the reconciled mask box-dest LIST (``@``-expanded, e.g.
-    ``/home/agent/workspace/vault``) — generalizing the old hardcoded single
-    ``vault_tmpfs`` flag.  The default (no extra masks) yields exactly
-    ``["/home/agent/workspace/vault"]`` so the emitted podman args are
-    byte-identical to the pre-list behavior.
+    Masks flow through the category resolver with NO default.  A box (or any
+    scope) may declare ``box.masks`` / ``<scope>.masks`` to hide a guest path
+    behind a read-only tmpfs; with nothing declared the result is an empty list
+    and no mask is applied.  (The old unconditional ``~/workspace/vault`` default
+    was dropped: the vault was relocated OUT of the workspace in 1.6.0 — there is
+    nothing in ``~/workspace`` to mask in any box mode.)  Returns the reconciled
+    mask box-dest LIST (``@``-expanded).
     """
     reconciled = _resolve_launch_categories(
         std=std,
@@ -2505,7 +2547,6 @@ def _resolve_masks(
         project_toml=project_toml,
         workset_config_path=workset_config_path,
         agent_config_path=agent_config_path,
-        default_categories={"box.masks": VAULT_MASK_DEST},
     )
     return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
 

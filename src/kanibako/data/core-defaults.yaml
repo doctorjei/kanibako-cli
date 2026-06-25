@@ -22,11 +22,12 @@
 #     channel binds are emitted only for PRIMARY/NAMED boxes (standalone omits
 #     them) — the loader applies that gate when the workset channel paths exist.
 
-# box.masks default (decision B): the local ~/workspace/vault is hidden behind an
-# UNCONDITIONAL read-only tmpfs in every box mode.  A real list[box_dest] (spec
-# §2a) — a box may add masks or suppress all of them with a terminal "".
-masks:
-  - "~/workspace/vault"
+# box.masks default (decision B): EMPTY — there is no default tmpfs mask.  The
+# vault moved OUT of ~/workspace in 1.6.0, so there is nothing in the workspace
+# to hide; the old vestigial ~/workspace/vault mask is DROPPED.  A real
+# list[box_dest] (spec §2a) — a box may still declare masks via box.masks /
+# <scope>.masks to hide a guest path behind a read-only tmpfs.
+masks: []
 
 # Channel binds (§2c/§2f).  Each entry becomes a `box.bindings.rw.<key>` default
 # whose VALUE is the structured pair (<probed host_src>, <box_dest>).  `source`
