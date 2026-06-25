@@ -2197,7 +2197,10 @@ def _apply_synced_copies(
 # was conditional on the default-workset mode; the mask is now unconditional —
 # design decision B, design-review m6.  The ``.gitignore`` overlay that rode on
 # the old tmpfs is DROPPED.)
-VAULT_MASK_DEST = "~/workspace/vault"
+#
+# Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
+# the in-code default is a LIST — the resolver iterates it as real entries.
+VAULT_MASK_DEST = ["~/workspace/vault"]
 
 
 def _category_resolution_inputs(

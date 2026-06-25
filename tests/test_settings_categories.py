@@ -284,10 +284,13 @@ class TestPerEntryOptionsOverride:
 
 
 class TestMasks:
-    def test_multiple_masks_from_comma_list(self):
+    def test_multiple_masks_from_real_list(self):
+        # F1 regression: a multi-element YAML masks list (spec §2a — a real
+        # list[box_dest], preserved by the LOAD layer) resolves to ONE entry
+        # per element, NOT a single str()-reprd-garbage entry.
         ctx = make_ctx()
         entries = _resolve(
-            [LevelView("box", {"box.masks": "~/workspace/vault, /secret, ~/cache"})],
+            [LevelView("box", {"box.masks": ["~/workspace/vault", "/secret", "~/cache"]})],
             ctx,
         )
         assert [e.box_dest for e in entries] == [
@@ -297,10 +300,17 @@ class TestMasks:
         ]
         assert all(e.category == "masks" and e.host_src is None for e in entries)
 
-    def test_mask_escaped_comma_kept(self):
+    def test_single_mask_scalar_is_one_entry(self):
+        # A bare scalar (single-mask config / in-code default) = one element.
         ctx = make_ctx()
-        entries = _resolve([LevelView("box", {"box.masks": r"/a\,b"})], ctx)
+        entries = _resolve([LevelView("box", {"box.masks": "/a,b"})], ctx)
         assert [e.box_dest for e in entries] == ["/a,b"]
+
+    def test_mask_list_element_with_literal_comma_kept(self):
+        # A literal comma inside a list element is NOT a separator (no shim).
+        ctx = make_ctx()
+        entries = _resolve([LevelView("box", {"box.masks": ["/a,b", "/c"]})], ctx)
+        assert [e.box_dest for e in entries] == ["/a,b", "/c"]
 
     def test_mask_terminal_suppression(self):
         ctx = make_ctx()
