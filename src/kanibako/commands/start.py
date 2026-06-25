@@ -1766,6 +1766,13 @@ def _run_container(
             # (podman race: "container state improper").  Retry a few times.
             _max_exec_attempts = 5
             for _exec_attempt in range(1, _max_exec_attempts + 1):
+                # If the agent crashed instantly on launch, the container is
+                # already dead.  Skip the exec entirely so podman never leaks
+                # its raw "container state improper" error to the user; fall
+                # through to the log-showing code below, which surfaces the
+                # agent's actual crash reason instead.
+                if not runtime.is_running(container_name):
+                    break
                 rc = runtime.exec(
                     container_name, _bootstrap_attach(bootstrap_program)
                 )
