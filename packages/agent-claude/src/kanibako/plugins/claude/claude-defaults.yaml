@@ -1,0 +1,97 @@
+# claude AGENT defaults — the declarative source of truth for the claude plugin's
+# default-set (P6c coalesce; settings-keyspace-1.6.0-target.md §2d agent.claude.*).
+#
+# This file holds claude's complete DECLARATIVE default-set: its PluginDescriptor
+# data (delivery binds, launch grammar, settings routing, container env, cred-file
+# lifecycle, host_prep/init_dirs) PLUS its AGENT-scope `shared` defaults.  It is
+# read by the thin loader :mod:`kanibako.agent_defaults`, which builds the
+# PluginDescriptor / default_shares exactly as the old hand-written `target.py`
+# values did — so core start.py still assembles claude's argv / env / delivery
+# mounts / credential lifecycle from the descriptor.
+#
+# What lives here (DECLARATIVE) vs what stays code-resolved in target.py:
+#   * DECLARATIVE — everything below: the binding ORIGIN selectors (which detected
+#     install field supplies the host source — a declarative NAME, not a probed
+#     value), box-side destinations, the mode/operations grammar, settings flags,
+#     container env, cred-file specs, host_prep/init_dirs, the agent-share
+#     box_dests.  In-box destinations are `$GUEST_HOME` EXPRESSIONS expanded by the
+#     loader from the single GUEST_HOME constant (no `/home/agent` literal here).
+#   * CODE-RESOLVED — the CRITICAL host binary/launcher/install paths stay in
+#     `target.py` `detect()` (the `_LAUNCHER`/`_INSTALL_DIR` contract constants):
+#     `$PATH` must never choose a binary we exec on the host AND bind into the box.
+#     The file only names, declaratively, WHICH detected field each binding's host
+#     source comes from (`origin`); the probed path is filled in by
+#     `descriptor_mounts` from the AgentInstall.
+
+descriptor:
+  command: ["claude"]
+
+  # Binary delivery — TWO AS-IS host binds (identity dest), AGENT_CRITICAL (claude
+  # is the only 2-bind agent).  `origin` selects the detected install field:
+  #   share    -> install_dir  (~/.local/share/claude)
+  #   launcher -> launcher      (~/.local/bin/claude, resolved real file)
+  bindings:
+    - key: share
+      origin: install_dir
+      box_dest: "$GUEST_HOME/.local/share/claude"
+      kind: dir
+      scope: agent_critical
+      ro: true
+    - key: launcher
+      origin: launcher
+      box_dest: "$GUEST_HOME/.local/bin/claude"
+      kind: file
+      scope: agent_critical
+      ro: true
+
+  # mode is {start, continue} only — resume intentionally NOT offered (user
+  # decision 2026-06-17: -R/--resume falls through to --continue).
+  mode:
+    start: []
+    continue: ["--continue"]
+
+  operations:
+    exec:
+      fragment: ["-p"]
+
+  # safe-bypass is the FLAG --dangerously-skip-permissions; persisted default via
+  # the "access" setting (claude is default-safe so no secure_flag needed).
+  safe_bypass:
+    channel: flag
+    flag: ["--dangerously-skip-permissions"]
+    setting_key: access
+
+  settings:
+    - setting_key: model
+      channel: flag
+      flag: ["--model"]
+
+  # BOTH claude env vars: DISABLE_AUTOUPDATER (also set by apply_state) AND
+  # CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC.
+  container_env:
+    DISABLE_AUTOUPDATER: "1"
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+
+  # Only auth remains host-sourced (.claude.json import removed in 1.6.0): the
+  # synced .credentials.json (filtered -> transform_cred merges claudeAiOauth).
+  cred_files:
+    - home_rel: ".claude/.credentials.json"
+      host_rel: ".claude/.credentials.json"
+      cadence: sync
+      mtime_gate: true
+      filtered: true
+
+  host_prep: true
+  init_dirs: [".claude"]
+
+# AGENT-scope shared dirs (plugins + cache), rooted under the per-agent store dir
+# @agent.claude.meta.path = @system.agents/claude (core's agent.shared scope-root).
+# The relative host_src (the key name) joins under that root; box_dest is a
+# $GUEST_HOME expression.
+shares:
+  - key: agent.shared.plugins
+    host_src: plugins
+    box_dest: "$GUEST_HOME/.claude/plugins"
+  - key: agent.shared.cache
+    host_src: cache
+    box_dest: "$GUEST_HOME/.claude/cache"

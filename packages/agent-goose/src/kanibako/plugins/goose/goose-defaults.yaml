@@ -1,0 +1,92 @@
+# goose AGENT defaults — the declarative source of truth for the goose plugin's
+# default-set (P6c coalesce; settings-keyspace-1.6.0-target.md §2d agent.goose.*).
+#
+# This file holds goose's complete DECLARATIVE default-set: its PluginDescriptor
+# data (delivery bind, launch grammar, settings routing, container env, cred-file
+# lifecycle, init_dirs).  goose declares NO agent shares.  It is read by the thin
+# loader :mod:`kanibako.agent_defaults`, which builds the PluginDescriptor exactly
+# as the old hand-written `target.py` values did.
+#
+# What lives here (DECLARATIVE) vs what stays code-resolved in target.py:
+#   * DECLARATIVE — everything below (in-box destinations are `$GUEST_HOME`
+#     expressions the loader expands; no `/home/agent` literal here).
+#   * CODE-RESOLVED — the CRITICAL host binary path stays in `target.py`
+#     `detect()` (the `_BINARY` = ~/.local/bin/goose contract constant; `$PATH`
+#     must never choose a binary we bind into the box).  The file only names,
+#     declaratively, that the binary bind's host source is the detected `binary`
+#     field (`origin: binary`).
+
+descriptor:
+  command: ["goose"]
+
+  # binary bind — single AS-IS host bind (no separate launcher), AGENT_CRITICAL.
+  # origin: binary -> install.binary (the resolved real ELF).
+  bindings:
+    - key: binary
+      origin: binary
+      box_dest: "$GUEST_HOME/.local/bin/goose"
+      kind: file
+      scope: agent_critical
+      ro: true
+
+  # goose 1.37.0: bare `session` (new) / `session --resume` (continue-last).
+  # The removed `session start`/`session resume` subcommands are NOT used.
+  mode:
+    start: ["session"]
+    continue: ["session", "--resume"]
+
+  operations:
+    exec:
+      fragment: ["run", "--no-session", "-t"]
+
+  # safe-bypass is the SYMMETRIC ENV channel GOOSE_MODE (no --approve-all flag in
+  # 1.37.0): safe-OFF -> auto; safe-ON -> approve.  The secure value is MANDATORY
+  # because goose's unset GOOSE_MODE default is itself `auto`.
+  safe_bypass:
+    channel: env
+    env_var: GOOSE_MODE
+    env_value: auto
+    secure_env_value: approve
+    setting_key: ""
+
+  # provider/model route via the ENV channel (GOOSE_MODEL/GOOSE_PROVIDER); the
+  # SettingArg only wires the env-var NAME — there is deliberately NO default
+  # value (setting_descriptors declares empty defaults so goose falls back to its
+  # own config.yaml from `goose configure`).
+  settings:
+    - setting_key: model
+      channel: env
+      env_var: GOOSE_MODEL
+    - setting_key: provider
+      channel: env
+      env_var: GOOSE_PROVIDER
+
+  # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static): the in-box OS
+  # keyring/D-Bus secret-service is unavailable, so goose stores secrets in the
+  # file ~/.config/goose/secrets.yaml instead (the file kanibako syncs).
+  container_env:
+    GOOSE_DISABLE_KEYRING: "true"
+
+  # Two-way SYNC of three things so in-box `goose configure` persists to the host
+  # (host check_auth then passes -> no re-prompt).  All unfiltered (key-by-NAME):
+  #   secrets.yaml + config.yaml (files) and custom_providers/ (dir).
+  cred_files:
+    - home_rel: ".config/goose/secrets.yaml"
+      host_rel: ".config/goose/secrets.yaml"
+      cadence: sync
+      mtime_gate: true
+      filtered: false
+    - home_rel: ".config/goose/config.yaml"
+      host_rel: ".config/goose/config.yaml"
+      cadence: sync
+      mtime_gate: true
+      filtered: false
+    - home_rel: ".config/goose/custom_providers"
+      host_rel: ".config/goose/custom_providers"
+      cadence: sync
+      mtime_gate: true
+      filtered: false
+      is_dir: true
+
+  host_prep: false
+  init_dirs: [".config/goose", ".local/share/goose/sessions"]

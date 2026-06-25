@@ -22,6 +22,8 @@ include = ["kanibako.plugins.goose*"]
 # are listed explicitly to package nested config files.
 "kanibako.plugins.goose" = [
     "py.typed",
+    # Declarative agent defaults (P6c) — read at import time via importlib.resources.
+    "goose-defaults.yaml",
     "template/**/*", "template/**/.*",
     "template/.*/**/*", "template/.*/*",
     "template/**/.*/**/*", "template/**/.*/*",

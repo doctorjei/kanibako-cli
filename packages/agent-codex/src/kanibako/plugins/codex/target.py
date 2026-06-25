@@ -48,21 +48,11 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako.agent_defaults import load_descriptor
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
-    BindKind,
-    Binding,
-    BindScope,
-    Cadence,
-    Channel,
-    CredFileSpec,
-    HostSrcOrigin,
-    Operation,
     PluginDescriptor,
-    SafeBypass,
-    SettingArg,
     Target,
     TargetSetting,
 )
@@ -72,12 +62,6 @@ if TYPE_CHECKING:
 
 logger = get_logger("targets.codex")
 
-# Per-agent contract path for the delivered binary INSIDE the box.  Codex ships
-# as a single self-contained native Rust ELF (musl static-pie); we bind the
-# resolved host binary to this stable box path.  (Detection resolves the real
-# host binary dynamically — see ``detect`` — but the box destination is fixed.)
-_BINARY_BOX_DEST = f"{GUEST_HOME}/.local/bin/codex"
-
 # Timeout (seconds) for the best-effort ``npm root -g`` probe in ``detect``.
 _NPM_ROOT_TIMEOUT = 10
 
@@ -86,58 +70,21 @@ _NPM_ROOT_TIMEOUT = 10
 # start.py assembles codex's launch argv / env / delivery mounts / credential
 # lifecycle from this descriptor.  codex implements no legacy hooks.
 #
-# Notes on a few non-obvious fields (codex 0.140.0, empirically verified):
-#   * mode: new session = the BARE ``codex`` (no subcommand, so "start" -> ());
-#     continue-last = the ``codex resume --last`` SUBCOMMAND.  There is no
-#     dedicated resume PICKER mode, so -R/--resume falls through to continue.
-#   * exec is the standalone headless op ``codex exec`` (spliced after the
-#     command; no session mode).
-#   * safe-bypass is the FLAG ``--dangerously-bypass-approvals-and-sandbox``.
-#     The box is externally sandboxed, so bypassing codex's *internal* approval
-#     prompts + sandbox is the intended use.  (NOTE: the older ``--yolo`` /
-#     ``--full-auto`` flags do NOT exist in 0.140.0.)  There is no persisted
-#     safe-bypass setting (setting_key="") — it is a per-launch -A/-S toggle,
-#     like goose.
-#   * model = the ``--model`` FLAG (also -m).
-#   * the binary binding uses the BINARY origin (install.binary) = the resolved
-#     real native ELF; codex has no separate launcher symlink, so no LAUNCHER
-#     binding.  Binding the static-pie musl ELF works standalone — no node
-#     in-box.
-#   * cred files (filtered=False -> the credsync engine wholesale-copies it; NO
-#     transform_cred override needed):
-#       - ``.codex/auth.json`` (SYNC, mtime-gated): the credential; absent until
-#         login and inode-swaps on re-login (delete+recreate), hence copy-sync.
-#     The host ``config.toml`` IMPORT was removed in 1.6.0: a box's config comes
-#     from the curated agent template (codex otherwise runs on built-in
-#     defaults), not from the host config.
-#     ⚑ OPEN QUESTION (flagged for E2E): whether ``auth.json`` mixes a portable
-#     API key with NON-portable fields (e.g. an installation-bound token /
-#     machine id) that would need an allowlist.  If so, flip its spec to
-#     ``filtered=True`` and add a ``transform_cred`` allowlist (mirroring goose's
-#     secrets handling).  For now it is a wholesale copy.
-#   * init_dirs creates ``.codex`` (codex does not create it itself).  The live
-#     mutating per-project state (sqlite/WAL, sessions/, installation_id, ...)
-#     is NOT mounted — it stays project-local under this dir.
-_CODEX_DESCRIPTOR = PluginDescriptor(
-    command=("codex",),
-    bindings=(
-        Binding("binary", HostSrcOrigin.BINARY, _BINARY_BOX_DEST, BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
-    ),
-    mode={"start": (), "continue": ("resume", "--last")},
-    operations={"exec": Operation(("exec",))},
-    safe_bypass=SafeBypass(Channel.FLAG, flag=("--dangerously-bypass-approvals-and-sandbox",), setting_key=""),
-    settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
-    container_env={},
-    cred_files=(
-        # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
-        # filtered=True + add a transform_cred allowlist ONLY if E2E proves
-        # auth.json carries non-portable machine-id/installation fields (see the
-        # OPEN QUESTION above + settings-keyspace §2d Q2).
-        CredFileSpec(".codex/auth.json",   ".codex/auth.json",   cadence=Cadence.SYNC,      mtime_gate=True, filtered=False),
-    ),
-    host_prep=False,
-    init_dirs=(".codex",),
-)
+# The descriptor's declarative default-set lives in this plugin's shipped
+# ``codex-defaults.yaml`` (P6c coalesce) and is read by the thin
+# :mod:`kanibako.agent_defaults` loader — the file documents each non-obvious
+# field (codex 0.140.0): the bare ``codex`` / ``codex resume --last`` mode
+# grammar; the ``codex exec`` op; the FLAG
+# ``--dangerously-bypass-approvals-and-sandbox`` per-launch-only safe-bypass; the
+# ``--model`` FLAG; the single SYNC ``.codex/auth.json`` cred file (filtered=False
+# wholesale copy, an E2E gate); and the ``.codex`` init dir.  The box-side binary
+# destination is fixed in the file; the CRITICAL host binary path is
+# runtime-PROBED in ``detect()`` (ELF-on-PATH primary / npm-vendored fallback;
+# origin=binary).
+_DEFAULTS_PACKAGE = "kanibako.plugins.codex"
+_DEFAULTS_FILE = "codex-defaults.yaml"
+
+_CODEX_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 # Map (os, machine) -> (npm platform-package suffix, vendored target triple).

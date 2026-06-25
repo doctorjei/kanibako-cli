@@ -22,6 +22,8 @@ include = ["kanibako.plugins.claude*"]
 # .config/) are listed explicitly to package nested config files.
 "kanibako.plugins.claude" = [
     "py.typed",
+    # Declarative agent defaults (P6c) — read at import time via importlib.resources.
+    "claude-defaults.yaml",
     "template/**/*", "template/**/.*",
     "template/.*/**/*", "template/.*/*",
     "template/**/.*/**/*", "template/**/.*/*",

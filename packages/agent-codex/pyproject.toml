@@ -22,6 +22,8 @@ include = ["kanibako.plugins.codex*"]
 # listed explicitly to package nested config files.
 "kanibako.plugins.codex" = [
     "py.typed",
+    # Declarative agent defaults (P6c) — read at import time via importlib.resources.
+    "codex-defaults.yaml",
     "template/**/*", "template/**/.*",
     "template/.*/**/*", "template/.*/*",
     "template/**/.*/**/*", "template/**/.*/*",
