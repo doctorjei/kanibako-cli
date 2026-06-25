@@ -87,6 +87,36 @@ def generate_storage_conf(shared_store_path: str) -> str:
     )
 
 
+def prepare_image_sharing_sources(
+    runtime_cmd: str,
+    staging_dir: Path,
+) -> tuple[Path, Path] | None:
+    """Probe the host graph root + GENERATE the storage.conf, returning their paths.
+
+    The SOURCE-resolver half of image sharing (spec D-M8 = generated+bound), split
+    out so the box-launch seam can inject these runtime-probed/generated host paths
+    into a keyed ``box.bindings.ro.images_*`` binding (routed through the category
+    resolver) rather than hardwiring two :class:`Mount`s.
+
+    Detects the host ``GraphRoot`` and writes the generated ``storage.conf`` into
+    *staging_dir*; returns ``(graph_root, storage_conf_path)`` on success, or
+    *None* if the host graph root can't be detected (caller skips sharing).
+    """
+    graph_root = detect_graph_root(runtime_cmd)
+    if graph_root is None:
+        logger.info("Image sharing: could not detect host graph root, skipping")
+        return None
+
+    logger.info("Image sharing: host graph root at %s", graph_root)
+
+    storage_conf_content = generate_storage_conf(SHARED_STORE_CONTAINER_PATH)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    storage_conf_path = staging_dir / "storage.conf"
+    storage_conf_path.write_text(storage_conf_content)
+
+    return graph_root, storage_conf_path
+
+
 def build_image_sharing_mounts(
     runtime_cmd: str,
     staging_dir: Path,
@@ -107,18 +137,10 @@ def build_image_sharing_mounts(
         A host-side directory where the generated ``storage.conf`` will be
         written.  Should be under the project's metadata or cache path.
     """
-    graph_root = detect_graph_root(runtime_cmd)
-    if graph_root is None:
-        logger.info("Image sharing: could not detect host graph root, skipping")
+    sources = prepare_image_sharing_sources(runtime_cmd, staging_dir)
+    if sources is None:
         return []
-
-    logger.info("Image sharing: host graph root at %s", graph_root)
-
-    # Generate the storage.conf snippet
-    storage_conf_content = generate_storage_conf(SHARED_STORE_CONTAINER_PATH)
-    staging_dir.mkdir(parents=True, exist_ok=True)
-    storage_conf_path = staging_dir / "storage.conf"
-    storage_conf_path.write_text(storage_conf_content)
+    graph_root, storage_conf_path = sources
 
     return [
         Mount(

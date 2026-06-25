@@ -171,3 +171,123 @@ def core_default_categories(
             str(entry["options"]),
         )
     return binds
+
+
+def kani_default_categories() -> dict[str, tuple[str, str, str]]:
+    """Build the kanibako CLI binds as ``default_categories`` (Phase B).
+
+    Maps ``box.bindings.ro.<key>`` → a STRUCTURED 3-TUPLE
+    ``(host_src, box_dest, options)`` for the in-box kanibako package + entry
+    script — TODAY's hardwired ``_kanibako_mounts`` ``-v`` list routed through the
+    category resolver so nothing is bound into a box except through the keyspace.
+    The box-side destinations + options come from the declarative file (``kani:``
+    list); the host SOURCES are import-resolved here and injected into each keyed
+    entry (the file names them SYMBOLICALLY).  Both binds are UNCONDITIONAL
+    (every box mode).
+    """
+    import importlib.resources
+
+    import kanibako
+
+    pkg_dir = Path(kanibako.__file__).parent
+    entry_ref = importlib.resources.files("kanibako.scripts").joinpath(
+        "kanibako-entry"
+    )
+    entry_path = Path(str(entry_ref))
+
+    sources: dict[str, str] = {
+        "kani_pkg": str(pkg_dir),
+        "kani_bin": str(entry_path),
+    }
+
+    binds: dict[str, tuple[str, str, str]] = {}
+    for entry in _load_doc().get("kani", []):
+        category = entry["category"]
+        binds[f"box.{category}.{entry['key']}"] = (
+            sources[entry["source"]],
+            str(entry["box_dest"]),
+            str(entry["options"]),
+        )
+    return binds
+
+
+def helper_default_categories(
+    *,
+    box_state_kanibako: str,
+    socket_path: Path,
+    log_path: Path,
+) -> dict[str, tuple[str, str, str]]:
+    """Build the helper hub binds as ``default_categories`` (Phase B).
+
+    Maps ``box.bindings.{rw,ro}.<key>`` → a STRUCTURED 3-TUPLE
+    ``(host_src, box_dest, options)`` for the live helper unix SOCKET + the
+    per-box helper message LOG — TODAY's hardwired ``_HMount`` appends inside the
+    ``helpers_enabled`` block routed through the category resolver.
+
+    Both box-side destinations are DYNAMIC: derived from the box's
+    ``box_state_home(container_env)`` (passed in as *box_state_kanibako*, an
+    absolute box path) — so the loader injects BOTH the probed host source AND the
+    runtime-derived box destination at the seam (the file carries only the keys +
+    options).  The host SOURCES (*socket_path* / *log_path*) are runtime-probed and
+    GATED on ``.exists()`` here, reproducing the old skip-if-missing appends: a
+    missing socket/log simply omits its key.
+
+    ⚠ helper_sock options MUST be ``""`` (empty): it is a LIVE unix socket the hub
+    listens on; a ``Z``/``U`` relabel/chown would break the shared socket topology.
+    The per-entry empty-options 3rd slot carries that through ``unpack_bind``.
+    """
+    base = box_state_kanibako.rstrip("/")
+    sources: dict[str, tuple[Path, str]] = {
+        # symbolic source name -> (probed host source, dynamic box dest)
+        "helper_sock": (socket_path, f"{base}/helper.sock"),
+        "helper_log": (log_path, f"{base}/helpers.jsonl"),
+    }
+
+    binds: dict[str, tuple[str, str, str]] = {}
+    for entry in _load_doc().get("helpers", []):
+        src_path, box_dest = sources[entry["source"]]
+        # Skip-if-missing gate (parity with the old `.exists()`-guarded appends).
+        if not src_path.exists():
+            continue
+        category = entry["category"]
+        binds[f"box.{category}.{entry['key']}"] = (
+            str(src_path),
+            box_dest,
+            str(entry["options"]),
+        )
+    return binds
+
+
+def image_default_categories(
+    *,
+    graph_root: Path,
+    storage_conf_path: Path,
+) -> dict[str, tuple[str, str, str]]:
+    """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
+
+    Maps ``box.bindings.ro.<key>`` → a STRUCTURED 3-TUPLE
+    ``(host_src, box_dest, options)`` for the host image graph root + the GENERATED
+    ``storage.conf`` — TODAY's hardwired Mounts from
+    :func:`kanibako.image_sharing.build_image_sharing_mounts` routed through the
+    category resolver.  The box-side destinations + options come from the
+    declarative file (``images:`` list); the host SOURCES (the runtime-probed
+    *graph_root* and the already-GENERATED *storage_conf_path*) are injected here.
+
+    The caller applies the CONDITIONAL gate (only when image-sharing is requested
+    AND the host graph root is detectable) before invoking this, so every entry is
+    emitted unconditionally once called.
+    """
+    sources: dict[str, str] = {
+        "images_store": str(graph_root),
+        "images_conf": str(storage_conf_path),
+    }
+
+    binds: dict[str, tuple[str, str, str]] = {}
+    for entry in _load_doc().get("images", []):
+        category = entry["category"]
+        binds[f"box.{category}.{entry['key']}"] = (
+            sources[entry["source"]],
+            str(entry["box_dest"]),
+            str(entry["options"]),
+        )
+    return binds

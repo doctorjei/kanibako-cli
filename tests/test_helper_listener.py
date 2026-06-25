@@ -640,3 +640,121 @@ class TestMessageLog:
 
         entries = [json.loads(line) for line in log_path.read_text().splitlines()]
         assert len(entries) == 5
+
+
+class TestHelperDefaultCategories:
+    """The Phase-B helper-hub bind table (socket + log) the launch seam injects.
+
+    The two hardwired ``_HMount`` appends were extracted into
+    ``core_defaults.helper_default_categories``, routed through the category
+    resolver.  These tests lock the structured shape: the socket carries the
+    EMPTY options 3rd slot ("" — a live unix socket; a Z/U relabel/chown would
+    break the shared socket topology) and the dynamic box dests + .exists() gate.
+    """
+
+    def _sources(self, tmp_path):
+        sock = tmp_path / "helper.sock"
+        sock.touch()
+        log = tmp_path / "helpers.jsonl"
+        log.touch()
+        return sock, log
+
+    def test_socket_options_are_empty_string(self, tmp_path):
+        # helper_sock binding value is the structured triple with options "" —
+        # NOT Z/U/z (the relabel/chown that would break the live socket).
+        from kanibako import core_defaults
+
+        sock, log = self._sources(tmp_path)
+        cats = core_defaults.helper_default_categories(
+            box_state_kanibako="/home/agent/.local/state/kanibako",
+            socket_path=sock,
+            log_path=log,
+        )
+        sock_val = cats["box.bindings.rw.helper_sock"]
+        assert sock_val == (
+            str(sock),
+            "/home/agent/.local/state/kanibako/helper.sock",
+            "",
+        )
+        assert sock_val[2] == ""  # explicit empty options, not Z/U/z
+
+    def test_log_routes_ro(self, tmp_path):
+        from kanibako import core_defaults
+
+        sock, log = self._sources(tmp_path)
+        cats = core_defaults.helper_default_categories(
+            box_state_kanibako="/home/agent/.local/state/kanibako",
+            socket_path=sock,
+            log_path=log,
+        )
+        assert cats["box.bindings.ro.helper_log"] == (
+            str(log),
+            "/home/agent/.local/state/kanibako/helpers.jsonl",
+            "ro",
+        )
+
+    def test_missing_socket_is_omitted(self, tmp_path):
+        # .exists() skip-if-missing gate (parity with the old guarded appends):
+        # a missing socket simply omits its key, the log still routes.
+        from kanibako import core_defaults
+
+        log = tmp_path / "helpers.jsonl"
+        log.touch()
+        cats = core_defaults.helper_default_categories(
+            box_state_kanibako="/home/agent/.local/state/kanibako",
+            socket_path=tmp_path / "nonexistent.sock",
+            log_path=log,
+        )
+        assert "box.bindings.rw.helper_sock" not in cats
+        assert "box.bindings.ro.helper_log" in cats
+
+    def test_emitted_mount_options_empty_through_reconcile(self, tmp_path):
+        # End-to-end through the resolver: the helper_sock entry survives reconcile
+        # with EMPTY mount options (not the rw default Z,U) — the property the live
+        # socket depends on.
+        from kanibako import core_defaults
+        from kanibako.settings_categories import (
+            reconcile_categories,
+            resolve_categories,
+        )
+        from kanibako.settings_resolve import (
+            LevelView,
+            ResolveCtx,
+            _Unset,
+            expand_expr,
+            resolve_value,
+        )
+
+        sock, log = self._sources(tmp_path)
+        cats = core_defaults.helper_default_categories(
+            box_state_kanibako="/home/agent/.local/state/kanibako",
+            socket_path=sock,
+            log_path=log,
+        )
+        levels = [LevelView("agent", cats)]
+        ctx = ResolveCtx(
+            agent_name="claude",
+            workset_name="ws",
+            host_home="/home/u",
+            xdg={},
+        )
+
+        def lookup(ref, chain):
+            rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
+            if isinstance(rv, _Unset):
+                raise AssertionError(ref)
+            return expand_expr(
+                rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain
+            )
+
+        entries = resolve_categories(
+            levels=levels, ctx=ctx, lookup=lookup, scope_roots=None
+        )
+        reconciled = reconcile_categories(entries, group_auth=True)
+        sock_mount = next(
+            e for e in reconciled.mounts if e.name == "helper_sock"
+        )
+        assert sock_mount.options == ""
+        assert sock_mount.box_dest == (
+            "/home/agent/.local/state/kanibako/helper.sock"
+        )

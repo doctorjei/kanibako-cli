@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from kanibako.image_sharing import (
@@ -11,6 +10,7 @@ from kanibako.image_sharing import (
     build_image_sharing_mounts,
     detect_graph_root,
     generate_storage_conf,
+    prepare_image_sharing_sources,
 )
 
 
@@ -223,27 +223,68 @@ class TestBuildImageSharingMounts:
 
 
 # ---------------------------------------------------------------------------
+# prepare_image_sharing_sources (Phase B: the source-resolver the launch seam
+# calls so the binds flow through the category resolver, not hardwired Mounts)
+# ---------------------------------------------------------------------------
+
+class TestPrepareImageSharingSources:
+    """Tests for prepare_image_sharing_sources()."""
+
+    def test_returns_graph_root_and_conf_path(self, tmp_path):
+        """Returns (graph_root, storage_conf_path) when graph root is detected."""
+        graph_dir = tmp_path / "overlay"
+        graph_dir.mkdir()
+        staging = tmp_path / "staging"
+
+        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
+            mock_detect.return_value = graph_dir
+            result = prepare_image_sharing_sources("podman", staging)
+
+        assert result is not None
+        graph_root, conf_path = result
+        assert graph_root == graph_dir
+        assert conf_path == staging / "storage.conf"
+        # The generated conf is WRITTEN (it is the bound source, spec D-M8).
+        assert conf_path.exists()
+        assert SHARED_STORE_CONTAINER_PATH in conf_path.read_text()
+
+    def test_returns_none_when_detection_fails(self, tmp_path):
+        """Returns None when the host graph root cannot be detected."""
+        staging = tmp_path / "staging"
+
+        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
+            mock_detect.return_value = None
+            assert prepare_image_sharing_sources("podman", staging) is None
+
+
+# ---------------------------------------------------------------------------
 # Integration with start.py (_run_container)
 # ---------------------------------------------------------------------------
 
 class TestImageSharingInRunContainer:
     """Tests for image sharing integration in _run_container."""
 
-    def test_share_images_flag_triggers_mounts(self, start_mocks):
-        """--share-images adds image sharing mounts to the container."""
+    def test_share_images_flag_triggers_mounts(self, start_mocks, tmp_path):
+        """--share-images adds image sharing mounts to the container.
+
+        Phase B: the mounts now flow through the category resolver (the seam
+        injects the probed graph root + generated storage.conf into keyed
+        ``box.bindings.ro.images_*`` binds).  ``prepare_image_sharing_sources`` is
+        the source-resolver the seam calls; patch it to return real paths so the
+        reconciled ro mount keeps its existing source (not dropped by L7).
+        """
         from kanibako.commands.start import _run_container
+
+        graph_root = tmp_path / "graph"
+        graph_root.mkdir()
+        conf = tmp_path / "storage.conf"
+        conf.write_text("[storage]\n")
 
         with start_mocks() as m:
             with patch(
-                "kanibako.image_sharing.build_image_sharing_mounts",
-            ) as mock_build:
-                from kanibako.targets.base import Mount
-                fake_mount = Mount(
-                    source=Path("/fake/graph"),
-                    destination=SHARED_STORE_CONTAINER_PATH,
-                    options="ro",
-                )
-                mock_build.return_value = [fake_mount]
+                "kanibako.image_sharing.prepare_image_sharing_sources",
+            ) as mock_prep:
+                mock_prep.return_value = (graph_root, conf)
 
                 rc = _run_container(
                     project_dir=None,
@@ -256,7 +297,7 @@ class TestImageSharingInRunContainer:
                     share_images=True,
                 )
                 assert rc == 0
-                mock_build.assert_called_once()
+                mock_prep.assert_called_once()
                 # Verify the mount was included in the runtime.run call
                 call_kwargs = m.runtime.run.call_args.kwargs
                 extra = call_kwargs.get("extra_mounts") or []
@@ -269,8 +310,8 @@ class TestImageSharingInRunContainer:
 
         with start_mocks():
             with patch(
-                "kanibako.image_sharing.build_image_sharing_mounts",
-            ) as mock_build:
+                "kanibako.image_sharing.prepare_image_sharing_sources",
+            ) as mock_prep:
                 _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -280,7 +321,7 @@ class TestImageSharingInRunContainer:
                     resume_mode=False,
                     extra_args=[],
                 )
-                mock_build.assert_not_called()
+                mock_prep.assert_not_called()
 
     def test_share_images_detection_failure_warns(self, start_mocks, capsys):
         """When detection fails, a warning is printed but launch continues."""
@@ -288,9 +329,9 @@ class TestImageSharingInRunContainer:
 
         with start_mocks():
             with patch(
-                "kanibako.image_sharing.build_image_sharing_mounts",
-            ) as mock_build:
-                mock_build.return_value = []  # detection failed
+                "kanibako.image_sharing.prepare_image_sharing_sources",
+            ) as mock_prep:
+                mock_prep.return_value = None  # detection failed
                 rc = _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -308,15 +349,15 @@ class TestImageSharingInRunContainer:
         assert "image storage" in captured.err
 
     def test_share_images_via_config(self, start_mocks):
-        """share_images=true in config triggers image sharing mounts."""
+        """share_images=true in config triggers image sharing source resolution."""
         from kanibako.commands.start import _run_container
 
         with start_mocks() as m:
             m.merged.box_share_images = True
             with patch(
-                "kanibako.image_sharing.build_image_sharing_mounts",
-            ) as mock_build:
-                mock_build.return_value = []
+                "kanibako.image_sharing.prepare_image_sharing_sources",
+            ) as mock_prep:
+                mock_prep.return_value = None
                 _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -327,7 +368,7 @@ class TestImageSharingInRunContainer:
                     extra_args=[],
                     share_images=False,
                 )
-                mock_build.assert_called_once()
+                mock_prep.assert_called_once()
 
     def test_share_images_in_shell_mode(self, start_mocks):
         """--share-images works in shell mode too."""
@@ -335,9 +376,9 @@ class TestImageSharingInRunContainer:
 
         with start_mocks():
             with patch(
-                "kanibako.image_sharing.build_image_sharing_mounts",
-            ) as mock_build:
-                mock_build.return_value = []
+                "kanibako.image_sharing.prepare_image_sharing_sources",
+            ) as mock_prep:
+                mock_prep.return_value = None
                 _run_container(
                     project_dir=None,
                     entrypoint="/bin/bash",
@@ -348,7 +389,7 @@ class TestImageSharingInRunContainer:
                     extra_args=[],
                     share_images=True,
                 )
-                mock_build.assert_called_once()
+                mock_prep.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

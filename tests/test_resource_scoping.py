@@ -57,6 +57,29 @@ class TestKanibakoMounts:
         content = entry_mount.source.read_text()
         assert "kanibako.cli" in content
 
+    def test_routed_kani_categories_match_hardwired(self):
+        """Phase B: the routed kani binds carry the SAME sources/dests/options.
+
+        The box launch now routes the kanibako CLI binds through
+        ``core_defaults.kani_default_categories`` (the category resolver) instead
+        of the hardwired ``_kanibako_mounts`` ``-v`` list (which survives only as
+        the in-helper-container source resolver).  Lock that the two agree
+        byte-for-byte so the routing is a pure refactor.
+        """
+        from kanibako import core_defaults
+        from kanibako.commands.start import _kanibako_mounts
+
+        hardwired = _kanibako_mounts()
+        cats = core_defaults.kani_default_categories()
+
+        assert cats["box.bindings.ro.kani_pkg"] == (
+            str(hardwired[0].source), "/opt/kanibako/kanibako", "ro",
+        )
+        # box_dest carries ~ (expanded by the resolver) — same /home/agent dest.
+        assert cats["box.bindings.ro.kani_bin"] == (
+            str(hardwired[1].source), "~/.local/bin/kanibako", "ro",
+        )
+
 
 class TestBuildEffectiveState:
     """Tests for _build_effective_state() precedence walk in start.py."""
