@@ -191,8 +191,8 @@ class TestStructuredRepresentation:
         )
 
     def test_three_tuple_resolves_through_category_path(self):
-        # A 3-element binding value resolves end-to-end (host/dest expanded); the
-        # explicit options slot does not crash the resolver (P2 captures it).
+        # A 3-element binding value resolves end-to-end (host/dest expanded) and the
+        # explicit options slot OVERRIDES the category default (P3 threading).
         ctx = make_ctx()
         e = _one(
             [LevelView("box", {"box.bindings.rw.helper_sock": ["/h/s", "~/helper.sock", "z"]})],
@@ -200,6 +200,61 @@ class TestStructuredRepresentation:
         )
         assert e.host_src == "/h/s"
         assert e.box_dest == "/home/agent/helper.sock"
+        assert e.options == "z"  # explicit override beats the rw default Z,U
+
+
+# ---------------------------------------------------------------------------
+# P3: the per-entry options override (3rd element) threads to CategoryEntry.options.
+# ---------------------------------------------------------------------------
+
+
+class TestPerEntryOptionsOverride:
+    def test_explicit_override_wins_over_rw_default(self):
+        # [host, dest, "z"] -> options == "z" (not the rw default "Z,U").
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.rw.s": ["/h/s", "/g/s", "z"]})], ctx)
+        assert e.options == "z"
+
+    def test_explicit_override_wins_over_ro_default(self):
+        # An explicit override beats the ro default "ro" too.
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.ro.s": ["/h/s", "/g/s", "rw,Z"]})], ctx)
+        assert e.options == "rw,Z"
+
+    def test_explicit_empty_override_means_no_relabel(self):
+        # [host, dest, ""] resolves to "" — an explicit empty options (live socket:
+        # no Z,U relabel), DISTINCT from the 2-element default-fallback case.
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.rw.sock": ["/h/s", "/g/s", ""]})], ctx)
+        assert e.options == ""
+
+    def test_two_element_falls_back_to_rw_default(self):
+        # A 2-element rw entry (no override) keeps the category default "Z,U".
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.rw.s": ["/h/s", "/g/s"]})], ctx)
+        assert e.options == "Z,U"
+
+    def test_two_element_falls_back_to_ro_default(self):
+        # A 2-element ro entry (no override) keeps the category default "ro".
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.ro.s": ["/h/s", "/g/s"]})], ctx)
+        assert e.options == "ro"
+
+    def test_override_on_caches_and_shared(self):
+        # The override channel is per-MOUNT-category, not just bindings.
+        ctx = make_ctx()
+        ec = _one([LevelView("box", {"box.caches.c": ["/h/c", "/g/c", "U"]})], ctx)
+        assert ec.options == "U"
+        es = _one([LevelView("box", {"box.shared.s": ["/h/s", "/g/s", ""]})], ctx)
+        assert es.options == ""
+
+    def test_copy_category_ignores_options_slot(self):
+        # COPY deliveries (seeded/synced) carry no mount flags: options stays ""
+        # even when a 3rd element is present (it is not a mount option there).
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.seeded.s": ["/h/s", "/g/s", "z"]})], ctx)
+        assert e.delivery == COPY
+        assert e.options == ""
 
     def test_two_tuple_unpack_returns_none_for_options(self):
         from kanibako.settings_resolve import unpack_bind
