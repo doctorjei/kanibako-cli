@@ -12,8 +12,16 @@ from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 
 logger = get_logger("container")
+
+# Guest-side anchors derived from the single source of truth
+# (:data:`kanibako.settings_resolve.GUEST_HOME`).  Trailing slash form used for
+# the ``startswith`` prefix tests in :func:`_precreate_mount_stubs`.
+_GUEST_HOME_DIR = f"{GUEST_HOME}/"
+_GUEST_WORKSPACE = f"{GUEST_HOME}/workspace"
+_GUEST_WORKSPACE_DIR = f"{_GUEST_WORKSPACE}/"
 
 
 class ContainerRuntime:
@@ -596,8 +604,8 @@ def _precreate_mount_stubs(
     relative to *project_path*; other destinations under ``/home/agent/``
     are created relative to *shell_path*.
     """
-    AGENT_HOME = "/home/agent/"
-    WORKSPACE = "/home/agent/workspace/"
+    AGENT_HOME = _GUEST_HOME_DIR
+    WORKSPACE = _GUEST_WORKSPACE_DIR
 
     def _clear_symlink(p: Path) -> None:
         """Remove *p* if it is a symlink so a bind lands on a clean mountpoint.

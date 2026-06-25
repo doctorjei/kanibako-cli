@@ -24,6 +24,7 @@ from kanibako.config import (
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings_resolve import (
+    GUEST_HOME,
     LevelView,
     ResolveCtx,
     SettingsError,
@@ -389,7 +390,10 @@ def xdg(env_var: str, default_suffix: str) -> Path:
 # The container's home directory.  Boxes always run as ``agent`` with this
 # home; used to anchor the box-side XDG default when resolving an in-container
 # path from the HOST (where ``$HOME`` is the operator's, not the box's).
-BOX_HOME = "/home/agent"
+# Single source of truth: :data:`kanibako.settings_resolve.GUEST_HOME` (the
+# value the settings-framework ``~`` guest-expansion resolves to).  Aliased here
+# so paths.py callers keep importing ``BOX_HOME`` while there is ONE definition.
+BOX_HOME = GUEST_HOME
 
 
 def box_state_home(box_env: Mapping[str, str] | None) -> PurePosixPath:
