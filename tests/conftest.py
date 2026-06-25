@@ -252,7 +252,10 @@ def start_mocks():
                 "kanibako.config.resolve_agent", return_value="claude",
             ) as m_resolve_agent,
             patch("kanibako.commands.start._upgrade_shell"),
-            patch("kanibako.templates.apply_template_layers"),
+            # The stage+seed itself is patched (a no-op); template_layer_specs is
+            # left REAL but only does read-only ``.is_dir()`` probes against the
+            # MagicMock std/proj here (no mkdir → no MagicMock-named CWD leak).
+            patch("kanibako.templates.stage_and_seed_templates"),
             # Channel mounts run through the real category resolver + L7
             # guarantee-create (mkdir of every rw source).  Driven with the
             # MagicMock ``std`` here, the channel sources are MagicMock repr

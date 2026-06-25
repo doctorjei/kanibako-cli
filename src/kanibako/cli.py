@@ -256,8 +256,9 @@ def _ensure_initialized() -> None:
     # CURATED templates instead.  The content ships as static package data and
     # is COPIED here into the runtime template dirs (@system.base_template +
     # @system.agents/<agent>/template), create-if-absent so user edits survive
-    # an upgrade.  The layered seed-once apply (templates.apply_template_layers)
-    # then copies them into each new box home at creation.
+    # an upgrade.  The layered seed-once stage+seed
+    # (templates.stage_and_seed_templates) then copies them into each new box
+    # home at creation.
     from kanibako.paths import load_std_paths
     from kanibako.templates import install_packaged_templates
 

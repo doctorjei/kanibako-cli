@@ -952,22 +952,20 @@ def _run_container(
 
         # Template application + agent init for new projects.
         if seed_box:
-            # Layered seed-once: copy the ordered template layers
+            # Layered seed-once: stage the ordered template layers
             # (base -> agent -> workset; later overlays earlier, per-file
-            # last-wins) into the box home ONCE at creation.  The base layer is
-            # always present; the agent layer applies iff an agent target is
-            # bound; the workset layer is None for STANDALONE boxes (skipped).
+            # last-wins resolved in a temp staging dir) then seed the merged
+            # tree into the box home ONCE at creation with create-if-absent.
+            # The base layer is always present; the agent layer applies iff an
+            # agent target is bound; the workset layer is None for STANDALONE
+            # boxes (skipped).  Absent layers are skipped by template_layer_specs.
             from kanibako.templates import (
-                agent_template_dir,
-                apply_template_layers,
-                base_template_dir,
-                workset_template_dir,
+                stage_and_seed_templates,
+                template_layer_specs,
             )
-            layers: list[Path | None] = [base_template_dir(std)]
-            if target:
-                layers.append(agent_template_dir(std, target.name))
-            layers.append(workset_template_dir(proj, std))
-            apply_template_layers(proj.shell_path, layers)
+            stage_and_seed_templates(
+                proj.shell_path, template_layer_specs(target, proj, std)
+            )
         # Descriptor-bearing targets seed creds via the credsync engine.  A
         # descriptor-less target (only no_agent) has nothing to seed at init —
         # its dirs come from the layered template apply above — so there is no

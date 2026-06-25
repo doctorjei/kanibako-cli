@@ -359,7 +359,7 @@ class TestAgentConfigFirstUse:
             m.target.generate_agent_config.assert_not_called()
 
     def test_template_layers_applied_for_new_box(self, start_mocks):
-        """A new box seeds the ordered base/agent/workset template layers once."""
+        """A new box stages+seeds the ordered template layers once."""
         import kanibako.templates
         with start_mocks() as m:
             m.proj.is_new = True
@@ -374,13 +374,12 @@ class TestAgentConfigFirstUse:
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-            # The already-patched apply_template_layers should have been called
-            # once with (home, [base, agent, workset]) — three ordered layers
-            # when an agent target is bound.
-            mock_fn = kanibako.templates.apply_template_layers
+            # The already-patched stage_and_seed_templates should have been
+            # called once, seeding the box home from the resolved layer specs.
+            mock_fn = kanibako.templates.stage_and_seed_templates
             mock_fn.assert_called_once()
-            layers = mock_fn.call_args[0][1]
-            assert len(layers) == 3  # base, agent, workset
+            # First positional arg = the box home (proj.shell_path).
+            assert mock_fn.call_args[0][0] is m.proj.shell_path
 
     def test_no_agent_target_uses_no_agent_id(self, start_mocks):
         """When auto-detect finds nothing, NoAgentTarget's name is used as agent_id."""

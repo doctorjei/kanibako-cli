@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib.resources
 import shutil
+import tempfile
 from typing import TYPE_CHECKING
 from pathlib import Path
 
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
+    from kanibako.targets.base import Target
 
 
 # ---------------------------------------------------------------------------
@@ -16,8 +18,9 @@ if TYPE_CHECKING:
 #
 # The 1.6.0 home-seed model layers three ordered template sources into the box
 # home at creation (base -> agent -> workset; later overlays earlier).  These
-# pure helpers DERIVE each layer's on-disk source root; ``apply_template_layers``
-# below copies them, in order, into the box home (Phase 7c).
+# pure helpers DERIVE each layer's on-disk source root; ``stage_and_seed_templates``
+# below stages them, in order, then seeds the merged tree into the box home
+# (the key-route TEMP-STORE design).
 #
 #   layer 1  base    @system.base_template      = @system.global/base_template (FLAT)
 #   layer 2  agent   @agent.<agent>.template    = @system.agents/<agent>/template
@@ -62,57 +65,71 @@ def workset_template_dir(proj: ProjectPaths, std: StandardPaths) -> Path | None:
     return workset_root(proj, std) / "template"
 
 
-def apply_template_layers(
-    home: Path,
-    layers: list[Path | None],
-) -> None:
-    """Seed *home* once by copying the ordered template *layers* in order.
+def template_layer_specs(
+    target: Target | None,
+    proj: ProjectPaths,
+    std: StandardPaths,
+) -> list[Path]:
+    """Return the ordered template-layer source roots, LOWEST -> HIGHEST.
 
     The 1.6.0 home-seed model layers ordered template sources into the box home
-    at creation (base -> agent -> workset; later overlays earlier).  The copy is
-    NON-DESTRUCTIVE toward files that ALREADY EXIST in *home* before this seed
-    pass begins: such a pre-existing file (a user-edited home file on a box that
-    detection mis-flags as un-seeded) is NEVER clobbered.  This is the guard
-    against re-seed DATA LOSS — a box whose home is already populated but which
-    detection (the per-box registry flag + inbox backstop) fails to recognise as
-    seeded would otherwise have its files overwritten.
+    at creation (base -> agent -> workset; later overlays earlier — §2a).  This
+    pure helper RESOLVES each layer's on-disk source root, in authority order::
 
-    Within a SINGLE seed pass, cross-layer LAST-WINS is still honoured: a file
-    written by an earlier layer during this pass IS overwritten by a later
-    layer's file at the same relative path.  A per-pass ``written`` set of
-    relative paths distinguishes "created earlier this pass" (override OK) from
-    "pre-existed before the pass" (preserve).  Layers that do not exist on disk
-    are skipped (a ``<None>`` / absent layer contributes nothing — e.g.
-    STANDALONE boxes have no workset layer).
+        1. base    @system.base_template       (always present)
+        2. agent   @agent.<agent>.template      (only when an agent target binds)
+        3. workset @workset.template            (None / absent for STANDALONE)
 
-    This is SEED-ONCE: callers invoke it only when the box still needs seeding
-    (the launch gate detects an already-seeded box via the per-box registry flag
-    OR the existing-inbox backstop).  It does NOT special-case or merge any file
-    — every file is a plain ordered copy (the CLAUDE.md merge special-case is
-    gone, D-B5).  The caller is responsible for never re-running it once the box
-    is recorded seeded so user edits made inside the box survive (D-B6); the
-    non-destructive copy here is an additional safety net against a re-seed
-    caused by mis-detection.
+    Layers whose source is ``None`` (no agent target; standalone has no workset
+    layer) or whose directory is absent on disk are SKIPPED, so the returned list
+    contains only real, existing layer roots ready to stage.  Reuses the existing
+    per-layer resolvers (:func:`base_template_dir`, :func:`agent_template_dir`,
+    :func:`workset_template_dir`) — no path logic is reinvented here.
     """
-    written: set[Path] = set()
-    for layer in layers:
-        if layer is None:
-            continue
-        if not layer.is_dir():
-            continue
-        for entry in sorted(layer.rglob("*")):
-            if not entry.is_file():
-                continue
-            rel = entry.relative_to(layer)
-            target = home / rel
-            # Write when an earlier layer in THIS pass created the file
-            # (last-wins override) OR the target does not yet exist.  Skip a
-            # target that pre-existed the pass (a user/pre-existing file).
-            if rel not in written and target.exists():
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(entry), str(target))
-            written.add(rel)
+    candidates: list[Path | None] = [base_template_dir(std)]
+    if target is not None:
+        candidates.append(agent_template_dir(std, target.name))
+    candidates.append(workset_template_dir(proj, std))
+    return [layer for layer in candidates if layer is not None and layer.is_dir()]
+
+
+def stage_and_seed_templates(home: Path, layers: list[Path]) -> None:
+    """Seed *home* once from the ordered template *layers* via a TEMP staging dir.
+
+    Realises the key-route TEMP-STORE design (PLAN "R1/R4 RESOLVED ... TEMP-STORE
+    STAGE"): the per-file LAST-WINS merge across layers is resolved entirely in a
+    temporary staging dir (where overwrite is intended), and the merged tree is
+    then copied into *home* with CREATE-IF-ABSENT (an existing home file is NEVER
+    overwritten).  Two phases:
+
+    1. **Stage.** Copy each layer's files into a temporary dir in order
+       (LOWEST -> HIGHEST).  Overwrite WITHIN staging is intended, so a later
+       layer's file at the same relative path wins (per-file last-wins).
+
+    2. **Seed.** Copy the merged staged tree into *home* with
+       :func:`_copy_resource_tree_if_absent` — a pre-existing home file (a
+       user-edited file on a box detection mis-flags as un-seeded) survives
+       untouched.  This is the load-bearing failsafe against re-seed DATA LOSS.
+
+    SEED-ONCE: the caller invokes this only when the box still needs seeding (the
+    launch gate detects an already-seeded box via the per-box registry flag OR the
+    existing-inbox backstop).  No file is special-cased or merged — every file is a
+    plain ordered copy (the CLAUDE.md merge special-case is gone, D-B5).
+    """
+    if not layers:
+        return
+    with tempfile.TemporaryDirectory(prefix="kanibako-seed-") as staging:
+        staged = Path(staging)
+        for layer in layers:
+            for entry in sorted(layer.rglob("*")):
+                if not entry.is_file():
+                    continue
+                rel = entry.relative_to(layer)
+                dest = staged / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                # Overwrite within staging is intended (per-file last-wins).
+                shutil.copy2(str(entry), str(dest))
+        _copy_resource_tree_if_absent(staged, home)
 
 
 # ---------------------------------------------------------------------------
