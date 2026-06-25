@@ -625,6 +625,7 @@ class TestSocketWiring:
         call_req = m.call_args[0][1]
         assert call_req["action"] == "stop"
         assert call_req["container_name"] == "kanibako-helper-1-abc"
+        assert call_req["helper_num"] == 1
 
     def test_respawn_with_socket(self, helpers_env, capsys):
         """Respawn calls socket client for container relaunch."""

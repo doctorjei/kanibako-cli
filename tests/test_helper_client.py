@@ -76,7 +76,7 @@ class TestHelperConnection:
     def test_stop(self, echo_server):
         conn = HelperConnection()
         conn.connect(echo_server)
-        resp = conn.stop("kanibako-helper-1-abc")
+        resp = conn.stop("kanibako-helper-1-abc", 1)
         assert resp["status"] == "ok"
         conn.close()
 
@@ -117,7 +117,7 @@ class TestSendRequest:
 
     def test_one_shot_stop(self, echo_server):
         resp = send_request(echo_server, {
-            "action": "stop", "container_name": "foo",
+            "action": "stop", "container_name": "foo", "helper_num": 1,
         })
         assert resp["status"] == "ok"
 

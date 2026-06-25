@@ -350,8 +350,10 @@ class HelperHub:
             if container_name in self._containers:
                 self._containers.remove(container_name)
 
-        # Extract helper_num from container name if possible
-        helper_num = _parse_helper_num(container_name)
+        # helper_num is carried structurally in the request (the (name,
+        # helper_num) pair is the helper identity; the container name is a
+        # one-way rendering of it, never a source to parse back from).
+        helper_num = request.get("helper_num")
         if self._log and helper_num is not None:
             self._log.log_control("stop", helper_num)
 
@@ -532,21 +534,3 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     mounts.extend(ctx.binary_mounts)
 
     return mounts
-
-
-def _parse_helper_num(container_name: str) -> int | None:
-    """Extract helper number from a container name.
-
-    Handles both formats:
-    - New: ``kanibako-{name}-helper-{N}``
-    - Legacy: ``kanibako-helper-{N}-{hash}``
-    """
-    parts = container_name.split("-")
-    # Walk backwards looking for "helper" followed by a numeric part.
-    for i in range(len(parts) - 1, 0, -1):
-        if parts[i - 1] == "helper":
-            try:
-                return int(parts[i])
-            except ValueError:
-                pass
-    return None

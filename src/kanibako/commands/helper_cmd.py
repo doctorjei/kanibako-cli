@@ -370,6 +370,7 @@ def run_stop(args: argparse.Namespace) -> int:
             send_request(_socket_path(), {
                 "action": "stop",
                 "container_name": container_name,
+                "helper_num": helper_num,
             })
         except Exception:
             pass  # Best-effort stop
@@ -399,6 +400,7 @@ def run_cleanup(args: argparse.Namespace) -> int:
             send_request(_socket_path(), {
                 "action": "stop",
                 "container_name": container_name,
+                "helper_num": helper_num,
             })
         except Exception:
             pass
