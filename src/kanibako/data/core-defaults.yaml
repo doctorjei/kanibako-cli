@@ -1,0 +1,77 @@
+# kanibako SYSTEM/CORE category defaults — the declarative source of truth for
+# the STATIC, non-agent-specific launch-path defaults (P6b coalesce).
+#
+# This file holds the defaults that the box-launch path injects through the
+# category resolver as the AGENT-level declared `default_categories`.  Everything
+# here is non-agent-specific (per-agent defaults live in each plugin package).
+# It is read by the thin loader :mod:`kanibako.core_defaults`, which emits these
+# entries through the existing category seam exactly as the old in-code emitters
+# did — so the resolver still expands `@`-refs / `$vars` and applies the D-B1
+# precedence + depth-sort + L7 guarantee-create.
+#
+# What lives here (STATIC) vs what stays code-injected at the seam (DYNAMIC):
+#   * STATIC  — the box-side destinations + the structural shape of each default
+#     (which keys exist, their category, their per-mode scope).  These are pure
+#     literals/structure, so they belong in this declarative file.
+#   * DYNAMIC — host SOURCES that are runtime-PROBED (the channel host roots come
+#     from `StandardPaths`/`channels.box_channel_addresses`, resolved at launch).
+#     The loader injects each probed source into its keyed entry; the file names
+#     the source SYMBOLICALLY (`source:` below) so the structure stays declarative
+#     while the value is filled in at the seam.
+#   * CONDITIONAL gating stays at the injection site, NOT here: the workset-local
+#     channel binds are emitted only for PRIMARY/NAMED boxes (standalone omits
+#     them) — the loader applies that gate when the workset channel paths exist.
+
+# box.masks default (decision B): the local ~/workspace/vault is hidden behind an
+# UNCONDITIONAL read-only tmpfs in every box mode.  A real list[box_dest] (spec
+# §2a) — a box may add masks or suppress all of them with a terminal "".
+masks:
+  - "~/workspace/vault"
+
+# Channel binds (§2c/§2f).  Each entry becomes a `box.bindings.rw.<key>` default
+# whose VALUE is the structured pair (<probed host_src>, <box_dest>).  `source`
+# names the runtime-probed host root the loader injects; `scope` is `system`
+# (every mode) or `workset` (PRIMARY/NAMED only — standalone omits these).
+#
+# In-box channel mount roots: system channels under ~/channels/; workset-local
+# channels (primary/named only) under ~/channels/workset/; own inbox surfaced at
+# ~/channels/inbox.
+channels:
+  # System channel type roots (every mode).
+  - key: global_commons
+    source: channels_commons
+    box_dest: "~/channels/commons"
+    scope: system
+  - key: global_chat
+    source: channels_chat
+    box_dest: "~/channels/chat"
+    scope: system
+  - key: global_share
+    source: channels_share
+    box_dest: "~/channels/share"
+    scope: system
+  - key: mailboxes
+    source: channels_mailboxes
+    box_dest: "~/channels/mailboxes"
+    scope: system
+  # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced at the
+  # (C)-stable path ~/channels/inbox.  The depth-sort lands this deeper dest
+  # after ~/channels/mailboxes — both binds are kept.
+  - key: inbox
+    source: inbox
+    box_dest: "~/channels/inbox"
+    scope: system
+  # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
+  # seam by the presence of the workset channel paths).
+  - key: workset_commons
+    source: workset_commons
+    box_dest: "~/channels/workset/commons"
+    scope: workset
+  - key: workset_chat
+    source: workset_chat
+    box_dest: "~/channels/workset/chat"
+    scope: workset
+  - key: workset_share
+    source: workset_share
+    box_dest: "~/channels/workset/share"
+    scope: workset
