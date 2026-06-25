@@ -146,8 +146,17 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     *host_seed_dir*, mirroring the user's real ``agent.seeded.playbook`` entry
     that was clobbered.  The value form is a structured ``[host_src, guest_dest]``
     pair (the keyspace rework rejects the legacy ``<host_src>:<guest_dest>`` string).
+
+    This MERGES into any existing settings document rather than overwriting it:
+    the ``e2e_env`` fixture writes ``agent.default.default_agent: claude`` into
+    this SAME file (so the claude-only tests resolve an agent even when other
+    plugins are installed), and a blind overwrite here would wipe that key and
+    re-introduce the dual-agent "No agent selected" ambiguity that prevents the
+    box from launching.  We load the existing doc, add ``system.seeded.playbook``,
+    and write it back, preserving the ``agent`` content.
     """
     from kanibako.config import config_file_path, load_config
+    from kanibako.config_io import dump_doc, load_doc
     from kanibako.paths import load_std_paths
 
     with _active_env(env):
@@ -157,13 +166,15 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
         settings_file = std.settings
 
     settings_file.parent.mkdir(parents=True, exist_ok=True)
-    # Structured [host_src, box_dest] pair (the keyspace rework rejects the
+    # Merge into the existing settings doc (preserving e2e_env's
+    # agent.default.default_agent) rather than clobbering it.  The value is a
+    # structured [host_src, box_dest] pair (the keyspace rework rejects the
     # legacy "host:dest" colon-string form).
-    settings_file.write_text(
-        "system:\n"
-        "  seeded:\n"
-        f'    playbook: ["{host_seed_dir}", "{SEED_GUEST_DEST}"]\n'
-    )
+    doc = load_doc(settings_file)
+    doc.setdefault("system", {})["seeded"] = {
+        "playbook": [str(host_seed_dir), SEED_GUEST_DEST]
+    }
+    dump_doc(settings_file, doc)
 
 
 def _make_host_seed(tmp_path: Path) -> Path:
