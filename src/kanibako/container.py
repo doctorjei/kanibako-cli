@@ -283,11 +283,12 @@ class ContainerRuntime:
         ]
         # Local masking is still emitted here (tmpfs has no host source, so it is
         # not a category MOUNT the caller pre-builds): a read-only tmpfs over each
-        # box-dest in the ``box.masks`` category (resolved in start.py, decision
-        # B).  The default mask is ``~/workspace/vault`` (the old single hardcoded
-        # vault tmpfs); a box may add masks or suppress via a terminal "".  The
-        # ``.gitignore`` overlay that used to ride on the vault tmpfs is DROPPED
-        # (unconditional mask, no special-case overlay).
+        # box-dest in the ``box.masks`` category (resolved in start.py).  There is
+        # NO default mask -- the vault moved out of ``~/workspace`` in 1.6.0, so
+        # there is nothing in the workspace to hide.  A box (or any scope) may
+        # declare masks via ``box.masks`` / ``<scope>.masks``; an empty list emits
+        # no tmpfs masks.  The ``.gitignore`` overlay that used to ride on the
+        # vault tmpfs is DROPPED (no special-case overlay).
         if enable_vault:
             for mask in masks:
                 cmd += ["--mount", f"type=tmpfs,dst={mask},ro"]
@@ -308,8 +309,29 @@ class ContainerRuntime:
 
         logger.debug("Container command: %s", cmd)
 
-        result = subprocess.run(cmd)
-        return result.returncode
+        if detach:
+            # ``podman run -d`` prints the new container's full SHA id to
+            # stdout. The caller reattaches by NAME (runtime.exec), so the id
+            # is not needed; capture it to keep it off the user's terminal and
+            # surface it only at DEBUG (``-v``). A genuine launch failure must
+            # still be reported, so echo captured stderr on a non-zero return.
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(
+                    "Detached container launch failed (exit %s)", result.returncode
+                )
+                if result.stderr:
+                    sys.stderr.write(result.stderr)
+            else:
+                logger.debug(
+                    "Detached container started: %s", (result.stdout or "").strip()
+                )
+            return result.returncode
+
+        # Interactive foreground path: inherit the terminal so the agent /
+        # shell (and tmux attach) get the real stdio/tty.
+        fg_result = subprocess.run(cmd)
+        return fg_result.returncode
 
     def exec(
         self,
@@ -644,8 +666,7 @@ def _precreate_mount_stubs(
         # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
         # Map each box-dest to its host side the same way extra mounts are
         # mapped (under project_path for workspace dests, shell_path for other
-        # home dests).  The default mask ``/home/agent/workspace/vault`` maps to
-        # ``project_path / "vault"`` — byte-identical to the old single stub.
+        # home dests).  Empty list (the default — no masks) -> no stubs.
         for mask in tmpfs_masks:
             if mask.startswith(WORKSPACE):
                 _ensure_dir(project_path / mask[len(WORKSPACE):])

@@ -1,7 +1,7 @@
 """System/core category defaults — thin reader of the shipped declarative file.
 
-The STATIC, non-agent-specific launch-path defaults (the ``box.masks`` vault
-default and the per-mode channel bind table) live as declarative data in
+The STATIC, non-agent-specific launch-path defaults (the ``box.masks`` default,
+now empty, and the per-mode channel bind table) live as declarative data in
 :mod:`kanibako.data` (``core-defaults.yaml``), mirroring how the image baseline
 ships (:mod:`kanibako.baseline`) and how containerfiles/templates ship via
 :mod:`importlib.resources`.  This module reads that file and emits the entries
@@ -47,13 +47,15 @@ def _load_doc() -> dict[str, Any]:
 
 
 def vault_mask_default() -> list[str]:
-    """Return the default ``box.masks`` list (the unconditional vault tmpfs mask).
+    """Return the default ``box.masks`` list — now EMPTY (no default mask).
 
     Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
-    the default is a LIST the resolver iterates as real entries.  The default
-    (no extra masks) yields ``["~/workspace/vault"]`` → ``@``-expands to
-    ``/home/agent/workspace/vault`` so the local vault is hidden behind a
-    read-only tmpfs in every box mode (decision B).
+    the default is a LIST the resolver iterates as real entries.  The old
+    vestigial ``~/workspace/vault`` default was DROPPED: the vault moved OUT of
+    ``~/workspace`` in 1.6.0, so there is nothing in the workspace to hide behind
+    a tmpfs.  The seam is kept (so a box may still declare masks via
+    ``box.masks`` / ``<scope>.masks``) but the default reads as an empty list
+    from the shipped file (decision B).
     """
     masks = _load_doc().get("masks", [])
     return [str(m) for m in masks]

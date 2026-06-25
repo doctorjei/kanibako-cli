@@ -20,6 +20,7 @@ so the child's podman can find the shared layers.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -65,6 +66,136 @@ def detect_graph_root(runtime_cmd: str) -> Path | None:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         logger.debug("Graph root detection failed: %s", exc)
         return None
+
+
+def is_rootless_podman(runtime_cmd: str) -> bool | None:
+    """Return whether *runtime_cmd* is a rootless podman runtime.
+
+    Reads ``Host.Security.Rootless`` from ``podman info``.  Returns:
+
+    * ``True``  — rootless podman (the case that cannot overlay on virtiofs).
+    * ``False`` — rootful podman / docker / a runtime that reports not-rootless.
+    * ``None``  — could not determine (command failed, unparseable output, or
+      the runtime isn't podman).  Callers MUST treat ``None`` as "unknown" and
+      never fire a diagnostic on it.
+
+    A rootful shim (``KANIBAKO_DOCKER_CMD`` set, or docker) reports rootless
+    ``false`` here, so the virtiofs preflight stays silent for it.
+    """
+    if "podman" not in Path(runtime_cmd).name:
+        # docker (or anything non-podman) is not the rootless-overlay case.
+        return False
+    try:
+        result = subprocess.run(
+            [runtime_cmd, "info", "--format", "{{.Host.Security.Rootless}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            logger.debug("Failed to query rootless: %s", result.stderr.strip())
+            return None
+        value = result.stdout.strip().lower()
+        if value == "true":
+            return True
+        if value == "false":
+            return False
+        return None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        logger.debug("Rootless detection failed: %s", exc)
+        return None
+
+
+def path_fstype(path: Path) -> str | None:
+    """Return the filesystem type backing *path*, or *None* if undeterminable.
+
+    Walks ``/proc/self/mountinfo`` (pure-Python, side-effect-free, no
+    subprocess) and returns the fstype of the longest mount point that is a
+    prefix of *path*'s real location.  Returns *None* on any uncertainty
+    (no procfs, parse failure, no matching mount) so callers can skip silently.
+    """
+    try:
+        target = os.path.realpath(path)
+    except OSError:
+        return None
+    try:
+        with open("/proc/self/mountinfo", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return None
+
+    best_len = -1
+    best_fstype: str | None = None
+    for line in lines:
+        # mountinfo: <id> <pid> <maj:min> <root> <mountpoint> <opts> ... - <fstype> <src> <superopts>
+        # The fstype follows the " - " separator; fields before it are
+        # space-separated and the mount point is field index 4.
+        try:
+            pre, post = line.split(" - ", 1)
+        except ValueError:
+            continue
+        pre_fields = pre.split()
+        post_fields = post.split()
+        if len(pre_fields) < 5 or not post_fields:
+            continue
+        mountpoint = pre_fields[4]
+        fstype = post_fields[0]
+        # Match mountpoint as a path prefix of the target (longest wins).
+        if target == mountpoint or target.startswith(
+            mountpoint.rstrip("/") + "/"
+        ) or mountpoint == "/":
+            if len(mountpoint) > best_len:
+                best_len = len(mountpoint)
+                best_fstype = fstype
+    return best_fstype
+
+
+# Actionable diagnostic for the unsupported rootless-podman-on-virtiofs case.
+# {graph_root} is filled with the detected host graph root path.
+VIRTIOFS_GRAPHROOT_MESSAGE = (
+    "Error: podman's image storage is on a virtiofs filesystem.\n"
+    "  graph root: {graph_root}\n"
+    "  Rootless podman cannot overlay-mount or pivot_root on virtiofs, so the\n"
+    "  box cannot launch (otherwise you'd hit a cryptic 'pivot_root: permission\n"
+    "  denied' / overlay error from the runtime).\n"
+    "  This can happen if you use kento to compose VM images.\n"
+    "\n"
+    "  Fix it one of these ways:\n"
+    "    - Back podman's graph root with a real filesystem (a real-disk or\n"
+    "      loopback-backed ext4) instead of the virtiofs share.\n"
+    "    - Use a rootful runtime by pointing KANIBAKO_DOCKER_CMD at a rootful\n"
+    "      podman/docker shim (rootful overlay works on virtiofs).\n"
+    "\n"
+    "  Note: rootless podman on a virtiofs graph root is an unsupported\n"
+    "  configuration."
+)
+
+
+def virtiofs_graphroot_message(runtime_cmd: str) -> str | None:
+    """Return the friendly virtiofs diagnostic, or *None* if it doesn't apply.
+
+    The message is returned ONLY when ALL of these hold:
+
+    * ``KANIBAKO_DOCKER_CMD`` is NOT set (a rootful shim handles virtiofs), and
+    * the runtime is **rootless podman** (``is_rootless_podman`` is ``True``), and
+    * the host graph root's filesystem is **virtiofs**.
+
+    On any uncertainty — rootless state unknown, graph root undetectable, or
+    fstype undeterminable — returns *None* so a normal launch is never broken.
+    The check is cheap (one ``podman info`` for rootless + a procfs read) and
+    side-effect-free.
+    """
+    # A rootful shim handles virtiofs fine; never fire when one is configured.
+    if os.environ.get("KANIBAKO_DOCKER_CMD"):
+        return None
+    if is_rootless_podman(runtime_cmd) is not True:
+        return None
+    graph_root = detect_graph_root(runtime_cmd)
+    if graph_root is None:
+        return None
+    if path_fstype(graph_root) != "virtiofs":
+        return None
+    return VIRTIOFS_GRAPHROOT_MESSAGE.format(graph_root=graph_root)
 
 
 def generate_storage_conf(shared_store_path: str) -> str:

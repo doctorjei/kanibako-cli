@@ -165,14 +165,29 @@ class TestSetupNudgeMessage:
         write_system_value(cf, "setup_completed", "1.7.0")
         assert setup_nudge_message(cf) is None
 
-    def test_dev_marker_no_nudge(self, tmp_path):
-        """PEP 440 dev/rc suffixes parse fine (1.6.0.dev25 >= 1.6.0? No → stale)."""
+    def test_dev_marker_of_current_base_no_nudge(self, tmp_path):
+        """A dev/rc build of the current base must NOT nag right after setup.
+
+        ``setup`` writes the running ``__version__`` (e.g. ``1.6.0.dev26``) as
+        the marker.  PEP 440 makes ``1.6.0.dev26 < 1.6.0`` True, so a naive
+        compare nags every dev build.  We compare by BASE version instead, so a
+        dev build of the same base as the constant (== "1.6.0") is current.
+        """
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
         cf = tmp_path / "kanibako.yaml"
-        # 1.6.0.dev25 < 1.6.0 under PEP 440 → stale (pre-release of the target).
-        write_system_value(cf, "setup_completed", "1.6.0.dev25")
+        write_system_value(cf, "setup_completed", "1.6.0.dev26")
+        assert setup_nudge_message(cf) is None
+
+    def test_dev_marker_of_older_base_nudges(self, tmp_path):
+        """A dev/rc build of a genuinely older base still nags."""
+        from kanibako.config import setup_nudge_message
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako.yaml"
+        # 1.5.0.dev1 has base 1.5.0 < 1.6.0 → stale.
+        write_system_value(cf, "setup_completed", "1.5.0.dev1")
         assert setup_nudge_message(cf) == (
             "kanibako setup is out of date — re-run 'kanibako setup'."
         )

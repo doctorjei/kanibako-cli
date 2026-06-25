@@ -156,11 +156,16 @@ class TestCoreDefaultsShape:
             _assert_no_joined_string(m, "core-defaults.yaml masks")
 
     def test_loader_masks_is_list(self):
-        """The loader surfaces ``masks`` as a real ``list[str]``."""
+        """The loader surfaces ``masks`` as a real ``list[str]`` — now EMPTY.
+
+        The vestigial ``~/workspace/vault`` default mask was dropped (the vault
+        moved out of the workspace in 1.6.0), so the default ``box.masks`` is an
+        empty list; the seam stays so explicit ``box.masks`` declarations work.
+        """
         masks = core_defaults.vault_mask_default()
         assert isinstance(masks, list)
         assert all(isinstance(m, str) for m in masks)
-        assert masks == ["~/workspace/vault"]
+        assert masks == []
 
     def test_channel_entries_are_structured(self):
         """Each channel default carries the structural fields, box_dest a clean str.

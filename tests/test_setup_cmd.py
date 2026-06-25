@@ -230,3 +230,27 @@ def test_full_setup_non_tty_writes_marker_no_default(
     cf, ssp = _config_paths(tmp_home)
     assert read_default_agent(ssp) is None
     assert read_setup_completed(cf) == __version__
+
+
+# --- Step 2: binary-less shell agent ---------------------------------------
+
+
+def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatch, capsys):
+    """The binary-less 'Shell' (no_agent) target has no host binary; Step 2 must
+    report it as available (image default), not '... not found on this system'.
+    """
+    from kanibako.targets.no_agent import NoAgentTarget
+
+    _patch_targets(monkeypatch, {"no_agent": NoAgentTarget})
+    monkeypatch.setattr(
+        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
+    )
+    monkeypatch.setattr(
+        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
+    )
+    rc = setup_cmd.run_setup(_ns(agent="no_agent"))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Shell" in out
+    assert "not found on this system" not in out
+    assert "image default" in out
