@@ -144,7 +144,8 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     ``{XDG_DATA_HOME}/kanibako/global/settings.yaml`` (see
     ``_category_resolution_inputs``).  We point a ``~/playbook``-style seed at
     *host_seed_dir*, mirroring the user's real ``agent.seeded.playbook`` entry
-    that was clobbered.  The value form is ``<host_src>:<guest_dest>``.
+    that was clobbered.  The value form is a structured ``[host_src, guest_dest]``
+    pair (the keyspace rework rejects the legacy ``<host_src>:<guest_dest>`` string).
     """
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import load_std_paths
@@ -156,11 +157,12 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
         settings_file = std.settings
 
     settings_file.parent.mkdir(parents=True, exist_ok=True)
-    # host_src has no ':' (a tmp path), so no escaping is needed.
+    # Structured [host_src, box_dest] pair (the keyspace rework rejects the
+    # legacy "host:dest" colon-string form).
     settings_file.write_text(
         "system:\n"
         "  seeded:\n"
-        f'    playbook: "{host_seed_dir}:{SEED_GUEST_DEST}"\n'
+        f'    playbook: ["{host_seed_dir}", "{SEED_GUEST_DEST}"]\n'
     )
 
 
