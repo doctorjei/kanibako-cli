@@ -15,7 +15,6 @@ from kanibako.helper_listener import (
     HelperHub,
     MessageLog,
     _build_helper_mounts,
-    _parse_helper_num,
     _send_json,
 )
 
@@ -70,28 +69,6 @@ def _connect_and_send(sock_path: Path, request: dict) -> dict:
         buf += data
     s.close()
     return json.loads(buf.split(b"\n")[0])
-
-
-class TestParseHelperNum:
-    def test_new_format(self):
-        assert _parse_helper_num("kanibako-myapp-helper-3") == 3
-
-    def test_new_format_double_digit(self):
-        assert _parse_helper_num("kanibako-myapp-helper-42") == 42
-
-    def test_legacy_format(self):
-        """Old kanibako-helper-N-hash format still works."""
-        assert _parse_helper_num("kanibako-helper-3-abc12345") == 3
-
-    def test_name_with_dashes(self):
-        """Project names containing dashes don't confuse parsing."""
-        assert _parse_helper_num("kanibako-my-app-helper-7") == 7
-
-    def test_invalid_format(self):
-        assert _parse_helper_num("some-other-name") is None
-
-    def test_non_numeric(self):
-        assert _parse_helper_num("kanibako-helper-abc-123") is None
 
 
 class TestSendJson:
@@ -434,6 +411,7 @@ class TestHubStop:
         resp = _connect_and_send(sock_path, {
             "action": "stop",
             "container_name": "kanibako-testproj-helper-1",
+            "helper_num": 1,
         })
         assert resp["status"] == "ok"
         ctx.runtime.stop.assert_called_with("kanibako-testproj-helper-1")
@@ -444,6 +422,31 @@ class TestHubStop:
         resp = _connect_and_send(sock_path, {"action": "stop"})
         assert resp["status"] == "error"
         assert "missing" in resp["message"]
+
+    def test_stop_logs_structured_helper_num(self, mock_ctx):
+        """_handle_stop reads helper_num from the request and logs it."""
+        hub = HelperHub()
+        hub._ctx = mock_ctx
+        hub._log = MagicMock()
+        resp = hub._handle_stop({
+            "action": "stop",
+            "container_name": "kanibako-testproj-helper-3",
+            "helper_num": 3,
+        })
+        assert resp["status"] == "ok"
+        hub._log.log_control.assert_called_once_with("stop", 3)
+
+    def test_stop_without_helper_num_does_not_log(self, mock_ctx):
+        """A stop request without helper_num logs nothing and does not crash."""
+        hub = HelperHub()
+        hub._ctx = mock_ctx
+        hub._log = MagicMock()
+        resp = hub._handle_stop({
+            "action": "stop",
+            "container_name": "kanibako-testproj-helper-3",
+        })
+        assert resp["status"] == "ok"
+        hub._log.log_control.assert_not_called()
 
 
 class TestHubMessaging:

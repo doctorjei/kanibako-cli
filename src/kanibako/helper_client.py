@@ -41,11 +41,12 @@ class HelperConnection:
             req["helpers_dir"] = helpers_dir
         return self._request(req)
 
-    def stop(self, container_name: str) -> dict:
+    def stop(self, container_name: str, helper_num: int) -> dict:
         """Request the hub to stop a helper container."""
         return self._request({
             "action": "stop",
             "container_name": container_name,
+            "helper_num": helper_num,
         })
 
     def send(self, to: int, payload: dict) -> dict:
