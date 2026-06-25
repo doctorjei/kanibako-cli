@@ -18,7 +18,9 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -147,6 +149,60 @@ def run_kanibako(
         timeout=timeout,
         check=check,
     )
+
+
+@contextmanager
+def _active_env(env: dict[str, str]) -> Iterator[None]:
+    """Temporarily install *env*'s HOME/XDG_* into ``os.environ``.
+
+    The CLI runs as a subprocess with an isolated env *dict*; to resolve the
+    box's host-side paths from the test process we temporarily install that same
+    env into ``os.environ`` and drive the REAL path resolver (no hand-rolled
+    path math, so the test stays faithful to what launch actually computes).
+    """
+    keys = (
+        "HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+    )
+    saved = {k: os.environ.get(k) for k in keys}
+    try:
+        for k in keys:
+            if k in env:
+                os.environ[k] = env[k]
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def resolve_box_dir(env: dict[str, str], project: Path) -> Path:
+    """Resolve the host-side box METADATA dir for *project* via the real resolver.
+
+    A ``kanibako create <path> --name <n>`` box is workset-scoped: its metadata
+    dir lives at ``$XDG_DATA_HOME/kanibako/<workset>/boxes/<name>`` (e.g.
+    ``.../kanibako/primary_workset/boxes/<name>``), NOT the legacy
+    ``.../kanibako/boxes/<name>``.  We resolve it through the SAME functions the
+    launch path uses (``ProjectPaths.metadata_path`` == the ``boxes/<name>/``
+    dir that contains ``home/``, i.e. ``proj.shell_path.parent``), so the
+    inspected path matches what ``start``/``rm`` actually wrote/removed.
+    """
+    from kanibako.config import config_file_path, load_config
+    from kanibako.paths import load_std_paths, resolve_project
+
+    with _active_env(env):
+        config_file = config_file_path(Path(env["XDG_CONFIG_HOME"]))
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_project(
+            std, config, project_dir=str(project), initialize=False
+        )
+    return proj.metadata_path
 
 
 def podman_exec(

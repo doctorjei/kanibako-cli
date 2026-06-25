@@ -6,6 +6,7 @@ import pytest
 
 from tests.e2e.conftest import (
     e2e_requires,
+    resolve_box_dir,
     run_kanibako,
     wait_for_container,
 )
@@ -20,7 +21,6 @@ class TestMountStubs:
         """After start, shell dir contains all expected mount point stubs."""
         env = e2e_env["env"]
         project = e2e_env["project"]
-        data_home = e2e_env["data_home"]
 
         result = run_kanibako(
             ["create", str(project), "--name", "e2e-stubs"],
@@ -36,16 +36,17 @@ class TestMountStubs:
         )
         wait_for_container("kanibako-e2e-stubs", timeout=15)
 
-        # Find the shell directory (lives under boxes/<name>/home/).
-        boxes_dir = data_home / "kanibako" / "boxes"
-        box_dirs = list(boxes_dir.iterdir()) if boxes_dir.exists() else []
-        assert len(box_dirs) > 0, (
-            f"No box directories found under {boxes_dir}"
+        # Resolve the box metadata dir THROUGH the real path resolver (boxes are
+        # workset-scoped: .../kanibako/<workset>/boxes/<name>, not the legacy
+        # .../kanibako/boxes/<name>).  The shell dir lives under boxes/<name>/home/.
+        box_dir = resolve_box_dir(env, project)
+        assert box_dir.is_dir(), (
+            f"No box directory found at {box_dir}"
         )
-        shell_path = box_dirs[0] / "home"
+        shell_path = box_dir / "home"
         assert shell_path.is_dir(), (
             f"Shell dir missing: {shell_path} "
-            f"(box contents: {list(box_dirs[0].iterdir())})"
+            f"(box contents: {list(box_dir.iterdir())})"
         )
 
         # These directories must exist as mount point stubs.
