@@ -75,3 +75,56 @@ channels:
     source: workset_share
     box_dest: "~/channels/workset/share"
     scope: workset
+
+# Core box mounts (step 3).  Each entry becomes a `box.bindings.{ro,rw}.<key>`
+# default whose VALUE is the structured triple (<probed host_src>, <box_dest>,
+# <options>) — the per-entry mount OPTIONS are the OPTIONAL 3rd slot of the
+# binding tuple (spec §2a), consumed by `settings_resolve.unpack_bind`.  These
+# are the box's own home + workspace + vault binds — TODAY's hardwired podman
+# `-v` (container.py) routed through the category resolver so NOTHING is bound
+# into a box except through the keyspace.
+#
+# What lives here (STATIC) vs what stays code-injected at the seam (DYNAMIC):
+#   * STATIC  — the box-side destinations + per-entry `options` + the structural
+#     shape (which keys exist, their category).  Pure literals; they belong here.
+#   * DYNAMIC — the host SOURCES are runtime-PROBED from `ProjectPaths`
+#     (`proj.shell_path` → home, `proj.project_path` → workspace,
+#     `proj.vault_ro_path`/`proj.vault_rw_path` → vault); the loader injects each
+#     probed source into its keyed entry (the file names it SYMBOLICALLY via
+#     `source:`).
+#   * CONDITIONAL gating stays at the injection site, NOT here: the vault binds
+#     are emitted only when vault is enabled AND the vault source dir exists
+#     (reproducing today's `if enable_vault and path.is_dir()` skip-if-missing
+#     behavior — see `core_defaults.core_default_categories`).  home + workspace
+#     are UNCONDITIONAL (every box mode).
+core:
+  # Persistent agent home — host shell_path bound rw at ~ (/home/agent).  ``~``
+  # (not ``~/``) so the dest is exactly ``/home/agent`` — no trailing slash, byte-
+  # identical to the old hardwired ``{shell_path}:/home/agent:Z,U`` bind.
+  - key: home
+    category: bindings.rw
+    source: shell_path
+    box_dest: "~"
+    options: "Z,U"
+    scope: system
+  # Project workspace — host project_path bound rw at ~/workspace.
+  - key: workspace
+    category: bindings.rw
+    source: project_path
+    box_dest: "~/workspace"
+    options: "Z,U"
+    scope: system
+  # Read-only vault (GATED: only when vault enabled and the source dir exists).
+  - key: vault
+    category: bindings.ro
+    source: vault_ro_path
+    box_dest: "~/vault/ro"
+    options: "ro"
+    scope: vault
+  # Read-write vault (GATED: only when vault enabled and the source dir exists).
+  - key: vault
+    category: bindings.rw
+    source: vault_rw_path
+    box_dest: "~/vault/rw"
+    options: "Z,U"
+    scope: vault

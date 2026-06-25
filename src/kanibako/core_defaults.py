@@ -113,3 +113,61 @@ def channel_default_categories(
             str(entry["box_dest"]),
         )
     return binds
+
+
+def core_default_categories(
+    std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool
+) -> dict[str, tuple[str, str, str]]:
+    """Build the core box mounts as ``default_categories`` (step 3).
+
+    Maps ``box.bindings.{ro,rw}.<key>`` → a STRUCTURED 3-TUPLE
+    ``(host_src, box_dest, options)`` for every CORE box mount (home + workspace +
+    vault).  These are the box's own home/workspace/vault binds — TODAY's hardwired
+    podman ``-v`` routed through the category resolver so nothing is bound into a
+    box except through the keyspace.  The box-side destinations, per-entry mount
+    options, and category come from the declarative file (``core:`` list); the host
+    SOURCES are runtime-probed from *proj* here and injected into each keyed entry.
+
+    Per spec §2a a binding value is a STRUCTURED TUPLE (a YAML list / Python
+    tuple), NOT a colon-joined string — the per-entry mount OPTIONS are its
+    OPTIONAL 3rd slot, consumed by :func:`~kanibako.settings_resolve.unpack_bind`
+    (a 3-element value OVERRIDES the category default for that entry, so e.g. the
+    ``ro`` vault bind keeps ``ro`` and the ``Z,U`` binds keep ``Z,U`` regardless of
+    the category's own default).
+
+    home + workspace are UNCONDITIONAL (every box mode).  The vault binds
+    (``scope: vault`` in the file) are CONDITIONAL — emitted only when *enable_vault*
+    AND the probed source dir exists, reproducing TODAY's
+    ``if enable_vault and path.is_dir()`` skip-if-missing behavior EXACTLY (the
+    resolver's L7 mkdir's rw SOURCES unconditionally, so blindly injecting a vault
+    key would start CREATING the source dir — the gate is applied HERE so a missing
+    vault source is simply omitted).
+    """
+    # Resolve each SYMBOLIC source name from the declarative file to its
+    # runtime-probed host path off ``ProjectPaths``.
+    sources: dict[str, str] = {
+        "shell_path": str(proj.shell_path),
+        "project_path": str(proj.project_path),
+        "vault_ro_path": str(proj.vault_ro_path),
+        "vault_rw_path": str(proj.vault_rw_path),
+    }
+    vault_dir = {
+        "vault_ro_path": proj.vault_ro_path,
+        "vault_rw_path": proj.vault_rw_path,
+    }
+
+    binds: dict[str, tuple[str, str, str]] = {}
+    for entry in _load_doc().get("core", []):
+        # Vault binds are gated: emit only when vault is enabled AND the probed
+        # source dir exists (today's skip-if-missing behavior).
+        if entry.get("scope") == "vault":
+            src_path = vault_dir.get(entry["source"])
+            if not enable_vault or src_path is None or not src_path.is_dir():
+                continue
+        category = entry["category"]
+        binds[f"box.{category}.{entry['key']}"] = (
+            sources[entry["source"]],
+            str(entry["box_dest"]),
+            str(entry["options"]),
+        )
+    return binds

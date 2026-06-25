@@ -1233,6 +1233,24 @@ def _run_container(
         kanibako_mnts = _kanibako_mounts()
         extra_mounts.extend(kanibako_mnts)
 
+        # Core box mounts (step 3): the box's own home + workspace + vault binds,
+        # routed through the category resolver instead of hardwired podman ``-v``
+        # inside container.run — so NOTHING is bound into a box except through the
+        # keyspace.  home (~/) + workspace (~/workspace) are unconditional; vault
+        # ro/rw are gated on proj.enable_vault + the source dir existing (parity
+        # with the old skip-if-missing behavior).  Placed FIRST among the resolver
+        # binds so the shallow home/workspace dests land under everything else.
+        core_mounts = _build_core_mounts(
+            std=std,
+            proj=proj,
+            agent_name=agent_id,
+            global_config_path=system_settings_path,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            agent_config_path=agent_cfg_path,
+        )
+        extra_mounts.extend(core_mounts)
+
         # Scoped bindings (settings-framework {scope}.bindings.{ro,rw}.*).
         # Additive: empty config → no mounts → no behavior change.
         share_mounts = _build_share_mounts(
@@ -2536,6 +2554,57 @@ def _build_channel_mounts(
         default_categories=_channel_default_categories(std, proj),
     )
     return _emit_reconciled_mounts(reconciled, label="channel")
+
+
+def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
+    """Build the core box mounts as ``default_categories`` (step 3).
+
+    Thin reader over :func:`kanibako.core_defaults.core_default_categories`: the
+    STATIC structure + box-side destinations + per-entry mount options live in the
+    shipped system/core defaults file (``core:`` list); the loader injects the
+    runtime-probed host sources off ``ProjectPaths``.  Injected through the category
+    resolver (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like
+    masks/shares/channels.  home + workspace are unconditional; the vault binds are
+    gated on ``proj.enable_vault`` AND the source dir existing (reproducing the old
+    hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
+    """
+    return core_defaults.core_default_categories(
+        std, proj, enable_vault=proj.enable_vault
+    )
+
+
+def _build_core_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+) -> list:
+    """Resolve the core box mounts (home/workspace/vault) and emit as :class:`Mount`s.
+
+    Replaces the hardwired core ``-v`` flags that container.run used to build
+    in-process (home → ``/home/agent``, workspace → ``/home/agent/workspace``, vault
+    ro/rw).  Injects the core bind table (:func:`_core_default_categories`) through
+    the category resolver as the AGENT level's declared defaults — so the core binds
+    flow through the D-B1 precedence + depth-sort + L7 guarantee-create exactly like
+    masks/shares/channels.  The depth-sort keeps BOTH the nested home
+    (``/home/agent``) and workspace (``/home/agent/workspace``) binds.  A box may
+    override or suppress any individual core bind at a more-specific level.
+    """
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=_core_default_categories(std, proj),
+    )
+    return _emit_reconciled_mounts(reconciled, label="core")
 
 
 def _resolve_config_env(
