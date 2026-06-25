@@ -946,7 +946,36 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
     return out
 
 
-def read_categories(path: Path | None) -> dict[str, str]:
+def _flatten_categories(data: dict, prefix: str = "") -> dict[str, object]:
+    """Flatten nested config into DOTTED-key form, PRESERVING structured leaves.
+
+    Like :func:`_flatten_dotted`, but a leaf that is a YAML list / tuple is kept
+    AS-IS instead of being ``str()``-coerced.  This is the load-side half of the
+    keyspace REPRESENTATION restoration (spec §2a): a category binding value is a
+    structured pair/tuple (``[host_src, box_dest]`` / ``[host_src, box_dest,
+    options]``) or a ``masks`` list (``[box_dest, ...]``) — NEVER a colon-joined
+    string.  Coercing it to ``str()`` here is exactly what destroyed the specced
+    shape (Audit 1 root cause).  Preserving the list/tuple lets the structured
+    value survive to the resolver UNCHANGED.
+
+    Scalar leaves keep the historic ``str()`` behavior (e.g. ``env`` values, and
+    the legacy colon-string bind form which is itself a scalar — it passes
+    through untouched).  Dicts are recursed as before.
+    """
+    out: dict[str, object] = {}
+    for k, v in data.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            out.update(_flatten_categories(v, key))
+        elif isinstance(v, (list, tuple)):
+            # Structured leaf (binding pair/tuple, masks list): preserve verbatim.
+            out[key] = v
+        else:
+            out[key] = str(v)
+    return out
+
+
+def read_categories(path: Path | None) -> dict[str, object]:
     """Read scope-category keys (the unified primitive) from a config file as a
     flat dotted-key dict. Missing/None/unreadable path → {}.
 
@@ -954,6 +983,11 @@ def read_categories(path: Path | None) -> dict[str, str]:
     ``{scope}.bindings.{ro,rw}.{name}``, ``{scope}.caches.{name}``,
     ``{scope}.seeded.{name}``, ``{scope}.shared.{name}``,
     ``{scope}.synced.{name}``, ``{scope}.env.{VAR}``.
+
+    Values are returned with their ON-DISK shape PRESERVED: a structured binding
+    pair/tuple (``[host_src, box_dest[, options]]``) or a ``masks`` list survives
+    as a ``list``/``tuple`` (spec §2a — the load-bearing representation); a scalar
+    value (an ``env`` value, or the legacy colon-string bind form) stays a ``str``.
     """
     from kanibako.settings_categories import is_category_key
 
@@ -965,23 +999,25 @@ def read_categories(path: Path | None) -> dict[str, str]:
         data = load_doc(path)
     except Exception:
         return {}
-    flat = _flatten_dotted(data)
+    flat = _flatten_categories(data)
     return {k: v for k, v in flat.items() if is_category_key(k)}
 
 
-def read_shares(path: Path | None) -> dict[str, str]:
+def read_shares(path: Path | None) -> dict[str, object]:
     """Read scoped-binding keys ({scope}.bindings.{ro,rw}.{name}) from a config
     file as a flat dotted-key dict. Missing/None/unreadable path → {}.
 
     Compatibility filter over :func:`read_categories` for the launch path's
     share-mount wrapper (:func:`kanibako.settings_shares.resolve_shares`).
+    Values keep their on-disk shape (structured pair/tuple or scalar) per
+    :func:`read_categories`.
     """
     from kanibako.settings_shares import is_share_key
 
     return {k: v for k, v in read_categories(path).items() if is_share_key(k)}
 
 
-def read_seeds(path: Path | None) -> dict[str, str]:
+def read_seeds(path: Path | None) -> dict[str, object]:
     """Read seed keys ({scope}.seeded.{name}) from a config file as a flat
     dotted-key dict. Missing/None/unreadable path → {}.
 
