@@ -368,6 +368,16 @@ def start_mocks():
             runtime.exec.return_value = 0
             runtime.rm.return_value = True
 
+            # The bootstrap-attach loop gates the interactive exec on a CAPTURED
+            # readiness probe (``exec_ready``).  Mirror it onto ``is_running`` so
+            # the fake behaves realistically: a "running" container is ready for
+            # exec, a "dead" one (crash-path tests flip ``is_running`` False) is
+            # not — so those tests fall through to the log-showing path without
+            # the loop spuriously attaching to a dead container.
+            runtime.exec_ready.side_effect = (
+                lambda *a, **kw: bool(runtime.is_running.return_value)
+            )
+
             # Simulate container start: after run(), is_running returns True.
             _original_run = runtime.run
             def _run_side_effect(*a, **kw):

@@ -359,6 +359,22 @@ class ContainerRuntime:
         result = subprocess.run(cmd)
         return result.returncode
 
+    def exec_ready(self, name: str) -> bool:
+        """Probe whether the container can accept an exec session right now.
+
+        Runs a cheap CAPTURED `exec <name> true`. Because the output is
+        captured, podman's raw "container state improper" race error is
+        swallowed instead of leaking to the user's TTY. This is the same
+        operation as the interactive bootstrap-attach exec, so a fresh
+        success is a tight predictor that the attach will start cleanly.
+        Used to gate the TTY-inheriting interactive exec.
+        """
+        result = subprocess.run(
+            [self.cmd, "exec", name, "true"],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
     def container_exists(self, name: str) -> bool:
         """Check if a container exists (running or stopped)."""
         result = subprocess.run(
