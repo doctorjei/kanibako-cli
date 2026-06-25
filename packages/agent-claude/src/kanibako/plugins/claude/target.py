@@ -10,22 +10,13 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako.agent_defaults import load_descriptor, load_shares
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
-    BindKind,
-    Binding,
-    BindScope,
-    Cadence,
-    Channel,
     CredFileSpec,
-    HostSrcOrigin,
-    Operation,
     PluginDescriptor,
-    SafeBypass,
-    SettingArg,
     Target,
     TargetSetting,
 )
@@ -61,31 +52,18 @@ _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 # lifecycle from this descriptor (the legacy build_cli_args / binary_mounts /
 # refresh/writeback hooks are bypassed for claude).
 #
-# Notes on a few non-obvious fields:
-#   * mode is {start, continue} only — resume is intentionally NOT offered (user
-#     decision 2026-06-17: nonstandard, unused; claude resume is reachable from
-#     interactive mode).  -R/--resume therefore falls through to --continue.
-#   * container_env carries BOTH claude env vars: DISABLE_AUTOUPDATER (also set
-#     by apply_state) AND CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC (today injected
-#     by a ``target.name == "claude"`` special-case in core start.py) so a later
-#     wiring phase can drop that core leak.
-_CLAUDE_DESCRIPTOR = PluginDescriptor(
-    command=("claude",),
-    bindings=(
-        Binding("share",    HostSrcOrigin.INSTALL_DIR,  f"{GUEST_HOME}/.local/share/claude", BindKind.DIR,  BindScope.AGENT_CRITICAL, ro=True),
-        Binding("launcher", HostSrcOrigin.LAUNCHER,     f"{GUEST_HOME}/.local/bin/claude",   BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
-    ),
-    mode={"start": (), "continue": ("--continue",)},
-    operations={"exec": Operation(("-p",))},
-    safe_bypass=SafeBypass(Channel.FLAG, flag=("--dangerously-skip-permissions",), setting_key="access"),
-    settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
-    container_env={"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
-    cred_files=(
-        CredFileSpec(".claude/.credentials.json", ".claude/.credentials.json", cadence=Cadence.SYNC, mtime_gate=True, filtered=True),
-    ),
-    host_prep=True,
-    init_dirs=(".claude",),
-)
+# The descriptor's declarative default-set lives in this plugin's shipped
+# ``claude-defaults.yaml`` (P6c coalesce) and is read by the thin
+# :mod:`kanibako.agent_defaults` loader — the file documents each field
+# (mode={start,continue} only; both DISABLE_AUTOUPDATER +
+# CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC env vars; the two AGENT_CRITICAL
+# delivery binds; the synced filtered credentials).  The CRITICAL host
+# binary/launcher paths stay code-resolved in ``detect()`` (the contract
+# constants below).
+_DEFAULTS_PACKAGE = "kanibako.plugins.claude"
+_DEFAULTS_FILE = "claude-defaults.yaml"
+
+_CLAUDE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 def _autoupdater_disabled_env() -> dict[str, str]:
@@ -254,12 +232,10 @@ class ClaudeTarget(Target):
 
         The base ``default_shares()`` returns ``{}``; this override injects these
         as the AGENT level's declared defaults (overridable/suppressible by the
-        user at a more-specific level).
+        user at a more-specific level).  The share keys + box_dests are declared
+        in this plugin's ``claude-defaults.yaml`` (read via the loader).
         """
-        return {
-            "agent.shared.plugins": ("plugins", f"{GUEST_HOME}/.claude/plugins"),
-            "agent.shared.cache": ("cache", f"{GUEST_HOME}/.claude/cache"),
-        }
+        return load_shares(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.

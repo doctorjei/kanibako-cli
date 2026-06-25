@@ -1,0 +1,72 @@
+# codex AGENT defaults — the declarative source of truth for the codex plugin's
+# default-set (P6c coalesce; settings-keyspace-1.6.0-target.md §2d agent.codex.*).
+#
+# This file holds codex's complete DECLARATIVE default-set: its PluginDescriptor
+# data (delivery bind, launch grammar, settings routing, cred-file lifecycle,
+# init_dirs).  codex declares NO container env and NO agent shares.  It is read by
+# the thin loader :mod:`kanibako.agent_defaults`, which builds the PluginDescriptor
+# exactly as the old hand-written `target.py` values did.
+#
+# What lives here (DECLARATIVE) vs what stays code-resolved in target.py:
+#   * DECLARATIVE — everything below (in-box destinations are `$GUEST_HOME`
+#     expressions the loader expands; no `/home/agent` literal here).
+#   * CODE-RESOLVED — the CRITICAL host binary path is runtime-PROBED in
+#     `target.py` `detect()`: codex has no fixed contract path, so detect resolves
+#     a directly-bindable ELF on `$PATH` (PRIMARY) or the npm-vendored native
+#     binary (FALLBACK) per the host-binary preference order.  The file only names,
+#     declaratively, that the binary bind's host source is the detected `binary`
+#     field (`origin: binary`); the box destination is fixed below.
+
+descriptor:
+  command: ["codex"]
+
+  # binary bind — single AS-IS host bind (no separate launcher/share),
+  # AGENT_CRITICAL.  origin: binary -> install.binary (the resolved real native
+  # musl static-pie ELF; binds standalone, no node in-box).
+  bindings:
+    - key: binary
+      origin: binary
+      box_dest: "$GUEST_HOME/.local/bin/codex"
+      kind: file
+      scope: agent_critical
+      ro: true
+
+  # codex 0.140.0: new session = bare `codex` (start -> []); continue-last =
+  # `codex resume --last`.  No dedicated resume picker (-R falls through to
+  # continue).
+  mode:
+    start: []
+    continue: ["resume", "--last"]
+
+  operations:
+    exec:
+      fragment: ["exec"]
+
+  # safe-bypass is the FLAG --dangerously-bypass-approvals-and-sandbox; per-launch
+  # only (no persisted setting -> setting_key "").  codex is default-safe, so no
+  # secure_flag.
+  safe_bypass:
+    channel: flag
+    flag: ["--dangerously-bypass-approvals-and-sandbox"]
+    setting_key: ""
+
+  settings:
+    - setting_key: model
+      channel: flag
+      flag: ["--model"]
+
+  container_env: {}
+
+  # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
+  # filtered=True + add a transform_cred allowlist ONLY if E2E proves auth.json
+  # carries non-portable machine-id/installation fields.  The host config.toml
+  # IMPORT was removed in 1.6.0 (config comes from the curated agent template).
+  cred_files:
+    - home_rel: ".codex/auth.json"
+      host_rel: ".codex/auth.json"
+      cadence: sync
+      mtime_gate: true
+      filtered: false
+
+  host_prep: false
+  init_dirs: [".codex"]

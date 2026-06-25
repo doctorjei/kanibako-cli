@@ -6,21 +6,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako.agent_defaults import load_descriptor
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
-    BindKind,
-    Binding,
-    BindScope,
-    Cadence,
-    Channel,
-    CredFileSpec,
-    HostSrcOrigin,
-    Operation,
     PluginDescriptor,
-    SafeBypass,
-    SettingArg,
     Target,
     TargetSetting,
 )
@@ -49,89 +39,23 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 # lifecycle from this descriptor (the legacy build_cli_args / binary_mounts /
 # refresh/writeback hooks are bypassed for goose).
 #
-# Notes on a few non-obvious fields (goose 1.37.0, empirically verified):
-#   * mode uses the BARE ``session`` subcommand (new) / ``session --resume``
-#     (continue-last).  goose 1.37.0 REMOVED the ``session start`` / ``session
-#     resume`` subcommands the legacy build_cli_args emitted — that grammar now
-#     errors out; this descriptor is the fix.
-#   * exec is the standalone headless op ``goose run --no-session -t "<prompt>"``
-#     (the prompt is the VALUE of -t; --no-session keeps automation clean).
-#   * safe-bypass is the ENV channel ``GOOSE_MODE`` (there is NO --approve-all
-#     flag in 1.37.0).  It is SYMMETRIC: safe-OFF/-A emits ``GOOSE_MODE=auto``
-#     (tools auto-run); safe-ON/-S emits ``GOOSE_MODE=approve`` (confirm before
-#     running ANY tool).  The secure emission is MANDATORY here because goose's
-#     UNSET GOOSE_MODE default is itself ``auto`` (verified: goose docs + the
-#     1.37.0 binary's embedded `goose_mode TEXT NOT NULL DEFAULT 'auto'`), so
-#     emitting nothing on -S would leave goose in auto and -S would not be safe.
-#     ``approve`` is the faithful meaning of -S; ``smart_approve`` is a
-#     lighter-touch alternative (swap the secure_env_value to switch).
-#     model/provider are likewise portable ENV vars
-#     (GOOSE_MODEL / GOOSE_PROVIDER) — the ENV form works for `session`, whereas
-#     --model/--provider exist only on `goose run`.
-#   * binary binding uses the BINARY origin (install.binary) — goose has no
-#     separate launcher symlink, so there is no LAUNCHER binding.
-#   * secrets.yaml syncs bidirectionally (SYNC).
-#   * config.yaml + custom_providers/ ALSO sync bidirectionally (SYNC) as of the
-#     2026-06-24 goose-config-persistence fix.  This intentionally revisits the
-#     1.6.0 D-M15 "no host-config" stance for goose's PROVIDER config (Jei-
-#     approved): the user configures goose interactively IN THE BOX (``goose
-#     configure`` writes provider/model into config.yaml + any custom_providers/
-#     entry); without writeback the box-only config is invisible to the host-side
-#     ``check_auth`` (which reads ~/.config/goose/config.yaml), so kanibako re-ran
-#     ``goose configure`` on EVERY start.  Syncing config.yaml + custom_providers/
-#     back to the host fixes the re-prompt and gives goose PARITY with how claude
-#     (.credentials.json) and codex (auth.json) write back to the host.  These
-#     files reference the provider API key by env-var NAME, not by value (the
-#     value lives in secrets.yaml under GOOSE_DISABLE_KEYRING), so they are
-#     unfiltered wholesale copies — no secret leaks into config.yaml/
-#     custom_providers/.  The OLD 1.6.0 host config.yaml IMPORT (the
-#     extensions/instructions allowlist seed) stays removed; this is a plain SYNC
-#     of the box's own config, not a re-introduction of the host-extensions
-#     carve-out.
-_GOOSE_DESCRIPTOR = PluginDescriptor(
-    command=("goose",),
-    bindings=(
-        Binding("binary", HostSrcOrigin.BINARY, f"{GUEST_HOME}/.local/bin/goose", BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
-    ),
-    mode={"start": ("session",), "continue": ("session", "--resume")},
-    operations={"exec": Operation(("run", "--no-session", "-t"))},
-    safe_bypass=SafeBypass(Channel.ENV, env_var="GOOSE_MODE", env_value="auto", secure_env_value="approve", setting_key=""),
-    # The SettingArg only wires the ENV CHANNEL (the env-var NAME).  There is
-    # deliberately NO default VALUE for provider/model: ``setting_descriptors()``
-    # below declares them with an EMPTY default, so the resolver floor yields ""
-    # when the user hasn't set ``agent.goose.provider`` / ``agent.goose.model``,
-    # and ``assemble_env`` (``if value:``) then OMITS GOOSE_PROVIDER/GOOSE_MODEL
-    # entirely — goose falls back to its own config.yaml (driven by ``goose
-    # configure``).  Pinning a default here / in setting_descriptors would
-    # override the user's in-box ``goose configure`` choice (goose env vars win
-    # over config.yaml), so we don't.  An EXPLICIT setting still emits the var.
-    settings=(
-        SettingArg("model", Channel.ENV, env_var="GOOSE_MODEL"),
-        SettingArg("provider", Channel.ENV, env_var="GOOSE_PROVIDER"),
-    ),
-    # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
-    # setting): inside the box the OS keyring / D-Bus secret-service is
-    # unavailable/broken (rootful goose errors "Unable to create DBus keyring
-    # when setuid"), so ``goose configure`` cannot store the provider API key and
-    # launch then fails with "Configuration value not found: ANTHROPIC_API_KEY".
-    # goose's documented remedy makes it store/read secrets in the file
-    # ``~/.config/goose/secrets.yaml`` instead — the file kanibako already syncs
-    # host<->box and writes back (see cred_files / writeback_secrets).
-    container_env={"GOOSE_DISABLE_KEYRING": "true"},
-    cred_files=(
-        CredFileSpec(".config/goose/secrets.yaml", ".config/goose/secrets.yaml", cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
-        # config.yaml: provider/model selection + base config from in-box ``goose
-        # configure``.  SYNC so it persists back to the host -> host check_auth
-        # passes on the next start (no re-prompt).  Unfiltered (key-by-NAME only).
-        CredFileSpec(".config/goose/config.yaml", ".config/goose/config.yaml", cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
-        # custom_providers/: the custom-provider DEFINITIONS dir (e.g.
-        # custom_navigator.json — base URL, model list, the api_key ENV-VAR NAME).
-        # is_dir -> recursive sync (no mtime gate); credsync mirrors it both ways.
-        CredFileSpec(".config/goose/custom_providers", ".config/goose/custom_providers", cadence=Cadence.SYNC, mtime_gate=True, filtered=False, is_dir=True),
-    ),
-    host_prep=False,
-    init_dirs=(".config/goose", ".local/share/goose/sessions"),
-)
+# The descriptor's declarative default-set lives in this plugin's shipped
+# ``goose-defaults.yaml`` (P6c coalesce) and is read by the thin
+# :mod:`kanibako.agent_defaults` loader — the file documents each non-obvious
+# field (goose 1.37.0, empirically verified): the bare ``session`` /
+# ``session --resume`` mode grammar; the ``run --no-session -t`` exec op; the
+# SYMMETRIC ENV GOOSE_MODE safe-bypass (auto/approve — the secure value is
+# MANDATORY because goose's unset default is ``auto``); model/provider routed as
+# ENV GOOSE_MODEL/GOOSE_PROVIDER with NO default value (goose falls back to its
+# own config.yaml from ``goose configure``); the always-on
+# GOOSE_DISABLE_KEYRING container env; and the three two-way SYNC cred files
+# (secrets.yaml + config.yaml + custom_providers/) that persist in-box ``goose
+# configure`` back to the host.  The CRITICAL host binary path stays
+# code-resolved in ``detect()`` (the contract constant below; origin=binary).
+_DEFAULTS_PACKAGE = "kanibako.plugins.goose"
+_DEFAULTS_FILE = "goose-defaults.yaml"
+
+_GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 class GooseTarget(Target):

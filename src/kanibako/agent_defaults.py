@@ -1,0 +1,183 @@
+"""Per-agent plugin defaults — thin reader of each plugin's shipped defaults file.
+
+Each agent plugin package (``kanibako.plugins.claude`` / ``…goose`` / ``…codex``)
+owns ONE declarative defaults file (``<agent>-defaults.yaml``) holding that
+agent's complete DEFAULT-SET — its :class:`~kanibako.targets.base.PluginDescriptor`
+data (bindings, launch grammar, settings, container env, cred files, …) plus its
+AGENT-scope ``default_shares`` — in the specced structured form.  This mirrors how
+the system/core defaults ship (:mod:`kanibako.core_defaults` /
+``kanibako/data/core-defaults.yaml``) and how containerfiles/templates ship via
+:mod:`importlib.resources`.
+
+This module is the THIN reader those plugins call from their ``descriptor`` /
+``default_shares`` properties.  It builds the descriptor from the file so the
+in-code descriptor is no longer hand-written per plugin.
+
+Split (documented in each YAML header too):
+
+* DECLARATIVE — everything in the file: the binding ORIGIN selectors (which
+  detected install field supplies the host source — a declarative string, NOT a
+  probed value), box-side destinations, the mode/operations grammar, settings
+  routing, container env, cred-file lifecycle, host_prep/init_dirs, and the
+  agent-share box_dests.  Box-side destinations under the guest home are written
+  as ``$GUEST_HOME`` EXPRESSIONS (e.g. ``$GUEST_HOME/.local/bin/claude``) that
+  this loader expands from the single :data:`~kanibako.settings_resolve.GUEST_HOME`
+  constant — no ``/home/agent`` literal in the file.
+* CODE-RESOLVED — the CRITICAL/runtime-probed HOST binary paths stay in the
+  plugin's ``detect()`` (the contract-path constants + npm/ELF resolution).  The
+  file only names, declaratively, WHICH detected field (``binary`` / ``launcher`` /
+  ``install_dir``) each binding's host source comes from (its ``origin``); the
+  actual probed path is filled in later by ``descriptor_mounts`` from the
+  :class:`~kanibako.targets.base.AgentInstall`.
+"""
+
+from __future__ import annotations
+
+import importlib.resources
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from kanibako.settings_resolve import GUEST_HOME
+from kanibako.targets.base import (
+    BindDefault,
+    BindKind,
+    Binding,
+    BindScope,
+    Cadence,
+    Channel,
+    CredFileSpec,
+    HostSrcOrigin,
+    Operation,
+    PluginDescriptor,
+    SafeBypass,
+    SettingArg,
+)
+
+
+def _expand(value: str) -> str:
+    """Expand a ``$GUEST_HOME`` prefix in a box-side path expression.
+
+    The defaults files write every in-box destination as a ``$GUEST_HOME``
+    expression so the guest-home literal lives in exactly one place (the
+    :data:`~kanibako.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
+    leading ``$GUEST_HOME`` token is substituted; the rest is left verbatim.
+    """
+    if value.startswith("$GUEST_HOME"):
+        return GUEST_HOME + value[len("$GUEST_HOME"):]
+    return value
+
+
+def _load_doc(package: str, filename: str) -> dict[str, Any]:
+    """Read and parse a plugin's bundled defaults file."""
+    ref = importlib.resources.files(package).joinpath(filename)
+    raw = yaml.safe_load(Path(str(ref)).read_text()) or {}
+    if not isinstance(raw, dict):
+        return {}
+    return raw
+
+
+def _build_binding(entry: dict[str, Any]) -> Binding:
+    """Build one :class:`Binding` from a declarative file entry.
+
+    ``origin`` names the detected install field that supplies the host source
+    (``binary`` / ``launcher`` / ``install_dir`` / ``literal``); ``box_dest`` is a
+    ``$GUEST_HOME`` expression expanded here.  ``kind`` / ``scope`` map to their
+    enums; ``ro`` defaults to True.
+    """
+    literal = entry.get("literal_src")
+    return Binding(
+        key=entry["key"],
+        origin=HostSrcOrigin(entry["origin"]),
+        box_dest=_expand(entry["box_dest"]),
+        kind=BindKind(entry["kind"]),
+        scope=BindScope(entry["scope"]),
+        ro=bool(entry.get("ro", True)),
+        literal_src=Path(literal) if literal is not None else None,
+    )
+
+
+def _build_safe_bypass(raw: dict[str, Any] | None) -> SafeBypass | None:
+    """Build the :class:`SafeBypass` toggle from its declarative block (or None)."""
+    if not raw:
+        return None
+    return SafeBypass(
+        channel=Channel(raw["channel"]),
+        flag=tuple(raw.get("flag", ())),
+        env_var=raw.get("env_var", ""),
+        env_value=raw.get("env_value", ""),
+        secure_env_value=raw.get("secure_env_value", ""),
+        secure_flag=tuple(raw.get("secure_flag", ())),
+        setting_key=raw.get("setting_key", ""),
+    )
+
+
+def _build_setting_arg(entry: dict[str, Any]) -> SettingArg:
+    return SettingArg(
+        setting_key=entry["setting_key"],
+        channel=Channel(entry["channel"]),
+        flag=tuple(entry.get("flag", ())),
+        env_var=entry.get("env_var", ""),
+    )
+
+
+def _build_cred_file(entry: dict[str, Any]) -> CredFileSpec:
+    return CredFileSpec(
+        home_rel=entry["home_rel"],
+        host_rel=entry["host_rel"],
+        cadence=Cadence(entry.get("cadence", "sync")),
+        mtime_gate=bool(entry.get("mtime_gate", True)),
+        filtered=bool(entry.get("filtered", False)),
+        is_dir=bool(entry.get("is_dir", False)),
+    )
+
+
+def load_descriptor(package: str, filename: str) -> PluginDescriptor:
+    """Build a plugin's :class:`PluginDescriptor` from its shipped defaults file.
+
+    *package* is the plugin's import package (e.g. ``"kanibako.plugins.claude"``)
+    and *filename* its declarative defaults file (e.g. ``"claude-defaults.yaml"``).
+    The returned descriptor is byte-for-byte equivalent to the former hand-written
+    one — box_dest ``$GUEST_HOME`` expressions are expanded and every enum field
+    is mapped from its string name.
+    """
+    doc = _load_doc(package, filename)
+    desc = doc.get("descriptor", {})
+
+    return PluginDescriptor(
+        command=tuple(desc["command"]),
+        bindings=tuple(_build_binding(b) for b in desc.get("bindings", [])),
+        mode={k: tuple(v) for k, v in desc.get("mode", {}).items()},
+        operations={
+            k: Operation(tuple(v["fragment"]))
+            for k, v in desc.get("operations", {}).items()
+        },
+        safe_bypass=_build_safe_bypass(desc.get("safe_bypass")),
+        settings=tuple(_build_setting_arg(s) for s in desc.get("settings", [])),
+        container_env=dict(desc.get("container_env", {})),
+        cred_files=tuple(_build_cred_file(c) for c in desc.get("cred_files", [])),
+        host_prep=bool(desc.get("host_prep", False)),
+        init_dirs=tuple(desc.get("init_dirs", ())),
+    )
+
+
+def load_shares(package: str, filename: str) -> dict[str, BindDefault]:
+    """Build a plugin's AGENT-scope ``default_shares`` map from its defaults file.
+
+    Each entry maps a scoped category key (``agent.shared.<name>``) to a STRUCTURED
+    bind pair ``(host_src, box_dest)`` (spec §2a — a tuple, NOT a colon-joined
+    string).  The relative ``host_src`` joins under the per-agent store root in the
+    category resolver; ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.
+    Returns ``{}`` when the file declares no shares.
+    """
+    shares: dict[str, BindDefault] = {}
+    for entry in _load_doc(package, filename).get("shares", []):
+        options = entry.get("options")
+        if options is not None:
+            shares[entry["key"]] = (
+                entry["host_src"], _expand(entry["box_dest"]), options,
+            )
+        else:
+            shares[entry["key"]] = (entry["host_src"], _expand(entry["box_dest"]))
+    return shares
