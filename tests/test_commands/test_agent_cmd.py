@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -370,8 +371,12 @@ class TestRunReauth:
             with pytest.raises(NoAgentSelectedError):
                 run_reauth(args)
 
-    def test_reauth_refreshes_credentials(self, config_file, tmp_home, capsys):
-        """After successful check_auth, credentials are synced to project."""
+    def test_reauth_refreshes_credentials_legacy(self, config_file, tmp_home, capsys):
+        """Legacy target (descriptor is None): refresh via the per-plugin hook.
+
+        The gate mirrors start.py exactly — only a ``desc is None`` target uses
+        ``target.refresh_credentials``; descriptor-bearing targets route through
+        credsync (covered separately below)."""
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
@@ -383,6 +388,7 @@ class TestRunReauth:
             target.has_binary = True
             target.check_auth.return_value = True
             target.display_name = "Claude Code"
+            target.descriptor = None
             mock_target.return_value = target
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
@@ -394,6 +400,43 @@ class TestRunReauth:
 
         assert rc == 0
         target.refresh_credentials.assert_called_once_with(proj.shell_path)
+
+    def test_reauth_refreshes_credentials_descriptor(self, config_file, tmp_home, capsys):
+        """Descriptor-bearing target: refresh routes through the credsync engine.
+
+        B2 fix: ``run_reauth`` previously called ``target.refresh_credentials``
+        UNGATED, sending a descriptor agent (e.g. goose) down its bypassed legacy
+        path.  It now mirrors the three start.py sites: descriptor present ->
+        ``credsync.refresh_cred_files`` with the same arg shape."""
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+            patch("kanibako.targets.credsync.refresh_cred_files") as mock_refresh,
+        ):
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = True
+            target.display_name = "Claude Code"
+            desc = MagicMock()
+            target.descriptor = desc
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                proj.group_auth = True
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        assert rc == 0
+        target.refresh_credentials.assert_not_called()
+        mock_refresh.assert_called_once_with(
+            desc, target, host_home=Path.home(),
+            project_home=proj.shell_path, group_auth=proj.group_auth,
+        )
 
     def test_reauth_skips_refresh_for_distinct(self, config_file, tmp_home, capsys):
         """Distinct auth does not trigger credential refresh."""

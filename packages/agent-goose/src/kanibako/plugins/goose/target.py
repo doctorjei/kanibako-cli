@@ -15,11 +15,6 @@ from kanibako.targets.base import (
     TargetSetting,
 )
 
-from kanibako.plugins.goose.credentials import (
-    refresh_secrets,
-    writeback_secrets,
-)
-
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
 
@@ -163,20 +158,13 @@ class GooseTarget(Target):
         if secrets.is_file():
             secrets.unlink()
 
-    def refresh_credentials(self, home: Path) -> None:
-        """Refresh Goose secrets from host into project home.
-
-        Syncs host ``~/.config/goose/secrets.yaml`` into the project's
-        secrets.yaml using mtime-based freshness.
-        """
-        host_secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
-        project_secrets = home / ".config" / "goose" / "secrets.yaml"
-        refresh_secrets(host_secrets, project_secrets)
-
-    def writeback_credentials(self, home: Path) -> None:
-        """Write back secrets from project home to host."""
-        project_secrets = home / ".config" / "goose" / "secrets.yaml"
-        writeback_secrets(project_secrets)
+    # NOTE: no ``refresh_credentials`` / ``writeback_credentials`` overrides.
+    # goose is descriptor-bearing, so its secrets.yaml host<->box SYNC is the
+    # ``CredFileSpec`` in ``goose-defaults.yaml`` realized by the credsync engine
+    # (seed_cred_files / refresh_cred_files / writeback_cred_files) — the §2d
+    # ``synced`` category view.  The base no-op hooks are correct here: the legacy
+    # per-plugin refresh/writeback path is reached only when ``desc is None``,
+    # which never holds for goose.
 
     def check_auth(self) -> bool:
         """Check if Goose is configured with API keys.
