@@ -44,7 +44,17 @@ class TestTemplatePrep:
         BUILD_TIMEOUT, since the apt-get toolchain install exceeds the default
         60s SUBPROCESS_TIMEOUT.
         """
-        env = e2e_env["env"]
+        # Build mode for a headless/session-less environment: this test triggers
+        # a real `podman build` (via kanibako's rig rebuild). Under the default
+        # oci/crun build isolation, crun creates a transient systemd cgroup
+        # scope, which needs a logind session -- absent in a non-login/headless
+        # session, where the build fails with "sd-bus call: Interactive
+        # authentication required". chroot isolation bypasses that session
+        # requirement and is harmless where the default would also work (CI).
+        # kanibako's build subprocess (ContainerRuntime.rebuild) inherits the
+        # caller env unchanged, so BUILDAH_ISOLATION reaches `podman build`.
+        # Scoped to this build test only -- NOT set globally in e2e_env.
+        env = {**e2e_env["env"], "BUILDAH_ISOLATION": "chroot"}
         image_name = "kanibako-template-jvm"
 
         assert _podman is not None, "podman required"
