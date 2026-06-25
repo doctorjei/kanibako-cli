@@ -64,7 +64,7 @@ class TestSingleShare:
     def test_box_scope_rw(self):
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.bindings.rw.work": "/host/data:~/data"}),
+            LevelView("box", {"box.bindings.rw.work": ["/host/data", "~/data"]}),
             LevelView("workset", {}),
             LevelView("agent", {}),
             LevelView("system", {}),
@@ -79,7 +79,7 @@ class TestSingleShare:
     def test_ro_mode_options(self):
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.bindings.ro.docs": "/host/docs:/srv/docs"}),
+            LevelView("box", {"box.bindings.ro.docs": ["/host/docs", "/srv/docs"]}),
         ]
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -101,11 +101,11 @@ class TestAccumulationAndPrecedence:
         """Distinct shares at different scopes accumulate; system before box."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.bindings.rw.b": "/hb:/gb"}),
+            LevelView("box", {"box.bindings.rw.b": ["/hb", "/gb"]}),
             LevelView("workset", {}),
             LevelView("agent", {}),
             LevelView(
-                "system", {"system.bindings.rw.a": "/ha:/ga"},
+                "system", {"system.bindings.rw.a": ["/ha", "/ga"]},
             ),
         ]
         mounts = _resolve(levels, ctx)
@@ -118,10 +118,10 @@ class TestAccumulationAndPrecedence:
         """system.bindings.rw.foo set at system AND box → box value mounts."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"system.bindings.rw.foo": "/box/src:/g"}),
+            LevelView("box", {"system.bindings.rw.foo": ["/box/src", "/g"]}),
             LevelView("workset", {}),
             LevelView("agent", {}),
-            LevelView("system", {"system.bindings.rw.foo": "/sys/src:/g"}),
+            LevelView("system", {"system.bindings.rw.foo": ["/sys/src", "/g"]}),
         ]
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -139,8 +139,8 @@ class TestAccumulationAndPrecedence:
             LevelView(
                 "system",
                 {
-                    "system.bindings.rw.foo": "/sys/foo:/g/foo",
-                    "system.bindings.rw.bar": "/sys/bar:/g/bar",
+                    "system.bindings.rw.foo": ["/sys/foo", "/g/foo"],
+                    "system.bindings.rw.bar": ["/sys/bar", "/g/bar"],
                 },
             ),
         ]
@@ -163,7 +163,7 @@ class TestRootJoin:
             LevelView("workset", {}),
             LevelView(
                 "agent",
-                {"agent.bindings.rw.plugins": "plugins:~/.claude/plugins"},
+                {"agent.bindings.rw.plugins": ["plugins", "~/.claude/plugins"]},
             ),
             LevelView(
                 "system",
@@ -185,7 +185,7 @@ class TestRootJoin:
         levels = [
             LevelView(
                 "agent",
-                {"agent.bindings.rw.x": "/abs/path:~/x"},
+                {"agent.bindings.rw.x": ["/abs/path", "~/x"]},
             ),
             LevelView("system", {}, defaults={"system.path.agents": "/data/agents"}),
         ]
@@ -198,7 +198,7 @@ class TestRootJoin:
         """A relative host_src for a group with no root is used as-is."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.bindings.rw.x": "rel/dir:~/x"}),
+            LevelView("box", {"box.bindings.rw.x": ["rel/dir", "~/x"]}),
         ]
         # box group not in scope_roots.
         mounts = _resolve(levels, ctx, scope_roots={"agent.bindings.rw": "/r"})
@@ -206,7 +206,7 @@ class TestRootJoin:
 
     def test_empty_root_no_join(self):
         ctx = make_ctx()
-        levels = [LevelView("agent", {"agent.bindings.rw.x": "rel:~/x"})]
+        levels = [LevelView("agent", {"agent.bindings.rw.x": ["rel", "~/x"]})]
         mounts = _resolve(levels, ctx, scope_roots={"agent.bindings.rw": ""})
         assert mounts[0].source == Path("rel")
 
@@ -217,7 +217,9 @@ class TestRootJoin:
 
 
 class TestErrorsAndExpansion:
-    def test_missing_colon_raises_naming_key(self):
+    def test_non_structured_bind_raises_naming_key(self):
+        # A bare scalar (the old colon-string form) is no longer a valid binding
+        # value (spec §2a); the wrapped error names the offending category key.
         ctx = make_ctx()
         levels = [LevelView("box", {"box.bindings.rw.bad": "/just/a/path"})]
         with pytest.raises(SettingsError) as exc:
@@ -226,17 +228,17 @@ class TestErrorsAndExpansion:
 
     def test_tilde_expands_per_space(self):
         ctx = make_ctx(host_home="/home/u")
-        levels = [LevelView("box", {"box.bindings.rw.h": "~/x:~/y"})]
+        levels = [LevelView("box", {"box.bindings.rw.h": ["~/x", "~/y"]})]
         mounts = _resolve(levels, ctx)
         assert mounts[0].source == Path("/home/u/x")
         assert mounts[0].destination == "/home/agent/y"
 
-    def test_escaped_colon_survives(self):
+    def test_literal_colon_in_path_needs_no_escaping(self):
+        # In the structured form a path with a literal ':' is just a list
+        # element — no colon-escaping (the structured shape has no delimiter).
         ctx = make_ctx()
-        # host half contains a literal colon via \: ; the real split is the
-        # second (unescaped) colon.
         levels = [
-            LevelView("box", {"box.bindings.rw.c": "/a\\:b:/guest"}),
+            LevelView("box", {"box.bindings.rw.c": ["/a:b", "/guest"]}),
         ]
         mounts = _resolve(levels, ctx)
         assert mounts[0].source == Path("/a:b")
@@ -246,7 +248,7 @@ class TestErrorsAndExpansion:
         """A share name may contain dots (longest prefix match for scope/mode)."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.bindings.ro.a.b.c": "/h:/g"}),
+            LevelView("box", {"box.bindings.ro.a.b.c": ["/h", "/g"]}),
         ]
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -267,7 +269,7 @@ class TestDiscovery:
             LevelView(
                 "agent",
                 {},
-                defaults={"agent.bindings.ro.cfg": "/host/cfg:/g/cfg"},
+                defaults={"agent.bindings.ro.cfg": ["/host/cfg", "/g/cfg"]},
             ),
             LevelView("system", {}),
         ]
@@ -289,9 +291,9 @@ class TestOrdering:
             LevelView(
                 "box",
                 {
-                    "box.bindings.rw.z": "/hz:/gz",
-                    "box.bindings.rw.a": "/ha:/ga",
-                    "box.bindings.ro.m": "/hm:/gm",
+                    "box.bindings.rw.z": ["/hz", "/gz"],
+                    "box.bindings.rw.a": ["/ha", "/ga"],
+                    "box.bindings.ro.m": ["/hm", "/gm"],
                 },
             ),
         ]
@@ -320,7 +322,7 @@ class TestMachineLevel:
     def test_machine_share_mounts_when_only_set_there(self):
         ctx = make_ctx()
         levels = self._levels(
-            machine={"system.bindings.rw.etc": "/etc/src:/g/etc"},
+            machine={"system.bindings.rw.etc": ["/etc/src", "/g/etc"]},
         )
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -330,8 +332,8 @@ class TestMachineLevel:
     def test_system_overrides_machine(self):
         ctx = make_ctx()
         levels = self._levels(
-            system={"system.bindings.rw.foo": "/sys/src:/g"},
-            machine={"system.bindings.rw.foo": "/etc/src:/g"},
+            system={"system.bindings.rw.foo": ["/sys/src", "/g"]},
+            machine={"system.bindings.rw.foo": ["/etc/src", "/g"]},
         )
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1
@@ -344,8 +346,8 @@ class TestMachineLevel:
         levels = self._levels(
             box={"system.bindings.rw.foo": ""},
             machine={
-                "system.bindings.rw.foo": "/etc/foo:/g/foo",
-                "system.bindings.rw.bar": "/etc/bar:/g/bar",
+                "system.bindings.rw.foo": ["/etc/foo", "/g/foo"],
+                "system.bindings.rw.bar": ["/etc/bar", "/g/bar"],
             },
         )
         mounts = _resolve(levels, ctx)
@@ -356,7 +358,7 @@ class TestMachineLevel:
         """A default-only share on the machine level still mounts (discovery)."""
         ctx = make_ctx()
         levels = self._levels(
-            floor={"system.bindings.ro.base": "/host/base:/g/base"},
+            floor={"system.bindings.ro.base": ["/host/base", "/g/base"]},
         )
         mounts = _resolve(levels, ctx)
         assert len(mounts) == 1

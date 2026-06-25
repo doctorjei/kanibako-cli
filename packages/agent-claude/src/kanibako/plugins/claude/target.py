@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
+    BindDefault,
     BindKind,
     Binding,
     BindScope,
@@ -236,7 +237,7 @@ class ClaudeTarget(Target):
             state={"model": "opus", "access": "permissive"},
         )
 
-    def default_shares(self) -> dict[str, str]:
+    def default_shares(self) -> dict[str, BindDefault]:
         """Declare claude's AGENT-scope shared dirs (plugins + cache).
 
         Both are shared across every box that runs claude and rooted under the
@@ -255,8 +256,8 @@ class ClaudeTarget(Target):
         user at a more-specific level).
         """
         return {
-            "agent.shared.plugins": "plugins:/home/agent/.claude/plugins",
-            "agent.shared.cache": "cache:/home/agent/.claude/cache",
+            "agent.shared.plugins": ("plugins", "/home/agent/.claude/plugins"),
+            "agent.shared.cache": ("cache", "/home/agent/.claude/cache"),
         }
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:

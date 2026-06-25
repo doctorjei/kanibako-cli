@@ -1914,7 +1914,7 @@ class TestBuildShareMounts:
             "system:\n"
             "  bindings:\n"
             "    rw:\n"
-            '      data: "/host/x:~/data"\n'
+            '      data: ["/host/x", "~/data"]\n'
         )
         mounts = self._call(tmp_path, global_config_path=glob)
         assert len(mounts) == 1
@@ -1927,7 +1927,7 @@ class TestBuildShareMounts:
         """settings.yaml '' for a system-scoped key suppresses the system share."""
         glob = tmp_path / "kanibako.yaml"
         glob.write_text(
-            'system:\n  bindings:\n    rw:\n      foo: "/a:~/foo"\n'
+            'system:\n  bindings:\n    rw:\n      foo: ["/a", "~/foo"]\n'
         )
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('system:\n  bindings:\n    rw:\n      foo: ""\n')
@@ -1940,7 +1940,7 @@ class TestBuildShareMounts:
         """A relative agent share joins under std.agents/<agent>/share."""
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            'agent:\n  bindings:\n    rw:\n      plugins: "plugins:~/.claude/plugins"\n'
+            'agent:\n  bindings:\n    rw:\n      plugins: ["plugins", "~/.claude/plugins"]\n'
         )
         std = self._std(tmp_path)
         mounts = self._call(tmp_path, std=std, agent_config_path=agent_cfg)
@@ -1955,7 +1955,7 @@ class TestBuildShareMounts:
         group = SimpleNamespace(root=ws_root, name="myws", is_default=False)
         ws_cfg = tmp_path / "config.yaml"
         ws_cfg.write_text(
-            'workset:\n  bindings:\n    rw:\n      shared: "rel:~/shared"\n'
+            'workset:\n  bindings:\n    rw:\n      shared: ["rel", "~/shared"]\n'
         )
         mounts = self._call(
             tmp_path,
@@ -1976,7 +1976,7 @@ class TestBuildShareMounts:
         group = SimpleNamespace(root=ws_root, name="extws", is_default=False)
         ws_cfg = tmp_path / "config.yaml"
         ws_cfg.write_text(
-            'workset:\n  bindings:\n    rw:\n      shared: "rel:~/shared"\n'
+            'workset:\n  bindings:\n    rw:\n      shared: ["rel", "~/shared"]\n'
         )
         mounts = self._call(
             tmp_path,
@@ -1992,7 +1992,7 @@ class TestBuildShareMounts:
         return SimpleNamespace(
             name="claude",
             default_shares=lambda: {
-                "agent.bindings.rw.plugins": "plugins:~/.claude/plugins"
+                "agent.bindings.rw.plugins": ("plugins", "~/.claude/plugins")
             },
         )
 
@@ -2031,7 +2031,7 @@ class TestBuildShareMounts:
             "system:\n"
             "  bindings:\n"
             "    ro:\n"
-            f'      gone: "{missing}:~/gone"\n'
+            f'      gone: ["{missing}", "~/gone"]\n'
         )
         mounts = self._call(tmp_path, global_config_path=glob)
         # The missing ro source is dropped, not emitted.
@@ -2048,7 +2048,7 @@ class TestBuildShareMounts:
             "system:\n"
             "  bindings:\n"
             "    rw:\n"
-            f'      data: "{target}:~/data"\n'
+            f'      data: ["{target}", "~/data"]\n'
         )
         mounts = self._call(tmp_path, global_config_path=glob)
         assert len(mounts) == 1
@@ -2189,7 +2189,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    foo: "{src}:~/foo"\n'
+            f'agent:\n  seeded:\n    foo: ["{src}", "~/foo"]\n'
         )
         self._call(
             tmp_path,
@@ -2207,7 +2207,7 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.seeded.x": f"{src}:~/x"},
+            default_seeds=lambda: {"agent.seeded.x": (str(src), "~/x")},
         )
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
@@ -2221,7 +2221,7 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.seeded.x": f"{src}:~/x"},
+            default_seeds=lambda: {"agent.seeded.x": (str(src), "~/x")},
         )
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('agent:\n  seeded:\n    x: ""\n')
@@ -2238,7 +2238,7 @@ class TestApplyInitSeeds:
         (src / "root_file.txt").write_text("top")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    home: "{src}:~/"\n'
+            f'agent:\n  seeded:\n    home: ["{src}", "~/"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
@@ -2249,7 +2249,7 @@ class TestApplyInitSeeds:
         missing = tmp_path / "does_not_exist"
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    gone: "{missing}:~/gone"\n'
+            f'agent:\n  seeded:\n    gone: ["{missing}", "~/gone"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
@@ -2278,7 +2278,7 @@ class TestApplyInitSeeds:
 
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    pb: "{src}:~/"\n'
+            f'agent:\n  seeded:\n    pb: ["{src}", "~/"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2297,7 +2297,7 @@ class TestApplyInitSeeds:
         src.write_text("TEMPLATE")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    note: "{src}:~/note.md"\n'
+            f'agent:\n  seeded:\n    note: ["{src}", "~/note.md"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2312,7 +2312,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    foo: "{src}:~/foo"\n'
+            f'agent:\n  seeded:\n    foo: ["{src}", "~/foo"]\n'
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
@@ -2448,7 +2448,7 @@ class TestApplySyncedCopies:
         src = tmp_path / "creds.txt"
         src.write_text("token")
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
+        ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
         self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
         assert (shell / "cred.txt").read_text() == "token"
 
@@ -2458,7 +2458,7 @@ class TestApplySyncedCopies:
         src = tmp_path / "creds.txt"
         src.write_text("token")
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
+        ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
         self._call(
             tmp_path, proj=self._proj(shell), project_toml=ptoml,
             group_auth=False,
@@ -2472,7 +2472,7 @@ class TestApplySyncedCopies:
         src = tmp_path / "creds.txt"
         src.write_text("old")
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    cred: "{src}:~/cred.txt"\n')
+        ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
         dest = shell / "cred.txt"
         dest.write_text("newer")
         # Make dest strictly newer than src.
@@ -2487,7 +2487,7 @@ class TestApplySyncedCopies:
         shell = self._shell(tmp_path)
         missing = tmp_path / "nope"
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    gone: "{missing}:~/gone"\n')
+        ptoml.write_text(f'box:\n  synced:\n    gone: ["{missing}", "~/gone"]\n')
         self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
         assert list(shell.iterdir()) == []
 

@@ -7,6 +7,7 @@ import fcntl
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from kanibako.agent_config import (
@@ -2208,7 +2209,7 @@ def _category_resolution_inputs(
     project_toml,
     workset_config_path,
     agent_config_path,
-    default_categories: dict[str, str] | None = None,
+    default_categories: Mapping[str, object] | None = None,
 ):
     """Build the shared (levels, ctx, lookup, scope_roots) for category resolution.
 
@@ -2296,7 +2297,7 @@ def _resolve_launch_categories(
     project_toml,
     workset_config_path,
     agent_config_path,
-    default_categories: dict[str, str] | None = None,
+    default_categories: Mapping[str, object] | None = None,
     group_auth: bool = True,
 ):
     """Resolve + reconcile the unified scope-category config for the launch path.
@@ -2458,18 +2459,20 @@ _CH_SYSTEM_BASE = "~/channels"
 _CH_WORKSET_BASE = "~/channels/workset"
 
 
-def _ch_bind(host_src, box_dest: str) -> str:
-    """Build a ``host_src:guest_dest`` bind expression for a channel default.
+def _ch_bind(host_src, box_dest: str) -> tuple[str, str]:
+    """Build a STRUCTURED ``(host_src, box_dest)`` bind pair for a channel default.
 
     *host_src* is an already-resolved absolute host path (from the ``channels``
-    helpers).  Any literal ``:`` in the host path is escaped so :func:`split_bind`
-    splits only at the dest separator; the guest dest is a fixed ``~/channels``
-    path with no colon.
+    helpers).  Per spec §2a a category binding value is a STRUCTURED PAIR (a
+    YAML list / Python tuple), NOT a colon-joined string — so no escaping of a
+    literal ``:`` in the host path is needed (the structured form has no
+    separator to clash with).  :func:`~kanibako.settings_resolve.unpack_bind`
+    consumes this pair directly.
     """
-    return f"{str(host_src).replace(':', chr(92) + ':')}:{box_dest}"
+    return (str(host_src), box_dest)
 
 
-def _channel_default_categories(std, proj) -> dict[str, str]:
+def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
     """Build the per-mode channel bind table as ``default_categories`` (§3/§3a).
 
     Maps ``box.bindings.rw.<key>`` → a ``host_src:guest_dest`` bind expression for
@@ -2487,7 +2490,7 @@ def _channel_default_categories(std, proj) -> dict[str, str]:
 
     addr = _ch.box_channel_addresses(proj, std)
 
-    binds: dict[str, str] = {
+    binds: dict[str, tuple[str, str]] = {
         # System channel type roots (every mode).
         "box.bindings.rw.global_commons": _ch_bind(
             std.channels_commons, f"{_CH_SYSTEM_BASE}/commons"
