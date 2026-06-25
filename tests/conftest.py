@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-pytest_plugins = ["tests.conftest_integration"]
+pytest_plugins = ["tests.conftest_integration", "tests._timing"]
 
 import json
 import subprocess
