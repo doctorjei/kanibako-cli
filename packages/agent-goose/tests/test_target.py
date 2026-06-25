@@ -201,41 +201,34 @@ class TestInvalidateCredentials:
         GooseTarget().invalidate_credentials(tmp_path)
 
 
-class TestRefreshCredentials:
-    def test_delegates_to_refresh_secrets(self, project_home: Path, fake_host: Path, monkeypatch):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
+class TestCredsyncFold:
+    """secrets.yaml host<->box sync is the descriptor CredFileSpec, NOT a bespoke
+    per-plugin refresh/writeback override.
 
-        host_secrets = fake_host / ".config" / "goose" / "secrets.yaml"
-        host_secrets.write_text("key: val\n")
+    The former ``refresh_secrets`` / ``writeback_secrets`` copies were folded into
+    the goose descriptor's ``secrets.yaml`` ``CredFileSpec`` (realized by the
+    credsync engine — covered by ``TestCredFiles`` / the engine-level tests).
+    goose must therefore NOT override the legacy ``refresh_credentials`` /
+    ``writeback_credentials`` hooks: those are reached only on the ``desc is None``
+    legacy path, which never holds for descriptor-bearing goose, so an override
+    would be an unsanctioned second route.
+    """
 
-        config_dir = project_home / ".config" / "goose"
-        config_dir.mkdir(parents=True)
+    def test_does_not_override_legacy_refresh(self):
+        from kanibako.targets.base import Target
 
-        calls = []
-        monkeypatch.setattr(
-            "kanibako.plugins.goose.target.refresh_secrets",
-            lambda h, p: calls.append((h, p)) or True,
+        assert (
+            GooseTarget().refresh_credentials.__func__
+            is Target.refresh_credentials
         )
 
-        GooseTarget().refresh_credentials(project_home)
+    def test_does_not_override_legacy_writeback(self):
+        from kanibako.targets.base import Target
 
-        assert len(calls) == 1
-        assert calls[0][0] == fake_host / ".config" / "goose" / "secrets.yaml"
-        assert calls[0][1] == project_home / ".config" / "goose" / "secrets.yaml"
-
-
-class TestWritebackCredentials:
-    def test_delegates_to_writeback_secrets(self, project_home: Path, monkeypatch):
-        calls = []
-        monkeypatch.setattr(
-            "kanibako.plugins.goose.target.writeback_secrets",
-            lambda p: calls.append(p),
+        assert (
+            GooseTarget().writeback_credentials.__func__
+            is Target.writeback_credentials
         )
-
-        GooseTarget().writeback_credentials(project_home)
-
-        assert len(calls) == 1
-        assert calls[0] == project_home / ".config" / "goose" / "secrets.yaml"
 
 
 def _real_binary(tmp_path):

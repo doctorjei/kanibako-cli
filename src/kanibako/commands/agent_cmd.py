@@ -433,9 +433,25 @@ def run_reauth(args: argparse.Namespace) -> int:
             return 1
 
     if target.check_auth():
-        # Sync refreshed credentials to the project shell directory
+        # Sync refreshed credentials to the project shell directory.  Mirror the
+        # start.py gate exactly: descriptor-bearing targets route their cred
+        # refresh through the credsync engine (descriptor.cred_files); only legacy
+        # (desc is None) targets fall back to the per-plugin refresh hook.  An
+        # ungated target.refresh_credentials here would push a descriptor agent
+        # (e.g. goose) down its legacy path / bespoke copy.
         if proj.group_auth:
-            target.refresh_credentials(proj.shell_path)
+            from pathlib import Path
+
+            from kanibako.targets import credsync
+
+            desc = target.descriptor
+            if desc is not None:
+                credsync.refresh_cred_files(
+                    desc, target, host_home=Path.home(),
+                    project_home=proj.shell_path, group_auth=proj.group_auth,
+                )
+            else:
+                target.refresh_credentials(proj.shell_path)
         print(f"{target.display_name}: authenticated.", file=sys.stderr)
         return 0
 
