@@ -15,6 +15,7 @@ from kanibako.settings_resolve import (
     expand_expr,
     resolve_value,
     split_bind,
+    unpack_bind,
 )
 
 HOST_HOME = "/home/u"
@@ -40,7 +41,8 @@ def no_lookup(ref: str, chain: tuple[str, ...]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# split_bind
+# split_bind — the CLI-INPUT edge ONLY (``config set k=h:b``); the category
+# load/resolve path uses the structured ``unpack_bind`` below.
 # ---------------------------------------------------------------------------
 
 
@@ -76,6 +78,59 @@ def test_split_bind_escaped_then_real_colon() -> None:
 
 def test_split_bind_escaped_backslash() -> None:
     assert split_bind("a\\\\b") == ("a\\b", None)
+
+
+# ---------------------------------------------------------------------------
+# unpack_bind — the STRUCTURED category-path unpacker (spec §2a). A binding
+# value is a 2-/3-element list/tuple, never a colon-string. The optional 3rd
+# element is the per-entry mount-options override.
+# ---------------------------------------------------------------------------
+
+
+def test_unpack_bind_two_tuple_list() -> None:
+    assert unpack_bind(["/host", "/guest"]) == ("/host", "/guest", None)
+
+
+def test_unpack_bind_two_tuple_tuple() -> None:
+    assert unpack_bind(("/host", "/guest")) == ("/host", "/guest", None)
+
+
+def test_unpack_bind_three_tuple_captures_options() -> None:
+    assert unpack_bind(["/h/sock", "~/helper.sock", "z"]) == (
+        "/h/sock",
+        "~/helper.sock",
+        "z",
+    )
+
+
+def test_unpack_bind_three_tuple_empty_options_preserved() -> None:
+    # An explicit empty-string options slot (e.g. "no relabel" for a live socket)
+    # is preserved distinct from the 2-element "no override" (None) form.
+    assert unpack_bind(["/h/s", "~/s", ""]) == ("/h/s", "~/s", "")
+
+
+def test_unpack_bind_colon_in_path_is_literal() -> None:
+    # The structured form has no delimiter, so a path with a literal ':' is just
+    # an element — no escaping (the colon-string failure mode the spec retires).
+    assert unpack_bind(["/a:b", "/g"]) == ("/a:b", "/g", None)
+
+
+def test_unpack_bind_coerces_non_str_elements() -> None:
+    # YAML scalars may parse as int/etc.; each element is narrowed to str.
+    assert unpack_bind([1, 2]) == ("1", "2", None)
+
+
+def test_unpack_bind_rejects_scalar() -> None:
+    # A bare scalar (the old colon-string form) is not a valid structured value.
+    with pytest.raises(SettingsError):
+        unpack_bind("/host:/guest")
+
+
+def test_unpack_bind_rejects_wrong_arity() -> None:
+    with pytest.raises(SettingsError):
+        unpack_bind(["only-one"])
+    with pytest.raises(SettingsError):
+        unpack_bind(["a", "b", "c", "d"])
 
 
 # ---------------------------------------------------------------------------

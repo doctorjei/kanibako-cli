@@ -62,7 +62,7 @@ class TestSingleSeed:
         levels = [
             LevelView("box", {}),
             LevelView("workset", {}),
-            LevelView("agent", {"agent.seeded.shell": "/tmpl/std:~/"}),
+            LevelView("agent", {"agent.seeded.shell": ["/tmpl/std", "~/"]}),
             LevelView("system", {}),
         ]
         seeds = _resolve(levels, ctx)
@@ -89,7 +89,7 @@ class TestSingleSeed:
 class TestExpansion:
     def test_tilde_expands_per_space(self):
         ctx = make_ctx(host_home="/home/u")
-        levels = [LevelView("box", {"box.seeded.h": "~/t:~/x"})]
+        levels = [LevelView("box", {"box.seeded.h": ["~/t", "~/x"]})]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
         assert seeds[0].host_src == "/home/u/t"
@@ -102,7 +102,7 @@ class TestExpansion:
             LevelView(
                 "box",
                 {
-                    "box.seeded.t": "@system.path.data/templates/$AGENT/standard:~/",
+                    "box.seeded.t": ["@system.path.data/templates/$AGENT/standard", "~/"],
                 },
             ),
             LevelView("system", {}, defaults={"system.path.data": "/data"}),
@@ -125,8 +125,8 @@ class TestAccumulationAndPrecedence:
         levels = [
             LevelView("box", {}),
             LevelView("workset", {}),
-            LevelView("agent", {"agent.seeded.c": "/hc:/gc"}),
-            LevelView("system", {"system.seeded.s": "/hs:/gs"}),
+            LevelView("agent", {"agent.seeded.c": ["/hc", "/gc"]}),
+            LevelView("system", {"system.seeded.s": ["/hs", "/gs"]}),
         ]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 2
@@ -138,9 +138,9 @@ class TestAccumulationAndPrecedence:
         ctx = make_ctx()
         levels = [
             LevelView("box", {}),
-            LevelView("workset", {"workset.seeded.w": "/hw:/gw"}),
-            LevelView("agent", {"agent.seeded.c": "/hc:/gc"}),
-            LevelView("system", {"system.seeded.s": "/hs:/gs"}),
+            LevelView("workset", {"workset.seeded.w": ["/hw", "/gw"]}),
+            LevelView("agent", {"agent.seeded.c": ["/hc", "/gc"]}),
+            LevelView("system", {"system.seeded.s": ["/hs", "/gs"]}),
         ]
         seeds = _resolve(levels, ctx)
         assert [s.guest_dest for s in seeds] == ["/gs", "/gc", "/gw"]
@@ -149,10 +149,10 @@ class TestAccumulationAndPrecedence:
         """system.seeded.foo set at system AND box → box value wins."""
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"system.seeded.foo": "/box/src:/g"}),
+            LevelView("box", {"system.seeded.foo": ["/box/src", "/g"]}),
             LevelView("workset", {}),
             LevelView("agent", {}),
-            LevelView("system", {"system.seeded.foo": "/sys/src:/g"}),
+            LevelView("system", {"system.seeded.foo": ["/sys/src", "/g"]}),
         ]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
@@ -175,8 +175,8 @@ class TestSuppression:
             LevelView(
                 "system",
                 {
-                    "system.seeded.foo": "/sys/foo:/g/foo",
-                    "system.seeded.bar": "/sys/bar:/g/bar",
+                    "system.seeded.foo": ["/sys/foo", "/g/foo"],
+                    "system.seeded.bar": ["/sys/bar", "/g/bar"],
                 },
             ),
         ]
@@ -189,7 +189,7 @@ class TestSuppression:
         ctx = make_ctx()
         levels = [
             LevelView("box", {"box.seeded.x": "empty"}),
-            LevelView("agent", {"agent.seeded.y": "/hy:/gy"}),
+            LevelView("agent", {"agent.seeded.y": ["/hy", "/gy"]}),
         ]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
@@ -210,7 +210,7 @@ class TestDiscovery:
             LevelView(
                 "agent",
                 {},
-                defaults={"agent.seeded.cfg": "/host/cfg:/g/cfg"},
+                defaults={"agent.seeded.cfg": ["/host/cfg", "/g/cfg"]},
             ),
             LevelView("system", {}),
         ]
@@ -239,7 +239,7 @@ class TestMachineLevel:
 
     def test_machine_seed_emitted_when_only_set_there(self):
         ctx = make_ctx()
-        levels = self._levels(machine={"system.seeded.etc": "/etc/src:/g/etc"})
+        levels = self._levels(machine={"system.seeded.etc": ["/etc/src", "/g/etc"]})
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
         assert seeds[0].host_src == "/etc/src"
@@ -248,8 +248,8 @@ class TestMachineLevel:
     def test_system_overrides_machine(self):
         ctx = make_ctx()
         levels = self._levels(
-            system={"system.seeded.foo": "/sys/src:/g"},
-            machine={"system.seeded.foo": "/etc/src:/g"},
+            system={"system.seeded.foo": ["/sys/src", "/g"]},
+            machine={"system.seeded.foo": ["/etc/src", "/g"]},
         )
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
@@ -260,8 +260,8 @@ class TestMachineLevel:
         levels = self._levels(
             box={"system.seeded.foo": ""},
             machine={
-                "system.seeded.foo": "/etc/foo:/g/foo",
-                "system.seeded.bar": "/etc/bar:/g/bar",
+                "system.seeded.foo": ["/etc/foo", "/g/foo"],
+                "system.seeded.bar": ["/etc/bar", "/g/bar"],
             },
         )
         seeds = _resolve(levels, ctx)
@@ -271,7 +271,7 @@ class TestMachineLevel:
     def test_machine_floor_default_discovered(self):
         ctx = make_ctx()
         levels = self._levels(
-            floor={"system.seeded.base": "/host/base:/g/base"},
+            floor={"system.seeded.base": ["/host/base", "/g/base"]},
         )
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
@@ -284,23 +284,27 @@ class TestMachineLevel:
 
 
 class TestErrors:
-    def test_missing_colon_raises_naming_key(self):
+    def test_non_structured_seed_raises_naming_key(self):
+        # A bare scalar (the old colon-string form) is no longer a valid seed
+        # value (spec §2a); the wrapped error names the offending category key.
         ctx = make_ctx()
         levels = [LevelView("box", {"box.seeded.bad": "/just/a/path"})]
         with pytest.raises(SettingsError) as exc:
             _resolve(levels, ctx)
         assert "box.seeded.bad" in str(exc.value)
 
-    def test_escaped_colon_survives(self):
+    def test_literal_colon_in_path_needs_no_escaping(self):
+        # In the structured form a path with a literal ':' is just a list
+        # element — no colon-escaping (the structured shape has no delimiter).
         ctx = make_ctx()
-        levels = [LevelView("box", {"box.seeded.c": "/a\\:b:/guest"})]
+        levels = [LevelView("box", {"box.seeded.c": ["/a:b", "/guest"]})]
         seeds = _resolve(levels, ctx)
         assert seeds[0].host_src == "/a:b"
         assert seeds[0].guest_dest == "/guest"
 
     def test_name_with_dots(self):
         ctx = make_ctx()
-        levels = [LevelView("box", {"box.seeded.a.b.c": "/h:/g"})]
+        levels = [LevelView("box", {"box.seeded.a.b.c": ["/h", "/g"]})]
         seeds = _resolve(levels, ctx)
         assert len(seeds) == 1
         assert seeds[0].name == "a.b.c"
@@ -318,9 +322,9 @@ class TestOrdering:
             LevelView(
                 "box",
                 {
-                    "box.seeded.z": "/hz:/gz",
-                    "box.seeded.a": "/ha:/ga",
-                    "box.seeded.m": "/hm:/gm",
+                    "box.seeded.z": ["/hz", "/gz"],
+                    "box.seeded.a": ["/ha", "/ga"],
+                    "box.seeded.m": ["/hm", "/gm"],
                 },
             ),
         ]

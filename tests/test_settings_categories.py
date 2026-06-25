@@ -73,7 +73,7 @@ class TestEachCategoryShape:
     def test_bindings_ro_is_mount_ro(self):
         ctx = make_ctx()
         e = _one(
-            [LevelView("box", {"box.bindings.ro.docs": "/h/docs:/g/docs"})], ctx
+            [LevelView("box", {"box.bindings.ro.docs": ["/h/docs", "/g/docs"]})], ctx
         )
         assert e.category == "bindings.ro"
         assert e.scope == "box"
@@ -85,7 +85,7 @@ class TestEachCategoryShape:
 
     def test_bindings_rw_is_mount_zu(self):
         ctx = make_ctx()
-        e = _one([LevelView("box", {"box.bindings.rw.work": "/h/w:~/w"})], ctx)
+        e = _one([LevelView("box", {"box.bindings.rw.work": ["/h/w", "~/w"]})], ctx)
         assert e.category == "bindings.rw"
         assert e.host_src == "/h/w"
         assert e.box_dest == "/home/agent/w"
@@ -94,7 +94,9 @@ class TestEachCategoryShape:
 
     def test_caches_is_mount_zu(self):
         ctx = make_ctx()
-        e = _one([LevelView("agent", {"agent.caches.tweak": "/h/c:~/.cache/x"})], ctx)
+        e = _one(
+            [LevelView("agent", {"agent.caches.tweak": ["/h/c", "~/.cache/x"]})], ctx
+        )
         assert e.category == "caches"
         assert e.delivery == MOUNT
         assert e.options == "Z,U"
@@ -103,14 +105,16 @@ class TestEachCategoryShape:
 
     def test_shared_is_mount_zu(self):
         ctx = make_ctx()
-        e = _one([LevelView("workset", {"workset.shared.team": "/h/s:~/shared"})], ctx)
+        e = _one(
+            [LevelView("workset", {"workset.shared.team": ["/h/s", "~/shared"]})], ctx
+        )
         assert e.category == "shared"
         assert e.delivery == MOUNT
         assert e.options == "Z,U"
 
     def test_seeded_is_copy(self):
         ctx = make_ctx()
-        e = _one([LevelView("agent", {"agent.seeded.shell": "/tmpl:~/"})], ctx)
+        e = _one([LevelView("agent", {"agent.seeded.shell": ["/tmpl", "~/"]})], ctx)
         assert e.category == "seeded"
         assert e.delivery == COPY
         assert e.options == ""
@@ -120,7 +124,7 @@ class TestEachCategoryShape:
     def test_synced_is_copy(self):
         ctx = make_ctx()
         e = _one(
-            [LevelView("agent", {"agent.synced.creds": "~/.claude/c:~/.claude/c"})],
+            [LevelView("agent", {"agent.synced.creds": ["~/.claude/c", "~/.claude/c"]})],
             ctx,
         )
         assert e.category == "synced"
@@ -147,6 +151,76 @@ class TestEachCategoryShape:
         assert e.box_dest == "FOO"   # the VAR name
         assert e.options == "bar"    # the VALUE
         assert e.name == "FOO"
+
+
+# ---------------------------------------------------------------------------
+# Structured representation (spec §2a): bind values are 2-/3-element pairs/tuples,
+# never colon-strings. The 3rd element is the per-entry options override.
+# ---------------------------------------------------------------------------
+
+
+class TestStructuredRepresentation:
+    def test_two_tuple_unpacks_host_and_dest(self):
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.rw.home": ["/host/home", "~/"]})], ctx)
+        assert e.host_src == "/host/home"
+        assert e.box_dest == "/home/agent/"
+
+    def test_two_tuple_as_python_tuple(self):
+        # A Python tuple leaf (as well as a YAML list) unpacks identically.
+        ctx = make_ctx()
+        e = _one([LevelView("box", {"box.bindings.ro.x": ("/h/x", "/g/x")})], ctx)
+        assert e.host_src == "/h/x"
+        assert e.box_dest == "/g/x"
+
+    def test_three_tuple_third_element_is_captured(self):
+        # The optional 3rd element (per-entry mount-options override) is captured
+        # by the structural unpacker. P2 captures it (no crash on the 3-element
+        # form); P3 threads it into the entry's mount options.
+        from kanibako.settings_resolve import unpack_bind
+
+        assert unpack_bind(["/h/sock", "~/helper.sock", "z"]) == (
+            "/h/sock",
+            "~/helper.sock",
+            "z",
+        )
+        assert unpack_bind(("/h/sock", "~/helper.sock", "")) == (
+            "/h/sock",
+            "~/helper.sock",
+            "",
+        )
+
+    def test_three_tuple_resolves_through_category_path(self):
+        # A 3-element binding value resolves end-to-end (host/dest expanded); the
+        # explicit options slot does not crash the resolver (P2 captures it).
+        ctx = make_ctx()
+        e = _one(
+            [LevelView("box", {"box.bindings.rw.helper_sock": ["/h/s", "~/helper.sock", "z"]})],
+            ctx,
+        )
+        assert e.host_src == "/h/s"
+        assert e.box_dest == "/home/agent/helper.sock"
+
+    def test_two_tuple_unpack_returns_none_for_options(self):
+        from kanibako.settings_resolve import unpack_bind
+
+        assert unpack_bind(["/h", "/g"]) == ("/h", "/g", None)
+
+    def test_non_structured_value_raises(self):
+        # A bare scalar (the old colon-string form) is no longer a valid category
+        # binding value — the structured pair/tuple is load-bearing.
+        ctx = make_ctx()
+        levels = [LevelView("box", {"box.bindings.rw.bad": "/just/a/path"})]
+        with pytest.raises(SettingsError):
+            _resolve(levels, ctx)
+
+    def test_wrong_arity_raises(self):
+        from kanibako.settings_resolve import unpack_bind
+
+        with pytest.raises(SettingsError):
+            unpack_bind(["only-one"])
+        with pytest.raises(SettingsError):
+            unpack_bind(["a", "b", "c", "d"])
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +299,11 @@ class TestDeliveryTagging:
             LevelView(
                 "box",
                 {
-                    "box.seeded.s": "/h/s:~/s",
-                    "box.synced.y": "/h/y:~/y",
-                    "box.bindings.rw.b": "/h/b:~/b",
-                    "box.caches.c": "/h/c:~/c",
-                    "box.shared.h": "/h/h:~/h",
+                    "box.seeded.s": ["/h/s", "~/s"],
+                    "box.synced.y": ["/h/y", "~/y"],
+                    "box.bindings.rw.b": ["/h/b", "~/b"],
+                    "box.caches.c": ["/h/c", "~/c"],
+                    "box.shared.h": ["/h/h", "~/h"],
                 },
             ),
         ]
@@ -250,10 +324,10 @@ class TestScopeApplyOrder:
     def test_distinct_scopes_apply_order(self):
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"box.bindings.rw.b": "/hb:/gb"}),
-            LevelView("workset", {"workset.bindings.rw.w": "/hw:/gw"}),
-            LevelView("agent", {"agent.bindings.rw.a": "/ha:/ga"}),
-            LevelView("system", {"system.bindings.rw.s": "/hs:/gs"}),
+            LevelView("box", {"box.bindings.rw.b": ["/hb", "/gb"]}),
+            LevelView("workset", {"workset.bindings.rw.w": ["/hw", "/gw"]}),
+            LevelView("agent", {"agent.bindings.rw.a": ["/ha", "/ga"]}),
+            LevelView("system", {"system.bindings.rw.s": ["/hs", "/gs"]}),
         ]
         dests = [e.box_dest for e in _resolve(levels, ctx)]
         assert dests == ["/gs", "/ga", "/gw", "/gb"]
@@ -264,10 +338,10 @@ class TestScopeApplyOrder:
             LevelView(
                 "box",
                 {
-                    "box.bindings.rw.z": "/hz:/gz",
-                    "box.bindings.rw.a": "/ha:/ga",
-                    "box.bindings.ro.m": "/hm:/gm",
-                    "box.caches.k": "/hk:/gk",
+                    "box.bindings.rw.z": ["/hz", "/gz"],
+                    "box.bindings.rw.a": ["/ha", "/ga"],
+                    "box.bindings.ro.m": ["/hm", "/gm"],
+                    "box.caches.k": ["/hk", "/gk"],
                 },
             ),
         ]
@@ -285,8 +359,8 @@ class TestPrecedenceAndSuppression:
     def test_same_key_most_specific_wins(self):
         ctx = make_ctx()
         levels = [
-            LevelView("box", {"system.bindings.rw.foo": "/box:/g"}),
-            LevelView("system", {"system.bindings.rw.foo": "/sys:/g"}),
+            LevelView("box", {"system.bindings.rw.foo": ["/box", "/g"]}),
+            LevelView("system", {"system.bindings.rw.foo": ["/sys", "/g"]}),
         ]
         assert _one(levels, ctx).host_src == "/box"
 
@@ -297,8 +371,8 @@ class TestPrecedenceAndSuppression:
             LevelView(
                 "system",
                 {
-                    "system.bindings.rw.foo": "/sf:/gf",
-                    "system.bindings.rw.bar": "/sb:/gb",
+                    "system.bindings.rw.foo": ["/sf", "/gf"],
+                    "system.bindings.rw.bar": ["/sb", "/gb"],
                 },
             ),
         ]
@@ -308,15 +382,15 @@ class TestPrecedenceAndSuppression:
         ctx = make_ctx()
         levels = [
             LevelView("box", {"box.seeded.x": "empty"}),
-            LevelView("box", {"box.seeded.y": "/hy:/gy"}),
+            LevelView("box", {"box.seeded.y": ["/hy", "/gy"]}),
         ]
         # box.seeded.x is disabled; only y survives.
         names = [e.name for e in _resolve(levels, ctx)]
         assert names == ["y"]
 
     def test_empty_sentinel_does_NOT_disable_mount(self):
-        # "empty" is only a sentinel for COPY categories; a binding value of
-        # "empty" with no colon is just a malformed bind -> error.
+        # "empty" is only a sentinel for COPY categories; a binding (MOUNT) value
+        # of "empty" is a non-structured scalar -> not a valid pair/tuple -> error.
         ctx = make_ctx()
         levels = [LevelView("box", {"box.bindings.rw.x": "empty"})]
         with pytest.raises(SettingsError):
@@ -327,7 +401,7 @@ class TestPrecedenceAndSuppression:
         levels = [
             LevelView("box", {}),
             LevelView(
-                "agent", {}, defaults={"agent.bindings.ro.cfg": "/h/cfg:/g/cfg"}
+                "agent", {}, defaults={"agent.bindings.ro.cfg": ["/h/cfg", "/g/cfg"]}
             ),
         ]
         e = _one(levels, ctx)
@@ -344,7 +418,7 @@ class TestRootJoin:
     def test_relative_host_src_joined_under_group_root(self):
         ctx = make_ctx(agent_name="claude")
         levels = [
-            LevelView("agent", {"agent.bindings.rw.plugins": "plugins:~/.claude/plugins"}),
+            LevelView("agent", {"agent.bindings.rw.plugins": ["plugins", "~/.claude/plugins"]}),
             LevelView("system", {}, defaults={"system.agents": "/data/agents"}),
         ]
         scope_roots = {"agent.bindings.rw": "@system.agents/$AGENT/share"}
@@ -353,13 +427,13 @@ class TestRootJoin:
 
     def test_absolute_host_src_not_joined(self):
         ctx = make_ctx(agent_name="claude")
-        levels = [LevelView("agent", {"agent.bindings.rw.x": "/abs:~/x"})]
+        levels = [LevelView("agent", {"agent.bindings.rw.x": ["/abs", "~/x"]})]
         scope_roots = {"agent.bindings.rw": "/root"}
         assert _one(levels, ctx, scope_roots=scope_roots).host_src == "/abs"
 
     def test_caches_group_root(self):
         ctx = make_ctx()
-        levels = [LevelView("agent", {"agent.caches.c": "rel:~/c"})]
+        levels = [LevelView("agent", {"agent.caches.c": ["rel", "~/c"]})]
         e = _one(levels, ctx, scope_roots={"agent.caches": "/croot"})
         assert e.host_src == "/croot/rel"
 
@@ -370,22 +444,26 @@ class TestRootJoin:
 
 
 class TestErrors:
-    def test_bind_missing_colon_raises_naming_key(self):
+    def test_non_structured_bind_raises_naming_key(self):
+        # A bare scalar (the old colon-string form) is no longer a valid binding
+        # value; the wrapped error names the offending category key.
         ctx = make_ctx()
         levels = [LevelView("box", {"box.bindings.rw.bad": "/just/a/path"})]
         with pytest.raises(SettingsError) as exc:
             _resolve(levels, ctx)
         assert "box.bindings.rw.bad" in str(exc.value)
 
-    def test_escaped_colon_survives(self):
+    def test_literal_colon_in_path_needs_no_escaping(self):
+        # In the structured form a path with a literal ':' is just a list
+        # element — no colon-escaping (the structured shape has no delimiter).
         ctx = make_ctx()
-        e = _one([LevelView("box", {"box.bindings.rw.c": "/a\\:b:/g"})], ctx)
+        e = _one([LevelView("box", {"box.bindings.rw.c": ["/a:b", "/g"]})], ctx)
         assert e.host_src == "/a:b"
         assert e.box_dest == "/g"
 
     def test_name_with_dots(self):
         ctx = make_ctx()
-        e = _one([LevelView("box", {"box.bindings.ro.a.b.c": "/h:/g"})], ctx)
+        e = _one([LevelView("box", {"box.bindings.ro.a.b.c": ["/h", "/g"]})], ctx)
         assert e.name == "a.b.c"
 
 
@@ -486,10 +564,10 @@ class TestReconcileAuthorityOrder:
             LevelView(
                 "box",
                 {
-                    "box.seeded.s": "/h/s:/g/x",
-                    "box.caches.c": "/h/c:/g/x",
-                    "box.bindings.rw.b": "/h/b:/g/x",
-                    "box.shared.h": "/h/h:/g/x",
+                    "box.seeded.s": ["/h/s", "/g/x"],
+                    "box.caches.c": ["/h/c", "/g/x"],
+                    "box.bindings.rw.b": ["/h/b", "/g/x"],
+                    "box.shared.h": ["/h/h", "/g/x"],
                     "box.masks": "/g/x",
                 },
             ),
@@ -617,9 +695,9 @@ class TestReconcilePartition:
             LevelView(
                 "box",
                 {
-                    "box.seeded.s": "/h/s:/g/s",
-                    "box.synced.y": "/h/y:/g/y",
-                    "box.bindings.rw.b": "/h/b:/g/b",
+                    "box.seeded.s": ["/h/s", "/g/s"],
+                    "box.synced.y": ["/h/y", "/g/y"],
+                    "box.bindings.rw.b": ["/h/b", "/g/b"],
                     "box.masks": "/g/m",
                     "box.env.FOO": "bar",
                 },

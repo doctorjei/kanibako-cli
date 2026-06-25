@@ -170,6 +170,49 @@ def split_bind(value: str) -> tuple[str, str | None]:
     return _unescape(value), None
 
 
+def unpack_bind(value: object) -> tuple[str, str, str | None]:
+    """Unpack a STRUCTURED category binding leaf into ``(host_src, box_dest, options)``.
+
+    This is the structural successor to :func:`split_bind` on the CATEGORY path
+    (spec §2a "REPRESENTATION"): a ``bindings.*``/``caches``/``seeded``/``shared``/
+    ``synced`` value is a STRUCTURED PAIR — a YAML list / Python ``tuple`` — not a
+    colon-joined ``"host:box"`` string.  *value* is therefore the list/tuple leaf
+    that :func:`kanibako.config.read_categories` preserves at load:
+
+    * **2 elements** ``[host_src, box_dest]`` → ``(host_src, box_dest, None)``;
+      the caller falls back to the category-default mount options.
+    * **3 elements** ``[host_src, box_dest, options]`` → ``(host_src, box_dest,
+      options)``; the explicit options string OVERRIDES the category default for
+      this entry only (the spec's per-entry options channel — e.g. ``"z"`` /
+      ``""`` for a live socket).
+
+    Each element is narrowed to ``str`` (a YAML scalar may parse as ``int``/etc.).
+    A non-list/tuple value, or a list/tuple of the wrong arity, raises
+    :class:`SettingsError` — the structured shape is load-bearing and a malformed
+    leaf is a configuration error, not something to silently re-derive.
+
+    NOTE: :func:`split_bind` (the colon form) is NOT removed — it remains the
+    parser for the CLI-INPUT edge (``config set k=h:b[:opts]`` mirroring podman
+    ``-v``).  Storage / the category-load path is pure structured and uses THIS.
+    """
+    if not isinstance(value, (list, tuple)):
+        raise SettingsError(
+            f"Binding category value must be a structured pair/tuple "
+            f"[host_src, box_dest[, options]], got {type(value).__name__}: "
+            f"{value!r}."
+        )
+    if len(value) == 2:
+        host_src, box_dest = value
+        return str(host_src), str(box_dest), None
+    if len(value) == 3:
+        host_src, box_dest, options = value
+        return str(host_src), str(box_dest), str(options)
+    raise SettingsError(
+        f"Binding category value must have 2 or 3 elements "
+        f"[host_src, box_dest[, options]], got {len(value)}: {value!r}."
+    )
+
+
 def expand_expr(
     expr: str,
     *,

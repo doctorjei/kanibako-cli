@@ -414,16 +414,18 @@ class TestDefaultShares:
     def test_declares_plugins_and_cache(self):
         t = ClaudeTarget()
         shares = t.default_shares()
+        # STRUCTURED form (spec §2a): each value is a (host_src, box_dest) tuple,
+        # NOT a colon-joined string.
         assert shares == {
-            "agent.shared.plugins": "plugins:/home/agent/.claude/plugins",
-            "agent.shared.cache": "cache:/home/agent/.claude/cache",
+            "agent.shared.plugins": ("plugins", "/home/agent/.claude/plugins"),
+            "agent.shared.cache": ("cache", "/home/agent/.claude/cache"),
         }
 
     def test_share_values_are_relative_host_src(self):
         """host_src is the relative key name (joined under the agent store root)."""
         t = ClaudeTarget()
         for value in t.default_shares().values():
-            host_src, box_dest = value.split(":", 1)
+            host_src, box_dest = value
             assert not host_src.startswith("/")
             assert box_dest.startswith("/home/agent/.claude/")
 

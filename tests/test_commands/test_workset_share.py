@@ -39,7 +39,11 @@ class TestShareAdd:
         rc = run_share_add(_add_args(mode="rw"))
         assert rc == 0
         shares = read_shares(workset.root / "settings.yaml")
-        assert shares == {"workset.bindings.rw.data": "/host/data:/home/agent/data"}
+        # Storage is STRUCTURED (spec §2a): a [host_src, box_dest] list, NOT a
+        # colon-joined string (the colon form is only the CLI input grammar).
+        assert shares == {
+            "workset.bindings.rw.data": ["/host/data", "/home/agent/data"]
+        }
         out = capsys.readouterr().out
         assert "Added rw share 'data'" in out
         assert "next box launch" in out
@@ -48,7 +52,7 @@ class TestShareAdd:
         rc = run_share_add(_add_args(name="docs", bind="/host/docs:/srv/docs", mode="ro"))
         assert rc == 0
         shares = read_shares(workset.root / "settings.yaml")
-        assert shares == {"workset.bindings.ro.docs": "/host/docs:/srv/docs"}
+        assert shares == {"workset.bindings.ro.docs": ["/host/docs", "/srv/docs"]}
 
     def test_add_overwrite_updates(self, config_file, tmp_home, workset, capsys):
         run_share_add(_add_args(bind="/host/a:/g"))
@@ -56,14 +60,14 @@ class TestShareAdd:
         rc = run_share_add(_add_args(bind="/host/b:/g"))
         assert rc == 0
         shares = read_shares(workset.root / "settings.yaml")
-        assert shares == {"workset.bindings.rw.data": "/host/b:/g"}
+        assert shares == {"workset.bindings.rw.data": ["/host/b", "/g"]}
         assert "Updated rw share 'data'" in capsys.readouterr().out
 
     def test_add_relative_host_src_allowed(self, config_file, tmp_home, workset):
         rc = run_share_add(_add_args(bind="sub/dir:/home/agent/data"))
         assert rc == 0
         shares = read_shares(workset.root / "settings.yaml")
-        assert shares["workset.bindings.rw.data"] == "sub/dir:/home/agent/data"
+        assert shares["workset.bindings.rw.data"] == ["sub/dir", "/home/agent/data"]
 
     @pytest.mark.parametrize("bind", ["nocolon", ":/dest", "/src:", "a:b:c"])
     def test_add_rejects_bad_bind(self, config_file, tmp_home, workset, bind, capsys):
@@ -122,7 +126,7 @@ class TestShareRemove:
         rc = run_share_remove(_rm_args(mode="rw"))
         assert rc == 0
         shares = read_shares(workset.root / "settings.yaml")
-        assert shares == {"workset.bindings.ro.data": "/h:/g2"}
+        assert shares == {"workset.bindings.ro.data": ["/h", "/g2"]}
 
     def test_rm_wrong_mode_returns_1(self, config_file, tmp_home, workset, capsys):
         run_share_add(_add_args(mode="rw"))

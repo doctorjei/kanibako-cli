@@ -708,6 +708,19 @@ def _share_key(mode: str, name: str) -> str:
     return f"workset.bindings.{mode}.{name}"
 
 
+def _bind_display(value: object) -> str:
+    """Render a STORED structured bind value as the user-facing input grammar.
+
+    Storage is a structured ``[host_src, box_dest[, options]]`` list (spec §2a);
+    the raw-listing BIND column echoes the ``host_src:box_dest[:options]`` form a
+    user would type at ``workset share add`` (mirroring podman ``-v``). A
+    non-list legacy scalar falls back to ``str``.
+    """
+    if isinstance(value, (list, tuple)):
+        return ":".join(str(part) for part in value)
+    return str(value)
+
+
 def _resolve_share_workset(name: str):
     """Resolve *name* to a :class:`Workset`, printing + returning on error.
 
@@ -769,7 +782,11 @@ def run_share_add(args: argparse.Namespace) -> int:
         args.mode, {}
     )
     existed = name in subtree
-    subtree[name] = bind
+    # CLI-INPUT edge: the ``host_src:guest_dest`` grammar (mirroring podman -v) is
+    # parsed HERE and STORED in the structured form (spec §2a — a YAML list, NOT a
+    # colon-joined string). Storage stays pure structured; the colon form is only
+    # the user-facing input/display grammar.
+    subtree[name] = [host_src, guest_dest]
     dump_doc(ws_config, data)
 
     verb = "Updated" if existed else "Added"
@@ -864,7 +881,7 @@ def run_share_list(args: argparse.Namespace) -> int:
         m = SHARE_KEY_RE.match(key)
         if m is None:
             continue
-        rows.append((m.group("name"), m.group("mode"), str(value)))
+        rows.append((m.group("name"), m.group("mode"), _bind_display(value)))
     rows.sort(key=lambda r: (r[1], r[0]))
 
     print(f"Shares for working set '{ws.name}':")

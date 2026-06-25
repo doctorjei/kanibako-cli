@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
 
+# A STRUCTURED category bind default (spec §2a "REPRESENTATION"): a 2- or
+# 3-element ``(host_src, box_dest[, options])`` tuple — NOT a colon-joined
+# string. Emitted by ``default_shares()`` / ``default_seeds()`` and consumed by
+# :func:`kanibako.settings_resolve.unpack_bind` through the category resolver.
+BindDefault = tuple[str, str] | tuple[str, str, str]
+
 
 @dataclass(frozen=True)
 class TargetSetting:
@@ -318,23 +324,25 @@ class Target(ABC):
         """
         return None
 
-    def default_shares(self) -> dict[str, str]:
+    def default_shares(self) -> dict[str, BindDefault]:
         """Declare default AGENT-scope shares/caches for this agent.
 
         Returns a mapping of full scoped category keys
-        (``agent.shared.<name>`` / ``agent.caches.<name>``) to
-        ``host_src:box_dest`` bind expressions. These are injected as the AGENT
-        level's *declared defaults* (``default_categories``) in the category
-        resolver — a user can override or suppress (terminal "") any of them at
-        a more-specific level. The default returns {} (no shares).
+        (``agent.shared.<name>`` / ``agent.caches.<name>``) to STRUCTURED bind
+        pairs ``(host_src, box_dest[, options])`` (spec §2a — a tuple, NOT a
+        colon-joined string). These are injected as the AGENT level's *declared
+        defaults* (``default_categories``) in the category resolver — a user can
+        override or suppress (terminal "") any of them at a more-specific level.
+        The default returns {} (no shares).
         """
         return {}
 
-    def default_seeds(self) -> dict[str, str]:
+    def default_seeds(self) -> dict[str, BindDefault]:
         """Declare default copy-once-at-init seeds for this agent.
 
         Returns a mapping of full seed keys (``agent.seeded.<name>``) to
-        ``host_src:box_dest`` expressions, injected as the AGENT level's declared
+        STRUCTURED bind pairs ``(host_src, box_dest[, options])`` (spec §2a — a
+        tuple, NOT a colon-joined string), injected as the AGENT level's declared
         defaults (``default_categories``) in the category resolver. A user can
         override or suppress (terminal "" or the "empty" sentinel) any of them at
         a more-specific level. The default returns {} (no seeds). No target ships

@@ -34,10 +34,11 @@ category      key shape                              host_src      delivery
 ``env``       ``{scope}.env.{VAR}``  (value)         ``None``      ENV
 ============= ===================================== ============= =========
 
-A "bind" value is a ``host_src:guest_dest`` expression (the engine's
-:func:`split_bind`).  ``masks`` carries a list of guest paths to tmpfs-hide (no
-host source); ``env`` carries a scalar value for ``{VAR}`` (no host source, no
-guest *path* — its ``box_dest`` field is the VAR name).
+A "bind" value is a STRUCTURED pair/tuple ``[host_src, box_dest[, options]]``
+unpacked by the engine's :func:`~kanibako.settings_resolve.unpack_bind` (spec
+§2a — never a colon-joined string).  ``masks`` carries a list of guest paths to
+tmpfs-hide (no host source); ``env`` carries a scalar value for ``{VAR}`` (no
+host source, no guest *path* — its ``box_dest`` field is the VAR name).
 
 Delivery
 ~~~~~~~~
@@ -87,7 +88,7 @@ from kanibako.settings_resolve import (
     _Unset,
     expand_expr,
     resolve_value,
-    split_bind,
+    unpack_bind,
 )
 
 # Delivery tags.
@@ -280,7 +281,8 @@ def resolve_categories(
 
     Returns entries in apply order (see module docstring).  Does NOT resolve
     cross-category collisions (sub-step 4b).  Raises :class:`SettingsError` if a
-    non-suppressed bind value lacks a ``host_src:guest_dest`` colon.
+    non-suppressed bind value is not a structured 2-/3-element pair/tuple
+    (:func:`~kanibako.settings_resolve.unpack_bind`).
     """
     entries: list[tuple[tuple[int, str, str], CategoryEntry]] = []
 
@@ -304,12 +306,15 @@ def resolve_categories(
             # "empty" sentinel disables a COPY (seed/synced) entry.
             continue
 
-        host_src_raw, guest_dest_raw = split_bind(_as_scalar(rv.value))
-        if guest_dest_raw is None:
-            raise SettingsError(
-                f"Category '{key}' must specify 'host_src:guest_dest' "
-                f"(no unescaped ':' in value {rv.value!r})."
-            )
+        # Structured unpack (spec §2a): a category binding value is a 2-/3-element
+        # list/tuple, NOT a colon-string. The optional 3rd element is the
+        # per-entry options override, captured here; it is THREADED into the
+        # entry's mount options in a later phase (P3) — for now MOUNT options come
+        # from the category default and ``opts_override`` is captured but unused.
+        try:
+            host_src_raw, guest_dest_raw, opts_override = unpack_bind(rv.value)
+        except SettingsError as exc:
+            raise SettingsError(f"Category '{key}': {exc}") from exc
 
         host_src = expand_expr(host_src_raw, space="host", ctx=ctx, lookup=lookup)
         guest_dest = expand_expr(guest_dest_raw, space="guest", ctx=ctx, lookup=lookup)
@@ -320,6 +325,7 @@ def resolve_categories(
             root = expand_expr(root_expr, space="host", ctx=ctx, lookup=lookup)
             host_src = f"{root.rstrip('/')}/{host_src}"
 
+        del opts_override  # P3 threads this into ``options``; captured now per spec.
         options = _bind_options(category) if delivery == MOUNT else ""
         sort_key = (_SCOPE_APPLY_ORDER[scope], category, name)
         entries.append(
