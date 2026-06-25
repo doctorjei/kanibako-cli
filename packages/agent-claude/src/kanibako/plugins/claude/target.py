@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
@@ -71,8 +72,8 @@ _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 _CLAUDE_DESCRIPTOR = PluginDescriptor(
     command=("claude",),
     bindings=(
-        Binding("share",    HostSrcOrigin.INSTALL_DIR,  "/home/agent/.local/share/claude", BindKind.DIR,  BindScope.AGENT_CRITICAL, ro=True),
-        Binding("launcher", HostSrcOrigin.LAUNCHER,     "/home/agent/.local/bin/claude",   BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
+        Binding("share",    HostSrcOrigin.INSTALL_DIR,  f"{GUEST_HOME}/.local/share/claude", BindKind.DIR,  BindScope.AGENT_CRITICAL, ro=True),
+        Binding("launcher", HostSrcOrigin.LAUNCHER,     f"{GUEST_HOME}/.local/bin/claude",   BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
     ),
     mode={"start": (), "continue": ("--continue",)},
     operations={"exec": Operation(("-p",))},
@@ -256,8 +257,8 @@ class ClaudeTarget(Target):
         user at a more-specific level).
         """
         return {
-            "agent.shared.plugins": ("plugins", "/home/agent/.claude/plugins"),
-            "agent.shared.cache": ("cache", "/home/agent/.claude/cache"),
+            "agent.shared.plugins": ("plugins", f"{GUEST_HOME}/.claude/plugins"),
+            "agent.shared.cache": ("cache", f"{GUEST_HOME}/.claude/cache"),
         }
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:

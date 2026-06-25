@@ -12,6 +12,7 @@ from typing import Any
 
 from kanibako.container import ContainerRuntime
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import Mount
 
 logger = get_logger("helper_listener")
@@ -504,17 +505,17 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     # Peers directory
     peers_dir = helper_root / "peers"
     if peers_dir.is_dir():
-        mounts.append(Mount(peers_dir, "/home/agent/peers", "Z,U"))
+        mounts.append(Mount(peers_dir, f"{GUEST_HOME}/peers", "Z,U"))
 
     # Broadcast directory
     all_link = helper_root / "all"
     if all_link.exists():
-        mounts.append(Mount(all_link, "/home/agent/all", "Z,U"))
+        mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
 
     # Spawn config (read-only)
     spawn_toml = helper_root / "spawn.yaml"
     if spawn_toml.is_file():
-        mounts.append(Mount(spawn_toml, "/home/agent/spawn.yaml", "ro"))
+        mounts.append(Mount(spawn_toml, f"{GUEST_HOME}/spawn.yaml", "ro"))
 
     # Helper socket — mount the hub socket into the helper.  The box-side dest
     # is XDG_STATE_HOME-aware: derived from the helper's container env (the same

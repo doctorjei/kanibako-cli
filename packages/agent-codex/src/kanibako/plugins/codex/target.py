@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
     BindKind,
@@ -75,7 +76,7 @@ logger = get_logger("targets.codex")
 # as a single self-contained native Rust ELF (musl static-pie); we bind the
 # resolved host binary to this stable box path.  (Detection resolves the real
 # host binary dynamically — see ``detect`` — but the box destination is fixed.)
-_BINARY_BOX_DEST = "/home/agent/.local/bin/codex"
+_BINARY_BOX_DEST = f"{GUEST_HOME}/.local/bin/codex"
 
 # Timeout (seconds) for the best-effort ``npm root -g`` probe in ``detect``.
 _NPM_ROOT_TIMEOUT = 10

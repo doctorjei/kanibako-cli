@@ -36,6 +36,12 @@ from typing import Literal
 
 from kanibako.errors import KanibakoError
 
+# Single source of truth for the box-side home directory.  Boxes always run as
+# the ``agent`` user with this home; ``~`` in box-side destinations expands to
+# it.  This module has no in-tree imports beyond ``kanibako.errors`` (which
+# imports nothing), so it is safe to import this constant from anywhere —
+# including the agent plugin packages — without circular-import risk.  Every
+# box-side ``/home/agent`` literal in the tree derives from this constant.
 GUEST_HOME = "/home/agent"
 MAX_REF_DEPTH = 64
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
+from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
     BindKind,
@@ -90,7 +91,7 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 _GOOSE_DESCRIPTOR = PluginDescriptor(
     command=("goose",),
     bindings=(
-        Binding("binary", HostSrcOrigin.BINARY, "/home/agent/.local/bin/goose", BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
+        Binding("binary", HostSrcOrigin.BINARY, f"{GUEST_HOME}/.local/bin/goose", BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True),
     ),
     mode={"start": ("session",), "continue": ("session", "--resume")},
     operations={"exec": Operation(("run", "--no-session", "-t"))},
