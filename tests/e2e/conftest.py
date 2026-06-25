@@ -180,6 +180,15 @@ def stub_script() -> Path:
 
 
 @pytest.fixture(scope="session")
+def goose_stub_script() -> Path:
+    """Return path to the goose stub script."""
+    stub = Path(__file__).parent / "fixtures" / "goose-stub"
+    assert stub.is_file(), f"Goose stub not found: {stub}"
+    assert os.access(stub, os.X_OK), f"Goose stub not executable: {stub}"
+    return stub
+
+
+@pytest.fixture(scope="session")
 def host_storage_conf(tmp_path_factory) -> Path:
     """Write a storage.conf pinning rootless podman to the host's real graphroot.
 
@@ -403,6 +412,128 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
         if not name:
             continue
         # Clean up only e2e test containers (not user's real ones)
+        if name.startswith("kanibako-e2e-"):
+            subprocess.run(
+                [_podman, "rm", "-f", "-t", "1", name],
+                capture_output=True,
+                timeout=10,
+            )
+
+
+# Known host credential content the goose cred-sync tests seed and assert on.
+# Exported so a seadog run can cross-check exactly what the box should observe.
+GOOSE_SECRETS_TOKEN = "e2e-goose-secret-aardvark-1234"
+GOOSE_SECRETS_CONTENT = (
+    "ANTHROPIC_API_KEY: " + GOOSE_SECRETS_TOKEN + "\n"
+)
+GOOSE_CONFIG_CONTENT = (
+    "GOOSE_PROVIDER: anthropic\n"
+    "GOOSE_MODEL: claude-e2e-stub\n"
+)
+
+
+@pytest.fixture()
+def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
+    """Create an isolated e2e environment for a GOOSE box.
+
+    Mirrors :func:`e2e_env` but targets the goose plugin instead of claude:
+
+      - isolated HOME / XDG dirs
+      - the goose stub placed at ``~/.local/bin/goose`` so
+        ``GooseTarget.detect()`` (which anchors to that exact contract path,
+        NOT ``$PATH``) resolves it
+      - host ``~/.config/goose/secrets.yaml`` + ``config.yaml`` seeded with
+        KNOWN content (GOOSE_SECRETS_CONTENT / GOOSE_CONFIG_CONTENT) so the
+        credsync engine has real SYNC cred files to deliver / write back
+      - ``kanibako.yaml`` pinned to the e2e image
+      - the same ``CONTAINERS_STORAGE_CONF`` pin as ``e2e_env`` so the
+        kanibako-launched podman sees the host's image store
+
+    Returns the same dict shape as ``e2e_env`` plus:
+      - "goose_config_dir": Path to host ``~/.config/goose``
+      - "secrets_path", "config_path": Paths to the seeded host cred files
+    """
+    home = tmp_path / "home"
+    config_home = tmp_path / "config"
+    data_home = tmp_path / "data"
+    state_home = tmp_path / "state"
+    cache_home = tmp_path / "cache"
+    project = tmp_path / "project"
+
+    for d in (home, config_home, data_home, state_home, cache_home, project):
+        d.mkdir()
+
+    # Goose detection anchors to ~/.local/bin/goose (the _BINARY contract path),
+    # so the stub must live there exactly.  detect() resolves the real ELF and
+    # binds it into the box as the entrypoint, so the stub is also what runs
+    # in-box.
+    goose_bin_dir = home / ".local" / "bin"
+    goose_bin_dir.mkdir(parents=True)
+    goose_binary = goose_bin_dir / "goose"
+    shutil.copy2(goose_stub_script, goose_binary)
+    goose_binary.chmod(0o755)
+
+    # Seed host cred files with KNOWN content so refresh/seed_cred_files have a
+    # real SYNC source and the seed assertion has a recognizable sentinel.
+    goose_config_dir = home / ".config" / "goose"
+    goose_config_dir.mkdir(parents=True)
+    secrets_path = goose_config_dir / "secrets.yaml"
+    config_path = goose_config_dir / "config.yaml"
+    secrets_path.write_text(GOOSE_SECRETS_CONTENT)
+    config_path.write_text(GOOSE_CONFIG_CONTENT)
+
+    # Build kanibako config pinned to the e2e image.
+    kanibako_config = config_home / "kanibako.yaml"
+    kanibako_config.write_text(
+        f'kanibako:\n  image: "{E2E_IMAGE}"\n'
+    )
+
+    names_dir = data_home / "kanibako"
+    names_dir.mkdir(parents=True)
+
+    env = os.environ.copy()
+    env.update({
+        "HOME": str(home),
+        "XDG_CONFIG_HOME": str(config_home),
+        "XDG_DATA_HOME": str(data_home),
+        "XDG_STATE_HOME": str(state_home),
+        "XDG_CACHE_HOME": str(cache_home),
+        # Goose detect() does NOT consult $PATH (it anchors to ~/.local/bin),
+        # but keep the stub dir on PATH for parity with e2e_env and so any
+        # incidental `goose` lookup resolves to the stub.
+        "PATH": f"{goose_bin_dir}:{env.get('PATH', '')}",
+        # Pin rootless podman storage back to the host's real graphroot (see
+        # e2e_env / host_storage_conf): HOME/XDG overrides above would otherwise
+        # relocate it into tmp_path and hide the host's pulled images.
+        "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
+    })
+
+    yield {
+        "env": env,
+        "home": home,
+        "project": project,
+        "config_home": config_home,
+        "data_home": data_home,
+        "stub_script": goose_stub_script,
+        "goose_config_dir": goose_config_dir,
+        "secrets_path": secrets_path,
+        "config_path": config_path,
+        "tmp_path": tmp_path,
+    }
+
+    # Teardown: prefix-based cleanup of this test's containers (mirrors e2e_env).
+    if _podman is None:
+        return
+    result = subprocess.run(
+        [_podman, "ps", "-a", "--format", "{{.Names}}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    for name in result.stdout.strip().splitlines():
+        name = name.strip()
+        if not name:
+            continue
         if name.startswith("kanibako-e2e-"):
             subprocess.run(
                 [_podman, "rm", "-f", "-t", "1", name],
