@@ -51,12 +51,13 @@ class TestMountStubs:
 
         # These directories must exist as mount point stubs.
         # Without them, crun fails with "Permission denied" in LXC (#57).
-        # "workspace" and "comms" come from _precreate_mount_stubs(),
-        # ".claude" comes from target.init_home().
+        # "workspace" and "channels" come from _precreate_mount_stubs()
+        # (the inter-instance comms tree was renamed comms -> channels in
+        # 1.6.0); ".claude" comes from the agent's cache/plugins binds.
         expected_stubs = [
             "workspace",
             ".claude",
-            "comms",
+            "channels",
         ]
         for stub in expected_stubs:
             stub_path = shell_path / stub
