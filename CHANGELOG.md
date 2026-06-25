@@ -275,10 +275,28 @@ The revamp is **one breaking change set** with **no automatic migration** — se
   two-prong test (compare versions when both resolve via PEP 440, else compare
   build `created` timestamps only when neither side resolves a version, else
   stay silent) and never nags on uncertainty.
-- **Box home seeding is now non-destructive.** A box whose home is already
-  populated but lacks the `.seeded` marker (e.g. a migrated box) no longer has
-  its existing home files overwritten on launch; cross-layer template last-wins
-  is preserved. Prevents re-seed data loss.
+- **Seed-once is now non-destructive and registry-tracked (data-loss fix).**
+  A box re-seed could clobber user-edited home content (notably `~/playbook/*`):
+  seed-once gated only on a `.seeded` marker file under the box metadata dir,
+  and any box missing that marker (every box migrated from the pre-1.6.0 layout)
+  re-seeded on launch and overwrote its owned home. The redesign closes this on
+  two fronts:
+  - **Seed application is create-if-absent.** Applying a `seeded` category now
+    copies file-by-file and skips any destination that already exists (was a
+    destructive `copytree(dirs_exist_ok=True)` / unconditional file copy). A
+    seed delivers content once; existing home content is owned by the box and is
+    never overwritten. Cross-layer template last-wins is preserved. This is the
+    failsafe: even a mis-detected re-seed cannot lose data.
+  - **Seed-once detection moved off the marker file.** The launch gate now
+    derives "already seeded?" from an explicit per-box `seeded` flag in the
+    registry (`registry.yaml` for primary/standalone boxes, the workset's
+    `settings.yaml` for named boxes), stamped on first-start completion, ORed
+    with a backstop that the box's own mailbox (inbox) dir already exists. The
+    brittle `.seeded` sentinel (and its `needs_seed` / `mark_seeded` machinery)
+    is **removed**.
+  - **Legacy boxes are adopted automatically.** A pre-existing box with no
+    registry flag is recognised as seeded via the inbox backstop and stamped
+    with the flag on detect — no converter or migration step is required.
 
 ## [1.5.1] - 2026-06-16
 
