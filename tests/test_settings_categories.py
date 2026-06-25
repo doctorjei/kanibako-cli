@@ -578,6 +578,80 @@ class TestReconcileDepthOrder:
         ]
 
 
+class TestCoreBindingKeys:
+    """The spec §2c CORE box.bindings.* keys resolve to byte-identical dests/opts
+    as the old hardwired ``-v`` strings, and depth-sort home-under-everything.
+
+    These keys are injected through the AGENT level's declared ``defaults`` —
+    the exact channel start.py uses for ``_core_default_categories`` — so the
+    resolved entries here mirror the launch-path result.
+    """
+
+    def _core_defaults(self):
+        # Mirrors start.py::_core_default_categories (home/workspace/vault).
+        return {
+            "box.bindings.rw.home": "/host/box/home:~",
+            "box.bindings.rw.workspace": "/host/proj:~/workspace",
+            "box.bindings.ro.vault": "/host/vault/ro:~/vault/ro",
+            "box.bindings.rw.vault": "/host/vault/rw:~/vault/rw",
+        }
+
+    def _resolve_core(self):
+        ctx = make_ctx()
+        levels = [
+            LevelView("box", {}),
+            LevelView("workset", {}),
+            LevelView("agent", {}, defaults=self._core_defaults()),
+            LevelView("system", {}),
+        ]
+        return reconcile_categories(_resolve(levels, ctx))
+
+    def test_home_dest_has_no_trailing_slash(self):
+        """The home dest is exactly ``/home/agent`` (~ expands without a trailing
+        slash) — byte-identical to the old hardwired ``-v {shell}:/home/agent``."""
+        rec = self._resolve_core()
+        home = next(m for m in rec.mounts if m.host_src == "/host/box/home")
+        assert home.box_dest == "/home/agent"
+        assert home.options == "Z,U"
+        assert home.category == "bindings.rw"
+
+    def test_core_dests_and_options_match_legacy(self):
+        rec = self._resolve_core()
+        by_dest = {m.box_dest: m for m in rec.mounts}
+        assert by_dest["/home/agent"].options == "Z,U"
+        assert by_dest["/home/agent/workspace"].options == "Z,U"
+        assert by_dest["/home/agent/vault/ro"].options == "ro"
+        assert by_dest["/home/agent/vault/rw"].options == "Z,U"
+
+    def test_core_mounts_depth_sorted_home_first(self):
+        """Home depth-sorts FIRST (shallowest), vault dests last — so a later
+        ``-v`` / podman depth-sort lands the deeper mounts on top of home."""
+        rec = self._resolve_core()
+        dests = [m.box_dest for m in rec.mounts]
+        assert dests[0] == "/home/agent"
+        assert dests.index("/home/agent") < dests.index("/home/agent/workspace")
+        assert dests.index("/home/agent/workspace") < dests.index(
+            "/home/agent/vault/ro"
+        )
+        assert dests.index("/home/agent/workspace") < dests.index(
+            "/home/agent/vault/rw"
+        )
+
+    def test_box_override_of_core_home_wins(self):
+        """A box-level ``box.bindings.rw.home`` overrides the injected default
+        (more-specific scope wins) — the core defaults are overridable."""
+        ctx = make_ctx()
+        levels = [
+            LevelView("box", {"box.bindings.rw.home": "/custom/home:~"}),
+            LevelView("workset", {}),
+            LevelView("agent", {}, defaults=self._core_defaults()),
+            LevelView("system", {}),
+        ]
+        rec = reconcile_categories(_resolve(levels, ctx))
+        home = next(m for m in rec.mounts if m.box_dest == "/home/agent")
+        assert home.host_src == "/custom/home"
+
+
 class TestReconcileGroupAuthGate:
     def test_group_auth_false_suppresses_synced(self):
         synced = _entry("synced", box_dest="/g/cred")

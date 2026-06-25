@@ -1231,6 +1231,23 @@ def _run_container(
         kanibako_mnts = _kanibako_mounts()
         extra_mounts.extend(kanibako_mnts)
 
+        # Core box mounts (settings-framework box.bindings.* §2c): home /
+        # workspace / vault ro+rw.  These USED to be hardwired raw ``-v`` strings
+        # assembled in ``container.py``; they now route through the same category
+        # resolver + reconcile path as masks/channels/shares.  The vault keys are
+        # gated (enable_vault + source is_dir()) inside _core_default_categories
+        # so the skip-if-missing behavior is preserved exactly.
+        core_mounts = _build_core_mounts(
+            std=std,
+            proj=proj,
+            agent_name=agent_id,
+            global_config_path=system_settings_path,
+            project_toml=project_toml,
+            workset_config_path=workset_path,
+            agent_config_path=agent_cfg_path,
+        )
+        extra_mounts.extend(core_mounts)
+
         # Scoped bindings (settings-framework {scope}.bindings.{ro,rw}.*).
         # Additive: empty config → no mounts → no behavior change.
         share_mounts = _build_share_mounts(
@@ -2588,6 +2605,86 @@ def _build_channel_mounts(
         default_categories=_channel_default_categories(std, proj),
     )
     return _emit_reconciled_mounts(reconciled, label="channel")
+
+
+def _core_default_categories(std, proj) -> dict[str, str]:
+    """Build the CORE box-mount bind table as ``default_categories`` (§2c).
+
+    Maps the spec §2c core ``box.bindings.*`` keys (home / workspace / vault
+    ro+rw) → a ``host_src:guest_dest`` bind expression each, built from the
+    already-resolved ``proj.shell_path`` / ``proj.project_path`` /
+    ``proj.vault_ro_path`` / ``proj.vault_rw_path``.  Injected through the same
+    category resolver + reconcile path (D-B1 precedence + depth-sort + L7
+    guarantee-create) as masks/channels/shares — REPLACING the hardwired raw
+    ``-v`` side-channels in ``container.py`` (home/workspace/vault).
+
+    ``GUEST_HOME`` (``~``) is used verbatim for the home dest so the resolved
+    box_dest is exactly ``/home/agent`` (NO trailing slash) — byte-identical to
+    the old hardwired ``-v {shell}:/home/agent`` dest, the shallowest dest that
+    depth-sorts FIRST (home under everything).  ``~/workspace`` / ``~/vault/*``
+    are the deeper dests (preserved verbatim from the old hardwired binds).
+
+    ⚠️ VAULT GATE (behavior-preserving): the two vault keys are injected ONLY
+    when ``proj.enable_vault`` is true AND the host source directory exists —
+    reproducing the exact ``enable_vault`` + ``is_dir()`` gate the hardwired
+    block applied (``container.py``).  Reconcile's L7 rw-branch mkdir's a missing
+    rw source unconditionally, so blindly injecting the rw vault key would CREATE
+    the vault dir and change today's skip-if-missing behavior; gating here keeps
+    it identical.
+    """
+    from kanibako.settings_resolve import GUEST_HOME
+
+    binds: dict[str, str] = {
+        # Persistent agent home → ``~`` (== GUEST_HOME, no trailing slash).
+        "box.bindings.rw.home": _ch_bind(proj.shell_path, GUEST_HOME),
+        # Project workspace → ``~/workspace``.
+        "box.bindings.rw.workspace": _ch_bind(
+            proj.project_path, f"{GUEST_HOME}/workspace"
+        ),
+    }
+    # Vault binds: gated by enable_vault + source-is_dir() (see docstring).
+    if proj.enable_vault:
+        if proj.vault_ro_path.is_dir():
+            binds["box.bindings.ro.vault"] = _ch_bind(
+                proj.vault_ro_path, f"{GUEST_HOME}/vault/ro"
+            )
+        if proj.vault_rw_path.is_dir():
+            binds["box.bindings.rw.vault"] = _ch_bind(
+                proj.vault_rw_path, f"{GUEST_HOME}/vault/rw"
+            )
+    return binds
+
+
+def _build_core_mounts(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    global_config_path,
+    project_toml,
+    workset_config_path,
+    agent_config_path,
+) -> list:
+    """Resolve the CORE box binds (§2c) and emit them as :class:`Mount`s.
+
+    Injects the core bind table (:func:`_core_default_categories`) through the
+    category resolver as the AGENT level's declared defaults — so home /
+    workspace / vault flow through the same D-B1 precedence + depth-sort + L7
+    guarantee-create path as masks/channels/shares, instead of the hardwired raw
+    ``-v`` strings that ``container.py`` used to assemble.  A box may override or
+    suppress any individual core bind at a more-specific level.
+    """
+    reconciled = _resolve_launch_categories(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        global_config_path=global_config_path,
+        project_toml=project_toml,
+        workset_config_path=workset_config_path,
+        agent_config_path=agent_config_path,
+        default_categories=_core_default_categories(std, proj),
+    )
+    return _emit_reconciled_mounts(reconciled, label="core")
 
 
 def _resolve_config_env(

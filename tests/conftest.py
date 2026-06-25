@@ -8,7 +8,7 @@ import json
 import subprocess
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
@@ -263,10 +263,21 @@ def start_mocks():
             # ``<MagicMock ...>`` directories in the test's CWD.  Stub it to an
             # empty mount set — channel-mount behavior is covered by
             # tests/test_commands/test_start_channels.py with a real ``std``.
-            patch(
-                "kanibako.commands.start._build_channel_mounts",
-                return_value=[],
-            ) as m_build_channel_mounts,
+            # Channel + core box mounts both route through the real category
+            # resolver + L7 guarantee-create (mkdir of every rw source).  Driven
+            # with the MagicMock ``std``/``proj`` here their sources are MagicMock
+            # repr strings the guarantee-create would mkdir as literal
+            # ``<MagicMock ...>`` dirs in the test's CWD.  Stub both to an empty
+            # mount set — channel-mount behavior is covered by
+            # tests/test_commands/test_start_channels.py and core-mount behavior
+            # by tests/test_commands/test_start_core_mounts.py (both with a real
+            # ``std``/``proj``).  Combined in ONE ``patch.multiple`` to stay under
+            # the interpreter's statically-nested-block limit.
+            patch.multiple(
+                "kanibako.commands.start",
+                _build_channel_mounts=DEFAULT,
+                _build_core_mounts=DEFAULT,
+            ) as m_build_mounts,
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("kanibako.commands.start._container_logs", return_value=""),
@@ -304,6 +315,12 @@ def start_mocks():
                 return_value=None,
             ) as m_validate_binary,
         ):
+            # patch.multiple yields auto-created mocks for the DEFAULT entries;
+            # give the two mount-builders an empty return so the launch path
+            # adds no MagicMock-sourced mounts (see comment above).
+            m_build_mounts["_build_channel_mounts"].return_value = []
+            m_build_mounts["_build_core_mounts"].return_value = []
+
             proj = MagicMock()
             proj.is_new = False
             proj.mode = BoxMode.primary
@@ -437,7 +454,8 @@ def start_mocks():
                 launch_check=m_launch_check,
                 validate_binary=m_validate_binary,
                 credsync=m_credsync,
-                build_channel_mounts=m_build_channel_mounts,
+                build_channel_mounts=m_build_mounts["_build_channel_mounts"],
+                build_core_mounts=m_build_mounts["_build_core_mounts"],
             )
 
     return _make

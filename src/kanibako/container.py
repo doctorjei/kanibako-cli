@@ -279,26 +279,23 @@ class ContainerRuntime:
         else:
             tty_flag = "-it" if sys.stdin.isatty() else "-i"
             run_flags = [tty_flag, "--rm", "--userns=keep-id"]
+        # Core box mounts (home / workspace / vault) are NO LONGER assembled
+        # here as hardwired raw ``-v`` strings: they route through the settings
+        # category system (``box.bindings.*``, reconciled in start.py) and arrive
+        # via *extra_mounts* below — the single binding/seed/sync route.  Only the
+        # working directory stays hardwired (it is not a mount).
         cmd: list[str] = [
             self.cmd, "run", *run_flags,
-            # Persistent agent home
-            "-v", f"{shell_path}:/home/agent:Z,U",
-            # Project workspace
-            "-v", f"{project_path}:/home/agent/workspace:Z,U",
-            "-w", "/home/agent/workspace",
+            "-w", _GUEST_WORKSPACE,
         ]
-        # Vault mounts (only if directories exist and vault is enabled)
+        # Local masking: a read-only tmpfs over each box-dest in the
+        # ``box.masks`` category (resolved in start.py, decision B).  The default
+        # mask is ``~/workspace/vault`` (the old single hardcoded vault tmpfs); a
+        # box may add masks or suppress via a terminal "".  The ``.gitignore``
+        # overlay that used to ride on the vault tmpfs is DROPPED (unconditional
+        # mask, no special-case overlay).  Still gated on ``enable_vault`` so a
+        # vault-disabled box hides nothing (unchanged behavior).
         if enable_vault:
-            if vault_ro_path.is_dir():
-                cmd += ["-v", f"{vault_ro_path}:/home/agent/vault/ro:ro"]
-            if vault_rw_path.is_dir():
-                cmd += ["-v", f"{vault_rw_path}:/home/agent/vault/rw:Z,U"]
-            # Local masking: a read-only tmpfs over each box-dest in the
-            # ``box.masks`` category (resolved in start.py, decision B).  The
-            # default mask is ``~/workspace/vault`` (the old single hardcoded
-            # vault tmpfs); a box may add masks or suppress via a terminal "".
-            # The ``.gitignore`` overlay that used to ride on the vault tmpfs is
-            # DROPPED (unconditional mask, no special-case overlay).
             for mask in masks:
                 cmd += ["--mount", f"type=tmpfs,dst={mask},ro"]
         # Extra mounts (target binary mounts, etc.)

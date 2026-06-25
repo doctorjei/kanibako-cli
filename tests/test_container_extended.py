@@ -86,45 +86,57 @@ class TestRunCommandAssembly:
             vault_rw_path=vault_rw,
         )
 
-    def test_volume_mounts(self, tmp_path):
+    def test_core_mounts_not_self_assembled(self, tmp_path):
+        """``run()`` no longer synthesizes the core home/workspace/vault ``-v``
+        from its own kwargs.
+
+        The core box mounts (``box.bindings.*`` §2c) are reconciled in start.py
+        and arrive via *extra_mounts*; ``run()`` must NOT re-derive them from the
+        ``shell_path`` / ``project_path`` / ``vault_*`` kwargs (those kwargs now
+        feed only the host-side stub pre-creation).  The working directory is the
+        sole core path that stays hardwired (it is not a mount)."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
         with patch("kanibako.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
-            # Core mounts
+            # NONE of the core/vault binds are assembled from the run() kwargs.
+            assert f"{kwargs['shell_path']}:/home/agent:Z,U" not in cmd
+            assert f"{kwargs['project_path']}:/home/agent/workspace:Z,U" not in cmd
+            assert f"{kwargs['vault_ro_path']}:/home/agent/vault/ro:ro" not in cmd
+            assert f"{kwargs['vault_rw_path']}:/home/agent/vault/rw:Z,U" not in cmd
+            # The working directory IS still hardwired (it is not a mount).
+            idx = cmd.index("-w")
+            assert cmd[idx + 1] == "/home/agent/workspace"
+
+    def test_core_mounts_arrive_via_extra_mounts(self, tmp_path):
+        """The reconciled core binds are passed through verbatim as ``-v``.
+
+        start.py reconciles home/workspace/vault into Mounts and threads them via
+        *extra_mounts*; ``run()`` emits each through ``to_volume_arg`` like any
+        other extra mount.  This verifies the new single route end-to-end at the
+        container layer."""
+        rt = self._make_rt()
+        kwargs = self._base_kwargs(tmp_path)
+        core = [
+            Mount(source=kwargs["shell_path"], destination="/home/agent",
+                  options="Z,U"),
+            Mount(source=kwargs["project_path"],
+                  destination="/home/agent/workspace", options="Z,U"),
+            Mount(source=kwargs["vault_ro_path"],
+                  destination="/home/agent/vault/ro", options="ro"),
+            Mount(source=kwargs["vault_rw_path"],
+                  destination="/home/agent/vault/rw", options="Z,U"),
+        ]
+        with patch("kanibako.container.subprocess.run") as m_run:
+            m_run.return_value = MagicMock(returncode=0)
+            rt.run("img:latest", extra_mounts=core, **kwargs)
+            cmd = m_run.call_args[0][0]
             assert f"{kwargs['shell_path']}:/home/agent:Z,U" in cmd
             assert f"{kwargs['project_path']}:/home/agent/workspace:Z,U" in cmd
-            # Vault mounts (dirs exist)
             assert f"{kwargs['vault_ro_path']}:/home/agent/vault/ro:ro" in cmd
             assert f"{kwargs['vault_rw_path']}:/home/agent/vault/rw:Z,U" in cmd
-
-    def test_vault_box_dest_is_under_home_vault(self, tmp_path):
-        """The box-side vault dest is ``~/vault/{ro,rw}`` (keyspace §2c), NOT the
-        legacy ``~/share-ro`` / ``~/share-rw``."""
-        rt = self._make_rt()
-        kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
-            m_run.return_value = MagicMock(returncode=0)
-            rt.run("img:latest", **kwargs)
-            cmd_str = " ".join(m_run.call_args[0][0])
-            assert "/home/agent/vault/ro:ro" in cmd_str
-            assert "/home/agent/vault/rw:Z,U" in cmd_str
-            # The legacy box-dest is gone.
-            assert "share-ro" not in cmd_str
-            assert "share-rw" not in cmd_str
-
-    def test_vault_mounts_skipped_when_missing(self, tmp_path):
-        rt = self._make_rt()
-        kwargs = self._base_kwargs(tmp_path, vault_dirs=False)
-        with patch("kanibako.container.subprocess.run") as m_run:
-            m_run.return_value = MagicMock(returncode=0)
-            rt.run("img:latest", **kwargs)
-            cmd = m_run.call_args[0][0]
-            cmd_str = " ".join(cmd)
-            assert "/home/agent/vault/ro" not in cmd_str
-            assert "/home/agent/vault/rw" not in cmd_str
 
     def test_entrypoint_override(self, tmp_path):
         rt = self._make_rt()
@@ -364,7 +376,13 @@ class TestVaultDisabledRun:
             # No tmpfs overlay
             assert "tmpfs" not in cmd_str
 
-    def test_vault_enabled_includes_mounts(self, tmp_path):
+    def test_vault_enabled_includes_tmpfs(self, tmp_path):
+        """With vault enabled the tmpfs mask is emitted.
+
+        The vault ``-v`` binds themselves are reconciled in start.py
+        (``box.bindings.{ro,rw}.vault``, gated there by enable_vault + is_dir())
+        and arrive via *extra_mounts*; ``run()`` no longer self-assembles them.
+        It DOES still emit the enable_vault-gated tmpfs mask overlay."""
         rt = self._make_rt()
         vault_ro = tmp_path / "vault-ro"
         vault_rw = tmp_path / "vault-rw"
@@ -383,6 +401,8 @@ class TestVaultDisabledRun:
             )
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)
-            assert "/home/agent/vault/ro" in cmd_str
-            assert "/home/agent/vault/rw" in cmd_str
+            # Vault binds are NOT self-assembled from kwargs anymore.
+            assert f"{vault_ro}:/home/agent/vault/ro:ro" not in cmd_str
+            assert f"{vault_rw}:/home/agent/vault/rw:Z,U" not in cmd_str
+            # The enable_vault-gated tmpfs mask IS still emitted.
             assert "tmpfs" in cmd_str
