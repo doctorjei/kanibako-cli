@@ -22,6 +22,7 @@ from kanibako.config import (
     load_config,
     load_merged_config,
 )
+from kanibako import core_defaults
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
@@ -2199,8 +2200,10 @@ def _apply_synced_copies(
 # the old tmpfs is DROPPED.)
 #
 # Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
-# the in-code default is a LIST — the resolver iterates it as real entries.
-VAULT_MASK_DEST = ["~/workspace/vault"]
+# the default is a LIST — the resolver iterates it as real entries.  The STATIC
+# value now lives in the shipped system/core defaults file (P6b coalesce); this
+# module is a thin reader (:func:`kanibako.core_defaults.vault_mask_default`).
+VAULT_MASK_DEST = core_defaults.vault_mask_default()
 
 
 def _category_resolution_inputs(
@@ -2455,80 +2458,17 @@ def _resolve_masks(
     return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
 
 
-# In-box channel mount roots (guest paths).  System channels under
-# ``~/channels/``; workset-local channels (primary/named only) under
-# ``~/channels/workset/``; own inbox surfaced at ``~/channels/inbox``.
-_CH_SYSTEM_BASE = "~/channels"
-_CH_WORKSET_BASE = "~/channels/workset"
-
-
-def _ch_bind(host_src, box_dest: str) -> tuple[str, str]:
-    """Build a STRUCTURED ``(host_src, box_dest)`` bind pair for a channel default.
-
-    *host_src* is an already-resolved absolute host path (from the ``channels``
-    helpers).  Per spec §2a a category binding value is a STRUCTURED PAIR (a
-    YAML list / Python tuple), NOT a colon-joined string — so no escaping of a
-    literal ``:`` in the host path is needed (the structured form has no
-    separator to clash with).  :func:`~kanibako.settings_resolve.unpack_bind`
-    consumes this pair directly.
-    """
-    return (str(host_src), box_dest)
-
-
 def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
-    """Build the per-mode channel bind table as ``default_categories`` (§3/§3a).
+    """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f).
 
-    Maps ``box.bindings.rw.<key>`` → a ``host_src:guest_dest`` bind expression for
-    every channel surfaced into THIS box.  Injected through the category resolver
-    (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like masks/shares.
-
-    ALL MODES (system scope): the five system channel type roots
-    (commons/chat/share/mailboxes) plus this box's own inbox double-bind (the SAME
-    host source bound at both ``~/channels/inbox`` and
-    ``~/channels/mailboxes/<ws>/<self>`` — A2) plus its share_global publication
-    dir source.  PRIMARY + NAMED additionally get the three workset-local type
-    roots under ``~/channels/workset/``; STANDALONE OMITS them (A10).
+    Thin reader over :func:`kanibako.core_defaults.channel_default_categories`:
+    the STATIC structure + box-side destinations live in the shipped system/core
+    defaults file (P6b coalesce); the loader injects the runtime-probed host
+    sources.  Injected through the category resolver (D-B1 precedence + depth-sort
+    + L7 guarantee-create) exactly like masks/shares.  PRIMARY + NAMED get the
+    three workset-local roots; STANDALONE OMITS them (A10).
     """
-    from kanibako import channels as _ch
-
-    addr = _ch.box_channel_addresses(proj, std)
-
-    binds: dict[str, tuple[str, str]] = {
-        # System channel type roots (every mode).
-        "box.bindings.rw.global_commons": _ch_bind(
-            std.channels_commons, f"{_CH_SYSTEM_BASE}/commons"
-        ),
-        "box.bindings.rw.global_chat": _ch_bind(
-            std.channels_chat, f"{_CH_SYSTEM_BASE}/chat"
-        ),
-        "box.bindings.rw.global_share": _ch_bind(
-            std.channels_share, f"{_CH_SYSTEM_BASE}/share"
-        ),
-        "box.bindings.rw.mailboxes": _ch_bind(
-            std.channels_mailboxes, f"{_CH_SYSTEM_BASE}/mailboxes"
-        ),
-        # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced
-        # at the (C)-stable path ~/channels/inbox.  The depth-sort lands this
-        # deeper dest after ~/channels/mailboxes — both binds are kept.
-        "box.bindings.rw.inbox": _ch_bind(
-            addr.inbox, f"{_CH_SYSTEM_BASE}/inbox"
-        ),
-    }
-
-    wch = _ch.workset_channel_paths(proj, std)
-    if wch is not None:
-        # Workset-local channels (primary + named only; standalone omits).
-        binds["box.bindings.rw.workset_commons"] = _ch_bind(
-            wch.commons, f"{_CH_WORKSET_BASE}/commons"
-        )
-        binds["box.bindings.rw.workset_chat"] = _ch_bind(
-            wch.chat, f"{_CH_WORKSET_BASE}/chat"
-        )
-        binds["box.bindings.rw.workset_share"] = _ch_bind(
-            wch.share, f"{_CH_WORKSET_BASE}/share"
-        )
-
-    return binds
+    return core_defaults.channel_default_categories(std, proj)
 
 
 def _seed_channel_files(std, proj) -> None:
