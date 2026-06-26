@@ -1311,8 +1311,8 @@ class TestCheckLaunchBaselineUnit:
         issues = start_mod._shadow_issues_path(std, "box1")
         assert issues.is_file()
         assert issues.read_text() == "/home/agent/vault/rw\n/home/agent/.local/bin/foo\n"
-        # Pre-launch warning printed.
-        assert "SHADOW" in capsys.readouterr().err
+        # No pre-launch print: the warning is surfaced once, post-session.
+        assert capsys.readouterr().err == ""
         # Reprint surfaces the dests.
         start_mod._print_shadow_issues(std, "box1")
         err = capsys.readouterr().err
