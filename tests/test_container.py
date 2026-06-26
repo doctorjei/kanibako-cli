@@ -749,6 +749,9 @@ class TestPrecreateMountStubs:
             tmpfs_masks=[],
         )
         assert (shell / "workspace").is_dir()
+        # Vault disabled: no vault dest stubs are created.
+        assert not (shell / "vault" / "ro").exists()
+        assert not (shell / "vault" / "rw").exists()
 
     def test_vault_dirs_created_when_enabled(self, tmp_path):
         from kanibako.container import _precreate_mount_stubs
@@ -793,7 +796,10 @@ class TestPrecreateMountStubs:
         )
         assert (shell / ".secret").is_dir()
 
-    def test_vault_dirs_skipped_when_source_missing(self, tmp_path):
+    def test_vault_dirs_created_even_when_source_missing(self, tmp_path):
+        """Vault is UNIVERSAL unless disabled: the box-side dest stubs are made
+        whenever vault is enabled, regardless of whether the host source exists
+        (the resolver creates the source if missing)."""
         from kanibako.container import _precreate_mount_stubs
         shell = tmp_path / "shell"
         shell.mkdir()
@@ -806,8 +812,8 @@ class TestPrecreateMountStubs:
             vault_rw_path=tmp_path / "missing-rw",
             tmpfs_masks=[],
         )
-        assert not (shell / "vault" / "ro").exists()
-        assert not (shell / "vault" / "rw").exists()
+        assert (shell / "vault" / "ro").is_dir()
+        assert (shell / "vault" / "rw").is_dir()
 
     def test_extra_dir_mount_under_home(self, tmp_path):
         from dataclasses import dataclass

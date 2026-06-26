@@ -675,10 +675,11 @@ def _precreate_mount_stubs(
     # Built-in directory mounts.
     _ensure_dir(shell_path / "workspace")
     if enable_vault:
-        if vault_ro_path.is_dir():
-            _ensure_dir(shell_path / "vault" / "ro")
-        if vault_rw_path.is_dir():
-            _ensure_dir(shell_path / "vault" / "rw")
+        # Vault is UNIVERSAL unless disabled: the host source dirs are created
+        # if missing by the core-defaults resolver, so the box-side dest stubs
+        # are always made whenever vault is enabled.
+        _ensure_dir(shell_path / "vault" / "ro")
+        _ensure_dir(shell_path / "vault" / "rw")
         # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
         # Map each box-dest to its host side the same way extra mounts are
         # mapped (under project_path for workspace dests, shell_path for other
