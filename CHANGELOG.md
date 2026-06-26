@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Bind-shadow warning** — when a box launches and a mount destination already
+  holds content in the box's home, that content is silently *shadowed* by the
+  bind (it stays on disk under the outer home bind but is hidden inside the box).
+  Kanibako now detects this before launch and warns, naming each shadowed
+  destination, so the hidden files don't go unnoticed. The check covers every
+  bind (directories and files), excludes the home/workspace base mounts and
+  intentional masks, and is best-effort (never blocks a launch). The warning is
+  reprinted after the session closes (the tmux alt-screen wipes pre-launch
+  output), matching the baseline-tools warning behavior.
 - **`kanibako rig update [<name>]`** — the everyday "get the latest" path for a
   rig. For a pulled/prefab rig it pulls the newer upstream image; for a
   template/built rig it rebuilds on the refreshed base. With no name it targets
