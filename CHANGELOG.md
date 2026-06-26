@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-26
+
+This release generalizes kanibako's agent-plugin interface so that any agent is
+described by one declarative contract, and ships first-class **Goose** and
+**Codex** agents alongside Claude. The `kanibako` meta-package now installs all
+three by default. It also lands a large **config / settings revamp** (one breaking
+change set) that splits config from settings, renames `crab` → `agent`, restructures
+the `system.*` namespace, unifies worksets, rebuilds the comm system as channels,
+and reworks templates.
+
 ### Added
 
 - **Bind-shadow warning** — when a box launches and a mount destination already
@@ -49,16 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to hide the vault back when it lived inside the workspace; the vault moved out
   of the workspace in 1.6.0, so no mask is applied by default. Boxes can still
   declare explicit tmpfs masks via the `box.masks` (or `<scope>.masks`) category.
-
-## [1.6.0] - 2026-06-17
-
-This release generalizes kanibako's agent-plugin interface so that any agent is
-described by one declarative contract, and ships first-class **Goose** and
-**Codex** agents alongside Claude. The `kanibako` meta-package now installs all
-three by default. It also lands a large **config / settings revamp** (one breaking
-change set) that splits config from settings, renames `crab` → `agent`, restructures
-the `system.*` namespace, unifies worksets, rebuilds the comm system as channels,
-and reworks templates.
 
 ### Changed (BREAKING — config / settings revamp)
 
