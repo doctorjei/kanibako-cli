@@ -30,7 +30,7 @@ class TestEnsureImage:
             patch.object(rt, "pull", return_value=True) as m_pull,
         ):
             rt.ensure_image("test:latest", Path("/containers"))
-            m_pull.assert_called_once_with("test:latest")
+            m_pull.assert_called_once_with("test:latest", quiet=False)
 
     def test_pull_fails_raises_actionable_no_build(self):
         """A pull failure is fatal and actionable -- no local build fallback."""
@@ -61,7 +61,7 @@ class TestEnsureImage:
             patch.object(rt, "pull", return_value=True) as m_pull,
         ):
             rt.ensure_image("test:latest")
-            m_pull.assert_called_once_with("test:latest")
+            m_pull.assert_called_once_with("test:latest", quiet=False)
 
 
 # ---------------------------------------------------------------------------

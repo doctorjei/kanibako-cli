@@ -221,8 +221,9 @@ class ContainerRuntime:
         print(
             f"Rig not found locally. Pulling {image}...",
             file=sys.stderr,
+            flush=True,
         )
-        if self.pull(image):
+        if self.pull(image, quiet=False):
             print("Rig pulled successfully.", file=sys.stderr)
             return
 
