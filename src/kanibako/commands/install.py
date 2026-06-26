@@ -118,16 +118,18 @@ def run(args: argparse.Namespace) -> int:
         )
         if runtime.image_exists(image):
             print("Container rig already exists, skipping.")
-        elif runtime.pull(image):
-            print("Rig pulled from registry!")
         else:
-            print(
-                f"Warning: failed to pull rig '{image}'. Check your "
-                "network/registry access. To use a custom base image, build it "
-                "yourself (see github.com/doctorjei/kanibako-images) and pass "
-                "it via --image or set box_image in your config.",
-                file=sys.stderr,
-            )
+            print(f"Pulling rig {image}...", flush=True)
+            if runtime.pull(image, quiet=False):
+                print("Rig pulled from registry!")
+            else:
+                print(
+                    f"Warning: failed to pull rig '{image}'. Check your "
+                    "network/registry access. To use a custom base image, build "
+                    "it yourself (see github.com/doctorjei/kanibako-images) and "
+                    "pass it via --image or set box_image in your config.",
+                    file=sys.stderr,
+                )
     except Exception as e:
         print(f"Warning: {e}", file=sys.stderr)
         print("Skipping rig setup.")
