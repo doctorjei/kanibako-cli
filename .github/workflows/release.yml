@@ -164,8 +164,12 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # dev path: on-demand (workflow_dispatch) .dev pre-release of the three PyPI
-  # packages. Build + twine-check always; upload only when `publish` is true.
+  # dev path: on-demand (workflow_dispatch) .dev pre-release. Dev-stamps and
+  # builds the 1.5.x train (cli + agent-claude + meta), and ALSO builds
+  # agent-goose + agent-codex at their static pyproject version (not
+  # dev-stamped) and publishes them with skip-existing, so a dev/rc meta
+  # (which pins those agents >= 0.2.0) is always installable from PyPI.
+  # Build + twine-check always; upload only when `publish` is true.
   # Shares this workflow file (and its env `pypi`) so the existing Trusted
   # Publisher applies. The official tag-driven rc->promote flow is untouched.
   # ---------------------------------------------------------------------------
@@ -213,11 +217,17 @@ jobs:
           grep -n '^version = ' pyproject.toml packages/*/pyproject.toml
 
       - name: Build all distributable packages
-        # The dev path is the 1.5.x train only: cli + agent-claude + meta.
-        # agent-goose and agent-codex version independently and are not part
-        # of the .dev pre-release stamping/build.
+        # The 1.5.x train (cli + agent-claude + meta) is dev-stamped above and
+        # built here. agent-goose and agent-codex version independently and are
+        # NOT dev-stamped; they are built below at their static pyproject
+        # version into the same dist/ and published with skip-existing, so a
+        # dev/rc meta (which pins agent-goose/agent-codex >= 0.2.0) is always
+        # installable from PyPI even when those agent versions are unchanged.
         run: |
           for pkg in . packages/agent-claude packages/meta; do
+            python -m build "$pkg" --outdir "$PWD/dist"
+          done
+          for pkg in packages/agent-goose packages/agent-codex; do
             python -m build "$pkg" --outdir "$PWD/dist"
           done
 
@@ -226,8 +236,13 @@ jobs:
 
       - name: Publish to PyPI (dev pre-release)
         # OIDC trusted publishing via the same release.yml Trusted Publisher.
+        # skip-existing lets the independently-versioned agent packages
+        # (agent-goose, agent-codex) be skipped when their static version is
+        # unchanged rather than failing the publish.
         if: ${{ inputs.publish }}
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
   # ---------------------------------------------------------------------------
   # publish-agent path: on-demand (workflow_dispatch with `agent` set) publish
