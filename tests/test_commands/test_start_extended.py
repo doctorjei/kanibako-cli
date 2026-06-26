@@ -1262,8 +1262,13 @@ class TestCheckLaunchBaselineUnit:
         issues = start_mod._launch_issues_path(self._std(tmp_path), "box1")
         assert issues.is_file()
         assert "ripgrep: rg" in issues.read_text()
-        # And printed before launch (bonus).
-        assert "missing baseline tools" in capsys.readouterr().err
+        # No pre-launch print: the warning is surfaced once, post-session.
+        assert capsys.readouterr().err == ""
+        # Reprint surfaces the missing tools.
+        start_mod._print_launch_issues(self._std(tmp_path), "box1")
+        err = capsys.readouterr().err
+        assert "missing baseline tools" in err
+        assert "ripgrep: rg" in err
 
     def test_tier2_clean_clears_stale_state(self, tmp_path, monkeypatch):
         from kanibako.commands import start as start_mod

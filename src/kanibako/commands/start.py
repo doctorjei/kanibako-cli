@@ -414,15 +414,10 @@ def _check_launch_baseline(runtime, image, bootstrap_program, container_name, st
             issues_path.write_text(
                 "\n".join(f"{pkg}: {exe}" for pkg, exe in tier2) + "\n"
             )
-            # Print before launch too (bonus; the alt-screen wipes it, hence we
-            # also reprint after the session closes).
-            print(
-                "Warning: the image is missing baseline tools — the session "
-                "will still launch:",
-                file=sys.stderr,
-            )
-            for pkg, exe in tier2:
-                print(f"  - {pkg}: '{exe}'", file=sys.stderr)
+            # The warning is surfaced exactly once, after the session closes, by
+            # _print_launch_issues (which also covers the reattach path); no
+            # pre-launch print (the alt-screen wipes it and it would multiply on
+            # the first-launch retry).
         else:
             # Clear any stale issues from a previous launch.
             issues_path.unlink(missing_ok=True)
