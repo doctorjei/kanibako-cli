@@ -1,0 +1,6 @@
+#!/bin/sh
+# TESTING-ONLY "dead agent" executable: prints a recognizable marker to stderr
+# and exits non-zero, so a box launched with the DeadTarget plugin always
+# reaches kanibako's crash/death-handling path.  See dead.py.
+echo "dead-agent: crashed on launch (DEAD_AGENT_MARKER) [exit 42]" >&2
+exit 42
