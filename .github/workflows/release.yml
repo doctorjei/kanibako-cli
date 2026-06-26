@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Upload the dev build to PyPI (else build + twine-check only)'
+        description: 'Upload the pre-release to PyPI (dev off a branch, rc off an rc tag). Build + twine-check always run; upload only when true.'
         type: boolean
         default: false
       agent:
@@ -42,7 +42,7 @@ jobs:
 
   rc-pypi-check:
     name: rc - validate PyPI packages (no upload)
-    if: ${{ contains(github.ref_name, '-rc') }}
+    if: ${{ contains(github.ref_name, '-rc') && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -75,7 +75,7 @@ jobs:
 
   rc-release:
     name: rc - draft prerelease
-    if: ${{ contains(github.ref_name, '-rc') }}
+    if: ${{ contains(github.ref_name, '-rc') && github.event_name == 'push' }}
     needs: [rc-pypi-check]
     runs-on: ubuntu-latest
     env:
@@ -164,18 +164,23 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # dev path: on-demand (workflow_dispatch) .dev pre-release. Dev-stamps and
-  # builds the 1.5.x train (cli + agent-claude + meta), and ALSO builds
-  # agent-goose + agent-codex at their static pyproject version (not
-  # dev-stamped) and publishes them with skip-existing, so a dev/rc meta
-  # (which pins those agents >= 0.2.0) is always installable from PyPI.
-  # Build + twine-check always; upload only when `publish` is true.
-  # Shares this workflow file (and its env `pypi`) so the existing Trusted
-  # Publisher applies. The official tag-driven rc->promote flow is untouched.
+  # pre-release path: on-demand (workflow_dispatch) pre-release publish. The
+  # dispatch REF decides the version:
+  #   * a branch (e.g. main)        -> <base>.dev<run_number>  (dev pre-release)
+  #   * an rc tag v<X.Y.Z>-rc<N>    -> the PEP 440 pre-release <X.Y.Z>rc<N>
+  # An rc publishes the DISTINCT <X.Y.Z>rcN version, NEVER the bare <X.Y.Z>
+  # (that is the gated prod promote; a collision + skip-existing would silently
+  # skip the real promote). Stamps and builds the train (cli + agent-claude +
+  # meta), and ALSO builds agent-goose + agent-codex at their static pyproject
+  # version (not stamped) and publishes them with skip-existing, so a dev/rc
+  # meta (which pins those agents >= 0.2.0) is always installable from PyPI.
+  # Build + twine-check always; upload only when `publish` is true. Shares this
+  # workflow file (and its env `pypi`) so the existing Trusted Publisher
+  # applies. The official tag-driven rc->promote flow is untouched.
   # ---------------------------------------------------------------------------
 
   dev:
-    name: dev - build (+ optional publish) a .dev pre-release
+    name: build (+ optional publish) a pre-release - dev off a branch, rc off an rc tag
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.agent == '' }}
     runs-on: ubuntu-latest
     environment: pypi
@@ -191,17 +196,24 @@ jobs:
       - name: Install tooling
         run: pip install build twine
 
-      - name: Compute dev version
-        # Base = repo version with any pre-release suffix stripped; serial =
-        # the run number (monotonic, unique on PyPI).
+      - name: Compute version
+        # The dispatch ref decides the version: an rc tag v<X.Y.Z>-rc<N> builds
+        # the PEP 440 pre-release <X.Y.Z>rc<N> (NEVER the bare <X.Y.Z>, which is
+        # the gated prod promote). A branch builds <base>.dev<run_number>, where
+        # base = repo version with any .dev suffix stripped and the run number
+        # is monotonic + unique on PyPI.
         run: |
-          BASE=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
-          BASE=${BASE%%.dev*}
-          DEV="${BASE}.dev${{ github.run_number }}"
-          echo "DEV_VERSION=$DEV" >> "$GITHUB_ENV"
-          echo "Building dev version: $DEV"
+          REF="${GITHUB_REF_NAME}"
+          if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+            VER="${REF#v}"; VER="${VER/-rc/rc}"            # v1.6.0-rc3 -> 1.6.0rc3 (PEP 440 normalized)
+          else
+            BASE=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/'); BASE=${BASE%%.dev*}
+            VER="${BASE}.dev${{ github.run_number }}"      # branch -> 1.6.0.devN
+          fi
+          echo "DEV_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "Building pre-release version: $VER"
 
-      - name: Stamp dev version (no commit)
+      - name: Stamp pre-release version (no commit)
         # Anchored sed on the package version lines only — NOT bump2version,
         # whose default serialize can't represent a .devN suffix and corrupts
         # the file. `^version = "..."` / `^__version__ = "..."` never match the
