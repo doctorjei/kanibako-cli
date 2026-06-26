@@ -138,12 +138,11 @@ def core_default_categories(
     the category's own default).
 
     home + workspace are UNCONDITIONAL (every box mode).  The vault binds
-    (``scope: vault`` in the file) are CONDITIONAL — emitted only when *enable_vault*
-    AND the probed source dir exists, reproducing TODAY's
-    ``if enable_vault and path.is_dir()`` skip-if-missing behavior EXACTLY (the
-    resolver's L7 mkdir's rw SOURCES unconditionally, so blindly injecting a vault
-    key would start CREATING the source dir — the gate is applied HERE so a missing
-    vault source is simply omitted).
+    (``scope: vault`` in the file) are UNIVERSAL UNLESS DISABLED: emitted whenever
+    *enable_vault* is true, with the probed source dir CREATED IF MISSING here so
+    the bind is ALWAYS emitted (rather than silently dropped when the source
+    happens to be absent).  Only an explicitly DISABLED vault (``enable_vault`` is
+    false) omits the vault binds.
     """
     # Resolve each SYMBOLIC source name from the declarative file to its
     # runtime-probed host path off ``ProjectPaths``.
@@ -160,12 +159,20 @@ def core_default_categories(
 
     binds: dict[str, tuple[str, str, str]] = {}
     for entry in _load_doc().get("core", []):
-        # Vault binds are gated: emit only when vault is enabled AND the probed
-        # source dir exists (today's skip-if-missing behavior).
+        # Vault binds are UNIVERSAL unless explicitly disabled: when vault is
+        # enabled, ensure the probed source dir exists (create-if-missing) so the
+        # bind is ALWAYS emitted, rather than silently dropped when the source
+        # happens to be absent.  Only skip vault when it is disabled.
         if entry.get("scope") == "vault":
-            src_path = vault_dir.get(entry["source"])
-            if not enable_vault or src_path is None or not src_path.is_dir():
+            if not enable_vault:
                 continue
+            src_path = vault_dir.get(entry["source"])
+            if src_path is None:
+                continue  # unknown source name (defensive)
+            # Vault is UNIVERSAL unless disabled: ensure the source dir exists
+            # (create-if-missing) so the bind is always emitted when enabled,
+            # rather than silently dropped when the source happens to be absent.
+            src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
         binds[f"box.{category}.{entry['key']}"] = (
             sources[entry["source"]],

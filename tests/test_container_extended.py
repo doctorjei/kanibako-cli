@@ -152,9 +152,10 @@ class TestRunCommandAssembly:
     def test_vault_mounts_not_built_by_run(self, tmp_path):
         """run() builds no vault ``-v`` regardless of dirs (gate moved to caller).
 
-        The old ``if enable_vault and path.is_dir()`` skip-if-missing gate moved to
-        ``core_defaults.core_default_categories`` (the resolver seam); ``run`` never
-        constructs a vault bind, so none appears no matter the source state.
+        Vault gating lives entirely in ``core_defaults.core_default_categories``
+        (the resolver seam), where vault is UNIVERSAL unless disabled and the source
+        is created-if-missing; ``run`` never constructs a vault bind itself, so none
+        appears here no matter the source state.
         """
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path, vault_dirs=False)

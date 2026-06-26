@@ -853,13 +853,31 @@ class TestCoreDefaultCategories:
         assert "box.bindings.rw.home" in binds
         assert "box.bindings.rw.workspace" in binds
 
-    def test_vault_keys_absent_when_source_missing(self, tmp_path):
+    def test_vault_emitted_and_source_created_when_missing(self, tmp_path):
+        """Vault is UNIVERSAL unless disabled: a missing source is CREATED and the
+        bind is still emitted (create-if-missing), not silently dropped."""
         from kanibako import core_defaults
 
-        proj = _FakeProj(tmp_path, vault_dirs=False)  # vault dirs do NOT exist
+        proj = _FakeProj(tmp_path, vault_dirs=False)  # vault dirs do NOT exist yet
+        assert not proj.vault_ro_path.exists()
+        assert not proj.vault_rw_path.exists()
+
         binds = core_defaults.core_default_categories(None, proj, enable_vault=True)
-        assert "box.bindings.ro.vault" not in binds
-        assert "box.bindings.rw.vault" not in binds
+
+        # The bind is emitted even though the source did not exist...
+        assert binds["box.bindings.ro.vault"] == (
+            str(proj.vault_ro_path),
+            "~/vault/ro",
+            "ro",
+        )
+        assert binds["box.bindings.rw.vault"] == (
+            str(proj.vault_rw_path),
+            "~/vault/rw",
+            "Z,U",
+        )
+        # ...and the missing source dirs were created (create-if-missing).
+        assert proj.vault_ro_path.is_dir()
+        assert proj.vault_rw_path.is_dir()
         assert "box.bindings.rw.home" in binds
         assert "box.bindings.rw.workspace" in binds
 
