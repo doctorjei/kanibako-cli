@@ -612,6 +612,89 @@ class ContainerRuntime:
         return images
 
 
+def _mount_dest_to_host(dest: str, shell_path: Path, project_path: Path) -> Path | None:
+    """Map a box-side mount DEST to its host stub path; None if not under home.
+
+    Destinations under ``/home/agent/workspace/`` map relative to
+    *project_path*; other destinations under ``/home/agent/`` map relative to
+    *shell_path*.  A dest outside the box home returns ``None``.
+    """
+    workspace = GUEST_HOME + "/workspace/"
+    agent_home = GUEST_HOME + "/"
+    if dest.startswith(workspace):
+        return project_path / dest[len(workspace):]
+    if dest.startswith(agent_home):
+        return shell_path / dest[len(agent_home):]
+    return None
+
+
+def detect_shadowed_mounts(
+    shell_path: Path,
+    project_path: Path,
+    extra_mounts: list | None,
+    enable_vault: bool,
+) -> list[str]:
+    """Report box-dests whose pre-existing host content a bind will SHADOW.
+
+    A bind mount whose DEST already holds content silently hides that content
+    inside the box: the files remain on disk under the OUTER home/workspace
+    bind, but the INNER mount shadows them so they are invisible (and untouched)
+    in the box.  This detector inspects each candidate dest's mapped host stub
+    (the OUTER view) and returns the box-dests that already contain content.
+
+    Candidates: the vault ro/rw dests (when *enable_vault*) plus each
+    ``mount.destination`` in *extra_mounts*.  The base roots ``/home/agent`` and
+    ``/home/agent/workspace`` are EXCLUDED — their content IS the box, not
+    something shadowed (in 1.6.0 the home/workspace base binds flow through
+    ``extra_mounts`` too).  Tmpfs masks are not candidates here: masking is
+    intentional hiding, and they are not in *extra_mounts*.
+
+    This function is PURE: it performs no filesystem mutation (no mkdir/touch/
+    unlink/clear-symlink).  All filesystem probes are best-effort and any
+    ``OSError`` skips that dest rather than raising.
+
+    Returns the list of shadowed BOX-DEST strings (e.g. ``/home/agent/vault/rw``).
+    """
+    candidates: list[str] = []
+    if enable_vault:
+        candidates.append(f"{GUEST_HOME}/vault/ro")
+        candidates.append(f"{GUEST_HOME}/vault/rw")
+    for mount in extra_mounts or []:
+        candidates.append(mount.destination)
+
+    base_roots = {GUEST_HOME, f"{GUEST_HOME}/workspace"}
+    shadowed: list[str] = []
+    seen_hosts: set[Path] = set()
+    for dest in candidates:
+        # Skip the base roots (their content IS the box, not shadowed).
+        if dest.rstrip("/") in base_roots:
+            continue
+        host_path = _mount_dest_to_host(dest, shell_path, project_path)
+        if host_path is None:
+            continue
+        try:
+            resolved = host_path.resolve()
+        except OSError:
+            continue
+        if resolved in seen_hosts:
+            continue
+        seen_hosts.add(resolved)
+        try:
+            if host_path.is_symlink():
+                # A symlink stub is not user content; _precreate clears it.
+                continue
+            if host_path.is_dir():
+                if any(host_path.iterdir()):
+                    shadowed.append(dest)
+            elif host_path.is_file():
+                if host_path.stat().st_size > 0:
+                    shadowed.append(dest)
+            # else: missing / socket / fifo -> not shadowed.
+        except OSError:
+            continue  # best-effort; never raise.
+    return shadowed
+
+
 def _precreate_mount_stubs(
     shell_path: Path,
     project_path: Path,
@@ -632,9 +715,6 @@ def _precreate_mount_stubs(
     relative to *project_path*; other destinations under ``/home/agent/``
     are created relative to *shell_path*.
     """
-    AGENT_HOME = GUEST_HOME + "/"
-    WORKSPACE = GUEST_HOME + "/workspace/"
-
     def _clear_symlink(p: Path) -> None:
         """Remove *p* if it is a symlink so a bind lands on a clean mountpoint.
 
@@ -685,12 +765,11 @@ def _precreate_mount_stubs(
         # mapped (under project_path for workspace dests, shell_path for other
         # home dests).  Empty list (the default — no masks) -> no stubs.
         for mask in tmpfs_masks:
-            if mask.startswith(WORKSPACE):
-                _ensure_dir(project_path / mask[len(WORKSPACE):])
-            elif mask.startswith(AGENT_HOME):
-                _ensure_dir(shell_path / mask[len(AGENT_HOME):])
-            else:
+            host_path = _mount_dest_to_host(mask, shell_path, project_path)
+            if host_path is None:
                 logger.debug("mask stub skip (not under home): %s", mask)
+                continue
+            _ensure_dir(host_path)
 
     # Extra mounts: pre-create destination stubs.
     if not extra_mounts:
@@ -698,13 +777,8 @@ def _precreate_mount_stubs(
     for mount in extra_mounts:
         dest = mount.destination
         src = mount.source
-        if dest.startswith(WORKSPACE):
-            rel = dest[len(WORKSPACE):]
-            host_path = project_path / rel
-        elif dest.startswith(AGENT_HOME):
-            rel = dest[len(AGENT_HOME):]
-            host_path = shell_path / rel
-        else:
+        host_path = _mount_dest_to_host(dest, shell_path, project_path)
+        if host_path is None:
             logger.debug("stub skip (not under home): %s → %s", src, dest)
             continue
 

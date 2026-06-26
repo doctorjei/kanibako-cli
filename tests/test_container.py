@@ -1061,6 +1061,121 @@ class TestPrecreateMountStubs:
         assert link.is_dir()
 
 
+class TestDetectShadowedMounts:
+    """Test detect_shadowed_mounts: pure detection of binds shadowing content."""
+
+    @staticmethod
+    def _mount(source, destination, options=""):
+        from kanibako.targets.base import Mount
+        return Mount(source=source, destination=destination, options=options)
+
+    def test_vault_dir_shadow(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # rw vault stub has content; ro is empty (not stubbed at all).
+        (shell / "vault" / "rw").mkdir(parents=True)
+        (shell / "vault" / "rw" / "somefile").write_text("data")
+        result = detect_shadowed_mounts(shell, project, None, enable_vault=True)
+        assert "/home/agent/vault/rw" in result
+        assert "/home/agent/vault/ro" not in result
+
+    def test_empty_first_launch(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        result = detect_shadowed_mounts(shell, project, None, enable_vault=True)
+        assert result == []
+
+    def test_file_dest_shadow_nonempty_reported(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        host_stub = shell / ".local" / "bin" / "foo"
+        host_stub.parent.mkdir(parents=True)
+        host_stub.write_text("x")  # >0 bytes
+        src = tmp_path / "src-foo"
+        src.touch()
+        mounts = [self._mount(src, "/home/agent/.local/bin/foo")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert "/home/agent/.local/bin/foo" in result
+
+    def test_file_dest_zero_byte_not_reported(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        host_stub = shell / ".local" / "bin" / "foo"
+        host_stub.parent.mkdir(parents=True)
+        host_stub.touch()  # 0 bytes
+        src = tmp_path / "src-foo"
+        src.touch()
+        mounts = [self._mount(src, "/home/agent/.local/bin/foo")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert result == []
+
+    def test_base_roots_excluded(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # Give the host home + workspace bases content; they must NOT be warned.
+        (shell / "existing").write_text("home content")
+        (project / "existing").write_text("workspace content")
+        src = tmp_path / "src"
+        src.mkdir()
+        mounts = [
+            self._mount(src, "/home/agent"),
+            self._mount(src, "/home/agent/workspace"),
+        ]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert result == []
+
+    def test_symlink_skipped(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # Host stub is a symlink (a precreate-cleared stub, not user content).
+        bin_dir = shell / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        link = bin_dir / "foo"
+        target = tmp_path / "elsewhere"
+        target.write_text("data")
+        link.symlink_to(target)
+        src = tmp_path / "src-foo"
+        src.touch()
+        mounts = [self._mount(src, "/home/agent/.local/bin/foo")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert result == []
+
+    def test_pure_no_paths_created(self, tmp_path):
+        from kanibako.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        src = tmp_path / "src-foo"
+        src.touch()
+        mounts = [self._mount(src, "/home/agent/.local/bin/foo")]
+        before = set(shell.rglob("*")) | set(project.rglob("*"))
+        detect_shadowed_mounts(shell, project, mounts, enable_vault=True)
+        after = set(shell.rglob("*")) | set(project.rglob("*"))
+        # No mkdir/touch: the candidate stub stays non-existent.
+        assert not (shell / ".local" / "bin" / "foo").exists()
+        assert not (shell / "vault").exists()
+        assert before == after
+
+
 class TestLocalImageMetadata:
     """get_local_created / get_local_tags / get_local_label (via image_inspect)."""
 

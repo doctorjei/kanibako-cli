@@ -23,7 +23,7 @@ from kanibako.config import (
     load_merged_config,
 )
 from kanibako import core_defaults
-from kanibako.container import ContainerRuntime
+from kanibako.container import ContainerRuntime, detect_shadowed_mounts
 from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
@@ -452,6 +452,63 @@ def _print_launch_issues(std, container_name: str) -> None:
         "  Run 'kanibako rig diagnose' to recheck, or rebuild/update the image.",
         file=sys.stderr,
     )
+
+
+def _shadow_issues_path(std, container_name: str) -> Path:
+    """State-file path for a box's bind-shadow warnings.
+
+    Mirrors :func:`_launch_issues_path` (same XDG_STATE call) so the warnings
+    survive the bootstrap session and can be reprinted on exit.
+    """
+    state_home = xdg("XDG_STATE_HOME", ".local/state")
+    return state_home / "kanibako" / f"launch-shadows.{container_name}"
+
+
+def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> None:
+    """Persist + pre-print bind-shadow warnings for *container_name*.
+
+    When *shadowed* is non-empty the dests are written one-per-line to the
+    state file and a pre-launch warning is printed to stderr (the alt-screen
+    wipes it, hence the post-session reprint).  An empty list clears any stale
+    state from a prior launch.  All file ops are best-effort.
+    """
+    issues_path = _shadow_issues_path(std, container_name)
+    try:
+        if shadowed:
+            issues_path.parent.mkdir(parents=True, exist_ok=True)
+            issues_path.write_text("\n".join(shadowed) + "\n")
+            print(
+                "Warning: these mount destinations already contain files in "
+                "this box's home —\n"
+                "the binds will SHADOW them (the files remain on disk but are "
+                "hidden inside the\n"
+                "box). Move or remove them if that is unintended:",
+                file=sys.stderr,
+            )
+            for dest in shadowed:
+                print(f"  - {dest}", file=sys.stderr)
+        else:
+            issues_path.unlink(missing_ok=True)
+    except OSError:
+        pass  # best-effort; never block launch on the state file.
+
+
+def _print_shadow_issues(std, container_name: str) -> None:
+    """Reprint a box's persisted bind-shadow warnings (post-session)."""
+    issues_path = _shadow_issues_path(std, container_name)
+    try:
+        text = issues_path.read_text().strip()
+    except OSError:
+        return
+    if not text:
+        return
+    print(
+        "\nNote: some mounts shadow pre-existing files in this box's home "
+        f"(from {issues_path}):",
+        file=sys.stderr,
+    )
+    for line in text.splitlines():
+        print(f"  - {line}", file=sys.stderr)
 
 
 def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[str, list[str]]:
@@ -1669,6 +1726,13 @@ def _run_container(
             print(virtiofs_msg, file=sys.stderr)
             return 1
 
+        # Warn about binds that will shadow pre-existing host content under the
+        # box home (best-effort; persisted now and reprinted after the session).
+        _shadowed = detect_shadowed_mounts(
+            proj.shell_path, proj.project_path, extra_mounts or None, proj.enable_vault
+        )
+        _persist_shadow_issues(std, container_name, _shadowed)
+
         try:
             # Run the container
             rc = runtime.run(
@@ -1889,6 +1953,7 @@ def _run_container(
         # Surface any tier-2 baseline warnings now that the bootstrap session
         # has closed (the alt-screen has been torn down).
         _print_launch_issues(std, container_name)
+        _print_shadow_issues(std, container_name)
 
         return rc
 

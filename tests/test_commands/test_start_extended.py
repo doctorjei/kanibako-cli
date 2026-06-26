@@ -1300,6 +1300,37 @@ class TestCheckLaunchBaselineUnit:
         assert "missing baseline tools" in err
         assert "ripgrep: rg" in err
 
+    def test_shadow_issues_persist_and_reprint(self, tmp_path, monkeypatch, capsys):
+        from kanibako.commands import start as start_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        std = self._std(tmp_path)
+        dests = ["/home/agent/vault/rw", "/home/agent/.local/bin/foo"]
+        start_mod._persist_shadow_issues(std, "box1", dests)
+        # Persisted one-per-line.
+        issues = start_mod._shadow_issues_path(std, "box1")
+        assert issues.is_file()
+        assert issues.read_text() == "/home/agent/vault/rw\n/home/agent/.local/bin/foo\n"
+        # Pre-launch warning printed.
+        assert "SHADOW" in capsys.readouterr().err
+        # Reprint surfaces the dests.
+        start_mod._print_shadow_issues(std, "box1")
+        err = capsys.readouterr().err
+        assert "shadow pre-existing files" in err
+        assert "/home/agent/vault/rw" in err
+        assert "/home/agent/.local/bin/foo" in err
+
+    def test_shadow_issues_empty_clears_state(self, tmp_path, monkeypatch):
+        from kanibako.commands import start as start_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        std = self._std(tmp_path)
+        issues = start_mod._shadow_issues_path(std, "box1")
+        issues.parent.mkdir(parents=True, exist_ok=True)
+        issues.write_text("/home/agent/vault/rw\n")
+        start_mod._persist_shadow_issues(std, "box1", [])
+        assert not issues.exists()
+
     def test_single_probe_covers_bootstrap_and_baseline(
         self, tmp_path, monkeypatch
     ):
