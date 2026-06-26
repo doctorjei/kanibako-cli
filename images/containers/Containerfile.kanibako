@@ -49,10 +49,17 @@ RUN if command -v pip >/dev/null 2>&1; then \
 # image conveniences, NOT part of the baseline contract. They are absent from
 # seed (min) and fiber (oci); they ship in thread/hair (lxc/vm), where
 # reinstalling them is a no-op.
+#
+# libgomp1 (OpenMP runtime) is a host-provided-agent-binary runtime dep: some
+# goose releases link libgomp.so.1 directly, and the host goose binary is bound
+# into the box, so the box must provide the lib or it fails to load. Cheap
+# (~150 KB) insurance against host-binary/image-lib version skew. A general
+# detect+declare mechanism for such agent deps is tracked separately.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         $(kanibako baseline list) \
         cifs-utils \
         nfs-common \
+        libgomp1 \
         nodejs \
         npm \
     && rm -rf /var/lib/apt/lists/* \
