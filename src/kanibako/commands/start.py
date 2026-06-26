@@ -465,28 +465,19 @@ def _shadow_issues_path(std, container_name: str) -> Path:
 
 
 def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> None:
-    """Persist + pre-print bind-shadow warnings for *container_name*.
+    """Persist bind-shadow warnings for *container_name*.
 
     When *shadowed* is non-empty the dests are written one-per-line to the
-    state file and a pre-launch warning is printed to stderr (the alt-screen
-    wipes it, hence the post-session reprint).  An empty list clears any stale
-    state from a prior launch.  All file ops are best-effort.
+    state file; the warning itself is surfaced exactly once, after the session
+    closes, by :func:`_print_shadow_issues` (which also covers the reattach
+    path).  An empty list clears any stale state from a prior launch.  All file
+    ops are best-effort.
     """
     issues_path = _shadow_issues_path(std, container_name)
     try:
         if shadowed:
             issues_path.parent.mkdir(parents=True, exist_ok=True)
             issues_path.write_text("\n".join(shadowed) + "\n")
-            print(
-                "Warning: these mount destinations already contain files in "
-                "this box's home —\n"
-                "the binds will SHADOW them (the files remain on disk but are "
-                "hidden inside the\n"
-                "box). Move or remove them if that is unintended:",
-                file=sys.stderr,
-            )
-            for dest in shadowed:
-                print(f"  - {dest}", file=sys.stderr)
         else:
             issues_path.unlink(missing_ok=True)
     except OSError:
