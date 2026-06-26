@@ -1,0 +1,6 @@
+#!/bin/sh
+# TESTING-ONLY "live agent": print a recognizable marker, then stay alive so the
+# tmux session persists (lets an interactive test detach with Ctrl-b d and
+# verify the box is kept running + reattachable). See live.py.
+echo "live-agent: ready (LIVE_AGENT_MARKER)"
+exec sleep 600
