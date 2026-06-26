@@ -120,6 +120,33 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
+      # Guarded :edge advance for the rc prerelease. :edge advances iff there is
+      # no current :latest, or the candidate cli_version is >= the version
+      # :latest self-reports (compared on the base X.Y.Z, so the -rcN / .devN
+      # suffix never blocks or confuses the sort). Digest copy of the just-built
+      # rc image — NO rebuild.
+      - name: Advance :edge if candidate >= :latest
+        env:
+          REG: ${{ env.REGISTRY }}
+          OWNER: ${{ github.repository_owner }}
+          VARIANT: ${{ matrix.variant }}
+          CAND_VER: ${{ steps.ver.outputs.cli_version }}
+          RC_TAG: ${{ steps.ver.outputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          PKG="${REG}/${OWNER}/kanibako-${VARIANT}"
+          base() { echo "$1" | sed -E 's/[-.]?(rc|dev)[0-9]+$//'; }
+          latest_ver=$(docker buildx imagetools inspect "${PKG}:latest" \
+            --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
+            2>/dev/null || true)
+          if [ -z "$latest_ver" ] || \
+             [ "$(printf '%s\n%s\n' "$(base "$latest_ver")" "$(base "$CAND_VER")" | sort -V | tail -n1)" = "$(base "$CAND_VER")" ]; then
+            echo "Advancing :edge -> ${PKG}:${RC_TAG} (latest_ver='${latest_ver}', cand='${CAND_VER}')"
+            docker buildx imagetools create --tag "${PKG}:edge" "${PKG}:${RC_TAG}"
+          else
+            echo "Holding :edge (cand '${CAND_VER}' < latest '${latest_ver}'); no advance."
+          fi
+
   # ---------------------------------------------------------------------------
   # promote path: copy the rc manifests to :<ver> and :latest by digest.
   # Gated on a final v<ver> (no -rc) tag push, or a workflow_dispatch supplying
@@ -207,11 +234,15 @@ jobs:
             PKG="${REGISTRY}/${OWNER}/kanibako-${variant}"
             SRC="${PKG}:${RC_TAG}"
             echo "::group::promote kanibako-${variant}"
-            echo "+ docker buildx imagetools create -t ${PKG}:${VER} -t ${PKG}:latest ${SRC}"
+            echo "+ docker buildx imagetools create -t ${PKG}:${VER} -t ${PKG}:latest -t ${PKG}:edge ${SRC}"
+            # :edge tags along to the promote digest so edge is never behind
+            # latest. No guard needed: a release promote is by definition the
+            # newest release.
             docker buildx imagetools create \
               -t "${PKG}:${VER}" \
               -t "${PKG}:latest" \
+              -t "${PKG}:edge" \
               "${SRC}"
             echo "::endgroup::"
           done
-          echo "Promoted all four variants to :${VER} and :latest."
+          echo "Promoted all four variants to :${VER} + :latest + :edge."

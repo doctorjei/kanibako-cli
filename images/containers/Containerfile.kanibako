@@ -10,6 +10,11 @@ ARG VARIANT=oci
 # a release build passes the matching X.Y.Z so image version tracks cli version.
 ARG KANIBAKO_CLI_VERSION=
 
+# Self-report the bundled cli version so :edge / :latest advancement can compare
+# image versions via the label (references the build-arg above; single-stage
+# build so the ARG is in scope here). Empty arg = empty label (latest-on-PyPI).
+LABEL org.opencontainers.image.version="${KANIBAKO_CLI_VERSION}"
+
 USER root
 
 # Rename droste user (UID 1000) to the desired agent username

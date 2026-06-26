@@ -73,3 +73,30 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
+      # Guarded :edge advance. Only when this build was actually pushed. :edge
+      # advances iff there is no current :latest, or the candidate cli_version
+      # is >= the version :latest self-reports (compared on the base X.Y.Z, so a
+      # .devN / -rcN suffix never blocks or confuses the sort). Digest copy of
+      # the just-built version-tagged image — NO rebuild.
+      - name: Advance :edge if candidate >= :latest
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.push }}
+        env:
+          REG: ${{ env.REGISTRY }}
+          OWNER: ${{ github.repository_owner }}
+          VARIANT: ${{ matrix.variant }}
+          CAND_VER: ${{ steps.ver.outputs.cli_version }}
+        run: |
+          set -euo pipefail
+          PKG="${REG}/${OWNER}/kanibako-${VARIANT}"
+          base() { echo "$1" | sed -E 's/[-.]?(rc|dev)[0-9]+$//'; }
+          latest_ver=$(docker buildx imagetools inspect "${PKG}:latest" \
+            --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
+            2>/dev/null || true)
+          if [ -z "$latest_ver" ] || \
+             [ "$(printf '%s\n%s\n' "$(base "$latest_ver")" "$(base "$CAND_VER")" | sort -V | tail -n1)" = "$(base "$CAND_VER")" ]; then
+            echo "Advancing :edge -> ${PKG}:${CAND_VER} (latest_ver='${latest_ver}', cand='${CAND_VER}')"
+            docker buildx imagetools create --tag "${PKG}:edge" "${PKG}:${CAND_VER}"
+          else
+            echo "Holding :edge (cand '${CAND_VER}' < latest '${latest_ver}'); no advance."
+          fi
+
