@@ -1,0 +1,465 @@
+"""Unit tests for block 3 — the eager build-time EXPANSION (settings_expand).
+
+Covers the brief §5 checklist for the pure ``expand(snapshot, ctx) -> KeyStore``:
+
+* transitive multi-hop chain collapses to a terminal regardless of key ORDER
+  (fixpoint / topological);
+* WHOLE-VALUE ``@``-ref inherits the referent's 3-state the FULL chain length —
+  absent → the key is DROPPED; present-None → ``None``;
+* EMBEDDED token → substitution (absent/None → empty), never deletes the key;
+* CYCLE (whole-value AND embedded) → hard ``SettingsError`` with the chain;
+  KEPT DISTINCT from a legitimately absent/None referent (NOT an error);
+* ``host_src`` ``$XDG``/``~`` expand host-side; ``box_dest`` ``$XDG``/``~`` left
+  RAW (deferred — asserted PRESENT) while a ``box_dest`` ``@``-ref IS expanded;
+* escapes preserved; purity — input snapshot unmutated, idempotent on a terminal.
+
+Authority: design §6h / §6a / §6b / §3; spec §0 / §1 / §2c. The pass keys nothing
+by ``box_dest`` (reconcile is §6g) and never merges (block 2b).
+"""
+
+from __future__ import annotations
+
+import copy
+
+import pytest
+
+from kanibako.settings_expand import _is_whole_value_ref, expand
+from kanibako.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
+from kanibako.settings_store import _MISSING, Bind, KeyStore
+
+HOST_HOME = "/home/u"
+
+
+# --------------------------------------------------------------------------- #
+# Helpers                                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def _ctx(
+    *,
+    agent_name: str | None = "claude",
+    workset_name: str | None = "ws",
+    host_home: str = HOST_HOME,
+    xdg: dict[str, str] | None = None,
+) -> ResolveCtx:
+    return ResolveCtx(
+        agent_name=agent_name,
+        workset_name=workset_name,
+        host_home=host_home,
+        xdg=xdg if xdg is not None else {
+            "XDG_DATA_HOME": "/home/u/.local/share",
+            "XDG_STATE_HOME": "/home/u/.local/state",
+        },
+    )
+
+
+def _probe(store: KeyStore, *segments: str) -> object:
+    """Walk *segments* with the unbound-``dict.get`` probe (S3); ``_MISSING`` if
+    any segment is absent (so a present-None leaf differs from an absent one)."""
+    node: object = store
+    for seg in segments:
+        if not isinstance(node, KeyStore):
+            return _MISSING
+        node = dict.get(node, seg, _MISSING)
+    return node
+
+
+# --------------------------------------------------------------------------- #
+# Trivial / purity                                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_empty_snapshot() -> None:
+    assert expand(KeyStore(), _ctx()) == KeyStore()
+
+
+def test_terminal_scalars_unchanged_and_typed() -> None:
+    snap = KeyStore({"a": "plain", "n": 7, "f": 1.5, "b": True, "z": None,
+                     "lst": ["x", "y"]})
+    out = expand(snap, _ctx())
+    assert out["a"] == "plain"
+    assert out["n"] == 7 and out["f"] == 1.5 and out["b"] is True
+    assert out["z"] is None  # present-None scalar terminal is KEPT (§3).
+    assert out["lst"] == ["x", "y"]
+
+
+def test_idempotent_on_already_terminal() -> None:
+    snap = KeyStore({"sys": {"data": "/home/u/.local/share/kanibako"}})
+    out1 = expand(snap, _ctx())
+    out2 = expand(out1, _ctx())
+    assert out1 == out2
+
+
+def test_input_snapshot_not_mutated() -> None:
+    snap = KeyStore({
+        "system": {"data": "$XDG_DATA_HOME/kanibako",
+                   "backup": "@system.data/backup"},
+    })
+    before = copy.deepcopy(snap)
+    out = expand(snap, _ctx())
+    assert snap == before  # S19 — input untouched.
+    assert out is not snap
+    assert out["system"]["backup"] == "/home/u/.local/share/kanibako/backup"
+
+
+def test_fresh_tree_no_aliasing() -> None:
+    snap = KeyStore({"sys": {"x": "term"}})
+    out = expand(snap, _ctx())
+    assert out["sys"] is not snap["sys"]
+
+
+# --------------------------------------------------------------------------- #
+# Host-side $XDG / ~ expansion                                                #
+# --------------------------------------------------------------------------- #
+
+
+def test_host_xdg_and_tilde_expand() -> None:
+    snap = KeyStore({
+        "system": {"data": "$XDG_DATA_HOME/kanibako"},
+        "home_thing": "~/sub",
+    })
+    out = expand(snap, _ctx())
+    assert out["system"]["data"] == "/home/u/.local/share/kanibako"
+    assert out["home_thing"] == "/home/u/sub"
+
+
+def test_braced_xdg_var() -> None:
+    snap = KeyStore({"x": "${XDG_STATE_HOME}/k.sock"})
+    out = expand(snap, _ctx())
+    assert out["x"] == "/home/u/.local/state/k.sock"
+
+
+# --------------------------------------------------------------------------- #
+# Transitive @-ref chains (fixpoint / order-independent)                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_transitive_chain_collapses() -> None:
+    # backup -> @system.data -> $XDG_DATA_HOME terminal (spec §1 chain shape).
+    snap = KeyStore({
+        "system": {
+            "data": "$XDG_DATA_HOME/kanibako",
+            "global": "@system.data/global",
+            "base_template": "@system.global/base_template",
+        },
+    })
+    out = expand(snap, _ctx())
+    assert out["system"]["base_template"] == (
+        "/home/u/.local/share/kanibako/global/base_template"
+    )
+
+
+def test_forward_ref_works_regardless_of_order() -> None:
+    # A points at B which is declared AFTER A in dict order — must still resolve.
+    snap = KeyStore({"a": "@b/x", "b": "@c", "c": "/root"})
+    out = expand(snap, _ctx())
+    assert out["a"] == "/root/x"
+    assert out["b"] == "/root"
+    assert out["c"] == "/root"
+
+
+def test_multi_hop_whole_value_chain() -> None:
+    snap = KeyStore({"a": "@b", "b": "@c", "c": "/leaf"})
+    out = expand(snap, _ctx())
+    assert out["a"] == "/leaf" and out["b"] == "/leaf"
+
+
+# --------------------------------------------------------------------------- #
+# Whole-value 3-state propagation (§6b/§6h)                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_whole_value_absent_drops_key_full_chain() -> None:
+    # a = @b, b = @c, c ABSENT → a and b are both DROPPED (absence full chain).
+    snap = KeyStore({"a": "@b", "b": "@c"})
+    out = expand(snap, _ctx())
+    assert _probe(out, "a") is _MISSING
+    assert _probe(out, "b") is _MISSING
+
+
+def test_whole_value_present_none_propagates_none() -> None:
+    # a = @b, b = @c, c present-None → a, b carry None (the §3 terminal).
+    snap = KeyStore({"a": "@b", "b": "@c", "c": None})
+    out = expand(snap, _ctx())
+    assert _probe(out, "a") is None
+    assert _probe(out, "b") is None
+    assert _probe(out, "c") is None
+
+
+def test_whole_value_resolves_terminal() -> None:
+    snap = KeyStore({"avail": "@workset.enabled", "workset": {"enabled": True}})
+    out = expand(snap, _ctx())
+    assert out["avail"] is True
+
+
+def test_whole_value_ref_to_subtree_fresh_and_expanded() -> None:
+    # Degenerate (no spec form refs a whole subtree) but must be TOTAL: the ref'd
+    # subtree comes back FRESH (not aliased — S19) AND fully expanded.
+    snap = KeyStore({"ref": "@sub", "sub": {"k": "@leaf"}, "leaf": "/v"})
+    out = expand(snap, _ctx())
+    assert out["ref"] == KeyStore({"k": "/v"})  # inner @leaf expanded.
+    assert out["ref"] is not snap["sub"]  # S19 — no aliasing of the input.
+    assert out["ref"]["k"] == "/v" and snap["sub"]["k"] == "@leaf"  # input intact.
+
+
+# --------------------------------------------------------------------------- #
+# Embedded token substitution (§6b) — never deletes the key                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_embedded_absent_token_to_empty_keeps_key() -> None:
+    # container_name-style: an embedded ref to an absent key → "" (key SURVIVES).
+    snap = KeyStore({"name": "kanibako-@box.missing"})
+    out = expand(snap, _ctx())
+    assert _probe(out, "name") == "kanibako-"  # key present, token empty.
+
+
+def test_embedded_present_none_token_to_empty() -> None:
+    snap = KeyStore({"name": "x-@y-z", "y": None})
+    out = expand(snap, _ctx())
+    assert out["name"] == "x--z"
+
+
+def test_embedded_ref_substitutes_value() -> None:
+    snap = KeyStore({"name": "kanibako-@box.id", "box": {"id": "abc"}})
+    out = expand(snap, _ctx())
+    assert out["name"] == "kanibako-abc"
+
+
+def test_if_block_literal_carried_for_downstream_renderer() -> None:
+    # %if% is a downstream RENDER concern, NOT this pass: the embedded @-ref
+    # substitutes; the %...% literal text is carried verbatim (no key deletion).
+    snap = KeyStore({
+        "cn": "kanibako-@box.meta.name%if @box.meta.helper_num: -h-@box.meta.helper_num%",
+        "box": {"meta": {"name": "droste"}},
+    })
+    out = expand(snap, _ctx())
+    # name substitutes; absent helper_num → ""; %if% literal text preserved.
+    assert out["cn"] == "kanibako-droste%if : -h-%"
+
+
+# --------------------------------------------------------------------------- #
+# CONFIG-vs-ENV split on a Bind (S17)                                         #
+# --------------------------------------------------------------------------- #
+
+
+def test_bind_host_expands_box_xdg_deferred() -> None:
+    # host_src: @-ref + ~ expand host-side; box_dest $XDG left RAW (deferred).
+    snap = KeyStore({
+        "workset": {"logs": "/ws/logs"},
+        "box": {"bindings": {"ro": {"helper_log": Bind(
+            "@workset.logs/h.jsonl", "$XDG_STATE_HOME/kanibako/helpers.jsonl",
+        )}}},
+    })
+    out = expand(snap, _ctx())
+    b = out["box"]["bindings"]["ro"]["helper_log"]
+    assert isinstance(b, Bind)
+    assert b.host == "/ws/logs/h.jsonl"
+    # DEFERRED — the box-side $XDG token is PRESENT (raw), not host-expanded.
+    assert b.box == "$XDG_STATE_HOME/kanibako/helpers.jsonl"
+
+
+def test_bind_box_tilde_deferred() -> None:
+    snap = KeyStore({
+        "workset": {"boxes": "/ws/boxes"},
+        "box": {"bindings": {"rw": {"home": Bind("@workset.boxes/home", "~/")}}},
+    })
+    out = expand(snap, _ctx())
+    b = out["box"]["bindings"]["rw"]["home"]
+    assert b.host == "/ws/boxes/home"
+    assert b.box == "~/"  # ~ NOT expanded to GUEST_HOME (deferred box-side).
+    assert b.box != GUEST_HOME + "/"
+
+
+def test_bind_box_at_ref_IS_expanded() -> None:
+    # box_dest @-ref (CONFIG) IS expanded even though $XDG/~ are not.
+    snap = KeyStore({
+        "dest_root": "/box/root",
+        "box": {"bindings": {"rw": {"x": Bind("/h/src", "@dest_root/sub")}}},
+    })
+    out = expand(snap, _ctx())
+    b = out["box"]["bindings"]["rw"]["x"]
+    assert b.host == "/h/src"
+    assert b.box == "/box/root/sub"
+
+
+def test_bind_box_mixed_at_and_xdg() -> None:
+    # box_dest with BOTH an @-ref and a deferred $XDG: @ expands, $XDG stays raw.
+    snap = KeyStore({
+        "seg": "mid",
+        "box": {"bindings": {"rw": {"x": Bind("/h", "$XDG_STATE_HOME/@seg/end")}}},
+    })
+    out = expand(snap, _ctx())
+    b = out["box"]["bindings"]["rw"]["x"]
+    assert b.box == "$XDG_STATE_HOME/mid/end"
+
+
+def test_bind_opts_carried() -> None:
+    snap = KeyStore({"box": {"caches": {"c": Bind("/h", "~/c", "z")}}})
+    out = expand(snap, _ctx())
+    b = out["box"]["caches"]["c"]
+    assert b.opts == "z" and b.box == "~/c"
+
+
+def test_bind_whole_value_host_absent_drops_bind() -> None:
+    # host_src is a whole-value @-ref to an absent key → the bind is DROPPED.
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@missing", "~/x")}}}})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "x") is _MISSING
+
+
+def test_bind_whole_value_host_present_none_carries_none() -> None:
+    snap = KeyStore({
+        "src": None,
+        "box": {"bindings": {"rw": {"x": Bind("@src", "~/x")}}},
+    })
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "x") is None
+
+
+def test_bind_host_xdg_and_tilde_expand_host_side() -> None:
+    # The host half of the asymmetry: host_src $XDG / ~ DO expand host-side.
+    snap = KeyStore({
+        "box": {"bindings": {"rw": {
+            "h": Bind("$XDG_DATA_HOME/kanibako/x", "/box/x"),
+            "t": Bind("~/src", "/box/y"),
+        }}},
+    })
+    out = expand(snap, _ctx())
+    assert out["box"]["bindings"]["rw"]["h"].host == (
+        "/home/u/.local/share/kanibako/x"
+    )
+    assert out["box"]["bindings"]["rw"]["t"].host == "/home/u/src"
+
+
+def test_bind_box_whole_value_absent_ref_raises() -> None:
+    # A whole-value box_dest @-ref to an absent key is unreachable on spec forms
+    # and a mount foot-gun if coerced to "" — so it raises (not silently empty).
+    snap = KeyStore({"box": {"caches": {"c": Bind("/h", "@nope")}}})
+    with pytest.raises(SettingsError) as ei:
+        expand(snap, _ctx())
+    assert "box_dest" in str(ei.value)
+
+
+def test_bind_box_whole_value_present_none_ref_raises() -> None:
+    snap = KeyStore({
+        "d": None,
+        "box": {"caches": {"c": Bind("/h", "@d")}},
+    })
+    with pytest.raises(SettingsError):
+        expand(snap, _ctx())
+
+
+# --------------------------------------------------------------------------- #
+# Cycle detection (§6h / B7) — hard error, with the chain                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_whole_value_cycle_raises_with_chain() -> None:
+    snap = KeyStore({"a": "@b", "b": "@a"})
+    with pytest.raises(SettingsError) as ei:
+        expand(snap, _ctx())
+    msg = str(ei.value)
+    assert "ycl" in msg  # "Cyclic"
+    assert "a" in msg and "b" in msg
+
+
+def test_self_cycle_whole_value_raises() -> None:
+    snap = KeyStore({"a": "@a"})
+    with pytest.raises(SettingsError):
+        expand(snap, _ctx())
+
+
+def test_embedded_cycle_raises() -> None:
+    # B7 — a cycle reached THROUGH an embedded token is also a hard error.
+    snap = KeyStore({"a": "x-@b-y", "b": "p-@a-q"})
+    with pytest.raises(SettingsError) as ei:
+        expand(snap, _ctx())
+    assert "ycl" in str(ei.value).lower() or "cycl" in str(ei.value).lower()
+
+
+def test_mixed_whole_then_embedded_cycle_raises() -> None:
+    snap = KeyStore({"a": "@b", "b": "z-@a"})
+    with pytest.raises(SettingsError):
+        expand(snap, _ctx())
+
+
+def test_absent_ref_is_NOT_a_cycle_error() -> None:
+    # A legit-absent referent is §6b propagation, NOT a cycle — must not raise.
+    snap = KeyStore({"a": "@nope"})
+    out = expand(snap, _ctx())  # no exception.
+    assert _probe(out, "a") is _MISSING
+
+
+# --------------------------------------------------------------------------- #
+# Escapes preserved                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_escaped_at_is_literal() -> None:
+    snap = KeyStore({"x": r"lit-\@notaref"})
+    out = expand(snap, _ctx())
+    assert out["x"] == "lit-@notaref"
+
+
+def test_escaped_dollar_is_literal() -> None:
+    snap = KeyStore({"x": r"\$NOTVAR"})
+    out = expand(snap, _ctx())
+    assert out["x"] == "$NOTVAR"
+
+
+def test_box_side_env_escape_carried_verbatim() -> None:
+    # In the deferred (box) space, an escape of an ENV-significant char (\$ / \~ /
+    # \\) is carried VERBATIM so the BOX resolver sees the same escape and does NOT
+    # re-expand it (the user's "literal, NOT a var" intent must survive to the box).
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("/h", r"~/a\$b")}}}})
+    out = expand(snap, _ctx())
+    assert out["box"]["bindings"]["rw"]["x"].box == r"~/a\$b"
+
+
+def test_box_side_escaped_at_unescaped() -> None:
+    # \@ is still unescaped to @ in defer space: this pass OWNS @-refs on both
+    # sides; the box never processes @, so a literal @ is the correct residue.
+    snap = KeyStore({"box": {"caches": {"c": Bind("/h", r"~/x\@y")}}})
+    out = expand(snap, _ctx())
+    assert out["box"]["caches"]["c"].box == "~/x@y"
+
+
+def test_box_side_braced_var_deferred_verbatim() -> None:
+    # ${VAR} braces are part of the verbatim deferred span (Editor req 2).
+    snap = KeyStore({"box": {"caches": {"c": Bind("/h", "${XDG_CACHE_HOME}/k")}}})
+    out = expand(snap, _ctx(xdg={"XDG_CACHE_HOME": "/host/cache"}))
+    assert out["box"]["caches"]["c"].box == "${XDG_CACHE_HOME}/k"
+
+
+# --------------------------------------------------------------------------- #
+# Whole-value parser (S18) unit                                               #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("@a.b.c", "a.b.c"),
+    ("@x", "x"),
+    ("@a-@b", None),     # two tokens — embedded.
+    ("x@a", None),       # leading literal — embedded.
+    ("@a/c", None),      # trailing literal — embedded.
+    ("@a ", None),       # trailing space — embedded.
+    ("~/x", None),       # environment token, not a ref.
+    ("$VAR", None),
+    ("", None),
+    ("plain", None),
+])
+def test_is_whole_value_ref(value: str, expected: str | None) -> None:
+    assert _is_whole_value_ref(value) == expected
+
+
+# --------------------------------------------------------------------------- #
+# Memoization / diamond (fixpoint, no false cycle)                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_diamond_no_false_cycle() -> None:
+    # d and e both reference b; b is resolved once and reused (no false cycle).
+    snap = KeyStore({"b": "/root", "d": "@b/x", "e": "@b/y"})
+    out = expand(snap, _ctx())
+    assert out["d"] == "/root/x" and out["e"] == "/root/y"
