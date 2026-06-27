@@ -226,6 +226,7 @@ def expand_expr(
     ctx: ResolveCtx,
     lookup: Callable[[str, tuple[str, ...]], str],
     chain: tuple[str, ...] = (),
+    defer_env: bool = False,
 ) -> str:
     """Expand a single path/scalar expression (one bind half).
 
@@ -248,27 +249,62 @@ def expand_expr(
       ref name ends at the first char outside that set.  Cycle-guarded against
       *chain* and capped at :data:`MAX_REF_DEPTH`.  Substitutes
       ``lookup(ref_name, chain + (ref_name,))``; the result is a leaf.
+
+    *defer_env* (default ``False`` — existing callers are byte-for-byte
+    unaffected): when ``True``, the ENVIRONMENT tokens ``~`` and ``$VAR`` /
+    ``${VAR}`` are NOT expanded — they are emitted VERBATIM (the exact source
+    span, ``${...}`` braces included), to be resolved later in a DIFFERENT
+    environment.  ``@``-refs (CONFIG) still expand normally, and escapes are
+    still honored.  This is the box-side deferral of the KeyStore expansion pass
+    (design §6a: ``$XDG``/``~`` name the box environment, host ≠ box, so a
+    ``box_dest`` env token stays deferred — block 3 / S17).  It is additive: with
+    ``defer_env=False`` the scan is identical to before.
     """
     out: list[str] = []
     i = 0
     n = len(expr)
 
-    # Leading ~ → home (only at position 0).
+    # Leading ~ → home (only at position 0). Deferred (verbatim) when defer_env.
     if n > 0 and expr[0] == "~":
-        out.append(ctx.host_home if space == "host" else GUEST_HOME)
+        if defer_env:
+            out.append("~")
+        else:
+            out.append(ctx.host_home if space == "host" else GUEST_HOME)
         i = 1
 
     while i < n:
         c = expr[i]
         if c == "\\":
             if i + 1 < n:
-                out.append(expr[i + 1])
+                nxt = expr[i + 1]
+                # ESCAPES. Host-side: ``\\x`` -> ``x`` (consume the backslash).
+                # Deferred (box-side): an escape of an ENVIRONMENT-significant char
+                # (``$`` / ``~`` / ``\\``) is carried VERBATIM, because the BOX
+                # resolver — not this host pass — re-scans for ``$VAR`` / ``~`` and
+                # must see the same escape to honor the user's "literal, NOT a var"
+                # intent (else ``\\$`` -> ``$`` would be re-expanded box-side,
+                # defeating the escape). ``\\@`` is still unescaped to ``@``: this
+                # pass OWNS ``@``-refs on BOTH sides, the box never processes ``@``,
+                # so a literal ``@`` is the correct box-side residue. (Spec-silent
+                # box-side escape contract — flagged to the director.)
+                if defer_env and nxt in ("$", "~", "\\"):
+                    out.append("\\")
+                    out.append(nxt)
+                else:
+                    out.append(nxt)
                 i += 2
                 continue
             out.append("\\")
             i += 1
             continue
         if c == "$":
+            if defer_env:
+                # Emit the $VAR / ${VAR} span VERBATIM (deferred to box-side). Use
+                # the same name scan as the expander so we know exactly where the
+                # token ends — but emit the source span, not a resolved value.
+                seg, i = _scan_var_span(expr, i)
+                out.append(seg)
+                continue
             seg, i = _expand_var(expr, i, ctx)
             out.append(seg)
             continue
@@ -280,6 +316,30 @@ def expand_expr(
         i += 1
 
     return "".join(out)
+
+
+def _scan_var_span(expr: str, i: int) -> tuple[str, int]:
+    """Return the VERBATIM ``$VAR`` / ``${VAR}`` source span starting at *i* (the
+    ``$``) plus the index past it — for the ``defer_env`` box-side deferral.
+
+    Recognizes the SAME token shape :func:`_expand_var` resolves (so deferral and
+    expansion agree on token boundaries), but emits the source text unchanged
+    (``$XDG_STATE_HOME`` / ``${XDG_STATE_HOME}``) rather than a resolved value. A
+    malformed reference raises identically to :func:`_expand_var` — a deferred
+    token must still be well-formed at build, just not resolved here.
+    """
+    n = len(expr)
+    braced = i + 1 < n and expr[i + 1] == "{"
+    name_start = i + 2 if braced else i + 1
+    m = _VAR_NAME_RE.match(expr, name_start)
+    if m is None:
+        raise SettingsError(f"Malformed variable reference at: {expr[i:]!r}")
+    end = m.end()
+    if braced:
+        if end >= n or expr[end] != "}":
+            raise SettingsError(f"Unterminated ${{...}} reference: {expr[i:]!r}")
+        end += 1
+    return expr[i:end], end
 
 
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]:
