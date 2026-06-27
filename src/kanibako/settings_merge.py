@@ -1,0 +1,299 @@
+"""Cascade MERGE — the depth-sensitive per-name union of the ordered partials.
+
+Block 2b of the KeyStore implementation. ONE pure function,
+:func:`merge`, walks block 2a's ordered ``list[KeyStore]`` partials
+(MOST-SPECIFIC-FIRST, S8) and produces ONE raw merged snapshot plus the
+required-override diagnostics. It is PURE: no file / env / clock access, same
+input → same output, and it NEVER mutates its input partials (S15) — it builds a
+fresh :class:`~kanibako.settings_store.KeyStore`.
+
+It is the depth-sensitive successor to ``settings_resolve.resolve_value``'s
+most-specific-first winner-take-all (which used ``""`` as a terminal + a separate
+``defaults`` pass): here the 3-state ``_MISSING`` / present-``None`` model
+replaces both (2a already folded the floor INTO the ``base`` level, so there is no
+separate defaults dict). This module does NOT touch ``resolve_value`` /
+``SettingsResolver`` / ``start.py`` — it builds ALONGSIDE them (the swap is block 7).
+
+OUT of scope (hard boundaries): NO ``@``-ref / ``$var`` / ``~`` expansion or cycle
+detection (block 3 — refs stay RAW), NO ``reconcile_categories`` / ``box_dest``
+collision logic (the SEPARATE downstream pass, §6g — 2b keys by NAME only), NO
+typed views (block 4), NO ``config set`` (block 5), NO consumer swap (block 7).
+
+Authority
+---------
+* ``~/vault/rw/keystore-design.md`` §6e (depth-sensitive merge — PRIMARY): per-NAME
+  recursive union of subtrees; a LEAF (scalar / ``list`` / :class:`Bind`) is
+  replaced WHOLE by the highest-precedence scope that SETS it; "sets" is tested
+  with the ``_MISSING`` sentinel (NOT truthiness) at EVERY named leaf. **§3** (the
+  3-state ``None`` + the present-``None`` TERMINAL type-split). **§6f** (``masks``
+  rides the SAME generic dict-merge). **§4** (cascade order; ``required`` last /
+  winning + its override WARNING). **§6g** (merge keys by NAME, distinct from
+  reconcile which keys by ``box_dest``).
+* Spec ``settings-keyspace-1.6.0-target.md`` §2 (cascade + ``required`` override
+  warning) / §2a (the category list + per-name coexistence) / §2c.
+
+Seams realized here (``plans/keystore-blocks/SEAMS.md``)
+-------------------------------------------------------
+* **S3** — presence is the UNBOUND ``dict.get(level, name, _MISSING) is not
+  _MISSING`` probe, never the bound ``.get`` (a key named ``get`` would shadow the
+  method into a crash) and never truthiness (a leaf set to ``0`` / ``""`` /
+  ``False`` still SETS and wins).
+* **S10** (realized) — the ``required``-override WARNING is RETURNED through a
+  diagnostics channel, NOT printed to stderr (the unified-warnings-LOG is a
+  backlog item).
+* **S15** — the merge does NOT mutate its input partials; it builds a fresh tree.
+* **S16** — category-awareness keys off the SAME ``_BIND_CATEGORIES`` / ``masks``
+  segment rule block 2a uses (reused here, single-source — not re-derived).
+"""
+
+from __future__ import annotations
+
+from kanibako.settings_assemble import _BIND_CATEGORIES
+from kanibako.settings_store import _MISSING, KeyStore, StoreValue
+
+# The scope-category segment whose present-None leaf means UNMASK (not a scalar
+# reset). S16 — reuse 2a's category awareness; ``masks`` is the one keyed
+# bool|None category (S5), the bind-shaped categories are ``_BIND_CATEGORIES``.
+_MASKS_SEGMENT = "masks"
+
+# The agent-tier discriminator collapses to the bare ``agent`` token in 2a, so the
+# index of the ``required`` level in the MOST-SPECIFIC-FIRST list is simply 0 — but
+# the merge never relies on a positional index: ``required`` is identified by the
+# FIRST level in the ordered list (the cap, S8). The warning fires when that level
+# SETS a name that a strictly-lower level also SET.
+
+
+def merge(levels: list[KeyStore]) -> tuple[KeyStore, list[str]]:
+    """Merge the ordered cascade partials into ONE raw snapshot + diagnostics.
+
+    *levels* is block 2a's ``list[KeyStore]``, MOST-SPECIFIC-FIRST (S8):
+    ``[required, box, workset, agent.<active>, agent.default, system, base]``.
+    The first level is the non-overridable ``required`` cap; the merge walks names
+    across the partials and, for each NAME at each depth, applies the
+    depth-sensitive rule (§6e / §3):
+
+    * **absent everywhere** (``_MISSING`` at every level) → not in the snapshot.
+    * the highest-precedence setter's value AND a lower setter's value are both
+      :class:`KeyStore` subtrees → RECURSE (per-name union of those subtrees); a
+      lower NON-subtree value at the same name is shadowed by the higher subtree.
+    * otherwise the **highest-precedence scope that SETS the name wins** (presence
+      tested via the UNBOUND ``dict.get(level, name, _MISSING) is not _MISSING``,
+      S3 — never truthiness, never the bound ``.get``); its leaf
+      (scalar / ``list`` / :class:`Bind`) replaces any lower value atomically.
+    * **present-None TERMINAL** (the type-split, §3, keyed by the name's CATEGORY
+      via its PATH, S16): a present-``None`` winner SETS the name (clears lower
+      scopes), and the snapshot result depends on the category —
+      ``scalar leaf`` → KEEP ``None`` (the consumer applies its default);
+      ``bind / category leaf`` → OMIT (no mount; build-4 tier-2 honesty, §5);
+      ``masks leaf`` → OMIT (unmask that path; §6f).
+
+    Returns ``(snapshot, warnings)``. *warnings* is the diagnostics channel: one
+    string per ``required``-override (S10) — fired when the ``required`` level SETS
+    a name that a strictly-lower level ALSO SET (it overrode a user value). The
+    caller surfaces them (the unified-warnings-LOG); the merge NEVER prints.
+
+    PURE: no I/O; ``@``-ref / ``$var`` / ``~`` tokens stay RAW (expansion is block
+    3); the input partials are NOT mutated (S15). An empty *levels* list → an empty
+    snapshot and no warnings.
+    """
+    warnings: list[str] = []
+    # ``required`` is the cap = the FIRST (most-specific) level (S8). Identify it by
+    # IDENTITY so the override warning can be attributed at the precise leaf it wins,
+    # threading the required SUBTREE down through recursion. An empty list → no cap.
+    required = levels[0] if levels else None
+    snapshot = _merge_nodes(
+        levels, path=(), warnings=warnings, required_node=required
+    )
+    return snapshot, warnings
+
+
+def _is_set(level: KeyStore, name: str) -> bool:
+    """Is *name* SET at this *level*? (S3 — the canonical presence probe.)
+
+    Uses the UNBOUND ``dict.get(level, name, _MISSING)`` — NEVER the bound
+    ``level.get`` (a key literally named ``get`` shadows the method into a crash)
+    and NEVER truthiness (a leaf set to ``0`` / ``""`` / ``False`` / present-``None``
+    still SETS the name and must win). Absent ⇒ ``_MISSING`` ⇒ ``False``.
+    """
+    return dict.get(level, name, _MISSING) is not _MISSING
+
+
+def _names_in_order(levels: list[KeyStore]) -> list[str]:
+    """The union of every name SET across *levels*, in first-seen MOST-SPECIFIC
+    order (deterministic — purity). A name SET at several levels appears once, at
+    its most-specific occurrence; iteration order within a level follows insertion
+    (``dict`` order) so the same input always yields the same snapshot key order.
+    """
+    seen: dict[str, None] = {}
+    for level in levels:
+        # dict.keys(level) — NOT level.keys() — collision-safe (S3 general rule).
+        for name in dict.keys(level):
+            if name not in seen:
+                seen[name] = None
+    return list(seen)
+
+
+def _merge_nodes(
+    levels: list[KeyStore],
+    *,
+    path: tuple[str, ...],
+    warnings: list[str],
+    required_node: KeyStore | None,
+) -> KeyStore:
+    """Merge a list of co-located :class:`KeyStore` nodes (MOST-SPECIFIC-FIRST) at
+    *path* into ONE fresh node. *levels* are the same-position subtrees being
+    unioned (the whole partial list at the root, or the KeyStore-valued levels at a
+    name during recursion). *path* is the scope-qualified segment trail to this
+    node (for the §3 / S16 category type-split). *warnings* accrues S10 diagnostics.
+
+    *required_node* is THIS depth's slice of the ``required`` cap (the cap subtree
+    co-located with this node), or ``None`` when the cap does not reach here. The
+    override warning (S10) fires at the precise LEAF where the cap's value WINS and
+    a strictly-lower level ALSO SET that leaf — named by the full dotted path. It is
+    attributed by IDENTITY (``is required_node``), never by position, so it survives
+    the agent-token collapse and any ordering.
+    """
+    out = KeyStore()
+    for name in _names_in_order(levels):
+        # Setters for this name, MOST-SPECIFIC-FIRST, paired with their value.
+        setters = [
+            (level, dict.get(level, name)) for level in levels if _is_set(level, name)
+        ]
+        # setters is non-empty (name came from the union of set names).
+        winning_level, winning_val = setters[0]
+
+        # The cap's co-located value at this name (for descent + the S10 warning).
+        # ``_MISSING`` when the cap does not set this name here.
+        req_val = (
+            dict.get(required_node, name, _MISSING)
+            if required_node is not None
+            else _MISSING
+        )
+        cap_wins = required_node is not None and winning_level is required_node
+
+        # RECURSE only when the winner is a subtree AND at least one LOWER setter is
+        # also a subtree (§6e). A lower non-subtree value at this name is shadowed by
+        # the higher subtree. The cap descends iff its co-located value is a subtree
+        # too (else the cap "wins" this name as an atomic leaf, handled below).
+        subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
+        if isinstance(winning_val, KeyStore) and len(subtrees) > 1:
+            child_required = req_val if isinstance(req_val, KeyStore) else None
+            out[name] = _merge_nodes(
+                subtrees,
+                path=(*path, name),
+                warnings=warnings,
+                required_node=child_required,
+            )
+            continue
+
+        # LEAF: the winner replaces whole. The S10 warning fires when the cap wins
+        # this leaf over a strictly-lower setter (len(setters) > 1 ⇒ a lower scope
+        # also SET it). Emitted here, at the winning leaf, with its full dotted key.
+        if cap_wins and len(setters) > 1:
+            warnings.append(
+                _required_override_warning((*path, name), winning_val)
+            )
+
+        # Apply the present-None type-split (§3) to a present-None leaf winner.
+        if winning_val is None:
+            kept = _resolve_present_none(path=(*path, name))
+            if kept is _OMIT:
+                continue  # bind/category/masks present-None → OMIT from snapshot.
+            out[name] = None  # scalar present-None → KEEP None (consumer default).
+            continue
+
+        # A KeyStore winner with NO lower subtree to union (the recursion branch did
+        # not fire) is still a SUBTREE: deep-copy it so the snapshot never ALIASES an
+        # input partial (S15 — the snapshot must be a fresh tree, immune to a later
+        # in-place edit leaking back into a partial). A non-KeyStore leaf is
+        # immutable (Bind tuple / str / int / bool / None) or a fresh ``list`` ref.
+        if isinstance(winning_val, KeyStore):
+            out[name] = _deep_copy_store(winning_val)
+            continue
+        if isinstance(winning_val, list):
+            out[name] = list(winning_val)  # fresh list — never alias the input.
+            continue
+        out[name] = winning_val  # scalar / Bind — immutable, stored verbatim.
+    return out
+
+
+def _deep_copy_store(store: KeyStore) -> KeyStore:
+    """Deep-copy a :class:`KeyStore` subtree into a fresh, non-aliasing tree (S15).
+
+    Recurses into nested KeyStores and copies ``list`` leaves; immutable leaves
+    (``Bind`` tuples, scalars, ``None``) are shared safely. Uses unbound ``dict``
+    iteration (S3) so a key named ``keys`` / ``items`` cannot shadow the protocol.
+    """
+    out = KeyStore()
+    for key in dict.keys(store):
+        val = dict.__getitem__(store, key)
+        if isinstance(val, KeyStore):
+            out[key] = _deep_copy_store(val)
+        elif isinstance(val, list):
+            out[key] = list(val)
+        else:
+            out[key] = val
+    return out
+
+
+def _required_override_warning(
+    path: tuple[str, ...], value: StoreValue
+) -> str:
+    """Format the S10 ``required``-override diagnostic for the leaf at *path*.
+
+    Names the dotted key and the value the cap forced it to (spec §2 "which key,
+    what it became"). A pure string builder — the caller routes it to the
+    unified-warnings-LOG; the merge never prints (S10).
+    """
+    key = ".".join(path)
+    if value is None:
+        became = "<None> (reset)"
+    else:
+        became = repr(value)
+    return (
+        f"required scope overrode a user-set value for {key!r}: now {became}"
+    )
+
+
+class _Omit:
+    """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot
+    (a bind / category / masks reset — no default to synthesize, §3). Module-private,
+    never stored, distinct from :data:`_MISSING` (absence) and from present-``None``
+    (a kept scalar reset).
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return "_OMIT"
+
+
+_OMIT = _Omit()
+
+
+def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
+    """Classify a present-``None`` leaf at *path* by CATEGORY (the §3 type-split,
+    keyed by PATH per S16 — the SAME ``_BIND_CATEGORIES`` / ``masks`` segment rule
+    block 2a uses). Returns :data:`_OMIT` for a bind / category / masks leaf (drop
+    it — no mount / unmask) or ``None`` for a scalar leaf (keep it — consumer
+    default).
+
+    *path* is the full segment trail to the leaf. A leaf is a category leaf when
+    EITHER an ANCESTOR segment is a bind category / ``masks`` (an ENTRY reset like
+    ``bindings.rw.foo = None`` / ``masks./p = None`` — the same "any ancestor is a
+    category" test 2a's ``_insert_dotted`` uses) OR the leaf's OWN segment IS a
+    category (a whole-CATEGORY-ROOT reset like ``bindings = None`` / ``caches =
+    None`` / ``masks = None``). The root case keeps the §5 tier-2 coupling honest:
+    a category accessor promises ``Mapping`` / ``set``, so a present-``None`` at the
+    category root must OMIT (drop the whole category), never KEEP a bare ``None``
+    where a mapping is contracted. Design §3 spells the ENTRY case; the ROOT case is
+    its consistent extension (the design is silent on a whole-category reset — flag
+    raised in chat). A non-category scalar leaf → KEEP ``None``.
+    """
+    own = path[-1] if path else ""
+    ancestors = path[:-1]
+    if own in _BIND_CATEGORIES or own == _MASKS_SEGMENT:
+        return _OMIT  # whole-category-root reset → drop the category.
+    if any(seg in _BIND_CATEGORIES for seg in ancestors):
+        return _OMIT  # an entry under a bind category (incl. bindings.ro/rw).
+    if _MASKS_SEGMENT in ancestors:
+        return _OMIT  # a masks path entry → unmask.
+    return None
