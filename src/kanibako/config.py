@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from kanibako.config_io import dump_doc, load_doc
-from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsResolver
 
 
 # ---------------------------------------------------------------------------
@@ -598,109 +596,9 @@ def setup_nudge_message(config_path: Path | None) -> str | None:
     return None
 
 
-def load_settings(
-    agent_name: str,
-    *,
-    system_path: Path | None,
-    agent_state: Mapping[str, str] | None = None,
-    workset_path: Path | None = None,
-    box_path: Path | None = None,
-    agent_path: Path | None = None,
-    floor: Mapping[str, str] | None = None,
-    host_home: str | None = None,
-    workset_name: str | None = None,
-    xdg: dict[str, str] | None = None,
-) -> SettingsResolver:
-    """Assemble the behavior-settings cascade into a :class:`SettingsResolver`.
-
-    This is the unifying READ-path for behavior settings.  It builds the ordered
-    ``list[LevelView]`` (MOST-SPECIFIC-FIRST, as :func:`resolve_value` expects)
-    for the 5-tier cascade plus the non-overridable ``required`` cap (decision
-    D):
-
-        settings_base < system < agent.<agent> < workset < box < settings_required
-
-    * ``settings_base``     — ``/etc/kanibako/settings_base.yaml`` (defaults; lowest).
-    * ``system``            — the system-level settings file.
-    * ``agent.<agent>``     — the per-agent settings tier.
-    * ``workset``           — the workset settings file.
-    * ``box``               — the box/project settings file.
-    * ``settings_required`` — ``/etc/kanibako/settings_required.yaml``;
-      **non-overridable**, applied ABOVE box so it wins over everything.
-
-    ⚑ TRANSITIONAL FILE MAPPING (the new per-scope ``settings.yaml`` LAYOUT is
-    Phase 5 — files are NOT moved here; only re-pointed there).  Each tier pulls
-    its set-values from the CURRENT on-disk locations via the existing
-    :func:`read_agent_settings` reader (which already layers
-    ``agent.default`` < ``agent.<agent>`` within a single file).  Phase 5 only
-    re-points these paths:
-
-    * ``settings_base`` tier  → ``/etc/kanibako/settings_base.yaml``  (NEW;
-      additive — empty by default, so its absence preserves current behavior).
-    * ``system`` tier  → *system_path* = ``@system.settings`` =
-      ``global/settings.yaml`` (the ``std.settings`` path), ``[agent]`` table.
-      This is the SYSTEM tier of the SETTINGS cascade — distinct from the
-      ``~/.config/kanibako.yaml`` CONFIG file (which holds only ``system.*``
-      layout/path keys).
-    * ``agent.<agent>`` tier → *agent_state* (the per-agent state dict, already
-      ``agent.<name>``-keyed, loaded from ``agents/<name>/settings.yaml``)
-      overlaid by
-      *agent_path*'s ``[agent]`` table if supplied.
-    * ``workset`` tier → *workset_path* = today's workset ``config.yaml``.
-    * ``box`` tier → *box_path* = today's box/project ``settings.yaml`` ``[agent]``
-      table.
-    * ``settings_required`` tier → ``/etc/kanibako/settings_required.yaml``  (NEW;
-      additive — empty by default).
-
-    *floor* (the target's declared-default ``{key: default}``) is attached as the
-    ``settings_base`` level's declared defaults — set-values at any tier beat it,
-    and it is the ultimate fallback.  *agent_state* and *floor* are optional so
-    callers that only have files can omit them.  Absent optional file layers
-    contribute an empty :class:`LevelView` (skipped during resolution).
-    """
-    def _read(path: Path | None) -> dict[str, str]:
-        if path is None:
-            return {}
-        try:
-            if not path.exists():
-                return {}
-            return read_agent_settings(path, agent_name)
-        except Exception:
-            return {}
-
-    # agent tier: the per-agent state dict, overlaid by an explicit agent file.
-    agent_vals: dict[str, str] = dict(agent_state or {})
-    agent_vals.update(_read(agent_path))
-
-    base_vals = _read(settings_base_path())
-    required_vals = _read(settings_required_path())
-
-    # MOST-SPECIFIC-FIRST: required (cap) > box > workset > agent > system > base.
-    levels = [
-        LevelView("settings_required", required_vals),
-        LevelView("box", _read(box_path)),
-        LevelView("workset", _read(workset_path)),
-        LevelView("agent", agent_vals),
-        LevelView("system", _read(system_path)),
-        LevelView("settings_base", base_vals, defaults=dict(floor or {})),
-    ]
-
-    ctx = ResolveCtx(
-        agent_name=agent_name,
-        workset_name=workset_name,
-        host_home=host_home if host_home is not None else str(Path.home()),
-        xdg=xdg or {},
-    )
-    return SettingsResolver(levels, ctx)
-
-
-# Pseudo / catch-all agents that are NOT real launchable agents: ``no_agent``
-# is the built-in shell fallback target (entry-point registered, so it appears
-# in ``discover_targets``); ``general`` is the no-agent settings-namespace label
-# (NOT a registered target today, included defensively).  They are EXCLUDED from
-# the implicit installed-count rule (so a host with one real agent + no_agent is
-# unambiguous, not "2+"), but remain EXPLICITLY selectable via the cascade
-# (``--agent no_agent`` / ``box.agent``).
+# Pseudo-agents are DISCOUNTED from the implicit installed-count rule (so a host
+# with one real agent + no_agent is unambiguous, not "2+"), but remain EXPLICITLY
+# selectable via the cascade (``--agent no_agent`` / ``box.agent``).
 _PSEUDO_AGENTS = frozenset({"no_agent", "general"})
 
 
@@ -786,56 +684,6 @@ def resolve_agent(
         "No agent selected; run 'kanibako setup' to select one or "
         "'kanibako shell' to access the container via command shell."
     )
-
-
-def resolve_and_load_settings(
-    *,
-    explicit_agent: str | None,
-    box_agent: str | None,
-    workset_agent: str | None,
-    system_default_path: Path | None,
-    project_path: Path | None = None,
-    agent_state: Mapping[str, str] | None = None,
-    workset_path: Path | None = None,
-    box_path: Path | None = None,
-    agent_path: Path | None = None,
-    floor: Mapping[str, str] | None = None,
-    host_home: str | None = None,
-    workset_name: str | None = None,
-    xdg: dict[str, str] | None = None,
-) -> tuple[str, SettingsResolver]:
-    """Resolve the agent name (cascade + installed-count), then load its settings.
-
-    The two-pass mechanism (§Design 6): the agent NAME must be resolved FIRST,
-    because the settings cascade has a per-agent tier (``agent.<name>``)
-    sandwiched between ``system`` and ``workset``/``box``.  :func:`load_settings`
-    already builds that cascade correctly given the name, with workset/box tiers
-    MORE specific than the agent tier — so a box/workset override naturally
-    re-applies ON TOP of the agent default (precedence box > workset > agent).
-
-    Returns ``(agent_name, resolver)``.  Resolution failures propagate from
-    :func:`resolve_agent` (typed :class:`~kanibako.errors.AgentResolutionError`).
-    """
-    name = resolve_agent(
-        explicit_agent=explicit_agent,
-        box_agent=box_agent,
-        workset_agent=workset_agent,
-        system_default_path=system_default_path,
-        project_path=project_path,
-    )
-    resolver = load_settings(
-        name,
-        system_path=system_default_path,
-        agent_state=agent_state,
-        workset_path=workset_path,
-        box_path=box_path,
-        agent_path=agent_path,
-        floor=floor,
-        host_home=host_home,
-        workset_name=workset_name,
-        xdg=xdg,
-    )
-    return name, resolver
 
 
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:
@@ -951,93 +799,6 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
             out[key] = str(v)
     return out
 
-
-def _flatten_categories(data: dict, prefix: str = "") -> dict[str, object]:
-    """Flatten nested config into DOTTED-key form, PRESERVING structured leaves.
-
-    Like :func:`_flatten_dotted`, but a leaf that is a YAML list / tuple is kept
-    AS-IS instead of being ``str()``-coerced.  This is the load-side half of the
-    keyspace REPRESENTATION restoration (spec §2a): a category binding value is a
-    structured pair/tuple (``[host_src, box_dest]`` / ``[host_src, box_dest,
-    options]``) or a ``masks`` list (``[box_dest, ...]``) — NEVER a colon-joined
-    string.  Coercing it to ``str()`` here is exactly what destroyed the specced
-    shape (Audit 1 root cause).  Preserving the list/tuple lets the structured
-    value survive to the resolver UNCHANGED.
-
-    Scalar leaves keep the historic ``str()`` behavior (e.g. ``env`` values, and
-    the legacy colon-string bind form which is itself a scalar — it passes
-    through untouched).  Dicts are recursed as before.
-    """
-    out: dict[str, object] = {}
-    for k, v in data.items():
-        key = f"{prefix}.{k}" if prefix else k
-        if isinstance(v, dict):
-            out.update(_flatten_categories(v, key))
-        elif isinstance(v, (list, tuple)):
-            # Structured leaf (binding pair/tuple, masks list): preserve verbatim.
-            out[key] = v
-        else:
-            out[key] = str(v)
-    return out
-
-
-def read_categories(path: Path | None) -> dict[str, object]:
-    """Read scope-category keys (the unified primitive) from a config file as a
-    flat dotted-key dict. Missing/None/unreadable path → {}.
-
-    Recognizes all eight category shapes: ``{scope}.masks``,
-    ``{scope}.bindings.{ro,rw}.{name}``, ``{scope}.caches.{name}``,
-    ``{scope}.seeded.{name}``, ``{scope}.shared.{name}``,
-    ``{scope}.synced.{name}``, ``{scope}.env.{VAR}``.
-
-    Values are returned with their ON-DISK shape PRESERVED: a structured binding
-    pair/tuple (``[host_src, box_dest[, options]]``) or a ``masks`` list survives
-    as a ``list``/``tuple`` (spec §2a — the load-bearing representation); a scalar
-    value (an ``env`` value, or the legacy colon-string bind form) stays a ``str``.
-    """
-    from kanibako.settings_categories import is_category_key
-
-    if path is None:
-        return {}
-    try:
-        if not path.exists():
-            return {}
-        data = load_doc(path)
-    except Exception:
-        return {}
-    flat = _flatten_categories(data)
-    return {k: v for k, v in flat.items() if is_category_key(k)}
-
-
-def read_shares(path: Path | None) -> dict[str, object]:
-    """Read scoped-binding keys ({scope}.bindings.{ro,rw}.{name}) from a config
-    file as a flat dotted-key dict. Missing/None/unreadable path → {}.
-
-    Compatibility filter over :func:`read_categories` for the launch path's
-    share-mount wrapper (:func:`kanibako.settings_shares.resolve_shares`).
-    Values keep their on-disk shape (structured pair/tuple or scalar) per
-    :func:`read_categories`.
-    """
-    from kanibako.settings_shares import is_share_key
-
-    return {k: v for k, v in read_categories(path).items() if is_share_key(k)}
-
-
-def read_seeds(path: Path | None) -> dict[str, object]:
-    """Read seed keys ({scope}.seeded.{name}) from a config file as a flat
-    dotted-key dict. Missing/None/unreadable path → {}.
-
-    Compatibility filter over :func:`read_categories` for the launch path's
-    init-seed wrapper (:func:`kanibako.settings_seeds.resolve_seeds`).
-    """
-    from kanibako.settings_seeds import is_seed_key
-
-    return {k: v for k, v in read_categories(path).items() if is_seed_key(k)}
-
-
-# ---------------------------------------------------------------------------
-# Resource scope overrides (per-project)
-# ---------------------------------------------------------------------------
 
 def read_resource_overrides(path: Path) -> dict[str, str]:
     """Read ``resource_overrides`` from a settings.yaml.

@@ -591,7 +591,6 @@ class TestWorksetSettingsFile:
     def test_identity_and_cascade_coexist(self, std, tmp_home):
         """Cascade settings + the workset.meta identity share one file without
         clobbering each other across writes."""
-        from kanibako.config import read_categories
         from kanibako.config_io import dump_doc, load_doc
 
         root = tmp_home / "worksets" / "coexist"
@@ -610,9 +609,11 @@ class TestWorksetSettingsFile:
         from kanibako.workset import _write_workset_toml
         _write_workset_toml(ws)
 
-        # Both survive: cascade reader sees the binding, identity reload sees auth.
-        cats = read_categories(settings)
-        assert cats.get("workset.bindings.rw.data") == "/host:/guest"
+        # Both survive: the binding key is intact on disk, identity reload sees auth.
+        reloaded_data = load_doc(settings)
+        assert (
+            reloaded_data["workset"]["bindings"]["rw"]["data"] == "/host:/guest"
+        )
         reloaded = load_workset(root)
         assert reloaded.group_auth is False
         assert reloaded.name == "coexist"

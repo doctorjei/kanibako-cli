@@ -2044,7 +2044,7 @@ def _build_config_env(
     return env
 
 
-def _build_effective_state(
+def _effective_behavior_for_display(
     target,
     agent_cfg,
     project_toml,
@@ -2052,86 +2052,38 @@ def _build_effective_state(
     global_config_path,
     workset_config_path=None,
 ) -> dict[str, str]:
-    """Resolve effective agent-state via the settings precedence walk.
+    """Resolve the effective agent BEHAVIOR state for the ``config --effective``
+    DISPLAY, off the SAME KeyStore snapshot the live launch reads (block 7c).
 
-    Walks four levels MOST-SPECIFIC-FIRST — box > workset > agent > system —
-    with the target's declared defaults as a FLOOR (the system level's declared
-    defaults).  Sources for each level's ``[agent]`` table:
+    Single-route + launch-FIDELITY: this builds the behavior snapshot exactly as
+    :func:`_resolve_launch_snapshot` does for a launch — the target's declared
+    defaults fold in as the ``agent.default.*`` floor (OS1); the per-agent FILE
+    state (``agent_cfg.state``, flat ``[agent]``) is injected as ``agent_state``
+    (the active slot ``agent.<active>.*``); the box / workset / system settings
+    files merge as their discriminated ``agent.default.*`` / ``agent.<name>.*``
+    tables through ``assemble_levels`` — then :func:`~kanibako.settings_launch.
+    effective_behavior` does the §2d L368 active-over-default value-pick. So the
+    ``config --effective`` view MATCHES the real launch behavior read.
 
-      * **box**     — ``agent.<name>`` (over ``agent.default``) in settings.yaml
-      * **workset** — ``agent.<name>`` in the workset's config.yaml (if any)
-      * **agent**   — the agent config's own state dict (already per-agent)
-      * **system**  — ``agent.<name>`` in the system settings file
-        (``@system.settings`` = ``global/settings.yaml``)
-      * **floor**   — target ``setting_descriptors()`` defaults
+    This REPLACES the retired OLD per-file resolver (machine-tier + the
+    per-file-active-over-default-THEN-cascade order). The machine ``/etc`` tier
+    was CUT at launch (S14, block 7b), so the old display could MISREPRESENT the
+    actual launch (show machine values + the old resolution order the launch no
+    longer uses); the snapshot path eliminates that drift.
 
-    The box/workset/system/machine override sections are keyed per agent
-    (``agent.<target.name>`` layered over the any-agent ``agent.default`` tier)
-    so an override never bleeds across an agent switch; ``agent_cfg.state`` is
-    already per-agent (loaded from ``agents/<name>/settings.yaml``).
-
-    Explicit set values beat all declared defaults; the most-specific level
-    wins; an explicit ``""`` is terminal (no fall-through to the floor).
-    Undeclared keys set anywhere (e.g. ``start_mode``) are passed through.
-
-    Values are used verbatim — no ``@``-ref / ``$var`` / ``~`` expansion.
-
-    With no system/workset ``[agent]`` config (the common case) the walk reduces
-    to box > agent > floor, i.e. project override > agent state > target default
-    — identical to the prior two-source merge.
+    With no declared descriptors the target has no behavior floor — the effective
+    state is just the per-agent file's raw state (preserved from the old
+    early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
     """
-    from kanibako.config import machine_config_path, read_agent_settings
-    from kanibako.settings_resolve import (
-        LevelView,
-        ResolveCtx,
-        SettingsError,
-        _Unset,
-        resolve_value,
-    )
+    from kanibako import settings_launch
+    from kanibako.settings_resolve import ResolveCtx
 
     descriptors = target.setting_descriptors()
     if not descriptors:
         return dict(agent_cfg.state)
 
-    def _read(path) -> dict[str, str]:
-        if not path:
-            return {}
-        try:
-            if not path.exists():
-                return {}
-            # Agent-keyed: read agent.<agent>.* layered over agent.default.* so an
-            # override set for one agent never bleeds onto another after a switch.
-            return read_agent_settings(path, target.name)
-        except Exception:
-            return {}
-
-    # Gather per-level [agent] leaf values.
-    box_vals = _read(project_toml)
-    ws_vals = _read(workset_config_path)
-    agent_vals = dict(agent_cfg.state)
-    sys_vals = _read(global_config_path)
-    machine_vals = _read(machine_config_path())
-    floor = {d.key: d.default for d in descriptors}
-
-    # Most-specific first; the machine (/etc) layer is least-specific and carries
-    # the declared-defaults floor (so /etc set-values beat the floor, and the
-    # floor remains the ultimate fallback).
-    levels = [
-        LevelView("box", box_vals),
-        LevelView("workset", ws_vals),
-        LevelView("agent", agent_vals),
-        LevelView("system", sys_vals),
-        LevelView("machine", machine_vals, defaults=floor),
-    ]
-
-    keys = (
-        set(floor)
-        | set(box_vals)
-        | set(ws_vals)
-        | set(agent_vals)
-        | set(sys_vals)
-        | set(machine_vals)
-    )
+    behavior_floor = {d.key: d.default for d in descriptors}
+    agent_state = dict(agent_cfg.state)
 
     ctx = ResolveCtx(
         agent_name=target.name,
@@ -2139,19 +2091,22 @@ def _build_effective_state(
         host_home=str(Path.home()),
         xdg={},
     )
-
-    def _no_lookup(ref, chain):
-        raise SettingsError(f"@-refs not supported in agent settings: {ref}")
-
-    effective: dict[str, str] = {}
-    for key in keys:
-        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=_no_lookup)
-        if not isinstance(rv, _Unset):
-            # Agent BEHAVIOR settings are scalars; narrow the now-``object``-typed
-            # resolved value (structured leaves belong to the category path).
-            effective[key] = rv.value if isinstance(rv.value, str) else str(rv.value)
-
-    return effective
+    # Behavior-only snapshot: the scope settings files (box/workset/system) feed
+    # their discriminated agent tables; the floor folds in as agent.default.* and
+    # the per-agent file state as the agent.<active> slot. No category tables /
+    # agent-binding inputs (display reads behavior only). The machine tier is CUT
+    # (S14) — assemble_levels never consults /etc machine, matching the launch.
+    snapshot, _warnings = settings_launch.build_launch_snapshot(
+        agent_name=target.name,
+        ctx=ctx,
+        system_path=global_config_path,
+        agent_path=None,
+        workset_path=workset_config_path,
+        box_path=project_toml,
+        behavior_floor=behavior_floor,
+        agent_state=agent_state,
+    )
+    return settings_launch.effective_behavior(snapshot, active_agent=target.name)
 
 
 def _build_binding_overrides(
@@ -2198,13 +2153,13 @@ def _launch_snapshot_inputs(
 ):
     """Build the (ctx, scope_roots, resolved_sys) the launch SNAPSHOT path needs.
 
-    Mirrors the ctx / scope_roots / resolved_sys construction in
-    :func:`_category_resolution_inputs` EXACTLY (same host_home / xdg / workset
-    name / per-scope source roots / resolved ``system.*`` map), so the ONE-resolve
-    snapshot path (block 7b) resolves @-refs and root-joins byte-for-byte the same
-    as the retired per-family LevelView cascade did.  Kept separate from
-    ``_category_resolution_inputs`` (which still feeds the test-imported per-family
-    helpers via the LevelView engine) so neither path drifts from the other.
+    Constructs the host_home / xdg / workset name / per-scope source roots /
+    resolved ``system.*`` map the ONE-resolve snapshot path (block 7b) feeds to
+    ``build_launch_snapshot`` so @-refs and root-joins resolve correctly. This is
+    now the SOLE category-resolution input builder — the old per-family
+    ``_category_resolution_inputs`` (a second LevelView-cascade route) was retired
+    in block 7c; the snapshot pipeline is the single route for both reads and the
+    seed/synced/channel/share resolves.
     """
     agent_share_root = str(std.agents / agent_name / "share")
     agent_store_root = str(std.agents / agent_name)
@@ -2269,6 +2224,7 @@ def _resolve_launch_snapshot(
     binding_overrides=None,
     group_auth: bool = True,
     include_base_families: bool = True,
+    extra_default_categories: "Mapping[str, object] | None" = None,
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
 
@@ -2318,6 +2274,14 @@ def _resolve_launch_snapshot(
         if target is not None:
             default_categories.update(target.default_shares())
             default_categories.update(target.default_seeds())
+    # A NARROW caller (``include_base_families=False``) may inject ONLY its own
+    # declared default-category table — e.g. ``_apply_init_seeds`` passing just
+    # ``target.default_seeds()`` — so the seed/synced COPY resolve flows through
+    # the SAME ``build_launch_snapshot`` pipeline (single-route, 7c) WITHOUT
+    # pulling in the unrelated core/channel/share families. This mirrors the old
+    # narrow ``_resolve_launch_categories`` agent-level ``defaults=`` injection.
+    if extra_default_categories:
+        default_categories.update(extra_default_categories)
     if (
         box_state_kanibako is not None
         and socket_path is not None
@@ -2461,15 +2425,31 @@ def _apply_init_seeds(
 
     default_seeds = target.default_seeds() if target is not None else {}
 
-    reconciled = _resolve_launch_categories(
+    # Single-route (7c): resolve the seed COPY winners off the ONE committed
+    # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
+    # ``_resolve_launch_snapshot``), replacing the retired second resolver route
+    # (``_resolve_launch_categories`` → ``resolve_categories``/``read_categories``).
+    # NARROW injection: ``include_base_families=False`` +
+    # ``extra_default_categories=default_seeds`` injects ONLY the target's declared
+    # seeds (matching the old agent-level ``defaults=default_seeds``) — it does NOT
+    # pull in the unrelated core/channel/share families. The agent-binding inputs
+    # (``desc``/``install``/``binding_overrides``) are omitted — they feed only
+    # ``agent.bindings.*`` MOUNTs, never the seeded COPY winners — so the resulting
+    # ``reconciled.copies`` seeded set is byte-for-byte the old narrow resolve's.
+    _snapshot, reconciled, _warnings = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
-        global_config_path=global_config_path,
+        system_settings_path=global_config_path,
         project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
-        default_categories=default_seeds,
+        workset_path=workset_config_path,
+        agent_cfg_path=agent_config_path,
+        desc=None,
+        install=None,
+        target=target,
+        agent_cfg=None,
+        include_base_families=False,
+        extra_default_categories=default_seeds,
         group_auth=group_auth,
     )
 
@@ -2543,18 +2523,29 @@ def _apply_synced_copies(
 
     from kanibako.settings_resolve import GUEST_HOME
 
-    # NOTE: synced entries come only from settings `<scope>.synced.<name>` keys.
-    # Plugin descriptors do NOT yet declare default synced entries — that
-    # population is Phase 8.  *target* is accepted for call-site symmetry and is
-    # unused here until then.
-    reconciled = _resolve_launch_categories(
+    # Single-route (7c): resolve the synced COPY winners off the ONE committed
+    # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
+    # ``_resolve_launch_snapshot``), replacing the retired second resolver route.
+    # NOTE: synced entries come ONLY from settings `<scope>.synced.<name>` keys —
+    # plugin descriptors do NOT yet declare default synced entries (Phase 8) — so
+    # there is NO default-category table to inject; the narrow
+    # ``include_base_families=False`` (no ``extra_default_categories``) resolves
+    # synced purely from the cascade config files, byte-for-byte the old resolve.
+    # *target* is accepted for call-site symmetry and contributes nothing until
+    # descriptors declare default synced entries.
+    _snapshot, reconciled, _warnings = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
-        global_config_path=global_config_path,
+        system_settings_path=global_config_path,
         project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
+        workset_path=workset_config_path,
+        agent_cfg_path=agent_config_path,
+        desc=None,
+        install=None,
+        target=target,
+        agent_cfg=None,
+        include_base_families=False,
         group_auth=group_auth,
     )
 
@@ -2610,255 +2601,6 @@ def _apply_synced_copies(
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 
 
-def _category_resolution_inputs(
-    *,
-    std,
-    proj,
-    agent_name: str,
-    global_config_path,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-    default_categories: Mapping[str, object] | None = None,
-):
-    """Build the shared (levels, ctx, lookup, scope_roots) for category resolution.
-
-    Reads every level's scope-category keys (the unified
-    masks/bindings/caches/seeded/shared/synced/env primitive) from its config
-    file and assembles the 5 precedence levels (most-specific first; machine
-    ``/etc`` below the system settings tier — ``global_config_path`` =
-    ``@system.settings`` = ``global/settings.yaml``).  *default_categories* are
-    injected as the AGENT level's declared defaults (e.g. a target's
-    ``default_shares()`` / ``default_seeds()`` plus core mask defaults).
-    """
-    from kanibako.config import machine_config_path, read_categories
-    from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
-
-    levels = [
-        LevelView("box", read_categories(project_toml)),
-        LevelView("workset", read_categories(workset_config_path)),
-        LevelView(
-            "agent",
-            read_categories(agent_config_path),
-            defaults=default_categories or {},
-        ),
-        LevelView("system", read_categories(global_config_path)),
-        LevelView("machine", read_categories(machine_config_path())),
-    ]
-
-    # Source roots per scope group (concrete host paths → expand_expr verbatim).
-    # The system-scope binding roots (system.bindings.{ro,rw}) were DELETED in
-    # the system.* reorg (subsumed by the workset vault / 'shared' category);
-    # only the agent/workset scopes remain here.
-    agent_share_root = str(std.agents / agent_name / "share")
-    # Agent-scope `shared`/`caches` root at the per-agent store dir
-    # ``@agent.<agent>.meta.path`` = ``@system.agents/<agent>`` (e.g. claude's
-    # plugins/cache live at ``<data>/agents/claude/{plugins,cache}``).  The
-    # category KEY name is the relative ``host_src`` joined under this root.
-    agent_store_root = str(std.agents / agent_name)
-    scope_roots = {
-        "agent.bindings.ro": agent_share_root,
-        "agent.bindings.rw": agent_share_root,
-        "agent.shared": agent_store_root,
-        "agent.caches": agent_store_root,
-    }
-    if proj.group is not None and not proj.group.is_default:
-        ws_root = str(proj.group.root)
-        scope_roots["workset.bindings.ro"] = ws_root
-        scope_roots["workset.bindings.rw"] = ws_root
-    # box scope: arbitrary host path, NO root → omit (host_src used as-is).
-
-    workset_name = (
-        proj.group.name
-        if (proj.group is not None and not proj.group.is_default)
-        else None
-    )
-    ctx = ResolveCtx(
-        agent_name=agent_name,
-        workset_name=workset_name,
-        host_home=str(Path.home()),
-        xdg={"XDG_DATA_HOME": str(std.data_home)},
-    )
-
-    # Category VALUES may reference the resolved system config tier via @-refs.
-    resolved_sys = {
-        "system.data": str(std.data),
-        "system.agents": str(std.agents),
-        "system.channels": str(std.channels),
-        "system.base_template": str(std.base_template),
-        "system.registry": str(std.registry),
-        "system.primary_workset": str(std.primary_workset),
-    }
-
-    def _lookup(ref, chain):
-        if ref in resolved_sys:
-            return resolved_sys[ref]
-        raise SettingsError(f"Unresolvable @-reference in category value: {ref}")
-
-    return levels, ctx, _lookup, scope_roots
-
-
-def _resolve_launch_categories(
-    *,
-    std,
-    proj,
-    agent_name: str,
-    global_config_path,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-    default_categories: Mapping[str, object] | None = None,
-    group_auth: bool = True,
-):
-    """Resolve + reconcile the unified scope-category config for the launch path.
-
-    Returns a :class:`~kanibako.settings_categories.ReconciledCategories`
-    (``mounts`` / ``copies`` / ``envs``) with cross-category collisions resolved
-    and the ``group_auth`` credential gate applied.  AGENT_CRITICAL agent-binary
-    binds do NOT flow through here (decision C — they stay in the separate
-    descriptor-mount list that always wins).
-    """
-    from kanibako.settings_categories import (
-        reconcile_categories,
-        resolve_categories,
-    )
-
-    levels, ctx, lookup, scope_roots = _category_resolution_inputs(
-        std=std,
-        proj=proj,
-        agent_name=agent_name,
-        global_config_path=global_config_path,
-        project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
-        default_categories=default_categories,
-    )
-    entries = resolve_categories(
-        levels=levels, ctx=ctx, lookup=lookup, scope_roots=scope_roots
-    )
-    return reconcile_categories(entries, group_auth=group_auth)
-
-
-def _build_share_mounts(
-    *,
-    std,
-    proj,
-    agent_name: str,
-    global_config_path,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-    target=None,
-    group_auth: bool = True,
-) -> list:
-    """Resolve the launch path's category MOUNTs (bindings/caches/shared/masks).
-
-    Routes the category-shaped binds through the reconcile model
-    (:func:`_resolve_launch_categories`) and emits the reconciled MOUNT winners
-    as :class:`~kanibako.targets.base.Mount` objects.  ``masks`` (tmpfs) are
-    handled separately by :func:`_resolve_masks` — they are skipped here so
-    the host-side guarantee-create only runs on real bind sources.
-
-    ADDITIVE: with no category keys configured (and no target default shares),
-    returns only what target defaults declare.  *target*'s ``default_shares()``
-    (if a target is given) are injected as the AGENT level's declared defaults.
-
-    L7 (bug-hunt 2026-06-19): every emitted MOUNT whose host source does not
-    exist is mkdir'd best-effort (rw binds) or, for ro binds whose source is
-    absent, the mount is DROPPED with a warning — a missing source must never be
-    passed to rootless podman, which would abort the whole launch.
-    """
-    default_shares = target.default_shares() if target is not None else {}
-
-    reconciled = _resolve_launch_categories(
-        std=std,
-        proj=proj,
-        agent_name=agent_name,
-        global_config_path=global_config_path,
-        project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
-        default_categories=default_shares,
-        group_auth=group_auth,
-    )
-
-    return _emit_reconciled_mounts(reconciled, label="share")
-
-
-def _emit_reconciled_mounts(reconciled, *, label: str) -> list:
-    """Emit the reconciled MOUNT winners as :class:`Mount`s (L7 guarantee-create).
-
-    Shared by :func:`_build_share_mounts` and :func:`_build_channel_mounts`:
-    skips ``masks`` (tmpfs, no host source — emitted via :func:`_resolve_masks`);
-    for every other MOUNT it mkdir's a missing rw source (L7 guarantee-create) and
-    DROPS a ro bind whose source is absent with a warning (a missing source must
-    never reach rootless podman, which would abort the launch).  *label* names the
-    bind family in the drop warning.
-    """
-    from pathlib import Path as _Path
-
-    from kanibako.targets.base import Mount
-
-    mounts: list = []
-    for e in reconciled.mounts:
-        if e.category == "masks":
-            # tmpfs masks have no host source; emitted via _resolve_masks.
-            continue
-        assert e.host_src is not None  # bind-shaped MOUNTs always have a source.
-        src = _Path(e.host_src)
-        if e.options != "ro":
-            # rw bind: create the host source dir if absent (L7 guarantee-create).
-            try:
-                src.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass  # best-effort; podman will surface a genuinely bad source
-        elif not src.exists():
-            # ro bind with a missing source: DROP with a warning (L7) instead of
-            # letting rootless podman abort the launch on a dangling bind source.
-            import logging
-            logging.getLogger(__name__).warning(
-                "%s %s: read-only source %s does not exist; dropping mount",
-                label, e.name, e.host_src,
-            )
-            continue
-        mounts.append(
-            Mount(source=src, destination=e.box_dest, options=e.options)
-        )
-    return mounts
-
-
-def _resolve_masks(
-    *,
-    std,
-    proj,
-    agent_name: str,
-    global_config_path,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-) -> list[str]:
-    """Resolve the active tmpfs masks (the ``box.masks`` category) as box-dests.
-
-    Masks flow through the category resolver with NO default.  A box (or any
-    scope) may declare ``box.masks`` / ``<scope>.masks`` to hide a guest path
-    behind a read-only tmpfs; with nothing declared the result is an empty list
-    and no mask is applied.  (The old unconditional ``~/workspace/vault`` default
-    was dropped: the vault was relocated OUT of the workspace in 1.6.0 — there is
-    nothing in ``~/workspace`` to mask in any box mode.)  Returns the reconciled
-    mask box-dest LIST (``@``-expanded).
-    """
-    reconciled = _resolve_launch_categories(
-        std=std,
-        proj=proj,
-        agent_name=agent_name,
-        global_config_path=global_config_path,
-        project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
-    )
-    return [e.box_dest for e in reconciled.mounts if e.category == "masks"]
-
-
 def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
     """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f).
 
@@ -2904,41 +2646,6 @@ def _seed_channel_files(std, proj) -> None:
             pass
 
 
-def _build_channel_mounts(
-    *,
-    std,
-    proj,
-    agent_name: str,
-    global_config_path,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-) -> list:
-    """Resolve the channel binds (§3) and emit them as :class:`Mount`s.
-
-    Replaces the legacy single ``~/comms`` mount.  Injects the per-mode channel
-    bind table (:func:`_channel_default_categories`) through the category resolver
-    as the AGENT level's declared defaults — so the channel binds flow through the
-    D-B1 precedence + depth-sort + L7 guarantee-create (mkdir of every rw source,
-    including the per-workset partition dirs) exactly like masks/shares.  Seeds the
-    chat ``general.md``/``broadcast.md`` files (§3c) before emitting.  A box may
-    override or suppress any individual channel bind at a more-specific level.
-    """
-    _seed_channel_files(std, proj)
-
-    reconciled = _resolve_launch_categories(
-        std=std,
-        proj=proj,
-        agent_name=agent_name,
-        global_config_path=global_config_path,
-        project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
-        default_categories=_channel_default_categories(std, proj),
-    )
-    return _emit_reconciled_mounts(reconciled, label="channel")
-
-
 def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
     """Build the core box mounts as ``default_categories`` (step 3).
 
@@ -2954,41 +2661,6 @@ def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
     return core_defaults.core_default_categories(
         std, proj, enable_vault=proj.enable_vault
     )
-
-
-def _resolve_config_env(
-    *,
-    std,
-    proj,
-    agent_name: str,
-    global_config_path,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-    group_auth: bool = True,
-) -> dict[str, str]:
-    """Resolve the ``<scope>.env.<VAR>`` category into a VAR -> value dict.
-
-    Routes the env category through the reconcile model
-    (:func:`_resolve_launch_categories`); each :class:`CategoryEntry` of
-    delivery ``ENV`` carries the VAR name in ``box_dest`` and the resolved value
-    in ``options``.  reconcile already picked the most-specific scope per VAR
-    (system<agent<workset<box), so the returned map IS the config-level env at
-    the documented precedence.  ADDITIVE: with no ``env.*`` keys configured the
-    map is empty (the retired ``.env`` files no longer feed this) -> byte-
-    identical to the pre-wiring launch env.
-    """
-    reconciled = _resolve_launch_categories(
-        std=std,
-        proj=proj,
-        agent_name=agent_name,
-        global_config_path=global_config_path,
-        project_toml=project_toml,
-        workset_config_path=workset_config_path,
-        agent_config_path=agent_config_path,
-        group_auth=group_auth,
-    )
-    return {e.box_dest: e.options for e in reconciled.envs}
 
 
 def _kanibako_mounts():

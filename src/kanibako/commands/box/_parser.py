@@ -1226,7 +1226,7 @@ def run_config(args: argparse.Namespace) -> int:
             from kanibako.targets import resolve_target
             from kanibako.commands.start import (
                 _build_config_env,
-                _build_effective_state,
+                _effective_behavior_for_display,
             )
             merged = load_merged_config(
                 config_file, project_toml if project_toml.exists() else None,
@@ -1257,7 +1257,7 @@ def run_config(args: argparse.Namespace) -> int:
             else:
                 agent_cfg = None
             if target is not None and agent_cfg is not None:
-                agent_state = _build_effective_state(
+                agent_state = _effective_behavior_for_display(
                     target, agent_cfg, project_toml,
                     global_config_path=std.settings,
                     workset_config_path=workset_path,

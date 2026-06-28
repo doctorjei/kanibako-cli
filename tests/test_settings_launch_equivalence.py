@@ -328,48 +328,39 @@ def _write_yaml(path, data):
     return path
 
 
+# NOTE (block 7c): the OLD oracle ``_build_effective_state`` was RETIRED — the
+# behavior read is now snapshot-only on BOTH the launch and the ``config
+# --effective`` display, so these tests, which once compared NEW-vs-OLD, are now
+# DIRECT spec-property pins of the snapshot behavior read (the equivalence was
+# proven; these are the lasting invariants).
+
+
 @pytest.mark.parametrize("agent", ["claude", "goose", "codex"])
 def test_behavior_floor_and_per_agent_state(agent, tmp_path):
     # The common case: a descriptor floor + the per-agent file's flat state, no
-    # box/system override. NEW snapshot read == OLD _build_effective_state.
-    from types import SimpleNamespace
-
-    from kanibako.commands.start import _build_effective_state
-
+    # box/system override. The snapshot read surfaces the per-agent overrides over
+    # the declared floor (a None floor default shadowed by a set state value).
     floor = {"model": None, "auto_approve": "true", "continue_mode": "true"}
     state = {"model": "opus", "access": "permissive"}  # the per-agent file (flat)
 
-    # OLD path: a fake target with these descriptors + an AgentConfig-like state.
-    descriptors = [
-        SimpleNamespace(key=k, default=v) for k, v in floor.items()
-    ]
-    target = SimpleNamespace(
-        name=agent, setting_descriptors=lambda: descriptors,
-    )
-    agent_cfg = SimpleNamespace(state=dict(state))
-    old = _build_effective_state(
-        target, agent_cfg, None, global_config_path=None, workset_config_path=None,
-    )
-
-    # NEW path: snapshot + effective_behavior.
     snap = _behavior_snapshot(
         agent, floor=floor, agent_state=state, box_path=None, system_path=None,
     )
-    new = effective_behavior(snap, active_agent=agent)
+    eff = effective_behavior(snap, active_agent=agent)
 
-    # Both surface the per-agent override (model=opus, access=permissive) + the
-    # non-None floor defaults (auto_approve, continue_mode); a None floor default
-    # (model) is shadowed by the state's set value. Equivalent.
-    assert new == old
+    # The per-agent overrides win; the non-None floor defaults fill the rest; a
+    # None floor default (model) is shadowed by the state's set value.
+    assert eff == {
+        "model": "opus",
+        "access": "permissive",
+        "auto_approve": "true",
+        "continue_mode": "true",
+    }
 
 
 def test_behavior_box_override_beats_agent_file(tmp_path):
     # A box file's agent.<active>.model (more-specific scope) beats the per-agent
-    # file's model — standard cascade, SAME both paths.
-    from types import SimpleNamespace
-
-    from kanibako.commands.start import _build_effective_state
-
+    # file's model — standard cascade.
     agent = "claude"
     floor = {"model": None}
     state = {"model": "opus"}
@@ -377,31 +368,20 @@ def test_behavior_box_override_beats_agent_file(tmp_path):
         tmp_path / "box.yaml", {"agent": {"claude": {"model": "haiku"}}},
     )
 
-    descriptors = [SimpleNamespace(key="model", default=None)]
-    target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
-    agent_cfg = SimpleNamespace(state=dict(state))
-    old = _build_effective_state(
-        target, agent_cfg, box, global_config_path=None, workset_config_path=None,
-    )
-
     snap = _behavior_snapshot(
         agent, floor=floor, agent_state=state, box_path=box, system_path=None,
     )
-    new = effective_behavior(snap, active_agent=agent)
-    assert new.get("model") == "haiku" == old.get("model")  # box wins, both paths.
+    eff = effective_behavior(snap, active_agent=agent)
+    assert eff.get("model") == "haiku"  # box's agent.<active>.model wins.
 
 
 def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
-    # ⚑ The Jei-NOTED spec-CORRECTION edge: an AGENT-file agent.<active>.model vs a
-    # BOX-file agent.DEFAULT.model. OLD reader = per-file-active-over-default THEN
-    # cascade → the box file's agent.default.model (box is more specific) WINS.
-    # NEW spec model = cascade THEN active-over-default → the agent file's
-    # agent.<active>.model WINS (active beats default regardless of scope, §2d L368).
-    # This test PINS that the two intentionally DIFFER here (not silent).
-    from types import SimpleNamespace
-
-    from kanibako.commands.start import _build_effective_state
-
+    # ⚑ The Jei-NOTED spec-CORRECTION edge (§2d L368): an AGENT-file
+    # agent.<active>.model vs a BOX-file agent.DEFAULT.model. The spec model =
+    # cascade THEN active-over-default → the agent file's agent.<active>.model WINS
+    # (active beats default regardless of scope). The retired OLD reader did
+    # per-file-active-over-default THEN cascade → it would have picked the box's
+    # agent.default.model ("haiku"); this PINS the spec-correct NEW result.
     agent = "claude"
     floor = {"model": None}
     state = {"model": "opus"}  # the per-agent file = agent.<active>.model = opus
@@ -410,22 +390,89 @@ def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
         tmp_path / "box.yaml", {"agent": {"default": {"model": "haiku"}}},
     )
 
-    descriptors = [SimpleNamespace(key="model", default=None)]
-    target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
-    agent_cfg = SimpleNamespace(state=dict(state))
-    old = _build_effective_state(
-        target, agent_cfg, box, global_config_path=None, workset_config_path=None,
-    )
-    # OLD: box's agent.default.model (haiku) beats the agent-file model (cascade
-    # after the per-file default<-active merge leaves model unset at agent level…)
-    # — the old reader resolves the box agent.default value.
-    assert old.get("model") == "haiku"
-
     snap = _behavior_snapshot(
         agent, floor=floor, agent_state=state, box_path=box, system_path=None,
     )
-    new = effective_behavior(snap, active_agent=agent)
-    # NEW (spec): the agent file's agent.<active>.model (opus) wins the §2d L368
-    # active-over-default pick over the box's agent.default.model — the CORRECTION.
-    assert new.get("model") == "opus"
-    assert new.get("model") != old.get("model")  # the intended, NOT-silent divergence.
+    eff = effective_behavior(snap, active_agent=agent)
+    # The agent file's agent.<active>.model (opus) wins the §2d L368
+    # active-over-default pick over the box's agent.default.model ("haiku") — the
+    # CORRECTION the old per-file-then-cascade reader did NOT do.
+    assert eff.get("model") == "opus"
+
+
+def test_higher_scope_present_none_suppresses_floor(tmp_path):
+    """A higher-scope present-None (the KeyStore suppression idiom, §3/§6e —
+    successor to the old terminal-``""``) over a declared-default floor value
+    SUPPRESSES it: the behavior read OMITs the key (the consumer applies its own
+    default), and the floor is NOT consulted. A sibling floor default with no
+    suppression still shows through.
+
+    This is the STEP-4 (7c) replacement coverage for the retired
+    ``test_settings_loader`` ``test_terminal_empty_suppresses_floor`` /
+    ``test_floor_is_ultimate_fallback`` — pinned on the LIVE behavior path
+    (``build_launch_snapshot`` + ``effective_behavior``)."""
+    snap = _behavior_snapshot(
+        "claude",
+        floor={"auto_approve": "true", "model": "sonnet"},
+        agent_state={"auto_approve": None},  # present-None resets the floor key
+        box_path=None,
+        system_path=None,
+    )
+    eff = effective_behavior(snap, active_agent="claude")
+    # The suppressed key is OMITted — the floor "true" was NOT consulted.
+    assert "auto_approve" not in eff
+    # A non-suppressed floor default still shows through (floor IS the fallback).
+    assert eff.get("model") == "sonnet"
+
+
+def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
+    """`box config --effective` (the DISPLAY, via
+    ``start._effective_behavior_for_display``) reads behavior off the SAME
+    KeyStore snapshot the LIVE launch does — so the displayed effective state
+    MATCHES what the launch will actually apply.
+
+    Block 7c: the OLD display resolver (``_build_effective_state`` — machine-tier
+    + per-file-active-over-default-THEN-cascade order) was retired. Since 7b CUT
+    the machine tier at launch (S14), the old display could MISREPRESENT the
+    launch; this pins that the display and the launch now agree. The §2d
+    active-over-default edge (agent-file active beats box agent.default) is the
+    sharpest case — the display must show the launch-correct ``opus``."""
+    from types import SimpleNamespace
+
+    from kanibako.commands.start import _effective_behavior_for_display
+
+    agent = "claude"
+    floor = {"model": None, "auto_approve": "true"}
+    state = {"model": "opus", "access": "permissive"}
+    # A box file exercising the §2d edge: agent.default.model set, NOT agent.claude.
+    box = _write_yaml(
+        tmp_path / "settings.yaml", {"agent": {"default": {"model": "haiku"}}},
+    )
+
+    # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does.
+    launch_snap = _behavior_snapshot(
+        agent, floor=floor, agent_state=state, box_path=box, system_path=None,
+    )
+    launch_read = effective_behavior(launch_snap, active_agent=agent)
+
+    # DISPLAY read: box config --effective's helper over the same inputs.
+    descriptors = [
+        SimpleNamespace(key=k, default=v) for k, v in floor.items()
+    ]
+    target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
+    agent_cfg = SimpleNamespace(state=dict(state))
+    display = _effective_behavior_for_display(
+        target, agent_cfg, box, global_config_path=None, workset_config_path=None,
+    )
+
+    # The display equals an INDEPENDENT spec-correct expected dict (NOT merely
+    # "== the launch read"): model = the agent-file active "opus" (§2d active beats
+    # the box agent.default "haiku" — the correction the retired old resolver did
+    # NOT do), access = the per-agent passthrough, auto_approve = the floor default.
+    assert display == {
+        "model": "opus",
+        "access": "permissive",
+        "auto_approve": "true",
+    }
+    # ...and it MATCHES the live launch behavior read over the same inputs.
+    assert display == launch_read

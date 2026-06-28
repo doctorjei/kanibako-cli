@@ -11,8 +11,12 @@ channel tree.  The asserts are byte-level on the emitted ``Mount`` set:
 * the own inbox is the SAME host dir bound at BOTH ``~/channels/inbox`` and
   ``~/channels/mailboxes/<ws>/<self>`` (the A2 double-bind).
 
-These exercise the real category resolver (``_build_channel_mounts``) with real
-resolved ``proj``/``std`` objects, not the MagicMock launch fixture.
+These exercise the LIVE channel-mount path (block 7c: ``_seed_channel_files`` +
+``_emit_category_mounts(_resolve_launch_snapshot(...))``) with real resolved
+``proj``/``std`` objects, not the MagicMock launch fixture. The per-family
+``_build_channel_mounts`` was retired in 7c (its second resolver route folded into
+``build_launch_snapshot``); these tests pin the resolved channel mount set against
+TARGET §4 over the single-route snapshot path.
 """
 
 from __future__ import annotations
@@ -22,8 +26,10 @@ import pytest
 from kanibako import channels as _ch
 from kanibako.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.commands.start import (
-    _build_channel_mounts,
     _channel_default_categories,
+    _emit_category_mounts,
+    _resolve_launch_snapshot,
+    _seed_channel_files,
 )
 from kanibako.paths import (
     WorksetSpec,
@@ -63,16 +69,33 @@ def standalone_proj(std, config, project_dir, credentials_dir):
 
 
 def _build(std, proj):
-    """Resolve the channel mounts as a {box_dest: (host_src, options)} map."""
-    mounts = _build_channel_mounts(
+    """Resolve the channel mounts as a {box_dest: (host_src, options)} map.
+
+    Drives the LIVE single-route path (7c): seed the chat files, then resolve the
+    channel default-category table through the committed ``build_launch_snapshot``
+    pipeline (``_resolve_launch_snapshot`` with base-families OFF + the channel
+    table as the narrow ``extra_default_categories``) and emit the reconciled
+    non-agent MOUNT winners via ``_emit_category_mounts`` — exactly the live launch
+    channel path (start.py:1317-1318), no separate channel resolver.
+    """
+    _seed_channel_files(std, proj)
+    _snapshot, reconciled, _warnings = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name="general",
-        global_config_path=None,
+        system_settings_path=None,
         project_toml=None,
-        workset_config_path=None,
-        agent_config_path=None,
+        workset_path=None,
+        agent_cfg_path=None,
+        desc=None,
+        install=None,
+        target=None,
+        agent_cfg=None,
+        include_base_families=False,
+        extra_default_categories=_channel_default_categories(std, proj),
+        group_auth=proj.group_auth,
     )
+    mounts = _emit_category_mounts(reconciled, label="channel")
     return {
         m.destination: (str(m.source), m.options) for m in mounts
     }, mounts

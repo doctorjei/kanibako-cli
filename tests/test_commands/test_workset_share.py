@@ -11,8 +11,32 @@ from kanibako.commands.workset_cmd import (
     run_share_list,
     run_share_remove,
 )
-from kanibako.config import read_shares
 from kanibako.workset import create_workset
+
+
+def read_shares(path):
+    """Test helper: read the on-disk ``workset.bindings.{ro,rw}.{name}`` leaves as
+    a ``{dotted_key: raw_value}`` map — verifying what the share add/rm commands
+    WROTE. (The product ``config.read_shares`` reader was retired in block 7c; this
+    local reader keeps these write-assertions on the structured on-disk shape.)"""
+    from kanibako.config_io import load_doc
+
+    if path is None or not path.exists():
+        return {}
+    data = load_doc(path)
+    ws = data.get("workset")
+    if not isinstance(ws, dict):
+        return {}
+    binds = ws.get("bindings")
+    if not isinstance(binds, dict):
+        return {}
+    out: dict[str, object] = {}
+    for mode in ("ro", "rw"):
+        node = binds.get(mode)
+        if isinstance(node, dict):
+            for name, val in node.items():
+                out[f"workset.bindings.{mode}.{name}"] = val
+    return out
 
 
 @pytest.fixture
