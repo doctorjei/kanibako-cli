@@ -1,18 +1,33 @@
-"""Unit tests for the KeyStore storage model (block 1: storage + types + masks).
+"""Unit tests for the KeyStore storage model (block 1 + 1b reserved-key revision).
 
 Covers the brief's checklist: construction from nested dict literals; attr access
-== ``[]`` access; dynamic / keyword / hyphen / dotted keys via ``[]``; collision
-keys (``keys``, ``items``, ``get``, ``values``) resolve to the STORED value; the
+== ``[]`` access; dynamic / keyword / hyphen / dotted keys via ``[]``; the
 ``Bind`` round-trip + ``opts=None`` default; present-``None`` stored and
-distinguishable from absent via ``.get`` + ``_MISSING``; masks modeled as
-``{box_dest: bool|None}`` (NOT a list); repr / equality sanity.
+distinguishable from absent via the BOUND ``store.get(k, _MISSING)`` + the
+``_MISSING`` sentinel; masks modeled as ``{box_dest: bool|None}`` (NOT a list);
+repr / equality sanity.
+
+Block 1b (reserved key names): a key named after a public ``dict`` method
+(``get keys values items pop popitem setdefault update clear copy fromkeys``) or
+matching the dunder pattern (``__x__``) is REJECTED at write time with
+:class:`ReservedKeyError`, at construction AND ``[]``/attr set. With that
+guarantee the BOUND ``store.get(k, _MISSING)`` is the canonical, collision-safe
+absent-vs-present-None probe; non-reserved near-miss names (``getter``, ``key``,
+``item``) are still allowed.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from kanibako.settings_store import _MISSING, Bind, KeyStore, StoreValue
+from kanibako.settings_store import (
+    _MISSING,
+    _RESERVED_KEY_NAMES,
+    Bind,
+    KeyStore,
+    ReservedKeyError,
+    StoreValue,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -163,48 +178,127 @@ def test_env_var_keyed_subtree() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Collision safety — user keys named like dict methods                        #
+# Reserved key names (block 1b) — rejected at the SOURCE                       #
 # --------------------------------------------------------------------------- #
+
+
+def test_reserved_set_equals_dict_public_methods() -> None:
+    # The reserved set must be EXACTLY dict's public (non-dunder) method names —
+    # 0 unguarded, 0 extras — which is what makes the bound store.get safe and
+    # the __getattr__ simplification sound. (Provable completeness, block 1b.)
+    public = {n for n in dir(dict) if not (n.startswith("__") and n.endswith("__"))}
+    assert _RESERVED_KEY_NAMES == public
 
 
 @pytest.mark.parametrize(
     "name",
-    ["keys", "items", "get", "values", "update", "pop", "setdefault", "copy"],
+    ["get", "keys", "values", "items", "pop", "popitem", "setdefault", "update",
+     "clear", "copy", "fromkeys"],
 )
-def test_collision_keys_resolve_to_stored_value_via_attr(name: str) -> None:
-    store = KeyStore({name: "USER_VALUE"})
-    # Attribute access yields the STORED value, never the dict method.
-    assert getattr(store, name) == "USER_VALUE"
-    assert store[name] == "USER_VALUE"
+def test_reserved_method_name_rejected_at_construction(name: str) -> None:
+    # Each dict-method name is rejected when used as a key at CONSTRUCTION
+    # (construction funnels through __setitem__).
+    with pytest.raises(ReservedKeyError) as exc:
+        KeyStore({name: "x"})
+    msg = str(exc.value)
+    assert name in msg  # names the offending key
+    assert "fromkeys" in msg  # lists the (sorted) reserved set -> actionable
+    # ReservedKeyError is a KeyError subclass (a bad-KEY error).
+    assert isinstance(exc.value, KeyError)
 
 
-@pytest.mark.parametrize("name", ["keys", "items", "values", "get"])
-def test_collision_key_survives_repr_and_copy(name: str) -> None:
-    # The module's OWN internals (repr, construction-copy) must not invoke a
-    # shadowed method: a stored key named ``items`` must not crash repr or copy.
-    store = KeyStore({name: 5})
-    r = repr(store)  # would TypeError if repr used self.items()
-    assert f"'{name}'" in r and "5" in r
-    copied = KeyStore(store)  # would TypeError if __init__ used source.items()
-    assert copied[name] == 5
-    assert copied == store
+@pytest.mark.parametrize(
+    "name", ["__init__", "__setitem__", "__class__", "__dict__", "__x__"]
+)
+def test_dunder_pattern_name_rejected(name: str) -> None:
+    # Any __x__ pattern name is reserved (Python data-model attributes).
+    with pytest.raises(ReservedKeyError) as exc:
+        KeyStore({name: 1})
+    assert name in str(exc.value)
 
 
-def test_dict_methods_still_reachable_despite_collision_keys() -> None:
-    store = KeyStore({"keys": 1, "items": 2, "get": 3, "values": 4})
-    # The dict protocol is intact via the unbound dict methods / iteration.
-    assert set(dict.keys(store)) == {"keys", "items", "get", "values"}
-    assert dict.get(store, "keys") == 1
-    assert dict.get(store, "absent", "default") == "default"
-    # Iteration (a dunder) is unaffected by a key literally named "keys".
-    assert set(store) == {"keys", "items", "get", "values"}
-    assert "get" in store
+def test_reserved_key_rejected_at_item_set_and_attr_set() -> None:
+    store = KeyStore()
+    # [] set.
+    with pytest.raises(ReservedKeyError):
+        store["get"] = 1
+    # attribute set (routes through __setitem__).
+    with pytest.raises(ReservedKeyError):
+        store.items = 2  # type: ignore[assignment]
+    # A dunder via [] too.
+    with pytest.raises(ReservedKeyError):
+        store["__len__"] = 3
+    # Nothing landed.
+    assert len(store) == 0
 
 
-def test_collision_key_does_not_break_construction_or_repr() -> None:
-    store = KeyStore({"get": {"nested": True}})
-    assert isinstance(store["get"], KeyStore)
-    assert "get" in repr(store)
+def test_reserved_key_rejected_when_nested() -> None:
+    # A reserved key nested inside a literal is rejected too (the nested dict is
+    # wrapped via __setitem__, which validates each key).
+    with pytest.raises(ReservedKeyError):
+        KeyStore({"box": {"bindings": {"rw": {"get": Bind("/h", "/b")}}}})
+
+
+def test_non_str_key_rejected() -> None:
+    with pytest.raises(TypeError):
+        KeyStore({1: "x"})  # type: ignore[dict-item]
+    store = KeyStore()
+    with pytest.raises(TypeError):
+        store[2] = "y"  # type: ignore[index]
+
+
+def test_reserved_rejection_is_case_sensitive() -> None:
+    # The match is case-sensitive (box is Linux). An UPPER variant is NOT
+    # reserved, so an env-var-style name like GET is allowed.
+    store = KeyStore({"GET": 1, "Items": 2, "Keys": 3})
+    assert store["GET"] == 1 and store["Items"] == 2 and store["Keys"] == 3
+
+
+@pytest.mark.parametrize("name", ["getter", "key", "item", "value", "popper",
+                                  "updater", "_get", "get_", "keyring"])
+def test_near_miss_non_reserved_names_allowed(name: str) -> None:
+    # Names that merely RESEMBLE a reserved name are NOT reserved.
+    store = KeyStore({name: "ok"})
+    assert store[name] == "ok"
+    assert getattr(store, name) == "ok"  # attr surface still works
+
+
+def test_keystore_defines_only_dunder_members() -> None:
+    # CLASS INVARIANT (director/Jei): KeyStore adds NO non-dunder class member.
+    # With the miss-only __getattr__, a non-dunder class attr would resolve
+    # BEFORE a same-named key -> a collision the reserved set misses. So the only
+    # attrs beyond dict's must be dunders, and the reserved set stays == dict's
+    # public methods exactly.
+    own = {n for n in vars(KeyStore)}
+    non_dunder_own = {
+        n for n in own if not (n.startswith("__") and n.endswith("__"))
+    }
+    assert non_dunder_own == set(), f"non-dunder class members: {non_dunder_own}"
+    beyond_dict = set(dir(KeyStore)) - set(dir(dict))
+    assert all(n.startswith("__") and n.endswith("__") for n in beyond_dict), (
+        f"non-dunder attrs beyond dict: "
+        f"{[n for n in beyond_dict if not (n.startswith('__') and n.endswith('__'))]}"
+    )
+
+
+def test_underscore_prefixed_key_is_allowed() -> None:
+    # A `_`-prefixed NON-dunder name is NOT reserved (it is not a dict method and
+    # not a dunder) and — given the class-only-dunder invariant — does not shadow
+    # any class attribute. So it stores and round-trips by key and by attribute.
+    store = KeyStore({"_check_key": 1, "_wrap": 2, "_private": 3})
+    assert store["_check_key"] == 1 and store["_wrap"] == 2
+    assert store._private == 3  # attribute surface works (no class attr shadows)
+    assert getattr(store, "_check_key") == 1
+
+
+def test_dict_methods_are_the_methods_not_shadowed() -> None:
+    # With reserved names forbidden, the bound dict methods are ALWAYS callable
+    # (no user key can shadow them).
+    store = KeyStore({"home": 1, "vault": 2})
+    assert store.get("home") == 1
+    assert store.get("absent") is None
+    assert set(store.keys()) == {"home", "vault"}
+    assert dict(store.items()) == {"home": 1, "vault": 2}
 
 
 # --------------------------------------------------------------------------- #
@@ -217,9 +311,12 @@ def test_present_none_is_stored_and_distinct_from_absent() -> None:
     # Present-None: the key IS there, value is None.
     assert "reset_me" in store
     assert store["reset_me"] is None
-    # The canonical absent-probe is the UNBOUND dict.get(store, key, _MISSING)
-    # form (collision-safe; the bound store.get is shadowed by a key named
-    # `get`). It returns _MISSING for absent, None for present-None.
+    # Canonical absent-probe (block 1b) is the BOUND store.get(key, _MISSING) —
+    # safe because `get` is a reserved key name, so store.get is always the dict
+    # method. It returns _MISSING for absent, None for present-None.
+    assert store.get("reset_me", _MISSING) is None
+    assert store.get("never_set", _MISSING) is _MISSING
+    # The UNBOUND form stays equally valid (the pre-1b canonical form).
     assert dict.get(store, "reset_me", _MISSING) is None
     assert dict.get(store, "never_set", _MISSING) is _MISSING
 
@@ -239,22 +336,31 @@ def test_missing_sentinel_singleton_and_repr() -> None:
     assert repr(_MISSING) == "_MISSING"
 
 
-def test_unbound_probe_survives_a_key_named_get() -> None:
-    # SEAM regression (director): the absent-probe block 2b walks at every leaf
-    # must be collision-safe even when a leaf is literally named `get`. The
-    # canonical UNBOUND form keeps working; the BOUND store.get(...) does NOT,
-    # because store.get correctly resolves to the STORED VALUE (a non-callable),
-    # so calling it raises -- which is exactly why the unbound form is canonical.
-    store = KeyStore({"get": 5})
-    # Unbound probe: works regardless of the `get` collision.
-    assert dict.get(store, "get", _MISSING) == 5
-    assert dict.get(store, "absent", _MISSING) is _MISSING
-    # Attribute access yields the STORED value, never the bound method.
-    assert store.get == 5
-    assert store["get"] == 5
-    # And the bound form is unusable here (documents WHY unbound is canonical).
-    with pytest.raises(TypeError):
-        store.get("absent", _MISSING)  # type: ignore[operator]
+def test_key_named_get_is_rejected_so_bound_probe_is_safe() -> None:
+    # SEAM regression (block 1b, was test_unbound_probe_survives_a_key_named_get):
+    # the block-1 foot-gun was a leaf literally named `get` shadowing the bound
+    # store.get into a crash. 1b forbids that name at the SOURCE, so it can never
+    # arise -> the bound probe is permanently safe.
+    with pytest.raises(ReservedKeyError):
+        KeyStore({"get": 5})
+    # Because `get` can never be a key, the bound store.get is ALWAYS the method.
+    store = KeyStore({"home": 5})
+    assert store.get("home", _MISSING) == 5
+    assert store.get("absent", _MISSING) is _MISSING
+
+
+def test_bound_probe_is_canonical_three_state() -> None:
+    # The bound store.get(k, _MISSING) probe distinguishes the three states
+    # (block 1b canonical): absent -> _MISSING, present-None -> None, value.
+    store = KeyStore({"present_none": None, "present_value": 7})
+    assert store.get("present_value", _MISSING) == 7
+    assert store.get("present_none", _MISSING) is None  # present-None, not absent
+    assert store.get("absent", _MISSING) is _MISSING
+    # nested leaf (the per-leaf merge case, block 2b) — bound form works there too.
+    nested = KeyStore({"bindings": {"rw": {"home": None}}})
+    rw = nested["bindings"]["rw"]
+    assert rw.get("home", _MISSING) is None
+    assert rw.get("absent", _MISSING) is _MISSING
 
 
 def test_present_none_at_attr_surface() -> None:

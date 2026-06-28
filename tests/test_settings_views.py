@@ -1,8 +1,10 @@
 """Unit tests for the typed access layer (block 4: settings_views).
 
 Covers the brief's checklist (§4): tier-2 category accessors yield ``Bind`` (never
-``Bind | None``); iteration / len / contains; a COLLISION key (a bind named
-``get``) resolves correctly through the accessor; the ``env`` accessor yields
+``Bind | None``); iteration / len / contains; an arbitrary DYNAMIC key (a bind
+named ``getter``) resolves correctly through the accessor (block 1b retired the
+reserved-name ``get`` collision case — that name is now unstorable); the ``env``
+accessor yields
 scalars; ``masks_set`` returns exactly the masked dests as a ``set`` (present-None
 already dropped by build — fed a post-build node); the tier-1 finite view returns
 EXACT types; read-only (no mutation path); purity (the accessor does not copy or
@@ -40,12 +42,16 @@ from kanibako.settings_views import (
 
 
 def _rw_node() -> KeyStore:
-    """A ``bindings.rw`` node: all-``Bind`` leaves, incl. a collision key."""
+    """A ``bindings.rw`` node: all-``Bind`` leaves, incl. a dynamic key.
+
+    Block 1b: reserved dict-method names (``get``/``items``/...) can no longer be
+    stored, so the dynamic-key case uses a non-reserved name (``getter``); the
+    accessor must still resolve an arbitrary dynamic bind key, which is the point.
+    """
     node = KeyStore()
     node["home"] = Bind("/host/home", "/home/agent")
     node["vault"] = Bind("@workset.vault_rw", "/vault", "Z,U")
-    # A user key literally named ``get`` — the standing collision foot-gun (S3).
-    node["get"] = Bind("/host/get", "/box/get")
+    node["getter"] = Bind("/host/getter", "/box/getter")
     return node
 
 
@@ -55,8 +61,9 @@ def _env_node() -> KeyStore:
     node["DEBUG"] = True
     node["RETRIES"] = 3
     node["RATIO"] = 1.5
-    # A collision key as an env var name.
-    node["items"] = "ok"
+    # A dynamic env-var-style name (block 1b: ``items`` is reserved; use a
+    # non-reserved dynamic name).
+    node["ITEMIZED"] = "ok"
     return node
 
 
@@ -69,7 +76,7 @@ def _masks_node() -> KeyStore:
     node = KeyStore()
     node["/secrets"] = True
     node["/home/agent/.ssh"] = True
-    node["get"] = True  # collision key as a masked dest.
+    node["/box/getter"] = True  # a dynamic masked dest (block 1b: not ``get``).
     return node
 
 
@@ -89,25 +96,26 @@ def test_bind_category_yields_bind_values() -> None:
         assert isinstance(view[key], Bind)
 
 
-def test_bind_category_collision_key_get_resolves() -> None:
-    # A bind named ``get`` must resolve to the STORED bind, not crash on the
-    # shadowed bound dict method (S3 — the standing foot-gun).
+def test_bind_category_dynamic_key_resolves() -> None:
+    # A bind under an arbitrary dynamic key resolves to the STORED bind. (Block
+    # 1b retired the reserved-name ``get`` collision case — that name is now
+    # unstorable; the accessor must still handle a generic dynamic key.)
     view = bind_category(_rw_node())
-    assert view["get"] == Bind("/host/get", "/box/get")
-    assert "get" in view
-    assert isinstance(view["get"], Bind)
+    assert view["getter"] == Bind("/host/getter", "/box/getter")
+    assert "getter" in view
+    assert isinstance(view["getter"], Bind)
 
 
 def test_bind_category_iter_len_contains() -> None:
     view = bind_category(_rw_node())
     assert len(view) == 3
-    assert set(view) == {"home", "vault", "get"}
+    assert set(view) == {"home", "vault", "getter"}
     assert "home" in view
     assert "absent" not in view
     assert dict(view.items()) == {
         "home": Bind("/host/home", "/home/agent"),
         "vault": Bind("@workset.vault_rw", "/vault", "Z,U"),
-        "get": Bind("/host/get", "/box/get"),
+        "getter": Bind("/host/getter", "/box/getter"),
     }
 
 
@@ -187,10 +195,10 @@ def test_env_view_yields_scalars() -> None:
     assert len(view) == 5
 
 
-def test_env_view_collision_key_items() -> None:
+def test_env_view_dynamic_key() -> None:
     view = env_view(_env_node())
-    assert view["items"] == "ok"
-    assert set(view) == {"LANG", "DEBUG", "RETRIES", "RATIO", "items"}
+    assert view["ITEMIZED"] == "ok"
+    assert set(view) == {"LANG", "DEBUG", "RETRIES", "RATIO", "ITEMIZED"}
 
 
 def test_env_view_non_scalar_leaf_raises() -> None:
@@ -219,7 +227,7 @@ def test_env_view_none_leaf_raises() -> None:
 def test_masks_set_returns_masked_dests() -> None:
     result = masks_set(_masks_node())
     assert isinstance(result, set)
-    assert result == {"/secrets", "/home/agent/.ssh", "get"}
+    assert result == {"/secrets", "/home/agent/.ssh", "/box/getter"}
 
 
 def test_masks_set_empty_node() -> None:

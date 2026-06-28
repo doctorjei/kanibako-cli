@@ -32,32 +32,118 @@ Storage model (design §2)
 ``None`` semantics — type space only (design §3)
 ------------------------------------------------
 A key may be **absent** (unset) or present with value **None** (an explicit
-reset). Present-``None`` is a legal stored :data:`StoreValue`. The canonical,
-collision-safe absent-vs-present-``None`` probe is the **UNBOUND**
-``dict.get(store, key, _MISSING)`` (design §3's own form): it returns
-:data:`_MISSING` iff the key is absent, ``None`` iff present-``None``, else the
-value. Use the unbound ``dict.get`` form — **NOT** the bound ``store.get(...)``,
-which is itself shadowed when a key is literally named ``get`` (then
-``store.get`` IS the stored value, not the method, and calling it raises). That
-asymmetry is by design (collision safety below); the unbound form sidesteps it,
-so every consumer (the block-2b merge that probes at every leaf) MUST use it.
-``_MISSING`` is **never stored** and is **never** a member of the
-:data:`StoreValue` union. The merge LOGIC that consults it lives in block 2b;
-here we only define the sentinel and the rule that it never enters value space.
+reset). Present-``None`` is a legal stored :data:`StoreValue`. The canonical
+absent-vs-present-``None`` probe is the **BOUND** ``store.get(key, _MISSING)``
+(design §3): it returns :data:`_MISSING` iff the key is absent, ``None`` iff
+present-``None``, else the value. The bound form is safe because no user key can
+ever be named ``get`` — ``get`` is a RESERVED name (collision safety below), so
+``store.get`` is ALWAYS the inherited ``dict`` method, never a stored value. The
+**unbound** ``dict.get(store, key, _MISSING)`` form remains equally valid and
+is still used by the existing consumers (the block-2b merge, the typed views,
+``config set``); it was the canonical form before block 1b forbade reserved
+names, so no consumer needs retrofitting. ``_MISSING`` is **never stored** and is
+**never** a member of the :data:`StoreValue` union. The merge LOGIC that consults
+it lives in block 2b; here we only define the sentinel and the rule that it never
+enters value space.
 
-Collision safety (the "MonkeyDict" point, design §2)
-----------------------------------------------------
-A user key may legitimately be named ``keys``, ``items``, ``get``, ``values``,
-``class``, etc. Attribute access therefore resolves to the STORED KEY, never to
-a method. Every container operation is exposed only through a ``__dunder__``
-(``__iter__``, ``__contains__``, ``__eq__``, ``__repr__``, ...) or through the
-inherited ``dict`` methods reached via ``[]``/explicit call — there is no
-public, non-dunder method on :class:`KeyStore` that a user key could shadow.
+Collision safety (the "MonkeyDict" point, design §2) — RESERVED NAMES
+---------------------------------------------------------------------
+Earlier this type let *any* key name be stored and relied on attribute access
+resolving to the STORED KEY over a same-named ``dict`` method. That left a latent
+foot-gun: any code that called a *bound* dict-method-named attribute
+(``x.get(...)``, ``x.items()``) on a collision-prone store crashed when a user
+key happened to share that name (block 1's ``.get`` absent-probe and ``items``
+repr crashes). Block 1b removes the collision at the SOURCE: **reserved key names
+are rejected at write time** (:data:`_RESERVED_KEY_NAMES` + the dunder pattern),
+so no user key can ever shadow a real attribute. Reserved =
+
+* any **dunder-pattern** name (``name.startswith("__") and name.endswith("__")``)
+  — these are the Python data-model attributes; AND
+* the public ``dict`` method names :data:`_RESERVED_KEY_NAMES` — exactly
+  ``dir(dict)``'s non-dunder names (verified equal: 0 unguarded, 0 extras). No
+  spec key uses any of these (env vars are UPPER_SNAKE; category/scope names are
+  fixed words like ``bindings``/``box``), so the reservation costs the keyspace
+  nothing while making the bound ``store.get`` permanently safe.
+
+A reserved key is rejected loudly at :meth:`KeyStore.__setitem__` (and therefore
+at construction, ``[]``-set, and attribute-set, which all funnel through it) with
+:class:`ReservedKeyError`. The match is **CASE-SENSITIVE** (the box is Linux;
+env var names are case-sensitive there). *Windows future note:* a Windows HOST
+folds env-name case, so if Windows-host env support is ever added the reservation
+must widen — two options to pick from then: a case-insensitive reservation in
+Windows mode, OR Windows-only key-mangling. Not implemented here (design §2).
+
+With reserved names forbidden, a plain :meth:`__getattr__` (fires only on a
+lookup MISS) suffices for attribute access — no key can shadow a real attribute,
+so the custom ``__getattribute__`` interception of block 1 is no longer needed.
 """
 
 from __future__ import annotations
 
 from typing import Any, NamedTuple, Union
+
+
+class ReservedKeyError(KeyError):
+    """Raised when a :class:`KeyStore` write uses a RESERVED key name.
+
+    A :class:`KeyError` subclass (this is a bad-KEY error, not a bad-value one).
+    Reserved = any dunder-pattern name (``__x__``) or a public ``dict`` method
+    name (:data:`_RESERVED_KEY_NAMES`). Forbidding these at write time is what
+    makes the bound ``store.get(key, _MISSING)`` probe permanently collision-safe
+    (design §2/§3; block 1b). The message names the offending key AND lists the
+    reserved set so it is actionable.
+    """
+
+
+#: The public, non-dunder method names of :class:`dict`. A user key may NOT take
+#: any of these (it would shadow the inherited method at the attribute surface).
+#: This frozenset is exactly ``dir(dict)``'s non-dunder names — verified equal at
+#: block 1b (0 unguarded, 0 extras); the dunder pattern is checked separately.
+_RESERVED_KEY_NAMES: frozenset[str] = frozenset(
+    {
+        "get",
+        "keys",
+        "values",
+        "items",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "clear",
+        "copy",
+        "fromkeys",
+    }
+)
+
+
+def _check_key_name(key: Any) -> str:
+    """Validate a key for storage; return it unchanged or raise.
+
+    Rejects:
+    * a non-``str`` key — :class:`TypeError` (spec keys are always strings);
+    * a **dunder-pattern** name (``__x__``) — :class:`ReservedKeyError`;
+    * a public ``dict`` method name (:data:`_RESERVED_KEY_NAMES`) —
+      :class:`ReservedKeyError`.
+
+    The match is CASE-SENSITIVE (design §2 — the box is Linux). Invoked from
+    :meth:`KeyStore.__setitem__`, so it covers construction, ``[]``-set, and
+    attribute-set (all funnel through ``__setitem__``).
+    """
+    if not isinstance(key, str):
+        raise TypeError(
+            f"KeyStore keys must be str, got {type(key).__name__}: {key!r}"
+        )
+    if key.startswith("__") and key.endswith("__"):
+        raise ReservedKeyError(
+            f"key {key!r} is reserved: dunder-pattern names (__x__) are not "
+            f"allowed (they are Python data-model attributes)"
+        )
+    if key in _RESERVED_KEY_NAMES:
+        raise ReservedKeyError(
+            f"key {key!r} is reserved: it shadows a dict method. Reserved "
+            f"names: {sorted(_RESERVED_KEY_NAMES)}"
+        )
+    return key
 
 
 class Bind(NamedTuple):
@@ -104,11 +190,12 @@ class _Missing:
 
 
 #: Module-private sentinel distinguishing an ABSENT key from a present-``None``
-#: value at the storage surface, probed with the UNBOUND form
-#: ``dict.get(store, key, _MISSING) is _MISSING`` == absent (never the bound
-#: ``store.get`` — it is shadowed by a key named ``get``; see the module
-#: docstring). Never stored; never a member of :data:`StoreValue`. Consumed by
-#: the merge logic in block 2b.
+#: value at the storage surface. Canonical probe (block 1b) = the BOUND
+#: ``store.get(key, _MISSING) is _MISSING`` == absent — safe because ``get`` is a
+#: reserved key name (see the module docstring), so ``store.get`` is always the
+#: dict method. The UNBOUND ``dict.get(store, key, _MISSING)`` form is equally
+#: valid and still used by existing consumers. Never stored; never a member of
+#: :data:`StoreValue`. Consumed by the merge logic in block 2b.
 _MISSING: _Missing = _Missing()
 
 
@@ -138,6 +225,15 @@ class KeyStore(dict):  # type: ignore[type-arg]
     for keys that are not valid Python identifiers (``agent.<name>``, hyphens,
     dots, keywords). User keys can never collide with a method — every operation
     is a ``__dunder__`` or an inherited ``dict`` method reached via ``[]``.
+
+    **CLASS INVARIANT (do not break): :class:`KeyStore` defines ONLY dunder
+    members** — no non-dunder method or attribute on the class. Because
+    :meth:`__getattr__` fires only on a normal-lookup MISS, a non-dunder class
+    attribute would resolve BEFORE a same-named stored key, re-introducing a
+    collision the reserved set does not cover. Keep every helper MODULE-LEVEL
+    (e.g. :func:`_wrap`, :func:`_check_key_name`), never ``self._helper``. Holding
+    this keeps the reserved set == ``dict``'s public methods EXACTLY (a ``_``-
+    prefixed user key like ``_check_key`` stays a valid, non-colliding key).
     """
 
     # NOTE: no ``__slots__`` and no instance ``__dict__`` use for storage —
@@ -167,38 +263,31 @@ class KeyStore(dict):  # type: ignore[type-arg]
     # --- item access: the canonical surface; wraps nested dicts on write ---
 
     def __setitem__(self, key: str, value: Any) -> None:
-        super().__setitem__(key, _wrap(value))
+        # Reject reserved key names at the SOURCE (design §2 / block 1b) so no
+        # user key can shadow a dict method. This funnels construction, ``[]``-set
+        # and attribute-set (all reach here), making the bound ``store.get`` safe.
+        super().__setitem__(_check_key_name(key), _wrap(value))
 
     # __getitem__ / __delitem__ / __contains__ / __iter__ / __len__ / get /
-    # keys / items / values are inherited from dict unchanged. They are reached
-    # via subscription or explicit call, so a user key named ``get`` shadows the
-    # method only at the ATTRIBUTE surface (where it correctly resolves to the
-    # key); the dict method is still reachable as ``dict.get(store, ...)`` or
-    # ``store["get"]`` returns the stored value. That asymmetry is the point.
+    # keys / items / values / ... are inherited from dict unchanged. No user key
+    # can be named after any of them (reserved, ``__setitem__`` above), so the
+    # bound ``store.get(...)`` / ``store.items()`` are ALWAYS the dict methods —
+    # the block-1 attribute-surface asymmetry is gone.
 
-    # --- attribute access: maps to keys, collision-safe ---
-
-    def __getattribute__(self, name: str) -> Any:
-        # Collision safety (design §2): a STORED key must win over a same-named
-        # dict method. ``__getattr__`` alone is insufficient — it fires only when
-        # normal lookup FAILS, so a key named ``keys``/``get``/``items`` would
-        # resolve to the inherited method, never the value. So we intercept
-        # non-dunder attribute access here and prefer the stored key.
-        #
-        # Dunders (``__iter__``, ``__eq__``, ``__class__``, ...) and the private
-        # helpers below are ALWAYS real attributes — never shadowable by a user
-        # key (no spec key is a dunder), so they bypass the key lookup. This
-        # keeps the dict protocol intact while the attribute surface speaks keys.
-        if not (name.startswith("__") and name.endswith("__")):
-            # dict.__contains__ avoids recursing back through this method.
-            if dict.__contains__(self, name):
-                return dict.__getitem__(self, name)
-        return object.__getattribute__(self, name)
+    # --- attribute access: maps to keys (a stored key can never shadow a real
+    #     attribute, since the dict method names are reserved) ---
 
     def __getattr__(self, name: str) -> StoreValue:
-        # Reached only for a non-dunder name that is neither a stored key nor a
-        # real attribute. Raise AttributeError (not KeyError) to honor the
-        # attribute protocol (and to keep hasattr / getattr-with-default sane).
+        # ``__getattr__`` fires ONLY on a normal-lookup MISS. Because reserved
+        # names (every dict method) can never be stored keys, a stored key never
+        # collides with a real attribute, so a plain miss-only ``__getattr__``
+        # is sufficient (block 1b — the custom ``__getattribute__`` is retired):
+        # ``store.foo`` for a stored ``foo`` misses the attribute table and lands
+        # here; ``store.get`` resolves to the dict method before we are reached.
+        if dict.__contains__(self, name):
+            return dict.__getitem__(self, name)
+        # Neither a stored key nor a real attribute. Raise AttributeError (not
+        # KeyError) to honor the attribute protocol (hasattr / getattr-default).
         raise AttributeError(
             f"{type(self).__name__!r} object has no key {name!r}"
         )
