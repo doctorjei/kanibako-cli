@@ -7,11 +7,12 @@ delivery flows through the ONE category keyspace (the single-route invariant),
 NOT a parallel descriptor mount route.
 
 It is item-0's hard half: each :class:`~kanibako.targets.base.Binding` in a
-:class:`~kanibako.targets.base.PluginDescriptor` becomes a
-``agent.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf under the
-BARE ``agent`` scope token (S27) — mirroring
-:func:`~kanibako.targets.assembly.resolve_binding_source`'s origin→host_src
-resolution.
+:class:`~kanibako.targets.base.PluginDescriptor` becomes an
+``agent.<name>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf under
+the descriptor's OWN agent name ``<name>`` (``install.name``; S27) — the §2d
+``agent.<agent>.bindings.*`` key form, NOT a bare ``agent`` token (§0 L21) —
+mirroring :func:`~kanibako.targets.assembly.resolve_binding_source`'s
+origin→host_src resolution.
 
 PURE + ALONGSIDE (the block-7a boundaries)
 ------------------------------------------
@@ -49,11 +50,12 @@ For each :class:`Binding` in ``descriptor.bindings`` (order preserved):
   and reconcile falls back to the category default for an rw bind. This is the
   ``Bind`` convention, distinct from ``descriptor_mounts``'s ``""`` (an argv-mount
   detail, not the stored shape).
-* **key path** = the BARE ``agent`` token (S27): ``agent.bindings.ro.<key>`` or
-  ``agent.bindings.rw.<key>`` per ``binding.ro``. The agent NAME selects WHICH
-  descriptor (claude's descriptor for the claude agent) — it is NOT in the key
-  path, so this partial merges BY NAME with 2a's ``agent.default`` /
-  ``agent.<active>`` levels (S8).
+* **key path** = the descriptor's OWN agent name ``<name>`` (``install.name``;
+  S27): ``agent.<name>.bindings.ro.<key>`` or ``agent.<name>.bindings.rw.<key>``
+  per ``binding.ro``. The agent NAME is IN the key path (the §2d
+  ``agent.<agent>.*`` form, NOT a bare ``agent`` token, §0 L21), so this partial
+  merges BY NAME with 2a's discriminated ``agent.<active-name>.*`` level and any
+  higher-scope ``agent.<name>.*`` override (S8 / block 2b).
 
 None-origin rule (S27, recorded here)
 -------------------------------------
@@ -65,10 +67,11 @@ accessor honest: ``bindings`` exposes ``Mapping[str, Bind]`` (NOT ``Bind | None`
 ONLY because build omits absent/None binds (design §5/§6e) — emitting a
 ``None``-host bind would be a lie a consumer crashes on.
 
-Authority: ``~/vault/rw/keystore-design.md`` §2 (binds are ``Bind``) / §4 B1 (the
-agent tier; bare ``agent`` token) / §6a (raw refs); spec
-``settings-keyspace-1.6.0-target.md`` §2a (binding REPRESENTATION) / §2d
-(``agent.<agent>.bindings.*``). SEAMS S1/S2/S3/S7/S8/S9 + S26/S27.
+Authority: spec ``settings-keyspace-1.6.0-target.md`` §2d L356–378
+(``agent.<agent>.bindings.{ro,rw}.<key>`` — the ONLY agent key form; §0 L21
+forbids a bare ``agent.<key>``) / §2a (binding REPRESENTATION);
+``~/vault/rw/keystore-design.md`` §2 (binds are ``Bind``) / §6a (raw refs). SEAMS
+S1/S2/S3/S7/S8/S9 + S26/S27.
 """
 
 from __future__ import annotations
@@ -88,19 +91,20 @@ def agent_default_partial(
 ) -> KeyStore:
     """Represent a descriptor's delivery bindings as an agent-level KeyStore partial.
 
-    Returns a :class:`~kanibako.settings_store.KeyStore` partial rooted at the BARE
-    ``agent`` scope token (S27), holding each resolvable
-    :class:`~kanibako.targets.base.Binding` as a
-    ``agent.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf —
+    Returns a :class:`~kanibako.settings_store.KeyStore` partial rooted at
+    ``agent.<name>`` where ``<name>`` is the descriptor's OWN agent (``install.name``;
+    S27 / §2d), holding each resolvable :class:`~kanibako.targets.base.Binding` as a
+    ``agent.<name>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf —
     mirroring :func:`~kanibako.targets.assembly.resolve_binding_source` with NO
     override and NO existence check (S26). See the module docstring for the full
     rules and the None-origin OMIT contract.
 
-    The partial nests ``agent.bindings`` with ``ro`` / ``rw`` sub-tables; a
+    The partial nests ``agent.<name>.bindings`` with ``ro`` / ``rw`` sub-tables; a
     sub-table is present only if at least one binding lands in it, ``bindings`` is
     present only if at least one binding resolved, and the result is ALWAYS a
-    ``KeyStore`` rooted at ``agent`` (empty when no binding resolves) so it merges
-    uniformly with the 2a agent levels (S8). Descriptor order is preserved.
+    ``KeyStore`` rooted at ``agent.<name>`` (empty ``agent.<name>`` node when no
+    binding resolves) so it merges by NAME with the 2a agent levels (S8).
+    Descriptor order is preserved.
 
     PURE: no filesystem access, no mutation of *descriptor* / *install*.
     """
@@ -130,9 +134,18 @@ def agent_default_partial(
     if dict.__len__(rw_binds):
         bindings["rw"] = rw_binds
 
-    agent = KeyStore()
+    # Root under the descriptor's OWN agent name (§2d ``agent.<agent>.*``): the
+    # claude descriptor's binds land at ``agent.claude.bindings.*``. The agent NAME
+    # is part of the KEY PATH (NOT a bare ``agent`` token, §0 L21) — so this partial
+    # merges BY NAME with 2a's discriminated ``agent.<active>.*`` level and any
+    # higher-scope ``agent.<name>.*`` override (block 2b).
+    name = install.name
+    agent_sub = KeyStore()
     if dict.__len__(bindings):
-        agent["bindings"] = bindings
+        agent_sub["bindings"] = bindings
+
+    agent = KeyStore()
+    agent[name] = agent_sub
 
     partial = KeyStore()
     partial["agent"] = agent

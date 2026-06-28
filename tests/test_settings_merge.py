@@ -14,6 +14,10 @@ warnings)``:
 * ``required`` override — exactly ONE warning over a lower set value, and NONE
   when nothing lower set it; the warning names the dotted key;
 * masks 3-state via the GENERIC merge;
+* agent keys keep their §2d DISCRIMINATED form (``agent.default.*`` /
+  ``agent.<name>.*``) through the merge — two agents coexist by name, and a
+  higher scope overrides ONE agent by name (§0 L21 per-agent independence; NO bare
+  ``agent.*``);
 * purity — same input twice → equal output, inputs unmutated; refs stay RAW.
 
 The merge keys by NAME only (NO ``box_dest`` reconcile, §6g) and never expands a
@@ -186,24 +190,42 @@ def test_bind_tuple_is_atomic_never_half_merged() -> None:
 
 
 def test_deep_recursion_three_levels() -> None:
-    # agent.<active> overrides one deep leaf; agent.default sibling survives.
-    active = KeyStore({"agent": {"bindings": {"ro": {"bin": Bind("/a/act", "/bin")}}}})
-    default = KeyStore(
+    # Deep per-NAME recursion under the §2d discriminated key agent.<name>.*: a
+    # higher scope (box) overrides ONE deep leaf while a sibling set only at the
+    # lower scope (the agent.<active> level) survives by name. Both carry the TRUE
+    # key agent.claude.bindings.* — NOT a bare `agent.*` (the §0 L21 form this
+    # revision forbids). box overriding agent.claude.* is exactly the §0 L21 "a box
+    # file MAY set an agent.<agent>.* key" capability.
+    box = KeyStore(
+        {"agent": {"claude": {"bindings": {"ro": {"bin": Bind("/a/box", "/bin")}}}}}
+    )
+    active = KeyStore(
         {
             "agent": {
-                "bindings": {
-                    "ro": {
-                        "bin": Bind("/a/def", "/bin"),
-                        "lib": Bind("/a/lib", "/lib"),
+                "claude": {
+                    "bindings": {
+                        "ro": {
+                            "bin": Bind("/a/act", "/bin"),
+                            "lib": Bind("/a/lib", "/lib"),
+                        }
                     }
                 }
             }
         }
     )
     # order: required, box, workset, agent.<active>, agent.default, ...
-    snap, _ = merge([KeyStore(), KeyStore(), KeyStore(), active, default])
-    assert _probe(snap, "agent", "bindings", "ro", "bin") == Bind("/a/act", "/bin")
-    assert _probe(snap, "agent", "bindings", "ro", "lib") == Bind("/a/lib", "/lib")
+    snap, _ = merge([KeyStore(), box, KeyStore(), active, KeyStore()])
+    # box wins the overridden leaf; the active-level sibling survives by name.
+    assert (
+        _probe(snap, "agent", "claude", "bindings", "ro", "bin")
+        == Bind("/a/box", "/bin")
+    )
+    assert (
+        _probe(snap, "agent", "claude", "bindings", "ro", "lib")
+        == Bind("/a/lib", "/lib")
+    )
+    # No bare agent.bindings.* form is ever produced (a §0 L21 violation).
+    assert _probe(snap, "agent", "bindings") is _MISSING
 
 
 def test_higher_subtree_shadows_lower_nonsubtree() -> None:
@@ -213,6 +235,48 @@ def test_higher_subtree_shadows_lower_nonsubtree() -> None:
     snap, _ = merge([KeyStore(), high, low])
     assert _probe(snap, "box", "x", "a") == 1
     assert _probe(snap, "box", "x") == KeyStore({"a": 1})
+
+
+# --------------------------------------------------------------------------- #
+# Agent keys: §2d discriminated form survives the merge (the conformance fix)   #
+# — per-agent independence (§0 L21) + active-over-default is by LEVEL, by NAME   #
+# --------------------------------------------------------------------------- #
+
+
+def test_two_agents_coexist_in_snapshot_by_name() -> None:
+    # The brief §3 mandate (merge level): agent.claude.* and agent.goose.* set at
+    # the box scope COEXIST in the snapshot under their own §2d names — the
+    # capability the bare-`agent` collapse destroyed (it made them indistinguishable).
+    box = KeyStore(
+        {
+            "agent": {
+                "claude": {"model": "cm"},
+                "goose": {"model": "gm"},
+            }
+        }
+    )
+    snap, _ = merge([KeyStore(), box])
+    assert _probe(snap, "agent", "claude", "model") == "cm"
+    assert _probe(snap, "agent", "goose", "model") == "gm"
+    # No bare agent.model (a §0 L21 violation) is produced.
+    assert _probe(snap, "agent", "model") is _MISSING
+
+
+def test_higher_scope_overrides_one_agent_by_name() -> None:
+    # The brief §3 mandate (merge level): a higher-scope (box) agent.<name>.* key
+    # overrides the agent-level same key BY NAME (box > agent.<active>), per §0 L21
+    # "a box file MAY set an agent.<agent>.* key … override a specific agent". The
+    # agent.default.* layer and the OTHER agent's key both survive untouched.
+    # order: required, box, workset, agent.<active>, agent.default, ...
+    box = KeyStore({"agent": {"claude": {"model": "box_claude"}}})
+    agent_active = KeyStore({"agent": {"claude": {"model": "cm", "bootstrap": "tmux"}}})
+    agent_default = KeyStore({"agent": {"default": {"model": "dm"}}})
+    snap, _ = merge([KeyStore(), box, KeyStore(), agent_active, agent_default])
+    # box wins claude's model; claude's other key (only at the active level) survives.
+    assert _probe(snap, "agent", "claude", "model") == "box_claude"
+    assert _probe(snap, "agent", "claude", "bootstrap") == "tmux"
+    # agent.default.* survives by its own true name (NOT erased / collapsed).
+    assert _probe(snap, "agent", "default", "model") == "dm"
 
 
 # --------------------------------------------------------------------------- #

@@ -13,12 +13,15 @@ design §6a / spec §0).
 
 Authority
 ---------
-* ``~/vault/rw/keystore-design.md`` §4 (cascade — primary): the 7-level order
-  ``base < system < agent.default < agent.<active> < workset < box < required``,
-  high→low precedence; ``agent.default`` is an EXPLICIT level (B1) and both agent
-  layers reuse the same linear precedence (no nested mini-cascade); the active
-  agent's subtree is selected by name. §2 (storage — partials are ``KeyStore``s,
-  binds are ``Bind``). §6a / spec §0 (files store UNRESOLVED — refs stay raw).
+* Spec ``settings-keyspace-1.6.0-target.md`` §2 L138–142 (cascade — PRIMARY
+  authority): the 7-level order ``base < system < agent.default < agent.<active> <
+  workset < box < required``, high→low precedence; ``agent.default`` is an EXPLICIT
+  level and both agent layers reuse the same linear ``_MISSING`` precedence (no
+  nested mini-cascade) — the LEVEL ORDER is the precedence. §2d L356–378: the ONLY
+  two agent key forms are ``agent.default.<key>`` and ``agent.<agent>.<key>`` (a
+  concrete agent name) — §0 L21 forbids a bare ``agent.<key>``. ``keystore-design.md``
+  §2 (storage — partials are ``KeyStore``s, binds are ``Bind``); §6a / spec §0
+  (files store UNRESOLVED — refs stay raw).
 * Spec ``settings-keyspace-1.6.0-target.md`` §2 (cascade + scopes) / §2a
   (categories + value types) / §0 (namespace ORTHOGONAL to cascade).
 * Keyspace audit 2026-06-27c #2: the ``machine`` (``/etc/kanibako.yaml``) tier is
@@ -30,7 +33,10 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 * **S7** — partials are NESTED ``KeyStore``s (not flat dotted dicts); a scope
   file's nested tables are mirrored verbatim into the partial.
 * **S8** — output order is MOST-SPECIFIC-FIRST:
-  ``[required, box, workset, agent.<active>, agent.default, system, base]``.
+  ``[required, box, workset, agent.<active>, agent.default, system, base]``. The
+  two agent levels keep their TRUE discriminated keys (``agent.<active-name>.*`` /
+  ``agent.default.*``, §2d) — NO bare-``agent`` collapse; level order is the
+  cascade precedence.
 * **S9** — binds parsed to ``Bind`` at ASSEMBLY with ``@``-refs / ``$vars`` / ``~``
   left RAW inside ``host`` / ``box`` (expansion is block 3).
 * **S13** — ONE unified ``KeyStore`` partial per level holding BOTH behavior
@@ -48,14 +54,20 @@ content with the SCOPE TOKEN KEPT (``box.image``, ``system.caches.x``,
 ``agent.bindings.rw.x``) — the LEVEL identity is the FILE, not a lifted sub-table.
 Block 2b then merges by the scope-qualified name across levels.
 
-The AGENT tier is the one normalization (design §4 B1): the agent file nests
-``agent.default.<key>`` and ``agent.<agent>.<key>``, with the active agent
-falling back to default. The two become SEPARATE cascade LEVELS, and within each
-the per-agent DISCRIMINATOR (``default`` / ``<active>``) is COLLAPSED to the bare
-``agent`` scope token (``agent.bindings.rw.x``, ``agent.model``) — so the two
-levels merge active-over-default BY NAME (the level order encodes the precedence)
-and the key matches ``scope_roots`` (bare ``agent.bindings.ro`` …). Only the
-discriminator collapses; the ``agent`` scope token is kept.
+The AGENT tier yields TWO separate cascade levels from the one agent file (spec
+§2 L138–142): the file nests ``agent.default.<key>`` (the all-agents fallback
+layer) and ``agent.<agent>.<key>`` (the per-agent layer). Each becomes a SEPARATE
+cascade LEVEL and the per-agent DISCRIMINATOR is KEPT VERBATIM — the default layer
+under ``agent.default.<key>``, the active layer under ``agent.<active-name>.<key>``
+(the ONLY two agent key forms the spec allows — §2d L356–378; §0 L21 forbids a
+bare ``agent.<key>``). The two levels merge BY THEIR TRUE NAMES (block 2b); the
+LEVEL ORDER (active above default, S8) is the explicit cascade precedence (§2
+L139–142 "explicit in the cascade … no nested mini-cascade"). The thin
+active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
+§2d L368) is an effective-agent READ deferred to the block-7 consumer, NOT a
+name collapse here. Keeping the discriminator preserves §0 L21 per-agent
+independence: ``agent.<other>.*`` set at any scope survives the merge by its own
+name.
 """
 
 from __future__ import annotations
@@ -133,16 +145,24 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
     The agent settings file is rooted at a top-level ``agent:`` table holding
     per-agent sub-tables (``default:`` for the all-agents layer, ``<name>:`` for
     each agent). *sub_key* selects which sub-table becomes THIS level — the two
-    are kept SEPARATE cascade levels (design §4 B1; today's ``read_agent_settings``
-    pre-merges them, which 2a deliberately does NOT).
+    are kept SEPARATE cascade levels (spec §2 L138–142; today's
+    ``read_agent_settings`` pre-merges them, which 2a deliberately does NOT).
 
-    The per-agent DISCRIMINATOR (``default`` / ``<active>``) is COLLAPSED: the
-    sub-table is re-rooted under the BARE ``agent`` scope token, so this level's
-    keys are ``agent.<key>`` / ``agent.bindings.rw.x`` — matching ``scope_roots``
-    and letting the two agent levels merge active-over-default by name (the level
-    ORDER carries the precedence). A missing ``agent`` table, or a *sub_key* with
-    no matching sub-table (e.g. an active agent absent from the file), → an empty
-    :class:`KeyStore` level.
+    The per-agent DISCRIMINATOR is KEPT VERBATIM — the sub-table is re-rooted under
+    its TRUE discriminated name ``agent.<sub_key>`` (``agent.default.<key>`` for the
+    default layer, ``agent.<active-name>.<key>`` for the active layer), the ONLY two
+    agent key forms the spec defines (§2d L356–378; §0 L21 forbids a bare
+    ``agent.<key>``). The two agent levels then merge BY THEIR TRUE NAMES (block 2b),
+    each scope-qualified key overriding the same key at a lower level; the
+    active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
+    §2d L368) is a thin effective-agent READ deferred to the block-7 consumer (the
+    cascade's job is precedence by LEVEL ORDER — §2 L139–142 "explicit in the
+    cascade … no nested mini-cascade" — not a name collapse). This preserves §0 L21
+    per-agent independence: a box/workset that sets ``agent.<other>.*`` (or directly
+    sets ``agent.default.*``) keeps its true name and survives the merge intact.
+
+    A missing ``agent`` table, or a *sub_key* with no matching sub-table (e.g. an
+    active agent absent from the file), → an empty :class:`KeyStore` level.
     """
     agent = raw.get("agent") if isinstance(raw, dict) else None
     if not isinstance(agent, dict):
@@ -150,11 +170,16 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
     sub = agent.get(sub_key)
     if not isinstance(sub, dict):
         return KeyStore()
-    # Re-root the sub-table under the bare ``agent`` scope token (discriminator
-    # dropped). _parse_node handles the bind/category structure inside.
+    # Re-root the sub-table under its TRUE discriminated name ``agent.<sub_key>``
+    # (NO bare-token collapse). _parse_node handles the bind/category structure
+    # inside. The discriminator (``default`` / the active agent's name) is the §2d
+    # key form and is load-bearing — it keeps the all-agents fallback layer and any
+    # per-agent override distinct under the cascade merge.
     parsed_sub = _parse_node(sub, in_binds=False)
+    agent_node = KeyStore()
+    agent_node[sub_key] = parsed_sub
     store = KeyStore()
-    store["agent"] = parsed_sub
+    store["agent"] = agent_node
     return store
 
 
@@ -221,8 +246,9 @@ def assemble_levels(
 
     Each non-agent level's partial = its file's WHOLE nested content, scope token
     KEPT (§0). The agent file yields BOTH agent levels via its ``default`` and
-    ``<active>`` sub-tables, each re-rooted under the bare ``agent`` token (design
-    §4 B1).
+    ``<active>`` sub-tables, each kept under its TRUE discriminated name
+    (``agent.default.<key>`` / ``agent.<active-name>.<key>``, spec §2d) — NO
+    bare-``agent`` collapse.
 
     * *agent_name* selects the active agent's sub-table for the ``agent.<active>``
       level; ``agent.default`` reads the ``default`` sub-table from the SAME file.
@@ -256,8 +282,9 @@ def assemble_levels(
     _overlay(base_partial, _file_partial(raw_base))
 
     # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token
-    # so 2b merges by the scope-qualified name; the agent tier collapses its
-    # default/<active> discriminator to the bare ``agent`` token.
+    # so 2b merges by the scope-qualified name; the agent tier keeps its
+    # default/<active> discriminator as the TRUE §2d key (``agent.default.*`` /
+    # ``agent.<active-name>.*``), NO bare-``agent`` collapse.
     return [
         _file_partial(raw_required),
         _file_partial(raw_box),

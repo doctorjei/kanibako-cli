@@ -56,11 +56,13 @@ from kanibako.settings_store import _MISSING, KeyStore, StoreValue
 # bool|None category (S5), the bind-shaped categories are ``_BIND_CATEGORIES``.
 _MASKS_SEGMENT = "masks"
 
-# The agent-tier discriminator collapses to the bare ``agent`` token in 2a, so the
-# index of the ``required`` level in the MOST-SPECIFIC-FIRST list is simply 0 — but
-# the merge never relies on a positional index: ``required`` is identified by the
-# FIRST level in the ordered list (the cap, S8). The warning fires when that level
-# SETS a name that a strictly-lower level also SET.
+# The agent tier keeps its ``default`` / ``<active-name>`` discriminator as the true
+# §2d key (``agent.default.*`` / ``agent.<active-name>.*``) in 2a — the merge unions
+# by that scope-qualified name like every other level. The index of the ``required``
+# level in the MOST-SPECIFIC-FIRST list is simply 0 — but the merge never relies on a
+# positional index: ``required`` is identified by the FIRST level in the ordered list
+# (the cap, S8). The warning fires when that level SETS a name that a strictly-lower
+# level also SET.
 
 
 def merge(levels: list[KeyStore]) -> tuple[KeyStore, list[str]]:
@@ -151,7 +153,8 @@ def _merge_nodes(
     override warning (S10) fires at the precise LEAF where the cap's value WINS and
     a strictly-lower level ALSO SET that leaf — named by the full dotted path. It is
     attributed by IDENTITY (``is required_node``), never by position, so it survives
-    the agent-token collapse and any ordering.
+    the agent-tier discrimination (``agent.default.*`` / ``agent.<active-name>.*``)
+    and any ordering.
     """
     out = KeyStore()
     for name in _names_in_order(levels):
