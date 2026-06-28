@@ -56,7 +56,7 @@ def _scope_roots(agent: str, ws_root: str | None) -> dict[str, str]:
 _RESOLVED_SYS = {
     "system.data": "/data/kanibako",
     "system.agents": "/data/agents",
-    "system.channels": "/data/channels",
+    "system.channelroot": "/data/channels",
 }
 
 

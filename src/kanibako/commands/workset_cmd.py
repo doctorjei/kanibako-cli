@@ -969,7 +969,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     floor: dict[str, object] = {
         "system.data": str(std.data),
         "system.agents": str(std.agents),
-        "system.channels": str(std.channels),
+        "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
         "system.registry": str(std.registry),
         "system.primary_workset": str(std.primary_workset),

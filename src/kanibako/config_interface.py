@@ -78,7 +78,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.data",
     "system.backup",
     "system.agents",
-    "system.channels",
+    "system.channelroot",
     "system.global",
     "system.base_template",
     "system.settings",

@@ -2195,7 +2195,7 @@ def _launch_snapshot_inputs(
     resolved_sys = {
         "system.data": str(std.data),
         "system.agents": str(std.agents),
-        "system.channels": str(std.channels),
+        "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
         "system.registry": str(std.registry),
         "system.primary_workset": str(std.primary_workset),

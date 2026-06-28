@@ -245,7 +245,7 @@ restructured. The PRIMARY workset (§4) absorbs the old top-level box/log/vault 
 |---|---|---|
 | `system.path.data` | `system.data` | rename only |
 | `system.path.crabs` | `system.agents` | + crab→agent (§2) |
-| `system.path.comms` | `system.channels` | renamed + rebuilt (see §7) |
+| `system.path.comms` | `system.channelroot` | renamed + rebuilt (see §7); type roots under `system.channels.*` |
 | `system.path.templates` | `system.base_template` | re-pointed to `@system.global/base_template` |
 | `system.path.ws_hints` | `system.registry` | absorbed into the consolidated registry (§5) |
 | `system.path.boxes` | **DELETED** | → `@system.primary_workset/boxes` (§4) |
@@ -602,17 +602,18 @@ types across 2 scopes (system + workset), surfaced in-box under `~/channels/` an
 
 ### 7.1 Key + path renames
 
-| Old `system.path.comms` | New `system.channels.*` |
+| Old `system.path.comms` | New `system.channelroot` + `system.channels.*` |
 |---|---|
-| `system.path.comms` (one dir) | `system.channels` (`@system.data/channels`) + sub-keys below |
-| — | `system.channels.commons` (`@system.channels/commons`) |
-| — | `system.channels.chat` (`@system.channels/chat`; dir of `*.md` logs) |
+| `system.path.comms` (one dir) | `system.channelroot` (`@system.data/channels`) — ROOT-path leaf; sub-keys below under the `system.channels.*` branch |
+| — | `system.channels.commons` (`@system.channelroot/commons`) |
+| — | `system.channels.chat` (`@system.channelroot/chat`; dir of `*.md` logs) |
 | — | `system.channels.broadcast` (`@system.channels.chat/broadcast.md`) |
-| — | `system.channels.mailboxes` (`@system.channels/mailboxes`; partitioned `/<ws>/<box>`) |
-| — | `system.channels.share` (`@system.channels/share`; partitioned `/<ws>/<box>`) |
+| — | `system.channels.mailboxes` (`@system.channelroot/mailboxes`; partitioned `/<ws>/<box>`) |
+| — | `system.channels.share` (`@system.channelroot/share`; partitioned `/<ws>/<box>`) |
 
-(The `system.path.comms` → `system.channels` rename is also listed in §3.1; this
-section details the sub-keys and the in-box layout.)
+(The `system.path.comms` → `system.channelroot` rename is also listed in §3.1; this
+section details the sub-keys and the in-box layout. The root leaf is `channelroot`
+so the key is a scalar XOR a subtree — the type roots live under `system.channels.*`.)
 
 ### 7.2 The 5 channel types
 
@@ -668,7 +669,7 @@ tighten the write paths without moving the in-box paths.)
    (the same host dir as `~/channels/mailboxes/<ws>/<self>`). No migration needed —
    it is created on box launch.
 
-The host roots live under `@system.channels` (system scope) and
+The host roots live under `@system.channelroot` (system scope) and
 `<wsroot>/channels` (workset scope, primary/named only). The Share type also has a
 **system** publication dir (`share/<ws>/<box>`) and, for primary/named boxes, a
 **workset-local** one (`channels/share/<box>`).

@@ -56,7 +56,7 @@ def run(args: argparse.Namespace) -> int:
     # Create the channel system skeleton (5 types, system scope — TARGET §2f).
     # Per-workset mailbox/share partitions + chat logs are guarantee-created on
     # the launch path; setup pre-creates the type roots + the default chat logs.
-    channels_dir = sys_paths["system.channels"]
+    channels_dir = sys_paths["system.channelroot"]
     (channels_dir / "commons").mkdir(parents=True, exist_ok=True)
     (channels_dir / "share").mkdir(parents=True, exist_ok=True)
     (channels_dir / "mailboxes").mkdir(parents=True, exist_ok=True)
