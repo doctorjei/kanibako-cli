@@ -715,8 +715,10 @@ class TestPluginsAndCacheShares:
     ``@system.agents/claude`` = ``<data>/agents/claude`` and bound rw to
     ``~/.claude/{plugins,cache}`` — NOT the old SHARED_STORE descriptor binding.
 
-    Driven directly through ``_build_share_mounts`` (the category-resolver path)
-    with a REAL ``std`` so the scope-root join + host paths are exercised.
+    Driven through the LIVE single-route path (7c): the claude ``default_shares()``
+    table resolved via ``build_launch_snapshot`` (``_resolve_launch_snapshot``) and
+    emitted via ``_emit_category_mounts`` with a REAL ``std`` so the agent-scope
+    root-join + host paths + L7 guarantee-create are exercised end-to-end.
     """
 
     _PLUGINS_DEST = "/home/agent/.claude/plugins"
@@ -730,24 +732,39 @@ class TestPluginsAndCacheShares:
             local_shared_base=std.data,
         )
         proj.group_auth = True
+        proj.enable_vault = False
         return proj
 
     def _build(self, std, config_file, tmp_path):
-        from kanibako.commands.start import _build_share_mounts
+        from kanibako.commands.start import (
+            _emit_category_mounts,
+            _resolve_launch_snapshot,
+        )
         from kanibako.plugins.claude.target import ClaudeTarget
 
-        empty = tmp_path / "empty.yaml"  # absent config files -> no overrides
-        return _build_share_mounts(
+        target = ClaudeTarget()
+        # NARROW snapshot resolve: inject ONLY the claude agent shares (the share
+        # root-join + L7 guarantee-create exercised here), not the core/channel
+        # families. ``default_shares()`` is the claude plugin's agent-scope shared
+        # table (plugins/cache under @system.agents/claude). All scope files are
+        # absent (None) — this isolates the agent-share resolution.
+        _snap, reconciled, _w = _resolve_launch_snapshot(
             std=std,
             proj=self._proj(std),
             agent_name="claude",
-            global_config_path=config_file,
-            project_toml=empty,
-            workset_config_path=empty,
-            agent_config_path=empty,
-            target=ClaudeTarget(),
+            system_settings_path=None,
+            project_toml=None,
+            workset_path=None,
+            agent_cfg_path=None,
+            desc=None,
+            install=None,
+            target=target,
+            agent_cfg=None,
+            include_base_families=False,
+            extra_default_categories=target.default_shares(),
             group_auth=True,
         )
+        return _emit_category_mounts(reconciled, label="share")
 
     def _by_dest(self, mounts, dest):
         return [mt for mt in mounts if getattr(mt, "destination", None) == dest]
@@ -1853,289 +1870,6 @@ class TestNoAgentMessage:
             m.runtime.run.assert_called_once()
 
 
-class TestBuildShareMounts:
-    """Unit tests for _build_share_mounts (scoped-share wiring)."""
-
-    def _std(self, tmp_path):
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            agents=tmp_path / "agents",
-            data_home=tmp_path / "data_home",
-            data_path=tmp_path / "data",
-            # New system.* fields read by resolved_sys (shares/seeds wiring).
-            data=tmp_path / "data",
-            channels=tmp_path / "channels",
-            base_template=tmp_path / "base_template",
-            registry=tmp_path / "registry.yaml",
-            primary_workset=tmp_path / "primary_workset",
-        )
-
-    def _proj(self, group=None):
-        from types import SimpleNamespace
-        return SimpleNamespace(group=group)
-
-    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
-              project_toml=None, workset_config_path=None, agent_config_path=None,
-              target=None):
-        from kanibako.commands.start import _build_share_mounts
-        return _build_share_mounts(
-            std=std or self._std(tmp_path),
-            proj=proj or self._proj(),
-            agent_name="claude",
-            global_config_path=global_config_path,
-            project_toml=project_toml,
-            workset_config_path=workset_config_path,
-            agent_config_path=agent_config_path,
-            target=target,
-        )
-
-    def test_empty_config_returns_empty(self, tmp_path):
-        """No share keys anywhere → no mounts (the no-behavior-change guarantee)."""
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text('box_image: "img"\nagent:\n  model: "sonnet"\n')
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  image: "x"\n')
-        mounts = self._call(
-            tmp_path,
-            global_config_path=glob,
-            project_toml=ptoml,
-            workset_config_path=None,
-            agent_config_path=None,
-        )
-        assert mounts == []
-
-    def test_all_paths_none_returns_empty(self, tmp_path):
-        assert self._call(tmp_path) == []
-
-    def test_system_share_rw_one_mount(self, tmp_path):
-        from pathlib import Path
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text(
-            "system:\n"
-            "  bindings:\n"
-            "    rw:\n"
-            '      data: ["/host/x", "~/data"]\n'
-        )
-        mounts = self._call(tmp_path, global_config_path=glob)
-        assert len(mounts) == 1
-        m = mounts[0]
-        assert m.source == Path("/host/x")
-        assert m.destination == "/home/agent/data"
-        assert m.options == "Z,U"
-
-    def test_box_level_suppression(self, tmp_path):
-        """settings.yaml '' for a system-scoped key suppresses the system share."""
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text(
-            'system:\n  bindings:\n    rw:\n      foo: ["/a", "~/foo"]\n'
-        )
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('system:\n  bindings:\n    rw:\n      foo: ""\n')
-        mounts = self._call(
-            tmp_path, global_config_path=glob, project_toml=ptoml,
-        )
-        assert mounts == []
-
-    def test_agent_scope_root_join(self, tmp_path):
-        """A relative agent share joins under std.agents/<agent>/share."""
-        agent_cfg = tmp_path / "claude.yaml"
-        agent_cfg.write_text(
-            'agent:\n  bindings:\n    rw:\n      plugins: ["plugins", "~/.claude/plugins"]\n'
-        )
-        std = self._std(tmp_path)
-        mounts = self._call(tmp_path, std=std, agent_config_path=agent_cfg)
-        assert len(mounts) == 1
-        m = mounts[0]
-        assert m.source == std.agents / "claude" / "share" / "plugins"
-        assert m.destination == "/home/agent/.claude/plugins"
-
-    def test_workset_root_only_for_non_default_group(self, tmp_path):
-        from types import SimpleNamespace
-        ws_root = tmp_path / "myws"
-        group = SimpleNamespace(root=ws_root, name="myws", is_default=False)
-        ws_cfg = tmp_path / "config.yaml"
-        ws_cfg.write_text(
-            'workset:\n  bindings:\n    rw:\n      shared: ["rel", "~/shared"]\n'
-        )
-        mounts = self._call(
-            tmp_path,
-            proj=self._proj(group=group),
-            workset_config_path=ws_cfg,
-        )
-        assert len(mounts) == 1
-        assert mounts[0].source == ws_root / "rel"
-
-    def test_workset_root_set_for_external_connected_project(self, tmp_path):
-        """A project connected via an EXTERNAL dir resolves to its named
-        workset (group.is_default False), so workset scope roots ARE set and
-        workset shares mount — even though the workspace is the external path."""
-        from types import SimpleNamespace
-        ws_root = tmp_path / "extws"
-        # External-connect outcome: a non-default workset group whose root is
-        # the workset (NOT the external workspace path).
-        group = SimpleNamespace(root=ws_root, name="extws", is_default=False)
-        ws_cfg = tmp_path / "config.yaml"
-        ws_cfg.write_text(
-            'workset:\n  bindings:\n    rw:\n      shared: ["rel", "~/shared"]\n'
-        )
-        mounts = self._call(
-            tmp_path,
-            proj=self._proj(group=group),
-            workset_config_path=ws_cfg,
-        )
-        # Workset share mounts, rooted under the workset root.
-        assert len(mounts) == 1
-        assert mounts[0].source == ws_root / "rel"
-
-    def _claude_target(self):
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            name="claude",
-            default_shares=lambda: {
-                "agent.bindings.rw.plugins": ("plugins", "~/.claude/plugins")
-            },
-        )
-
-    def test_target_default_share_served(self, tmp_path):
-        """A target's declared default share mounts even with no config files."""
-        std = self._std(tmp_path)
-        mounts = self._call(tmp_path, std=std, target=self._claude_target())
-        assert len(mounts) == 1
-        m = mounts[0]
-        assert m.source == std.agents / "claude" / "share" / "plugins"
-        assert m.destination == "/home/agent/.claude/plugins"
-        assert m.options == "Z,U"
-        # rw share source dir is created best-effort.
-        assert m.source.exists()
-        assert m.source.is_dir()
-
-    def test_target_default_share_suppressed_by_box(self, tmp_path):
-        """A box-level '' overrides/suppresses the target-declared default share."""
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('agent:\n  bindings:\n    rw:\n      plugins: ""\n')
-        mounts = self._call(
-            tmp_path, project_toml=ptoml, target=self._claude_target(),
-        )
-        assert mounts == []
-
-    def test_target_none_no_default_shares(self, tmp_path):
-        """target=None means no default shares (backward compatible)."""
-        assert self._call(tmp_path, target=None) == []
-
-    def test_ro_bind_missing_source_dropped_not_fatal(self, tmp_path):
-        """L7: a read-only bind whose host source is absent is DROPPED (warned),
-        never passed to podman (which would abort the rootless launch)."""
-        missing = tmp_path / "no_such_dir"
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text(
-            "system:\n"
-            "  bindings:\n"
-            "    ro:\n"
-            f'      gone: ["{missing}", "~/gone"]\n'
-        )
-        mounts = self._call(tmp_path, global_config_path=glob)
-        # The missing ro source is dropped, not emitted.
-        assert mounts == []
-
-    def test_rw_bind_missing_source_created(self, tmp_path):
-        """L7: a read-write bind whose host source is absent is mkdir'd
-        (guarantee-create), so podman binds a real dir, not a stub."""
-        from pathlib import Path
-        target = tmp_path / "new_rw_src"
-        assert not target.exists()
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text(
-            "system:\n"
-            "  bindings:\n"
-            "    rw:\n"
-            f'      data: ["{target}", "~/data"]\n'
-        )
-        mounts = self._call(tmp_path, global_config_path=glob)
-        assert len(mounts) == 1
-        assert mounts[0].source == Path(target)
-        assert target.is_dir()
-
-
-class TestResolveVaultMask:
-    """Unit tests for _resolve_masks (the ``box.masks`` tmpfs mask LIST).
-
-    There is NO default mask (the old unconditional ``~/workspace/vault`` default
-    was dropped in 1.6.0 — the vault moved out of the workspace).  Masks now come
-    only from an explicit ``box.masks`` / ``<scope>.masks`` declaration.
-    """
-
-    def _std(self, tmp_path):
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            agents=tmp_path / "agents",
-            data_home=tmp_path / "data_home",
-            data_path=tmp_path / "data",
-            data=tmp_path / "data",
-            channels=tmp_path / "channels",
-            base_template=tmp_path / "base_template",
-            registry=tmp_path / "registry.yaml",
-            primary_workset=tmp_path / "primary_workset",
-        )
-
-    def _proj(self, group=None):
-        from types import SimpleNamespace
-        return SimpleNamespace(group=group)
-
-    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
-              project_toml=None, workset_config_path=None, agent_config_path=None):
-        from kanibako.commands.start import _resolve_masks
-        return _resolve_masks(
-            std=std or self._std(tmp_path),
-            proj=proj or self._proj(),
-            agent_name="claude",
-            global_config_path=global_config_path,
-            project_toml=project_toml,
-            workset_config_path=workset_config_path,
-            agent_config_path=agent_config_path,
-        )
-
-    def test_default_no_mask(self, tmp_path):
-        """With no config, NO mask is applied (the vault default was dropped)."""
-        assert self._call(tmp_path) == []
-
-    def test_default_no_mask_for_non_default_workset(self, tmp_path):
-        """No default mask in any box mode — also empty for a named workset."""
-        from types import SimpleNamespace
-        group = SimpleNamespace(root=tmp_path / "ws", name="ws", is_default=False)
-        assert self._call(tmp_path, proj=self._proj(group=group)) == []
-
-    def test_box_declares_explicit_mask(self, tmp_path):
-        """An explicit box.masks declaration still emits the mask box-dest."""
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  masks: "~/.secret"\n')
-        assert self._call(tmp_path, project_toml=ptoml) == [
-            "/home/agent/.secret"
-        ]
-
-    def test_box_suppresses_masks(self, tmp_path):
-        """A box-level terminal '' on box.masks suppresses every mask."""
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  masks: ""\n')
-        assert self._call(tmp_path, project_toml=ptoml) == []
-
-    def test_box_declares_multiple_masks(self, tmp_path):
-        """A box may declare several explicit masks via a box.masks list.
-
-        ``masks`` is a real YAML list (spec §2a — preserved verbatim at load),
-        NOT a comma-string; a two-element list resolves to two box-dest entries.
-        (There is no default mask, so both entries here are explicit.)
-        """
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(
-            'box:\n  masks:\n    - "~/workspace/vault"\n    - "~/.secret"\n'
-        )
-        masks = self._call(tmp_path, project_toml=ptoml)
-        assert set(masks) == {
-            "/home/agent/workspace/vault",
-            "/home/agent/.secret",
-        }
-
-
 class TestApplyInitSeeds:
     """Unit tests for _apply_init_seeds (copy-once-at-init seed wiring)."""
 
@@ -2205,7 +1939,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    foo: ["{src}", "~/foo"]\n'
+            f'agent:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
         )
         self._call(
             tmp_path,
@@ -2229,7 +1963,9 @@ class TestApplyInitSeeds:
         assert (shell / "x" / "x.txt").read_text() == "data"
 
     def test_box_suppresses_target_default_seed(self, tmp_path):
-        """A box-level '' suppresses the target-declared default seed."""
+        """A box-level present-None (``null``) suppresses the target-declared
+        default seed (the KeyStore merge suppression idiom, §3/§6e — present-None
+        OMITs the inherited bind; the old terminal-``""`` idiom is retired)."""
         from types import SimpleNamespace
         shell = self._shell(tmp_path)
         src = tmp_path / "ssrc"
@@ -2239,8 +1975,12 @@ class TestApplyInitSeeds:
             name="claude",
             default_seeds=lambda: {"agent.seeded.x": (str(src), "~/x")},
         )
+        # The default seed ``agent.seeded.x`` is re-rooted onto the active slot
+        # ``agent.claude.seeded.x`` (the discriminated §2d shape); the box file
+        # suppresses it by that TRUE name (namespace ⊥ cascade — a box-level file
+        # may set an agent-scoped key at box precedence).
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('agent:\n  seeded:\n    x: ""\n')
+        ptoml.write_text('agent:\n  claude:\n    seeded:\n      x: null\n')
         self._call(
             tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
         )
@@ -2254,7 +1994,7 @@ class TestApplyInitSeeds:
         (src / "root_file.txt").write_text("top")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    home: ["{src}", "~/"]\n'
+            f'agent:\n  default:\n    seeded:\n      home: ["{src}", "~/"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
@@ -2265,7 +2005,7 @@ class TestApplyInitSeeds:
         missing = tmp_path / "does_not_exist"
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    gone: ["{missing}", "~/gone"]\n'
+            f'agent:\n  default:\n    seeded:\n      gone: ["{missing}", "~/gone"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
@@ -2294,7 +2034,7 @@ class TestApplyInitSeeds:
 
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    pb: ["{src}", "~/"]\n'
+            f'agent:\n  default:\n    seeded:\n      pb: ["{src}", "~/"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2313,7 +2053,7 @@ class TestApplyInitSeeds:
         src.write_text("TEMPLATE")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    note: ["{src}", "~/note.md"]\n'
+            f'agent:\n  default:\n    seeded:\n      note: ["{src}", "~/note.md"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2328,81 +2068,13 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  seeded:\n    foo: ["{src}", "~/foo"]\n'
+            f'agent:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
             group_auth=False,
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
-
-
-class TestResolveConfigEnv:
-    """Unit tests for _resolve_config_env (the `<scope>.env.<VAR>` category)."""
-
-    def _std(self, tmp_path):
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            agents=tmp_path / "agents",
-            data_home=tmp_path / "data_home",
-            data_path=tmp_path / "data",
-            data=tmp_path / "data",
-            channels=tmp_path / "channels",
-            base_template=tmp_path / "base_template",
-            registry=tmp_path / "registry.yaml",
-            primary_workset=tmp_path / "primary_workset",
-        )
-
-    def _proj(self, group=None):
-        from types import SimpleNamespace
-        return SimpleNamespace(group=group)
-
-    def _call(self, tmp_path, *, std=None, proj=None, global_config_path=None,
-              project_toml=None, workset_config_path=None, agent_config_path=None,
-              group_auth=True):
-        from kanibako.commands.start import _resolve_config_env
-        return _resolve_config_env(
-            std=std or self._std(tmp_path),
-            proj=proj or self._proj(),
-            agent_name="claude",
-            global_config_path=global_config_path,
-            project_toml=project_toml,
-            workset_config_path=workset_config_path,
-            agent_config_path=agent_config_path,
-            group_auth=group_auth,
-        )
-
-    def test_empty_no_config_is_empty(self, tmp_path):
-        """No env.* keys → empty map (byte-identical: nothing added to env)."""
-        assert self._call(tmp_path) == {}
-
-    def test_box_env_resolved(self, tmp_path):
-        """A box-level env.<VAR> resolves to {VAR: value}."""
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  env:\n    FOO: "bar"\n')
-        assert self._call(tmp_path, project_toml=ptoml) == {"FOO": "bar"}
-
-    def test_box_overrides_system_precedence(self, tmp_path):
-        """Box scope wins over system scope for the same VAR (system<box)."""
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text('system:\n  env:\n    FOO: "from_system"\n')
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  env:\n    FOO: "from_box"\n')
-        out = self._call(
-            tmp_path, global_config_path=glob, project_toml=ptoml,
-        )
-        assert out == {"FOO": "from_box"}
-
-    def test_distinct_vars_accumulate(self, tmp_path):
-        """Different VARs at different scopes accumulate."""
-        glob = tmp_path / "kanibako.yaml"
-        glob.write_text('system:\n  env:\n    A: "1"\n')
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  env:\n    B: "2"\n')
-        out = self._call(
-            tmp_path, global_config_path=glob, project_toml=ptoml,
-        )
-        assert out == {"A": "1", "B": "2"}
 
 
 class TestApplySyncedCopies:

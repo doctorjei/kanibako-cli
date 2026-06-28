@@ -876,3 +876,134 @@ class TestSystemSettingsTierSplit:
         assert get_config_value(
             "system.default_agent", global_config_path=cf, system_settings_path=ssp,
         ) is None
+
+
+# ---------------------------------------------------------------------------
+# Category `config set` — the source-only RAW host_src repoint (block 7c).
+# Drives the REAL `set_config_value` router (not the unit `settings_configset`).
+# Spec §2a / design §6d / SEAMS S24/S25.
+# ---------------------------------------------------------------------------
+
+class TestCategoryConfigSet:
+    """`config set <category-key> <value>` through the live CLI setter."""
+
+    def _seed(self, tmp_path, key_path, tuple_val):
+        """Write an existing category bind tuple into a scope file; return path."""
+        f = tmp_path / "settings.yaml"
+        data: dict = {}
+        node = data
+        for seg in key_path[:-1]:
+            node = node.setdefault(seg, {})
+        node[key_path[-1]] = tuple_val
+        dump_doc(f, data)
+        return f
+
+    def test_ok_repoint_preserves_dest_and_opts_raw(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "bindings", "ro", "vault"],
+            ["/old/src", "/home/agent/vault", "ro"],
+        )
+        msg = set_config_value("box.bindings.ro.vault", "/tmp", config_path=f)
+        assert not msg.startswith("Error:")
+        assert "Warning" not in msg
+        # host_src swapped; box_dest + options PRESERVED RAW (structured list).
+        assert load_doc(f)["box"]["bindings"]["ro"]["vault"] == [
+            "/tmp", "/home/agent/vault", "ro",
+        ]
+
+    def test_warn_on_not_yet_existent_literal_proceeds(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "caches", "x"],
+            ["/old", "/home/agent/.cache/x"],
+        )
+        missing = str(tmp_path / "does" / "not" / "exist")
+        msg = set_config_value("box.caches.x", missing, config_path=f)
+        assert not msg.startswith("Error:")
+        assert "Warning" in msg  # WARN fired (host_exists obligation honored)
+        # ... and the write still PROCEEDED.
+        assert load_doc(f)["box"]["caches"]["x"][0] == missing
+
+    def test_error_colon_src_dest_notation_refused(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "bindings", "ro", "vault"],
+            ["/old", "/home/agent/vault", "ro"],
+        )
+        msg = set_config_value("box.bindings.ro.vault", "/a:/b", config_path=f)
+        assert msg.startswith("Error:")
+        assert ":" in msg  # the src:dest refusal message
+        # the file is NOT poisoned by a refused write
+        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "/old"
+
+    def test_error_dangling_ref_is_hard_error(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "bindings", "ro", "vault"],
+            ["/old", "/home/agent/vault", "ro"],
+        )
+        msg = set_config_value(
+            "box.bindings.ro.vault", "@nope.not.a.key/x", config_path=f,
+        )
+        assert msg.startswith("Error:")
+        assert "dangling" in msg
+        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "/old"
+
+    def test_ok_system_ref_stored_raw_never_expanded(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "bindings", "ro", "vault"],
+            ["/old", "/home/agent/vault", "ro"],
+        )
+        msg = set_config_value(
+            "box.bindings.ro.vault", "@system.data/foo", config_path=f,
+        )
+        assert not msg.startswith("Error:")
+        # stored RAW — the @-ref is NOT resolved to a literal (§0 files unresolved).
+        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "@system.data/foo"
+
+    def test_error_key_must_already_exist(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "bindings", "ro", "vault"],
+            ["/old", "/home/agent/vault", "ro"],
+        )
+        msg = set_config_value(
+            "box.bindings.rw.absent", "/x", config_path=f,
+        )
+        assert msg.startswith("Error:")
+        assert "must already exist" in msg
+
+    def test_error_unknown_var_is_hard_error(self, tmp_path):
+        f = self._seed(
+            tmp_path, ["box", "bindings", "ro", "vault"],
+            ["/old", "/home/agent/vault", "ro"],
+        )
+        msg = set_config_value(
+            "box.bindings.ro.vault", "$NOPE_UNKNOWN_VAR_XYZ/x", config_path=f,
+        )
+        assert msg.startswith("Error:")
+        assert "unknown variable" in msg
+
+    def test_system_scope_category_repoint_not_refused(self, tmp_path):
+        """A system-scope category key reaches the set path (D2) — categories
+        exist at every scope, so it is NOT a structural-config refusal."""
+        f = self._seed(
+            tmp_path, ["system", "caches", "x"],
+            ["/old", "/home/agent/.cache/x"],
+        )
+        msg = set_config_value(
+            "system.caches.x", "/tmp", config_path=f, is_system=True,
+        )
+        assert not msg.startswith("Error:")
+        assert load_doc(f)["system"]["caches"]["x"] == ["/tmp", "/home/agent/.cache/x"]
+
+    def test_structural_system_key_still_refused(self, tmp_path):
+        """A real structural system.* config key is still file-only refused."""
+        f = tmp_path / "kanibako.yaml"
+        dump_doc(f, {"system": {"data": "/x"}})
+        msg = set_config_value("system.data", "/tmp", config_path=f, is_system=True)
+        assert msg.startswith("Error:")
+        assert "structural" in msg
+
+    def test_category_key_is_known(self):
+        """`is_known_key` recognizes category keys (D1 — get/set symmetry)."""
+        assert is_known_key("box.bindings.rw.home")
+        assert is_known_key("system.caches.x")
+        assert is_known_key("workset.shared.plugins")
+        assert not is_known_key("some-project-name")

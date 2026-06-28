@@ -82,7 +82,12 @@ class TestKanibakoMounts:
 
 
 class TestBuildEffectiveState:
-    """Tests for _build_effective_state() precedence walk in start.py."""
+    """Tests for the ``config --effective`` behavior read
+    (``start._effective_behavior_for_display``, block 7c — the snapshot-based
+    successor to the retired ``_build_effective_state`` precedence walk). The
+    discriminated ``agent.<name>.*`` / ``agent.default.*`` file shapes
+    (``write_agent_setting``) feed the snapshot; the §2d active-over-default pick
+    yields the launch-correct effective state."""
 
     def _make_target(self, descriptors, name="claude"):
         target = MagicMock()
@@ -131,7 +136,7 @@ class TestBuildEffectiveState:
 
     def test_target_defaults_only(self, tmp_path):
         """When agent has no state and no project overrides, target defaults apply."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -148,7 +153,7 @@ class TestBuildEffectiveState:
 
     def test_agent_overrides_default(self, tmp_path):
         """Agent config state overrides target defaults."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -164,7 +169,7 @@ class TestBuildEffectiveState:
 
     def test_project_override_wins(self, tmp_path):
         """Project overrides take highest precedence."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -180,7 +185,7 @@ class TestBuildEffectiveState:
 
     def test_agent_state_passthrough_for_undeclared_keys(self, tmp_path):
         """Undeclared keys from agent state are passed through."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -197,7 +202,7 @@ class TestBuildEffectiveState:
 
     def test_no_descriptors_returns_agent_state(self, tmp_path):
         """When target has no setting_descriptors, return agent state as-is."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         target = self._make_target([])  # no descriptors
         agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
@@ -211,7 +216,7 @@ class TestBuildEffectiveState:
     def test_system_level_provides_value(self, tmp_path):
         """System [crab] (global kanibako.yaml) supplies a value when nothing
         more specific sets it."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -233,7 +238,7 @@ class TestBuildEffectiveState:
         Levels are most-specific-first ``[box, workset, crab, system]``, so a
         value set at the workset level beats one set in crab state.
         """
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -283,7 +288,7 @@ class TestBuildEffectiveState:
 
     def test_empty_string_is_terminal(self, tmp_path):
         """An explicit '' at a level suppresses fall-through to the floor."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -302,7 +307,7 @@ class TestBuildEffectiveState:
     def test_box_override_does_not_bleed_across_agents(self, tmp_path):
         """B3 regression: a box override set under agent.claude must NOT apply
         when the effective state is resolved for agent goose (and vice-versa)."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
         from kanibako.config import write_agent_setting, write_project_meta
 
         descriptors = [
@@ -336,7 +341,7 @@ class TestBuildEffectiveState:
 
     def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
         """agent.default applies to every agent; agent.<name> overrides it."""
-        from kanibako.commands.start import _build_effective_state
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
         from kanibako.config import write_agent_setting, write_project_meta
 
         descriptors = [

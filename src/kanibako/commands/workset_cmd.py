@@ -854,34 +854,31 @@ def run_share_list(args: argparse.Namespace) -> int:
     """List a working set's shared directories.
 
     Default: print the working set's own configured shares (raw NAME/MODE →
-    bind). With ``--effective``: resolve via :func:`resolve_shares` using the
-    same workset-root join a launch would apply, and print the final mounts.
+    bind). With ``--effective``: resolve through the KeyStore snapshot pipeline
+    (``assemble_levels → merge → expand → snapshot_category_entries``, scoped to
+    the workset file) using the same workset-root join a launch would apply, and
+    print the final mounts. Single-route (7c): no second ``resolve_shares`` /
+    ``read_shares`` resolver path.
     """
-    from kanibako.config import read_shares
-
     ws, std = _resolve_share_workset(args.workset)
     if ws is None:
         return 1
 
     ws_config = _workset_config_path(ws)
-    shares = read_shares(ws_config)
+    raw_shares = _workset_raw_shares(ws_config)
 
-    if not shares:
+    if not raw_shares:
         print(f"No shares configured for working set '{ws.name}'.")
         return 0
 
     if getattr(args, "effective", False):
         return _print_effective_shares(ws, std, ws_config)
 
-    # Raw view: NAME, MODE, BIND.
-    from kanibako.settings_shares import SHARE_KEY_RE
-
-    rows: list[tuple[str, str, str]] = []
-    for key, value in shares.items():
-        m = SHARE_KEY_RE.match(key)
-        if m is None:
-            continue
-        rows.append((m.group("name"), m.group("mode"), _bind_display(value)))
+    # Raw view: NAME, MODE, BIND (pre-resolution, from the workset file).
+    rows: list[tuple[str, str, str]] = [
+        (name, mode, _bind_display(value))
+        for (mode, name), value in raw_shares.items()
+    ]
     rows.sort(key=lambda r: (r[1], r[0]))
 
     print(f"Shares for working set '{ws.name}':")
@@ -891,18 +888,67 @@ def run_share_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
+    """Read the workset file's ``workset.bindings.{ro,rw}.{name}`` leaves as a
+    ``{(mode, name): raw_value}`` map for the RAW display view.
+
+    Reads the workset partial through the committed ``assemble_levels`` (the SAME
+    file reader the launch snapshot uses — single-route, no ``read_shares``), then
+    walks its ``workset.bindings.{ro,rw}`` subtree. The raw value is the structured
+    ``Bind`` (``@``-refs / ``$XDG`` / ``~`` UNRESOLVED, per §0). Missing file → {}.
+    """
+    from kanibako.settings_assemble import assemble_levels
+    from kanibako.settings_store import Bind, KeyStore, _MISSING
+
+    # assemble_levels returns [required, box, workset, agent.<active>, agent.default,
+    # system, base]; index 2 is the workset partial (the only file we pass).
+    levels = assemble_levels(
+        agent_name="general",
+        base_path=ws_config.parent / "__absent_base__",
+        required_path=ws_config.parent / "__absent_required__",
+        workset_path=ws_config,
+    )
+    workset_partial = levels[2]
+    out: dict[tuple[str, str], object] = {}
+    ws_node = dict.get(workset_partial, "workset", _MISSING)
+    if not isinstance(ws_node, KeyStore):
+        return out
+    bindings = dict.get(ws_node, "bindings", _MISSING)
+    if not isinstance(bindings, KeyStore):
+        return out
+    for mode in ("ro", "rw"):
+        mode_node = dict.get(bindings, mode, _MISSING)
+        if not isinstance(mode_node, KeyStore):
+            continue
+        for name in dict.keys(mode_node):
+            leaf = dict.__getitem__(mode_node, name)
+            # Render the Bind back to its on-disk pair shape for _bind_display.
+            if isinstance(leaf, Bind):
+                out[(mode, name)] = (
+                    [leaf.host, leaf.box, leaf.opts]
+                    if leaf.opts is not None
+                    else [leaf.host, leaf.box]
+                )
+            else:
+                out[(mode, name)] = leaf
+    return out
+
+
 def _print_effective_shares(ws, std, ws_config: Path) -> int:
     """Resolve and print the workset's shares as launch-time mounts.
 
-    Mirrors ``start.py:_build_share_mounts`` for the workset scope: a relative
-    host_src is joined under the working set root; absolute host_src passes
-    through. The default workset has no root, so relative paths are not joined.
+    Single-route (7c): resolves through the committed KeyStore snapshot pipeline
+    (``assemble_levels → merge → expand → snapshot_category_entries``) scoped to
+    the workset file — the SAME resolver the launch uses — replacing the retired
+    ``resolve_shares``/``read_shares``/``LevelView`` path. A relative host_src is
+    joined under the working set root; an absolute host_src passes through; the
+    default workset has no root, so relative paths are not joined.
     """
-    from kanibako.config import read_shares
-    from kanibako.settings_resolve import LevelView, ResolveCtx, SettingsError
-    from kanibako.settings_shares import resolve_shares
-
-    levels = [LevelView("workset", read_shares(ws_config))]
+    from kanibako.settings_assemble import assemble_levels
+    from kanibako.settings_expand import expand
+    from kanibako.settings_launch import snapshot_category_entries
+    from kanibako.settings_merge import merge
+    from kanibako.settings_resolve import ResolveCtx, SettingsError
 
     scope_roots: dict[str, str] = {}
     if not ws.is_default:
@@ -917,7 +963,10 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         xdg={"XDG_DATA_HOME": str(std.data_home)},
     )
 
-    resolved_sys = {
+    # Fold the resolved system.* tier into the snapshot floor so a share value's
+    # @-ref (e.g. @system.data) resolves from the snapshot itself (replicating the
+    # old ``_lookup`` map). Keys are flat dotted; assemble explodes them.
+    floor: dict[str, object] = {
         "system.data": str(std.data),
         "system.agents": str(std.agents),
         "system.channels": str(std.channels),
@@ -926,21 +975,27 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         "system.primary_workset": str(std.primary_workset),
     }
 
-    def _lookup(ref, chain):
-        if ref in resolved_sys:
-            return resolved_sys[ref]
-        raise SettingsError(f"Unresolvable @-reference in share value: {ref}")
-
     try:
-        mounts = resolve_shares(
-            levels=levels, ctx=ctx, lookup=_lookup, scope_roots=scope_roots,
+        levels = assemble_levels(
+            agent_name="general",
+            base_path=ws_config.parent / "__absent_base__",
+            required_path=ws_config.parent / "__absent_required__",
+            workset_path=ws_config,
+            floor=floor,
+        )
+        snapshot, _warnings = merge(levels)
+        expanded = expand(snapshot, ctx)
+        entries = snapshot_category_entries(
+            expanded, active_agent="general", box_ctx=ctx, scope_roots=scope_roots,
         )
     except SettingsError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
     print(f"Effective shares for working set '{ws.name}':")
-    for m in mounts:
-        mode = "ro" if m.options == "ro" else "rw"
-        print(f"  {m.source} -> {m.destination}  [{mode}]")
+    for entry in entries:
+        if entry.category not in ("bindings.ro", "bindings.rw"):
+            continue
+        mode = "ro" if entry.options == "ro" else "rw"
+        print(f"  {entry.host_src} -> {entry.box_dest}  [{mode}]")
     return 0

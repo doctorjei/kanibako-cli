@@ -11,11 +11,15 @@ expression engine.
 
 Cross-category collision resolution (identical-dest authority order, depth-order,
 ``synced``↔``binding`` errors, the ``group_auth`` gate) is :func:`reconcile_categories`
-(sub-step 4b), layered on top of the entries :func:`resolve_categories` produces.
-Neither function rewires launch (``start.py``); the compatibility wrappers
-:func:`resolve_shares` / :func:`resolve_seeds` (in their original modules) call
-:func:`resolve_categories` and adapt the subset back to the old ``Mount`` /
-``SeedPair`` shapes, so the launch path is byte-for-byte unchanged this step.
+(sub-step 4b), layered on top of category entries.
+
+**Block 7c status:** :func:`reconcile_categories` is LIVE — the by-dest pass the
+KeyStore snapshot path uses (fed by ``settings_launch.snapshot_category_entries``).
+:func:`resolve_categories` (the OLD by-NAME LevelView resolver) is RETAINED
+TEST-ONLY as the snapshot equivalence oracle and has no product caller; the
+``settings_shares`` / ``settings_seeds`` wrapper modules it used to feed were
+retired in 7c (the launch + ``workset share`` paths now resolve through the
+snapshot pipeline). See :func:`resolve_categories`'s own note.
 
 The eight categories
 --------------------
@@ -258,6 +262,19 @@ def resolve_categories(
     scope_roots: Mapping[str, str] | None = None,
 ) -> list[CategoryEntry]:
     """Resolve the unified scope-category config into ordered entries.
+
+    .. note::
+       **RETAINED TEST-ONLY (block 7c): this is the OLD by-NAME LevelView-cascade
+       resolver and has NO product caller.** The launch + CLI paths now resolve
+       categories through the KeyStore snapshot pipeline
+       (``build_launch_snapshot`` → :func:`snapshot_category_entries` →
+       :func:`reconcile_categories`). This function is kept solely as the
+       EQUIVALENCE ORACLE that ``tests/test_settings_launch_equivalence.py``
+       compares the snapshot path against (plus a few direct category unit tests).
+       It is a DELIBERATE retained-for-verification exception to the "no live old
+       resolver" gate, NOT a live path — a removal candidate once the snapshot
+       swap is shipped and stable. (:func:`reconcile_categories`, by contrast, IS
+       live — it is the by-dest pass the snapshot path uses.)
 
     *levels* are MOST-SPECIFIC-FIRST (``[box, workset, agent, system, ...]``).
     *lookup* resolves ``@``-refs.  *scope_roots* maps a group prefix

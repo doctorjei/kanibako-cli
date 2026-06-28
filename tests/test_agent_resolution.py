@@ -8,7 +8,6 @@ from kanibako.config import (
     config_file_path,
     load_config,
     resolve_agent,
-    resolve_and_load_settings,
     write_agent_setting,
 )
 from kanibako.errors import (
@@ -325,8 +324,40 @@ def test_install_command_externally_managed(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 7. Two-pass loader: box override beats agent default
+# 7. Two-pass: resolve the NAME (resolve_agent), then read behavior off the ONE
+#    launch snapshot (build_launch_snapshot + effective_behavior) — the block-7c
+#    replacement for the retired resolve_and_load_settings/SettingsResolver chain.
+#    These pin the same precedence (box beats the agent default) on the LIVE path.
 # ---------------------------------------------------------------------------
+
+
+def _two_pass_behavior(*, agent_state, box_path=None):
+    """PASS 1: resolve the agent name. PASS 2: read behavior off the snapshot.
+
+    Mirrors the launch flow: the per-agent FILE state rides ``agent_state`` (→
+    ``agent.<active>`` slot) and a box settings file rides ``box_path`` (its
+    discriminated ``agent.<name>.*`` table, MORE specific than the agent state)."""
+    from kanibako.settings_launch import (
+        build_launch_snapshot,
+        effective_behavior,
+    )
+    from kanibako.settings_resolve import ResolveCtx
+
+    name = resolve_agent(
+        explicit_agent="claude",
+        box_agent=None,
+        workset_agent=None,
+        system_default_path=None,
+    )
+    ctx = ResolveCtx(
+        agent_name=name, workset_name=None, host_home="/home/agent", xdg={},
+    )
+    snap, _ = build_launch_snapshot(
+        agent_name=name, ctx=ctx,
+        system_path=None, agent_path=None, workset_path=None, box_path=box_path,
+        agent_state=agent_state,
+    )
+    return name, effective_behavior(snap, active_agent=name)
 
 
 def test_two_pass_box_beats_agent(tmp_home, config_file, monkeypatch):
@@ -337,29 +368,19 @@ def test_two_pass_box_beats_agent(tmp_home, config_file, monkeypatch):
     box_path = tmp_home / "box_settings.yaml"
     write_agent_setting(box_path, "model", "box-wins", "claude")
 
-    name, resolver = resolve_and_load_settings(
-        explicit_agent="claude",
-        box_agent=None,
-        workset_agent=None,
-        system_default_path=None,
+    name, eff = _two_pass_behavior(
         agent_state={"model": "agent-default"},  # the agent tier
         box_path=box_path,
     )
     assert name == "claude"
-    rv = resolver.resolve("model")
-    assert rv.value == "box-wins"
-    assert rv.level == "box"
+    # Box (more specific) wins over the agent-state default.
+    assert eff["model"] == "box-wins"
 
 
 def test_two_pass_agent_default_when_no_box(tmp_home, config_file, monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
-    name, resolver = resolve_and_load_settings(
-        explicit_agent="claude",
-        box_agent=None,
-        workset_agent=None,
-        system_default_path=None,
-        agent_state={"model": "agent-default"},
-    )
+    name, eff = _two_pass_behavior(agent_state={"model": "agent-default"})
     assert name == "claude"
-    assert resolver.get("model") == "agent-default"
+    # With no box override the agent-state value is the effective one.
+    assert eff["model"] == "agent-default"
