@@ -396,12 +396,14 @@ def test_make_ref_lookup_present_none_counts_as_existing() -> None:
     assert lk("box.agent") is True
 
 
-def test_make_ref_lookup_handles_collision_named_keys() -> None:
-    # A key literally named ``get`` must not crash the lookup (S3 — unbound probe).
-    snap = KeyStore({"box": {"get": "x", "items": "y"}})
+def test_make_ref_lookup_handles_dynamic_named_keys() -> None:
+    # An arbitrary dynamic key resolves through the lookup. (Block 1b retired the
+    # reserved-name ``get``/``items`` collision case — those names are now
+    # unstorable; the lookup still uses the unbound probe, valid as ever.)
+    snap = KeyStore({"box": {"getter": "x", "itemized": "y"}})
     lk = make_ref_lookup(snap)
-    assert lk("box.get") is True
-    assert lk("box.items") is True
+    assert lk("box.getter") is True
+    assert lk("box.itemized") is True
 
 
 def test_make_ref_lookup_descend_through_scalar_is_false() -> None:
