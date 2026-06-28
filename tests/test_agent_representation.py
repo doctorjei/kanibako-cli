@@ -4,8 +4,9 @@ Covers the brief's §4 checklist: each origin selector (LAUNCHER/INSTALL_DIR/
 BINARY/LITERAL) resolves the RIGHT host_src from a fixture ``AgentInstall``;
 ro vs rw placement by ``binding.ro``; ``box_dest`` carried VERBATIM (with the
 descriptor-loader's ``$GUEST_HOME`` handling — already expanded at load); a
-LITERAL-origin raw expr stays raw (§6a); the BARE ``agent`` key path (NOT
-``agent.<name>``, S27); the None-origin OMIT rule (S27); descriptor order
+LITERAL-origin raw expr stays raw (§6a); the ``agent.<name>`` key path under the
+descriptor's OWN agent name (the §2d ``agent.<agent>.*`` form — NOT a bare
+``agent`` token, §0 L21; S27); the None-origin OMIT rule (S27); descriptor order
 preserved; PURITY (a fixture install whose paths do NOT exist still represents
 them — no ``Path.exists()`` / no I/O).
 
@@ -74,30 +75,38 @@ def _get(store: object, *path: str) -> object:
 
 
 # --------------------------------------------------------------------------- #
-# Shape: always a KeyStore rooted at the BARE `agent` token (S27)              #
+# Shape: a KeyStore rooted at agent.<name> — the §2d agent.<agent>.* form (S27) #
 # --------------------------------------------------------------------------- #
 
 
-def test_returns_keystore_rooted_at_bare_agent() -> None:
+def test_returns_keystore_rooted_at_agent_name() -> None:
     partial = agent_default_partial(_descriptor(), INSTALL)
     assert isinstance(partial, KeyStore)
-    # Rooted at the bare `agent` token, NOT `agent.<name>`.
+    # Rooted at agent.<name> (the descriptor's own agent), NOT a bare `agent`.
     assert dict.get(partial, "agent", _MISSING) is not _MISSING
-    assert dict.get(partial, "claude", _MISSING) is _MISSING
+    assert dict.get(partial, "claude", _MISSING) is _MISSING  # no bare top-level
     agent = dict.get(partial, "agent")
     assert isinstance(agent, KeyStore)
-    # No bindings → no `bindings` node (absent, not present-empty).
-    assert dict.get(agent, "bindings", _MISSING) is _MISSING
+    # The agent's name node is always present (the §2d agent.<name> form).
+    assert dict.get(agent, "claude", _MISSING) is not _MISSING
+    agent_claude = dict.get(agent, "claude")
+    assert isinstance(agent_claude, KeyStore)
+    # No bindings → no `bindings` node under agent.<name> (absent, not present-empty).
+    assert dict.get(agent_claude, "bindings", _MISSING) is _MISSING
 
 
-def test_key_path_is_bare_agent_not_agent_name() -> None:
+def test_key_path_is_agent_name_not_bare_agent() -> None:
     d = _descriptor(
         _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/b"),
     )
     partial = agent_default_partial(d, INSTALL)
-    # The bind lands at agent.bindings.ro.launcher — NOT agent.claude.*.
-    assert _get(partial, "agent", "bindings", "ro", "launcher") is not _MISSING
-    assert _get(partial, "agent", "claude") is _MISSING
+    # The bind lands at agent.claude.bindings.ro.launcher (§2d) — NOT bare
+    # agent.bindings.* (a §0 L21 violation).
+    assert (
+        _get(partial, "agent", "claude", "bindings", "ro", "launcher") is not _MISSING
+    )
+    # The bare agent.bindings.* form does NOT exist (it would be a §0 L21 violation).
+    assert _get(partial, "agent", "bindings") is _MISSING
 
 
 # --------------------------------------------------------------------------- #
@@ -109,7 +118,7 @@ def test_origin_launcher_resolves_install_launcher() -> None:
     d = _descriptor(
         _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/box/l"),
     )
-    bind = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro", "launcher")
+    bind = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro", "launcher")
     assert isinstance(bind, Bind)
     assert bind.host == str(INSTALL.launcher)
 
@@ -122,7 +131,8 @@ def test_origin_launcher_falls_back_to_binary_when_no_launcher() -> None:
     d = _descriptor(
         _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/b"),
     )
-    bind = _get(agent_default_partial(d, inst), "agent", "bindings", "ro", "launcher")
+    # inst.name == "x" → the partial roots at agent.x.* (the descriptor's own name).
+    bind = _get(agent_default_partial(d, inst), "agent", "x", "bindings", "ro", "launcher")
     assert isinstance(bind, Bind)
     assert bind.host == str(inst.binary)
 
@@ -131,7 +141,7 @@ def test_origin_install_dir_resolves_install_dir() -> None:
     d = _descriptor(
         _binding(key="share", origin=HostSrcOrigin.INSTALL_DIR, box_dest="/box/s"),
     )
-    bind = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro", "share")
+    bind = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro", "share")
     assert isinstance(bind, Bind)
     assert bind.host == str(INSTALL.install_dir)
 
@@ -140,7 +150,7 @@ def test_origin_binary_resolves_binary() -> None:
     d = _descriptor(
         _binding(key="binary", origin=HostSrcOrigin.BINARY, box_dest="/box/b"),
     )
-    bind = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro", "binary")
+    bind = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro", "binary")
     assert isinstance(bind, Bind)
     assert bind.host == str(INSTALL.binary)
 
@@ -154,7 +164,7 @@ def test_origin_literal_resolves_literal_src() -> None:
             literal_src=Path("/literal/source/path"),
         ),
     )
-    bind = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro", "lit")
+    bind = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro", "lit")
     assert isinstance(bind, Bind)
     assert bind.host == "/literal/source/path"
 
@@ -169,11 +179,11 @@ def test_ro_binding_placed_under_ro_with_opts_ro() -> None:
         _binding(key="share", origin=HostSrcOrigin.INSTALL_DIR, box_dest="/b", ro=True),
     )
     partial = agent_default_partial(d, INSTALL)
-    bind = _get(partial, "agent", "bindings", "ro", "share")
+    bind = _get(partial, "agent", "claude", "bindings", "ro", "share")
     assert isinstance(bind, Bind)
     assert bind.opts == "ro"
     # NOT in rw.
-    assert _get(partial, "agent", "bindings", "rw") is _MISSING
+    assert _get(partial, "agent", "claude", "bindings", "rw") is _MISSING
 
 
 def test_rw_binding_placed_under_rw_with_opts_none() -> None:
@@ -187,11 +197,11 @@ def test_rw_binding_placed_under_rw_with_opts_none() -> None:
         ),
     )
     partial = agent_default_partial(d, INSTALL)
-    bind = _get(partial, "agent", "bindings", "rw", "cache")
+    bind = _get(partial, "agent", "claude", "bindings", "rw", "cache")
     assert isinstance(bind, Bind)
     # opts None (NOT "") — the Bind/reconcile convention (S1).
     assert bind.opts is None
-    assert _get(partial, "agent", "bindings", "ro") is _MISSING
+    assert _get(partial, "agent", "claude", "bindings", "ro") is _MISSING
 
 
 def test_mixed_ro_and_rw_both_present() -> None:
@@ -203,8 +213,8 @@ def test_mixed_ro_and_rw_both_present() -> None:
         ),
     )
     partial = agent_default_partial(d, INSTALL)
-    assert isinstance(_get(partial, "agent", "bindings", "ro", "share"), Bind)
-    assert isinstance(_get(partial, "agent", "bindings", "rw", "cache"), Bind)
+    assert isinstance(_get(partial, "agent", "claude", "bindings", "ro", "share"), Bind)
+    assert isinstance(_get(partial, "agent", "claude", "bindings", "rw", "cache"), Bind)
 
 
 # --------------------------------------------------------------------------- #
@@ -221,7 +231,7 @@ def test_box_dest_carried_verbatim() -> None:
             box_dest="/home/agent/.local/bin/claude",
         ),
     )
-    bind = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro", "launcher")
+    bind = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro", "launcher")
     assert isinstance(bind, Bind)
     assert bind.box == "/home/agent/.local/bin/claude"
 
@@ -236,7 +246,7 @@ def test_literal_origin_raw_box_dest_stays_raw() -> None:
             literal_src=Path("/src"),
         ),
     )
-    bind = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro", "lit")
+    bind = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro", "lit")
     assert isinstance(bind, Bind)
     assert bind.box == "$XDG_STATE_HOME/kanibako/helper.sock"
 
@@ -255,7 +265,7 @@ def test_none_origin_literal_without_src_is_omitted() -> None:
     )
     partial = agent_default_partial(d, INSTALL)
     # The single binding is dropped → no bindings node at all.
-    assert _get(partial, "agent", "bindings") is _MISSING
+    assert _get(partial, "agent", "claude", "bindings") is _MISSING
 
 
 def test_none_origin_install_dir_unset_is_omitted() -> None:
@@ -265,7 +275,9 @@ def test_none_origin_install_dir_unset_is_omitted() -> None:
         _binding(key="share", origin=HostSrcOrigin.INSTALL_DIR, box_dest="/b"),
     )
     partial = agent_default_partial(d, inst)
-    assert _get(partial, "agent", "bindings") is _MISSING
+    # The agent.x node is always present; its only binding was OMITted → no bindings.
+    assert _get(partial, "agent", "x") is not _MISSING
+    assert _get(partial, "agent", "x", "bindings") is _MISSING
 
 
 def test_none_origin_omitted_resolvable_kept() -> None:
@@ -277,8 +289,8 @@ def test_none_origin_omitted_resolvable_kept() -> None:
         ),
     )
     partial = agent_default_partial(d, INSTALL)
-    assert isinstance(_get(partial, "agent", "bindings", "ro", "good"), Bind)
-    assert _get(partial, "agent", "bindings", "ro", "ghost") is _MISSING
+    assert isinstance(_get(partial, "agent", "claude", "bindings", "ro", "good"), Bind)
+    assert _get(partial, "agent", "claude", "bindings", "ro", "ghost") is _MISSING
 
 
 # --------------------------------------------------------------------------- #
@@ -292,7 +304,7 @@ def test_descriptor_order_preserved() -> None:
         _binding(key="a", origin=HostSrcOrigin.BINARY, box_dest="/a"),
         _binding(key="m", origin=HostSrcOrigin.BINARY, box_dest="/m"),
     )
-    ro = _get(agent_default_partial(d, INSTALL), "agent", "bindings", "ro")
+    ro = _get(agent_default_partial(d, INSTALL), "agent", "claude", "bindings", "ro")
     assert isinstance(ro, KeyStore)
     assert list(dict.keys(ro)) == ["z", "a", "m"]
 
@@ -310,8 +322,8 @@ def test_pure_no_filesystem_probe() -> None:
         _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/l"),
     )
     partial = agent_default_partial(d, INSTALL)
-    share = _get(partial, "agent", "bindings", "ro", "share")
-    launcher = _get(partial, "agent", "bindings", "ro", "launcher")
+    share = _get(partial, "agent", "claude", "bindings", "ro", "share")
+    launcher = _get(partial, "agent", "claude", "bindings", "ro", "launcher")
     assert isinstance(share, Bind) and share.host == str(INSTALL.install_dir)
     assert isinstance(launcher, Bind) and launcher.host == str(INSTALL.launcher)
 
