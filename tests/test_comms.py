@@ -15,7 +15,7 @@ class TestCommsConfig:
             cfg.system_paths, data_home=tmp_path, home=tmp_path,
         )
         # ``comms`` was renamed to ``channels`` in the system.* reorg.
-        assert resolved["system.channels"] == tmp_path / "kanibako" / "channels"
+        assert resolved["system.channelroot"] == tmp_path / "kanibako" / "channels"
 
     def test_comms_from_toml(self, tmp_path):
         from pathlib import Path
@@ -23,12 +23,12 @@ class TestCommsConfig:
         from kanibako.paths import resolve_system_paths
 
         toml = tmp_path / "kanibako.yaml"
-        toml.write_text('system:\n  channels: "/custom-channels"\n')
+        toml.write_text('system:\n  channelroot: "/custom-channels"\n')
         cfg = load_config(toml)
         resolved = resolve_system_paths(
             cfg.system_paths, data_home=tmp_path, home=tmp_path,
         )
-        assert resolved["system.channels"] == Path("/custom-channels")
+        assert resolved["system.channelroot"] == Path("/custom-channels")
 
 
 class TestChannelsSetup:

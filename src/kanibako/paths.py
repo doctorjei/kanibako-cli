@@ -425,7 +425,7 @@ def box_state_home(box_env: Mapping[str, str] | None) -> PurePosixPath:
 #
 # The data tree (``@system.data``) holds the persistent dirs; ``cache`` and
 # ``runtime`` deliberately live under their own XDG bases (NOT under data).
-# ``global`` holds the global settings/registry files; ``channels`` carries a
+# ``global`` holds the global settings/registry files; ``channelroot`` carries a
 # skeleton of sub-keys (their behavior/wiring is Phase 6 — here they only need
 # to resolve).  The OLD per-leaf ``boxes`` location is resolved separately as a
 # transitional value (see :func:`resolve_system_paths`) and is NOT a key here.
@@ -433,7 +433,7 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.data": "$XDG_DATA_HOME/kanibako",
     "system.backup": "@system.data/backup",
     "system.agents": "@system.data/agents",
-    "system.channels": "@system.data/channels",
+    "system.channelroot": "@system.data/channels",
     "system.global": "@system.data/global",
     "system.base_template": "@system.global/base_template",
     "system.settings": "@system.global/settings.yaml",
@@ -442,11 +442,11 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.cache": "$XDG_CACHE_HOME/kanibako",
     "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
     # Channels skeleton (Phase 6 fills sub-key behavior).
-    "system.channels.commons": "@system.channels/commons",
-    "system.channels.chat": "@system.channels/chat",
+    "system.channels.commons": "@system.channelroot/commons",
+    "system.channels.chat": "@system.channelroot/chat",
     "system.channels.broadcast": "@system.channels.chat/broadcast.md",
-    "system.channels.mailboxes": "@system.channels/mailboxes",
-    "system.channels.share": "@system.channels/share",
+    "system.channels.mailboxes": "@system.channelroot/mailboxes",
+    "system.channels.share": "@system.channelroot/share",
 }
 
 
@@ -615,7 +615,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         data=resolved["system.data"],
         backup=resolved["system.backup"],
         agents=resolved["system.agents"],
-        channels=resolved["system.channels"],
+        channels=resolved["system.channelroot"],
         global_dir=resolved["system.global"],
         base_template=resolved["system.base_template"],
         settings=resolved["system.settings"],

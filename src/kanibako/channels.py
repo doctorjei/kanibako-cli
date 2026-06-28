@@ -9,14 +9,14 @@ file-seeding live in sub-step 6b.
 
 Two channel scopes (TARGET §1, §2c, §2f):
 
-* **system scope** — five type roots under ``@system.channels`` (commons, chat,
+* **system scope** — five type roots under ``@system.channelroot`` (commons, chat,
   broadcast, mailboxes, share).  The instance-owned types (mailboxes, share) are
   *partitioned* by the workset-name token: ``mailboxes/<ws>`` and ``share/<ws>``
   where ``<ws>`` is ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``.  These
   partition roots apply to EVERY mode (standalone included).
 * **workset scope** — three type roots under ``@workset.meta.root/channels``
   (commons, chat, share).  These exist for the PRIMARY and NAMED modes ONLY;
-  standalone has no workset-local channels (its ``workset.channels`` is
+  standalone has no workset-local channels (its ``workset.channelroot`` is
   ``<None>`` per the TARGET).
 
 The per-instance partition ADDRESSES (``box.meta.{inbox,share_global,
@@ -68,7 +68,7 @@ class SystemPartition:
 class WorksetChannels:
     """The workset-local channel roots (PRIMARY/NAMED only).
 
-    ``@workset.channels = @workset.meta.root/channels`` with ``commons``,
+    ``@workset.channelroot = @workset.meta.root/channels`` with ``commons``,
     ``chat`` (+ the reserved ``broadcast.md`` / default ``general.md`` files
     inside it), and ``share`` (per-box subdirs are ``box.meta.share_workset``).
     """

@@ -254,7 +254,7 @@ def _ensure_initialized() -> None:
 
     # Channels type-root skeleton (per-workset mailbox/share partitions + chat
     # logs are guarantee-created on the launch path; see commands/install.py).
-    channels_dir = sys_paths["system.channels"]
+    channels_dir = sys_paths["system.channelroot"]
     (channels_dir / "commons").mkdir(parents=True, exist_ok=True)
     (channels_dir / "share").mkdir(parents=True, exist_ok=True)
     (channels_dir / "mailboxes").mkdir(parents=True, exist_ok=True)

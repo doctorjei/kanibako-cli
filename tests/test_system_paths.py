@@ -37,7 +37,7 @@ class TestResolveSystemPathsDefaults:
         assert resolved["system.data"] == base
         assert resolved["system.backup"] == base / "backup"
         assert resolved["system.agents"] == base / "agents"
-        assert resolved["system.channels"] == base / "channels"
+        assert resolved["system.channelroot"] == base / "channels"
         assert resolved["system.global"] == base / "global"
         assert resolved["system.base_template"] == base / "global" / "base_template"
         assert resolved["system.settings"] == base / "global" / "settings.yaml"
@@ -106,7 +106,7 @@ class TestResolveSystemPathsOverrides:
         # Others keep their defaults under $XDG_DATA_HOME/kanibako.
         base = tmp_path / "kanibako"
         assert resolved["system.data"] == base
-        assert resolved["system.channels"] == base / "channels"
+        assert resolved["system.channelroot"] == base / "channels"
 
     def test_tilde_expands_to_home(self, tmp_path):
         home = tmp_path / "h"
@@ -440,12 +440,12 @@ class TestLoadSystemConfig:
         base = tmp_path / "config_base.yaml"
         required = tmp_path / "config_required.yaml"  # absent
         user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  channels: "/base/channels"\n')
+        base.write_text('system:\n  channelroot: "/base/channels"\n')
         user.write_text('system:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base, required)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.channels"] == Path("/base/channels")
+        assert resolved["system.channelroot"] == Path("/base/channels")
         assert resolved["system.agents"] == Path("/user/agents")
 
     def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
