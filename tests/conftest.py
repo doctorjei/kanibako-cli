@@ -14,6 +14,14 @@ import pytest
 
 from kanibako.config import KanibakoConfig, load_config, write_global_config
 
+# The REAL launch-snapshot orchestrator, captured at import time (before any
+# ``start_mocks`` patch replaces the module attribute) so the ``start_mocks``
+# snapshot stub can DELEGATE to it for the conditional image/helper resolves
+# (which carry only their own table against REAL paths and must run for real).
+from kanibako.commands.start import (
+    _resolve_launch_snapshot as _REAL_RESOLVE_LAUNCH_SNAPSHOT,
+)
+
 
 @pytest.fixture(autouse=True)
 def _no_magicmock_dir_leak():
@@ -256,34 +264,28 @@ def start_mocks():
             # left REAL but only does read-only ``.is_dir()`` probes against the
             # MagicMock std/proj here (no mkdir → no MagicMock-named CWD leak).
             patch("kanibako.templates.stage_and_seed_templates"),
-            # Channel mounts run through the real category resolver + L7
-            # guarantee-create (mkdir of every rw source).  Driven with the
-            # MagicMock ``std`` here, the channel sources are MagicMock repr
-            # strings, which the guarantee-create would mkdir as literal
-            # ``<MagicMock ...>`` directories in the test's CWD.  Stub it to an
-            # empty mount set — channel-mount behavior is covered by
-            # tests/test_commands/test_start_channels.py with a real ``std``.
-            # ``_build_channel_mounts`` AND ``_build_core_mounts`` (step 3) both run
-            # through the real category resolver + L7 guarantee-create (mkdir of
-            # every rw source).  Driven with the MagicMock ``std``/``proj`` here,
-            # their sources are MagicMock repr strings the guarantee-create would
-            # mkdir as literal ``<MagicMock ...>`` directories in the test's CWD.
-            # Stub BOTH to an empty mount set — channel-mount behavior is covered by
-            # tests/test_commands/test_start_channels.py (real ``std``), core-mount
-            # behavior by tests/test_settings_categories.py (core_default_categories)
-            # + tests/test_container_extended.py.  Combined into ONE
-            # ``patch.multiple`` to keep this large ``with`` under Python's
-            # statically-nested-block limit.
+            # Block 7b: the launch-time CATEGORY resolution now runs through ONE
+            # snapshot + ONE reconcile (``_resolve_launch_snapshot``) for the
+            # always-available families (core / kani / channel / shares / seeds),
+            # then the conditional image/helper resolves at their own sites.
+            # Driven with the MagicMock ``std``/``proj`` here, the category sources
+            # are MagicMock repr strings whose L7 guarantee-create would mkdir
+            # literal ``<MagicMock ...>`` dirs in the CWD.  So stub the orchestrator
+            # to a controlled result — the per-family category behavior is covered
+            # by the dedicated suites with a REAL ``std`` (test_start_channels.py /
+            # test_settings_categories.py / test_settings_launch.py /
+            # test_container_extended.py).  ``_seed_channel_files`` (the channel
+            # chat-log seed side-effect) is no-op'd for the same reason.  The stub
+            # still yields the AGENT delivery binds (claude's descriptor, resolved
+            # against the real ``install_mock`` paths) so the descriptor-delivery
+            # integration assertions hold.
             # Several same-module ``kanibako.commands.start`` patches are folded
             # into ONE ``patch.multiple`` to keep this large ``with`` under
-            # Python's statically-nested-block limit (20).  The mount-builder
-            # stubs (``_build_channel_mounts``/``_build_core_mounts``) emit an
-            # empty mount set; ``_container_logs``/``registry_path`` are the
-            # anonymous no-op stubs that need no ``as`` binding.
+            # Python's statically-nested-block limit (20).
             patch.multiple(
                 "kanibako.commands.start",
-                _build_channel_mounts=DEFAULT,
-                _build_core_mounts=DEFAULT,
+                _resolve_launch_snapshot=DEFAULT,
+                _seed_channel_files=DEFAULT,
                 _container_logs=DEFAULT,
                 registry_path=DEFAULT,
             ) as m_launch_mount_stubs,
@@ -329,10 +331,11 @@ def start_mocks():
                 return_value=None,
             ) as m_virtiofs_check,
         ):
-            # Both launch-mount builder stubs emit an empty mount set (see the
-            # patch.multiple rationale above).
-            m_launch_mount_stubs["_build_channel_mounts"].return_value = []
-            m_launch_mount_stubs["_build_core_mounts"].return_value = []
+            # The channel chat-log seed side-effect is a no-op here (see the
+            # patch.multiple rationale above); the snapshot orchestrator stub's
+            # return value is wired below, once the descriptor + install_mock the
+            # AGENT delivery binds derive from are built.
+            m_launch_mount_stubs["_seed_channel_files"].return_value = None
             m_launch_mount_stubs["_container_logs"].return_value = ""
 
             proj = MagicMock()
@@ -457,6 +460,82 @@ def start_mocks():
             target.detect.return_value = install_mock
             m_resolve_target.return_value = target
 
+            # Wire the launch-snapshot orchestrator stub (block 7b).  It returns a
+            # controlled ``(snapshot, reconciled, warnings)``: the reconcile's
+            # MOUNT winners are ONLY the AGENT delivery binds (claude's descriptor,
+            # resolved against the real ``install_mock`` paths via the real 7a
+            # representation + the committed pipeline) so the descriptor-delivery
+            # integration assertions hold, and NO MagicMock-path category mounts
+            # are produced (their behavior is covered by the dedicated suites with a
+            # REAL ``std``).  Late image/helper resolves (gated off by default) call
+            # the same stub; their controlled result has no agent binds and the
+            # default off-gates mean they don't fire anyway.
+            def _snapshot_side_effect(*a, **kw):
+                if not kw.get("include_base_families", True):
+                    # Conditional image/helper resolve — REAL paths, run for real
+                    # (the module-level captured, unpatched orchestrator).
+                    return _REAL_RESOLVE_LAUNCH_SNAPSHOT(*a, **kw)
+
+                from kanibako.agent_representation import agent_default_partial
+                from kanibako.settings_categories import reconcile_categories
+                from kanibako.settings_launch import (
+                    build_launch_snapshot,
+                    snapshot_category_entries,
+                )
+                from kanibako.settings_resolve import ResolveCtx
+
+                ctx = ResolveCtx(
+                    agent_name="claude", workset_name=None,
+                    host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
+                )
+                _desc = kw.get("desc")
+                _install = kw.get("install")
+                partial = (
+                    agent_default_partial(_desc, _install)
+                    if _desc is not None and _install is not None
+                    else None
+                )
+                # Block 7b (ruling A): flow the BEHAVIOR cascade into the stub's
+                # snapshot too — the target's declared-default floor (→ agent.
+                # default.*) + the per-agent FILE's flat state (agent_cfg.state,
+                # wrapped under agent.<active>) — so the LIVE behavior read
+                # (effective_behavior) returns the real model/access/etc. The
+                # category sources stay None (MagicMock-path mounts are covered by
+                # the dedicated suites with a REAL std).
+                _target = kw.get("target")
+                _agent_cfg = kw.get("agent_cfg")
+                _floor = None
+                _state = None
+                if _target is not None:
+                    _descriptors = _target.setting_descriptors()
+                    if _descriptors:
+                        _floor = {d.key: d.default for d in _descriptors}
+                if _agent_cfg is not None:
+                    _state = dict(_agent_cfg.state)
+                snap, warns = build_launch_snapshot(
+                    agent_name="claude", ctx=ctx,
+                    system_path=None, agent_path=None,
+                    workset_path=None, box_path=None,
+                    behavior_floor=_floor, default_categories=None,
+                    agent_partial=partial,
+                    agent_state=_state,
+                    binding_overrides=kw.get("binding_overrides"),
+                    descriptor_bindings=(
+                        list(_desc.bindings) if _desc is not None else None
+                    ),
+                )
+                entries = snapshot_category_entries(
+                    snap, active_agent="claude", box_ctx=ctx,
+                )
+                rec = reconcile_categories(
+                    entries, group_auth=kw.get("group_auth", True),
+                )
+                return snap, rec, warns
+
+            m_launch_mount_stubs[
+                "_resolve_launch_snapshot"
+            ].side_effect = _snapshot_side_effect
+
             yield SimpleNamespace(
                 load_config=m_load_config,
                 load_std_paths=m_load_std,
@@ -478,8 +557,8 @@ def start_mocks():
                 launch_check=m_launch_check,
                 validate_binary=m_validate_binary,
                 credsync=m_credsync,
-                build_channel_mounts=m_launch_mount_stubs["_build_channel_mounts"],
-                build_core_mounts=m_launch_mount_stubs["_build_core_mounts"],
+                resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
+                seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
                 virtiofs_check=m_virtiofs_check,
             )
 
