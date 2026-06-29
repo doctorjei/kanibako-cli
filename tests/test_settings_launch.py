@@ -802,3 +802,240 @@ def test_routed_bind_equivalence_vs_literal_injection():
         rb = _meta_node(routed, "box", "bindings", "rw", key)
         lb = _meta_node(literal, "box", "bindings", "rw", key)
         assert (rb.host, rb.box, rb.opts) == (lb.host, lb.box, lb.opts), key
+
+
+# --------------------------------------------------------------------------- #
+# box.agent.* mirror (block B5 — spec §2b L380, §0 directional)               #
+# --------------------------------------------------------------------------- #
+import yaml  # noqa: E402
+
+
+def _yaml(path: Path, data: dict) -> Path:
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    return path
+
+
+def test_box_agent_mirror_defaults_to_resolved_active_agent():
+    # (a) box.agent.<key> with NO box override DEFAULTS to the resolved
+    # agent.<active>.<key> (agent.default fallback included).
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"model": "opus", "auto_approve": "true"},
+        default_categories={
+            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+        },
+    )
+    # The resolved active-agent values (agent.default backstop for behavior; the
+    # active slot for the re-rooted share default) are mirrored under box.agent.*.
+    assert snap.box.agent.model == snap.agent.default.model == "opus"
+    assert snap.box.agent.auto_approve == "true"
+    # The whole subtree mirrors — including category subtrees (a Bind leaf).
+    mirrored = snap.box.agent.shared.plugins
+    assert isinstance(mirrored, Bind)
+    assert mirrored == snap.agent.claude.shared.plugins
+
+
+def test_box_agent_mirror_box_file_override_wins(tmp_path: Path):
+    # (b) a box-file box.agent.<key> WINS over the mirrored default.
+    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        behavior_floor={"model": "opus", "auto_approve": "true"},
+    )
+    # The box override stands; the un-overridden sibling still mirrors the default.
+    assert snap.box.agent.model == "sonnet"
+    assert snap.box.agent.auto_approve == "true"
+
+
+def test_box_agent_mirror_override_does_not_leak_to_shared_agent(tmp_path: Path):
+    # (c) NO leak — a box.agent.<key> override does NOT mutate agent.<active>.<key>
+    # / agent.default.<key> (the shared subtree).
+    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        behavior_floor={"model": "opus"},
+    )
+    assert snap.box.agent.model == "sonnet"  # box override
+    # The shared agent subtree is UNTOUCHED — the mirror is a COPY, not a ref.
+    assert snap.agent.default.model == "opus"
+    assert "claude" not in snap.agent or "model" not in snap.agent.claude
+
+
+def test_box_agent_mirror_copy_is_not_an_alias():
+    # (c) the materialized box.agent subtree is a FRESH deep copy — mutating a
+    # nested box.agent node never reaches the shared agent subtree (no alias).
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        default_categories={
+            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+        },
+    )
+    # The nested category subtree is copied, not aliased.
+    assert snap.box.agent.shared is not snap.agent.claude.shared
+    # A nested Bind leaf is equal (immutable) but the holding KeyStore is fresh.
+    snap.box.agent.shared["plugins"] = Bind("/tweaked", "~/.claude/plugins")
+    assert snap.agent.claude.shared.plugins.host == "/store/plugins"
+
+
+def test_box_agent_mirror_repoints_on_agent_name_change():
+    # Re-materialized when box.agent_name changes: agent_name IS the launch-resolved
+    # active agent, so a different agent_name mirrors a different subtree.
+    common = dict(
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"model": "opus"},
+        default_categories={
+            "agent.shared.plugins": ("/claude/plugins", "~/.claude/plugins"),
+        },
+    )
+    snap_claude = build_launch_snapshot(agent_name="claude", **common)
+    snap_goose = build_launch_snapshot(agent_name="goose", **common)
+    # Both mirror their OWN active agent's re-rooted share default.
+    assert snap_claude.box.agent.shared.plugins.host == "/claude/plugins"
+    assert snap_goose.box.agent.shared.plugins.host == "/claude/plugins"
+    # And the mirror tracks the active slot each names (the goose snapshot's mirror
+    # comes from agent.goose, the claude snapshot's from agent.claude).
+    assert snap_claude.box.agent.shared.plugins == snap_claude.agent.claude.shared.plugins
+    assert snap_goose.box.agent.shared.plugins == snap_goose.agent.goose.shared.plugins
+
+
+def test_no_agent_box_has_no_box_agent_mirror():
+    # NO-AGENT box (box.agent_name <None> → empty agent_name): box.agent.* is
+    # empty/absent (no active agent subtree to mirror).
+    snap = build_launch_snapshot(
+        agent_name="",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"model": "opus"},
+    )
+    box = snap.box if "box" in snap else KeyStore()
+    assert "agent" not in box
+
+
+def test_box_agent_mirror_deep_override_keeps_sibling_defaults(tmp_path: Path):
+    # A box override of ONE deep category leaf coexists with the mirrored siblings
+    # (the gap-fill recurses per-name; the box override of one leaf does not
+    # suppress the mirrored sibling leaf at the same depth).
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"box": {"agent": {"shared": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        default_categories={
+            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.shared.cache": ("/store/cache", "~/.claude/cache"),
+        },
+    )
+    # The box-overridden leaf wins; the sibling default leaf still mirrors.
+    assert snap.box.agent.shared.plugins.host == "/box/plugins"
+    assert snap.box.agent.shared.cache.host == "/store/cache"
+    # No leak to the shared agent subtree.
+    assert snap.agent.claude.shared.plugins.host == "/store/plugins"
+
+
+# --------------------------------------------------------------------------- #
+# box.agent.* mirror — EFFECT-LEVEL (the override must change RESOLUTION output) #
+# --------------------------------------------------------------------------- #
+
+
+def test_box_agent_override_changes_effective_behavior(tmp_path: Path):
+    # A box.agent.model override must change effective_behavior OUTPUT (not just the
+    # subtree) — the box's downward tweak takes EFFECT (§0 L38-40 / §2b L380).
+    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        behavior_floor={"model": "opus", "auto_approve": "true"},
+    )
+    eff = effective_behavior(snap, active_agent="claude")
+    assert eff["model"] == "sonnet"  # box override WON the §2d pick.
+    assert eff["auto_approve"] == "true"  # un-overridden sibling = mirrored default.
+
+
+def test_box_agent_no_override_effective_behavior_identical_to_baseline():
+    # EQUIVALENCE GUARD: with NO box.agent override the effective behavior is
+    # byte-identical to the agent.default ⊕ agent.<active> pick (overlay is a no-op).
+    common = dict(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"model": "opus", "auto_approve": "true"},
+    )
+    snap = build_launch_snapshot(**common)
+    eff = effective_behavior(snap, active_agent="claude")
+    # The pick (agent.default backstop here) — box.agent mirrors it exactly.
+    assert eff == {"model": "opus", "auto_approve": "true"}
+
+
+def test_box_agent_bindings_override_changes_category_entries(tmp_path: Path):
+    # A box.agent.bindings.* override must produce a category entry under the box's
+    # effective agent (the override feeds category resolution).
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"box": {"agent": {"shared": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        default_categories={
+            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+        },
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    plug = [e for e in entries if e.category == "shared" and e.name == "plugins"]
+    assert len(plug) == 1, entries
+    # The box.agent override host_src WON over the agent-tier default.
+    assert plug[0].host_src == "/box/plugins"
+    assert plug[0].scope == "agent"  # emitted under the (bare) agent scope token.
+
+
+def test_box_agent_env_override_changes_category_entries(tmp_path: Path):
+    # A box.agent.env.* override appears as an agent-scope env entry.
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"box": {"agent": {"env": {"MY_VAR": "box_val"}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        default_categories={"agent.env.MY_VAR": "agent_val"},
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    envs = [e for e in entries if e.category == "env" and e.name == "MY_VAR"]
+    assert len(envs) == 1, entries
+    assert envs[0].options == "box_val"  # box override WON.
+
+
+def test_box_agent_no_override_category_entries_identical_to_baseline():
+    # EQUIVALENCE GUARD (category side): NO box.agent override → the category entry
+    # set is byte-identical to the baseline (overlay is a no-op).
+    common = dict(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        default_categories={
+            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.env.MY_VAR": "agent_val",
+        },
+    )
+    snap = build_launch_snapshot(**common)
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    agent_entries = sorted(
+        (e.category, e.name, e.host_src, e.options)
+        for e in entries if e.scope == "agent"
+    )
+    # Exactly the agent-tier defaults — the box.agent mirror reproduced them, so the
+    # overlay added/changed nothing.
+    assert agent_entries == [
+        ("env", "MY_VAR", None, "agent_val"),
+        ("shared", "plugins", "/store/plugins", "Z,U"),
+    ]

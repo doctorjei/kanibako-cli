@@ -736,7 +736,143 @@ def build_launch_snapshot(
 
     snapshot = merge(levels)
     expanded = expand(snapshot, ctx)
+    # box.agent.* mirror (block B5, spec §2b L380 / §0 directional). Materialize the
+    # box-scoped mirror of the active agent's WHOLE resolved settings subtree as a
+    # COPY-on-current-engine step, AFTER expand so the values are resolved terminals.
+    _materialize_box_agent_mirror(expanded, active_agent=agent_name)
     return expanded
+
+
+# --------------------------------------------------------------------------- #
+# box.agent.* mirror materialization (block B5 — spec §2b L380, §0 directional) #
+# --------------------------------------------------------------------------- #
+#
+# Spec §2b L380: ``box.agent.<key>`` is the box's box-scoped mirror of its active
+# agent's WHOLE settings subtree — it DEFAULTS (views up) to the resolved
+# ``agent.<box.agent_name>.<key>`` (with the ``agent.default`` fallback), and the
+# box overriding any ``box.agent.<key>`` is an ORDINARY same-scope (box) write
+# (§0: the no-special-case R2-legal downward tweak). Re-materialized when
+# ``box.agent_name`` changes. Spec impl note: COPY (pure) or shared REF (equivalent
+# — one box per process). Keystone D-D: COPY is conceptually purer; REF equivalent
+# since one box per process; the spec defines the SEMANTICS.
+#
+# MECHANISM (JC-B5-1 — COPY, materialized on the current engine, no resolver
+# inversion). The resolved active-agent subtree only EXISTS post-merge/expand
+# (the cascade keeps ``agent.default`` and ``agent.<active>`` DISCRIMINATED and the
+# active-over-default value-pick is a CONSUMER step — :func:`_effective_agent_node`).
+# So box.agent.* is materialized AFTER ``expand`` as a deep COPY of that resolved
+# effective-agent node into ``snapshot["box"]["agent"]``, filling ONLY names the
+# box did not already set. This satisfies the three requirements:
+#   (a) box.agent.<key> with NO box override DEFAULTS to the resolved
+#       agent.<active>.<key> (agent.default fallback included) — the effective node
+#       IS ``agent.default`` overlaid by ``agent.<active>`` (§2d L368 pick), so each
+#       copied leaf is exactly what ``agent.<box.agent_name>.<key>`` resolves to.
+#   (b) a box-file box.agent.<key> WINS — the box settings file's ``box.agent.*``
+#       entries merge in at BOX scope (``_file_partial`` keeps the scope token, so
+#       they land under ``snapshot["box"]["agent"]`` BEFORE this step). The copy is
+#       gap-filling (per-name ``_MISSING`` probe): a box-set name is left untouched,
+#       so the box override stands. This is the ORDINARY same-scope box write — the
+#       cascade already gave it box precedence; we never overwrite it.
+#   (c) NO leak — the materialized subtree is a FRESH deep COPY (``_deep_copy_store``
+#       leaves immutable Bind/scalar/None leaves shared but never aliases a nested
+#       KeyStore), written ONLY under ``box.agent.*``. ``snapshot["agent"]`` is never
+#       mutated, so a box.agent tweak (a box-file override, or a later in-place edit)
+#       cannot escape into the shared agent subtree or to another box. (One box per
+#       process anyway — but the COPY makes no-leak hold structurally, not by luck.)
+# Re-materialization on box.agent_name change is AUTOMATIC: ``agent_name`` is the
+# launch-resolved active agent (``box_agent_name`` → ``system.default_agent``
+# fallback), threaded into every snapshot build; change box.agent_name → a different
+# ``agent_name`` → a different effective node copied next launch.
+#
+# NO-AGENT box (box.agent_name <None> → empty ``agent_name``): there is NO agent
+# subtree to mirror, so box.agent.* is left empty/absent (spec requirement). The
+# guard is the empty/blank ``active_agent`` short-circuit below — even though
+# ``agent.default`` exists in the snapshot, a NO-AGENT box has no ACTIVE agent whose
+# subtree the spec mirrors, so nothing is materialized.
+
+
+def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None:
+    """Materialize ``box.agent.*`` = the resolved active-agent subtree (block B5).
+
+    The box's box-scoped mirror of its active agent's WHOLE resolved settings
+    subtree (spec §2b L380): a deep COPY of the resolved effective-agent node
+    (``agent.default`` overlaid by ``agent.<active_agent>`` — the §2d L368 pick) is
+    written under ``snapshot["box"]["agent"]``, filling ONLY names the box did NOT
+    already set (the box's own ``box.agent.*`` overrides, merged in at box scope,
+    are LEFT INTACT — they win, the ordinary same-scope box write of §0). Mutates
+    *snapshot* in place (it is the launch-local expanded tree, owned by the caller).
+
+    *active_agent* is the launch-resolved active agent name. A NO-AGENT box has a
+    blank name → NO active-agent subtree to mirror → nothing materialized (spec:
+    box.agent.* empty/absent for a NO-AGENT box). The mirror tracks ``box.agent_name``
+    because *active_agent* IS the resolved active agent for this launch.
+
+    COPY (not REF) — keystone D-D / JC-B5-1: a fresh deep copy guarantees no box
+    tweak leaks into the shared ``agent.*`` subtree or across boxes (no-leak holds
+    STRUCTURALLY, not just because one box runs per process). Reads/writes via the
+    UNBOUND ``dict`` protocol (S3) so a key named ``get`` / ``agent`` cannot shadow.
+    """
+    if not active_agent or not active_agent.strip():
+        # NO-AGENT box — no active agent subtree to mirror (spec). Leave box.agent.*
+        # absent; do NOT fall back to agent.default (that is the all-agents backstop,
+        # not an ACTIVE agent the box runs).
+        return
+    # The PURE pick (agent.default ⊕ agent.<active>) — NOT _effective_agent_node,
+    # which would overlay box.agent.* and double-count (chicken-and-egg). The mirror
+    # IS this pick gap-filled under the box's own box.agent overrides.
+    effective = _agent_pick_node(snapshot, active_agent)
+    if not dict.__len__(effective):
+        # The active agent set NO category/behavior leaves (and no default backstop
+        # either) — nothing to mirror; leave box.agent.* absent.
+        return
+    box_node = dict.get(snapshot, "box", _MISSING)
+    if not isinstance(box_node, KeyStore):
+        box_node = KeyStore()
+        snapshot["box"] = box_node
+    box_agent = dict.get(box_node, "agent", _MISSING)
+    if not isinstance(box_agent, KeyStore):
+        box_agent = KeyStore()
+        box_node["agent"] = box_agent
+    # Gap-fill: copy each resolved effective-agent name the box did NOT already set.
+    # A box-set name (the box-file ``box.agent.<key>`` override, present under
+    # ``box.agent`` from the box-scope merge) is LEFT UNTOUCHED — it wins (b). A
+    # nested KeyStore (e.g. ``bindings``) is filled PER NAME so a box override of one
+    # leaf (``box.agent.bindings.ro.share``) coexists with mirrored sibling leaves.
+    _mirror_fill(box_agent, effective)
+
+
+def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
+    """Deep gap-fill *box_node* from *agent_node*: copy each *agent_node* name the
+    *box_node* does NOT already set; recurse into matching KeyStore subtrees so a
+    box override of ONE leaf does not suppress mirrored siblings (block B5).
+
+    A box-set leaf (the box-file override) is LEFT INTACT (it wins — spec §2b L380
+    ORDINARY same-scope write). A name absent from *box_node* is set to a FRESH deep
+    COPY of the agent value (``_deep_copy_store`` for a subtree; an immutable Bind /
+    scalar / None / a fresh ``list`` for a leaf) so no box edit aliases the shared
+    ``agent.*`` subtree (no-leak, (c)). Unbound ``dict`` protocol (S3).
+    """
+    from kanibako.settings_merge import _deep_copy_store
+
+    for name in dict.keys(agent_node):
+        agent_val = dict.__getitem__(agent_node, name)
+        box_val = dict.get(box_node, name, _MISSING)
+        if box_val is _MISSING:
+            # The box did not set this name → mirror a fresh deep copy of the
+            # resolved agent value (no alias of the shared agent subtree).
+            if isinstance(agent_val, KeyStore):
+                box_node[name] = _deep_copy_store(agent_val)
+            elif isinstance(agent_val, list):
+                box_node[name] = list(agent_val)
+            else:
+                box_node[name] = agent_val  # Bind / scalar / None — immutable.
+            continue
+        # The box set this name. Recurse to gap-fill DEEPER only when BOTH sides are
+        # subtrees (a box override of one leaf keeps mirrored siblings); a box leaf
+        # vs an agent subtree (or vice versa) means the box wholesale-overrode that
+        # name — leave the box value, do NOT merge across the type boundary.
+        if isinstance(box_val, KeyStore) and isinstance(agent_val, KeyStore):
+            _mirror_fill(box_val, agent_val)
 
 
 def _agent_state_partial(
@@ -884,13 +1020,25 @@ def effective_behavior(
         return out
     active_node = dict.get(agent_node, active_agent, _MISSING)
     default_node = dict.get(agent_node, "default", _MISSING)
+    # box.agent.* mirror (block B5, spec §2b L380 / §0): the box's box-scoped agent
+    # override is the HIGHEST-precedence behavior source — it WINS the §2d pick (the
+    # box's downward tweak takes EFFECT). With NO override the mirror leaf EQUALS the
+    # pick (gap-filled), so this overlay is a NO-OP for default boxes (the
+    # equivalence guard). A NO-AGENT box has no box.agent node → absent.
+    box_node = dict.get(snapshot, "box", _MISSING)
+    box_agent_node = (
+        dict.get(box_node, "agent", _MISSING)
+        if isinstance(box_node, KeyStore)
+        else _MISSING
+    )
 
     if keys is None:
-        # DISCOVER: the union of scalar-leaf names under both slots (active first,
-        # so the active set order leads; absence elsewhere is harmless). Category
-        # subtrees / Bind leaves are filtered out per-key below.
+        # DISCOVER: the union of scalar-leaf names across the box.agent override,
+        # the active slot, and the default backstop (box.agent first so a box-only
+        # behavior key is discovered too). Category subtrees / Bind leaves are
+        # filtered out per-key below.
         discovered: dict[str, None] = {}
-        for node in (active_node, default_node):
+        for node in (box_agent_node, active_node, default_node):
             if isinstance(node, KeyStore):
                 for name in dict.keys(node):
                     discovered.setdefault(name, None)
@@ -899,16 +1047,17 @@ def effective_behavior(
         key_iter = keys
 
     for key in key_iter:
-        # Active-over-default pick (§2d L368): probe the active slot first; a
-        # present value (incl. present-None) SETS the key and shadows default.
-        if isinstance(active_node, KeyStore):
+        # box.agent override WINS (block B5) → active-over-default pick (§2d L368).
+        # Probe the box.agent mirror first; then the active slot; then default. A
+        # present value (incl. present-None) SETS the key and shadows lower sources.
+        val: object = _MISSING
+        if isinstance(box_agent_node, KeyStore):
+            val = dict.get(box_agent_node, key, _MISSING)
+        if val is _MISSING and isinstance(active_node, KeyStore):
             val = dict.get(active_node, key, _MISSING)
-        else:
-            val = _MISSING
-        if val is _MISSING:
-            # Active did not set it → fall back to the agent.default backstop.
-            if isinstance(default_node, KeyStore):
-                val = dict.get(default_node, key, _MISSING)
+        if val is _MISSING and isinstance(default_node, KeyStore):
+            # Neither box nor active set it → fall back to the agent.default backstop.
+            val = dict.get(default_node, key, _MISSING)
         if val is _MISSING or val is None:
             continue
         # Behavior leaves are scalars; a category subtree / Bind is NOT behavior.
@@ -1041,21 +1190,24 @@ def snapshot_category_entries(
     return [entry for _, entry in collected]
 
 
-def _effective_agent_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
-    """The effective AGENT-scope category node = ``agent.default`` overlaid by
-    ``agent.<active_agent>`` (the §2d L368 active-over-default pick, delivery side).
+def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
+    """The PURE active-over-default agent pick = ``agent.default`` overlaid by
+    ``agent.<active_agent>`` (the §2d L368 value-pick), WITHOUT the box.agent.*
+    overlay.
 
-    Returns a FRESH ``KeyStore`` shaped like a single (bare) agent scope node —
-    its ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` / ``shared`` / ``synced`` /
-    ``masks`` / ``env`` subtrees holding the per-name winner: the active slot's
-    leaf wherever it set that name, else the ``agent.default`` leaf. The overlay is
-    PER NAME (deep) so an active ``agent.<active>.shared.cache`` and a default-only
-    ``agent.default.shared.plugins`` BOTH survive (active does not clobber a sibling
-    default leaf). A present-``None`` reset was already OMITted by the merge (§3 /
-    §6e), so it never reaches here; the active slot simply lacks that name and the
-    default (if any) shows through — matching the snapshot's resolved state.
+    Returns a FRESH ``KeyStore`` shaped like a single (bare) agent scope node — its
+    ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` / ``shared`` / ``synced`` /
+    ``masks`` / ``env`` subtrees + behavior leaves holding the per-name winner: the
+    active slot's leaf wherever it set that name, else the ``agent.default`` leaf.
+    The overlay is PER NAME (deep) so an active ``agent.<active>.shared.cache`` and a
+    default-only ``agent.default.shared.plugins`` BOTH survive. A present-``None``
+    reset was already OMITted by the merge (§3 / §6e), so it never reaches here.
 
-    Reads via the UNBOUND ``dict`` protocol (S3); never mutates the snapshot.
+    This is the subtree the box.agent.* mirror is MATERIALIZED from (block B5,
+    ``_materialize_box_agent_mirror``) — it must NOT itself read box.agent.* (no
+    chicken-and-egg). The CONSUMER-facing :func:`_effective_agent_node` then overlays
+    box.agent.* on top of this (box WINS). Reads via the UNBOUND ``dict`` protocol
+    (S3); never mutates the snapshot.
     """
     agent_node = dict.get(snapshot, "agent", _MISSING)
     if not isinstance(agent_node, KeyStore):
@@ -1067,6 +1219,36 @@ def _effective_agent_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
         _overlay_into(out, default_node)
     if isinstance(active_node, KeyStore):
         _overlay_into(out, active_node)
+    return out
+
+
+def _effective_agent_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
+    """The effective AGENT-scope category node the box's resolution USES = the
+    active-over-default pick (:func:`_agent_pick_node`) overlaid by the box's
+    box-scoped ``box.agent.*`` mirror (box WINS — block B5, spec §2b L380 / §0).
+
+    The box.agent.* overlay is what makes the box's downward-tweak TAKE EFFECT
+    (§0 L38-40: the box tweaks its one thing — its agent — through box.agent.*; an
+    ordinary same-scope box write). The mirror node (``snapshot["box"]["agent"]``)
+    is the gap-filled ``agent.default ⊕ agent.<active>`` with any box-file override
+    on top, so:
+
+    * **with a box.agent override** the override leaf WINS over the pick (the box's
+      downward tweak is live in category resolution);
+    * **with NO override** the mirror leaf EQUALS the pick leaf, so the overlay is a
+      NO-OP — the effective node is byte-identical to today's pick (the EQUIVALENCE
+      guard: default boxes are unchanged).
+
+    A NO-AGENT box has no ``box.agent`` mirror (the materializer skipped it), so the
+    overlay is absent and this reduces to the pick. Reads via the UNBOUND ``dict``
+    protocol (S3); never mutates the snapshot.
+    """
+    out = _agent_pick_node(snapshot, active_agent)
+    box_node = dict.get(snapshot, "box", _MISSING)
+    if isinstance(box_node, KeyStore):
+        box_agent = dict.get(box_node, "agent", _MISSING)
+        if isinstance(box_agent, KeyStore):
+            _overlay_into(out, box_agent)  # box.agent WINS (per-name deep overlay).
     return out
 
 

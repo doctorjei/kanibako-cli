@@ -1287,9 +1287,8 @@ class TestScopeDirectionGuard:
     def test_box_scope_allows_box_agent_key(self, tmp_path):
         """``box.agent.<key>`` (the §2b B5 downward-tweak mirror) is the BOX
         namespace — the guard keys on the TOP-LEVEL ``box`` token, so it passes
-        as a same-scope box write (B5 not yet implemented downstream, so it may
-        still be an unknown-key after the guard — what matters is the guard does
-        NOT refuse it for direction)."""
+        as a same-scope box write AND (B5 now implemented) actually lands in the
+        box settings file at the nested ``box.agent.<key>`` location."""
         f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
             "box.agent.model", "opus",
@@ -1297,6 +1296,9 @@ class TestScopeDirectionGuard:
         )
         # The scope-direction guard MUST NOT be the thing that refuses it.
         assert "cannot be set from the box scope" not in msg
+        # B5: it is now a settable box-scope key — the write lands nested.
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["box"]["agent"]["model"] == "opus"
 
     def test_workset_scope_allows_workset_key(self, tmp_path):
         f = tmp_path / "ws-settings.yaml"
@@ -1349,3 +1351,75 @@ class TestScopeDirectionGuard:
             config_path=f, command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
+
+
+# ---------------------------------------------------------------------------
+# box.agent.* mirror config-set (block B5 — spec §2b L380, JC-B5-2)
+# ---------------------------------------------------------------------------
+
+class TestBoxAgentMirrorConfigSet:
+    """``box.agent.<key>`` is a settable BOX-scope key (the §2b B5 downward-tweak
+    mirror): recognized by ``is_known_key``, set/reset land in the box settings
+    file at the nested ``box.agent.<key>`` location, and the B4 guard permits it
+    as a same-scope box write (covered above + here)."""
+
+    def test_box_agent_key_is_known(self):
+        assert is_known_key("box.agent.model") is True
+        assert is_known_key("box.agent.auto_approve") is True
+        assert is_known_key("box.agent.bindings.ro.share") is True
+
+    def test_box_agent_name_scalar_not_a_mirror_key(self):
+        # ``box.agent_name`` (the flat scalar) must NOT be mistaken for the mirror
+        # (it has no dotted tail) — it stays its own known scalar key.
+        from kanibako.config_interface import _is_box_agent_key
+        assert _is_box_agent_key("box.agent_name") is False
+        assert _is_box_agent_key("box.agent.model") is True
+        assert is_known_key("box.agent_name") is True  # still its own known key
+
+    def test_set_box_agent_scalar_lands_nested(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.agent.model", "sonnet",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["box"]["agent"]["model"] == "sonnet"
+
+    def test_set_box_agent_deep_category_key_lands_nested(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.agent.bindings.ro.share", "/user/share",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        doc = load_doc(f)
+        assert doc["box"]["agent"]["bindings"]["ro"]["share"] == "/user/share"
+
+    def test_reset_box_agent_key_removes_override(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"box": {"agent": {"model": "sonnet"}}})
+        msg = reset_config_value("box.agent.model", config_path=f)
+        assert msg.startswith("Reset"), msg
+        # The override is gone (and the now-empty box.agent table pruned).
+        doc = load_doc(f)
+        assert "agent" not in doc.get("box", {})
+
+    def test_reset_box_agent_key_absent_reports_no_override(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"box": {"image": "img:1"}})
+        msg = reset_config_value("box.agent.model", config_path=f)
+        assert "No override" in msg, msg
+        # The unrelated box.image key is untouched.
+        assert load_doc(f)["box"]["image"] == "img:1"
+
+    def test_box_agent_set_does_not_touch_agent_namespace(self, tmp_path):
+        # The mirror override lands under box.agent, NEVER under a top-level
+        # agent.* table (no leak into the shared agent settings tier).
+        f = tmp_path / "box-settings.yaml"
+        set_config_value(
+            "box.agent.model", "sonnet",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        doc = load_doc(f)
+        assert "agent" not in doc  # no top-level agent.* table
+        assert doc["box"]["agent"]["model"] == "sonnet"
