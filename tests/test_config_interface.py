@@ -535,11 +535,22 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_group_auth_no_crash(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
-        # Must not raise; lands in [project] as a real bool.
+        # Block #2: the bare ``group_auth`` token canonicalizes to the new spec
+        # key ``box.group_auth_on`` (back-compat INPUT), written as the NEW on-disk
+        # key ``[project].group_auth_on`` (never the old form). Must not raise.
         msg = set_config_value("group_auth", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
-        assert data["project"]["group_auth"] is False
+        assert data["project"]["group_auth_on"] is False
+        assert "group_auth" not in data["project"]  # old form never written
+
+    def test_set_box_group_auth_on_no_crash(self, tmp_path):
+        project_toml = tmp_path / "settings.yaml"
+        # The canonical box choice key (block #2, §2b L282), typed bool.
+        msg = set_config_value("box.group_auth_on", "false", config_path=project_toml)
+        assert msg.startswith("Set")
+        data = load_doc(project_toml)
+        assert data["project"]["group_auth_on"] is False
 
     def test_set_allow_helpers_no_crash(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"

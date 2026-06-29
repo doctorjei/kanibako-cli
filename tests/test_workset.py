@@ -586,7 +586,10 @@ class TestWorksetSettingsFile:
         assert not (root.resolve() / "workset.yaml").exists()
         data = load_doc(settings)
         assert data["workset"]["meta"]["name"] == "mset"
-        assert data["workset"]["meta"]["group_auth"] is True
+        # Block #2: the workset POLICY persists as the NEW spec key
+        # ``group_auth_enabled`` in workset.meta (never the old ``group_auth``).
+        assert data["workset"]["meta"]["group_auth_enabled"] is True
+        assert "group_auth" not in data["workset"]["meta"]
 
     def test_identity_and_cascade_coexist(self, std, tmp_home):
         """Cascade settings + the workset.meta identity share one file without

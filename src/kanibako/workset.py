@@ -173,7 +173,10 @@ def _write_workset_toml(ws: Workset) -> None:
     workset_tbl["meta"] = {
         "name": ws.name,
         "created": ws.created,
-        "group_auth": ws.group_auth,
+        # Group-auth (block #2): the workset POLICY is written as the NEW spec key
+        # ``group_auth_enabled`` (``workset.group_auth_enabled``), NOT the old flat
+        # ``group_auth`` — the clean-break WRITE surface. Read new-wins-old below.
+        "group_auth_enabled": ws.group_auth,
         "projects": [
             {
                 "name": proj.name,
@@ -202,7 +205,10 @@ def _load_workset_toml(root: Path) -> Workset:
             f"{WORKSET_META_FILE} in {root} has no 'name' key"
         )
     created = meta.get("created", "")
-    group_auth = bool(meta.get("group_auth", True))
+    # Group-auth (block #2): read the workset POLICY new-wins-old — the new spec
+    # key ``group_auth_enabled`` takes precedence; an existing on-disk
+    # ``group_auth`` is the read-compat fallback (JC-3). Never written back.
+    group_auth = bool(meta.get("group_auth_enabled", meta.get("group_auth", True)))
     projects = []
     for entry in meta.get("projects", []):
         projects.append(
@@ -446,10 +452,17 @@ def default_workset(std: StandardPaths) -> Workset:
     config_path = std.data_path / "config.yaml"
     if config_path.is_file():
         data = load_doc(config_path)
-        # group_auth lives in the [project] section (see config.py loader);
-        # tolerate a top-level key too for robustness.
-        if "group_auth" in data.get("project", {}):
-            group_auth = bool(data["project"]["group_auth"])
+        # Group-auth (block #2): the default-workset POLICY lives in the [project]
+        # section of config.yaml. Read new-wins-old — the new key
+        # ``group_auth_enabled`` takes precedence, the old ``group_auth`` is the
+        # read-compat fallback (JC-3) — and tolerate a top-level key for either.
+        project_sec = data.get("project", {})
+        if "group_auth_enabled" in project_sec:
+            group_auth = bool(project_sec["group_auth_enabled"])
+        elif "group_auth" in project_sec:
+            group_auth = bool(project_sec["group_auth"])
+        elif "group_auth_enabled" in data:
+            group_auth = bool(data["group_auth_enabled"])
         elif "group_auth" in data:
             group_auth = bool(data["group_auth"])
 

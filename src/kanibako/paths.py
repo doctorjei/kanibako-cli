@@ -179,7 +179,15 @@ class ProjectPaths:
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
     enable_vault: bool = field(default=True)
+    # Group-auth (block #2 — capability chain). ``group_auth`` is NO LONGER the
+    # flat side-channel: it is the READ-COMPAT carrier of the BOX-level on-disk
+    # choice (old ``[project].group_auth`` / new ``box.group_auth_on``), default
+    # True. ``workset_group_auth`` carries the WORKSET-level on-disk policy (old
+    # default-workset/named-workset ``group_auth`` / new ``group_auth_enabled``).
+    # Both feed ``settings_launch.group_auth_chain_floor`` (JC-3); the EFFECTIVE
+    # bool is resolved through the launch snapshot, NOT merged here.
     group_auth: bool = field(default=True)
+    workset_group_auth: bool = field(default=True)
     name: str = field(default="")
     group: ProjectGroup | None = field(default=None)
 
@@ -717,16 +725,16 @@ def resolve_project(
         )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    # Auth mode for the default group: the default workset's
-    # group_auth (from {data_path}/config.yaml) is the base; a project may
-    # narrow shared→distinct via its own meta — mirroring the named-workset
-    # logic in resolve_workset_project.  No-op on upgrade: default_workset's
-    # group_auth is True until a user runs `workset config default group_auth`,
-    # and existing project meta froze group_auth=True at init.
+    # Group-auth (block #2): carry the WORKSET-level on-disk policy (default
+    # workset's config.yaml ``group_auth``) and the BOX-level on-disk choice
+    # (this box's meta ``group_auth``) SEPARATELY — the capability chain keys them
+    # to distinct keys (workset → ``workset.group_auth_enabled``, box →
+    # ``box.group_auth_on``) and the EFFECTIVE bool is resolved through the launch
+    # snapshot. (Was a single merged ``actual_group_auth`` flat bool.) JC-3
+    # read-compat: a False at either level maps to the chain override.
     from kanibako.workset import default_workset
-    actual_group_auth = default_workset(std).group_auth
-    if actual_group_auth and meta:
-        actual_group_auth = bool(meta.get("group_auth", True))
+    workset_group_auth = bool(default_workset(std).group_auth)
+    box_group_auth = bool(meta.get("group_auth", True)) if meta else True
 
     is_new = False
     if initialize and not project_dir_path.is_dir():
@@ -807,7 +815,8 @@ def resolve_project(
         is_new=is_new,
         mode=BoxMode.primary,
         enable_vault=actual_vault_enabled,
-        group_auth=actual_group_auth,
+        group_auth=box_group_auth,
+        workset_group_auth=workset_group_auth,
         name=project_name,
         group=ProjectGroup(
             name="default",
@@ -1262,10 +1271,12 @@ def resolve_workset_project(
         shell_path, vault_ro_path, vault_rw_path = _ws_shell, _ws_vro, _ws_vrw
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
-    # Auth mode: workset-level overrides project-level.
-    actual_group_auth = ws.group_auth
-    if actual_group_auth and meta:
-        actual_group_auth = bool(meta.get("group_auth", True))
+    # Group-auth (block #2): carry the WORKSET-level policy (ws.group_auth) and
+    # the BOX-level choice (this box's meta group_auth) SEPARATELY for the
+    # capability chain (was a single merged bool); the effective bool resolves
+    # through the launch snapshot. JC-3 read-compat at both levels.
+    workset_group_auth = bool(ws.group_auth)
+    box_group_auth = bool(meta.get("group_auth", True)) if meta else True
 
     # Hash the resolved workspace path for container naming.
     phash = project_hash(str(project_path.resolve()))
@@ -1281,7 +1292,7 @@ def resolve_workset_project(
             vault_ro=str(vault_ro_path),
             vault_rw=str(vault_rw_path),
             enable_vault=actual_vault_enabled,
-            group_auth=actual_group_auth,
+            group_auth=box_group_auth,
             metadata=str(metadata_path),
             project_hash=phash,
         )
@@ -1303,7 +1314,8 @@ def resolve_workset_project(
         is_new=is_new,
         mode=BoxMode.named,
         enable_vault=actual_vault_enabled,
-        group_auth=actual_group_auth,
+        group_auth=box_group_auth,
+        workset_group_auth=workset_group_auth,
         name=project_name,
         group=ProjectGroup(
             name=ws.name,
@@ -1797,10 +1809,13 @@ def resolve_standalone_project(
     # ignored once meta exists since the stored identity is authoritative).
     requested_name = name
 
-    # Auth mode for standalone: explicit param > meta > default.
-    # Standalone projects are NOT in the default group, so they do
-    # not consult the default workset config.yaml.
-    actual_group_auth = (
+    # Group-auth (block #2): standalone has NO workset group, so only the
+    # BOX-level choice is carried (explicit --distinct-auth param > on-disk meta >
+    # default True). The chain pins the workset keys to literal False for
+    # standalone (short-circuit, spec §2c L315-316), so effective group-auth is
+    # ALWAYS False for a lone box; this value only governs the box.group_auth_on
+    # CHOICE key (carried for persistence/read-compat symmetry).
+    box_group_auth = (
         group_auth
         if group_auth is not None
         else (bool(meta.get("group_auth", True)) if meta else True)
@@ -1831,7 +1846,7 @@ def resolve_standalone_project(
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
             std, root,
             enable_vault=actual_vault_enabled,
-            group_auth=actual_group_auth,
+            group_auth=box_group_auth,
             name=requested_name,
         )
         is_new = True
@@ -1853,7 +1868,7 @@ def resolve_standalone_project(
         is_new=is_new,
         mode=BoxMode.standalone,
         enable_vault=actual_vault_enabled,
-        group_auth=actual_group_auth,
+        group_auth=box_group_auth,
         name=box_name,
     )
 

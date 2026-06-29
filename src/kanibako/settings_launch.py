@@ -104,6 +104,149 @@ _SCOPES: tuple[str, ...] = ("system", "agent", "workset", "box")
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# Group-auth capability chain (block #2 — ratified 2026-06-29)                 #
+# --------------------------------------------------------------------------- #
+#
+# The spec's CAPABILITY CHAIN rooted at the agent tier (spec §2a L184 / §2b L282 /
+# §2c L315-316,331-332,381 / §2d L399; design L689-719). These keys are injected
+# into the launch snapshot floor so ``expand`` resolves the @-ref chain ONCE
+# (single-route — NO second resolver). A scope FILE may still override a key by
+# name (the floor sits under ``base``), preserving the cascade.
+#
+# Chain (the WHAT — the spec is the authority):
+#   agent.default.group_auth_capable  = True   (UNIVERSAL floor; every agent
+#                                               inherits via agent.<agent>.<key> |
+#                                               agent.default.<key>)
+#   workset.meta.group_auth_available = @agent.<agent>.group_auth_capable  (ceiling)
+#   workset.group_auth_enabled        = @workset.meta.group_auth_available  (policy)
+#   box.meta.group_auth_available     = @workset.group_auth_enabled         (box ceiling)
+#   box.group_auth_on                 = True   (box's CHOICE; settable)
+#   effective_group_auth = box.meta.group_auth_available AND box.group_auth_on
+#
+# STANDALONE (degenerate lone box, spec §2c L315-316): workset.meta.group_auth_
+# available AND workset.group_auth_enabled are the LITERAL False (NOT the @-ref) —
+# so box.meta.group_auth_available short-circuits to False WITHOUT traversing to
+# the agent tier (and the @-ref still RESOLVES — closes the standalone gap).
+
+#: The agent-tier capability FLOOR. JC-1 (ruling pending): the single universal
+#: source — one literal, every target (incl. NoAgent / future) inherits it via the
+#: generic ``agent.<agent>.<key> | agent.default.<key>`` rule. NOT duplicated per
+#: plugin (single-source principle). A future non-capable agent overrides
+#: ``agent.<x>.group_auth_capable = False`` in its own settings.
+_GROUP_AUTH_CAPABLE_KEY = "agent.default.group_auth_capable"
+#: The box's settable CHOICE default (spec §2b L282) — replaces the per-box
+#: ``[project].group_auth`` narrowing. A box file / read-compat may override it.
+_BOX_GROUP_AUTH_ON_KEY = "box.group_auth_on"
+
+
+def group_auth_chain_floor(
+    *,
+    mode: str,
+    agent_name: str,
+    workset_enabled_override: bool | None = None,
+    box_on_override: bool | None = None,
+) -> dict[str, object]:
+    """Build the group-auth capability-chain floor keys for *mode* (JC-2 seam).
+
+    Returns the ``{dotted_key: value}`` floor fragment for the spec's group-auth
+    chain (spec §2a/§2b/§2c/§2d; design L689-719). The caller folds it into
+    ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref chain ONCE
+    (single-route). *mode* is the box's :class:`~kanibako.paths.BoxMode` value
+    (``"primary"`` / ``"named"`` / ``"standalone"``), passed as a plain string to
+    avoid a paths import.
+
+    PRIMARY / NAMED use the @-ref forms (the policy derives from the active
+    agent's capability via the meta ceiling). STANDALONE pins the two workset keys
+    to the LITERAL ``False`` so ``box.meta.group_auth_available`` short-circuits
+    without traversing to the agent tier (spec §2c L315-316) — the @-ref still
+    RESOLVES (the gap this chain closes).
+
+    *workset_enabled_override* / *box_on_override* are the JC-3 read-compat inputs:
+    an existing on-disk ``[project].group_auth=false`` (workset policy or per-box
+    choice) maps HERE to ``workset.group_auth_enabled=False`` /
+    ``box.group_auth_on=False`` so a distinct-auth box keeps working — WITHOUT ever
+    writing the old form. ``None`` (the common case) leaves the spec default. An
+    override is layered as a literal in the FLOOR; a scope FILE that sets the new
+    key (a post-reshape config) still wins by name through the cascade.
+    """
+    floor: dict[str, object] = {
+        # The universal agent-tier capability floor (JC-1): the all-agents
+        # backstop, spec §2d L399. Recorded under ``agent.default`` so the agent
+        # tier is consistent with the spec's ``agent.default.<key>`` shape.
+        _GROUP_AUTH_CAPABLE_KEY: True,
+        # The ACTIVE agent's capability slot, MATERIALIZED from the floor so the
+        # whole-value @-ref ``@agent.<agent>.group_auth_capable`` RESOLVES at
+        # expand time (``expand`` follows the literal dotted path — it does NOT
+        # apply the active-over-default consumer pick that ``effective_behavior``
+        # does). Seeding the active slot to the same floor default means every
+        # shipped agent inherits ``True``; a future NON-capable agent's settings
+        # file sets ``agent.<agent>.group_auth_capable=false``, which WINS by name
+        # through the cascade (the floor sits under ``base``). This is the §2d
+        # ``agent.<agent>.<key> | agent.default.<key>`` rule made concrete for the
+        # @-ref's literal-path resolution.
+        f"agent.{agent_name}.group_auth_capable": True,
+        # The box ceiling @-ref — identical in EVERY mode (it resolves to the
+        # workset literal under standalone, or down the chain otherwise).
+        "box.meta.group_auth_available": "@workset.group_auth_enabled",
+        # The box's settable choice — default ON (spec §2b L282).
+        _BOX_GROUP_AUTH_ON_KEY: True,
+    }
+    if mode == "standalone":
+        # STANDALONE short-circuit (spec §2c L315-316): a lone box has no group →
+        # the workset keys are the LITERAL False, NOT the agent-tier @-ref.
+        floor["workset.meta.group_auth_available"] = False
+        floor["workset.group_auth_enabled"] = False
+    else:
+        # PRIMARY / NAMED (ALL WORKSETS, spec §2c L331-332): availability = the
+        # ACTIVE agent's capability; policy defaults to availability.
+        floor["workset.meta.group_auth_available"] = (
+            f"@agent.{agent_name}.group_auth_capable"
+        )
+        floor["workset.group_auth_enabled"] = "@workset.meta.group_auth_available"
+        # JC-3 read-compat: an existing on-disk workset-level group_auth=false
+        # overrides the policy key (workset → group_auth_enabled). Only False is
+        # carried (True is the spec default already); never written back.
+        if workset_enabled_override is False:
+            floor["workset.group_auth_enabled"] = False
+    # JC-3 read-compat: an existing on-disk per-box [project].group_auth=false
+    # maps to box.group_auth_on (the box's choice). Mode-independent.
+    if box_on_override is False:
+        floor[_BOX_GROUP_AUTH_ON_KEY] = False
+    return floor
+
+
+def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool:
+    """Read ``effective_group_auth`` off the expanded snapshot (spec §2b L282).
+
+    ``effective = box.meta.group_auth_available AND box.group_auth_on`` — the
+    SINGLE bool that feeds the existing gates (``reconcile_categories``, credsync,
+    auto-auth, writeback, the ``kanibako agent`` display) UNCHANGED. Reads the
+    box ``meta`` node via the typed :class:`~kanibako.settings_views.MetaView`
+    (``group_auth_available`` — the demo view, now wired) and ``box.group_auth_on``
+    via the typed bool view — NOT a hand-parse (design §5 typed access). Both are
+    resolved (block 7) to real ``bool`` terminals by ``expand`` (a whole-value
+    @-ref inherits its referent's type), so :func:`as_bool` does not launder.
+
+    Raises :class:`~kanibako.settings_views.ViewError` only on a BUILD-invariant
+    breach (a chain key absent / mistyped) — which would mean the floor injection
+    failed; that is a programming error, surfaced loudly, never a launder.
+    """
+    from kanibako.settings_views import as_bool
+
+    box_node = dict.get(snapshot, "box", _MISSING)
+    if not isinstance(box_node, KeyStore):
+        # The chain floor always seeds box.* — an absent box node means the floor
+        # was not injected. Fail closed (no group auth) rather than launder.
+        return False
+    meta_node = dict.get(box_node, "meta", _MISSING)
+    available = False
+    if isinstance(meta_node, KeyStore):
+        available = as_bool(dict.get(meta_node, "group_auth_available", False))
+    on = as_bool(dict.get(box_node, "group_auth_on", False))
+    return bool(available and on)
+
+
 def build_launch_snapshot(
     *,
     agent_name: str,
@@ -118,6 +261,7 @@ def build_launch_snapshot(
     agent_state: Mapping[str, str] | None = None,
     binding_overrides: Mapping[str, str] | None = None,
     descriptor_bindings: "list[Binding] | None" = None,
+    group_auth_chain: Mapping[str, object] | None = None,
 ) -> tuple[KeyStore, list[str]]:
     """Build the ONE expanded launch snapshot + the required-override warnings.
 
@@ -135,6 +279,13 @@ def build_launch_snapshot(
     family. *binding_overrides* are the transitional ``{binding_key: host_src}``
     repoints (bridge), placed via *descriptor_bindings* (each ``Binding`` supplies
     the ``ro`` flag selecting ``bindings.ro`` vs ``bindings.rw``).
+
+    *group_auth_chain* is the group-auth capability-chain floor fragment (block
+    #2) built by :func:`group_auth_chain_floor` per box mode — the spec's @-ref /
+    literal chain keys (spec §2a/§2b/§2c/§2d; design L689-719). Folded into the
+    SAME floor so ``expand`` resolves the chain ONCE (single-route). ``None`` for a
+    NARROW resolve that does not need the chain (the seed/synced/image/helper
+    sub-resolves), so those snapshots simply lack the chain keys.
 
     Returns ``(snapshot, warnings)``; *warnings* is the ``required``-override
     diagnostics channel (S10) the caller surfaces.
@@ -178,6 +329,17 @@ def build_launch_snapshot(
             ):
                 floor[key] = {str(dest): True for dest in val}
                 continue
+            floor[key] = val
+
+    # Group-auth capability chain (block #2): the @-ref / literal chain keys
+    # (spec §2a/§2b/§2c/§2d; design L689-719) fold into the SAME floor so
+    # ``expand`` resolves the chain ONCE (single-route). Built per mode by
+    # :func:`group_auth_chain_floor`; a scope FILE still overrides a key by name
+    # (the floor sits under ``base``). Injected AFTER the category tables so the
+    # dotted chain keys (``box.group_auth_on`` / ``box.meta.group_auth_available``
+    # / ``workset.*``) land in the floor unconditionally.
+    if group_auth_chain:
+        for key, val in group_auth_chain.items():
             floor[key] = val
 
     base_levels = assemble_levels(
