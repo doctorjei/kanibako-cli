@@ -5,15 +5,18 @@ KeyStore ``config set`` semantics (design §6d / spec §2a), build ALONGSIDE the
 live ``config_interface.set_config_value`` router (block 7 wires the CLI to call
 THIS — this module does NOT touch ``cli.py`` or the live setter):
 
-1. :func:`validate_config_set` — the B5 set-time validation. A PURE function
+1. :func:`validate_config_set` — the set-time validation. A PURE function
    returning a typed :class:`Verdict` (``OK`` / :class:`Warn` / :class:`Error`).
    It REUSES the resolver's parse grammar (``split_bind`` for the ``:`` notation;
    ``_VAR_NAME_RE`` / ``_REF_NAME_RE`` + the same escape / ``$VAR`` / ``@ref`` scan
    as :func:`kanibako.settings_resolve.expand_expr`) and the
-   :mod:`kanibako.config_interface` key registry (``is_known_key`` / ``KEY_TYPES``
-   / ``_coerce_value``) — it does NOT invent a second validator (S25). It validates
-   references for WELL-FORMEDNESS WITHOUT resolving them to literals (design §6d /
-   spec §0 "files store UNRESOLVED").
+   :mod:`kanibako.config_interface` key registry (``KEY_TYPES`` / ``_coerce_value``)
+   — it does NOT invent a second validator (S25). Q9 (spec §2a, ruling 2026-06-29):
+   the dangling/unknown/cycle judgement is now FULL RESOLUTION via the injected E3
+   ``resolves`` probe (does the edited value resolve cleanly post-edit?), NOT the
+   retired conservative per-token existence check. The FILE still stores the RAW
+   (unresolved) form — resolution is for the CHECK only (§0 "files store
+   UNRESOLVED").
 2. :func:`repoint_host_src` — the RAW category write. On a category key it reads
    the EXISTING raw tuple at the COMMAND's scope file (key-MUST-exist, else a hard
    error), swaps element 0 (``host_src``) for the user's VERBATIM raw input,
@@ -68,7 +71,6 @@ from typing import Callable, Union
 from kanibako.config_interface import KEY_TYPES, _coerce_value
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.settings_resolve import _REF_NAME_RE, _VAR_NAME_RE, split_bind
-from kanibako.settings_store import _MISSING, KeyStore, StoreValue
 
 __all__ = [
     "Verdict",
@@ -78,8 +80,7 @@ __all__ = [
     "validate_config_set",
     "repoint_host_src",
     "ConfigSetError",
-    "RefLookup",
-    "VarLookup",
+    "ResolveProbe",
     "HostExists",
 ]
 
@@ -127,13 +128,18 @@ OK: _OK = _OK()
 #: with a warning (:class:`Warn`), or refuse (:class:`Error`).
 Verdict = Union[_OK, Warn, Error]
 
-# Callback aliases (block 7 wires the real snapshot / env / filesystem; tests
-# pass simple stubs). All are PURE from this module's perspective.
-#: Does this dotted CONFIG key exist (anywhere in the resolved keyspace)? Used to
-#: validate an ``@``-ref points at a real key WITHOUT resolving it to a literal.
-RefLookup = Callable[[str], bool]
-#: Is this ``$VAR`` name a known/resolvable environment variable in context?
-VarLookup = Callable[[str], bool]
+# Callback aliases (the seam — config_interface — wires the real snapshot / env /
+# filesystem; tests pass simple stubs). All are PURE from this module's perspective.
+#: The E3 RESOLUTION probe (Q9, spec §2a / design Q9). Given the edited ``(key,
+#: raw_value)``, apply the candidate raw value into the merged COMMAND-target
+#: snapshot at *key*, lenient-``expand`` it, and answer the ONE E3 question — does
+#: the EDITED VALUE resolve cleanly post-edit? Returns ``None`` if it resolves
+#: cleanly (ALLOW), else a human reason naming the broken UPSTREAM dependency
+#: (BLOCK — a dangling ``@``-ref / unknown ``$VAR`` / cycle in the edited value's
+#: own transitive chain that the edit does NOT fix). An UNRELATED / DOWNSTREAM
+#: defect, or one the edit re-points away from / fixes, leaves the edited key clean
+#: → ``None``. The probe NEVER resolves a stored literal (§0 files store UNRESOLVED).
+ResolveProbe = Callable[[str, str], "str | None"]
 #: Does this host source PATH exist on disk yet? (A miss → WARN, not error.)
 HostExists = Callable[[str], bool]
 
@@ -217,43 +223,49 @@ def validate_config_set(
     value: str,
     *,
     is_category: bool,
-    ref_exists: RefLookup,
-    var_known: VarLookup,
+    resolves: ResolveProbe,
     host_exists: HostExists | None = None,
 ) -> Verdict:
-    """Validate a ``config set`` ``(key, value)`` at set-time (B5), returning a
-    :class:`Verdict`. PURE — no file / env / clock access of its own (its
-    filesystem/snapshot/env reach is the injected callbacks).
+    """Validate a ``config set`` ``(key, value)`` at set-time (Q9 — FULL RESOLUTION
+    + the E3 rule), returning a :class:`Verdict`. PURE — no file / env / clock
+    access of its own (its snapshot/filesystem reach is the injected callbacks).
 
     *key* is the canonical config key; *value* is the user's RAW input (for a
     category key this is the new ``host_src``; for a scalar key it is the whole
-    value). *is_category* tells the two apart (the caller — block 7 — knows from
-    the key registry whether the key is a bind-shaped category). The three
-    callbacks inject the snapshot / env / filesystem so this function stays pure
-    and testable:
+    value). *is_category* tells the two apart (the caller knows from the key
+    registry whether the key is a bind-shaped category). The callbacks inject the
+    snapshot / filesystem so this function stays pure and testable:
 
-    * *ref_exists(dotted)* → does this ``@``-ref name a real config key? (existence
-      only — NOT a resolution to a literal, per §6d / spec §0).
-    * *var_known(name)* → is this ``$VAR`` a known/resolvable env var in context?
+    * *resolves(key, value)* — the E3 RESOLUTION probe (Q9 / spec §2a). The caller
+      builds the full lenient COMMAND-target snapshot (assemble→merge→expand
+      [lenient]), applies *value* at *key*, and answers: does the EDITED VALUE
+      resolve cleanly post-edit? ``None`` = clean (ALLOW); a reason string = the
+      edited value's own transitive UPSTREAM chain stays unresolvable (BLOCK —
+      naming the broken dep). This REPLACES the conservative per-token existence
+      check (the retired ``ref_exists``/``var_known``): a dangling ``@``-ref /
+      unknown ``$VAR`` / cycle now BLOCKS only when it is IN the edited value's
+      post-edit chain; an UNRELATED / DOWNSTREAM defect, or one the edit fixes,
+      ALLOWS — so ``config set`` stays usable to REPAIR a broken config.
     * *host_exists(path)* → does this host source path exist on disk yet? (Only
       consulted for a category key whose ``host_src`` is a plain LITERAL path —
       a missing path → WARN, never error. Defaults to "exists" when omitted.)
 
     .. note::
        The not-yet-existent-host-path WARN is real B5 behavior, NOT optional: the
-       caller (block 7's CLI wiring) MUST pass *host_exists* for every category
-       key, or the WARN branch can never fire. It is a parameter (default "exists")
-       only to keep this function PURE — the filesystem reach is injected, not
-       imported — not to make the warn discretionary.
+       caller MUST pass *host_exists* for every category key, or the WARN branch can
+       never fire. It is a parameter (default "exists") only to keep this function
+       PURE — the filesystem reach is injected, not imported.
 
-    Severity (design §6d B5):
+    Severity (spec §2a, the Q9 + E3 ruling):
 
     * **Error** — malformed syntax / the forbidden ``:`` ``src:dest`` notation; a
-      typed-scalar type mismatch; a dangling ``@``-ref (``ref_exists`` False) or an
-      unknown ``$VAR`` (``var_known`` False).
+      typed-scalar type mismatch; OR the edited value's own transitive upstream
+      chain stays unresolvable post-edit (``resolves`` returns a reason — a
+      dangling ``@``-ref / unknown ``$VAR`` / cycle the edit does NOT fix).
     * **Warn** — a category ``host_src`` that is a plain literal path not present
       on disk yet.
-    * **OK** otherwise. Repointing an ``@``-ref (B4) is NOT warned.
+    * **OK** otherwise. Repointing an ``@``-ref (B4) is NOT warned; an UNRELATED /
+      DOWNSTREAM defect does NOT block.
     """
     # 1. The forbidden ``:`` ``src:dest`` notation (spec §2a — source-only has no
     #    delimiter; a tuple is never a colon-joined string). ``split_bind`` returns
@@ -267,24 +279,25 @@ def validate_config_set(
             f"to embed a literal ':' in a path, escape it as '\\:'."
         )
 
-    # 2. Token well-formedness + dangling-reference check (reuse the resolver parse
-    #    grammar; NEVER resolve to a literal — §6d / spec §0).
+    # 2. Token well-formedness (reuse the resolver parse grammar; NEVER resolve to a
+    #    literal — §0). This is a fast, pure pre-check for MALFORMED ``$``/``@``
+    #    syntax (an unterminated ``${`` / a bare ``$`` etc.) before any snapshot
+    #    work; it also tells us whether the value bears tokens (so a token-bearing
+    #    host_src is NOT path-checked at step 4). Dangling/unknown/cycle is NO
+    #    longer judged here — that is the E3 resolution probe's job (step 3a).
     try:
         ref_names, var_names = _scan_tokens(value)
     except ValueError as exc:
         return Error(f"'{key}': malformed value {value!r}: {exc}")
-    for ref in ref_names:
-        if not ref_exists(ref):
-            return Error(
-                f"'{key}': dangling @-reference '@{ref}' "
-                f"(no such config key in the keyspace)."
-            )
-    for var in var_names:
-        if not var_known(var):
-            return Error(
-                f"'{key}': unknown variable '${var}' "
-                f"(not a known/resolvable environment variable)."
-            )
+
+    # 3a. E3 FULL-RESOLUTION check (Q9, spec §2a): does the edited value resolve
+    #     cleanly post-edit? A reason → the edited value's own transitive UPSTREAM
+    #     chain is unresolvable (dangling / unknown ``$VAR`` / cycle the edit does
+    #     not fix) → BLOCK, naming the broken dep. An UNRELATED / DOWNSTREAM defect,
+    #     or one the edit fixes, leaves the edited key clean → no reason → continue.
+    reason = resolves(key, value)
+    if reason is not None:
+        return Error(f"'{key}': {reason}")
 
     # 3. Typed scalar keys — reuse the key registry's coercion (the H2 check). A
     #    typed key whose value cannot coerce → Error. Category keys are not typed
@@ -385,33 +398,3 @@ def repoint_host_src(
     new_tuple = [new_host_src, *list(existing[1:])]
     node[leaf_name] = new_tuple
     dump_doc(scope_path, data)
-
-
-# --------------------------------------------------------------------------- #
-# snapshot-backed RefLookup helper (a convenience for block-7 wiring)         #
-# --------------------------------------------------------------------------- #
-
-
-def make_ref_lookup(snapshot: KeyStore) -> RefLookup:
-    """Build a :data:`RefLookup` over a resolved/raw :class:`KeyStore` *snapshot*.
-
-    Returns a predicate ``ref_exists(dotted)`` → True iff the dotted path names a
-    present key in *snapshot* (existence only — it does NOT resolve the value to a
-    literal, per §6d / spec §0). Walks the dotted segments with the UNBOUND
-    ``dict.get(node, seg, _MISSING)`` probe (S3): a key named ``get`` / ``items``
-    cannot shadow the protocol, and a present-``None`` leaf still counts as
-    EXISTING (it is set, just to None — a legitimate ``@``-ref target, §3).
-    """
-
-    def ref_exists(dotted: str) -> bool:
-        node: StoreValue = snapshot
-        for seg in dotted.split("."):
-            if not isinstance(node, KeyStore):
-                return False
-            got = dict.get(node, seg, _MISSING)
-            if got is _MISSING:
-                return False
-            node = got
-        return True
-
-    return ref_exists

@@ -978,7 +978,7 @@ class TestCategoryConfigSet:
             "box.bindings.ro.vault", "$NOPE_UNKNOWN_VAR_XYZ/x", config_path=f,
         )
         assert msg.startswith("Error:")
-        assert "unknown variable" in msg
+        assert "unknown variable" in msg.lower()
 
     def test_system_scope_category_repoint_not_refused(self, tmp_path):
         """A system-scope category key reaches the set path (D2) — categories
@@ -1007,3 +1007,111 @@ class TestCategoryConfigSet:
         assert is_known_key("system.caches.x")
         assert is_known_key("workset.shared.plugins")
         assert not is_known_key("some-project-name")
+
+
+# ---------------------------------------------------------------------------
+# Cross-scope @-ref resolution at set-time — the (b) FULL CASCADE rework
+# (Jei ruling 2026-06-29). The first cut built the set-time snapshot from the
+# command-scope file + the system.* floor ONLY, which FALSE-BLOCKED a value that
+# @-refs a higher non-system scope key. These exercise the full cascade: a box-
+# scope set whose new value references a key set ONLY at the workset scope must
+# RESOLVE (allowed); a genuinely dangling cross-scope ref still BLOCKS.
+# Spec §2a "layer the target's settings in precedence order".
+# ---------------------------------------------------------------------------
+
+class TestCrossScopeCascadeConfigSet:
+    """`config set` set-time E3 over the FULL launch cascade (not cmd-file only)."""
+
+    def _seed_box(self, tmp_path, key_path, tuple_val):
+        """Write a box-scope category bind into the box settings file."""
+        f = tmp_path / "box-settings.yaml"
+        data: dict = {}
+        node = data
+        for seg in key_path[:-1]:
+            node = node.setdefault(seg, {})
+        node[key_path[-1]] = tuple_val
+        dump_doc(f, data)
+        return f
+
+    def _seed_workset(self, tmp_path, leaf, value):
+        """Write a workset-scope key into a workset settings file."""
+        f = tmp_path / "ws-settings.yaml"
+        dump_doc(f, {"workset": {leaf: value}})
+        return f
+
+    def test_cross_scope_ref_resolves_with_full_cascade(self, tmp_path):
+        """A box-scope set whose value @-refs a key set ONLY at the workset scope
+        is ALLOWED (the false-block the first cut produced is GONE)."""
+        box_f = self._seed_box(
+            tmp_path, ["box", "bindings", "ro", "foo"],
+            ["/old", "/home/agent/foo", "ro"],
+        )
+        ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
+        msg = set_config_value(
+            "box.bindings.ro.foo", "@workset.vault_ro/bar",
+            config_path=box_f,
+            cascade_workset_path=ws_f,
+            cascade_box_path=box_f,
+        )
+        # ALLOWED: @workset.vault_ro is visible in the full cascade -> resolves.
+        assert not msg.startswith("Error:"), msg
+        # stored RAW (the @-ref, NOT a literal — §0 files unresolved).
+        assert load_doc(box_f)["box"]["bindings"]["ro"]["foo"][0] == (
+            "@workset.vault_ro/bar"
+        )
+
+    def test_cross_scope_ref_false_blocked_without_workset_file(self, tmp_path):
+        """Control: the SAME @workset.* ref with NO workset file in the cascade
+        is dangling -> BLOCKED. Proves the prior test's pass is the cascade's
+        doing (the workset key really is the only thing that resolves it)."""
+        box_f = self._seed_box(
+            tmp_path, ["box", "bindings", "ro", "foo"],
+            ["/old", "/home/agent/foo", "ro"],
+        )
+        msg = set_config_value(
+            "box.bindings.ro.foo", "@workset.vault_ro/bar",
+            config_path=box_f,
+            cascade_box_path=box_f,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "dangling" in msg
+        assert "workset.vault_ro" in msg  # names the broken upstream dep
+
+    def test_cross_scope_genuinely_dangling_still_blocks(self, tmp_path):
+        """A value @-ref to a key set NOWHERE in the cascade still BLOCKS, naming
+        the dangling target (E3 upstream rule holds over the full cascade)."""
+        box_f = self._seed_box(
+            tmp_path, ["box", "bindings", "ro", "foo"],
+            ["/old", "/home/agent/foo", "ro"],
+        )
+        ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
+        msg = set_config_value(
+            "box.bindings.ro.foo", "@workset.nope_absent/bar",
+            config_path=box_f,
+            cascade_workset_path=ws_f,
+            cascade_box_path=box_f,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "dangling" in msg
+        assert "workset.nope_absent" in msg
+
+    def test_workset_scope_set_refs_system_floor_and_sibling(self, tmp_path):
+        """A workset-scope set referencing the system.* floor (@system.data) AND a
+        sibling workset key in the same file both resolve -> ALLOWED."""
+        # The workset file holds the sibling target + the edited key.
+        ws_f = tmp_path / "ws-settings.yaml"
+        dump_doc(ws_f, {
+            "workset": {
+                "vault_ro": "/srv/vault/ro",
+                "shared": {"x": ["/old", "/home/agent/x"]},
+            },
+        })
+        # Reference BOTH the system.* floor and a sibling workset key. The system.*
+        # floor is folded in by _category_resolves regardless of cascade files.
+        msg = set_config_value(
+            "workset.shared.x", "@workset.vault_ro/sub",
+            config_path=ws_f,
+            cascade_workset_path=ws_f,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ws_f)["workset"]["shared"]["x"][0] == "@workset.vault_ro/sub"

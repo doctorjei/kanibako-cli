@@ -463,3 +463,136 @@ def test_diamond_no_false_cycle() -> None:
     snap = KeyStore({"b": "/root", "d": "@b/x", "e": "@b/y"})
     out = expand(snap, _ctx())
     assert out["d"] == "/root/x" and out["e"] == "/root/y"
+
+
+# --------------------------------------------------------------------------- #
+# LENIENT / error-COLLECTING mode (Q9 — collect_errors=True)                  #
+# --------------------------------------------------------------------------- #
+#
+# STRICT (default) is byte-identical (the suite above asserts it). LENIENT
+# collects dangling @-refs / unknown $VAR / cycles into an error map keyed by the
+# owning leaf's dotted path, resolves everything else, and TERMINATES on a cycle.
+
+
+def test_lenient_returns_pair_and_empty_errors_on_clean() -> None:
+    # A clean snapshot in lenient mode resolves identically AND reports no errors.
+    snap = KeyStore({"a": "@b/x", "b": "@c", "c": "/root"})
+    strict = expand(snap, _ctx())
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert errors == {}
+    assert expanded == strict  # lenient result matches strict when there is no defect.
+
+
+def test_lenient_off_returns_bare_keystore() -> None:
+    # collect_errors=False (explicit) returns a bare KeyStore, not a pair.
+    snap = KeyStore({"c": "/root"})
+    out = expand(snap, _ctx(), collect_errors=False)
+    assert isinstance(out, KeyStore)
+
+
+def test_lenient_collects_dangling_whole_value_ref() -> None:
+    snap = KeyStore({"a": "@nope.missing", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "nope.missing" in errors["a"]
+    # The defective leaf is OMITTED; the clean leaf still resolves.
+    assert _probe(expanded, "a") is _MISSING
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_collects_dangling_embedded_ref() -> None:
+    snap = KeyStore({"a": "pre-@nope.x-post", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "nope.x" in errors["a"]
+    assert _probe(expanded, "a") is _MISSING
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_collects_dangling_through_transitive_chain() -> None:
+    # The defect is UPSTREAM (a -> b -> dangling); it is attributed to the OWNING
+    # leaf `a`, and the intermediate `b` (which is itself dangling-rooted) too.
+    snap = KeyStore({"a": "@b", "b": "@gone.x", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "gone.x" in errors["a"]
+    assert "b" in errors
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_collects_unknown_var() -> None:
+    snap = KeyStore({"a": "$NOPE_VAR/x", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "NOPE_VAR" in errors["a"]
+    assert _probe(expanded, "a") is _MISSING
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_collects_unset_xdg_var() -> None:
+    # A known XDG name absent from ctx.xdg is unset → collected (not raised).
+    snap = KeyStore({"a": "$XDG_CACHE_HOME/x"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "XDG_CACHE_HOME" in errors["a"]
+
+
+def test_lenient_collects_cycle_and_terminates() -> None:
+    # A -> B -> A cycle is recorded (both leaves), the pass TERMINATES, and an
+    # unrelated clean leaf still resolves.
+    snap = KeyStore({"a": "@b", "b": "@a", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "cyclic" in errors["a"].lower()
+    assert "b" in errors
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_self_cycle_recorded() -> None:
+    snap = KeyStore({"a": "@a"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "cyclic" in errors["a"].lower()
+    assert expanded == KeyStore()
+
+
+def test_lenient_records_nested_path_key() -> None:
+    # The error key is the FULL dotted path of the owning leaf.
+    snap = KeyStore({"box": {"bindings": {"rw": {"home": "@gone.x"}}}})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "box.bindings.rw.home" in errors
+
+
+def test_lenient_unrelated_defect_does_not_block_clean_leaves() -> None:
+    # Multiple defects collected together; all clean leaves still resolve.
+    snap = KeyStore({
+        "bad1": "@gone",
+        "bad2": "$UNKNOWN/y",
+        "good1": "@base/x",
+        "base": "/root",
+        "good2": "~/cfg",
+    })
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert set(errors) == {"bad1", "bad2"}
+    assert expanded["good1"] == "/root/x"
+    assert expanded["good2"] == f"{HOST_HOME}/cfg"
+
+
+def test_lenient_present_none_ref_is_not_a_defect() -> None:
+    # A whole-value ref to a present-None key is legitimate (§6b), NOT a dangling
+    # defect: it propagates None (kept), and is NOT recorded as an error.
+    snap = KeyStore({"a": "@b", "b": None})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert errors == {}
+    assert _probe(expanded, "a") is None
+
+
+def test_lenient_bind_dangling_host_recorded() -> None:
+    snap = KeyStore({"x": Bind("@gone.src", "~/dest", None)})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "x" in errors and "gone.src" in errors["x"]
+    assert _probe(expanded, "x") is _MISSING
+
+
+def test_lenient_bind_box_dest_xdg_deferred_not_a_defect() -> None:
+    # A box_dest $XDG token is DEFERRED (S17), never resolved host-side, so an
+    # unknown-to-host XDG name in a box_dest is NOT a defect.
+    snap = KeyStore({"x": Bind("/host", "$XDG_CACHE_HOME/d", "ro")})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert errors == {}
+    bind = expanded["x"]
+    assert isinstance(bind, Bind)
+    assert bind.box == "$XDG_CACHE_HOME/d"  # deferred raw.

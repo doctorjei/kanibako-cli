@@ -236,8 +236,14 @@ def run_config(args: argparse.Namespace) -> int:
     if action == ConfigAction.set:
         # Ensure the system settings dir exists for SETTINGS writes.
         ssp.parent.mkdir(parents=True, exist_ok=True)
+        # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
+        # 2026-06-29): the system is the command scope. A system-scope category set
+        # writes to the CONFIG file (cf — see set_config_value's category branch),
+        # so cf goes in the system slot for sibling @-refs; the resolved system.*
+        # config tier is folded in as the FLOOR regardless.
         msg = set_config_value(
             key, value, config_path=cf, is_system=True, system_settings_path=ssp,
+            cascade_system_path=cf,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

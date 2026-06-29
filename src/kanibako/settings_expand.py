@@ -36,6 +36,22 @@ Cycle = hard build ERROR (``SettingsError``), covering whole-value AND embedded
 tokens (B7), with the chain in the message — KEPT DISTINCT from a legitimately
 absent/None referent (that is §6b propagation, NOT an error).
 
+LENIENT (error-COLLECTING) mode — Q9 set-time validation (spec §2a / design Q9)
+------------------------------------------------------------------------------
+:func:`expand` takes an opt-in ``collect_errors`` flag (additive, default OFF —
+STRICT mode is byte-identical to today; the launch read-path is unchanged). When
+ON, expansion resolves everything resolvable and, instead of raising / silently
+dropping, RECORDS each unresolvable leaf in an error map keyed by the leaf's
+dotted path: a dangling ``@``-ref (whole-value or embedded, target absent), an
+unknown / unset / malformed ``$VAR``, an ``@``-ref CYCLE, or a depth-cap breach.
+It returns ``(snapshot, errors)``. The pass still TERMINATES on a cycle (the
+``chain`` guard fires; lenient mode records + skips instead of raising).
+
+Set-time ``config set`` validation (the only lenient consumer) uses this to
+implement the E3 rule: apply the candidate RAW value into the merged snapshot at
+the edited key, lenient-``expand`` the result, and ALLOW iff the edited key is
+NOT in the error map (its own transitive upstream chain resolved cleanly).
+
 OUT of scope (hard boundaries): NO cascade merge / precedence (block 2b — this
 consumes its output), NO ``reconcile_categories`` / ``box_dest`` collision (§6g
 separate pass), NO typed views (block 4), NO ``config set`` (block 5), NO consumer
@@ -60,6 +76,8 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 """
 
 from __future__ import annotations
+
+from typing import overload
 
 from kanibako.settings_resolve import (
     _REF_NAME_RE,
@@ -97,6 +115,23 @@ class _Absent:
 _ABSENT: _Absent = _Absent()
 
 
+class _LenientDefect(Exception):
+    """Internal (lenient-mode only) signal: the leaf being expanded is unresolvable.
+
+    Raised when ``collect_errors=True`` and a leaf's resolution hits a defect that
+    STRICT mode would either raise on (unknown ``$VAR`` / cycle / depth-cap) or
+    silently drop (a dangling ``@``-ref → ``_ABSENT``). Caught by
+    :meth:`_Expander._expand_node` at the OWNING leaf, which records the dotted
+    path → *reason* in the error map and omits the leaf from the lenient output. It
+    NEVER escapes :func:`expand` (a leaf-local control signal, not a user error) and
+    is never raised in strict mode.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 def _is_whole_value_ref(value: str) -> str | None:
     """Return the dotted ref name iff *value* IS exactly one whole-value ``@``-ref.
 
@@ -116,7 +151,17 @@ def _is_whole_value_ref(value: str) -> str | None:
     return m.group(0)
 
 
-def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore:
+@overload
+def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore: ...
+@overload
+def expand(
+    snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool
+) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
+
+
+def expand(
+    snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False
+) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
     *snapshot* is block 2b's raw merged store (refs/vars/``~`` intact). *ctx*
@@ -138,12 +183,26 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore:
     * **non-str scalar** (``int`` / ``float`` / ``bool`` / ``None`` / ``list``) →
       carried verbatim (no token to expand).
 
-    A CYCLE (whole-value or embedded — B7) raises :class:`SettingsError` with the
+    STRICT mode (``collect_errors=False``, the default — the live launch read-path):
+    a CYCLE (whole-value or embedded — B7) raises :class:`SettingsError` with the
     chain; this is DISTINCT from a legitimately absent/None referent (propagated,
-    not raised). The input snapshot is never mutated (S19).
+    not raised). Returns the fresh expanded :class:`KeyStore`.
+
+    LENIENT mode (``collect_errors=True`` — Q9 set-time validation only): nothing
+    raises. Each leaf whose resolution hits a DEFECT — a dangling ``@``-ref
+    (whole-value or embedded, target absent), an unknown/unset/malformed ``$VAR``,
+    an ``@``-ref CYCLE, or a depth-cap breach — is RECORDED in an error map keyed by
+    the leaf's dotted path (path → human reason) and OMITTED from the output, while
+    every clean leaf still resolves. The pass terminates on a cycle (the ``chain``
+    guard records + skips). Returns ``(snapshot, errors)``.
+
+    The input snapshot is never mutated (S19).
     """
-    expander = _Expander(snapshot, ctx)
-    return expander.run()
+    expander = _Expander(snapshot, ctx, collect_errors=collect_errors)
+    expanded = expander.run()
+    if collect_errors:
+        return expanded, expander.errors
+    return expanded
 
 
 class _Expander:
@@ -154,7 +213,9 @@ class _Expander:
     snapshot is read-only here (S19); the fresh tree is built in :meth:`run`.
     """
 
-    def __init__(self, snapshot: KeyStore, ctx: ResolveCtx) -> None:
+    def __init__(
+        self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False
+    ) -> None:
         self._snapshot = snapshot
         self._ctx = ctx
         # Memo: dotted path -> fully-resolved value (or _ABSENT). A path mid-
@@ -163,6 +224,10 @@ class _Expander:
         # values (present-None terminal; legitimately-absent ref), so absence
         # from the memo is tested with ``in``, never by a sentinel value.
         self._memo: dict[str, StoreValue | _Absent] = {}
+        # LENIENT mode (Q9): collect defects instead of raising/silent-drop. The
+        # error map is keyed by the OWNING leaf's dotted path → human reason.
+        self._collect_errors = collect_errors
+        self.errors: dict[str, str] = {}
 
     # ------------------------------------------------------------------ #
     # Tree walk — build the fresh expanded snapshot                      #
@@ -187,7 +252,20 @@ class _Expander:
             if isinstance(value, KeyStore):
                 out[key] = self._expand_node(value, path=child_path)
                 continue
-            resolved = self._expand_leaf(value, path=child_path)
+            if self._collect_errors:
+                # LENIENT (Q9): a defect anywhere in THIS leaf's transitive chain
+                # surfaces here (a dangling ref / unknown $VAR / cycle / depth-cap
+                # raises ``_LenientDefect`` / ``SettingsError`` from the resolver).
+                # Record it against the OWNING leaf path and OMIT the leaf; every
+                # clean leaf still resolves. STRICT mode never enters this branch.
+                try:
+                    resolved = self._expand_leaf(value, path=child_path)
+                except (_LenientDefect, SettingsError) as exc:
+                    reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
+                    self.errors[".".join(child_path)] = reason
+                    continue
+            else:
+                resolved = self._expand_leaf(value, path=child_path)
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
             out[key] = resolved
@@ -299,16 +377,34 @@ class _Expander:
         # mid-resolution anyway).
         if dotted in chain[:-1]:
             cycle = " -> ".join(chain)
+            if self._collect_errors:
+                # LENIENT (Q9): a cycle is a defect to RECORD against the owning
+                # leaf, not a hard raise. The chain guard still fires here, so the
+                # pass TERMINATES (we never re-enter the in-progress ref).
+                raise _LenientDefect(f"cyclic @-reference: {cycle}")
             raise SettingsError(f"Cyclic @-reference: {cycle}")
         if dotted in self._memo:
             return self._memo[dotted]
         if len(chain) > MAX_REF_DEPTH:
+            if self._collect_errors:
+                raise _LenientDefect(
+                    f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
+                    f"'{dotted}'"
+                )
             raise SettingsError(
                 f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
                 f"'{dotted}'."
             )
         raw = self._lookup_raw(dotted)
         if raw is _ABSENT:
+            if self._collect_errors:
+                # LENIENT (Q9): a whole-value/transitive ``@``-ref to an ABSENT key
+                # is a DANGLING reference — a set-time defect to record, NOT the
+                # strict §6b silent drop. Raised so the OWNING leaf attributes it.
+                raise _LenientDefect(
+                    f"dangling @-reference '@{dotted}' "
+                    f"(no such config key in the keyspace)"
+                )
             self._memo[dotted] = _ABSENT
             return _ABSENT
         # Resolve the referent's value AS A LEAF, with the cycle chain threaded so
@@ -387,9 +483,16 @@ class _Expander:
         string (the embedded-token rule, §6b).
 
         Reuses the transitive resolver (so embedded refs are also fixpoint /
-        cycle-guarded — B7). An absent or present-None referent → ``""`` (empty
-        substitution, never deletes the host key). A resolved scalar/Bind/list →
-        its string form. *chain* is ``expand_expr``'s already-extended trail.
+        cycle-guarded — B7). STRICT mode: an absent or present-None referent → ``""``
+        (empty substitution, never deletes the host key). A resolved scalar/Bind/list
+        → its string form. *chain* is ``expand_expr``'s already-extended trail.
+
+        LENIENT mode (Q9): an ABSENT referent does NOT reach the ``""`` coercion —
+        ``_resolve_ref`` raises ``_LenientDefect`` first (an embedded dangling ref is
+        a set-time DEFECT, per the director's 2026-06-29 ruling, attributed to the
+        owning edited leaf). A present-None referent is still a legitimate ``""``
+        (not a defect). So the strict embedded-``""`` behavior is unchanged; only the
+        absent case diverges, and only when ``collect_errors=True``.
         """
         resolved = self._resolve_ref(dotted, chain=chain)
         if resolved is _ABSENT or resolved is None:

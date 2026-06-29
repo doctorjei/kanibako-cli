@@ -1,15 +1,20 @@
-"""Unit tests for block 5 — ``config set`` validation + RAW write-back.
+"""Unit tests for ``config set`` validation + RAW write-back (block 5 + Q9).
 
-Covers the brief §3 checklist for :mod:`kanibako.settings_configset`:
+Covers :mod:`kanibako.settings_configset`:
 
-Validation (:func:`validate_config_set`, the B5 severity split, S25):
+Validation (:func:`validate_config_set` — Q9 FULL RESOLUTION + the E3 rule):
 * the forbidden ``:`` ``src:dest`` notation → Error (escaped ``\:`` allowed);
 * a typed-scalar type mismatch → Error;
-* a dangling ``@``-ref (no such config key) → Error;
-* an unknown ``$VAR`` → Error;
-* malformed token syntax → Error;
+* malformed token syntax → Error (pure pre-check);
+* the E3 probe returns a reason (edited value's upstream chain unresolvable) →
+  Error naming the broken dep; ``None`` (resolves cleanly) → OK;
 * a not-yet-existent host source path (literal) → Warn;
-* a well-formed ``@``-ref repoint → OK, NO warning (B4).
+* a well-formed repoint that resolves cleanly → OK, NO warning (B4).
+
+The E3 ``resolves`` probe is exercised here with a REAL lenient-``expand``-backed
+stub (apply the candidate at the key into a known keyspace, lenient-expand, read
+the edited key's defect) — so the validate tests test the wiring AND real
+resolution; the full multi-scope seam build is tested in test_config_interface.
 
 Write-back (:func:`repoint_host_src`, S24): repoints ``host_src`` keeping
 ``box_dest`` + options, writes the FULL tuple as a structured list, refuses a
@@ -29,28 +34,56 @@ from kanibako.settings_configset import (
     ConfigSetError,
     Error,
     Warn,
-    make_ref_lookup,
     repoint_host_src,
     validate_config_set,
 )
-from kanibako.settings_store import KeyStore
+from kanibako.settings_expand import expand
+from kanibako.settings_resolve import ResolveCtx
+from kanibako.settings_store import _MISSING, KeyStore
 
 # --------------------------------------------------------------------------- #
 # Test stubs for the injected callbacks                                       #
 # --------------------------------------------------------------------------- #
 
-#: Refs that "exist" in the keyspace for most validation tests.
-_KNOWN_REFS = {"workset.boxes", "system.data", "box.meta.name", "workset"}
-#: Vars that are "known/resolvable" in context.
-_KNOWN_VARS = {"XDG_DATA_HOME", "XDG_STATE_HOME", "AGENT", "WORKSET"}
+#: A keyspace the @-refs in most validation tests resolve against (real values so
+#: the lenient expand actually resolves a chain, not just an existence map).
+_KEYSPACE: dict = {
+    "workset": {"boxes": "/ws/boxes", "vault_rw": "/ws/vault"},
+    "system": {"data": "/sys/data"},
+    "box": {"meta": {"name": "mybox"}},
+}
+#: A ctx whose XDG/home set makes $XDG_DATA_HOME/$XDG_STATE_HOME resolvable and
+#: $NOPE_VAR / $XDG_CACHE_HOME unset (→ a defect the lenient expand records).
+_CTX = ResolveCtx(
+    agent_name="claude",
+    workset_name="ws",
+    host_home="/home/u",
+    xdg={
+        "XDG_DATA_HOME": "/home/u/.local/share",
+        "XDG_STATE_HOME": "/home/u/.local/state",
+    },
+)
 
 
-def _ref_exists(dotted: str) -> bool:
-    return dotted in _KNOWN_REFS
+def _resolves(key: str, value: str):
+    """The E3 RESOLUTION probe stub: apply *value* at *key* into a fresh copy of
+    ``_KEYSPACE``, lenient-``expand``, and return the edited key's defect reason (or
+    ``None`` if it resolves cleanly) — the same contract the real seam builds."""
+    import copy
 
-
-def _var_known(name: str) -> bool:
-    return name in _KNOWN_VARS
+    candidate = KeyStore(copy.deepcopy(_KEYSPACE))
+    node = candidate
+    parts = key.split(".")
+    for seg in parts[:-1]:
+        sub = dict.get(node, seg, None)
+        if not isinstance(sub, KeyStore):
+            sub = KeyStore()
+            node[seg] = sub
+        node = sub
+    node[parts[-1]] = value
+    _expanded, errors = expand(candidate, _CTX, collect_errors=True)
+    reason = dict.get(errors, key, _MISSING)
+    return None if reason is _MISSING else reason
 
 
 def _always(_path: str) -> bool:
@@ -67,13 +100,13 @@ def _validate(
     *,
     is_category: bool = False,
     host_exists=None,
+    resolves=_resolves,
 ):
     return validate_config_set(
         key,
         value,
         is_category=is_category,
-        ref_exists=_ref_exists,
-        var_known=_var_known,
+        resolves=resolves,
         host_exists=host_exists,
     )
 
@@ -371,46 +404,147 @@ def test_repoint_writes_a_list_not_a_colon_string(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# make_ref_lookup — snapshot-backed RefLookup (S3)                            #
+# E3 rule (Q9) — allow iff the edited value resolves cleanly post-edit          #
 # --------------------------------------------------------------------------- #
+# The E3 matrix (brief a–h). The ``resolves`` stub applies the edited value into a
+# keyspace WITH a pre-seeded defect where the case needs one, lenient-expands, and
+# the verdict turns ONLY on the edited key's own resolution.
 
 
-def test_make_ref_lookup_finds_present_key() -> None:
-    snap = KeyStore({"workset": {"boxes": "@x"}, "box": {"image": "y"}})
-    lk = make_ref_lookup(snap)
-    assert lk("workset.boxes") is True
-    assert lk("box.image") is True
+def _resolves_with(extra: dict, *, key: str, value: str):
+    """E3 probe over ``_KEYSPACE`` PLUS *extra* pre-seeded keys (defects/deps), so a
+    case can place a pre-existing defect somewhere and edit a different key."""
+    import copy
+
+    space = copy.deepcopy(_KEYSPACE)
+    space.update(copy.deepcopy(extra))
+    candidate = KeyStore(space)
+    node = candidate
+    parts = key.split(".")
+    for seg in parts[:-1]:
+        sub = dict.get(node, seg, None)
+        if not isinstance(sub, KeyStore):
+            sub = KeyStore()
+            node[seg] = sub
+        node = sub
+    node[parts[-1]] = value
+    _expanded, errors = expand(candidate, _CTX, collect_errors=True)
+    reason = dict.get(errors, key, _MISSING)
+    return None if reason is _MISSING else reason
 
 
-def test_make_ref_lookup_absent_key_false() -> None:
-    snap = KeyStore({"workset": {"boxes": "@x"}})
-    lk = make_ref_lookup(snap)
-    assert lk("workset.nope") is False
-    assert lk("nothing.here") is False
+def test_e3_a_unrelated_preexisting_defect_allows() -> None:
+    # (a) A defect on a DIFFERENT branch does not block an unrelated edit.
+    def probe(key, value):
+        return _resolves_with(
+            {"other": {"broken": "@gone.x"}}, key=key, value=value
+        )
+
+    v = _validate(
+        "box.bindings.rw.home", "@workset.boxes/ok", is_category=True, resolves=probe
+    )
+    assert v is OK
 
 
-def test_make_ref_lookup_present_none_counts_as_existing() -> None:
-    # A present-None leaf is SET (just to None) — a legitimate @-ref target (§3).
-    snap = KeyStore({"box": {"agent": None}})
-    lk = make_ref_lookup(snap)
-    assert lk("box.agent") is True
+def test_e3_b_downstream_child_defect_allows() -> None:
+    # (b) A DOWNSTREAM consumer of the edited value is broken; the EDITED value
+    # itself resolves → ALLOW. (`dependent` refs the edited key, but `dependent` is
+    # not what we edit; its breakage is downstream.)
+    def probe(key, value):
+        return _resolves_with(
+            {"dependent": "@box.bindings.rw.home/@also.gone"},
+            key=key, value=value,
+        )
+
+    v = _validate(
+        "box.bindings.rw.home", "/clean/literal", is_category=True, resolves=probe
+    )
+    assert v is OK
 
 
-def test_make_ref_lookup_handles_dynamic_named_keys() -> None:
-    # An arbitrary dynamic key resolves through the lookup. (Block 1b retired the
-    # reserved-name ``get``/``items`` collision case — those names are now
-    # unstorable; the lookup still uses the unbound probe, valid as ever.)
-    snap = KeyStore({"box": {"getter": "x", "itemized": "y"}})
-    lk = make_ref_lookup(snap)
-    assert lk("box.getter") is True
-    assert lk("box.itemized") is True
+def test_e3_c_edit_repoints_away_from_broken_dep_allows() -> None:
+    # (c) The OLD value referenced a broken dep; the edit re-points to a good one.
+    v = _validate(
+        "box.bindings.rw.home", "@workset.boxes/x", is_category=True
+    )
+    assert v is OK
 
 
-def test_make_ref_lookup_descend_through_scalar_is_false() -> None:
-    # A dotted path that tries to descend THROUGH a scalar leaf does not exist.
-    snap = KeyStore({"box": {"image": "ghcr/x"}})
-    lk = make_ref_lookup(snap)
-    assert lk("box.image.deeper") is False
+def test_e3_d_edit_fixes_broken_key_itself_allows() -> None:
+    # (d) Editing the broken key to a good value resolves it (and dependents
+    # recover). Here we edit the key directly to a clean literal.
+    def probe(key, value):
+        return _resolves_with({}, key=key, value=value)
+
+    v = _validate(
+        "workset.vault_rw", "/now/good", is_category=True, resolves=probe
+    )
+    assert v is OK
+
+
+def test_e3_e_edited_value_upstream_chain_broken_blocks() -> None:
+    # (e) The edited value's UPSTREAM chain stays unresolvable → BLOCK, name the dep.
+    v = _validate(
+        "box.bindings.rw.home", "@gone.upstream/x", is_category=True
+    )
+    assert isinstance(v, Error)
+    assert "gone.upstream" in v.message
+
+
+def test_e3_e_embedded_dangling_in_edited_value_blocks() -> None:
+    # (e′ — director ruling) an EMBEDDED dangling @-ref in the EDITED value's chain
+    # is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
+    v = _validate(
+        "box.bindings.rw.home", "@workset.boxes/@bad.embedded/x", is_category=True
+    )
+    assert isinstance(v, Error)
+    assert "bad.embedded" in v.message
+
+
+def test_e3_embedded_dangling_ELSEWHERE_allows() -> None:
+    # (E3 holds) an embedded dangler on an UNRELATED key does not block; the edited
+    # value resolves cleanly.
+    def probe(key, value):
+        return _resolves_with(
+            {"other": {"x": "pre-@gone.embedded-post"}}, key=key, value=value
+        )
+
+    v = _validate(
+        "box.bindings.rw.home", "/clean", is_category=True, resolves=probe
+    )
+    assert v is OK
+
+
+def test_e3_f_edit_introduces_cycle_blocks() -> None:
+    # (f) The edit makes the edited value's chain a CYCLE → BLOCK.
+    def probe(key, value):
+        # editing `a` to @b, with b=@a already present → a -> b -> a cycle.
+        return _resolves_with({"b": "@a"}, key=key, value=value)
+
+    v = _validate("a", "@b", is_category=True, resolves=probe)
+    assert isinstance(v, Error)
+    assert "cyclic" in v.message.lower()
+
+
+def test_e3_g_preexisting_cycle_elsewhere_allows() -> None:
+    # (g) A cycle on an UNRELATED branch does not block the edit.
+    def probe(key, value):
+        return _resolves_with(
+            {"loop_a": "@loop_b", "loop_b": "@loop_a"}, key=key, value=value
+        )
+
+    v = _validate(
+        "box.bindings.rw.home", "@workset.boxes/x", is_category=True, resolves=probe
+    )
+    assert v is OK
+
+
+def test_e3_h_not_yet_existent_host_path_warns() -> None:
+    # (h) A literal host path that does not exist yet → WARN, proceed.
+    v = _validate(
+        "box.bindings.rw.home", "/not/here/yet", is_category=True, host_exists=_never
+    )
+    assert isinstance(v, Warn)
 
 
 # --------------------------------------------------------------------------- #
@@ -423,13 +557,8 @@ def test_validate_then_repoint_roundtrip(tmp_path: Path) -> None:
         tmp_path / "box.yaml",
         {"box": {"bindings": {"rw": {"vault": ["@workset.vault_rw/x", "~/vault"]}}}},
     )
-    snap = KeyStore({"workset": {"boxes": "y", "vault_rw": "z"}})
-    verdict = validate_config_set(
-        "box.bindings.rw.vault",
-        "@workset.boxes/custom",
-        is_category=True,
-        ref_exists=make_ref_lookup(snap),
-        var_known=_var_known,
+    verdict = _validate(
+        "box.bindings.rw.vault", "@workset.boxes/custom", is_category=True
     )
     assert verdict is OK
     repoint_host_src(f, "box.bindings.rw.vault", "@workset.boxes/custom")
