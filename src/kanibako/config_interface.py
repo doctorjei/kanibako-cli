@@ -72,7 +72,12 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # (canonicalized to ``box.group_auth_on`` in _resolve_key).
     "box.group_auth_on",
     "group_auth",
-    "mode",
+    # ``mode`` is NO LONGER a settable config-set key (block B1, spec §2b L486 /
+    # §0): the project mode is the RO identity anchor ``meta.box.mode`` (surfacing
+    # the runtime-resolved ``@meta.runtime.project_type``), set by the construct-
+    # time/bootstrap layer ([project].mode at box creation), NOT overridable via
+    # ``config set``. The on-disk [project].mode write/read (write_project_meta /
+    # read_project_meta) — the bootstrap identity write + detection input — stays.
     # Vault
     "vault.enabled",
     "vault.ro",
@@ -147,7 +152,11 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # to ``box.group_auth_on`` in :func:`_resolve_key` (back-compat INPUT — an old
     # ``config group_auth=false`` writes the NEW key), so both route here.
     "box.group_auth_on": (("project",), "group_auth_on"),
-    "mode": (("project",), "mode"),
+    # ``mode`` removed from the settable routing table (block B1, spec §2b L486 /
+    # §0 meta-RO): the project mode is the RO identity anchor ``meta.box.mode``,
+    # set by the bootstrap layer at box creation, never via ``config set``. The
+    # on-disk [project].mode write/read (write_project_meta / read_project_meta)
+    # — bootstrap identity + detection input — is untouched.
     "vault.enabled": (("project",), "enable_vault"),
     "vault.ro": (("project",), "vault_ro"),
     "vault.rw": (("project",), "vault_rw"),
@@ -698,8 +707,9 @@ def get_config_value(
             return str(val).lower()
         return str(val) if val else None
 
-    # Keys with no flat field (group_auth, mode, vault.*) land in [project]/root
-    # — read the raw set-value from the routed location.
+    # Keys with no flat field (group_auth, vault.*) land in [project]/root — read
+    # the raw set-value from the routed location. (``mode`` is no longer a settable
+    # key — it is the RO identity anchor meta.box.mode, block B1.)
     sections, leaf = route
     for src in (project_toml, global_config_path):
         if src is None or not src.exists():

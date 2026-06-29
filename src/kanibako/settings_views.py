@@ -84,8 +84,12 @@ __all__ = [
     "as_int",
     "as_float",
     "as_path",
+    "as_opt_path",
     "FiniteView",
     "MetaView",
+    "MetaRuntimeView",
+    "MetaBoxView",
+    "MetaWorksetView",
 ]
 
 class ViewError(Exception):
@@ -335,6 +339,23 @@ def as_path(value: Any) -> Path:
     return Path(value)
 
 
+def as_opt_path(value: Any) -> Path | None:
+    """Checking coercer: a stored ``str`` path → :class:`Path`, OR ``None`` verbatim.
+
+    The optional-path variant of :func:`as_path` for a finite-view field whose
+    spec value is a path OR ``<None>`` (a whole-value ``@``-ref None terminal that
+    survived as a real ``None`` leaf — e.g. ``meta.runtime.ws_settings`` /
+    ``meta.workset.settings`` for STANDALONE, spec §1A L235-236 / §2c L415). A
+    present ``None`` is honest and returned as-is; a non-str / non-None leaf is
+    rejected (never laundered).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"expected a str path or None, got {type(value).__name__}")
+    return Path(value)
+
+
 T = TypeVar("T")
 
 
@@ -428,6 +449,48 @@ class MetaView(FiniteView):
     name: str = typed_field(as_str)  # type: ignore[assignment]
     root: Path = typed_field(as_path)  # type: ignore[assignment]
     group_auth_available: bool = typed_field(as_bool)  # type: ignore[assignment]
+
+
+class MetaRuntimeView(FiniteView):
+    """Typed finite view over the ``meta.runtime`` NODE (block B1, spec §1A L230-241).
+
+    Surfaces the runtime-resolved identity anchors at their EXACT types: the
+    workset root (``ws_root`` — a resolved ``Path``), the workset settings file
+    (``ws_settings`` — a ``Path`` for primary/named, ``None`` for STANDALONE,
+    spec §1A L235-236), and the resolved mode token (``project_type`` — a ``str``,
+    one of ``"primary"`` / ``"named"`` / ``"standalone"``). Read-only; wraps
+    ``store.meta.runtime``. ADDITIVE — no consumer reads it yet (B1).
+    """
+
+    ws_root: Path = typed_field(as_path)  # type: ignore[assignment]
+    ws_settings: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
+    project_type: str = typed_field(as_str)  # type: ignore[assignment]
+
+
+class MetaBoxView(FiniteView):
+    """Typed finite view over the ``meta.box`` NODE (block B1).
+
+    Exposes the RO identity-anchor ``mode`` (the resolved mode token surfaced
+    from ``@meta.runtime.project_type``, spec §2b L486 — was the settable
+    ``box.mode``). Read-only; wraps ``store.meta.box``. (Other ``meta.box.*``
+    fields — name / workspace / group_auth_available — are added as consumers
+    move onto ``@meta.*``; this ships only ``mode`` for B1.)
+    """
+
+    mode: str = typed_field(as_str)  # type: ignore[assignment]
+
+
+class MetaWorksetView(FiniteView):
+    """Typed finite view over the ``meta.workset`` NODE (block B1, spec §1A/§2c).
+
+    Exposes the single-source-re-rooted ``path`` (= ``@meta.runtime.ws_root``, a
+    resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_settings``, a
+    ``Path`` for primary/named, ``None`` for STANDALONE — spec §2c L415).
+    Read-only; wraps ``store.meta.workset``. ADDITIVE — no consumer reads it yet.
+    """
+
+    path: Path = typed_field(as_path)  # type: ignore[assignment]
+    settings: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
 
 
 # --------------------------------------------------------------------------- #

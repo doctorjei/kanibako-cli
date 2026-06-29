@@ -2164,7 +2164,7 @@ def _resolve_effective_group_auth(
     """
     from kanibako import settings_launch
 
-    ctx, _scope_roots, resolved_sys = _launch_snapshot_inputs(
+    ctx, _scope_roots, resolved_sys, meta_runtime = _launch_snapshot_inputs(
         std=std, proj=proj, agent_name=agent_name,
     )
     chain = settings_launch.group_auth_chain_floor(
@@ -2188,6 +2188,7 @@ def _resolve_effective_group_auth(
         box_path=project_toml,
         default_categories=dict(resolved_sys),
         group_auth_chain=chain,
+        meta_runtime=meta_runtime,
     )
     return settings_launch.effective_group_auth(snapshot, mode=proj.mode.value)
 
@@ -2235,7 +2236,8 @@ def _launch_snapshot_inputs(
     proj,
     agent_name: str,
 ):
-    """Build the (ctx, scope_roots, resolved_sys) the launch SNAPSHOT path needs.
+    """Build the (ctx, scope_roots, resolved_sys, meta_runtime) the launch SNAPSHOT
+    path needs.
 
     Constructs the host_home / xdg / workset name / per-scope source roots /
     resolved ``system.*`` map the ONE-resolve snapshot path (block 7b) feeds to
@@ -2244,6 +2246,14 @@ def _launch_snapshot_inputs(
     ``_category_resolution_inputs`` (a second LevelView-cascade route) was retired
     in block 7c; the snapshot pipeline is the single route for both reads and the
     seed/synced/channel/share resolves.
+
+    *meta_runtime* (block B1) is the ``meta.runtime.*`` identity-anchor floor for
+    *proj*'s mode (spec §1A L230-241) — built HERE because the per-mode treewalk
+    values (``proj.mode`` / ``proj.group.root`` / the project dir) are known on
+    *proj*. PRIMARY uses the ``@config.primary_workset`` @-ref; NAMED uses the
+    detected workset root literal (``str(proj.group.root)``); STANDALONE uses the
+    runtime project dir literal (``str(proj.project_path)``). Folded into the
+    snapshot floor so ``expand`` resolves the @-ref chain ONCE (single-route).
     """
     agent_share_root = str(std.agents / agent_name / "share")
     agent_store_root = str(std.agents / agent_name)
@@ -2263,6 +2273,8 @@ def _launch_snapshot_inputs(
         if (proj.group is not None and not proj.group.is_default)
         else None
     )
+    from kanibako import settings_launch as settings_launch_module
+    from kanibako.paths import ProjectError
     from kanibako.settings_resolve import ResolveCtx
 
     # Resolver SPLIT (spec §1A / JC-2): the Layer-1 ``config.*`` foundation goes
@@ -2292,7 +2304,28 @@ def _launch_snapshot_inputs(
         "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
     }
-    return ctx, scope_roots, resolved_sys
+
+    # meta.runtime.* identity anchors (block B1, spec §1A L230-241). The per-mode
+    # treewalk values are known on ``proj``; surface them as the snapshot's RO
+    # ``meta.runtime.*`` keys + the single-source re-root of meta.workset.path /
+    # meta.workset.settings / meta.box.mode. PRIMARY → the @config.primary_workset
+    # @-ref (live-propagates from the foundation); NAMED → the detected workset
+    # root literal; STANDALONE → the runtime project dir literal.
+    mode = proj.mode.value
+    if mode == "named":
+        if proj.group is None:
+            raise ProjectError(
+                "named-mode project has no workset group (meta.runtime.ws_root)"
+            )
+        ws_root_literal = str(proj.group.root)
+    elif mode == "standalone":
+        ws_root_literal = str(proj.project_path)
+    else:
+        ws_root_literal = None  # primary uses the @config.primary_workset @-ref
+    meta_runtime = settings_launch_module.meta_runtime_floor(
+        mode=mode, ws_root_literal=ws_root_literal,
+    )
+    return ctx, scope_roots, resolved_sys, meta_runtime
 
 
 def _resolve_launch_snapshot(
@@ -2351,7 +2384,7 @@ def _resolve_launch_snapshot(
     from kanibako.agent_representation import agent_default_partial
     from kanibako.settings_categories import reconcile_categories
 
-    ctx, scope_roots, resolved_sys = _launch_snapshot_inputs(
+    ctx, scope_roots, resolved_sys, meta_runtime = _launch_snapshot_inputs(
         std=std, proj=proj, agent_name=agent_name,
     )
 
@@ -2432,6 +2465,7 @@ def _resolve_launch_snapshot(
         agent_state=agent_state,
         binding_overrides=binding_overrides,
         descriptor_bindings=list(desc.bindings) if desc is not None else None,
+        meta_runtime=meta_runtime,
     )
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,

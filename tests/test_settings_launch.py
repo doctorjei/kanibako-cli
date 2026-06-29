@@ -445,3 +445,186 @@ def test_effective_group_auth_no_box_node_fails_closed():
         workset_path=None, box_path=None,
     )
     assert effective_group_auth(snap) is False
+
+
+# --------------------------------------------------------------------------- #
+# meta.runtime.* materialization (block B1 — spec §1A L230-241)                #
+# --------------------------------------------------------------------------- #
+
+from kanibako.settings_launch import meta_runtime_floor  # noqa: E402
+from kanibako.settings_resolve import SettingsError as _SettingsError  # noqa: E402
+
+
+def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveCtx:
+    """A ctx carrying the Layer-1 config foundation so @config.primary_workset
+    resolves (mirrors start.py _launch_snapshot_inputs, #3a)."""
+    return ResolveCtx(
+        agent_name="claude",
+        workset_name=None,
+        host_home="/home/host",
+        xdg={"XDG_DATA_HOME": "/data"},
+        config={
+            "config.data": "/data",
+            "config.primary_workset": primary_workset,
+        },
+    )
+
+
+def _meta_snapshot(mode: str, *, ws_root_literal: str | None = None, ctx=None):
+    """Build a focused snapshot carrying ONLY the meta.runtime floor."""
+    meta = meta_runtime_floor(mode=mode, ws_root_literal=ws_root_literal)
+    return build_launch_snapshot(
+        agent_name="claude",
+        ctx=ctx if ctx is not None else _ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        meta_runtime=meta,
+    )
+
+
+def _meta_node(snap, *path):
+    node = snap
+    for seg in path:
+        node = dict.get(node, seg)
+    return node
+
+
+def test_meta_runtime_primary_ws_root_resolves_via_config_foundation():
+    """PRIMARY: meta.runtime.ws_root = @config.primary_workset → the foundation
+    literal (spec §1A L233); meta.workset.path single-sources from it."""
+    snap = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
+    runtime = _meta_node(snap, "meta", "runtime")
+    assert dict.get(runtime, "ws_root") == "/data/primary_workset"
+    assert dict.get(runtime, "project_type") == "primary"
+    # ws_settings = @meta.runtime.ws_root/settings.yaml (embedded @-ref).
+    assert dict.get(runtime, "ws_settings") == "/data/primary_workset/settings.yaml"
+
+
+def test_meta_runtime_named_ws_root_is_detected_root_literal():
+    """NAMED: meta.runtime.ws_root = the detected workset root literal (spec §1A
+    L233); ws_settings derives under it."""
+    snap = _meta_snapshot("named", ws_root_literal="/code/kento")
+    runtime = _meta_node(snap, "meta", "runtime")
+    assert dict.get(runtime, "ws_root") == "/code/kento"
+    assert dict.get(runtime, "project_type") == "named"
+    assert dict.get(runtime, "ws_settings") == "/code/kento/settings.yaml"
+
+
+def test_meta_runtime_standalone_ws_root_dir_and_ws_settings_none():
+    """STANDALONE: ws_root = the project dir literal; ws_settings = None — a
+    whole-value None terminal (spec §1A L235-236 / §2c L415)."""
+    snap = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+    runtime = _meta_node(snap, "meta", "runtime")
+    assert dict.get(runtime, "ws_root") == "/scratch/myproj"
+    assert dict.get(runtime, "project_type") == "standalone"
+    # None propagates as a real None terminal (the key is PRESENT with value None,
+    # not dropped — a whole-value None ref).
+    assert dict.__contains__(runtime, "ws_settings")
+    assert dict.get(runtime, "ws_settings") is None
+
+
+def test_meta_workset_path_single_sources_from_ws_root_all_modes():
+    """meta.workset.path == meta.runtime.ws_root (UNIFORM all modes, spec §1A L239)."""
+    # primary
+    snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/pw"))
+    assert dict.get(_meta_node(snap_p, "meta", "workset"), "path") == "/data/pw"
+    assert (
+        dict.get(_meta_node(snap_p, "meta", "workset"), "path")
+        == dict.get(_meta_node(snap_p, "meta", "runtime"), "ws_root")
+    )
+    # named
+    snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
+    assert dict.get(_meta_node(snap_n, "meta", "workset"), "path") == "/code/kento"
+    # standalone
+    snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+    assert dict.get(_meta_node(snap_s, "meta", "workset"), "path") == "/scratch/myproj"
+
+
+def test_meta_workset_settings_single_sources_and_none_for_standalone():
+    """meta.workset.settings == meta.runtime.ws_settings (spec §1A L240); None for
+    standalone."""
+    snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
+    assert (
+        dict.get(_meta_node(snap_n, "meta", "workset"), "settings")
+        == "/code/kento/settings.yaml"
+    )
+    snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+    assert dict.get(_meta_node(snap_s, "meta", "workset"), "settings") is None
+
+
+def test_meta_box_mode_equals_project_type_all_modes():
+    """meta.box.mode == meta.runtime.project_type (the RO identity anchor, spec
+    §2b L486)."""
+    for mode, lit, ctx in (
+        ("primary", None, _ctx_with_config()),
+        ("named", "/code/kento", None),
+        ("standalone", "/scratch/myproj", None),
+    ):
+        snap = _meta_snapshot(mode, ws_root_literal=lit, ctx=ctx)
+        assert dict.get(_meta_node(snap, "meta", "box"), "mode") == mode
+        assert (
+            dict.get(_meta_node(snap, "meta", "box"), "mode")
+            == dict.get(_meta_node(snap, "meta", "runtime"), "project_type")
+        )
+
+
+def test_meta_views_read_runtime_typed():
+    """MetaRuntimeView / MetaBoxView / MetaWorksetView read the materialized keys
+    at their EXACT types (Path / Path|None / str)."""
+    from pathlib import Path as _Path
+
+    import kanibako.settings_views as views
+
+    # named: every field present + typed.
+    snap = _meta_snapshot("named", ws_root_literal="/code/kento")
+    rt = views.MetaRuntimeView(_meta_node(snap, "meta", "runtime"))
+    assert rt.ws_root == _Path("/code/kento")
+    assert rt.ws_settings == _Path("/code/kento/settings.yaml")
+    assert rt.project_type == "named"
+    bx = views.MetaBoxView(_meta_node(snap, "meta", "box"))
+    assert bx.mode == "named"
+    ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
+    assert ws.path == _Path("/code/kento")
+    assert ws.settings == _Path("/code/kento/settings.yaml")
+
+    # standalone: ws_settings / workset.settings are None (typed Path|None).
+    snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
+    rt_s = views.MetaRuntimeView(_meta_node(snap_s, "meta", "runtime"))
+    assert rt_s.ws_settings is None
+    assert rt_s.ws_root == _Path("/scratch/myproj")
+    ws_s = views.MetaWorksetView(_meta_node(snap_s, "meta", "workset"))
+    assert ws_s.settings is None
+
+
+def test_meta_runtime_floor_requires_literal_for_non_primary():
+    """A named/standalone floor needs the resolved ws_root literal (only primary
+    uses the @config.primary_workset @-ref)."""
+    with pytest.raises(_SettingsError):
+        meta_runtime_floor(mode="named")
+    with pytest.raises(_SettingsError):
+        meta_runtime_floor(mode="standalone")
+    # primary ignores the literal.
+    floor = meta_runtime_floor(mode="primary")
+    assert floor["meta.runtime.ws_root"] == "@config.primary_workset"
+
+
+def test_meta_runtime_coexists_with_group_auth_chain():
+    """The B1 meta.runtime floor + the block-#2 group-auth chain BOTH inject
+    under meta.box.* — distinct leaves, no collision (the main launch path passes
+    both)."""
+    meta = meta_runtime_floor(mode="primary")
+    chain = group_auth_chain_floor(mode="primary", agent_name="claude")
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx_with_config("/data/pw"),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        meta_runtime=meta, group_auth_chain=chain,
+    )
+    box_meta = _meta_node(snap, "meta", "box")
+    # B1 identity anchor + #2 availability ceiling both present.
+    assert dict.get(box_meta, "mode") == "primary"
+    assert dict.get(box_meta, "group_auth_available") is True
+    # group-auth still resolves on (the chain is untouched by B1).
+    assert effective_group_auth(snap) is True

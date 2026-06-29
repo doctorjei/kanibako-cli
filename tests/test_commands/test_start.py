@@ -731,6 +731,10 @@ class TestPluginsAndCacheShares:
             name="default", root=std.data, is_default=True,
             local_shared_base=std.data,
         )
+        # Default/PRIMARY mode (B1: meta.runtime.* needs a real mode; primary uses
+        # the @config.primary_workset @-ref so project_path is unused here).
+        proj.mode = BoxMode.primary
+        proj.project_path = std.data
         proj.group_auth = True
         proj.enable_vault = False
         return proj
@@ -1891,7 +1895,12 @@ class TestApplyInitSeeds:
 
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
-        return SimpleNamespace(shell_path=shell_path, group=group)
+        # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
+        # (the @config.primary_workset @-ref, so project_path is unused).
+        return SimpleNamespace(
+            shell_path=shell_path, group=group,
+            mode=BoxMode.primary, project_path=shell_path,
+        )
 
     def _logger(self):
         import logging
@@ -2098,7 +2107,12 @@ class TestApplySyncedCopies:
 
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
-        return SimpleNamespace(shell_path=shell_path, group=group)
+        # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
+        # (the @config.primary_workset @-ref, so project_path is unused).
+        return SimpleNamespace(
+            shell_path=shell_path, group=group,
+            mode=BoxMode.primary, project_path=shell_path,
+        )
 
     def _logger(self):
         import logging
