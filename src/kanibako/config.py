@@ -12,7 +12,7 @@ from kanibako.config_io import dump_doc, load_doc
 # Defaults (match the old kanibako.rc values)
 # ---------------------------------------------------------------------------
 
-# Per-box construct-time metadata + box-tier settings cascade file (TARGET §2c box.meta.*)
+# Per-box construct-time metadata + box-tier settings cascade file (TARGET §2c meta.box.*)
 BOX_META_FILE = "settings.yaml"
 
 # Shared boolean truth tables: used by the typed `config set` writer

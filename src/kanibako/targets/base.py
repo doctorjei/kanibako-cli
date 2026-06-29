@@ -179,7 +179,7 @@ class PluginDescriptor:
     """Declarative data a plugin exposes via Target.descriptor. Divergent LOGIC stays in Target hook methods.
 
     Maps onto the per-agent keyspace (``settings-keyspace-1.6.0-target.md`` §2d),
-    keyed by ``@agent.<agent>.meta.name`` (the plugin's ``name`` property).  A few
+    keyed by ``@meta.agent.<agent>.name`` (the plugin's ``name`` property).  A few
     §2d keys are *informational* — they describe where core derives a path, not a
     descriptor field: ``agent.<agent>.path`` (``@system.agents/<name>``, derived in
     core), ``agent.<agent>.template`` (the layer-2 seed source, owned by the

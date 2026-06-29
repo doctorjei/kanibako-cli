@@ -4,9 +4,9 @@ A *workset* is a named group of projects whose persistent state lives under a
 single root directory chosen by the user.  The layout is:
 
     {root}/
-        settings.yaml             ← workset identity (workset.meta.*) + cascade
+        settings.yaml             ← workset identity (meta.workset.*) + cascade
                                     settings (the single workset file; mirrors a
-                                    box's settings.yaml carrying box.meta.*)
+                                    box's settings.yaml carrying meta.box.*)
         boxes/{name}/             ← per-project metadata + home
             home/                 ← agent home (mounted as /home/agent)
             settings.yaml          ← per-project config
@@ -34,9 +34,9 @@ from kanibako.names import read_names, register_name, unregister_name
 from kanibako.paths import StandardPaths
 
 # The single per-workset file at the workset root.  It carries the workset
-# IDENTITY (under ``workset.meta.*``) AND the workset's cascade settings (box/
+# IDENTITY (under ``meta.workset.*``) AND the workset's cascade settings (box/
 # agent/workset.bindings tables), mirroring a box's ``settings.yaml`` which holds
-# ``box.meta.*`` alongside its settings.  Same filename as ``BOX_META_FILE`` by
+# ``meta.box.*`` alongside its settings.  Same filename as ``BOX_META_FILE`` by
 # design — both are the "settings.yaml at the entity's root" convention.
 WORKSET_META_FILE = "settings.yaml"
 
@@ -144,7 +144,7 @@ class Workset:
 
 
 # ---------------------------------------------------------------------------
-# settings.yaml (at workset root): identity (workset.meta.*) + cascade settings.
+# settings.yaml (at workset root): identity (meta.workset.*) + cascade settings.
 #
 # The IDENTITY lives under the ``workset.meta`` table so it never collides with
 # the cascade-settings tables in the same file (``box.*``, ``agent.*``,

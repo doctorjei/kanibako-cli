@@ -278,7 +278,7 @@ class TestWorksetAuthOverrideChain:
     ``ProjectPaths.workset_group_auth`` (from ``ws.group_auth``, read-compat for
     the on-disk workset key) and the BOX choice on ``ProjectPaths.group_auth``
     (from the box's stored choice). The EFFECTIVE bool is resolved through the
-    chain at launch (``box.meta.group_auth_available AND box.group_auth_on``); the
+    chain at launch (``meta.box.group_auth_available AND box.group_auth_on``); the
     box choice is persisted as the NEW on-disk key ``group_auth_on``.
     """
 

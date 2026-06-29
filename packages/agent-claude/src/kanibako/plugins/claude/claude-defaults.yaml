@@ -85,7 +85,7 @@ descriptor:
   init_dirs: [".claude"]
 
 # AGENT-scope shared dirs (plugins + cache), rooted under the per-agent store dir
-# @agent.claude.meta.path = @system.agents/claude (core's agent.shared scope-root).
+# @meta.agent.claude.path = @system.agents/claude (core's agent.shared scope-root).
 # The relative host_src (the key name) joins under that root; box_dest is a
 # $GUEST_HOME expression.
 shares:

@@ -151,9 +151,9 @@ def get_target(name: str, project_path: Path | None = None) -> type[Target]:
 
 
 def _require_meta_name(target: Target) -> Target:
-    """Enforce that a resolved target declares ``agent.<agent>.meta.name``.
+    """Enforce that a resolved target declares ``meta.agent.<agent>.name``.
 
-    The plugin's ``name`` property IS ``agent.<agent>.meta.name`` — it is
+    The plugin's ``name`` property IS ``meta.agent.<agent>.name`` — it is
     REQUIRED (D-2026-06-22): it identifies the per-agent store dir
     (``agents/<name>/``) and the agent cascade key.  An agent with no
     resolvable name has no store dir and no cascade slot, so fail loudly
@@ -164,7 +164,7 @@ def _require_meta_name(target: Target) -> Target:
         cls = type(target)
         raise ValueError(
             f"Agent plugin {cls.__module__}.{cls.__qualname__} does not "
-            f"declare agent.<agent>.meta.name (its 'name' property is empty); "
+            f"declare meta.agent.<agent>.name (its 'name' property is empty); "
             f"a plugin MUST provide a non-empty name to identify its store dir "
             f"and cascade key."
         )
@@ -181,7 +181,7 @@ def resolve_target(
     one whose ``detect()`` succeeds.
 
     Raises ``KeyError`` if no matching target is found.  Raises ``ValueError``
-    if the resolved target does not declare ``agent.<agent>.meta.name``.
+    if the resolved target does not declare ``meta.agent.<agent>.name``.
     """
     if name:
         cls = get_target(name, project_path)

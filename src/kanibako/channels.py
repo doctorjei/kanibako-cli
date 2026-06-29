@@ -14,12 +14,12 @@ Two channel scopes (TARGET §1, §2c, §2f):
   *partitioned* by the workset-name token: ``mailboxes/<ws>`` and ``share/<ws>``
   where ``<ws>`` is ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``.  These
   partition roots apply to EVERY mode (standalone included).
-* **workset scope** — three type roots under ``@workset.meta.root/channels``
+* **workset scope** — three type roots under ``@meta.workset.path/channels``
   (commons, chat, share).  These exist for the PRIMARY and NAMED modes ONLY;
   standalone has no workset-local channels (its ``workset.channelroot`` is
   ``<None>`` per the TARGET).
 
-The per-instance partition ADDRESSES (``box.meta.{inbox,share_global,
+The per-instance partition ADDRESSES (``meta.box.{inbox,share_global,
 share_workset}``) are this box's own mailbox/share dirs *within* the partitioned
 roots — derived from the workset-name token + the box name.
 
@@ -68,9 +68,9 @@ class SystemPartition:
 class WorksetChannels:
     """The workset-local channel roots (PRIMARY/NAMED only).
 
-    ``@workset.channelroot = @workset.meta.root/channels`` with ``commons``,
+    ``@workset.channelroot = @meta.workset.path/channels`` with ``commons``,
     ``chat`` (+ the reserved ``broadcast.md`` / default ``general.md`` files
-    inside it), and ``share`` (per-box subdirs are ``box.meta.share_workset``).
+    inside it), and ``share`` (per-box subdirs are ``meta.box.share_workset``).
     """
 
     root: Path
@@ -83,7 +83,7 @@ class WorksetChannels:
 
 @dataclass(frozen=True)
 class BoxChannelAddresses:
-    """This box's own partition ADDRESSES (TARGET §2c ``box.meta.*``).
+    """This box's own partition ADDRESSES (TARGET §2c ``meta.box.*``).
 
     * ``inbox`` == ``@system.channels.mailboxes/<ws>/<box>`` — this box's own
       mailbox dir (also surfaced in-box at ``~/channels/inbox``).
@@ -126,7 +126,7 @@ def own_partition_dirs(
     The lower-level primitive behind :func:`box_channel_addresses` — it takes the
     workset-name token + box name directly (no ``ProjectPaths``), so the lifecycle
     relocation can compute BOTH the OLD and the NEW partition for a box being
-    moved/converted.  Mirrors :func:`system_partition` + the ``box.meta.{inbox,
+    moved/converted.  Mirrors :func:`system_partition` + the ``meta.box.{inbox,
     share_global}`` joins (TARGET §2c).
     """
     part = system_partition(std, ws_token)
@@ -162,7 +162,7 @@ def workset_name_token(proj: ProjectPaths) -> str:
 
 
 def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
-    """Return ``@workset.meta.root`` for *proj*.
+    """Return ``@meta.workset.path`` for *proj*.
 
     PRIMARY → ``@system.primary_workset``; NAMED → the named workset root
     (``proj.group.root``); STANDALONE → the project root itself
@@ -214,7 +214,7 @@ def workset_channel_paths(
     """Derive the WORKSET-local channel roots for *proj* (PRIMARY/NAMED only).
 
     Returns ``None`` for standalone (no workset-local channels).  Rooted at
-    ``@workset.meta.root/channels`` (A3 — a derived helper, NOT new fields on
+    ``@meta.workset.path/channels`` (A3 — a derived helper, NOT new fields on
     ``ProjectPaths``).
     """
     if not has_workset_channels(proj):
@@ -234,7 +234,7 @@ def workset_channel_paths(
 def box_channel_addresses(
     proj: ProjectPaths, std: StandardPaths
 ) -> BoxChannelAddresses:
-    """Derive this box's own partition addresses (``box.meta.*``) for *proj*.
+    """Derive this box's own partition addresses (``meta.box.*``) for *proj*.
 
     ``inbox`` / ``share_global`` always resolve (system-scope, every mode);
     ``share_workset`` is ``None`` for standalone.  *proj.name* is the box name.

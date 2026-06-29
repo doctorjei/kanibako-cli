@@ -905,7 +905,7 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
 
     * PRIMARY    → ``@system.primary_workset/logs/<box>.jsonl`` (``std.primary_logs``)
     * NAMED      → ``@workset.logs/<box>.jsonl`` (``<workset_root>/logs/<box>``)
-    * STANDALONE → ``@workset.meta.root/box_data/<box>.jsonl`` (inside ``box_data/``)
+    * STANDALONE → ``@meta.workset.path/box_data/<box>.jsonl`` (inside ``box_data/``)
 
     The caller is responsible for guarantee-creating the parent dir before the
     bind (L7).  The box-side dest stays ``$XDG_STATE_HOME/kanibako/helpers.jsonl``.

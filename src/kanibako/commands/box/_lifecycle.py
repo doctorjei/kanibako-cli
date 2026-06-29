@@ -1392,7 +1392,7 @@ def _relocate_channel_partition(
     """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
 
     A box's mailbox + system-scope share are partitioned by
-    ``@workset.meta.name`` (and keyed by box name), so a move/convert that
+    ``@meta.workset.name`` (and keyed by box name), so a move/convert that
     changes the workset and/or the box name changes its channel address.  This
     moves the OWN ``mailboxes/<ws>/<box>`` and ``share/<ws>/<box>`` dirs from the
     OLD partition (*old* — pre-convert identity) to the NEW one (*new* — the
