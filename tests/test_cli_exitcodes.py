@@ -270,7 +270,17 @@ class TestStandaloneLaunch:
         assert call_kwargs["vault_rw_path"] == project / "vault" / "rw"
 
     def test_start_standalone_credential_flow(self, start_mocks, tmp_path):
-        """Credential refresh uses target.refresh_credentials with shell_path."""
+        """A standalone box has NO group → the credential lifecycle is SKIPPED.
+
+        Standalone mode short-circuits group-auth OFF (spec §2c L420-421:
+        ``meta.box.group_auth_available`` resolves to ``workset.group_auth_enabled
+        = False`` with no traversal to the agent tier), so
+        ``effective_group_auth`` is False and the ``if target and
+        effective_group_auth`` cred-refresh / writeback gates never fire.  (Prior
+        to the group-auth capability chain — commit bc609bd — the gate fed off the
+        flat ``proj.group_auth`` side-channel, a truthy MagicMock on this mock, so
+        it used to fire; this assertion was stale from that era.)
+        """
         from kanibako.commands.start import _run_container
 
         project = tmp_path / "myproject"
@@ -290,11 +300,9 @@ class TestStandaloneLaunch:
                 extra_args=[],
             )
 
-        # target.refresh_credentials called with shell_path
-        m.target.refresh_credentials.assert_called_once_with(project / ".kanibako" / "shell")
-
-        # target.writeback_credentials called with shell_path
-        m.target.writeback_credentials.assert_called_once_with(project / ".kanibako" / "shell")
+        # Standalone has no group-auth → neither cred hook runs.
+        m.target.refresh_credentials.assert_not_called()
+        m.target.writeback_credentials.assert_not_called()
 
     def test_shell_works_with_standalone(self, start_mocks, tmp_path):
         """shell auto-detects standalone mode via resolve_any_project."""
