@@ -113,6 +113,11 @@ def is_known_key(arg: str) -> bool:
         return True
     if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
         return True
+    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380): a
+    # settable box-scope key (so the get/show paths + the project-name heuristic
+    # treat it as a KEY, never a project name).
+    if _is_box_agent_key(arg):
+        return True
     # Category keys (``<scope>.bindings.{ro,rw}.<name>`` / ``caches`` / ``seeded``
     # / ``shared`` / ``synced``) are settable via ``config set`` (the source-only
     # RAW repoint). Recognize them here too so the get/show paths + the
@@ -260,6 +265,25 @@ def _is_resource_key(key: str) -> bool:
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
     return key in {"model", "start_mode", "autonomous"}
+
+
+def _is_box_agent_key(key: str) -> bool:
+    """The box-scoped agent mirror ``box.agent.<key>`` (block B5, spec §2b L380).
+
+    The box's box-scoped mirror of its active agent's WHOLE settings subtree —
+    ``box.agent.<key>`` DEFAULTS (views up) to the resolved ``agent.<box.agent_name>.
+    <key>`` and the box overriding any ``box.agent.<key>`` is an ORDINARY same-scope
+    (box) write (§0: the no-special-case downward tweak; §2b). It is the BOX
+    namespace (top-level token ``box``), so the B4 directional guard ALLOWS
+    ``box config set box.agent.<key>`` as a same-scope write (the guard keys on the
+    ``box`` token). It is settable here so the override lands in the box settings
+    file — exactly the box-scope override the materializer (settings_launch) then
+    keeps (it gap-fills only the names the box did NOT set).
+
+    Matched strictly as ``box.agent.<something>`` so it does NOT collide with the
+    flat box scalar ``box.agent_name`` (which has no dotted tail).
+    """
+    return key.startswith("box.agent.")
 
 
 # ``system.default_agent`` is the lone ``system.*``-named SETTING (behavior, not
@@ -873,6 +897,27 @@ def set_config_value(
         _write_nested_toml_key(settings_dest, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
+    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380). An
+    # ORDINARY same-scope (box) write of the box's agent-tweak override; the B4
+    # directional guard (above) already PERMITTED it (the box namespace). Write the
+    # value VERBATIM into the box settings file at the nested ``box.agent.<key>``
+    # path — exactly the box-scope override ``_file_partial`` reads back and the
+    # settings_launch materializer keeps (it gap-fills only the names the box did
+    # NOT set, so this write WINS). Checked BEFORE the path-category branch so a
+    # ``box.agent.bindings.ro.X`` lands as a box-scope override (it has no
+    # pre-existing box-file tuple to source-only repoint). The nested sections are
+    # the dotted tail under ``box.agent`` (``box.agent.model`` →
+    # ``[box][agent]model``; ``box.agent.bindings.ro.share`` → ``[box][agent][
+    # bindings][ro]share``). Bind-shaped values are written as the user's RAW string
+    # (no tuple parse here — full structured binds belong in the YAML, like every
+    # category; this convenience write matches a hand-edit of the box file).
+    if _is_box_agent_key(canonical):
+        tail = canonical.split(".")  # ["box", "agent", <key...>, leaf]
+        sections = tuple(tail[:-1])  # ("box", "agent", ...)
+        leaf = tail[-1]
+        _write_nested_toml_key(config_path, sections, leaf, value)
+        return f"Set {canonical}={value}"
+
     # Path-TUPLE category keys (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
     # ``shared`` / ``synced``) — the source-only RAW repoint (S24/S25, spec §2a,
     # design §6d). Checked BEFORE the ``system.*`` file-only refusal because a
@@ -962,6 +1007,18 @@ def reset_config_value(
     # routes to the system settings file).
     if _is_agent_setting(canonical):
         if _remove_nested_toml_key(settings_dest, ("agent", "default"), canonical):
+            return f"Reset {canonical}"
+        return f"No override for {canonical}"
+
+    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380):
+    # reset = remove the box-scope override so box.agent.<key> falls back to the
+    # mirrored agent.<box.agent_name>.<key> default again. Symmetric with the set
+    # branch (same nested box.agent.<key> location in the box settings file).
+    if _is_box_agent_key(canonical):
+        tail = canonical.split(".")
+        sections = tuple(tail[:-1])
+        leaf = tail[-1]
+        if _remove_nested_toml_key(config_path, sections, leaf):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
