@@ -216,6 +216,107 @@ def group_auth_chain_floor(
     return floor
 
 
+# --------------------------------------------------------------------------- #
+# meta.runtime.* materialization (block B1 — spec §1A L230-241, 2026-06-29h)   #
+# --------------------------------------------------------------------------- #
+#
+# The spec's RUNTIME-RESOLVED identity anchors (spec §1A L230-241; §0 meta.* is a
+# TOP-LEVEL protected RO group). The per-mode treewalk values are ALREADY computed
+# today (``proj.mode`` / ``proj.group.root`` / the resolved project dir); this
+# surfaces them as REAL ``@``-referenceable keys via the SAME floor-injection
+# pattern block #2 uses for the group-auth chain — they are injected into the
+# launch snapshot floor so ``expand`` resolves the @-ref chain ONCE (single-route,
+# NO second resolver). They are ``meta.*`` keys (NOT ``config.*``), so they ride
+# the FLOOR alongside ``system.*`` / the group-auth chain.
+#
+# The keys (spec §1A L230-241):
+#   meta.runtime.ws_root      | primary    = "@config.primary_workset"  (@-ref → #3a foundation)
+#                             | named      = str(proj.group.root)        (resolved literal)
+#                             | standalone = str(project dir)            (resolved literal)
+#   meta.runtime.ws_settings  | primary/named = "@meta.runtime.ws_root/settings.yaml" (@-ref)
+#                             | standalone    = None                      (whole-value None terminal)
+#   meta.runtime.project_type | proj.mode.value  ("primary"|"named"|"standalone")
+#
+# Then the SINGLE-SOURCE re-root (spec §1A L239-241; §2c L397/406/414/432):
+#   meta.workset.path     = "@meta.runtime.ws_root"        (UNIFORM all modes)
+#   meta.workset.settings = "@meta.runtime.ws_settings"
+#   meta.box.mode         = "@meta.runtime.project_type"   (RO identity anchor; spec §2b L486)
+#
+# These resolve transitively in the ONE expand pass (e.g. primary:
+# meta.workset.path → @meta.runtime.ws_root → @config.primary_workset → foundation;
+# standalone: meta.workset.settings → @meta.runtime.ws_settings → None terminal).
+#
+# This block is ADDITIVE (B1): the keys appear in the snapshot but NO consumer
+# reads them yet (binds move to @meta.* in a later block). The only behavioral
+# change is meta.box.mode (an RO identity anchor replacing the formerly settable
+# ``box.mode`` config-set key — dropped in config_interface this block).
+
+
+def meta_runtime_floor(
+    *,
+    mode: str,
+    ws_root_literal: str | None = None,
+) -> dict[str, object]:
+    """Build the ``meta.runtime.*`` + re-rooted ``meta.*`` floor keys (block B1).
+
+    Returns the ``{dotted_key: value}`` floor fragment for the spec's runtime
+    identity anchors (spec §1A L230-241; §0 meta-RO). The caller folds it into
+    ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref chain ONCE
+    (single-route — NO second resolver). *mode* is the box's
+    :class:`~kanibako.paths.BoxMode` value (``"primary"`` / ``"named"`` /
+    ``"standalone"``), passed as a plain string to avoid a paths import.
+
+    *ws_root_literal* is the resolved workset-root path STRING for the NAMED and
+    STANDALONE modes (``str(proj.group.root)`` / ``str(project dir)`` — a runtime
+    treewalk result, no key form, JC-B1-2: an in-memory floor literal, NOT a
+    file value, so §0's unresolved-FILES rule does not apply). It MUST be given
+    for ``named`` / ``standalone`` and is IGNORED for ``primary`` (which uses the
+    ``@config.primary_workset`` @-ref so the value live-propagates from the
+    Layer-1 foundation, spec §1A L233).
+
+    The re-rooted keys (``meta.workset.path`` / ``meta.workset.settings`` /
+    ``meta.box.mode``) are UNIFORM across modes — each is the SAME @-ref into
+    ``meta.runtime.*`` (the single-source, spec §1A L239-241). A scope FILE cannot
+    set them (they are construct-set RO per §0 — and ``meta.*`` is not in the
+    config-set settable known-key list); the floor is their sole source here.
+    """
+    floor: dict[str, object] = {}
+
+    # meta.runtime.project_type — the resolved mode token (spec §1A L237).
+    floor["meta.runtime.project_type"] = mode
+
+    # meta.runtime.ws_root (spec §1A L233):
+    #   primary    → the @config.primary_workset @-ref STRING (foundation, #3a);
+    #   named      → the detected workset root literal;
+    #   standalone → the runtime project dir literal.
+    if mode == "primary":
+        floor["meta.runtime.ws_root"] = "@config.primary_workset"
+    else:
+        if ws_root_literal is None:
+            raise SettingsError(
+                f"meta_runtime_floor: ws_root_literal is required for mode "
+                f"{mode!r} (only 'primary' uses the @config.primary_workset @-ref)"
+            )
+        floor["meta.runtime.ws_root"] = ws_root_literal
+
+    # meta.runtime.ws_settings (spec §1A L235-236):
+    #   primary/named → @meta.runtime.ws_root/settings.yaml (embedded @-ref);
+    #   standalone    → None (a whole-value None terminal — spec §2c L415).
+    if mode == "standalone":
+        floor["meta.runtime.ws_settings"] = None
+    else:
+        floor["meta.runtime.ws_settings"] = "@meta.runtime.ws_root/settings.yaml"
+
+    # Single-source re-root (spec §1A L239-241; §2c) — UNIFORM all modes.
+    floor["meta.workset.path"] = "@meta.runtime.ws_root"
+    floor["meta.workset.settings"] = "@meta.runtime.ws_settings"
+    # meta.box.mode — the RO identity anchor surfacing the runtime mode (spec §2b
+    # L486; was the settable box.mode config-set key, dropped this block).
+    floor["meta.box.mode"] = "@meta.runtime.project_type"
+
+    return floor
+
+
 def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool:
     """Read ``effective_group_auth`` off the expanded snapshot (spec §2b L282).
 
@@ -269,6 +370,7 @@ def build_launch_snapshot(
     binding_overrides: Mapping[str, str] | None = None,
     descriptor_bindings: "list[Binding] | None" = None,
     group_auth_chain: Mapping[str, object] | None = None,
+    meta_runtime: Mapping[str, object] | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -293,6 +395,12 @@ def build_launch_snapshot(
     SAME floor so ``expand`` resolves the chain ONCE (single-route). ``None`` for a
     NARROW resolve that does not need the chain (the seed/synced/image/helper
     sub-resolves), so those snapshots simply lack the chain keys.
+
+    *meta_runtime* is the runtime identity-anchor floor fragment (block B1) built
+    by :func:`meta_runtime_floor` per box mode — the spec's ``meta.runtime.*`` keys
+    + the single-source re-root of ``meta.workset.path`` / ``meta.workset.settings``
+    / ``meta.box.mode`` (spec §1A L230-241). Folded into the SAME floor so ``expand``
+    resolves the @-ref chain ONCE (single-route). ``None`` for a narrow resolve.
 
     Returns the expanded ``snapshot``.
     """
@@ -346,6 +454,17 @@ def build_launch_snapshot(
     # / ``workset.*``) land in the floor unconditionally.
     if group_auth_chain:
         for key, val in group_auth_chain.items():
+            floor[key] = val
+
+    # meta.runtime.* materialization (block B1): the runtime identity anchors +
+    # the single-source re-root (spec §1A L230-241) fold into the SAME floor so
+    # ``expand`` resolves the @-ref chain ONCE (single-route). Built per mode by
+    # :func:`meta_runtime_floor`. These are construct-set RO (§0) — NO scope FILE
+    # may override them (meta.* is not in the config-set settable known-key list);
+    # the floor is their sole source. Injected here so the dotted ``meta.*`` keys
+    # land unconditionally for the modes that supply them.
+    if meta_runtime:
+        for key, val in meta_runtime.items():
             floor[key] = val
 
     base_levels = assemble_levels(

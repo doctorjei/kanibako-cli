@@ -568,11 +568,21 @@ class TestH1NoCrashOnAdvertisedKeys:
         data = load_doc(project_toml)
         assert data["project"]["enable_vault"] is False
 
-    def test_set_mode_no_crash(self, tmp_path):
+    def test_set_mode_rejected_not_settable(self, tmp_path):
+        """``mode`` is no longer settable via config set (block B1, spec §2b L486 /
+        §0): the project mode is the RO identity anchor ``meta.box.mode``, set by
+        the bootstrap layer at box creation, NOT overridable. ``config set mode``
+        is now an unknown-key error; nothing is written.
+        """
         project_toml = tmp_path / "settings.yaml"
-        assert set_config_value("mode", "primary", config_path=project_toml).startswith("Set")
-        data = load_doc(project_toml)
-        assert data["project"]["mode"] == "primary"
+        msg = set_config_value("mode", "primary", config_path=project_toml)
+        assert msg.startswith("Error:")
+        assert "unknown config key" in msg
+        # The bootstrap [project].mode identity write is untouched, but config set
+        # never created one.
+        assert not project_toml.exists() or "mode" not in load_doc(project_toml).get(
+            "project", {}
+        )
 
     def test_set_dead_layout_key_rejected(self, tmp_path):
         """W4: layout is a deleted dead key — now an unknown-key error."""
@@ -602,7 +612,6 @@ class TestH1NoCrashOnAdvertisedKeys:
         project_toml = tmp_path / "settings.yaml"
         for key, val in [
             ("group_auth", "false"),
-            ("mode", "default"),
             ("box.image", "custom:latest"),
             ("vault.ro", "/ro"),
         ]:
