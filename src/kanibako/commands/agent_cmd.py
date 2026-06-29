@@ -415,7 +415,23 @@ def run_reauth(args: argparse.Namespace) -> int:
         print("No agent target configured.", file=sys.stderr)
         return 1
 
-    if not proj.group_auth:
+    # Group-auth (block #2): resolve the EFFECTIVE group-auth bool through the
+    # capability chain (single-route — the same launch-snapshot pipeline ``start``
+    # uses), for the resolved agent, replacing the flat ``proj.group_auth``
+    # side-channel. The auth display below gates on the effective value.
+    from kanibako.agent_config import agent_settings_path
+    from kanibako.commands.start import _resolve_effective_group_auth
+    effective_group_auth = _resolve_effective_group_auth(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        system_settings_path=std.settings,
+        project_toml=project_toml,
+        workset_path=workset_path,
+        agent_cfg_path=agent_settings_path(std.agents, agent_name),
+    )
+
+    if not effective_group_auth:
         # Check project's own credentials instead of host.
         creds_path = target.credential_check_path(proj.shell_path)
         if creds_path and creds_path.is_file():
@@ -439,7 +455,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         # (desc is None) targets fall back to the per-plugin refresh hook.  An
         # ungated target.refresh_credentials here would push a descriptor agent
         # (e.g. goose) down its legacy path / bespoke copy.
-        if proj.group_auth:
+        if effective_group_auth:
             from pathlib import Path
 
             from kanibako.targets import credsync
@@ -448,7 +464,7 @@ def run_reauth(args: argparse.Namespace) -> int:
             if desc is not None:
                 credsync.refresh_cred_files(
                     desc, target, host_home=Path.home(),
-                    project_home=proj.shell_path, group_auth=proj.group_auth,
+                    project_home=proj.shell_path, group_auth=effective_group_auth,
                 )
             else:
                 target.refresh_credentials(proj.shell_path)

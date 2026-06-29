@@ -54,7 +54,7 @@ def run(args: argparse.Namespace) -> int:
     return _stop_one(runtime, project_dir=subject)
 
 
-def _writeback_on_stop(runtime, proj, container_name: str) -> None:
+def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> None:
     """Run project -> host credential writeback for a box about to be stopped.
 
     Sources the box's agent from its ``KANIBAKO_AGENT`` launch stamp (set on the
@@ -62,6 +62,11 @@ def _writeback_on_stop(runtime, proj, container_name: str) -> None:
     shared :func:`~kanibako.commands.start.writeback_session_credentials` helper.
     Best-effort: a stop must succeed even if writeback can't run (e.g. no stamp,
     no agent, container already gone).
+
+    Group-auth (block #2): the writeback gate is the EFFECTIVE group-auth bool,
+    resolved through the capability chain (single-route, the same launch-snapshot
+    pipeline ``start`` uses) for the box's stamped agent — under distinct auth the
+    box's creds stay private and are NOT written back.
     """
     if not runtime.is_running(container_name):
         return
@@ -69,10 +74,27 @@ def _writeback_on_stop(runtime, proj, container_name: str) -> None:
     if not agent:
         return
     try:
-        from kanibako.commands.start import writeback_session_credentials
+        from kanibako.commands.start import (
+            _resolve_effective_group_auth,
+            writeback_session_credentials,
+        )
+        from kanibako.agent_config import agent_settings_path
+        from kanibako.config import BOX_META_FILE
         from kanibako.targets import resolve_target
         target = resolve_target(agent, proj.project_path)
-        writeback_session_credentials(target, proj)
+        eff = _resolve_effective_group_auth(
+            std=std,
+            proj=proj,
+            agent_name=agent,
+            system_settings_path=std.settings,
+            project_toml=proj.metadata_path / BOX_META_FILE,
+            workset_path=(
+                (proj.group.root / "settings.yaml")
+                if proj.group is not None else None
+            ),
+            agent_cfg_path=agent_settings_path(std.agents, agent),
+        )
+        writeback_session_credentials(target, proj, effective_group_auth=eff)
     except Exception:
         # Never let a writeback problem block the stop.
         pass
@@ -94,7 +116,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     # while the container is still up.  Source the box's agent from its launch
     # stamp (KANIBAKO_AGENT) so we know which plugin's cred lifecycle to run; a
     # box launched before stamping (or a no-agent box) has no stamp -> skip.
-    _writeback_on_stop(runtime, proj, container_name)
+    _writeback_on_stop(runtime, proj, container_name, std=std, config=config)
 
     if runtime.stop(container_name):
         print(f"Stopped {container_name}")

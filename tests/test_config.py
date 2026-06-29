@@ -534,6 +534,38 @@ class TestProjectMeta:
         assert meta["vault_ro"] == "/home/user/myproject/vault/ro"
         assert meta["vault_rw"] == "/home/user/myproject/vault/rw"
 
+    def test_group_auth_writes_new_key_reads_back(self, tmp_path):
+        """Block #2: the box choice is WRITTEN as group_auth_on (new spec key),
+        never the old group_auth, and reads back under the meta carrier slot."""
+        toml_path = tmp_path / "settings.yaml"
+        write_project_meta(
+            toml_path, mode="primary", workspace="/w", shell="/s",
+            vault_ro="/vro", vault_rw="/vrw", group_auth=False,
+        )
+        from kanibako.config_io import load_doc
+        doc = load_doc(toml_path)
+        assert doc["project"]["group_auth_on"] is False
+        assert "group_auth" not in doc["project"]  # old form never written
+        assert read_project_meta(toml_path)["group_auth"] is False
+
+    def test_group_auth_read_compat_old_key(self, tmp_path):
+        """JC-3 read-compat: a TRUE legacy box with only [project].group_auth=false
+        reads as the box choice (group_auth_on absent → fall back to old key)."""
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text(
+            "project:\n  mode: primary\n  group_auth: false\n"
+        )
+        assert read_project_meta(toml_path)["group_auth"] is False
+
+    def test_group_auth_new_key_wins_over_old(self, tmp_path):
+        """When both on-disk keys exist, the new group_auth_on wins (new-wins-old)."""
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text(
+            "project:\n  mode: primary\n"
+            "  group_auth: true\n  group_auth_on: false\n"
+        )
+        assert read_project_meta(toml_path)["group_auth"] is False
+
     def test_read_missing_file(self, tmp_path):
         meta = read_project_meta(tmp_path / "nonexistent.yaml")
         assert meta is None

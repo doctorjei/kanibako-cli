@@ -857,6 +857,23 @@ def _run_container(
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
 
+    # Group-auth capability chain (block #2): resolve the EFFECTIVE group-auth
+    # gate ONCE here, through the launch snapshot (single-route), BEFORE the first
+    # consumer (the reattach refresh below + the seed/refresh/reconcile/auto-auth/
+    # writeback gates). This REPLACES the flat ``proj.group_auth`` side-channel;
+    # every gate downstream feeds from ``effective_group_auth``. The active agent
+    # is known here (``agent_id``), so the chain's @agent.<agent>.group_auth_capable
+    # resolves to the right capability. The gate SEMANTICS are unchanged.
+    effective_group_auth = _resolve_effective_group_auth(
+        std=std,
+        proj=proj,
+        agent_name=agent_id,
+        system_settings_path=system_settings_path,
+        project_toml=project_toml,
+        workset_path=workset_path,
+        agent_cfg_path=agent_cfg_path,
+    )
+
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
 
@@ -885,11 +902,11 @@ def _run_container(
                 file=sys.stderr,
             )
             # Refresh credentials before reattaching
-            if target and proj.group_auth:
+            if target and effective_group_auth:
                 if desc is not None:
                     credsync.refresh_cred_files(
                         desc, target, host_home=Path.home(),
-                        project_home=proj.shell_path, group_auth=proj.group_auth,
+                        project_home=proj.shell_path, group_auth=effective_group_auth,
                     )
                 else:
                     target.refresh_credentials(proj.shell_path)
@@ -900,7 +917,7 @@ def _run_container(
             # An in-box login during this attach must reach the host, so write
             # back here too — the reattach path (4a32871) previously skipped the
             # post-session cred lifecycle entirely.
-            writeback_session_credentials(target, proj)
+            writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
             # Two-state lifecycle ("d"): tear down on exit, keep on detach.
             _teardown_persistent_box(runtime, container_name)
             return reattach_rc
@@ -1020,7 +1037,7 @@ def _run_container(
         if seed_box and target and desc is not None:
             credsync.seed_cred_files(
                 desc, target, host_home=Path.home(),
-                project_home=proj.shell_path, group_auth=proj.group_auth,
+                project_home=proj.shell_path, group_auth=effective_group_auth,
             )
 
         # Copy-once-at-init seeds (additive; overlays templates). target may be
@@ -1030,7 +1047,7 @@ def _run_container(
                 std=std, proj=proj, agent_name=agent_id, target=target,
                 global_config_path=system_settings_path, project_toml=project_toml,
                 workset_config_path=workset_path, agent_config_path=agent_cfg_path,
-                logger=logger, group_auth=proj.group_auth,
+                logger=logger, group_auth=effective_group_auth,
             )
 
         # Record seed-once completion via the authoritative per-box registry
@@ -1050,7 +1067,7 @@ def _run_container(
             std=std, proj=proj, agent_name=agent_id, target=target,
             global_config_path=system_settings_path, project_toml=project_toml,
             workset_config_path=workset_path, agent_config_path=agent_cfg_path,
-            logger=logger, group_auth=proj.group_auth,
+            logger=logger, group_auth=effective_group_auth,
         )
 
         # Plugin-owned pre-launch host preparation (agent-agnostic call).
@@ -1063,7 +1080,7 @@ def _run_container(
         if target and install and is_agent_mode:
             target.prepare_host(
                 install,
-                auto_auth=bool(proj.group_auth and not no_auto_auth),
+                auto_auth=bool(effective_group_auth and not no_auto_auth),
                 data_path=std.data_path,
             )
             # Re-detect after the update gate.  prepare_host() can repoint /
@@ -1118,7 +1135,7 @@ def _run_container(
         # agent with no setup command (claude, by default) errors out here as
         # before.  ``needs_inbox_setup`` carries the decision to the launch block.
         needs_inbox_setup = False
-        if target and install and proj.group_auth:
+        if target and install and effective_group_auth:
             if not target.check_auth():
                 if target.setup_entrypoint is not None:
                     needs_inbox_setup = True
@@ -1132,11 +1149,11 @@ def _run_container(
                     return 1
 
         # Credential refresh via target (skip for distinct auth)
-        if target and proj.group_auth:
+        if target and effective_group_auth:
             if desc is not None:
                 credsync.refresh_cred_files(
                     desc, target, host_home=Path.home(),
-                    project_home=proj.shell_path, group_auth=proj.group_auth,
+                    project_home=proj.shell_path, group_auth=effective_group_auth,
                 )
             else:
                 target.refresh_credentials(proj.shell_path)
@@ -1180,7 +1197,7 @@ def _run_container(
             target=target,
             agent_cfg=agent_cfg,
             binding_overrides=binding_overrides,
-            group_auth=proj.group_auth,
+            group_auth=effective_group_auth,
         )
 
         # Build CLI args via target, merging agent run_args and state
@@ -1356,7 +1373,7 @@ def _run_container(
                     target=None,
                     graph_root=graph_root,
                     storage_conf_path=storage_conf_path,
-                    group_auth=proj.group_auth,
+                    group_auth=effective_group_auth,
                     include_base_families=False,
                 )
                 img_mounts = _emit_category_mounts(_img_rec, label="images")
@@ -1560,7 +1577,7 @@ def _run_container(
                 box_state_kanibako=str(box_state_kanibako),
                 socket_path=socket_path,
                 log_path=log_path,
-                group_auth=proj.group_auth,
+                group_auth=effective_group_auth,
                 include_base_families=False,
             )
             helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
@@ -1897,7 +1914,7 @@ def _run_container(
                 # never loop back into setup.  Still write back first: a partial
                 # in-box login may have produced credentials worth propagating.
                 if target and logs and target.should_run_setup(logs):
-                    writeback_session_credentials(target, proj)
+                    writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
                     _print_setup_did_not_take(target)
                     return 1
 
@@ -1908,14 +1925,14 @@ def _run_container(
             # moments so an in-box login reaches the host.  (The new-session
             # retry above returns early and re-enters this function, which writes
             # back on its own teardown.)
-            writeback_session_credentials(target, proj)
+            writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
             # Two-state lifecycle ("d"): an exited box (tmux session ended ->
             # container not running) is torn down so the next start/shell is
             # fresh; a detached box (still running) is kept reattachable.
             _teardown_persistent_box(runtime, container_name)
         else:
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
-            writeback_session_credentials(target, proj)
+            writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
 
             # Hint when agent exits non-zero and --continue/--resume was used
             if rc != 0 and is_agent_mode and not new_session:
@@ -1956,7 +1973,9 @@ def _print_setup_did_not_take(target) -> None:
     )
 
 
-def writeback_session_credentials(target, proj) -> None:
+def writeback_session_credentials(
+    target, proj, *, effective_group_auth: bool
+) -> None:
     """Project -> host credential writeback for a finished/detached session.
 
     The SINGLE writeback site for ALL session-end paths (FIX 1): clean exit,
@@ -1964,9 +1983,11 @@ def writeback_session_credentials(target, proj) -> None:
     host regardless of how the session ends, so every path that releases a box
     funnels through here.
 
-    Gated on ``proj.group_auth`` (the shared-auth contract — default True): under
-    distinct auth, the box's credentials are private to the project and never
-    propagate to the host.  No-ops when *target* is None (no-agent box) or has no
+    Gated on *effective_group_auth* (block #2 — the capability-chain gate, was the
+    flat ``proj.group_auth``): under distinct auth (effective False) the box's
+    credentials are private to the project and never propagate to the host.  The
+    caller resolves the effective bool through the launch snapshot (single-route)
+    and passes it in.  No-ops when *target* is None (no-agent box) or has no
     credential lifecycle.
 
     Writes the descriptor's SYNC ``cred_files`` back (creating a missing host
@@ -1976,14 +1997,14 @@ def writeback_session_credentials(target, proj) -> None:
     clobbering machine-specific fields).  Best-effort: a writeback failure must
     never crash the lifecycle path that called it.
     """
-    if target is None or not getattr(proj, "group_auth", False):
+    if target is None or not effective_group_auth:
         return
     desc = target.descriptor
     try:
         if desc is not None:
             credsync.writeback_cred_files(
                 desc, target, host_home=Path.home(),
-                project_home=proj.shell_path, group_auth=proj.group_auth,
+                project_home=proj.shell_path, group_auth=effective_group_auth,
             )
         else:
             target.writeback_credentials(proj.shell_path)
@@ -2107,6 +2128,68 @@ def _effective_behavior_for_display(
         agent_state=agent_state,
     )
     return settings_launch.effective_behavior(snapshot, active_agent=target.name)
+
+
+def _resolve_effective_group_auth(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    system_settings_path,
+    project_toml,
+    workset_path,
+    agent_cfg_path,
+) -> bool:
+    """Resolve ``effective_group_auth`` for *proj* through the capability chain.
+
+    The SINGLE source of the launch's group-auth gate (block #2): builds a
+    FOCUSED launch snapshot carrying ONLY the group-auth capability-chain floor
+    (``settings_launch.group_auth_chain_floor`` for the box mode, with the JC-3
+    read-compat overrides from ``proj``) plus the scope settings files, expands it
+    ONCE, and reads ``effective_group_auth`` off it (``box.meta.group_auth_available
+    AND box.group_auth_on``). This is the SINGLE-ROUTE chain resolve — the same
+    ``build_launch_snapshot`` → ``expand`` pipeline the launch uses, mirroring
+    :func:`_effective_behavior_for_display`.
+
+    Computed ONCE per launch and threaded to every consumer (the early reattach /
+    seed / refresh sites that run BEFORE the main category snapshot, the main
+    ``reconcile_categories(group_auth=…)`` feed, and the credsync / auto-auth /
+    writeback gates) so the effective bool is consistent everywhere. It REPLACES
+    the flat ``proj.group_auth`` side-channel; the gate SEMANTICS downstream are
+    unchanged (this is a derivation swap, the load-bearing safety swap).
+
+    A scope settings FILE that sets the new chain keys (``box.group_auth_on`` /
+    ``workset.group_auth_enabled``) wins by name through the cascade; the floor
+    (incl. the read-compat overrides) is the backstop.
+    """
+    from kanibako import settings_launch
+
+    ctx, _scope_roots, resolved_sys = _launch_snapshot_inputs(
+        std=std, proj=proj, agent_name=agent_name,
+    )
+    chain = settings_launch.group_auth_chain_floor(
+        mode=proj.mode.value,
+        agent_name=agent_name,
+        workset_enabled_override=(
+            False if not proj.workset_group_auth else None
+        ),
+        box_on_override=False if not proj.group_auth else None,
+    )
+    # The resolved system.* tier is folded into the floor (default_categories
+    # here carries ONLY system.* — no category families) so any @-ref in the
+    # chain that reached system.* would resolve; the chain itself does not, but
+    # this keeps the focused snapshot consistent with the main one.
+    snapshot, _warnings = settings_launch.build_launch_snapshot(
+        agent_name=agent_name,
+        ctx=ctx,
+        system_path=system_settings_path,
+        agent_path=agent_cfg_path,
+        workset_path=workset_path,
+        box_path=project_toml,
+        default_categories=dict(resolved_sys),
+        group_auth_chain=chain,
+    )
+    return settings_launch.effective_group_auth(snapshot, mode=proj.mode.value)
 
 
 def _build_binding_overrides(

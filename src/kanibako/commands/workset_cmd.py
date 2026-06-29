@@ -568,10 +568,16 @@ def run_config(args: argparse.Namespace) -> int:
             ws.group_auth = True
             if ws.is_default:
                 # Default workset has no settings.yaml identity — clear the key in
-                # config.yaml's [project] section.
+                # config.yaml's [project] section. Remove BOTH the new spec key
+                # (group_auth_enabled) and any old read-compat residue (group_auth)
+                # so the reset truly reverts to the default (block #2).
                 from kanibako.config_interface import _remove_toml_key
+                _remove_toml_key(ws_config, "project", "group_auth_enabled")
                 _remove_toml_key(ws_config, "project", "group_auth")
             else:
+                # _write_workset_toml rewrites workset.meta with the new key only
+                # (group_auth=True → group_auth_enabled=true); the old residue is
+                # dropped because the meta table is fully replaced on write.
                 _write_workset_toml(ws)
             print("Reset group_auth (reverts to default: true)")
             return 0
@@ -632,10 +638,14 @@ def run_config(args: argparse.Namespace) -> int:
             old_group_auth = ws.group_auth
             ws.group_auth = new_group_auth
             if ws.is_default:
-                # Default workset has no settings.yaml identity — write group_auth as a
-                # normal boolean key in config.yaml's [project] section.
+                # Default workset has no settings.yaml identity — write the POLICY
+                # as the NEW spec key ``group_auth_enabled`` in config.yaml's
+                # [project] section (block #2 clean-break WRITE surface; read
+                # new-wins-old in default_workset). Never write the old form.
                 from kanibako.config_interface import _write_toml_key
-                _write_toml_key(ws_config, "project", "group_auth", new_group_auth)
+                _write_toml_key(
+                    ws_config, "project", "group_auth_enabled", new_group_auth
+                )
             else:
                 _write_workset_toml(ws)
 

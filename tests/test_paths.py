@@ -94,7 +94,13 @@ class TestResolveProject:
     def test_group_auth_defaults_true_without_workset_config(
         self, config_file, tmp_home, credentials_dir
     ):
-        """No param, no project-meta group_auth, no config.yaml -> True (no-op)."""
+        """No param, no project-meta, no config.yaml -> both carriers True (no-op).
+
+        Block #2: the flat side-channel is RETIRED. ``proj.group_auth`` is now the
+        BOX-level on-disk CHOICE carrier (read-compat); ``proj.workset_group_auth``
+        is the WORKSET-level policy carrier. Both default True (shared/on); the
+        EFFECTIVE bool is resolved through the capability chain at launch.
+        """
         config = load_config(config_file)
         std = load_std_paths(config)
         assert not (std.data_path / "config.yaml").exists()
@@ -102,11 +108,13 @@ class TestResolveProject:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         assert proj.group_auth is True
+        assert proj.workset_group_auth is True
 
     def test_group_auth_from_default_workset_config(
         self, config_file, tmp_home, credentials_dir
     ):
-        """{data_path}/config.yaml [project] group_auth=false flows through."""
+        """config.yaml [project] group_auth=false (OLD on-disk key) read-compat maps
+        to the WORKSET policy carrier (JC-3)."""
         config = load_config(config_file)
         std = load_std_paths(config)
         std.data_path.mkdir(parents=True, exist_ok=True)
@@ -116,27 +124,46 @@ class TestResolveProject:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert proj.group_auth is False
+        # Read-compat: old on-disk default-workset group_auth=false → the WORKSET
+        # policy carrier (workset.group_auth_enabled), NOT the box choice.
+        assert proj.workset_group_auth is False
+        assert proj.group_auth is True
+
+    def test_group_auth_new_key_from_default_workset_config(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """config.yaml [project] group_auth_enabled=false (NEW key) maps to the
+        workset policy carrier, new-wins-old."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        std.data_path.mkdir(parents=True, exist_ok=True)
+        (std.data_path / "config.yaml").write_text(
+            "project:\n  group_auth_enabled: false\n"
+        )
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        assert proj.workset_group_auth is False
 
     def test_group_auth_default_workset_applies_to_existing_project(
         self, config_file, tmp_home, credentials_dir
     ):
         """Re-resolving an already-initialized default-mode project still honors the
-        default workset's group_auth — init freezes group_auth=True in project
-        meta, but the default-workset value is the base (mirrors named worksets)
-        so `workset config default group_auth=false` reaches existing projects."""
+        default workset's policy (read-compat old key) — the default-workset value
+        is the base so `workset config default group_auth=false` reaches existing
+        projects via the WORKSET policy carrier."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
-        # First resolve initializes the project (writes [project] group_auth=true).
+        # First resolve initializes the project.
         resolve_project(std, config, project_dir=project_dir, initialize=True)
-        # Now set the default workset to distinct creds.
+        # Now set the default workset to distinct creds (old on-disk key).
         std.data_path.mkdir(parents=True, exist_ok=True)
         (std.data_path / "config.yaml").write_text("project:\n  group_auth: false\n")
-        # Second resolve of the existing project must reflect it (not the frozen meta).
+        # Second resolve of the existing project must reflect it (not frozen meta).
         proj = resolve_project(std, config, project_dir=project_dir)
 
-        assert proj.group_auth is False
+        assert proj.workset_group_auth is False
 
 
 class TestProjectMeta:

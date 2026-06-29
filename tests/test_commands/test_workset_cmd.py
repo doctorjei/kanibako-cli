@@ -856,13 +856,15 @@ class TestDefaultWorksetCli:
 
         # No workset.yaml created at the data path.
         assert not (std.data_path / "workset.yaml").exists()
-        # group_auth persisted in config.yaml [project].
+        # Block #2: the workset POLICY persists in config.yaml [project] as the
+        # NEW spec key ``group_auth_enabled`` (never the old form).
         import yaml
         with open(std.data_path / "config.yaml") as f:
             data = yaml.safe_load(f)
-        assert data["project"]["group_auth"] is False
+        assert data["project"]["group_auth_enabled"] is False
+        assert "group_auth" not in data["project"]
 
-        # And it reads back via the default workset.
+        # And it reads back via the default workset (new-wins-old).
         from kanibako.workset import default_workset
         assert default_workset(std).group_auth is False
 

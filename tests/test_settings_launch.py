@@ -352,3 +352,97 @@ def test_delivery_ignores_non_agent_entries(tmp_path: Path):
     )
     mounts = agent_delivery_mounts([box_entry], critical_keys=frozenset())
     assert mounts == []
+
+
+# --------------------------------------------------------------------------- #
+# Group-auth capability chain (block #2 — ratified 2026-06-29)                #
+# spec §2a L184 / §2b L282 / §2c L315-316,331-332,381 / §2d L399              #
+# --------------------------------------------------------------------------- #
+
+from kanibako.settings_launch import (  # noqa: E402
+    effective_group_auth,
+    group_auth_chain_floor,
+)
+
+
+def _chain_snapshot(mode: str, *, agent_name: str = "claude", **overrides):
+    """Build a focused snapshot carrying ONLY the group-auth chain floor."""
+    chain = group_auth_chain_floor(
+        mode=mode, agent_name=agent_name, **overrides
+    )
+    snap, _warns = build_launch_snapshot(
+        agent_name=agent_name,
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=None,
+        box_path=None,
+        group_auth_chain=chain,
+    )
+    return snap
+
+
+def test_chain_primary_resolves_on():
+    """PRIMARY: agent.capable → workset.meta.available → workset.enabled →
+    box.meta.available → effective True (default-on, the safety-swap baseline)."""
+    snap = _chain_snapshot("primary")
+    assert effective_group_auth(snap) is True
+
+
+def test_chain_named_resolves_on():
+    """NAMED resolves to on via the active agent's capability (default-on)."""
+    assert effective_group_auth(_chain_snapshot("named")) is True
+
+
+def test_chain_standalone_short_circuits_off():
+    """STANDALONE: workset keys are the LITERAL False (spec §2c L315-316) — the
+    @-ref RESOLVES (no dangling, closes the gap) and effective is False without
+    traversing to the agent tier."""
+    snap = _chain_snapshot("standalone")
+    assert effective_group_auth(snap) is False
+    # The chain keys RESOLVED (present), not dropped as dangling.
+    import kanibako.settings_views as views
+    box_meta = dict.get(dict.get(snap, "box"), "meta")
+    assert views.as_bool(dict.get(box_meta, "group_auth_available")) is False
+
+
+def test_chain_box_off_overrides_to_off():
+    """box.group_auth_on=False over an available workset → effective off
+    (effective = available AND on)."""
+    snap = _chain_snapshot("primary", box_on_override=False)
+    assert effective_group_auth(snap) is False
+
+
+def test_chain_workset_policy_off_overrides_to_off():
+    """A workset group_auth_enabled=False override → effective off for its boxes."""
+    snap = _chain_snapshot("named", workset_enabled_override=False)
+    assert effective_group_auth(snap) is False
+
+
+def test_chain_noncapable_agent_off_everywhere():
+    """A non-capable agent (agent.<x>.group_auth_capable=false) → off everywhere,
+    with no special-casing (the chain handles it)."""
+    chain = group_auth_chain_floor(mode="primary", agent_name="claude")
+    chain["agent.claude.group_auth_capable"] = False  # a future non-capable agent
+    snap, _ = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+        workset_path=None, box_path=None, group_auth_chain=chain,
+    )
+    assert effective_group_auth(snap) is False
+
+
+def test_chain_default_capable_floor_present():
+    """The universal floor agent.default.group_auth_capable=True is seeded (JC-1)."""
+    snap = _chain_snapshot("primary")
+    agent_default = dict.get(dict.get(snap, "agent"), "default")
+    assert dict.get(agent_default, "group_auth_capable") is True
+
+
+def test_effective_group_auth_no_box_node_fails_closed():
+    """effective_group_auth fails CLOSED (False) if the chain floor was not
+    injected (no box node) — never launders into True."""
+    snap, _ = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+        workset_path=None, box_path=None,
+    )
+    assert effective_group_auth(snap) is False

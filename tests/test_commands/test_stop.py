@@ -242,6 +242,10 @@ class TestStopWriteback:
             patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
             patch("kanibako.targets.resolve_target") as m_resolve_target,
             patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=True,
+            ),
+            patch(
                 "kanibako.commands.start.writeback_session_credentials"
             ) as m_wb,
         ):
@@ -253,7 +257,11 @@ class TestStopWriteback:
             rc = _stop_one(mock_runtime, project_dir=None)
             assert rc == 0
             mock_runtime.inspect_env.assert_called_once()
-            m_wb.assert_called_once_with(target, proj)
+            # Block #2: writeback gates on the EFFECTIVE group-auth bool (resolved
+            # through the chain), passed as a keyword.
+            m_wb.assert_called_once_with(
+                target, proj, effective_group_auth=True
+            )
 
     def test_no_writeback_without_agent_stamp(self, mock_runtime):
         mock_runtime.is_running.return_value = True

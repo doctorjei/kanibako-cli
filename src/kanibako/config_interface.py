@@ -67,7 +67,10 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "box.share_images",
     "box.shell",
     "box.bootstrap_program",
-    # Auth / project
+    # Auth / project — the box's group-auth CHOICE (block #2, §2b L282). The bare
+    # ``group_auth`` token stays recognized as a back-compat INPUT alias
+    # (canonicalized to ``box.group_auth_on`` in _resolve_key).
+    "box.group_auth_on",
     "group_auth",
     "mode",
     # Vault
@@ -134,10 +137,15 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "box.shell": (("box",), "shell"),
     "box.bootstrap_program": (("box",), "bootstrap_program"),
     "box.share_images": (("box",), "share_images"),
-    # Project section ([project] table) — group_auth/mode/vault.* are read back
+    # Project section ([project] table) — group_auth_on/mode/vault.* are read back
     # by read_project_meta(); vault.enabled lands in its real stored key
     # ``enable_vault`` (the H1 alias fix).
-    "group_auth": (("project",), "group_auth"),
+    # Group-auth (block #2): the box's CHOICE is the new spec key
+    # ``box.group_auth_on`` (settable, §2b L282), stored on-disk as
+    # ``[project].group_auth_on``. The bare ``group_auth`` token is canonicalized
+    # to ``box.group_auth_on`` in :func:`_resolve_key` (back-compat INPUT — an old
+    # ``config group_auth=false`` writes the NEW key), so both route here.
+    "box.group_auth_on": (("project",), "group_auth_on"),
     "mode": (("project",), "mode"),
     "vault.enabled": (("project",), "enable_vault"),
     "vault.ro": (("project",), "vault_ro"),
@@ -156,7 +164,7 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
     "allow_helpers": "bool",
-    "group_auth": "bool",
+    "box.group_auth_on": "bool",
     "vault.enabled": "bool",
 }
 
@@ -220,7 +228,14 @@ def _resolve_key(raw: str) -> str:
     Config keys are already canonical (dot-notation like ``box.image`` or
     ``vault.enabled``, or a raw flat key); this is the single canonicalization
     seam every get/set/reset path routes through.
+
+    Group-auth (block #2): the bare ``group_auth`` token is a back-compat INPUT
+    alias for the box's choice — canonicalized to the new spec key
+    ``box.group_auth_on`` so an old ``config group_auth=false`` writes the NEW
+    on-disk key (never the old form), and get/set/reset all route consistently.
     """
+    if raw == "group_auth":
+        return "box.group_auth_on"
     return raw
 
 
