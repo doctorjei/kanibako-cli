@@ -2164,8 +2164,8 @@ def _resolve_effective_group_auth(
     """
     from kanibako import settings_launch
 
-    ctx, _scope_roots, resolved_sys, meta_runtime = _launch_snapshot_inputs(
-        std=std, proj=proj, agent_name=agent_name,
+    ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity = (
+        _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     )
     chain = settings_launch.group_auth_chain_floor(
         mode=proj.mode.value,
@@ -2189,6 +2189,7 @@ def _resolve_effective_group_auth(
         default_categories=dict(resolved_sys),
         group_auth_chain=chain,
         meta_runtime=meta_runtime,
+        meta_identity=meta_identity,
     )
     return settings_launch.effective_group_auth(snapshot, mode=proj.mode.value)
 
@@ -2325,7 +2326,35 @@ def _launch_snapshot_inputs(
     meta_runtime = settings_launch_module.meta_runtime_floor(
         mode=mode, ws_root_literal=ws_root_literal,
     )
-    return ctx, scope_roots, resolved_sys, meta_runtime
+
+    # meta.* IDENTITY-anchor materialization (block B2, spec §2c/§2d). The remaining
+    # construct-time identity keys the @meta.*-routed core binds (workspace / inbox)
+    # reference. Every value is the RESOLVED LITERAL the launch already computes —
+    # the box name (proj.name; JC-B2-2 reuse), the workspace source
+    # (str(proj.project_path)), the channel partition ADDRESSES
+    # (channels.box_channel_addresses), the workset partition token
+    # (channels.workset_name_token), and the plugin-set agent name — so an
+    # @meta.box.workspace / @meta.box.inbox bind expands byte-identically (JC-B2-4).
+    from kanibako import channels as _channels
+
+    addr = _channels.box_channel_addresses(proj, std)
+    ws_token = _channels.workset_name_token(proj)
+    meta_identity = settings_launch_module.meta_identity_floor(
+        box_name=proj.name,
+        project_path=str(proj.project_path),
+        inbox=str(addr.inbox),
+        share_global=str(addr.share_global),
+        share_workset=(
+            str(addr.share_workset) if addr.share_workset is not None else None
+        ),
+        workset_name=ws_token,
+        # The agent identity key (spec §2d L514): the cascade discriminator AND the
+        # value are the resolved agent name (install.name). Omitted for a NO-AGENT
+        # box (empty name) — it has no agent identity.
+        agent_name=agent_name if agent_name else None,
+        agent_real_name=agent_name if agent_name else None,
+    )
+    return ctx, scope_roots, resolved_sys, meta_runtime, meta_identity
 
 
 def _resolve_launch_snapshot(
@@ -2384,8 +2413,8 @@ def _resolve_launch_snapshot(
     from kanibako.agent_representation import agent_default_partial
     from kanibako.settings_categories import reconcile_categories
 
-    ctx, scope_roots, resolved_sys, meta_runtime = _launch_snapshot_inputs(
-        std=std, proj=proj, agent_name=agent_name,
+    ctx, scope_roots, resolved_sys, meta_runtime, meta_identity = (
+        _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     )
 
     # Aggregate every runtime default-categories table into ONE dict.  Keys are
@@ -2466,6 +2495,7 @@ def _resolve_launch_snapshot(
         binding_overrides=binding_overrides,
         descriptor_bindings=list(desc.bindings) if desc is not None else None,
         meta_runtime=meta_runtime,
+        meta_identity=meta_identity,
     )
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,

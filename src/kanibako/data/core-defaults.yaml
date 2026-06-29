@@ -58,8 +58,15 @@ channels:
   # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced at the
   # (C)-stable path ~/channels/inbox.  The depth-sort lands this deeper dest
   # after ~/channels/mailboxes — both binds are kept.
+  #
+  # B2: routed through @meta.box.inbox (spec §2c L475) — the host_src is the @meta.*
+  # REF (not the runtime-probed literal), which `expand` resolves to the SAME
+  # materialized inbox address (byte-identical, JC-B2-4). `source: inbox` is kept
+  # for the standalone-omit gate (a standalone box still has an inbox, so it is NOT
+  # gated — but the loader maps `meta_ref` to the @-ref host_src for this entry).
   - key: inbox
     source: inbox
+    meta_ref: "@meta.box.inbox"
     box_dest: "~/channels/inbox"
     scope: system
   # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
@@ -110,10 +117,15 @@ core:
     box_dest: "~"
     options: "Z,U"
     scope: system
-  # Project workspace — host project_path bound rw at ~/workspace.
+  # Project workspace — bound rw at ~/workspace.  B2: routed through
+  # @meta.box.workspace (spec §2c L476) — the host_src is the @meta.* REF, which
+  # `expand` resolves to the SAME materialized workspace source (= str(proj.
+  # project_path); byte-identical, JC-B2-4).  `source: project_path` is kept as the
+  # documentary symbolic name; the loader emits `meta_ref` as the host_src.
   - key: workspace
     category: bindings.rw
     source: project_path
+    meta_ref: "@meta.box.workspace"
     box_dest: "~/workspace"
     options: "Z,U"
     scope: system

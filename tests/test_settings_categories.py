@@ -814,9 +814,11 @@ class TestCoreDefaultCategories:
         binds = core_defaults.core_default_categories(None, proj, enable_vault=True)
         # home: rw bind, dest ~ , options Z,U (the structured 3-tuple's 3rd slot).
         assert binds["box.bindings.rw.home"] == ("/host/shell", "~", "Z,U")
-        # workspace: rw bind, dest ~/workspace, options Z,U.
+        # workspace: rw bind, dest ~/workspace, options Z,U.  B2: the host_src is the
+        # @meta.box.workspace REF (routed through the materialized identity anchor,
+        # spec §2c L476); it resolves to str(proj.project_path) at launch-expand.
         assert binds["box.bindings.rw.workspace"] == (
-            "/host/proj",
+            "@meta.box.workspace",
             "~/workspace",
             "Z,U",
         )
@@ -896,8 +898,10 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True
         )
         ctx = make_ctx()
+        # B2: workspace routes through @meta.box.workspace; provide the materialized
+        # identity anchor (as the launch floor does) so the ref resolves.
         levels = [
-            LevelView("box", {}),
+            LevelView("box", {"meta.box.workspace": str(proj.project_path)}),
             LevelView("agent", {}, defaults=defaults),
         ]
         entries = _resolve(levels, ctx)
@@ -918,8 +922,9 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True
         )
         ctx = make_ctx()
+        # B2: workspace routes through @meta.box.workspace; provide the anchor.
         levels = [
-            LevelView("box", {}),
+            LevelView("box", {"meta.box.workspace": str(proj.project_path)}),
             LevelView("agent", {}, defaults=defaults),
         ]
         rec = _reconcile(levels, ctx)

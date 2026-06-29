@@ -737,6 +737,9 @@ class TestPluginsAndCacheShares:
         proj.project_path = std.data
         proj.group_auth = True
         proj.enable_vault = False
+        # B2: meta.box.* identity anchors need a real box name (proj.name) for the
+        # channel partition addresses (box_channel_addresses).
+        proj.name = "claudebox"
         return proj
 
     def _build(self, std, config_file, tmp_path):
@@ -1891,14 +1894,19 @@ class TestApplyInitSeeds:
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
             settings=tmp_path / "settings.yaml",
+            # B2: the channel partition roots box_channel_addresses reads (the
+            # meta.box.{inbox,share_global} identity anchors).
+            channels_mailboxes=tmp_path / "channels" / "mailboxes",
+            channels_share=tmp_path / "channels" / "share",
         )
 
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
         # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
         # (the @config.primary_workset @-ref, so project_path is unused).
+        # B2: meta.box.* identity anchors need the box name (proj.name).
         return SimpleNamespace(
-            shell_path=shell_path, group=group,
+            shell_path=shell_path, group=group, name="seedbox",
             mode=BoxMode.primary, project_path=shell_path,
         )
 
@@ -2103,14 +2111,19 @@ class TestApplySyncedCopies:
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
             settings=tmp_path / "settings.yaml",
+            # B2: the channel partition roots box_channel_addresses reads (the
+            # meta.box.{inbox,share_global} identity anchors).
+            channels_mailboxes=tmp_path / "channels" / "mailboxes",
+            channels_share=tmp_path / "channels" / "share",
         )
 
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
         # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
         # (the @config.primary_workset @-ref, so project_path is unused).
+        # B2: meta.box.* identity anchors need the box name (proj.name).
         return SimpleNamespace(
-            shell_path=shell_path, group=group,
+            shell_path=shell_path, group=group, name="seedbox",
             mode=BoxMode.primary, project_path=shell_path,
         )
 

@@ -317,6 +317,111 @@ def meta_runtime_floor(
     return floor
 
 
+# --------------------------------------------------------------------------- #
+# meta.* IDENTITY-ANCHOR materialization (block B2 — spec §2c/§2d, §0)          #
+# --------------------------------------------------------------------------- #
+#
+# B1 materialized meta.runtime.* + the single-source re-root of meta.workset.path
+# / meta.workset.settings / meta.box.mode (and block #2 added meta.box/workset.
+# group_auth_available). B2 materializes the REMAINING construct-time IDENTITY
+# anchors as RO floor keys and ROUTES the eligible core binds through @meta.* refs
+# so the bind host_src RESOLVES via the snapshot instead of being injected as a
+# proj-attr literal at the assembly seam (the single-route payoff, spec §0).
+#
+# ⚑ EQUIVALENCE IS THE BAR (JC-B2-4). Each materialized identity key is the
+# RESOLVED LITERAL the launch already computes today (``str(proj.project_path)``,
+# the channel partition addresses, the plugin agent name, …) — NOT a re-derivation
+# via the spec's nested @workset.* chain. Holding the resolved literal guarantees
+# the @meta.*-routed bind expands to the byte-identical host_src the proj-attr
+# injection produced. This mirrors B1, where meta.runtime.ws_root for named/
+# standalone is the ``str(proj.group.root)`` / project-dir LITERAL (JC-B1-2: an
+# in-memory floor literal, NOT a file value — §0's unresolved-FILES rule does not
+# apply). They are ``meta.*`` keys (construct-set RO, §0) — NO scope FILE may
+# override them (meta.* is not in the config-set settable known-key list).
+#
+# The keys (spec §2c/§2d):
+#   meta.box.name           | the box name (proj.name; primary/named=box name,
+#                             standalone=<random24>_%leaf% — already computed and
+#                             carried on proj.name, JC-B2-2: reuse, do not regen)
+#   meta.box.workspace      | the resolved in-box workspace SOURCE (str(proj.
+#                             project_path)) — routed to box.bindings.rw.workspace
+#   meta.box.inbox          | this box's own mailbox dir (str(addr.inbox)) —
+#                             routed to box.bindings.rw.inbox
+#   meta.box.share_global   | this box's system-scope share dir (str(addr.share_global))
+#   meta.box.share_workset  | this box's workset-local share dir (str | None standalone)
+#   meta.workset.name       | __PRIMARY__ | <named> | __STANDALONE__ (the partition token)
+#   meta.agent.<a>.name     | the plugin-set agent name (REQUIRED when an agent exists)
+#
+# meta.box.{settings,workspace(named),container_name,helper_num} per the spec are
+# either deeper @workset.*-chained values (settings) or non-bind RENDER targets
+# (container_name from name+helper_num); B2 materializes the IDENTITY leaves the
+# eligible BINDS reference + meta.workset.name + the agent name. The container_name
+# / helper_num RENDER and the home/vault binds stay on attrs / @workset.* (JC-B2-3
+# / JC-B2-4 — see the return docstring), a tracked follow-up.
+
+
+def meta_identity_floor(
+    *,
+    box_name: str,
+    project_path: str,
+    inbox: str,
+    share_global: str,
+    share_workset: str | None,
+    workset_name: str,
+    agent_name: str | None = None,
+    agent_real_name: str | None = None,
+) -> dict[str, object]:
+    """Build the construct-time ``meta.*`` IDENTITY-anchor floor keys (block B2).
+
+    Returns the ``{dotted_key: value}`` floor fragment for the spec's remaining
+    construct-time identity anchors (spec §2c/§2d; §0 meta-RO). The caller folds it
+    into ``build_launch_snapshot``'s floor so ``expand`` resolves the @meta.* binds
+    ONCE (single-route — NO second resolver), exactly like
+    :func:`meta_runtime_floor` / :func:`group_auth_chain_floor`.
+
+    Every value is the RESOLVED LITERAL the launch already computes (the box name
+    on ``proj.name``, the workspace source ``str(proj.project_path)``, the channel
+    partition addresses from :func:`kanibako.channels.box_channel_addresses`, the
+    plugin-set agent name) — so a bind re-pointed to ``@meta.box.workspace`` /
+    ``@meta.box.inbox`` expands to the byte-identical host_src the old proj-attr
+    injection produced (JC-B2-4 equivalence bar).
+
+    *share_workset* is ``None`` for STANDALONE (no workset-local channels, spec
+    §2c L469) → materialized as a whole-value ``None`` terminal (the key is PRESENT
+    with value ``None``, matching ``meta.runtime.ws_settings`` for standalone).
+
+    *agent_name* / *agent_real_name*: when an agent exists, ``meta.agent.<a>.name``
+    is the plugin-set agent name (spec §2d L514, REQUIRED). ``agent_name`` is the
+    cascade discriminator (``install.name``); ``agent_real_name`` is the value
+    (the plugin's ``meta.agent.<agent>.name`` — normally the same string). Both
+    ``None`` for a NO-AGENT box (skips the agent identity key).
+    """
+    floor: dict[str, object] = {
+        # Box identity (spec §2c). The box name is carried on ``proj.name``
+        # (JC-B2-2: reuse — standalone's <random24>_%leaf% is generated at
+        # creation and stored on proj.name; B2 does NOT regenerate it).
+        "meta.box.name": box_name,
+        # The in-box workspace SOURCE literal (routed to box.bindings.rw.workspace).
+        "meta.box.workspace": project_path,
+        # This box's own channel partition addresses (routed to box.bindings.rw.inbox;
+        # share_global / share_workset are materialized identity anchors for parity
+        # and future routing — share_workset is None for standalone).
+        "meta.box.inbox": inbox,
+        "meta.box.share_global": share_global,
+        "meta.box.share_workset": share_workset,
+        # The workset partition token (spec §2c — __PRIMARY__ | <named> |
+        # __STANDALONE__).
+        "meta.workset.name": workset_name,
+    }
+    # The agent identity key (spec §2d L514) — REQUIRED when an agent exists, under
+    # the agent's discriminated slot. A NO-AGENT box omits it.
+    if agent_name is not None:
+        floor[f"meta.agent.{agent_name}.name"] = (
+            agent_real_name if agent_real_name is not None else agent_name
+        )
+    return floor
+
+
 def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool:
     """Read ``effective_group_auth`` off the expanded snapshot (spec §2b L282).
 
@@ -371,6 +476,7 @@ def build_launch_snapshot(
     descriptor_bindings: "list[Binding] | None" = None,
     group_auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
+    meta_identity: Mapping[str, object] | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -401,6 +507,13 @@ def build_launch_snapshot(
     + the single-source re-root of ``meta.workset.path`` / ``meta.workset.settings``
     / ``meta.box.mode`` (spec §1A L230-241). Folded into the SAME floor so ``expand``
     resolves the @-ref chain ONCE (single-route). ``None`` for a narrow resolve.
+
+    *meta_identity* is the construct-time IDENTITY-anchor floor fragment (block B2)
+    built by :func:`meta_identity_floor` — the remaining ``meta.box.*`` /
+    ``meta.workset.name`` / ``meta.agent.<a>.name`` keys that the @meta.*-routed
+    core binds (workspace / inbox) reference (spec §2c/§2d). Folded into the SAME
+    floor so ``expand`` resolves the @meta.* binds ONCE (single-route). ``None`` for
+    a narrow resolve.
 
     Returns the expanded ``snapshot``.
     """
@@ -465,6 +578,16 @@ def build_launch_snapshot(
     # land unconditionally for the modes that supply them.
     if meta_runtime:
         for key, val in meta_runtime.items():
+            floor[key] = val
+
+    # meta.* IDENTITY-anchor materialization (block B2): the remaining construct-
+    # time identity keys (spec §2c/§2d) the @meta.*-routed binds reference, folded
+    # into the SAME floor so ``expand`` resolves the @meta.* binds ONCE (single-
+    # route). Built per box by :func:`meta_identity_floor`. Construct-set RO (§0) —
+    # NO scope FILE may override them (meta.* is not in the config-set settable
+    # known-key list); the floor is their sole source. ``None`` for a narrow resolve.
+    if meta_identity:
+        for key, val in meta_identity.items():
             floor[key] = val
 
     base_levels = assemble_levels(

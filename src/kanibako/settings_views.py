@@ -90,6 +90,7 @@ __all__ = [
     "MetaRuntimeView",
     "MetaBoxView",
     "MetaWorksetView",
+    "MetaAgentView",
 ]
 
 class ViewError(Exception):
@@ -468,29 +469,61 @@ class MetaRuntimeView(FiniteView):
 
 
 class MetaBoxView(FiniteView):
-    """Typed finite view over the ``meta.box`` NODE (block B1).
+    """Typed finite view over the ``meta.box`` NODE (block B1 + B2).
 
-    Exposes the RO identity-anchor ``mode`` (the resolved mode token surfaced
-    from ``@meta.runtime.project_type``, spec §2b L486 — was the settable
-    ``box.mode``). Read-only; wraps ``store.meta.box``. (Other ``meta.box.*``
-    fields — name / workspace / group_auth_available — are added as consumers
-    move onto ``@meta.*``; this ships only ``mode`` for B1.)
+    Exposes the RO identity anchors materialized for the box (spec §2c; §0 meta-RO):
+
+    * ``mode`` (B1) — the resolved mode token surfaced from
+      ``@meta.runtime.project_type`` (spec §2b L486 — was the settable ``box.mode``).
+    * ``name`` (B2) — the box name (``proj.name``; the @meta.box.* binds key off it).
+    * ``workspace`` (B2) — the resolved in-box workspace SOURCE
+      (= ``str(proj.project_path)``); ``box.bindings.rw.workspace`` routes through
+      ``@meta.box.workspace`` (spec §2c L476).
+    * ``inbox`` (B2) — this box's own mailbox dir (spec §2c L467);
+      ``box.bindings.rw.inbox`` routes through ``@meta.box.inbox`` (L475).
+    * ``share_global`` (B2) — this box's system-scope share dir (spec §2c L468).
+    * ``share_workset`` (B2) — this box's workset-local share dir, ``None`` for
+      STANDALONE (spec §2c L469).
+
+    Read-only; wraps ``store.meta.box``. (``group_auth_available`` is read off the
+    bare node by ``effective_group_auth``; ``container_name`` / ``helper_num`` are
+    a non-bind RENDER, not materialized here — JC-B2-3.)
     """
 
     mode: str = typed_field(as_str)  # type: ignore[assignment]
+    name: str = typed_field(as_str)  # type: ignore[assignment]
+    workspace: Path = typed_field(as_path)  # type: ignore[assignment]
+    inbox: Path = typed_field(as_path)  # type: ignore[assignment]
+    share_global: Path = typed_field(as_path)  # type: ignore[assignment]
+    share_workset: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
 
 
 class MetaWorksetView(FiniteView):
-    """Typed finite view over the ``meta.workset`` NODE (block B1, spec §1A/§2c).
+    """Typed finite view over the ``meta.workset`` NODE (block B1 + B2, spec §1A/§2c).
 
     Exposes the single-source-re-rooted ``path`` (= ``@meta.runtime.ws_root``, a
     resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_settings``, a
-    ``Path`` for primary/named, ``None`` for STANDALONE — spec §2c L415).
-    Read-only; wraps ``store.meta.workset``. ADDITIVE — no consumer reads it yet.
+    ``Path`` for primary/named, ``None`` for STANDALONE — spec §2c L415), plus the
+    construct-set ``name`` (B2 — the partition token ``__PRIMARY__`` / ``<named>`` /
+    ``__STANDALONE__``, spec §2c). Read-only; wraps ``store.meta.workset``.
     """
 
     path: Path = typed_field(as_path)  # type: ignore[assignment]
     settings: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
+    name: str = typed_field(as_str)  # type: ignore[assignment]
+
+
+class MetaAgentView(FiniteView):
+    """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2, spec §2d).
+
+    Exposes the plugin-set ``name`` (spec §2d L514 — REQUIRED when an agent
+    exists; identifies the store dir & cascade key). Read-only; wraps
+    ``store.meta.agent.<agent>``. (``path`` / ``settings`` — §2d L515-516 — are
+    deeper @config.agents/@meta.agent.*-chained values, materialized when their
+    consumers move onto @meta.*; B2 ships only ``name``.)
+    """
+
+    name: str = typed_field(as_str)  # type: ignore[assignment]
 
 
 # --------------------------------------------------------------------------- #
