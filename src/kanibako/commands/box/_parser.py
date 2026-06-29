@@ -496,6 +496,12 @@ def run_create(args: argparse.Namespace) -> int:
     if args.standalone:
         write_project_gitignore(proj.metadata_path)
 
+    # Seed the box home NOW, atomically with creation (keyspace spec §0/§5).
+    # The one-time home seed runs at `create`, not at first launch — registry
+    # MEMBERSHIP is the seed signal, so `start` never re-seeds an existing box.
+    from kanibako.commands.start import seed_new_box
+    seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
+
     mode = "standalone" if args.standalone else "default"
     print(f"Created {mode} project in {proj.project_path}")
     return 0

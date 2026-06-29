@@ -24,7 +24,6 @@ def test_fresh_tree_empty_sections(tmp_path: Path) -> None:
         "worksets": {},
         "connected": {},
         "standalone": {},
-        "seeded": {"projects": {}, "standalone": {}},
         "rigs": {},
         "image_shells": {},
     }
@@ -37,10 +36,6 @@ def test_sections_round_trip(tmp_path: Path) -> None:
         "worksets": {"ws": "/home/user/ws"},
         "connected": {"/abs/ext": {"workset": "ws", "project": "foo"}},
         "standalone": {"abc_box": "/abs/proj"},
-        "seeded": {
-            "projects": {"myapp": True},
-            "standalone": {"abc_box": True},
-        },
         "rigs": {"corp/base:1.0": {"kind": "prefab"}},
         "image_shells": {"sha256:abc": "/bin/bash"},
     }
@@ -155,74 +150,48 @@ def test_section_at_preserves_sibling_sections(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Seeded-flag helpers (the per-box seed-once primitives for primary + standalone)
+# No `seeded` section (B7): registry MEMBERSHIP is the seed signal — the
+# per-box `seeded` flag section and its helpers are GONE.
 # ---------------------------------------------------------------------------
 
 
-def test_seeded_default_false_both_domains(tmp_path: Path) -> None:
-    """An unrecorded box reads as unseeded for either domain."""
-    assert registry_store.is_box_seeded(tmp_path, "projects", "myapp") is False
-    assert registry_store.is_box_seeded(tmp_path, "standalone", "abc_box") is False
+def test_no_seeded_section_in_loaded_registry(tmp_path: Path) -> None:
+    """A fresh registry has NO ``seeded`` section (B7 clean break)."""
+    reg = registry_store.load_registry(tmp_path)
+    assert "seeded" not in reg
+    # The membership sections are present and empty.
+    assert reg["projects"] == {}
+    assert reg["standalone"] == {}
 
 
-def test_mark_box_seeded_persists_projects(tmp_path: Path) -> None:
-    """mark_box_seeded_entry sets True and survives a fresh load_registry."""
-    registry_store.mark_box_seeded_entry(tmp_path, "projects", "myapp")
-    assert registry_store.is_box_seeded(tmp_path, "projects", "myapp") is True
-    # Persisted: a brand-new load (no in-process state) still sees True.
-    assert (
-        registry_store.load_registry(tmp_path)["seeded"]["projects"]["myapp"]
-        is True
-    )
-    # A different name in the same domain is unaffected.
-    assert registry_store.is_box_seeded(tmp_path, "projects", "other") is False
+def test_seeded_helpers_removed(tmp_path: Path) -> None:
+    """The seeded-flag read/write primitives no longer exist on the module."""
+    assert not hasattr(registry_store, "is_box_seeded")
+    assert not hasattr(registry_store, "mark_box_seeded_entry")
 
 
-def test_mark_box_seeded_persists_standalone(tmp_path: Path) -> None:
-    registry_store.mark_box_seeded_entry(tmp_path, "standalone", "abc_box")
-    assert registry_store.is_box_seeded(tmp_path, "standalone", "abc_box") is True
-    # Marking standalone does NOT bleed into the projects domain.
-    assert registry_store.is_box_seeded(tmp_path, "projects", "abc_box") is False
+def test_legacy_seeded_section_is_dropped_not_round_tripped(tmp_path: Path) -> None:
+    """A legacy registry.yaml with a ``seeded`` section ignores + drops it.
 
-
-def test_mark_box_seeded_idempotent(tmp_path: Path) -> None:
-    registry_store.mark_box_seeded_entry(tmp_path, "projects", "myapp")
-    registry_store.mark_box_seeded_entry(tmp_path, "projects", "myapp")
-    assert registry_store.is_box_seeded(tmp_path, "projects", "myapp") is True
-
-
-def test_seeded_survives_unrelated_register_standalone(tmp_path: Path) -> None:
-    """A seeded flag is preserved across an unrelated registry mutation."""
-    registry_store.mark_box_seeded_entry(tmp_path, "projects", "myapp")
-    # An unrelated section write must not drop the seeded flag.
-    registry_store.register_standalone(tmp_path, "abc_box", Path("/proj"))
-    registry_store.save_section(tmp_path, "projects", {"myapp": "/p"})
-    assert registry_store.is_box_seeded(tmp_path, "projects", "myapp") is True
-    assert registry_store.load_standalone(tmp_path) == {"abc_box": "/proj"}
-
-
-def test_legacy_registry_without_seeded_key_loads_empty(tmp_path: Path) -> None:
-    """A registry.yaml predating the seeded section loads with empty subdicts."""
+    Clean break (pre-release, no read-compat): the section is neither read into
+    the loaded shape nor re-persisted on the next save.
+    """
     from kanibako.config_io import dump_doc
 
-    # Write a legacy file with NO 'seeded' key.
     dump_doc(
         registry_store.registry_path(tmp_path),
-        {"standalone": {"abc_box": "/p"}},
+        {
+            "standalone": {"abc_box": "/p"},
+            "seeded": {"projects": {"myapp": True}, "standalone": {"abc_box": True}},
+        },
     )
     reg = registry_store.load_registry(tmp_path)
-    assert reg["seeded"] == {"projects": {}, "standalone": {}}
-    assert registry_store.is_box_seeded(tmp_path, "standalone", "abc_box") is False
-    assert registry_store.is_box_seeded(tmp_path, "projects", "abc_box") is False
-
-
-def test_seeded_section_inner_keys_sorted_on_write(tmp_path: Path) -> None:
-    """Inner per-domain keys are written sorted for stable diffs."""
-    reg = registry_store.load_registry(tmp_path)
-    reg["seeded"]["projects"] = {"zed": True, "abe": True, "mid": True}
+    assert "seeded" not in reg
+    assert registry_store.load_standalone(tmp_path) == {"abc_box": "/p"}
+    # Round-trip a save: the seeded section does not reappear on disk.
     registry_store.save_registry(tmp_path, reg)
     raw = load_doc(registry_store.registry_path(tmp_path))
-    assert list(raw["seeded"]["projects"].keys()) == ["abe", "mid", "zed"]
+    assert "seeded" not in raw
 
 
 def test_atomic_write_no_partial_on_existing(tmp_path: Path) -> None:

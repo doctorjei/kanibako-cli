@@ -102,11 +102,17 @@ def is_reserved_workset_name(name: str) -> bool:
 
 @dataclass
 class WorksetProject:
-    """A project registered inside a workset."""
+    """A project registered inside a workset.
+
+    The unified per-project record (B7): identity + path ONLY.  There is no
+    ``seeded`` field — registry MEMBERSHIP (presence in this list) is itself the
+    seed signal (a box was seeded when ``create`` added it; ``connect`` adds the
+    record without seeding).  See the keyspace spec §0/§5 "Seed = at
+    registration" / "One per-project record".
+    """
 
     name: str
     source_path: Path   # original project path (for reference / cloning)
-    seeded: bool = False  # True once the box's one-time seed has completed
 
 
 @dataclass
@@ -181,7 +187,6 @@ def _write_workset_toml(ws: Workset) -> None:
             {
                 "name": proj.name,
                 "source_path": str(proj.source_path),
-                "seeded": proj.seeded,
             }
             for proj in ws.projects
         ],
@@ -215,7 +220,6 @@ def _load_workset_toml(root: Path) -> Workset:
             WorksetProject(
                 name=entry["name"],
                 source_path=Path(entry["source_path"]),
-                seeded=bool(entry.get("seeded", False)),
             )
         )
     return Workset(name=name, root=root, created=created, projects=projects, group_auth=group_auth)
@@ -676,23 +680,6 @@ def _drop_connected(std: StandardPaths, key: str) -> None:
 def _detach_project(ws: Workset, name: str) -> None:
     """Drop *name* from the in-memory project list (compensating action)."""
     ws.projects[:] = [p for p in ws.projects if p.name != name]
-
-
-def set_project_seeded(ws: Workset, name: str) -> bool:
-    """Mark the project *name* in *ws* as seeded and persist the change.
-
-    Sets ``WorksetProject.seeded`` True for the matching project and rewrites
-    the workset identity (preserving cascade settings).  Idempotent; a no-op
-    that returns False when *name* is not a project in *ws*, True otherwise.
-    This is the public persist entry point used by :mod:`kanibako.box_seed` so
-    callers do not reach for the module-private ``_write_workset_toml``.
-    """
-    for proj in ws.projects:
-        if proj.name == name:
-            proj.seeded = True
-            _write_workset_toml(ws)
-            return True
-    return False
 
 
 def remove_project(

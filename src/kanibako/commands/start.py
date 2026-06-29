@@ -39,31 +39,6 @@ from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from kanibako.paths import ProjectPaths, StandardPaths
-
-
-def _box_already_seeded(proj: ProjectPaths, std: StandardPaths) -> bool:
-    """True when *proj*'s box has already had its one-time home seed applied.
-
-    Two ORed signals decide this:
-
-    * the authoritative per-box ``seeded`` registry flag
-      (:func:`kanibako.box_seed.box_is_seeded`); and
-    * the backstop that the box's own mailbox (inbox) dir already exists
-      — that dir is created during launch AFTER the seed gate, so on a first
-      launch it is absent (→ seed) and on every later launch it is present
-      (→ skip).  The inbox backstop also covers LEGACY boxes created before
-      the registry flag existed.
-    """
-    from kanibako import box_seed, channels
-
-    if box_seed.box_is_seeded(proj, std):
-        return True
-    return channels.box_channel_addresses(proj, std).inbox.exists()
-
 
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
@@ -990,71 +965,25 @@ def _run_container(
             for action in hygiene_actions:
                 logger.info(action)
 
-        # Seed-once gate (BUG-D): seed the box home exactly once, on its FIRST
-        # start — whether the box was created by this very `start` or earlier by
-        # `box create`.  Detection ORs two signals (see `_box_already_seeded`):
-        # the authoritative per-box `seeded` registry flag, plus a backstop that
-        # the box's mailbox (inbox) already exists.  The inbox dir is created
-        # later in launch (after this gate), so it is absent on a first start
-        # (→ seed) and present on every later start (→ skip), and it also covers
-        # LEGACY boxes that predate the registry flag.  This replaces the brittle
-        # `.seeded` sentinel file (removed); the non-destructive create-if-absent
-        # template/seed application (S1) is the failsafe so a mis-detection can
-        # never clobber user edits.
-        from kanibako.box_seed import box_is_seeded, mark_box_seeded
-        flag_seeded = box_is_seeded(proj, std)
-        already_seeded = _box_already_seeded(proj, std)
-        seed_box = not already_seeded
-        # ADOPT-ON-DETECT: a legacy box detected seeded only via its existing
-        # inbox (flag still False) gets the authoritative flag stamped once, so
-        # future detection uses the flag.  Cheap + idempotent; never fatal.
-        if not flag_seeded and already_seeded:
-            try:
-                mark_box_seeded(proj, std)
-            except Exception:  # pragma: no cover - adopt is best-effort
-                logger.debug("adopt-on-detect: could not stamp seeded flag", exc_info=True)
-
-        # Template application + agent init for new projects.
-        if seed_box:
-            # Layered seed-once: stage the ordered template layers
-            # (base -> agent -> workset; later overlays earlier, per-file
-            # last-wins resolved in a temp staging dir) then seed the merged
-            # tree into the box home ONCE at creation with create-if-absent.
-            # The base layer is always present; the agent layer applies iff an
-            # agent target is bound; the workset layer is None for STANDALONE
-            # boxes (skipped).  Absent layers are skipped by template_layer_specs.
-            from kanibako.templates import (
-                stage_and_seed_templates,
-                template_layer_specs,
+        # Seed at CREATE, never at launch (keyspace spec §0/§5).  The one-time
+        # home seed runs ATOMICALLY with box registration: registry MEMBERSHIP is
+        # the seed signal, so a box that already exists was already seeded and
+        # this launch must NOT re-seed it (user edits survive).  ``proj.is_new``
+        # is True exactly when THIS resolve_box_target call materialized +
+        # registered the box (all three modes set it on first creation), so a
+        # box auto-created by `start` is seeded here, while every subsequent
+        # launch of an existing box (is_new False) skips the seed entirely.
+        # (`box create` seeds via the same helper from run_create.)  Seed
+        # application is create-if-absent, so even a re-create into a leftover
+        # dir never clobbers content.
+        if proj.is_new:
+            _seed_box_home(
+                std=std, proj=proj, target=target, desc=desc,
+                agent_id=agent_id, agent_cfg_path=agent_cfg_path,
+                system_settings_path=system_settings_path,
+                project_toml=project_toml, workset_path=workset_path,
+                effective_group_auth=effective_group_auth, logger=logger,
             )
-            stage_and_seed_templates(
-                proj.shell_path, template_layer_specs(target, proj, std)
-            )
-        # Descriptor-bearing targets seed creds via the credsync engine.  A
-        # descriptor-less target (only no_agent) has nothing to seed at init —
-        # its dirs come from the layered template apply above — so there is no
-        # else branch (the vestigial init_home hook was removed in 1.6.0).
-        if seed_box and target and desc is not None:
-            credsync.seed_cred_files(
-                desc, target, host_home=Path.home(),
-                project_home=proj.shell_path, group_auth=effective_group_auth,
-            )
-
-        # Copy-once-at-init seeds (additive; overlays templates). target may be
-        # None (no agent) — seeds can still come from config levels.
-        if seed_box:
-            _apply_init_seeds(
-                std=std, proj=proj, agent_name=agent_id, target=target,
-                global_config_path=system_settings_path, project_toml=project_toml,
-                workset_config_path=workset_path, agent_config_path=agent_cfg_path,
-                logger=logger, group_auth=effective_group_auth,
-            )
-
-        # Record seed-once completion via the authoritative per-box registry
-        # flag so subsequent launches skip the blocks above (idempotent; only the
-        # first start writes meaningful content).
-        if seed_box:
-            mark_box_seeded(proj, std)
 
         # Synced copies (the `<scope>.synced.<name>` category) — applied on
         # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
@@ -2615,6 +2544,126 @@ def _emit_category_mounts(reconciled, *, label: str) -> list:
             Mount(source=src, destination=e.box_dest, options=e.options)
         )
     return mounts
+
+
+def _seed_box_home(
+    *,
+    std,
+    proj,
+    target,
+    desc,
+    agent_id: str,
+    agent_cfg_path,
+    system_settings_path,
+    project_toml,
+    workset_path,
+    effective_group_auth: bool,
+    logger,
+) -> None:
+    """Apply the one-time home seed for a freshly-created box (seed-at-create).
+
+    The SINGLE seed implementation, shared by `box create` (`run_create`) and the
+    `start` auto-create path.  Runs ATOMICALLY-after registration (the caller
+    gates on the just-registered signal, ``proj.is_new``); it is NEVER run on a
+    relaunch of an existing box.  Three ordered, create-if-absent steps (so a
+    re-create into a leftover dir never clobbers user content):
+
+    1. layered ``seeded.template`` copy (base -> agent -> workset; later overlays
+       earlier, per-file last-wins in a temp staging dir).  The base layer is
+       always present; the agent layer applies iff an agent target is bound; the
+       workset layer is ``<None>`` for STANDALONE (skipped).  Absent layers are
+       skipped by ``template_layer_specs``.
+    2. the descriptor's one-time credential seed (descriptor-bearing targets
+       only; a descriptor-less / no-agent target has nothing to seed here).
+    3. the configured copy-once-at-init ``seeded`` category winners.
+
+    The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
+    per-launch mechanisms and are NOT part of this one-time seed.
+    """
+    from kanibako.templates import stage_and_seed_templates, template_layer_specs
+
+    stage_and_seed_templates(
+        proj.shell_path, template_layer_specs(target, proj, std)
+    )
+    if target and desc is not None:
+        credsync.seed_cred_files(
+            desc, target, host_home=Path.home(),
+            project_home=proj.shell_path, group_auth=effective_group_auth,
+        )
+    _apply_init_seeds(
+        std=std, proj=proj, agent_name=agent_id, target=target,
+        global_config_path=system_settings_path, project_toml=project_toml,
+        workset_config_path=workset_path, agent_config_path=agent_cfg_path,
+        logger=logger, group_auth=effective_group_auth,
+    )
+
+
+def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> None:
+    """Seed a freshly-created box's home at CREATE time (`box create` entry).
+
+    The keyspace spec seeds the box home ONCE, atomically with registration, at
+    `create` — not at first launch.  `run_create` (and any other create path)
+    calls this right after the resolver returns ``proj.is_new`` True.  It builds
+    the minimal-sufficient seed context — the agent-resolution chain the seed
+    needs (active agent → target/descriptor, the agent config path, and the
+    effective group-auth gate) — WITHOUT the launch-only image pull/build, then
+    delegates to the shared :func:`_seed_box_home`.
+
+    A no-op-safe entry: a no-agent box (no resolvable target) still seeds its
+    base/workset template layers (the agent layer + cred seed are skipped).
+    """
+    logger = get_logger("start")
+    system_settings_path = std.settings
+    project_toml = proj.metadata_path / BOX_META_FILE
+    workset_path = (
+        (proj.group.root / "settings.yaml") if proj.group is not None else None
+    )
+    merged = load_merged_config(
+        config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
+        project_toml,
+        workset_path=workset_path,
+    )
+
+    # Resolve the active agent → target/descriptor (config/settings only; no
+    # image work).  A box with no resolvable agent seeds template-only.
+    target = None
+    desc = None
+    try:
+        from kanibako.config import resolve_agent
+        agent_name = resolve_agent(
+            explicit_agent=explicit_agent,
+            box_agent_name=merged.box_agent_name,
+            workset_agent=None,
+            system_default_path=system_settings_path,
+            project_path=proj.project_path,
+        )
+        target = resolve_target(agent_name, proj.project_path)
+    except Exception:  # pragma: no cover - no-agent / unresolved → template-only
+        logger.debug("seed_new_box: no agent resolved; template-only seed", exc_info=True)
+        target = None
+
+    agent_id = target.name if target else "general"
+    agent_cfg_path = agent_settings_path(std.agents, agent_id)
+    if target and not agent_cfg_path.exists():
+        # First-use: generate the default agent config so the seed reconcile
+        # reads a real agent-config file (mirrors the launch path).
+        write_agent_config(agent_cfg_path, target.generate_agent_config())
+    if target is not None:
+        desc = target.descriptor
+
+    effective_group_auth = _resolve_effective_group_auth(
+        std=std, proj=proj, agent_name=agent_id,
+        system_settings_path=system_settings_path, project_toml=project_toml,
+        workset_path=workset_path, agent_cfg_path=agent_cfg_path,
+    )
+
+    _seed_box_home(
+        std=std, proj=proj, target=target, desc=desc,
+        agent_id=agent_id, agent_cfg_path=agent_cfg_path,
+        system_settings_path=system_settings_path,
+        project_toml=project_toml, workset_path=workset_path,
+        effective_group_auth=effective_group_auth, logger=logger,
+    )
 
 
 def _apply_init_seeds(

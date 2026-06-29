@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 import pytest
 
@@ -389,75 +390,71 @@ class TestAddProjectConnectGuard:
         assert len(ws.projects) == 1
 
 
-class TestProjectSeededFlag:
-    """WorksetProject.seeded round-trips and persists via set_project_seeded."""
+class TestUnifiedProjectRecord:
+    """The unified per-project record (B7): identity + path ONLY, no `seeded`.
 
-    def test_default_false(self, std, tmp_home):
+    Registry MEMBERSHIP is the seed signal — the per-project `seeded` field and
+    `set_project_seeded` are GONE (keyspace spec §0/§5).
+    """
+
+    def test_record_has_no_seeded_field(self, std, tmp_home):
+        from kanibako.workset import WorksetProject
+
+        assert not hasattr(WorksetProject("p", Path("/p")), "seeded")
+
+    def test_set_project_seeded_removed(self):
+        import kanibako.workset as ws_mod
+
+        assert not hasattr(ws_mod, "set_project_seeded")
+
+    def test_record_round_trips_name_and_path(self, std, tmp_home):
+        """A project record persists name + source_path with no extra state."""
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
-        add_project(ws, "proj", tmp_home / "project")
+        src = tmp_home / "project"
+        add_project(ws, "proj", src)
 
         loaded = load_workset(root)
-        assert loaded.projects[0].seeded is False
+        assert len(loaded.projects) == 1
+        rec = loaded.projects[0]
+        assert rec.name == "proj"
+        assert rec.source_path == src
 
-    def test_set_project_seeded_persists(self, std, tmp_home):
-        from kanibako.workset import set_project_seeded
-
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
-        add_project(ws, "proj", tmp_home / "project")
-
-        assert set_project_seeded(ws, "proj") is True
-        # In-memory updated, and a fresh load sees True.
-        assert ws.projects[0].seeded is True
-        assert load_workset(root).projects[0].seeded is True
-
-    def test_set_project_seeded_unknown_is_noop(self, std, tmp_home):
-        from kanibako.workset import set_project_seeded
+    def test_persisted_entry_carries_only_identity_and_path(self, std, tmp_home):
+        """The on-disk project entry has exactly {name, source_path}; no seeded."""
+        from kanibako.config_io import load_doc
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
-        assert set_project_seeded(ws, "nope") is False
-        assert load_workset(root).projects[0].seeded is False
+        data = load_doc(ws.toml_path)
+        entries = data["workset"]["meta"]["projects"]
+        assert entries == [
+            {"name": "proj", "source_path": str(tmp_home / "project")}
+        ]
 
-    def test_seeded_survives_unrelated_add_project(self, std, tmp_home):
-        """Marking one project seeded survives a later add_project re-write."""
-        from kanibako.workset import set_project_seeded
-
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
-        proj_a = tmp_home / "proj_a"
-        proj_b = tmp_home / "proj_b"
-        proj_a.mkdir()
-        proj_b.mkdir()
-        add_project(ws, "alpha", proj_a)
-        set_project_seeded(ws, "alpha")
-
-        # Adding a SECOND project re-writes the meta; alpha's flag must persist.
-        add_project(ws, "beta", proj_b)
-
-        loaded = load_workset(root)
-        by_name = {p.name: p.seeded for p in loaded.projects}
-        assert by_name == {"alpha": True, "beta": False}
-
-    def test_legacy_entry_without_seeded_loads_false(self, std, tmp_home):
-        """A workset.meta project entry lacking 'seeded' loads as False."""
+    def test_legacy_entry_with_seeded_loads_and_drops_it(self, std, tmp_home):
+        """A legacy on-disk entry carrying `seeded` loads (ignored) + drops it."""
         from kanibako.config_io import dump_doc, load_doc
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
-        # Strip the 'seeded' key from the on-disk entry (legacy shape).
+        # Inject a legacy 'seeded' key onto the on-disk entry.
         data = load_doc(ws.toml_path)
         for entry in data["workset"]["meta"]["projects"]:
-            entry.pop("seeded", None)
+            entry["seeded"] = True
         dump_doc(ws.toml_path, data)
 
+        # Loads fine (seeded ignored); a re-write drops the legacy key.
         loaded = load_workset(root)
-        assert loaded.projects[0].seeded is False
+        assert not hasattr(loaded.projects[0], "seeded")
+        add_project(loaded, "proj2", tmp_home / "project2")
+        rewritten = load_doc(loaded.toml_path)
+        for entry in rewritten["workset"]["meta"]["projects"]:
+            assert "seeded" not in entry
 
 
 class TestRemoveProject:
