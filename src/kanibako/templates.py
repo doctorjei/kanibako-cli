@@ -107,14 +107,14 @@ def stage_and_seed_templates(home: Path, layers: list[Path]) -> None:
        layer's file at the same relative path wins (per-file last-wins).
 
     2. **Seed.** Copy the merged staged tree into *home* with
-       :func:`_copy_resource_tree_if_absent` — a pre-existing home file (a
-       user-edited file on a box detection mis-flags as un-seeded) survives
+       :func:`_copy_resource_tree_if_absent` — a pre-existing home file survives
        untouched.  This is the load-bearing failsafe against re-seed DATA LOSS.
 
-    SEED-ONCE: the caller invokes this only when the box still needs seeding (the
-    launch gate detects an already-seeded box via the per-box registry flag OR the
-    existing-inbox backstop).  No file is special-cased or merged — every file is a
-    plain ordered copy (the CLAUDE.md merge special-case is gone, D-B5).
+    SEED-ONCE: the caller invokes this only at box CREATE (atomic with
+    registration; ``proj.is_new``), never on a relaunch — registry MEMBERSHIP is
+    the seed signal (keyspace spec §0/§5).  No file is special-cased or merged —
+    every file is a plain ordered copy (the CLAUDE.md merge special-case is gone,
+    D-B5).
     """
     if not layers:
         return

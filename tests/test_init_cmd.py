@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from kanibako.cli import _SUBCOMMANDS, build_parser
 from kanibako.commands.box._parser import run_create
@@ -66,6 +67,29 @@ class TestRunCreate:
         assert (resolved / "box_data" / "home").is_dir()
         assert (resolved / "vault" / "ro").is_dir()
         assert (resolved / "vault" / "rw").is_dir()
+
+    def test_create_seeds_at_create_before_any_launch(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """B7: `box create` seeds the home ATOMICALLY at creation (not launch).
+
+        `run_create` must invoke the one-time seed for the freshly-registered box
+        (``proj.is_new``) — so the home is populated BEFORE the box is ever
+        started.  Asserts the create command routes through ``seed_new_box`` with
+        the just-created box.
+        """
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        with patch(
+            "kanibako.commands.start.seed_new_box"
+        ) as m_seed:
+            rc = run_create(args)
+        assert rc == 0
+        m_seed.assert_called_once()
+        # The seeded subject is the box that was just created (is_new).
+        seeded_proj = m_seed.call_args.args[2]
+        assert seeded_proj.is_new is True
+        assert seeded_proj.mode.value == "standalone"
 
     def test_create_standalone_cwd(
         self, config_file, credentials_dir, project_dir, monkeypatch, capsys,

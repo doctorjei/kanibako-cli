@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako import box_seed, channels
 from kanibako.commands.start import (
     _apply_tweakcc,
-    _box_already_seeded,
     _run_container,
     run_start,
 )
-from kanibako.paths import BoxMode, ProjectGroup, ProjectPaths
+from kanibako.paths import BoxMode
 
 
 class TestTargetWarnings:
@@ -823,16 +820,10 @@ class TestCredsyncRouting:
         init_home hook is NOT called."""
         with start_mocks() as m:
             self._drive_descriptor(m)
+            # Seed-at-create path: a brand-new (just-registered) box seeds now.
             m.proj.is_new = True
             m.proj.group_auth = True
-            # First-start seed path: the gate detects an UN-seeded box.
-            with (
-                patch("kanibako.commands.start.credsync") as m_credsync,
-                patch(
-                    "kanibako.commands.start._box_already_seeded",
-                    return_value=False,
-                ),
-            ):
+            with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -911,16 +902,10 @@ class TestCredsyncRouting:
         (credsync.refresh/writeback never reached)."""
         with start_mocks() as m:
             self._drive_descriptor(m)
+            # Seed-at-create path: a brand-new (just-registered) box seeds now.
             m.proj.is_new = True
             m.proj.group_auth = False
-            # First-start seed path: the gate detects an UN-seeded box.
-            with (
-                patch("kanibako.commands.start.credsync") as m_credsync,
-                patch(
-                    "kanibako.commands.start._box_already_seeded",
-                    return_value=False,
-                ),
-            ):
+            with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -2902,97 +2887,96 @@ class TestWritebackAllPaths:
 
 
 # ---------------------------------------------------------------------------
-# Seed-once detection (BUG-D seed-once redesign, Step 3).
+# Seed at CREATE, never at launch (B7).
 #
-# `start()`'s seed gate delegates detection to `_box_already_seeded`, which ORs
-# the authoritative per-box `seeded` registry flag with an existing-inbox
-# backstop (the latter covers LEGACY boxes that predate the flag).  These tests
-# exercise that helper directly — it IS the real gate logic — across the three
-# cases the gate must distinguish, plus the gate's adopt-on-detect stamping.
+# The one-time home seed runs ONLY when `proj.is_new` (the box was just
+# materialized + registered by this resolve call — registry MEMBERSHIP is the
+# seed signal).  `start` on an existing box (is_new False) NEVER seeds.
 # ---------------------------------------------------------------------------
 
 
-def _seed_proj(mode: BoxMode, name: str, group: ProjectGroup | None) -> ProjectPaths:
-    """Minimal ProjectPaths carrying the fields detection/channels need."""
-    dummy = Path("/nonexistent")
-    return ProjectPaths(
-        project_path=dummy,
-        project_hash="0" * 16,
-        metadata_path=dummy,
-        shell_path=dummy,
-        vault_ro_path=dummy,
-        vault_rw_path=dummy,
-        mode=mode,
-        name=name,
-        group=group,
-    )
+class TestLaunchSeedGate:
+    """`_run_container` seeds iff ``proj.is_new``; a relaunch never re-seeds."""
+
+    def test_existing_box_launch_does_not_seed(self, start_mocks):
+        """A relaunch (proj.is_new False — the fixture default) does NOT seed."""
+        with start_mocks() as m:
+            assert m.proj.is_new is False
+            with patch("kanibako.commands.start._seed_box_home") as m_seed:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m_seed.assert_not_called()
+
+    def test_new_box_launch_seeds_once(self, start_mocks):
+        """A box auto-created by `start` (is_new True) seeds exactly once."""
+        with start_mocks() as m:
+            m.proj.is_new = True
+            with patch("kanibako.commands.start._seed_box_home") as m_seed:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m_seed.assert_called_once()
+
+    def test_relaunch_still_refreshes_credentials(self, start_mocks):
+        """The per-launch credsync REFRESH is SEPARATE — it still runs on a
+        relaunch even though the one-time seed does not."""
+        with start_mocks() as m:
+            from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+            m.target.name = "claude"
+            m.target.descriptor = _CLAUDE_DESCRIPTOR
+            m.target.setting_descriptors.return_value = []
+            m.proj.is_new = False
+            m.proj.group_auth = True
+            with patch("kanibako.commands.start.credsync") as m_credsync:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            # No one-time seed on a relaunch...
+            m_credsync.seed_cred_files.assert_not_called()
+            # ...but the per-launch refresh still happens.
+            m_credsync.refresh_cred_files.assert_called_once()
 
 
-def _seed_primary_group(std) -> ProjectGroup:
-    return ProjectGroup(
-        name="default",
-        root=std.data_path,
-        is_default=True,
-        local_shared_base=std.data_path,
-    )
+class TestSeedNewBoxCreateEntry:
+    """`seed_new_box` (the `box create` entry) delegates to `_seed_box_home`.
 
+    The context-building internals (merged config / agent resolve / group-auth)
+    are patched out — this asserts the create entry routes to the single shared
+    seed implementation with the box it was given.
+    """
 
-class TestBoxAlreadySeededDetection:
-    """`_box_already_seeded` ORs the registry flag with the existing-inbox backstop."""
+    def test_delegates_to_seed_box_home(self):
+        from kanibako.commands.start import seed_new_box
 
-    def test_brand_new_box_is_not_seeded(self, std, tmp_home):
-        """No flag + no inbox dir → detection False (the box WOULD be seeded)."""
-        proj = _seed_proj(BoxMode.primary, "freshbox", _seed_primary_group(std))
-
-        # Sanity: neither signal is present.
-        assert box_seed.box_is_seeded(proj, std) is False
-        assert channels.box_channel_addresses(proj, std).inbox.exists() is False
-
-        assert _box_already_seeded(proj, std) is False
-
-        # Simulate seed completion (what the gate does after seeding).
-        box_seed.mark_box_seeded(proj, std)
-        assert box_seed.box_is_seeded(proj, std) is True
-
-    def test_seeded_via_flag(self, std, tmp_home):
-        """Registry flag set + inbox absent → detection True (seed SKIPPED)."""
-        proj = _seed_proj(BoxMode.primary, "flagbox", _seed_primary_group(std))
-        box_seed.mark_box_seeded(proj, std)
-
-        assert channels.box_channel_addresses(proj, std).inbox.exists() is False
-        assert _box_already_seeded(proj, std) is True
-
-    def test_legacy_box_detected_via_inbox(self, std, tmp_home):
-        """Flag False but the box's inbox dir exists → detection True (LEGACY box).
-
-        `_box_already_seeded` itself does NOT adopt-on-detect (stamp the flag);
-        that step lives in the `start()` gate body (see `test_adopt_on_detect`).
-        """
-        proj = _seed_proj(BoxMode.primary, "legacybox", _seed_primary_group(std))
-        inbox = channels.box_channel_addresses(proj, std).inbox
-        inbox.mkdir(parents=True)
-
-        assert box_seed.box_is_seeded(proj, std) is False
-        assert _box_already_seeded(proj, std) is True
-
-    def test_adopt_on_detect_stamps_flag(self, std, tmp_home):
-        """The gate's adopt step: flag False + inbox exists → stamping makes it True.
-
-        This mirrors the `start()` gate body's adopt-on-detect (flag not set, but
-        detected seeded via the inbox backstop): `mark_box_seeded` is called once
-        so future detection uses the authoritative flag.
-        """
-        proj = _seed_proj(BoxMode.primary, "adoptbox", _seed_primary_group(std))
-        inbox = channels.box_channel_addresses(proj, std).inbox
-        inbox.mkdir(parents=True)
-
-        flag_seeded = box_seed.box_is_seeded(proj, std)
-        already_seeded = _box_already_seeded(proj, std)
-        assert flag_seeded is False
-        assert already_seeded is True
-
-        # The gate stamps the flag when detected-but-not-via-flag.
-        if not flag_seeded and already_seeded:
-            box_seed.mark_box_seeded(proj, std)
-
-        assert box_seed.box_is_seeded(proj, std) is True
+        std = MagicMock()
+        config = MagicMock()
+        proj = MagicMock()
+        proj.group = None
+        with (
+            patch("kanibako.commands.start.load_merged_config"),
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.commands.start.resolve_target") as m_rt,
+            patch("kanibako.commands.start.agent_settings_path"),
+            patch("kanibako.commands.start.write_agent_config"),
+            patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=True,
+            ),
+            patch("kanibako.commands.start._seed_box_home") as m_seed,
+        ):
+            m_rt.return_value.name = "claude"
+            seed_new_box(std, config, proj)
+        m_seed.assert_called_once()
+        kwargs = m_seed.call_args.kwargs
+        assert kwargs["proj"] is proj
+        assert kwargs["std"] is std

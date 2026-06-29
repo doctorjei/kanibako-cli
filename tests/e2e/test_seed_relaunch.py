@@ -1,17 +1,27 @@
-"""E2E regression tests for the seed-once gate through the REAL launch path.
+"""E2E regression tests for the seed-at-create model through the REAL paths.
 
-These are the tests that would have caught the ``1.6.0.dev30`` data-loss
+These are the tests that guard against the ``1.6.0.dev30`` data-loss
 regression: a build that was unit-green yet, on a live box launch, RE-SEEDED a
 box's already-populated home and CLOBBERED the user's ``~/playbook`` (and the
 other template files) by overwriting them on every relaunch.
 
-Unit tests cannot catch that class of bug because the clobber only manifests
-through the FULL ``kanibako start`` pipeline: detection (``_box_already_seeded``
-ORing the per-box ``seeded`` registry flag with the inbox backstop) →
-``_apply_init_seeds`` (the ``seeded`` category, create-if-absent) → the real
-reconcile model → real inbox/mailbox creation timing.  Every test here drives
-the real CLI as a subprocess against real podman and inspects the box's
-host-side home + registry afterwards, so none of that path is stubbed.
+Under the NEW seed model (B7), seeding is bound to ``kanibako create``, not to
+``kanibako start``:
+
+* ``kanibako create`` SEEDS the box home ATOMICALLY at creation (before/with
+  registration).  Registry MEMBERSHIP is therefore the seed signal — there is
+  no per-box ``seeded`` flag and no lazy first-launch seeding.
+* ``kanibako start`` NEVER seeds.  A relaunch can never re-seed, so any user
+  edits to the seeded files survive every launch.  The seed step itself is
+  create-if-absent, so the failsafe is now "seed-at-create + launch-never-seeds"
+  rather than the old "seeded-flag ORed with an inbox backstop".
+
+Unit tests cannot fully catch the clobber class of bug because it only
+manifests through the FULL pipeline: ``create`` (the ``seeded`` category,
+create-if-absent) → registration → the real reconcile model → ``start``
+(which must touch none of the seeded content).  Every test here drives the
+real CLI as a subprocess against real podman and inspects the box's host-side
+home afterwards, so none of that path is stubbed.
 
 Run on the real-runtime (LXC/VM) marked set, e.g.::
 
@@ -48,7 +58,7 @@ pytestmark = [pytest.mark.e2e, *e2e_requires]
 # ``/home/agent/playbook``; on the host it lands under ``<shell_path>/playbook``.
 SEED_GUEST_DEST = "~/playbook"
 SEED_FILENAME = "devnotes.md"
-PRISTINE_SEED_CONTENT = "# devnotes (pristine seed)\nseeded on first launch\n"
+PRISTINE_SEED_CONTENT = "# devnotes (pristine seed)\nseeded at create\n"
 EDITED_CONTENT = "# devnotes (EDITED IN BOX)\nirreplaceable session notes — DO NOT CLOBBER\n"
 
 
@@ -56,10 +66,12 @@ EDITED_CONTENT = "# devnotes (EDITED IN BOX)\nirreplaceable session notes — DO
 # In-process inspection helpers
 #
 # The CLI runs as a subprocess with an isolated env *dict*; to inspect the
-# box's host-side home + the per-box ``seeded`` registry flag from the test
-# process we temporarily install that same env into ``os.environ`` and drive
-# the REAL path/seed/channel code (no hand-rolled path math, so the test stays
-# faithful to what launch actually computes).
+# box's host-side home from the test process we temporarily install that same
+# env into ``os.environ`` and drive the REAL path/seed/channel code (no
+# hand-rolled path math, so the test stays faithful to what create/launch
+# actually computes).  Under the new model the "is this box seeded?" signal is
+# CONTENT-BASED: the seeded ``~/playbook/<SEED_FILENAME>`` file is present iff
+# the box home was seeded (which happens at create, never at launch).
 # ---------------------------------------------------------------------------
 
 
@@ -90,10 +102,9 @@ def _active_env(env: dict[str, str]) -> Iterator[None]:
 def _resolve_proj(env: dict[str, str], project: Path):
     """Build the REAL (std, proj) pair for *project* under the subprocess env.
 
-    ``kanibako create <path> --name <n>`` produces a PRIMARY-mode box; its
-    seeded flag lives in the registry ``projects`` domain and its home is
-    ``proj.shell_path``.  We resolve via the same functions the launch path
-    uses so the inspected paths match what ``start`` actually wrote.
+    ``kanibako create <path> --name <n>`` produces a PRIMARY-mode box whose
+    home is ``proj.shell_path``.  We resolve via the same functions the
+    create/launch paths use so the inspected paths match what the CLI wrote.
     """
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import load_std_paths, resolve_project
@@ -119,28 +130,20 @@ def _seed_file(env: dict[str, str], project: Path) -> Path:
     return _shell_path(env, project) / "playbook" / SEED_FILENAME
 
 
-def _inbox_path(env: dict[str, str], project: Path) -> Path:
-    """Host path of the box's own mailbox (inbox) dir — the seed backstop."""
-    from kanibako import channels
+def _home_is_seeded(env: dict[str, str], project: Path) -> bool:
+    """Content-based seed signal: is the seeded home file present on disk?
 
-    std, proj = _resolve_proj(env, project)
-    with _active_env(env):
-        return channels.box_channel_addresses(proj, std).inbox
-
-
-def _is_seeded_flag(env: dict[str, str], project: Path) -> bool:
-    """Read the authoritative per-box ``seeded`` registry flag (no launch)."""
-    from kanibako import box_seed
-
-    std, proj = _resolve_proj(env, project)
-    with _active_env(env):
-        return box_seed.box_is_seeded(proj, std)
+    There is no per-box ``seeded`` flag under the new model — the box home is
+    seeded iff its ``~/playbook/<SEED_FILENAME>`` file exists (written at
+    create, never at launch).
+    """
+    return _seed_file(env, project).exists()
 
 
 def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     """Configure ``system.seeded.playbook`` in the system settings file.
 
-    The launch path reads ``seeded`` category keys from ``@system.settings`` ==
+    The create path reads ``seeded`` category keys from ``@system.settings`` ==
     ``{XDG_DATA_HOME}/kanibako/global/settings.yaml`` (see
     ``_category_resolution_inputs``).  We point a ``~/playbook``-style seed at
     *host_seed_dir*, mirroring the user's real ``agent.seeded.playbook`` entry
@@ -195,14 +198,44 @@ def _stop(env: dict[str, str], name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class TestSeedRelaunchClobber:
-    """The dev30 regression: a relaunch must NOT clobber an edited seed."""
+class TestSeedAtCreate:
+    """The B7 seed model: seed-at-create, membership-is-the-signal, and a
+    relaunch must NEVER (re-)seed or clobber box home content."""
+
+    def test_create_seeds_home(self, e2e_env):
+        """``create`` (NO start yet) seeds the home with the pristine content.
+
+        Headline new behavior: seeding is bound to creation, so the seeded
+        file exists immediately after ``kanibako create``, before any launch.
+        """
+        env = e2e_env["env"]
+        project = e2e_env["project"]
+        name = "e2e-seed-create"
+
+        host_seed = _make_host_seed(e2e_env["tmp_path"])
+        _write_seed_config(env, host_seed)
+
+        # Before create: nothing on disk.
+        assert not _home_is_seeded(env, project)
+
+        result = run_kanibako(
+            ["create", str(project), "--name", name], env=env
+        )
+        assert result.returncode == 0, f"create failed: {result.stderr}"
+
+        # Seed happened AT CREATE — before any launch.
+        seed_file = _seed_file(env, project)
+        assert _home_is_seeded(env, project), (
+            "create must seed ~/playbook atomically (no launch required)"
+        )
+        assert seed_file.read_text() == PRISTINE_SEED_CONTENT
 
     def test_edited_seed_survives_relaunch(self, e2e_env):
-        """seed → edit-in-box → relaunch → edited content SURVIVES (no clobber).
+        """create (seeds) → edit-in-box → launch → relaunch → edits SURVIVE.
 
-        This is the exact data-loss scenario dev30 shipped: the seed-once gate
-        re-seeds on a later launch and overwrites the box's own home content.
+        This is the exact data-loss scenario dev30 shipped, now guarded by the
+        seed model: launch never seeds, so an edited seed file is never
+        clobbered across any number of relaunches.
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
@@ -217,33 +250,30 @@ class TestSeedRelaunchClobber:
         )
         assert result.returncode == 0, f"create failed: {result.stderr}"
 
-        # Fresh box: not yet seeded, no home seed file on disk.
-        assert _is_seeded_flag(env, project) is False
-        assert not _seed_file(env, project).exists()
-
-        # FIRST launch — seeds the home via the real _apply_init_seeds path.
-        run_kanibako(
-            ["start", name, "-e", "CLAUDE_STUB_MODE=long-running"], env=env
-        )
-        wait_for_container(container, timeout=15)
-
+        # Create seeded the home with pristine content.
         seed_file = _seed_file(env, project)
-        assert seed_file.exists(), "first launch must seed ~/playbook"
+        assert _home_is_seeded(env, project), "create must seed ~/playbook"
         assert seed_file.read_text() == PRISTINE_SEED_CONTENT
-        assert _is_seeded_flag(env, project) is True, (
-            "first launch must stamp the per-box seeded flag"
-        )
 
         # Edit the seeded file in the box home (distinctive content).
         seed_file.write_text(EDITED_CONTENT)
-        _stop(env, name)
 
-        # RELAUNCH — must skip seeding (already-seeded) and NOT clobber.
+        # FIRST launch — must NOT seed (membership is the signal) → no clobber.
         run_kanibako(
             ["start", name, "-e", "CLAUDE_STUB_MODE=long-running"], env=env
         )
         wait_for_container(container, timeout=15)
+        assert seed_file.exists(), "edited seed file vanished after launch"
+        assert seed_file.read_text() == EDITED_CONTENT, (
+            "LAUNCH re-seeded and clobbered the edited ~/playbook file"
+        )
+        _stop(env, name)
 
+        # RELAUNCH — must still NOT seed and NOT clobber.
+        run_kanibako(
+            ["start", name, "-e", "CLAUDE_STUB_MODE=long-running"], env=env
+        )
+        wait_for_container(container, timeout=15)
         assert seed_file.exists(), "edited seed file vanished after relaunch"
         assert seed_file.read_text() == EDITED_CONTENT, (
             "RELAUNCH CLOBBERED the edited ~/playbook file (the dev30 "
@@ -251,48 +281,16 @@ class TestSeedRelaunchClobber:
         )
         _stop(env, name)
 
-    def test_fresh_box_gets_seed_on_first_launch(self, e2e_env):
-        """A brand-new box receives the seeded content on its first launch."""
-        env = e2e_env["env"]
-        project = e2e_env["project"]
-        name = "e2e-seed-fresh"
-        container = f"kanibako-{name}"
+    def test_launch_never_seeds_after_delete(self, e2e_env):
+        """create (seeds) → delete the seeded file → launch → NOT recreated.
 
-        host_seed = _make_host_seed(e2e_env["tmp_path"])
-        _write_seed_config(env, host_seed)
-
-        result = run_kanibako(
-            ["create", str(project), "--name", name], env=env
-        )
-        assert result.returncode == 0, f"create failed: {result.stderr}"
-
-        # Nothing seeded before the first launch.
-        assert not _seed_file(env, project).exists()
-        assert _is_seeded_flag(env, project) is False
-
-        run_kanibako(
-            ["start", name, "-e", "CLAUDE_STUB_MODE=long-running"], env=env
-        )
-        wait_for_container(container, timeout=15)
-
-        seed_file = _seed_file(env, project)
-        assert seed_file.exists(), "fresh box did not receive its seed"
-        assert seed_file.read_text() == PRISTINE_SEED_CONTENT
-        assert _is_seeded_flag(env, project) is True
-        _stop(env, name)
-
-    def test_legacy_box_is_adopted_not_reseeded(self, e2e_env):
-        """A pre-redesign box (existing home/inbox, no seeded flag) is ADOPTED.
-
-        Simulates a box created before the per-box ``seeded`` registry flag
-        existed: its home + inbox already exist but the flag is False (the old
-        ``.seeded`` sentinel is gone).  The launch path must detect it as
-        already-seeded via the inbox backstop, NOT re-seed (so existing home
-        content is never clobbered), and ADOPT it by stamping the flag.
+        Proves seeding is bound to create, not launch: once the create-time
+        seed is removed, no launch re-runs the seed pass.  (The create-if-absent
+        failsafe lives in ``create``, never in ``start``.)
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        name = "e2e-seed-legacy"
+        name = "e2e-seed-delete"
         container = f"kanibako-{name}"
 
         host_seed = _make_host_seed(e2e_env["tmp_path"])
@@ -303,29 +301,20 @@ class TestSeedRelaunchClobber:
         )
         assert result.returncode == 0, f"create failed: {result.stderr}"
 
-        # Forge a legacy on-disk state: a populated home with pre-existing
-        # playbook content, plus the inbox dir that the backstop keys on — but
-        # the registry seeded flag stays False (no .seeded sentinel survives).
         seed_file = _seed_file(env, project)
-        seed_file.parent.mkdir(parents=True, exist_ok=True)
-        seed_file.write_text(EDITED_CONTENT)
-        _inbox_path(env, project).mkdir(parents=True, exist_ok=True)
+        assert _home_is_seeded(env, project), "create must seed ~/playbook"
 
-        assert _is_seeded_flag(env, project) is False, (
-            "precondition: legacy box has no seeded flag"
-        )
+        # Remove the create-time seed, then launch.
+        seed_file.unlink()
+        assert not _home_is_seeded(env, project)
 
-        # Launch: detection must OR in the inbox backstop → already-seeded →
-        # skip seeding.  No clobber, and the flag is adopt-stamped.
         run_kanibako(
             ["start", name, "-e", "CLAUDE_STUB_MODE=long-running"], env=env
         )
         wait_for_container(container, timeout=15)
 
-        assert seed_file.read_text() == EDITED_CONTENT, (
-            "legacy adoption RE-SEEDED and clobbered existing home content"
-        )
-        assert _is_seeded_flag(env, project) is True, (
-            "legacy box was not adopted (seeded flag never stamped)"
+        assert not _home_is_seeded(env, project), (
+            "LAUNCH re-seeded the home — seeding must be bound to create, "
+            "not to start"
         )
         _stop(env, name)
