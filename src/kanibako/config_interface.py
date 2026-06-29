@@ -63,7 +63,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "model",
     # Box
     "box.image",
-    "box.agent",
+    "box.agent_name",
     "box.share_images",
     "box.shell",
     "box.bootstrap_program",
@@ -133,7 +133,7 @@ def is_known_key(arg: str) -> bool:
 _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # Box section ([box] table).
     "box.image": (("box",), "image"),
-    "box.agent": (("box",), "agent"),
+    "box.agent_name": (("box",), "agent_name"),
     "box.shell": (("box",), "shell"),
     "box.bootstrap_program": (("box",), "bootstrap_program"),
     "box.share_images": (("box",), "share_images"),

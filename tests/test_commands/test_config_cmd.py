@@ -455,12 +455,12 @@ class TestWriteProjectConfigKey:
 
     def test_write_agent_key(self, tmp_path):
         p = tmp_path / "settings.yaml"
-        write_project_config_key(p, "box_agent", "my-target")
+        write_project_config_key(p, "box_agent_name", "my-target")
         loaded = load_config(p)
-        assert loaded.box_agent == "my-target"
+        assert loaded.box_agent_name == "my-target"
         text = p.read_text()
         assert "box:" in text
-        assert 'agent: my-target' in text
+        assert 'agent_name: my-target' in text
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
@@ -553,7 +553,7 @@ class TestSplitConfigKey:
 
     def test_box_agent_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("box_agent") == ("box", "agent")
+        assert _split_config_key("box_agent_name") == ("box", "agent_name")
 
     def test_unprefixed_key_is_top_level_field(self):
         """A key with no section prefix is a TOP-LEVEL scalar field.
@@ -580,4 +580,4 @@ class TestConfigKeys:
         keys = config_keys()
         assert "box_image" in keys
         assert "paths_project_toml" in keys
-        assert "box_agent" in keys
+        assert "box_agent_name" in keys

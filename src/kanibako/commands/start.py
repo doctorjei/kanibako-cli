@@ -752,14 +752,14 @@ def _run_container(
         from kanibako.config import resolve_agent
         # Resolve the agent via the full cascade (explicit > box > workset >
         # system default), then the installed-count rule.  workset_agent=None:
-        # merged.box_agent already folds the workset tier (load_merged_config
+        # merged.box_agent_name already folds the workset tier (load_merged_config
         # overlays workset then box).  system.default_agent is a SETTING read
         # from the system settings file.  resolve_agent raises typed
         # AgentResolutionError subclasses (Gate-2a/2b / adapter-missing) which
         # the top-level cli.py handler surfaces verbatim with a non-zero exit.
         agent_name = resolve_agent(
             explicit_agent=explicit_agent,
-            box_agent=merged.box_agent,
+            box_agent_name=merged.box_agent_name,
             workset_agent=None,
             system_default_path=system_settings_path,
             project_path=proj.project_path,

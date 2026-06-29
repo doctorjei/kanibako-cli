@@ -356,7 +356,7 @@ def start_mocks():
 
             merged = MagicMock()
             merged.box_image = "test:latest"
-            merged.box_agent = ""
+            merged.box_agent_name = ""
             merged.box_bootstrap_program = "tmux"
             merged.box_share_images = False
             # Helpers off by default in the mock (MagicMock attrs are truthy);

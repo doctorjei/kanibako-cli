@@ -56,7 +56,7 @@ def test_precedence_cascade(monkeypatch):
     def res(**kw):
         base = dict(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -65,11 +65,11 @@ def test_precedence_cascade(monkeypatch):
 
     # explicit beats box beats workset beats system-default.
     assert (
-        res(explicit_agent="claude", box_agent="goose", workset_agent="codex")
+        res(explicit_agent="claude", box_agent_name="goose", workset_agent="codex")
         == "claude"
     )
     # box beats workset beats system-default (explicit absent).
-    assert res(box_agent="goose", workset_agent="codex") == "goose"
+    assert res(box_agent_name="goose", workset_agent="codex") == "goose"
     # workset beats system-default (explicit + box absent).
     assert res(workset_agent="codex") == "codex"
     # system-default wins when all higher tiers absent.
@@ -87,7 +87,7 @@ def test_single_installed_autopick(monkeypatch):
     assert (
         resolve_agent(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -121,7 +121,7 @@ def test_zero_installed_gate2b(monkeypatch, envset, substring):
     with pytest.raises(NoAgentInstalledError) as ei:
         resolve_agent(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -142,7 +142,7 @@ def test_multi_installed_gate2a(monkeypatch):
     with pytest.raises(NoAgentSelectedError) as ei:
         resolve_agent(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -162,7 +162,7 @@ def test_one_real_plus_pseudo_autopicks_real(monkeypatch):
     assert (
         resolve_agent(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -177,7 +177,7 @@ def test_two_real_plus_pseudo_still_gate2a(monkeypatch):
     with pytest.raises(NoAgentSelectedError):
         resolve_agent(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -195,7 +195,7 @@ def test_only_pseudo_installed_gate2b(monkeypatch):
     with pytest.raises(NoAgentInstalledError):
         resolve_agent(
             explicit_agent=None,
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -209,7 +209,7 @@ def test_explicit_pseudo_agent_still_selectable(monkeypatch):
     assert (
         resolve_agent(
             explicit_agent="no_agent",
-            box_agent=None,
+            box_agent_name=None,
             workset_agent=None,
             system_default_path=None,
         )
@@ -232,7 +232,7 @@ def test_resolved_name_not_installed(monkeypatch):
     with pytest.raises(AgentNotInstalledError) as ei:
         resolve_agent(
             explicit_agent=None,
-            box_agent="claude",
+            box_agent_name="claude",
             workset_agent=None,
             system_default_path=None,
         )
@@ -256,7 +256,7 @@ def test_system_default_real_file(tmp_home, config_file, monkeypatch):
     write_agent_setting(ssp, "default_agent", "claude", "default")
     name = resolve_agent(
         explicit_agent=None,
-        box_agent=None,
+        box_agent_name=None,
         workset_agent=None,
         system_default_path=ssp,
     )
@@ -345,7 +345,7 @@ def _two_pass_behavior(*, agent_state, box_path=None):
 
     name = resolve_agent(
         explicit_agent="claude",
-        box_agent=None,
+        box_agent_name=None,
         workset_agent=None,
         system_default_path=None,
     )
