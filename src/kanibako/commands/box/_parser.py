@@ -1118,6 +1118,7 @@ def run_config(args: argparse.Namespace) -> int:
     """
     from kanibako.config_interface import (
         ConfigAction,
+        ConfigLevel,
         get_config_value,
         is_known_key,
         parse_config_arg,
@@ -1347,6 +1348,7 @@ def run_config(args: argparse.Namespace) -> int:
             cascade_workset_path=cascade_workset_path,
             cascade_box_path=project_toml,
             cascade_agent_name=cascade_agent_name,
+            command_scope=ConfigLevel.box,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

@@ -706,7 +706,13 @@ class TestWorksetConfig:
         assert "true" in err or "false" in err
 
     def test_config_set_regular_key(self, config_file, tmp_home, capsys):
-        """Setting a regular config key writes to config.yaml."""
+        """Setting a regular config key writes to config.yaml.
+
+        Uses ``vault.enabled`` — a SCOPELESS regular key (own-file write) that is
+        legal at the workset scope under the §0 scope-direction guard (block B4).
+        ``box.image`` (a box.* key) would now be REFUSED at the workset scope —
+        see ``TestWorksetScopeDirection`` for that refusal.
+        """
         from kanibako.commands.workset_cmd import run_config
 
         config = load_config(config_file)
@@ -714,7 +720,7 @@ class TestWorksetConfig:
         create_workset("regcfg", tmp_home / "ws_regcfg", std)
 
         args = argparse.Namespace(
-            workset="regcfg", key_value="box.image=myimage:latest",
+            workset="regcfg", key_value="vault.enabled=false",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -722,7 +728,7 @@ class TestWorksetConfig:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Set" in out
-        assert "box_image" in out
+        assert "vault" in out
 
     def test_config_reset_key(self, config_file, tmp_home, capsys):
         """Resetting a config key removes the override."""
@@ -732,9 +738,10 @@ class TestWorksetConfig:
         std = load_std_paths(config)
         create_workset("resetcfg", tmp_home / "ws_resetcfg", std)
 
-        # First set a value.
+        # First set a value (vault.enabled = scopeless own-file key, legal at
+        # the workset scope under the B4 scope-direction guard).
         set_args = argparse.Namespace(
-            workset="resetcfg", key_value="box.image=myimage:latest",
+            workset="resetcfg", key_value="vault.enabled=false",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -744,7 +751,7 @@ class TestWorksetConfig:
         # Then reset it.
         reset_args = argparse.Namespace(
             workset="resetcfg", key_value=None,
-            effective=False, reset="box.image", reset_all=False,
+            effective=False, reset="vault.enabled", reset_all=False,
             force=False, local=False,
         )
         rc = run_config(reset_args)
@@ -796,9 +803,10 @@ class TestWorksetConfig:
         std = load_std_paths(config)
         create_workset("resetall", tmp_home / "ws_resetall", std)
 
-        # Set a value first.
+        # Set a value first (vault.enabled = scopeless own-file key, legal at
+        # the workset scope under the B4 scope-direction guard).
         set_args = argparse.Namespace(
-            workset="resetall", key_value="box.image=myimage:latest",
+            workset="resetall", key_value="vault.enabled=false",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -898,11 +906,15 @@ class TestDefaultWorksetCli:
     def test_config_set_regular_key_writes_config_toml(
         self, config_file, tmp_home, capsys,
     ):
+        # vault.enabled = a SCOPELESS own-file regular key, legal at the workset
+        # scope under the B4 scope-direction guard (it lands in [project], its
+        # real stored key being enable_vault). ``box.image`` (a box.* key) would
+        # be REFUSED here — see TestWorksetScopeDirection.
         from kanibako.commands.workset_cmd import run_config
         std = self._std(config_file)
 
         args = argparse.Namespace(
-            workset="default", key_value="box.image=myimg:1",
+            workset="default", key_value="vault.enabled=false",
             effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
@@ -911,7 +923,7 @@ class TestDefaultWorksetCli:
         import yaml
         with open(std.data_path / "config.yaml") as f:
             data = yaml.safe_load(f)
-        assert data["box"]["image"] == "myimg:1"
+        assert data["project"]["enable_vault"] is False
         assert not (std.data_path / "workset.yaml").exists()
 
     def test_info_default(self, config_file, tmp_home, capsys):

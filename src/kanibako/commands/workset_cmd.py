@@ -531,6 +531,7 @@ def run_config(args: argparse.Namespace) -> int:
     """
     from kanibako.config_interface import (
         ConfigAction,
+        ConfigLevel,
         get_config_value,
         parse_config_arg,
         reset_all,
@@ -695,6 +696,7 @@ def run_config(args: argparse.Namespace) -> int:
             config_path=ws_config,
             cascade_system_path=std.settings,
             cascade_workset_path=ws_config,
+            command_scope=ConfigLevel.workset,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
