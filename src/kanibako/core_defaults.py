@@ -124,7 +124,7 @@ def channel_default_categories(
 
 
 def core_default_categories(
-    std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool
+    std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str
 ) -> dict[str, tuple[str, str, str]]:
     """Build the core box mounts as ``default_categories`` (step 3).
 
@@ -180,11 +180,18 @@ def core_default_categories(
             # rather than silently dropped when the source happens to be absent.
             src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
-        # B2: an entry with a ``meta_ref`` is ROUTED through that @meta.* reference
-        # (spec §2c) — the host_src is the @-ref STRING, which ``expand`` resolves
-        # to the SAME runtime-probed literal (byte-identical, JC-B2-4).  Falls back
-        # to the probed source for an un-routed entry.
-        host_src = entry.get("meta_ref", sources[entry["source"]])
+        # B2/B2b: an entry routed through an @-ref carries either a single
+        # ``meta_ref`` (mode-independent) OR a ``mode_meta_ref`` PER-MODE map (spec
+        # §2c home/vault differ by mode: primary/named @workset.* vs standalone
+        # @meta.workset.path/*).  The host_src is the @-ref STRING, which ``expand``
+        # resolves to the SAME runtime-probed literal (byte-identical) because the
+        # workset.* / meta.workset.path anchors are materialized to the launch's own
+        # resolved roots.  Falls back to the probed source for an un-routed entry.
+        mode_ref = entry.get("mode_meta_ref")
+        if mode_ref is not None:
+            host_src = mode_ref[mode]
+        else:
+            host_src = entry.get("meta_ref", sources[entry["source"]])
         binds[f"box.{category}.{entry['key']}"] = (
             host_src,
             str(entry["box_dest"]),
@@ -270,8 +277,17 @@ def helper_default_categories(
         if not src_path.exists():
             continue
         category = entry["category"]
+        # B2b: helper_log routes through @meta.box.helper_log (the materialized
+        # resolved log path) — byte-identical to the probed ``src_path`` because the
+        # anchor holds ``str(helper_log_path(std, proj))``.  helper_sock is NOT
+        # routed: its host path is the LENGTH-BOUNDED (hashable) socket name
+        # ``bounded_socket_name(<box>-<ws>, run_dir)``, which the spec form
+        # ``@system.runtime/<box>-<ws>.sock`` cannot reproduce when the name is
+        # hashed for the AF_UNIX sun_path limit (JC-B2b-3) — so it keeps its probed
+        # literal host_src (the ``.exists()`` gate above is unchanged either way).
+        host_src = entry.get("meta_ref", str(src_path))
         binds[f"box.{category}.{entry['key']}"] = (
-            str(src_path),
+            host_src,
             box_dest,
             str(entry["options"]),
         )

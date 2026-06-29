@@ -211,14 +211,20 @@ class TestProjectMeta:
         assert proj2.vault_ro_path == proj1.vault_ro_path
         assert proj2.vault_rw_path == proj1.vault_rw_path
 
-    def test_stored_path_override(self, config_file, tmp_home, credentials_dir):
-        """User can override shell_path by editing settings.yaml."""
+    def test_stored_shell_override_is_dropped(self, config_file, tmp_home, credentials_dir):
+        """B2b (Option A, Jei-ruled): the per-box meta["shell"] custom-path OVERRIDE
+        is DROPPED.  Editing the stored ``shell`` field in settings.yaml NO LONGER
+        moves the resolved home — home is SOLELY the spec-derived default location
+        (boxes/<name>/home).  A user customizing home now sets the
+        ``box.bindings.rw.home`` CASCADE override (a launch-bind concern, covered in
+        the categories tests), NOT a stored shell path."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        default_shell = proj.shell_path
 
-        # Override shell path in settings.yaml
+        # Editing the stored ``shell`` field to a custom path...
         custom_shell = tmp_home / "custom_shell"
         from kanibako.config import write_project_meta
         write_project_meta(
@@ -230,8 +236,10 @@ class TestProjectMeta:
             vault_rw=str(proj.vault_rw_path),
         )
 
+        # ...is now IGNORED for resolution: home stays the default location.
         proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
-        assert proj2.shell_path == custom_shell
+        assert proj2.shell_path == default_shell
+        assert proj2.shell_path != custom_shell
 
     def test_standalone_init_writes_meta(self, config_file, tmp_home, credentials_dir):
         """resolve_standalone_project(initialize=True) writes metadata."""
