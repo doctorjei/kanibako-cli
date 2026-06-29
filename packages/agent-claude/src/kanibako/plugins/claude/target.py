@@ -220,7 +220,7 @@ class ClaudeTarget(Target):
         """Declare claude's AGENT-scope shared dirs (plugins + cache).
 
         Both are shared across every box that runs claude and rooted under the
-        per-agent store dir ``@agent.claude.meta.path`` = ``@system.agents/claude``
+        per-agent store dir ``@meta.agent.claude.path`` = ``@system.agents/claude``
         (core's ``agent.shared`` scope-root).  The relative ``host_src`` (the key
         name) joins under that root, so the resolved host paths are
         ``<data>/agents/claude/{plugins,cache}`` bound rw to ``~/.claude/{plugins,cache}``:

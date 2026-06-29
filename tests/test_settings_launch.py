@@ -382,8 +382,8 @@ def _chain_snapshot(mode: str, *, agent_name: str = "claude", **overrides):
 
 
 def test_chain_primary_resolves_on():
-    """PRIMARY: agent.capable → workset.meta.available → workset.enabled →
-    box.meta.available → effective True (default-on, the safety-swap baseline)."""
+    """PRIMARY: agent.capable → meta.workset.available → workset.enabled →
+    meta.box.available → effective True (default-on, the safety-swap baseline)."""
     snap = _chain_snapshot("primary")
     assert effective_group_auth(snap) is True
 
@@ -401,7 +401,7 @@ def test_chain_standalone_short_circuits_off():
     assert effective_group_auth(snap) is False
     # The chain keys RESOLVED (present), not dropped as dangling.
     import kanibako.settings_views as views
-    box_meta = dict.get(dict.get(snap, "box"), "meta")
+    box_meta = dict.get(dict.get(snap, "meta"), "box")
     assert views.as_bool(dict.get(box_meta, "group_auth_available")) is False
 
 

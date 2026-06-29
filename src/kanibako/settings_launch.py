@@ -118,15 +118,15 @@ _SCOPES: tuple[str, ...] = ("system", "agent", "workset", "box")
 #   agent.default.group_auth_capable  = True   (UNIVERSAL floor; every agent
 #                                               inherits via agent.<agent>.<key> |
 #                                               agent.default.<key>)
-#   workset.meta.group_auth_available = @agent.<agent>.group_auth_capable  (ceiling)
-#   workset.group_auth_enabled        = @workset.meta.group_auth_available  (policy)
-#   box.meta.group_auth_available     = @workset.group_auth_enabled         (box ceiling)
+#   meta.workset.group_auth_available = @agent.<agent>.group_auth_capable  (ceiling)
+#   workset.group_auth_enabled        = @meta.workset.group_auth_available  (policy)
+#   meta.box.group_auth_available     = @workset.group_auth_enabled         (box ceiling)
 #   box.group_auth_on                 = True   (box's CHOICE; settable)
-#   effective_group_auth = box.meta.group_auth_available AND box.group_auth_on
+#   effective_group_auth = meta.box.group_auth_available AND box.group_auth_on
 #
-# STANDALONE (degenerate lone box, spec §2c L315-316): workset.meta.group_auth_
+# STANDALONE (degenerate lone box, spec §2c L315-316): meta.workset.group_auth_
 # available AND workset.group_auth_enabled are the LITERAL False (NOT the @-ref) —
-# so box.meta.group_auth_available short-circuits to False WITHOUT traversing to
+# so meta.box.group_auth_available short-circuits to False WITHOUT traversing to
 # the agent tier (and the @-ref still RESOLVES — closes the standalone gap).
 
 #: The agent-tier capability FLOOR. JC-1 (ruling pending): the single universal
@@ -158,7 +158,7 @@ def group_auth_chain_floor(
 
     PRIMARY / NAMED use the @-ref forms (the policy derives from the active
     agent's capability via the meta ceiling). STANDALONE pins the two workset keys
-    to the LITERAL ``False`` so ``box.meta.group_auth_available`` short-circuits
+    to the LITERAL ``False`` so ``meta.box.group_auth_available`` short-circuits
     without traversing to the agent tier (spec §2c L315-316) — the @-ref still
     RESOLVES (the gap this chain closes).
 
@@ -188,22 +188,22 @@ def group_auth_chain_floor(
         f"agent.{agent_name}.group_auth_capable": True,
         # The box ceiling @-ref — identical in EVERY mode (it resolves to the
         # workset literal under standalone, or down the chain otherwise).
-        "box.meta.group_auth_available": "@workset.group_auth_enabled",
+        "meta.box.group_auth_available": "@workset.group_auth_enabled",
         # The box's settable choice — default ON (spec §2b L282).
         _BOX_GROUP_AUTH_ON_KEY: True,
     }
     if mode == "standalone":
         # STANDALONE short-circuit (spec §2c L315-316): a lone box has no group →
         # the workset keys are the LITERAL False, NOT the agent-tier @-ref.
-        floor["workset.meta.group_auth_available"] = False
+        floor["meta.workset.group_auth_available"] = False
         floor["workset.group_auth_enabled"] = False
     else:
         # PRIMARY / NAMED (ALL WORKSETS, spec §2c L331-332): availability = the
         # ACTIVE agent's capability; policy defaults to availability.
-        floor["workset.meta.group_auth_available"] = (
+        floor["meta.workset.group_auth_available"] = (
             f"@agent.{agent_name}.group_auth_capable"
         )
-        floor["workset.group_auth_enabled"] = "@workset.meta.group_auth_available"
+        floor["workset.group_auth_enabled"] = "@meta.workset.group_auth_available"
         # JC-3 read-compat: an existing on-disk workset-level group_auth=false
         # overrides the policy key (workset → group_auth_enabled). Only False is
         # carried (True is the spec default already); never written back.
@@ -219,10 +219,10 @@ def group_auth_chain_floor(
 def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool:
     """Read ``effective_group_auth`` off the expanded snapshot (spec §2b L282).
 
-    ``effective = box.meta.group_auth_available AND box.group_auth_on`` — the
+    ``effective = meta.box.group_auth_available AND box.group_auth_on`` — the
     SINGLE bool that feeds the existing gates (``reconcile_categories``, credsync,
     auto-auth, writeback, the ``kanibako agent`` display) UNCHANGED. Reads the
-    box ``meta`` node via the typed :class:`~kanibako.settings_views.MetaView`
+    ``meta.box`` node via the typed :class:`~kanibako.settings_views.MetaView`
     (``group_auth_available`` — the demo view, now wired) and ``box.group_auth_on``
     via the typed bool view — NOT a hand-parse (design §5 typed access). Both are
     resolved (block 7) to real ``bool`` terminals by ``expand`` (a whole-value
@@ -239,10 +239,17 @@ def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool
         # The chain floor always seeds box.* — an absent box node means the floor
         # was not injected. Fail closed (no group auth) rather than launder.
         return False
-    meta_node = dict.get(box_node, "meta", _MISSING)
+    # The availability ceiling now lives under the top-level ``meta`` namespace
+    # (meta.box.group_auth_available); the box's CHOICE stays on the box node.
+    meta_node = dict.get(snapshot, "meta", _MISSING)
+    box_meta = (
+        dict.get(meta_node, "box", _MISSING)
+        if isinstance(meta_node, KeyStore)
+        else _MISSING
+    )
     available = False
-    if isinstance(meta_node, KeyStore):
-        available = as_bool(dict.get(meta_node, "group_auth_available", False))
+    if isinstance(box_meta, KeyStore):
+        available = as_bool(dict.get(box_meta, "group_auth_available", False))
     on = as_bool(dict.get(box_node, "group_auth_on", False))
     return bool(available and on)
 
@@ -335,7 +342,7 @@ def build_launch_snapshot(
     # ``expand`` resolves the chain ONCE (single-route). Built per mode by
     # :func:`group_auth_chain_floor`; a scope FILE still overrides a key by name
     # (the floor sits under ``base``). Injected AFTER the category tables so the
-    # dotted chain keys (``box.group_auth_on`` / ``box.meta.group_auth_available``
+    # dotted chain keys (``box.group_auth_on`` / ``meta.box.group_auth_available``
     # / ``workset.*``) land in the floor unconditionally.
     if group_auth_chain:
         for key, val in group_auth_chain.items():

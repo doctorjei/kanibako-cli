@@ -2146,7 +2146,7 @@ def _resolve_effective_group_auth(
     FOCUSED launch snapshot carrying ONLY the group-auth capability-chain floor
     (``settings_launch.group_auth_chain_floor`` for the box mode, with the JC-3
     read-compat overrides from ``proj``) plus the scope settings files, expands it
-    ONCE, and reads ``effective_group_auth`` off it (``box.meta.group_auth_available
+    ONCE, and reads ``effective_group_auth`` off it (``meta.box.group_auth_available
     AND box.group_auth_on``). This is the SINGLE-ROUTE chain resolve — the same
     ``build_launch_snapshot`` → ``expand`` pipeline the launch uses, mirroring
     :func:`_effective_behavior_for_display`.

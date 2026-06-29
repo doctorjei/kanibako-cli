@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 #
 #   layer 1  base    @system.base_template      = @system.global/base_template (FLAT)
 #   layer 2  agent   @agent.<agent>.template    = @system.agents/<agent>/template
-#   layer 3  workset @workset.template          = @workset.meta.root/template
+#   layer 3  workset @workset.template          = @meta.workset.path/template
 #
 # Layers 2/3 are runtime-dependent (agent name / workset mode), so they are
 # free functions rather than ``StandardPaths`` properties — mirroring the
@@ -54,7 +54,7 @@ def agent_template_dir(std: StandardPaths, agent_name: str) -> Path:
 def workset_template_dir(proj: ProjectPaths, std: StandardPaths) -> Path | None:
     """Return the layer-3 workset-template source root ``@workset.template``.
 
-    Derived as ``@workset.meta.root/template`` for PRIMARY/NAMED worksets,
+    Derived as ``@meta.workset.path/template`` for PRIMARY/NAMED worksets,
     reusing :func:`kanibako.channels.workset_root`.  Returns ``None`` for
     STANDALONE boxes (no workset-local template layer).
     """

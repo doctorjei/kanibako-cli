@@ -4,7 +4,7 @@ Covers ``kanibako.channels`` (Phase 6 sub-step 6a): the workset-name token
 derivation, the workset-local channel roots (PRIMARY/NAMED only), the SYSTEM
 per-workset partition roots (``mailboxes/<ws>``, ``share/<ws>``) for each of the
 three ws-name tokens, and the per-box partition addresses
-(``box.meta.{inbox,share_global,share_workset}``) per mode.
+(``meta.box.{inbox,share_global,share_workset}``) per mode.
 
 These are pure derivations — no directories are created, no mounts touched.
 """
@@ -162,7 +162,7 @@ class TestWorksetChannelPaths:
 
 
 # ---------------------------------------------------------------------------
-# box_channel_addresses — box.meta.{inbox,share_global,share_workset}.
+# box_channel_addresses — meta.box.{inbox,share_global,share_workset}.
 # ---------------------------------------------------------------------------
 
 class TestBoxChannelAddresses:

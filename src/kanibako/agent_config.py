@@ -34,10 +34,10 @@ def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
 
 
 def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
-    """Return ``@agent.<agent>.meta.settings`` for *agent_id*.
+    """Return ``@meta.agent.<agent>.settings`` for *agent_id*.
 
     The per-agent SETTINGS cascade file lives INSIDE the per-agent store dir
-    (``@agent.<agent>.meta.path`` = ``agents/<agent>/``) as ``settings.yaml``
+    (``@meta.agent.<agent>.path`` = ``agents/<agent>/``) as ``settings.yaml``
     — NOT the old sibling ``agents/<agent>.yaml`` file (D-2026-06-22).  This
     parallels the per-agent template dir ``agents/<agent>/template`` and the
     Part-3 ``agents/<agent>/{plugins,cache}`` stores.

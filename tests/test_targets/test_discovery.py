@@ -57,7 +57,7 @@ class _DetectableTarget(_FakeTarget):
 
 
 class _NoNameTarget(_FakeTarget):
-    """Target with an empty meta.name (invalid — has no store dir)."""
+    """Target with an empty meta.agent.<agent>.name (invalid — has no store dir)."""
 
     @property
     def name(self) -> str:
@@ -147,11 +147,11 @@ class TestResolveTarget:
         assert isinstance(t, NoAgentTarget)
 
     def test_resolve_by_name_requires_meta_name(self):
-        # agent.<agent>.meta.name (the plugin's `name`) is REQUIRED; an empty
+        # meta.agent.<agent>.name (the plugin's `name`) is REQUIRED; an empty
         # name has no resolvable store dir / cascade key -> fail loudly.
         ep = _mock_entry_point("blank", _NoNameTarget)
         with patch("kanibako.targets.entry_points", return_value=[ep]):
-            with pytest.raises(ValueError, match="meta.name"):
+            with pytest.raises(ValueError, match=r"meta\.agent\.<agent>\.name"):
                 resolve_target("blank")
 
 

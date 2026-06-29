@@ -129,7 +129,7 @@ class TestPrimaryChannelMounts:
             by_dest["/home/agent/channels/mailboxes"][0]
             == str(std.channels_mailboxes)
         )
-        # Workset-local sources hang off @workset.meta.root/channels.
+        # Workset-local sources hang off @meta.workset.path/channels.
         wch = _ch.workset_channel_paths(primary_proj, std)
         assert wch is not None
         assert by_dest["/home/agent/channels/workset/commons"][0] == str(wch.commons)
