@@ -298,36 +298,93 @@ def _is_path_category_key(key: str) -> bool:
     return BIND_KEY_RE.match(key) is not None
 
 
-def _category_ref_lookup(config_path: Path):
-    """Build the ``ref_exists`` predicate for a category ``config set`` at
+def _set_time_ctx() -> "Any":
+    """Build the :class:`~kanibako.settings_resolve.ResolveCtx` for the set-time E3
+    resolution probe.
+
+    Populates the FULL XDG var set (so ``$XDG_*`` host-source tokens resolve) plus
+    home; ``$AGENT`` / ``$WORKSET`` are left unset here (a set-time check has no live
+    launch agent/workset, and a category ``host_src`` carrying ``$AGENT``/``$WORKSET``
+    is unusual — an unset one falls into the resolver's "not set in this context"
+    branch, which the lenient expand records as a defect, exactly as build would for
+    a host-side ``$AGENT`` with no agent). Box-side ``$XDG``/``~`` in a ``box_dest``
+    are NOT validated here — they are DEFERRED (S17) and the probe only resolves the
+    host_src half.
+    """
+    from kanibako.paths import resolve_xdg, xdg
+    from kanibako.settings_resolve import ResolveCtx
+
+    xdg_vars: dict[str, str] = {
+        "XDG_DATA_HOME": str(xdg("XDG_DATA_HOME", ".local/share")),
+        "XDG_CONFIG_HOME": str(xdg("XDG_CONFIG_HOME", ".config")),
+        "XDG_STATE_HOME": str(resolve_xdg("XDG_STATE_HOME", ".local/state")),
+        "XDG_CACHE_HOME": str(resolve_xdg("XDG_CACHE_HOME", ".cache")),
+        "XDG_RUNTIME_DIR": str(resolve_xdg("XDG_RUNTIME_DIR", None)),
+    }
+    return ResolveCtx(
+        agent_name=None,
+        workset_name=None,
+        host_home=str(Path.home()),
+        xdg=xdg_vars,
+    )
+
+
+def _category_resolves(
+    config_path: Path,
+    *,
+    canonical: str,
+    system_path: Path | None = None,
+    agent_path: Path | None = None,
+    workset_path: Path | None = None,
+    box_path: Path | None = None,
+    agent_name: str = "",
+):
+    """Build the E3 RESOLUTION probe (Q9, spec §2a) for a category ``config set`` at
     *config_path* (the COMMAND-scope file).
 
-    A category ``host_src`` value may carry an ``@``-ref; ``validate_config_set``
-    rejects a DANGLING ``@``-ref (spec §2a L212). With no launch snapshot at this
-    seam, the visible keyspace is: (1) the resolved ``system.*`` config tier
-    (``load_std_paths`` — the overwhelmingly common ``@``-ref target for a host
-    source, e.g. ``@system.data``) and (2) the command-scope file's OWN dotted
-    keys (a sibling repoint can reference a key set in the same file). Built into
-    a raw :class:`KeyStore` consumed by the committed ``make_ref_lookup`` (S3
-    unbound probe; present-None counts as existing).
+    Builds the FULL merged cascade snapshot for the command's TARGET ONCE via the
+    committed pipeline (``assemble_levels`` → ``merge`` — single-source, NOT
+    re-implemented), then returns ``resolves(key, value)``: it applies the candidate
+    RAW *value* (the new ``host_src``) at *key* into a FRESH copy of the merged
+    snapshot, lenient-``expand``s it (collect-not-raise), and returns the edited
+    key's defect reason (BLOCK) or ``None`` (ALLOW) — the E3 test "does the edited
+    value resolve cleanly post-edit?".
 
-    LIMITATION (Jei-noted, see block-7c summary): an ``@``-ref to a HIGHER
-    non-``system`` scope key not present in the command file (e.g. a ``box config``
-    value referencing ``@workset.shared.x``) is NOT visible here and would be
-    reported dangling. No shipped host_src default uses such a ref; the realistic
-    target set is ``system.*``. A genuinely cross-scope ref class is an escalation,
-    NOT a silent pass.
+    FULL CASCADE at set-time (Jei ruling 2026-06-29 — (b)). The visible keyspace is
+    the SAME resolved cascade the launch would see (spec §2a "layer the target's
+    settings in precedence order"): every scope's settings file
+    (*system_path* / *agent_path* / *workset_path* / *box_path*) is layered in its
+    TRUE precedence slot — EXACTLY as ``settings_launch.build_launch_snapshot`` /
+    ``start._effective_behavior_for_display`` assemble for ``config --effective`` —
+    plus the resolved ``system.*`` config tier folded as the ``base`` FLOOR (so
+    ``@system.data`` etc. resolve). So a cross-scope ``@``-ref in the edited value
+    (e.g. a ``box config`` value referencing ``@workset.vault_ro/x``) resolves at
+    set-time exactly as it would at launch — no longer a false-block.
+
+    The COMMAND-scope file (*config_path*) is placed into its OWN precedence slot by
+    the edited key's SCOPE token (``box.*`` → box slot, ``workset.*`` → workset slot,
+    ``system.*`` → system slot), NOT always the box slot — so a sibling repoint still
+    sees the file's own keys, and a higher-scope ref sees the higher-scope file. The
+    explicit ``*_path`` kwargs default to the command-scope file (so a caller that
+    passes ONLY *config_path* still gets the file in its true slot); a caller that
+    plumbs the full cascade (the three set handlers) passes every scope's file.
+
+    Resolution NEVER touches the stored file — it writes RAW (§0); the snapshot is
+    in-memory and for the CHECK only.
     """
     from kanibako.config import config_file_path
     from kanibako.paths import load_system_config, xdg
-    from kanibako.settings_configset import make_ref_lookup
-    from kanibako.settings_store import KeyStore
+    from kanibako.settings_assemble import assemble_levels
+    from kanibako.settings_expand import expand
+    from kanibako.settings_merge import merge
 
-    keyspace = KeyStore()
+    ctx = _set_time_ctx()
 
-    # (1) Resolved system.* tier — the standard host_src @-ref target set.
-    # ``load_system_config`` returns ``{system.<leaf>: Path}`` (full dotted keys),
-    # the SAME resolved tier ``get_config_value``'s ``system.*`` read consults.
+    # The system.* tier as the cascade FLOOR (resolved {system.<leaf>: Path}, the
+    # SAME tier ``get_config_value``'s ``system.*`` read consults), so an
+    # ``@system.*`` host_src ref resolves. A resolution failure here must NOT crash
+    # a config set — fall back to an empty floor (sibling refs still resolve).
+    floor: dict[str, object] = {}
     try:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         user_config = config_file_path(config_home)
@@ -335,73 +392,100 @@ def _category_ref_lookup(config_path: Path):
         for dotted, path in load_system_config(
             user_config, data_home=data_home, home=Path.home(),
         ).items():
-            _ref_insert(keyspace, dotted, str(path))
+            floor[dotted] = str(path)
     except Exception:
-        # A system-paths resolution failure must not crash a config set; the
-        # command-scope keys below still validate sibling refs.
         pass
 
-    # (2) The command-scope file's own dotted keys (sibling references).
-    if config_path.exists():
-        try:
-            _ref_overlay_doc(keyspace, load_doc(config_path))
-        except Exception:
-            pass
+    # Place the COMMAND-scope file (config_path) into its TRUE precedence slot by the
+    # edited key's scope token — a box.* set lands in the box slot, workset.* in the
+    # workset slot, system.* in the system slot (NOT always the box slot). The
+    # explicit cascade kwargs (passed by the set handlers) supply the OTHER scopes'
+    # files so a cross-scope @-ref resolves as it would at launch; each defaults to
+    # the command-scope file for its own slot, so a caller that passes only
+    # config_path still gets the file placed correctly.
+    scope = canonical.split(".", 1)[0]
+    cmd = config_path if config_path.exists() else None
+    sys_p = system_path
+    agent_p = agent_path
+    ws_p = workset_path
+    box_p = box_path
+    if scope == "system":
+        sys_p = cmd if sys_p is None else sys_p
+    elif scope == "workset":
+        ws_p = cmd if ws_p is None else ws_p
+    else:  # box (the default / most-specific scope)
+        box_p = cmd if box_p is None else box_p
 
-    return make_ref_lookup(keyspace)
+    # Assemble the FULL cascade — the command-scope file in its slot, the other
+    # scopes' files in theirs (single-source: the same assemble_levels the launch
+    # snapshot uses) — then merge to ONE raw snapshot.
+    levels = assemble_levels(
+        agent_name=agent_name,
+        system_path=sys_p,
+        agent_path=agent_p,
+        workset_path=ws_p,
+        box_path=box_p,
+        floor=floor,
+    )
+    base_snapshot, _warnings = merge(levels)
+
+    def resolves(key: str, value: str) -> "str | None":
+        # Apply the candidate raw host_src at *key* into a FRESH copy (S19 — never
+        # mutate the shared merged snapshot), lenient-expand, and read the edited
+        # key's defect (if any). Setting the leaf to the raw host_src STRING is
+        # sufficient for the E3 upstream-chain check — ``_expand_str`` resolves it
+        # host-side exactly as ``_expand_bind`` resolves the host half.
+        candidate = _clone_keystore(base_snapshot)
+        _set_leaf(candidate, key.split("."), value)
+        result = expand(candidate, ctx, collect_errors=True)
+        assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
+        errors = result[1]
+        if key not in errors:
+            return None
+        return errors[key]
+
+    return resolves
 
 
-def _ref_insert(store: Any, dotted: str, value: object) -> None:
-    """Insert *value* at *dotted* into the ref-lookup *store*, exploding nested
-    nodes. Defensive: a reserved/awkward segment name is skipped (a config key
-    can never legitimately be a reserved dict-method name, and an existence probe
-    over it would be moot)."""
-    from kanibako.settings_store import KeyStore, ReservedKeyError
+def _clone_keystore(store: "Any") -> "Any":
+    """Deep-clone a :class:`KeyStore` (nested KeyStores rebuilt; leaves shared —
+    they are immutable Binds / scalars). Used so the candidate-edit + lenient expand
+    never mutate the shared base merged snapshot (S19). Unbound ``dict`` ops (S3)."""
+    from kanibako.settings_store import KeyStore
 
-    parts = dotted.split(".")
+    out = KeyStore()
+    for k in dict.keys(store):
+        v = dict.__getitem__(store, k)
+        out[k] = _clone_keystore(v) if isinstance(v, KeyStore) else v
+    return out
+
+
+def _set_leaf(store: "Any", parts: list, value: object) -> None:
+    """Set *value* at the dotted *parts* path in *store*, creating nested KeyStore
+    nodes as needed (unbound ``dict`` ops, S3). Used to apply the candidate edit
+    into the cloned snapshot before the E3 lenient-expand check."""
+    from kanibako.settings_store import KeyStore
+
     node = store
-    try:
-        for seg in parts[:-1]:
-            existing = dict.get(node, seg, None)
-            if not isinstance(existing, KeyStore):
-                existing = KeyStore()
-                node[seg] = existing
-            node = existing
-        node[parts[-1]] = value
-    except ReservedKeyError:
-        return
-
-
-def _ref_overlay_doc(store: Any, doc: object, prefix: str = "") -> None:
-    """Overlay a loaded YAML *doc*'s leaf keys into the ref-lookup *store* as
-    dotted paths (existence only — leaf VALUES are irrelevant to ``ref_exists``)."""
-    if not isinstance(doc, dict):
-        return
-    for key, val in doc.items():
-        dotted = f"{prefix}{key}"
-        if isinstance(val, dict):
-            _ref_overlay_doc(store, val, prefix=f"{dotted}.")
-        else:
-            _ref_insert(store, dotted, val if not isinstance(val, (list, tuple)) else "")
-
-
-def _category_var_known(name: str) -> bool:
-    """``var_known`` for a category ``config set``: a ``$VAR`` is known iff it is a
-    recognized XDG base-dir var or present in the host environment (spec §2a L212 —
-    a well-formed but UNKNOWN ``$VAR`` is still a hard Error). Box-side ``$XDG`` is
-    deferred (S17), but the four XDG base names are always recognized so a
-    legitimate ``$XDG_DATA_HOME`` host source never false-errors."""
-    import os
-
-    _XDG_NAMES = frozenset({
-        "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME",
-        "XDG_CACHE_HOME", "XDG_RUNTIME_DIR",
-    })
-    return name in _XDG_NAMES or name in os.environ
+    for seg in parts[:-1]:
+        existing = dict.get(node, seg, None)
+        if not isinstance(existing, KeyStore):
+            existing = KeyStore()
+            node[seg] = existing
+        node = existing
+    node[parts[-1]] = value
 
 
 def _set_category_value(
-    canonical: str, value: str, *, config_path: Path,
+    canonical: str,
+    value: str,
+    *,
+    config_path: Path,
+    system_path: Path | None = None,
+    agent_path: Path | None = None,
+    workset_path: Path | None = None,
+    box_path: Path | None = None,
+    agent_name: str = "",
 ) -> str:
     """Validate + RAW-repoint a path-tuple category key (S24/S25, spec §2a).
 
@@ -410,6 +494,11 @@ def _set_category_value(
     box_dest+opts RAW, key-MUST-exist). The WARN message is surfaced to the user
     AND the set proceeds. A ``ConfigSetError`` (key absent / non-tuple value) is
     returned as an ``Error:`` string (the CLI prints it to stderr + exit 1).
+
+    The cascade kwargs (*system_path* / *agent_path* / *workset_path* / *box_path* /
+    *agent_name*) are plumbed straight to :func:`_category_resolves` so the E3 probe
+    resolves the edited value against the FULL launch cascade (Jei (b), 2026-06-29) —
+    a cross-scope ``@``-ref no longer false-blocks.
     """
     from kanibako.settings_configset import (
         ConfigSetError,
@@ -430,8 +519,15 @@ def _set_category_value(
         canonical,
         value,
         is_category=True,
-        ref_exists=_category_ref_lookup(config_path),
-        var_known=_category_var_known,
+        resolves=_category_resolves(
+            config_path,
+            canonical=canonical,
+            system_path=system_path,
+            agent_path=agent_path,
+            workset_path=workset_path,
+            box_path=box_path,
+            agent_name=agent_name,
+        ),
         host_exists=_host_exists,
     )
     if isinstance(verdict, Error):
@@ -597,6 +693,11 @@ def set_config_value(
     env_path: Path | None = None,
     is_system: bool = False,
     system_settings_path: Path | None = None,
+    cascade_system_path: Path | None = None,
+    cascade_agent_path: Path | None = None,
+    cascade_workset_path: Path | None = None,
+    cascade_box_path: Path | None = None,
+    cascade_agent_name: str = "",
 ) -> str:
     """Write a config value to the appropriate store.
 
@@ -606,6 +707,14 @@ def set_config_value(
     — ``@system.settings`` = ``global/settings.yaml`` — keeping them out of the
     kanibako.yaml CONFIG file.  When None (box/workset) writes go to
     ``config_path`` as before.  Returns a human-readable confirmation message.
+
+    The ``cascade_*`` kwargs supply the FULL launch cascade (every scope's settings
+    file + the active agent name) for a CATEGORY ``config set``'s set-time E3
+    resolution probe (Jei (b), 2026-06-29): the three set handlers
+    (``box/_parser.py`` / ``workset_cmd.py`` / ``system_cmd.py``) already hold this
+    context and thread it here so a cross-scope ``@``-ref resolves at set-time
+    exactly as it would at launch. They are additive and only consulted on the
+    category path; absent, the command-scope file is still placed in its true slot.
     """
     canonical = _resolve_key(key)
     settings_dest = (
@@ -648,7 +757,14 @@ def set_config_value(
     # creates one. ``env`` (scalar) was handled above; ``masks`` is YAML-only
     # (spec §2a L216) — not a tuple, so a repoint is refused as non-category.
     if _is_path_category_key(canonical):
-        return _set_category_value(canonical, value, config_path=config_path)
+        return _set_category_value(
+            canonical, value, config_path=config_path,
+            system_path=cascade_system_path,
+            agent_path=cascade_agent_path,
+            workset_path=cascade_workset_path,
+            box_path=cascade_box_path,
+            agent_name=cascade_agent_name,
+        )
 
     # system.* keys (INCLUDING system.default_agent) — FILE-ONLY host-global
     # config (W1, option (a) narrow scope).  The CLI reads/shows them but

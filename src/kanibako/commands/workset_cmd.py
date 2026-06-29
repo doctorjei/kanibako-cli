@@ -675,9 +675,16 @@ def run_config(args: argparse.Namespace) -> int:
                 return 1
             value = "project"
 
+        # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
+        # 2026-06-29): the workset is the command scope (ws_config lands in the
+        # workset slot); thread the system settings file so an @system.* / lower-
+        # scope ref in the new value resolves as it would at launch. No box scope
+        # at the workset command level.
         msg = set_config_value(
             key, value,
             config_path=ws_config,
+            cascade_system_path=std.settings,
+            cascade_workset_path=ws_config,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

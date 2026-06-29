@@ -1309,10 +1309,44 @@ def run_config(args: argparse.Namespace) -> int:
             # --local means project-isolated (set scope to "project")
             value = "project"
 
+        # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
+        # 2026-06-29): thread every scope's settings file + the active agent name so
+        # a cross-scope @-ref in the new value resolves exactly as it would at
+        # launch. The box handler already holds box (project_toml) / workset
+        # (workset_path) / system (std.settings) files. The active agent NAME is
+        # resolved best-effort: it selects the ``agent.<active>.*`` sub-table the
+        # OTHER cascade files may carry (mirroring _effective_behavior_for_display,
+        # which likewise passes agent_path=None — the per-agent file stores behavior
+        # FLAT, so assemble_levels reads no category subtree from it). A resolution
+        # failure just leaves the agent name empty.
+        cascade_workset_path = (
+            (proj.group.root / "settings.yaml") if proj.group is not None else None
+        )
+        cascade_agent_name = ""
+        try:
+            from kanibako.config import load_merged_config, resolve_agent
+            merged = load_merged_config(
+                config_file, project_toml if project_toml.exists() else None,
+                workset_path=cascade_workset_path,
+            )
+            cascade_agent_name = resolve_agent(
+                explicit_agent=None,
+                box_agent=merged.box_agent,
+                workset_agent=None,
+                system_default_path=std.settings,
+                project_path=proj.project_path,
+            )
+        except Exception:
+            cascade_agent_name = ""
+
         msg = set_config_value(
             key, value,
             config_path=project_toml,
             env_path=env_project,
+            cascade_system_path=std.settings,
+            cascade_workset_path=cascade_workset_path,
+            cascade_box_path=project_toml,
+            cascade_agent_name=cascade_agent_name,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
