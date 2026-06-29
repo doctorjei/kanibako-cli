@@ -232,7 +232,8 @@ def group_auth_chain_floor(
 # The keys (spec §1A L230-241):
 #   meta.runtime.ws_root      | primary    = "@config.primary_workset"  (@-ref → #3a foundation)
 #                             | named      = str(proj.group.root)        (resolved literal)
-#                             | standalone = str(project dir)            (resolved literal)
+#                             | standalone = str(proj.metadata_path)     (the project ROOT <root>;
+#                                            B2b fixed this from the B1 <root>/workspace defect)
 #   meta.runtime.ws_settings  | primary/named = "@meta.runtime.ws_root/settings.yaml" (@-ref)
 #                             | standalone    = None                      (whole-value None terminal)
 #   meta.runtime.project_type | proj.mode.value  ("primary"|"named"|"standalone")
@@ -422,6 +423,93 @@ def meta_identity_floor(
     return floor
 
 
+# --------------------------------------------------------------------------- #
+# WORKSET path-anchor materialization (block B2b — spec §2c §1, §2g)           #
+# --------------------------------------------------------------------------- #
+#
+# B2b completes the single-route: it materializes the workset-scope PATH anchors
+# the spec's §2c per-mode binds reference (workset.{boxes,vault_ro,vault_rw,logs}
+# + the workset-local channels), plus meta.box.helper_log, as REAL @-referenceable
+# floor keys. The core home/vault/helper_log binds then route through these anchors
+# (@workset.boxes/@meta.box.name/home, …) so the bind host_src RESOLVES via the
+# snapshot instead of a proj-attr literal injected at the seam (the payoff).
+#
+# JC-B2b-1: these workset.* keys do NOT exist as resolvable snapshot keys today —
+# resolve_system_paths derives only the PRIMARY pseudo-keys (system._boxes /
+# system._primary_vault_* / system._primary_logs) into StandardPaths; there is no
+# workset.* tier in the snapshot. B2b MATERIALIZES them here.
+#
+# ⚑ EQUIVALENCE IS THE BAR. Every value is the RESOLVED LITERAL the launch already
+# computes — derived DIRECTLY off the ProjectPaths the seam holds (the box-home
+# parent dir, the vault parent dirs, the logs dir) — so an @workset.*-routed bind
+# expands BYTE-IDENTICALLY to the proj-attr host_src it replaces, regardless of the
+# per-mode path-helper internals. PRIMARY/NAMED root under @meta.workset.path
+# (spec §2c ALL WORKSETS); STANDALONE's workset path anchors are <None> (spec §2c
+# L416) — its home/vault route through @meta.workset.path/box_data|vault/* directly
+# (the core-defaults `mode_meta_ref` standalone arm), now byte-identical because the
+# B2b ws_root fix made meta.workset.path = the project ROOT (<root>).
+
+
+def workset_anchor_floor(
+    *,
+    mode: str,
+    boxes: str | None,
+    vault_ro: str | None,
+    vault_rw: str | None,
+    logs: str | None,
+    helper_log: str,
+    workset_channels: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    """Build the workset PATH-anchor floor keys (block B2b — spec §2c/§2g).
+
+    Returns the ``{dotted_key: value}`` floor fragment for the spec's workset-scope
+    path anchors the @-ref-routed core binds reference. Folded into
+    ``build_launch_snapshot``'s floor (like :func:`meta_identity_floor`) so
+    ``expand`` resolves the @workset.* binds ONCE (single-route).
+
+    PRIMARY/NAMED (spec §2c ALL WORKSETS L436-439): ``workset.{boxes,vault_ro,
+    vault_rw,logs}`` are the RESOLVED LITERAL roots the launch computes
+    (``proj.shell_path``'s box-parent, the vault parent dirs, the logs dir) — so a
+    bind re-pointed to ``@workset.boxes/@meta.box.name/home`` expands byte-identically
+    to the old ``str(proj.shell_path)`` injection.
+
+    STANDALONE (spec §2c L416): the workset path anchors are ``<None>`` — its home/
+    vault route through the TRUE spec ``@meta.workset.path/{box_data/home,vault/ro,
+    vault/rw}`` chains directly (the core-defaults standalone ``mode_meta_ref`` arm).
+    These resolve byte-identically because the B2b fix made the standalone
+    ``meta.runtime.ws_root`` (→ ``meta.workset.path``) the project ROOT (``<root>``,
+    via ``str(proj.metadata_path)``), so ``@meta.workset.path/box_data/home`` =
+    ``<root>/box_data/home`` = ``proj.shell_path``. So these keys carry ``None`` and
+    are not referenced — no invented resolved-literal anchor is needed.
+
+    ``meta.box.helper_log`` is materialized in EVERY mode to the resolved helper-log
+    path (= ``str(helper_log_path(std, proj))``) so the helper_log bind routes a
+    SINGLE whole-value @-ref (the spec's ``@workset.logs/@meta.box.name.jsonl``
+    suffix-after-ref form is not expand-parseable — the greedy ref regex would
+    swallow ``.jsonl`` into the key name; this is independent of ws_root).
+
+    *workset_channels* (PRIMARY/NAMED only) maps ``commons``/``chat``/``share`` to
+    the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
+    materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c
+    L452-454) route through them. ``None`` for STANDALONE (no workset channels).
+    """
+    floor: dict[str, object] = {
+        # The workset path anchors (spec §2c ALL WORKSETS L436-439). None for
+        # STANDALONE (spec §2c L416) — present-None whole-value terminals.
+        "workset.boxes": boxes,
+        "workset.vault_ro": vault_ro,
+        "workset.vault_rw": vault_rw,
+        "workset.logs": logs,
+        # The resolved helper-log path anchor (every mode) — the single-route
+        # target for the helper_log bind (see the docstring's parse-limitation note).
+        "meta.box.helper_log": helper_log,
+    }
+    if workset_channels is not None:
+        for leaf, path in workset_channels.items():
+            floor[f"workset.channels.{leaf}"] = path
+    return floor
+
+
 def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool:
     """Read ``effective_group_auth`` off the expanded snapshot (spec §2b L282).
 
@@ -477,6 +565,7 @@ def build_launch_snapshot(
     group_auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
     meta_identity: Mapping[str, object] | None = None,
+    workset_anchor: Mapping[str, object] | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -588,6 +677,18 @@ def build_launch_snapshot(
     # known-key list); the floor is their sole source. ``None`` for a narrow resolve.
     if meta_identity:
         for key, val in meta_identity.items():
+            floor[key] = val
+
+    # workset PATH-anchor materialization (block B2b): the workset-scope path
+    # anchors (workset.{boxes,vault_ro,vault_rw,logs} + workset.channels.* +
+    # meta.box.helper_log) the @-ref-routed core home/vault/helper_log/workset-
+    # channel binds reference (spec §2c/§2g). Folded into the SAME floor so
+    # ``expand`` resolves the @workset.* binds ONCE (single-route). Built per box by
+    # :func:`workset_anchor_floor`. ``None`` for a narrow resolve. A scope FILE MAY
+    # legitimately override a workset.* key (workset.* is a settable settings tier),
+    # so these sit at the floor (base) and a workset/box file still wins by name.
+    if workset_anchor:
+        for key, val in workset_anchor.items():
             floor[key] = val
 
     base_levels = assemble_levels(

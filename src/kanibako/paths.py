@@ -787,21 +787,23 @@ def resolve_project(
 
     metadata_path = project_dir_path
 
-    # Check for stored paths in settings.yaml (enables user overrides).
+    # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_ro"]/["vault_rw"]
+    # custom-path OVERRIDE is DROPPED.  home/vault are now SOLELY the spec-derived
+    # default location (@workset.boxes/@meta.box.name/home + @workset.vault_{ro,rw}/
+    # @meta.box.name; the launch routes the home/vault binds through those @-refs).
+    # A user customizing home/vault now sets the box.bindings.{rw,ro}.{home,vault}
+    # CASCADE override (which wins naturally), NOT a stored shell path.  The
+    # ``shell``/``vault_*`` fields are STILL WRITTEN to the meta file (below + the
+    # describe/lifecycle read path) for the on-disk record; they are no longer read
+    # as a resolution override here.
     project_toml = metadata_path / BOX_META_FILE
     meta = read_project_meta(project_toml)
-    _default_shell, _default_vro, _default_vrw = _primary_box_paths(
+    shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
         std, metadata_path, project_name or metadata_path.name,
     )
     if meta:
-        shell_path = Path(meta["shell"]) if meta["shell"] else _default_shell
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _default_vro
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _default_vrw
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        shell_path, vault_ro_path, vault_rw_path = (
-            _default_shell, _default_vro, _default_vrw,
-        )
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Group-auth (block #2): carry the WORKSET-level on-disk policy (default
@@ -1338,16 +1340,17 @@ def resolve_workset_project(
     # the describe path (iter_projects), which already reads meta["workspace"].
     if meta and meta.get("workspace"):
         project_path = Path(meta["workspace"])
-    _ws_shell, _ws_vro, _ws_vrw = _workset_box_paths(
+    # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
+    # OVERRIDE is DROPPED (mirrors the PRIMARY path) — home/vault are SOLELY the
+    # spec-derived default location, customized via the box.bindings cascade. The
+    # workspace override above (an EXTERNAL-connected live dir) is a SEPARATE concern
+    # and STAYS. The shell/vault_* fields are still written for the on-disk record.
+    shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
         metadata_path, ws.vault_dir, project_name,
     )
     if meta:
-        shell_path = Path(meta["shell"]) if meta["shell"] else _ws_shell
-        vault_ro_path = Path(meta["vault_ro"]) if meta["vault_ro"] else _ws_vro
-        vault_rw_path = Path(meta["vault_rw"]) if meta["vault_rw"] else _ws_vrw
         actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
     else:
-        shell_path, vault_ro_path, vault_rw_path = _ws_shell, _ws_vro, _ws_vrw
         actual_vault_enabled = enable_vault if enable_vault is not None else True
 
     # Group-auth (block #2): carry the WORKSET-level policy (ws.group_auth) and

@@ -283,9 +283,15 @@ def _default_state_from_meta(
     meta = read_project_meta(metadata_path / BOX_META_FILE)
     if not meta:
         return None
-    shell_path = Path(meta["shell"]) if meta.get("shell") else metadata_path / "home"
-    vault_ro = Path(meta["vault_ro"]) if meta.get("vault_ro") else std.primary_vault_ro / name
-    vault_rw = Path(meta["vault_rw"]) if meta.get("vault_rw") else std.primary_vault_rw / name
+    # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
+    # OVERRIDE is DROPPED here too — to stay CONSISTENT with the launch path
+    # (resolve_project), which now derives home/vault SOLELY from the default
+    # location. Reading the stored override here would make stop/cleanup/move target
+    # a DIFFERENT home than the launch binds (JC-B2b-4). home/vault are the default
+    # PRIMARY-box location (boxes/<name>/home + primary vault/{ro,rw}/<name>).
+    shell_path = metadata_path / "home"
+    vault_ro = std.primary_vault_ro / name
+    vault_rw = std.primary_vault_rw / name
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=name,
         workspace_path=workspace.resolve(), metadata_path=metadata_path,

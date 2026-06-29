@@ -39,20 +39,30 @@ masks: []
 # ~/channels/inbox.
 channels:
   # System channel type roots (every mode).
+  # B2b: routed through @system.channels.* (spec §2c ALL PROJECTS L471-474) — the
+  # host_src is the @system.* REF (not the runtime-probed literal), which `expand`
+  # resolves to the SAME resolved system channel root (`std.channels_* ==
+  # resolved["system.channels.*"]`; the same flat foundation, byte-identical). The
+  # `source` symbolic name is kept for documentation; the loader emits `meta_ref`
+  # as the host_src and folds the resolved system.channels.* literal into the floor.
   - key: global_commons
     source: channels_commons
+    meta_ref: "@system.channels.commons"
     box_dest: "~/channels/commons"
     scope: system
   - key: global_chat
     source: channels_chat
+    meta_ref: "@system.channels.chat"
     box_dest: "~/channels/chat"
     scope: system
   - key: global_share
     source: channels_share
+    meta_ref: "@system.channels.share"
     box_dest: "~/channels/share"
     scope: system
   - key: mailboxes
     source: channels_mailboxes
+    meta_ref: "@system.channels.mailboxes"
     box_dest: "~/channels/mailboxes"
     scope: system
   # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced at the
@@ -70,17 +80,24 @@ channels:
     box_dest: "~/channels/inbox"
     scope: system
   # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
-  # seam by the presence of the workset channel paths).
+  # seam by the presence of the workset channel paths).  B2b: routed through
+  # @workset.channels.* (spec §2c ALL WORKSETS L452-454) — the loader folds the
+  # resolved workset channel literal into the floor under that key and emits the
+  # @-ref as the host_src (byte-identical to the runtime-probed `wch.*`).  The
+  # `source` gate still drops these entries for a standalone box (no workset paths).
   - key: workset_commons
     source: workset_commons
+    meta_ref: "@workset.channels.commons"
     box_dest: "~/channels/workset/commons"
     scope: workset
   - key: workset_chat
     source: workset_chat
+    meta_ref: "@workset.channels.chat"
     box_dest: "~/channels/workset/chat"
     scope: workset
   - key: workset_share
     source: workset_share
+    meta_ref: "@workset.channels.share"
     box_dest: "~/channels/workset/share"
     scope: workset
 
@@ -111,9 +128,26 @@ core:
   # Persistent agent home — host shell_path bound rw at ~ (/home/agent).  ``~``
   # (not ``~/``) so the dest is exactly ``/home/agent`` — no trailing slash, byte-
   # identical to the old hardwired ``{shell_path}:/home/agent:Z,U`` bind.
+  #
+  # B2b: routed through the spec §2c per-mode home @-ref (single-route, the payoff).
+  #   primary/named → @workset.boxes/@meta.box.name/home  (L444)
+  #   standalone    → @meta.workset.path/box_data/home     (L427)
+  # `mode_meta_ref` is a PER-MODE @-ref map the loader picks by `proj.mode`; each
+  # resolves to the SAME literal `proj.shell_path` produces (byte-identical) because
+  # the loader materializes workset.boxes / meta.workset.path to the launch's own
+  # resolved roots.  `source: shell_path` is kept as the documentary symbolic name.
   - key: home
     category: bindings.rw
     source: shell_path
+    mode_meta_ref:
+      primary: "@workset.boxes/@meta.box.name/home"
+      named: "@workset.boxes/@meta.box.name/home"
+      # standalone: the TRUE spec chain (§2c L427).  meta.workset.path resolves to
+      # the project ROOT (the B1 standalone meta.runtime.ws_root defect was FIXED in
+      # B2b — see _launch_snapshot_inputs: ws_root = str(proj.metadata_path) = <root>,
+      # NOT <root>/workspace), so this resolves to <root>/box_data/home =
+      # proj.shell_path (byte-identical).
+      standalone: "@meta.workset.path/box_data/home"
     box_dest: "~"
     options: "Z,U"
     scope: system
@@ -130,16 +164,32 @@ core:
     options: "Z,U"
     scope: system
   # Read-only vault (only when vault enabled; source is created if missing).
+  # B2b: routed per-mode (spec §2c) — primary/named @workset.vault_ro/@meta.box.name
+  # (L442), standalone @meta.workset.path/vault/ro (L425).
   - key: vault
     category: bindings.ro
     source: vault_ro_path
+    mode_meta_ref:
+      primary: "@workset.vault_ro/@meta.box.name"
+      named: "@workset.vault_ro/@meta.box.name"
+      # standalone: the TRUE spec chain (§2c L425) — meta.workset.path = <root>
+      # (B2b ws_root fix), so this resolves to <root>/vault/ro = proj.vault_ro_path.
+      standalone: "@meta.workset.path/vault/ro"
     box_dest: "~/vault/ro"
     options: "ro"
     scope: vault
   # Read-write vault (only when vault enabled; source is created if missing).
+  # B2b: routed per-mode (spec §2c) — primary/named @workset.vault_rw/@meta.box.name
+  # (L445), standalone @meta.workset.path/vault/rw (L428).
   - key: vault
     category: bindings.rw
     source: vault_rw_path
+    mode_meta_ref:
+      primary: "@workset.vault_rw/@meta.box.name"
+      named: "@workset.vault_rw/@meta.box.name"
+      # standalone: the TRUE spec chain (§2c L428) — meta.workset.path = <root>
+      # (B2b ws_root fix), so this resolves to <root>/vault/rw = proj.vault_rw_path.
+      standalone: "@meta.workset.path/vault/rw"
     box_dest: "~/vault/rw"
     options: "Z,U"
     scope: vault
@@ -181,9 +231,19 @@ helpers:
     source: helper_sock
     options: ""
   # Per-box helper message log → <box_state_kanibako>/helpers.jsonl (ro).
+  # B2b: routed through @meta.box.helper_log (the materialized resolved log path).
+  # The spec form @workset.logs/@meta.box.name.jsonl (primary/named) /
+  # @meta.workset.path/box_data/@meta.box.name.jsonl (standalone) embeds a literal
+  # ``.jsonl`` suffix DIRECTLY after a dotted @-ref — which the GREEDY _REF_NAME_RE
+  # would swallow into the key name (``meta.box.name.jsonl``), so it is NOT
+  # expand-parseable as written.  Materializing meta.box.helper_log to the launch's
+  # own resolved log path (= str(helper_log_path(std, proj))) routes a SINGLE
+  # whole-value @-ref that resolves byte-identically across all three modes
+  # (JC-B2b-3-adjacent — the suffix-after-ref parse limitation).
   - key: helper_log
     category: bindings.ro
     source: helper_log
+    meta_ref: "@meta.box.helper_log"
     options: "ro"
 
 # Image-sharing bind (Phase B, D-M8).  The host image graph root + the GENERATED

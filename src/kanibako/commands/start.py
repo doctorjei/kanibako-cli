@@ -2164,7 +2164,7 @@ def _resolve_effective_group_auth(
     """
     from kanibako import settings_launch
 
-    ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity = (
+    ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
         _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     )
     chain = settings_launch.group_auth_chain_floor(
@@ -2190,6 +2190,7 @@ def _resolve_effective_group_auth(
         group_auth_chain=chain,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
+        workset_anchor=workset_anchor,
     )
     return settings_launch.effective_group_auth(snapshot, mode=proj.mode.value)
 
@@ -2304,6 +2305,15 @@ def _launch_snapshot_inputs(
     resolved_sys = {
         "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
+        # B2b: the resolved system channel type-roots (spec §2g) — folded in so the
+        # @system.channels.* ALL-PROJECTS channel binds (global_commons/chat/share/
+        # mailboxes, §2c L471-474) resolve from the snapshot.  Each equals the
+        # corresponding ``std.channels_*`` (the same flat foundation resolves both),
+        # so the @-ref-routed bind is byte-identical to the runtime-probed literal.
+        "system.channels.commons": str(std.channels_commons),
+        "system.channels.chat": str(std.channels_chat),
+        "system.channels.share": str(std.channels_share),
+        "system.channels.mailboxes": str(std.channels_mailboxes),
     }
 
     # meta.runtime.* identity anchors (block B1, spec §1A L230-241). The per-mode
@@ -2311,7 +2321,7 @@ def _launch_snapshot_inputs(
     # ``meta.runtime.*`` keys + the single-source re-root of meta.workset.path /
     # meta.workset.settings / meta.box.mode. PRIMARY → the @config.primary_workset
     # @-ref (live-propagates from the foundation); NAMED → the detected workset
-    # root literal; STANDALONE → the runtime project dir literal.
+    # root literal; STANDALONE → the project ROOT.
     mode = proj.mode.value
     if mode == "named":
         if proj.group is None:
@@ -2320,7 +2330,17 @@ def _launch_snapshot_inputs(
             )
         ws_root_literal = str(proj.group.root)
     elif mode == "standalone":
-        ws_root_literal = str(proj.project_path)
+        # B2b FIX (was the B1 defect): standalone meta.runtime.ws_root must be the
+        # project ROOT (<root>), NOT proj.project_path (= <root>/workspace, the
+        # workspace SUBDIR).  Spec §2c L414 + the §4 worked example require the
+        # degenerate workset to root at the project dir itself.  ``resolve_standalone
+        # _project`` sets ``metadata_path = root`` (the resolved project dir) and
+        # ``project_path = root/"workspace"`` — so ``proj.metadata_path`` IS <root>
+        # exactly (verified: it equals ``Path(raw).resolve()``).  This makes the spec
+        # @meta.workset.path/{box_data/home,vault/ro,vault/rw} chains resolve to the
+        # box's real home/vault (byte-identical to proj.shell_path/vault_*_path), so
+        # the standalone home/vault binds route the TRUE spec form (no workaround).
+        ws_root_literal = str(proj.metadata_path)
     else:
         ws_root_literal = None  # primary uses the @config.primary_workset @-ref
     meta_runtime = settings_launch_module.meta_runtime_floor(
@@ -2354,7 +2374,54 @@ def _launch_snapshot_inputs(
         agent_name=agent_name if agent_name else None,
         agent_real_name=agent_name if agent_name else None,
     )
-    return ctx, scope_roots, resolved_sys, meta_runtime, meta_identity
+
+    # workset PATH-anchor materialization (block B2b, spec §2c/§2g). The workset-
+    # scope path anchors the @-ref-routed core home/vault/helper_log/workset-channel
+    # binds reference. Every value is the RESOLVED LITERAL the launch computes —
+    # derived DIRECTLY off ``proj`` so an @workset.*-routed bind expands byte-
+    # identically to the proj-attr host_src it replaces (the equivalence bar):
+    #   workset.boxes    = proj.shell_path's box-PARENT (boxes/<name>/home → boxes)
+    #   workset.vault_ro = proj.vault_ro_path's PARENT  (vault/ro/<name> → vault/ro)
+    #   workset.vault_rw = proj.vault_rw_path's PARENT
+    #   workset.logs     = the logs dir (helper_log_path's PARENT)
+    # PRIMARY/NAMED root these under @meta.workset.path; STANDALONE's are <None>
+    # (spec §2c L416) — its home/vault route through the TRUE @meta.workset.path/*
+    # spec chains directly (byte-identical now that the B2b ws_root fix made the
+    # standalone meta.workset.path = the project ROOT <root>, not <root>/workspace).
+    from kanibako.paths import helper_log_path
+
+    _log_path = helper_log_path(std, proj)
+    if mode == "standalone":
+        _boxes = _vault_ro = _vault_rw = _logs = None
+        _ws_channels = None
+    else:
+        _boxes = str(proj.shell_path.parent.parent)
+        _vault_ro = str(proj.vault_ro_path.parent)
+        _vault_rw = str(proj.vault_rw_path.parent)
+        _logs = str(_log_path.parent)
+        # The resolved workset-local channel roots (PRIMARY/NAMED only).
+        _wch = _channels.workset_channel_paths(proj, std)
+        _ws_channels = (
+            {
+                "commons": str(_wch.commons),
+                "chat": str(_wch.chat),
+                "share": str(_wch.share),
+            }
+            if _wch is not None
+            else None
+        )
+    workset_anchor = settings_launch_module.workset_anchor_floor(
+        mode=mode,
+        boxes=_boxes,
+        vault_ro=_vault_ro,
+        vault_rw=_vault_rw,
+        logs=_logs,
+        helper_log=str(_log_path),
+        workset_channels=_ws_channels,
+    )
+    return (
+        ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+    )
 
 
 def _resolve_launch_snapshot(
@@ -2413,7 +2480,7 @@ def _resolve_launch_snapshot(
     from kanibako.agent_representation import agent_default_partial
     from kanibako.settings_categories import reconcile_categories
 
-    ctx, scope_roots, resolved_sys, meta_runtime, meta_identity = (
+    ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
         _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     )
 
@@ -2496,6 +2563,7 @@ def _resolve_launch_snapshot(
         descriptor_bindings=list(desc.bindings) if desc is not None else None,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
+        workset_anchor=workset_anchor,
     )
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,
@@ -2815,7 +2883,7 @@ def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
     hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
     """
     return core_defaults.core_default_categories(
-        std, proj, enable_vault=proj.enable_vault
+        std, proj, enable_vault=proj.enable_vault, mode=proj.mode.value
     )
 
 

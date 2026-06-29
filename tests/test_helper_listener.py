@@ -687,8 +687,13 @@ class TestHelperDefaultCategories:
             socket_path=sock,
             log_path=log,
         )
+        # B2b: helper_log routes through @meta.box.helper_log (the materialized
+        # resolved log path) — the spec @workset.logs/@meta.box.name.jsonl form is
+        # not expand-parseable (the greedy ref regex swallows the .jsonl suffix), so
+        # a single whole-value @-ref to the resolved literal is used.  The .exists()
+        # gate still keys off the probed log; only the emitted host_src is the @-ref.
         assert cats["box.bindings.ro.helper_log"] == (
-            str(log),
+            "@meta.box.helper_log",
             "/home/agent/.local/state/kanibako/helpers.jsonl",
             "ro",
         )
@@ -731,7 +736,12 @@ class TestHelperDefaultCategories:
             socket_path=sock,
             log_path=log,
         )
-        levels = [LevelView("agent", cats)]
+        # B2b: helper_log routes through @meta.box.helper_log — materialize the
+        # anchor (as the launch floor does) so the ref resolves.
+        levels = [
+            LevelView("box", {"meta.box.helper_log": str(log)}),
+            LevelView("agent", cats),
+        ]
         ctx = ResolveCtx(
             agent_name="claude",
             workset_name="ws",

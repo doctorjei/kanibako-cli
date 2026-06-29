@@ -1898,6 +1898,13 @@ class TestApplyInitSeeds:
             # meta.box.{inbox,share_global} identity anchors).
             channels_mailboxes=tmp_path / "channels" / "mailboxes",
             channels_share=tmp_path / "channels" / "share",
+            # B2b: the system channel type-roots folded into resolved_sys so the
+            # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
+            channels_commons=tmp_path / "channels" / "commons",
+            channels_chat=tmp_path / "channels" / "chat",
+            # B2b: the PRIMARY logs dir helper_log_path reads (the workset.logs +
+            # meta.box.helper_log anchors).
+            primary_logs=tmp_path / "primary_workset" / "logs",
         )
 
     def _proj(self, shell_path, group=None):
@@ -1905,9 +1912,13 @@ class TestApplyInitSeeds:
         # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
         # (the @config.primary_workset @-ref, so project_path is unused).
         # B2: meta.box.* identity anchors need the box name (proj.name).
+        # B2b: the workset path anchors are derived off the vault paths + the box
+        # home's box-parent, so the proj fake supplies them.
         return SimpleNamespace(
             shell_path=shell_path, group=group, name="seedbox",
             mode=BoxMode.primary, project_path=shell_path,
+            vault_ro_path=shell_path.parent / "vault" / "ro" / "seedbox",
+            vault_rw_path=shell_path.parent / "vault" / "rw" / "seedbox",
         )
 
     def _logger(self):
@@ -2115,6 +2126,13 @@ class TestApplySyncedCopies:
             # meta.box.{inbox,share_global} identity anchors).
             channels_mailboxes=tmp_path / "channels" / "mailboxes",
             channels_share=tmp_path / "channels" / "share",
+            # B2b: the system channel type-roots folded into resolved_sys so the
+            # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
+            channels_commons=tmp_path / "channels" / "commons",
+            channels_chat=tmp_path / "channels" / "chat",
+            # B2b: the PRIMARY logs dir helper_log_path reads (the workset.logs +
+            # meta.box.helper_log anchors).
+            primary_logs=tmp_path / "primary_workset" / "logs",
         )
 
     def _proj(self, shell_path, group=None):
@@ -2122,9 +2140,13 @@ class TestApplySyncedCopies:
         # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
         # (the @config.primary_workset @-ref, so project_path is unused).
         # B2: meta.box.* identity anchors need the box name (proj.name).
+        # B2b: the workset path anchors are derived off the vault paths + the box
+        # home's box-parent, so the proj fake supplies them.
         return SimpleNamespace(
             shell_path=shell_path, group=group, name="seedbox",
             mode=BoxMode.primary, project_path=shell_path,
+            vault_ro_path=shell_path.parent / "vault" / "ro" / "seedbox",
+            vault_rw_path=shell_path.parent / "vault" / "rw" / "seedbox",
         )
 
     def _logger(self):
