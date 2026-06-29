@@ -408,7 +408,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     (claude_config_dir / ".credentials.json").write_text(json.dumps(creds))
 
     # Build kanibako config
-    kanibako_config = config_home / "kanibako.yaml"
+    kanibako_config = config_home / "kanibako_config.yaml"
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
@@ -518,7 +518,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
       - host ``~/.config/goose/secrets.yaml`` + ``config.yaml`` seeded with
         KNOWN content (GOOSE_SECRETS_CONTENT / GOOSE_CONFIG_CONTENT) so the
         credsync engine has real SYNC cred files to deliver / write back
-      - ``kanibako.yaml`` pinned to the e2e image
+      - ``kanibako_config.yaml`` pinned to the e2e image
       - the same ``CONTAINERS_STORAGE_CONF`` pin as ``e2e_env`` so the
         kanibako-launched podman sees the host's image store
 
@@ -556,7 +556,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     config_path.write_text(GOOSE_CONFIG_CONTENT)
 
     # Build kanibako config pinned to the e2e image.
-    kanibako_config = config_home / "kanibako.yaml"
+    kanibako_config = config_home / "kanibako_config.yaml"
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )

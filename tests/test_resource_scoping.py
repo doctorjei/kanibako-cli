@@ -96,10 +96,10 @@ class TestBuildEffectiveState:
         return target
 
     def _make_global_config(self, tmp_path, settings=None):
-        """Create a minimal global kanibako.yaml, optionally with [agent]."""
+        """Create a minimal global kanibako_config.yaml, optionally with [agent]."""
         from kanibako.config import write_agent_setting
 
-        global_toml = tmp_path / "kanibako.yaml"
+        global_toml = tmp_path / "kanibako_config.yaml"
         global_toml.write_text("")
         if settings:
             for k, v in settings.items():
@@ -214,7 +214,7 @@ class TestBuildEffectiveState:
         assert result == {"model": "opus", "access": "permissive"}
 
     def test_system_level_provides_value(self, tmp_path):
-        """System [crab] (global kanibako.yaml) supplies a value when nothing
+        """System [crab] (global kanibako_config.yaml) supplies a value when nothing
         more specific sets it."""
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 

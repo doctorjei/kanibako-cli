@@ -41,7 +41,7 @@ class TestEnvViaConfigInterface:
         env_path.write_text("EDITOR=vim\n")
         val = get_config_value(
             "env.EDITOR",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
             env_project=env_path,
         )
         assert val == "vim"
@@ -49,7 +49,7 @@ class TestEnvViaConfigInterface:
     def test_get_env_var_missing(self, tmp_path):
         val = get_config_value(
             "env.MISSING",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
         )
         assert val is None
 
@@ -58,7 +58,7 @@ class TestEnvViaConfigInterface:
         global_env.write_text("GLOBAL_KEY=hello\n")
         val = get_config_value(
             "env.GLOBAL_KEY",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
             env_global=global_env,
         )
         assert val == "hello"
@@ -70,7 +70,7 @@ class TestEnvViaConfigInterface:
         project_env.write_text("EDITOR=vim\n")
         val = get_config_value(
             "env.EDITOR",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
             env_global=global_env,
             env_project=project_env,
         )

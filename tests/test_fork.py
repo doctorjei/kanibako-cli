@@ -280,9 +280,9 @@ class TestForkCLIRegistration:
         assert args.name == "testname"
 
     def test_fork_exempt_from_config_check(self):
-        """box fork should not require kanibako.yaml to exist."""
+        """box fork should not require kanibako_config.yaml to exist."""
         from kanibako.cli import main
-        # Calling box fork with a missing kanibako.yaml should not trigger
+        # Calling box fork with a missing kanibako_config.yaml should not trigger
         # the "kanibako is not set up" error — it should reach run_fork
         # and fail on the socket check instead.
         with pytest.raises(SystemExit) as exc_info:

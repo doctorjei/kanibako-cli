@@ -1,7 +1,7 @@
-"""Consolidated name registry (``system.registry`` → ``registry.yaml``).
+"""Consolidated name registry (``config.registry`` → ``registry.yaml``).
 
-A single file at ``@system.registry`` (``{data_path}/global/registry.yaml``)
-backs every kanibako *name* store.  It replaces the former separate files
+A single file at ``@config.registry`` (``@config.data/global/registry.yaml`` ==
+``{data_path}/global/registry.yaml``) backs every kanibako *name* store.  It replaces the former separate files
 ``names.yaml`` (projects + worksets), ``worksets.yaml`` (workset name → root)
 and ``connected.yaml`` (external-connect redirects), which are no longer read
 or written.
@@ -74,9 +74,19 @@ _NAME_SECTIONS: frozenset[str] = frozenset(
 def registry_path(data_path: Path) -> Path:
     """Return the path to ``registry.yaml`` for *data_path*.
 
-    Mirrors the ``system.registry`` resolution (``@system.global/registry.yaml``
-    == ``{data_path}/global/registry.yaml``) so the name stores keep their
-    ``data_path``-based public signatures.
+    CURRENTLY derived ``data_path``-relative: the ``global/registry.yaml`` tail
+    matches the DEFAULT expression of the ``config.registry`` config key relative
+    to ``config.data`` (``@config.registry`` = ``@config.data/global/registry.yaml``,
+    :data:`kanibako.paths.CONFIG_PATH_DEFAULTS`), and *data_path* is the resolved
+    ``config.data`` root — so the default case matches and the name stores keep
+    their ``data_path``-based public signatures.
+
+    NOT YET single-source: a user who REPOINTS ``config.registry`` off its default
+    is currently NOT honored here (this derivation ignores the foundation's
+    resolved ``config.registry`` value).  Threading the resolved ``config.registry``
+    through the name-store API (the single-source cleanup) is DEFERRED to a
+    separate follow-up block — it touches the registry_store API plus image.py /
+    shells.py / rig_registry.py, distinct from the path-extraction work.
     """
     return data_path / "global" / "registry.yaml"
 

@@ -28,7 +28,7 @@ class TestLoadConfig:
     def test_defaults(self, tmp_path):
         cfg = load_config(tmp_path / "nonexistent.yaml")
         assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
-        assert cfg.system_paths == {}
+        assert cfg.config_paths == {}
 
     def test_round_trip(self, tmp_path):
         path = tmp_path / "test.yaml"
@@ -36,9 +36,9 @@ class TestLoadConfig:
         write_global_config(path, cfg)
         loaded = load_config(path)
         assert loaded.box_image == "custom:latest"
-        # The written [system] table holds DEFAULT expressions (bare keys).
-        assert loaded.system_paths["system.data"] == "$XDG_DATA_HOME/kanibako"
-        assert loaded.system_paths["system.agents"] == "@system.data/agents"
+        # The written [config] table holds the Layer-1 DEFAULT expressions.
+        assert loaded.config_paths["config.data"] == "$XDG_DATA_HOME/kanibako"
+        assert loaded.config_paths["config.agents"] == "@config.data/agents"
 
     def test_emits_channelroot_not_stale_channels_leaf(self, tmp_path):
         """write_global_config emits the RENAMED ``system.channelroot`` root leaf.
@@ -52,17 +52,17 @@ class TestLoadConfig:
         path = tmp_path / "g.yaml"
         write_global_config(path)
         loaded = load_config(path)
-        assert loaded.system_paths["system.channelroot"] == "@system.data/channels"
+        assert loaded.config_paths["system.channelroot"] == "@config.data/channels"
         # The stale bare leaf must NOT be emitted (it would collide in the
         # nested KeyStore with the system.channels.* branch).
-        assert "system.channels" not in loaded.system_paths
+        assert "system.channels" not in loaded.config_paths
 
     def test_channelroot_round_trips_through_load_std_paths(self, tmp_home):
         """A config written by write_global_config resolves cleanly end-to-end:
         the renamed channelroot leaf AND the channels.* children all resolve."""
         from kanibako.paths import load_std_paths
 
-        cf = tmp_home / "config" / "kanibako.yaml"
+        cf = tmp_home / "config" / "kanibako_config.yaml"
         write_global_config(cf)
         std = load_std_paths(load_config(cf))
         # channelroot leaf -> the channels root dir; children hang off it.
@@ -84,12 +84,12 @@ class TestLoadConfig:
         cfg = load_config(path)
         assert cfg.box_bootstrap_program == "tmux"
 
-    def test_system_table_populates_system_paths(self, tmp_path):
-        """[system] keys land in cfg.system_paths (bare dotted names)."""
+    def test_config_table_populates_config_paths(self, tmp_path):
+        """[config] keys land in cfg.config_paths (full dotted names)."""
         path = tmp_path / "sys.yaml"
-        path.write_text('system:\n  agents: "/x"\n')
+        path.write_text('config:\n  agents: "/x"\n')
         cfg = load_config(path)
-        assert cfg.system_paths == {"system.agents": "/x"}
+        assert cfg.config_paths == {"config.agents": "/x"}
 
 
 class TestSetupVersionConstant:
@@ -111,12 +111,12 @@ class TestReadSetupCompleted:
     def test_reads_stored_string(self, tmp_path):
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
         assert read_setup_completed(cf) == "1.6.0"
 
     def test_absent_key_returns_none(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)  # has [system] but no setup_completed
         assert read_setup_completed(cf) is None
 
@@ -125,7 +125,7 @@ class TestReadSetupCompleted:
         assert read_setup_completed(None) is None
 
     def test_empty_value_returns_none(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         cf.write_text("system:\n  setup_completed: ''\n")
         assert read_setup_completed(cf) is None
 
@@ -133,7 +133,7 @@ class TestReadSetupCompleted:
         """Fresh init leaves both ABSENT — no default_agent, no marker, no 'none'."""
         from kanibako.config_io import load_doc
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)
         data = load_doc(cf)
         # No setup marker on a fresh config.
@@ -151,7 +151,7 @@ class TestSetupNudgeMessage:
     def test_absent_marker_nudges_setup(self, tmp_path):
         from kanibako.config import setup_nudge_message
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)  # no setup_completed
         msg = setup_nudge_message(cf)
         assert msg == "kanibako isn't set up yet. Run 'kanibako setup' to get started."
@@ -170,7 +170,7 @@ class TestSetupNudgeMessage:
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         # A version older than OLDEST_COMPATIBLE_SETUP_VERSION (== "1.6.0").
         write_system_value(cf, "setup_completed", "1.5.0")
         assert setup_nudge_message(cf) == (
@@ -181,7 +181,7 @@ class TestSetupNudgeMessage:
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
         assert setup_nudge_message(cf) is None
 
@@ -189,7 +189,7 @@ class TestSetupNudgeMessage:
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.7.0")
         assert setup_nudge_message(cf) is None
 
@@ -204,7 +204,7 @@ class TestSetupNudgeMessage:
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0.dev26")
         assert setup_nudge_message(cf) is None
 
@@ -213,7 +213,7 @@ class TestSetupNudgeMessage:
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         # 1.5.0.dev1 has base 1.5.0 < 1.6.0 → stale.
         write_system_value(cf, "setup_completed", "1.5.0.dev1")
         assert setup_nudge_message(cf) == (
@@ -225,7 +225,7 @@ class TestSetupNudgeMessage:
         from kanibako.config import setup_nudge_message
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "custom-build")
         assert setup_nudge_message(cf) is None
 
@@ -322,36 +322,31 @@ class TestMergedConfig:
         assert with_missing == baseline
 
 
-class TestMachineConfigLayer:
-    """The /etc machine-wide layer: below user-global, above built-in defaults."""
+class TestScalarOverlayPrecedence:
+    """Presence-based scalar/bool overlay across the FILE layers.
 
-    def _patch_machine(self, monkeypatch, path):
+    The old ``/etc/kanibako/kanibako.yaml`` machine third-file was DELETED in the
+    two-layer path reshape (block #3a): ``load_merged_config`` no longer consults
+    any ``machine_config_path``.  The least-specific FILE source is now the user
+    global; the layers are user-global < workset < project < CLI, over the
+    built-in defaults.  These tests exercise the SAME overlay semantics through
+    the surviving layers.
+    """
+
+    def test_no_machine_config_path_attribute(self):
+        """The deleted machine third-file is structurally gone (no attribute)."""
         import kanibako.config as config_mod
-        monkeypatch.setattr(config_mod, "machine_config_path", lambda: path)
+        assert not hasattr(config_mod, "machine_config_path")
 
-    def test_machine_beats_builtin_defaults(self, tmp_path, monkeypatch):
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  image: machine-image:v1\n")
-        self._patch_machine(monkeypatch, machine)
-        # No user global / project: machine value wins over the built-in default.
-        merged = load_merged_config(tmp_path / "no-global.yaml")
-        assert merged.box_image == "machine-image:v1"
-
-    def test_user_global_beats_machine(self, tmp_path, monkeypatch):
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  image: machine-image:v1\n")
-        self._patch_machine(monkeypatch, machine)
+    def test_user_global_beats_builtin_defaults(self, tmp_path):
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  image: user-image:v2\n")
         merged = load_merged_config(global_path)
         assert merged.box_image == "user-image:v2"
 
-    def test_full_precedence_machine_user_workset_project(self, tmp_path, monkeypatch):
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  image: machine:1\n  agent_name: claude\n")
-        self._patch_machine(monkeypatch, machine)
+    def test_full_precedence_user_workset_project(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: user:2\n")
+        global_path.write_text("box:\n  image: user:2\n  agent_name: claude\n")
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: ws:3\n")
         project_path = tmp_path / "settings.yaml"
@@ -359,61 +354,50 @@ class TestMachineConfigLayer:
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
         )
-        # project wins for image; agent only set at machine so it survives.
+        # project wins for image; agent only set at user-global so it survives.
         assert merged.box_image == "proj:4"
         assert merged.box_agent_name == "claude"
 
-    def test_missing_machine_file_is_empty_level(self, tmp_path, monkeypatch):
-        self._patch_machine(monkeypatch, tmp_path / "absent.yaml")
-        global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: user:1\n")
-        merged = load_merged_config(global_path)
-        assert merged.box_image == "user:1"
+    def test_missing_global_file_is_empty_level(self, tmp_path):
+        # No file at all → built-in defaults.
+        merged = load_merged_config(tmp_path / "absent.yaml")
+        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
-    def test_machine_bootstrap_program(self, tmp_path, monkeypatch):
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  bootstrap_program: zellij\n")
-        self._patch_machine(monkeypatch, machine)
-        merged = load_merged_config(tmp_path / "no-global.yaml")
-        assert merged.box_bootstrap_program == "zellij"
-        # User global overrides the machine value. The overlay is presence-based:
-        # any value the user file actually sets wins over the lower layer, even
-        # one equal to the built-in default.
+    def test_higher_layer_overrides_lower(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: screen\n")
-        merged2 = load_merged_config(global_path)
+        global_path.write_text("box:\n  bootstrap_program: zellij\n")
+        merged = load_merged_config(global_path)
+        assert merged.box_bootstrap_program == "zellij"
+        # A workset layer overrides the user-global value (presence-based).
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  bootstrap_program: screen\n")
+        merged2 = load_merged_config(global_path, workset_path=workset_path)
         assert merged2.box_bootstrap_program == "screen"
 
-    def test_set_to_default_value_sticks(self, tmp_path, monkeypatch):
+    def test_set_to_default_value_sticks(self, tmp_path):
         """A layer setting a field to the built-in default wins over a lower
         layer's non-default (presence beats the old ``!= default`` guard)."""
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  bootstrap_program: zellij\n")
-        self._patch_machine(monkeypatch, machine)
         global_path = tmp_path / "global.yaml"
-        # User explicitly sets the built-in default "tmux" — must win.
-        global_path.write_text("box:\n  bootstrap_program: tmux\n")
-        merged = load_merged_config(global_path)
+        global_path.write_text("box:\n  bootstrap_program: zellij\n")
+        project_path = tmp_path / "settings.yaml"
+        # Explicitly set the built-in default "tmux" — must win.
+        project_path.write_text("box:\n  bootstrap_program: tmux\n")
+        merged = load_merged_config(global_path, project_path)
         assert merged.box_bootstrap_program == "tmux"
 
-    def test_null_resets_to_default(self, tmp_path, monkeypatch):
+    def test_null_resets_to_default(self, tmp_path):
         """A YAML ``null`` in a more-specific layer resets to the built-in
         default, discarding a lower layer's non-default value."""
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  bootstrap_program: zellij\n")
-        self._patch_machine(monkeypatch, machine)
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: null\n")
-        merged = load_merged_config(global_path)
+        global_path.write_text("box:\n  bootstrap_program: zellij\n")
+        project_path = tmp_path / "settings.yaml"
+        project_path.write_text("box:\n  bootstrap_program: null\n")
+        merged = load_merged_config(global_path, project_path)
         assert merged.box_bootstrap_program == "tmux"
 
-    def test_empty_value_resets_to_default(self, tmp_path, monkeypatch):
+    def test_empty_value_resets_to_default(self, tmp_path):
         """An empty ``foo:`` (parses to None) also resets to the built-in
         default, same as an explicit ``null``."""
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  bootstrap_program: zellij\n")
-        self._patch_machine(monkeypatch, machine)
-        # Reset via a more-specific project layer using an empty value.
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  bootstrap_program: screen\n")
         project_path = tmp_path / "settings.yaml"
@@ -421,28 +405,24 @@ class TestMachineConfigLayer:
         merged = load_merged_config(global_path, project_path)
         assert merged.box_bootstrap_program == "tmux"
 
-    def test_empty_string_is_a_real_value_not_unset(self, tmp_path, monkeypatch):
+    def test_empty_string_is_a_real_value_not_unset(self, tmp_path):
         """``""`` is a real value distinct from ``null``: a lower layer sets a
         non-empty box_agent_name, a higher layer sets ``""`` and that ``""`` wins
         (it does NOT reset to box_agent_name's built-in default, which is also "")."""
-        machine = tmp_path / "machine.yaml"
-        machine.write_text('box:\n  agent_name: foo\n')
-        self._patch_machine(monkeypatch, machine)
         global_path = tmp_path / "global.yaml"
+        global_path.write_text('box:\n  agent_name: foo\n')
+        project_path = tmp_path / "settings.yaml"
         # Quoted empty string is a real value, not null.
-        global_path.write_text('box:\n  agent_name: ""\n')
-        merged = load_merged_config(global_path)
+        project_path.write_text('box:\n  agent_name: ""\n')
+        merged = load_merged_config(global_path, project_path)
         assert merged.box_agent_name == ""
         # Sanity: a non-empty lower value is what we are overriding away from.
-        merged_machine_only = load_merged_config(tmp_path / "no-global.yaml")
-        assert merged_machine_only.box_agent_name == "foo"
+        merged_global_only = load_merged_config(global_path)
+        assert merged_global_only.box_agent_name == "foo"
 
-    def test_higher_layer_overrides_after_null(self, tmp_path, monkeypatch):
+    def test_higher_layer_overrides_after_null(self, tmp_path):
         """A null reset is not terminal: a higher layer (CLI override) can set a
         concrete value afterward and it wins."""
-        machine = tmp_path / "machine.yaml"
-        machine.write_text("box:\n  bootstrap_program: zellij\n")
-        self._patch_machine(monkeypatch, machine)
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  bootstrap_program: null\n")
         merged = load_merged_config(
@@ -450,8 +430,7 @@ class TestMachineConfigLayer:
         )
         assert merged.box_bootstrap_program == "screen"
 
-    def test_bootstrap_program_default(self, tmp_path, monkeypatch):
-        self._patch_machine(monkeypatch, tmp_path / "absent.yaml")
+    def test_bootstrap_program_default(self, tmp_path):
         merged = load_merged_config(tmp_path / "no-global.yaml")
         assert merged.box_bootstrap_program == "tmux"
 
@@ -705,10 +684,10 @@ class TestProjectMeta:
 class TestConfigFilePath:
     def test_returns_new_path_when_neither_exists(self, tmp_path):
         result = config_file_path(tmp_path)
-        assert result == tmp_path / "kanibako.yaml"
+        assert result == tmp_path / "kanibako_config.yaml"
 
     def test_returns_new_path_when_new_exists(self, tmp_path):
-        new = tmp_path / "kanibako.yaml"
+        new = tmp_path / "kanibako_config.yaml"
         new.write_text("paths:\n")
         result = config_file_path(tmp_path)
         assert result == new
@@ -716,11 +695,11 @@ class TestConfigFilePath:
     def test_ignores_legacy_old_subdir_location(self, tmp_path):
         # An old-location file is no longer recognized: always resolves
         # to the current top-level location.
-        old = tmp_path / "kanibako" / "kanibako.yaml"
+        old = tmp_path / "kanibako" / "kanibako_config.yaml"
         old.parent.mkdir()
         old.write_text("paths:\n")
         result = config_file_path(tmp_path)
-        assert result == tmp_path / "kanibako.yaml"
+        assert result == tmp_path / "kanibako_config.yaml"
 
 
 class TestResourceOverrides:

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 # (the key-route TEMP-STORE design).
 #
 #   layer 1  base    @system.base_template      = @system.global/base_template (FLAT)
-#   layer 2  agent   @agent.<agent>.template    = @system.agents/<agent>/template
+#   layer 2  agent   @agent.<agent>.template    = @config.agents/<agent>/template
 #   layer 3  workset @workset.template          = @meta.workset.path/template
 #
 # Layers 2/3 are runtime-dependent (agent name / workset mode), so they are
@@ -44,7 +44,7 @@ def base_template_dir(std: StandardPaths) -> Path:
 def agent_template_dir(std: StandardPaths, agent_name: str) -> Path:
     """Return the layer-2 agent-template source root ``@agent.<agent>.template``.
 
-    Derived as ``@system.agents/<agent_name>/template``.  Per-agent, so it
+    Derived as ``@config.agents/<agent_name>/template``.  Per-agent, so it
     depends on the runtime agent name (hence a derived helper, not a
     ``StandardPaths`` property).
     """
@@ -144,7 +144,7 @@ def stage_and_seed_templates(home: Path, layers: list[Path]) -> None:
 #
 # On first-run init (``cli._ensure_initialized`` / ``install.run``) these are
 # COPIED into the runtime template dirs (``@system.base_template`` and
-# ``@system.agents/<agent>/template``) where the layered seed-once apply above
+# ``@config.agents/<agent>/template``) where the layered seed-once apply above
 # reads them at box creation.  The copy is CREATE-IF-ABSENT per file: it adds
 # files the user does not yet have but never clobbers a user-edited template
 # (an explicit "refresh from package" is out of scope for 1.6.0).
@@ -206,7 +206,7 @@ def install_packaged_templates(std: StandardPaths, agent_names: list[str]) -> No
     """Copy packaged curated-template content into the runtime template dirs.
 
     Populates ``@system.base_template`` from the packaged base content and each
-    ``@system.agents/<agent>/template`` from the agent plugin's packaged
+    ``@config.agents/<agent>/template`` from the agent plugin's packaged
     ``template/``.  Create-if-absent (never clobbers user edits).  Called from
     first-run init; safe to re-run (idempotent for unchanged trees).
     """

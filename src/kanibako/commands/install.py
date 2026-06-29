@@ -33,7 +33,7 @@ def run(args: argparse.Namespace) -> int:
         print("Configuration file already exists, loading.")
         config = load_config(config_file)
     else:
-        print("Writing general configuration file (kanibako.yaml)... ", end="", flush=True)
+        print("Writing general configuration file (kanibako_config.yaml)... ", end="", flush=True)
         config = KanibakoConfig()
         write_global_config(config_file, config)
         print("done!")
@@ -47,23 +47,19 @@ def run(args: argparse.Namespace) -> int:
 
     data_home = xdg("XDG_DATA_HOME", ".local/share")
     sys_paths = resolve_system_paths(
-        config.system_paths, data_home=data_home, home=Path.home(),
+        config.config_paths, data_home=data_home, home=Path.home(),
     )
-    data_path = sys_paths["system.data"]
+    data_path = sys_paths["config.data"]
     containers_dest = data_path / "containers"
     containers_dest.mkdir(parents=True, exist_ok=True)
 
-    # Create the channel system skeleton (5 types, system scope — TARGET §2f).
-    # Per-workset mailbox/share partitions + chat logs are guarantee-created on
-    # the launch path; setup pre-creates the type roots + the default chat logs.
-    channels_dir = sys_paths["system.channelroot"]
-    (channels_dir / "commons").mkdir(parents=True, exist_ok=True)
-    (channels_dir / "share").mkdir(parents=True, exist_ok=True)
-    (channels_dir / "mailboxes").mkdir(parents=True, exist_ok=True)
-    chat_dir = channels_dir / "chat"
-    chat_dir.mkdir(parents=True, exist_ok=True)
-    (chat_dir / "general.md").touch(exist_ok=True)
-    (chat_dir / "broadcast.md").touch(exist_ok=True)
+    # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
+    # pre-created at setup.  ``channelroot`` moved to Layer 2 (a ``system.*``
+    # settings key) and the launch path creates the full skeleton (L7
+    # guarantee-create for the bind sources + ``_seed_channel_files`` for the chat
+    # logs).  No host-side pre-launch consumer of the skeleton exists (audit:
+    # every reader is on the box-launch path), so this pre-creation was redundant
+    # and is dropped.
 
     # Create agents directory and generate default per-agent settings files
     # (agents/<agent>/settings.yaml, inside each per-agent store dir).
@@ -74,7 +70,7 @@ def run(args: argparse.Namespace) -> int:
     )
     from kanibako.targets import discover_targets
 
-    agents_path = sys_paths["system.agents"]
+    agents_path = sys_paths["config.agents"]
     agents_path.mkdir(parents=True, exist_ok=True)
 
     # general (no-agent default)

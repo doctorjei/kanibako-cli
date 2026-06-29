@@ -972,23 +972,29 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         scope_roots["workset.bindings.ro"] = ws_root
         scope_roots["workset.bindings.rw"] = ws_root
 
+    # Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` → ``ctx.config``
+    # foundation; Layer-2 ``system.*`` → the snapshot floor.
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None if ws.is_default else ws.name,
         host_home=str(Path.home()),
         xdg={"XDG_DATA_HOME": str(std.data_home)},
+        config={
+            "config.data": str(std.data),
+            "config.agents": str(std.agents),
+            "config.registry": str(std.registry),
+            "config.primary_workset": str(std.primary_workset),
+            "config.settings": str(std.settings),
+        },
     )
 
-    # Fold the resolved system.* tier into the snapshot floor so a share value's
-    # @-ref (e.g. @system.data) resolves from the snapshot itself (replicating the
-    # old ``_lookup`` map). Keys are flat dotted; assemble explodes them.
+    # Fold the resolved Layer-2 system.* tier into the snapshot floor so a share
+    # value's @-ref (e.g. @system.channelroot) resolves from the snapshot itself
+    # (replicating the old ``_lookup`` map). Keys are flat dotted; assemble
+    # explodes them.
     floor: dict[str, object] = {
-        "system.data": str(std.data),
-        "system.agents": str(std.agents),
         "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
-        "system.registry": str(std.registry),
-        "system.primary_workset": str(std.primary_workset),
     }
 
     try:

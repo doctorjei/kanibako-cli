@@ -12,9 +12,9 @@ class TestCommsConfig:
 
         cfg = KanibakoConfig()
         resolved = resolve_system_paths(
-            cfg.system_paths, data_home=tmp_path, home=tmp_path,
+            cfg.config_paths, data_home=tmp_path, home=tmp_path,
         )
-        # ``comms`` was renamed to ``channels`` in the system.* reorg.
+        # channelroot is a Layer-2 system.* SETTING (@config.data/channels).
         assert resolved["system.channelroot"] == tmp_path / "kanibako" / "channels"
 
     def test_comms_from_toml(self, tmp_path):
@@ -22,18 +22,21 @@ class TestCommsConfig:
 
         from kanibako.paths import resolve_system_paths
 
-        toml = tmp_path / "kanibako.yaml"
+        toml = tmp_path / "kanibako_config.yaml"
         toml.write_text('system:\n  channelroot: "/custom-channels"\n')
         cfg = load_config(toml)
         resolved = resolve_system_paths(
-            cfg.system_paths, data_home=tmp_path, home=tmp_path,
+            cfg.config_paths, data_home=tmp_path, home=tmp_path,
         )
         assert resolved["system.channelroot"] == Path("/custom-channels")
 
 
 class TestChannelsSetup:
-    def test_setup_creates_channel_skeleton(self, config_file, tmp_home):
-        """kanibako setup creates the channels/ type-root skeleton (6b)."""
+    def test_setup_does_not_precreate_channel_skeleton(self, config_file, tmp_home):
+        """Block #3a / JC-3: ``channelroot`` moved to Layer 2 and the launch path
+        creates the full channel skeleton (L7 guarantee-create + seed), so setup
+        NO LONGER pre-creates it (the pre-creation was redundant and is dropped).
+        """
         from kanibako.commands.install import run
 
         import argparse
@@ -42,14 +45,9 @@ class TestChannelsSetup:
 
         data_home = tmp_home / "data"
         channels = data_home / "kanibako" / "channels"
-        assert channels.is_dir()
-        assert (channels / "commons").is_dir()
-        assert (channels / "share").is_dir()
-        assert (channels / "mailboxes").is_dir()
-        assert (channels / "chat").is_dir()
-        # broadcast.log -> chat/broadcast.md; default log chat/general.md.
-        assert (channels / "chat" / "general.md").is_file()
-        assert (channels / "chat" / "broadcast.md").is_file()
+        # The channel type-root skeleton is NOT pre-created at setup anymore.
+        assert not (channels / "commons").exists()
+        assert not (channels / "chat" / "general.md").exists()
 
 
 class TestCommsOnStart:

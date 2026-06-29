@@ -78,8 +78,8 @@ class TestIsKnownKey:
 
     def test_known_dotted_key(self):
         assert is_known_key("vault.enabled") is True
-        assert is_known_key("system.data") is True
-        assert is_known_key("system.agents") is True
+        assert is_known_key("config.data") is True
+        assert is_known_key("config.agents") is True
         assert is_known_key("system.default_agent") is True
 
     def test_dead_keys_no_longer_known(self):
@@ -123,7 +123,7 @@ class TestRegularConfigKeys:
 
     def test_get_default_image(self, tmp_path):
         """Reading box.image with no overrides returns the global default."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my-image:latest"\n')
         project_toml = tmp_path / "settings.yaml"
 
@@ -136,7 +136,7 @@ class TestRegularConfigKeys:
 
     def test_set_and_get_image(self, tmp_path):
         """Setting a config key writes it and subsequent get returns it."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "default:latest"\n')
         project_toml = tmp_path / "settings.yaml"
 
@@ -156,7 +156,7 @@ class TestRegularConfigKeys:
 
     def test_reset_image(self, tmp_path):
         """Resetting a key removes the project-level override."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "default:latest"\n')
         project_toml = tmp_path / "settings.yaml"
 
@@ -172,7 +172,7 @@ class TestRegularConfigKeys:
 
     def test_get_box_shell_unset_returns_none(self, tmp_path):
         """box.shell defaults to empty → get returns None (rendered as not set)."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
@@ -185,7 +185,7 @@ class TestRegularConfigKeys:
 
     def test_set_and_get_box_shell(self, tmp_path):
         """Setting box.shell and reading it back returns the value (no error)."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
@@ -199,7 +199,7 @@ class TestRegularConfigKeys:
 
     def test_get_box_bootstrap_program_unset_returns_default(self, tmp_path):
         """box.bootstrap_program is unset → get returns the built-in default."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
@@ -213,7 +213,7 @@ class TestRegularConfigKeys:
 
     def test_set_and_get_box_bootstrap_program(self, tmp_path):
         """Setting box.bootstrap_program and reading it back returns the value."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
@@ -250,7 +250,7 @@ class TestEnvKeys:
         env_path.write_text("FOO=bar\n")
         val = get_config_value(
             "env.FOO",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
             env_project=env_path,
         )
         assert val == "bar"
@@ -258,7 +258,7 @@ class TestEnvKeys:
     def test_get_env_var_not_set(self, tmp_path):
         val = get_config_value(
             "env.MISSING",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
         )
         assert val is None
 
@@ -302,7 +302,7 @@ class TestResourceKeys:
 
         val = get_config_value(
             "resource.plugins",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
             project_toml=project_toml,
         )
         assert val == "/a/b"
@@ -340,7 +340,7 @@ class TestTargetSettings:
 
         val = get_config_value(
             "model",
-            global_config_path=tmp_path / "kanibako.yaml",
+            global_config_path=tmp_path / "kanibako_config.yaml",
             project_toml=project_toml,
         )
         assert val == "opus"
@@ -361,7 +361,7 @@ class TestShowConfig:
     """Tests for the show_config display function."""
 
     def test_show_no_overrides(self, tmp_path, capsys):
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
         project_toml = tmp_path / "settings.yaml"
 
@@ -373,7 +373,7 @@ class TestShowConfig:
         assert "no overrides" in captured.out
 
     def test_show_effective(self, tmp_path, capsys):
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
         project_toml = tmp_path / "settings.yaml"
 
@@ -387,7 +387,7 @@ class TestShowConfig:
         assert "my:img" in captured.out
 
     def test_show_with_override(self, tmp_path, capsys):
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "default"\n')
         project_toml = tmp_path / "settings.yaml"
         project_toml.write_text('box:\n  image: "custom"\n')
@@ -404,7 +404,7 @@ class TestShowConfig:
         self, tmp_path, capsys,
     ):
         """With workset_path/agent_state/env_resolved=None, output is unchanged."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
         project_toml = tmp_path / "settings.yaml"
 
@@ -429,7 +429,7 @@ class TestShowConfig:
 
     def test_effective_workset_path_overlays(self, tmp_path, capsys):
         """A value set only at the workset level is reflected when supplied."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "sys:img"\n')
         project_toml = tmp_path / "settings.yaml"
         workset_cfg = tmp_path / "config.yaml"
@@ -450,7 +450,7 @@ class TestShowConfig:
         self, tmp_path, capsys,
     ):
         """agent_state is rendered; only box-level keys get the override marker."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
         project_toml = tmp_path / "settings.yaml"
         project_toml.write_text('agent:\n  default:\n    model: "sonnet"\n')
@@ -470,7 +470,7 @@ class TestShowConfig:
 
     def test_effective_env_resolved_used_when_supplied(self, tmp_path, capsys):
         """env_resolved is the source dict for the env section when given."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
         project_toml = tmp_path / "settings.yaml"
 
@@ -597,7 +597,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_get_set_share_the_same_known_key_table(self, tmp_path):
         """Every routed key set by the writer reads back (no asymmetry)."""
-        global_cfg = tmp_path / "kanibako.yaml"
+        global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
         project_toml = tmp_path / "settings.yaml"
         for key, val in [
@@ -683,7 +683,7 @@ class TestSystemDefaultAgent:
     """
 
     def test_set_refused_file_only(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         msg = set_config_value("system.default_agent", "claude", config_path=cf)
         assert msg.startswith("Error:")
         assert "structural config key" in msg
@@ -692,7 +692,7 @@ class TestSystemDefaultAgent:
         assert not cf.exists()
 
     def test_reset_refused_file_only(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         _seed_default_agent(cf, "claude")
         msg = reset_config_value("system.default_agent", config_path=cf)
         assert msg.startswith("Error:")
@@ -704,7 +704,7 @@ class TestSystemDefaultAgent:
     def test_get_reads_programmatic_write(self, tmp_path):
         from kanibako.config import read_default_agent
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         _seed_default_agent(cf, "goose")
         # The interface getter and the launch-time reader agree.
         assert get_config_value(
@@ -713,7 +713,7 @@ class TestSystemDefaultAgent:
         assert read_default_agent(cf) == "goose"
 
     def test_get_unset_returns_none(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         cf.touch()
         assert get_config_value("system.default_agent", global_config_path=cf) is None
 
@@ -727,7 +727,7 @@ class TestSystemConfigFileOnly:
     """
 
     def test_set_system_config_key_refused(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         for key in (
             "system.data", "system.agents", "system.channels.commons",
             "system.default_agent",
@@ -740,7 +740,7 @@ class TestSystemConfigFileOnly:
         assert not cf.exists()
 
     def test_reset_system_config_key_refused(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         for key in ("system.data", "system.default_agent"):
             msg = reset_config_value(key, config_path=cf)
             assert msg.startswith("Error:"), key
@@ -750,14 +750,14 @@ class TestSystemConfigFileOnly:
         """Reads/shows are unaffected — only writes are refused."""
         from kanibako.config_interface import _write_nested_toml_key
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
         assert get_config_value("system.data", global_config_path=cf) == "/custom/data"
 
     def test_non_system_key_still_settable_at_global_tier(self, tmp_path):
         """Narrow scope (a): only system.*-prefixed keys are refused.  A
         regular key still sets fine via the (global) config path."""
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         msg = set_config_value("box.image", "ghcr.io/foo:bar", config_path=cf)
         assert msg.startswith("Set")
         assert load_doc(cf)["box"]["image"] == "ghcr.io/foo:bar"
@@ -768,7 +768,7 @@ class TestSystemConfigFileOnly:
         from kanibako.config import read_setup_completed
         from kanibako.config_interface import _write_nested_toml_key, write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         _write_nested_toml_key(cf, ("system",), "data", "/keep/me")
         write_system_value(cf, "setup_completed", "1.6.0")
 
@@ -781,7 +781,7 @@ class TestSystemConfigFileOnly:
 
 class TestSystemSettingsTierSplit:
     """SYSTEM scope: SETTINGS route to @system.settings (global/settings.yaml),
-    while system.* CONFIG keys stay in kanibako.yaml — the config/settings split.
+    while system.* CONFIG keys stay in kanibako_config.yaml — the config/settings split.
 
     The interface fns take an optional ``system_settings_path``; when set (the
     SYSTEM scope) SETTINGS reads/writes go there, NOT to ``config_path`` /
@@ -789,7 +789,7 @@ class TestSystemSettingsTierSplit:
     """
 
     def test_default_agent_set_refused_even_with_settings_path(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"        # CONFIG file
+        cf = tmp_path / "kanibako_config.yaml"        # CONFIG file
         ssp = tmp_path / "global" / "settings.yaml"  # SETTINGS file
         msg = set_config_value(
             "system.default_agent", "claude",
@@ -806,7 +806,7 @@ class TestSystemSettingsTierSplit:
         from kanibako.config import read_default_agent
         from kanibako.config_interface import _write_nested_toml_key
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         # setup writes it programmatically into the settings file's table.
         _write_nested_toml_key(ssp, ("agent", "default"), "default_agent", "goose")
@@ -814,13 +814,13 @@ class TestSystemSettingsTierSplit:
         assert get_config_value(
             "system.default_agent", global_config_path=cf, system_settings_path=ssp,
         ) == "goose"
-        # The launch-time reader points at the SETTINGS file, not kanibako.yaml.
+        # The launch-time reader points at the SETTINGS file, not kanibako_config.yaml.
         assert read_default_agent(ssp) == "goose"
-        # A stale value in kanibako.yaml's agent table does NOT feed the tier.
+        # A stale value in kanibako_config.yaml's agent table does NOT feed the tier.
         assert read_default_agent(cf) is None
 
     def test_agent_setting_routes_to_settings_file(self, tmp_path):
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         set_config_value(
             "model", "gpt-5", config_path=cf, system_settings_path=ssp,
@@ -833,11 +833,11 @@ class TestSystemSettingsTierSplit:
         ) == "gpt-5"
 
     def test_system_config_key_stays_in_config_file(self, tmp_path):
-        """system.* CONFIG read uses global_config_path (kanibako.yaml), even
+        """system.* CONFIG read uses global_config_path (kanibako_config.yaml), even
         when a settings file is supplied — config/settings stay separate."""
         from kanibako.config_interface import _write_nested_toml_key
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
         assert get_config_value(
@@ -850,7 +850,7 @@ class TestSystemSettingsTierSplit:
         from kanibako.config import read_default_agent
         from kanibako.config_interface import _write_nested_toml_key
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         # Seed programmatically (CLI set is refused).
         _write_nested_toml_key(ssp, ("agent", "default"), "default_agent", "claude")
@@ -865,7 +865,7 @@ class TestSystemSettingsTierSplit:
     def test_reset_all_clears_settings_and_config_separately(self, tmp_path):
         from kanibako.config_interface import _write_nested_toml_key
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         # A SETTING (settings file) + a config override (config file).
         set_config_value(
@@ -881,7 +881,7 @@ class TestSystemSettingsTierSplit:
         """Missing global/settings.yaml → empty system tier, no error."""
         from kanibako.config import read_default_agent
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"  # never created
         assert read_default_agent(ssp) is None
         assert get_config_value(
@@ -963,11 +963,11 @@ class TestCategoryConfigSet:
             ["/old", "/home/agent/vault", "ro"],
         )
         msg = set_config_value(
-            "box.bindings.ro.vault", "@system.data/foo", config_path=f,
+            "box.bindings.ro.vault", "@config.data/foo", config_path=f,
         )
         assert not msg.startswith("Error:")
         # stored RAW — the @-ref is NOT resolved to a literal (§0 files unresolved).
-        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "@system.data/foo"
+        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "@config.data/foo"
 
     def test_error_key_must_already_exist(self, tmp_path):
         f = self._seed(
@@ -1006,7 +1006,7 @@ class TestCategoryConfigSet:
 
     def test_structural_system_key_still_refused(self, tmp_path):
         """A real structural system.* config key is still file-only refused."""
-        f = tmp_path / "kanibako.yaml"
+        f = tmp_path / "kanibako_config.yaml"
         dump_doc(f, {"system": {"data": "/x"}})
         msg = set_config_value("system.data", "/tmp", config_path=f, is_system=True)
         assert msg.startswith("Error:")
@@ -1107,7 +1107,7 @@ class TestCrossScopeCascadeConfigSet:
         assert "workset.nope_absent" in msg
 
     def test_workset_scope_set_refs_system_floor_and_sibling(self, tmp_path):
-        """A workset-scope set referencing the system.* floor (@system.data) AND a
+        """A workset-scope set referencing the config.* floor (@config.data) AND a
         sibling workset key in the same file both resolve -> ALLOWED."""
         # The workset file holds the sibling target + the edited key.
         ws_f = tmp_path / "ws-settings.yaml"

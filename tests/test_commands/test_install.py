@@ -14,7 +14,7 @@ class TestInstall:
     def test_writes_config(self, tmp_home):
         from kanibako.commands.install import run
 
-        config_file = tmp_home / "config" / "kanibako.yaml"
+        config_file = tmp_home / "config" / "kanibako_config.yaml"
         assert not config_file.exists()
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no runtime")):
@@ -45,7 +45,7 @@ class TestInstallExtended:
         from kanibako.commands.install import run
 
         self._base_setup(tmp_home)
-        config_file = tmp_home / "config" / "kanibako.yaml"
+        config_file = tmp_home / "config" / "kanibako_config.yaml"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         custom_cfg = KanibakoConfig(box_image="custom:v1")
         write_global_config(config_file, custom_cfg)
@@ -61,7 +61,7 @@ class TestInstallExtended:
         from kanibako.commands.install import run
 
         self._base_setup(tmp_home)
-        config_file = tmp_home / "config" / "kanibako.yaml"
+        config_file = tmp_home / "config" / "kanibako_config.yaml"
         assert not config_file.exists()
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):

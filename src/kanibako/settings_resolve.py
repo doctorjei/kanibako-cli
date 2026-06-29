@@ -70,13 +70,22 @@ class ResolveCtx:
     """Context for variable expansion.
 
     *xdg* maps XDG variable names (e.g. ``"XDG_DATA_HOME"``) to host paths.
-    The dataclass is frozen; do not mutate *xdg* in place.
+    *config* is the Layer-1 CONFIG-key FOUNDATION (spec §1): the resolved
+    ``config.*`` bootstrap paths keyed by their full dotted name (``config.data``,
+    ``config.settings``, ``config.agents``, ``config.primary_workset``,
+    ``config.registry``).  It is consulted by the ``@config.*`` ref route — config
+    is NOT a settings cascade level (spec §1A / JC-2), it is a foundation injected
+    here exactly the way ``$XDG_*`` is.  Empty when no foundation is available
+    (behavior-only contexts where ``@config.*`` never appears).
+
+    The dataclass is frozen; do not mutate *xdg* / *config* in place.
     """
 
     agent_name: str | None
     workset_name: str | None
     host_home: str
     xdg: dict[str, str]
+    config: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

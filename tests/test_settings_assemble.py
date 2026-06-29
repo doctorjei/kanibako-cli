@@ -389,14 +389,13 @@ def test_overlay_preserves_sibling_floor_leaves(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_no_machine_path_consulted(monkeypatch) -> None:
-    # If anything read machine_config_path(), this would blow up.
+def test_no_machine_path_consulted() -> None:
+    # The old machine third-file (machine_config_path) was DELETED in the
+    # two-layer path reshape (block #3a). No-machine-tier is now structurally
+    # guaranteed: the function does not exist, so it cannot be consulted (S14).
     import kanibako.config as cfg
 
-    def _boom() -> Path:
-        raise AssertionError("machine_config_path() must NOT be consulted (S14)")
-
-    monkeypatch.setattr(cfg, "machine_config_path", _boom)
+    assert not hasattr(cfg, "machine_config_path")
     levels = assemble_levels(agent_name="claude")
     assert len(levels) == 6
 

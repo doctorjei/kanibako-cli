@@ -1879,12 +1879,14 @@ class TestApplyInitSeeds:
             agents=tmp_path / "agents",
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
-            # New system.* fields read by resolved_sys (shares/seeds wiring).
+            # New config.*/system.* fields read by the ResolveCtx (config
+            # foundation) + resolved_sys (shares/seeds wiring).
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
+            settings=tmp_path / "settings.yaml",
         )
 
     def _proj(self, shell_path, group=None):
@@ -1921,7 +1923,7 @@ class TestApplyInitSeeds:
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
         """No seed config and target=None → nothing copied (no behavior change)."""
         shell = self._shell(tmp_path)
-        glob = tmp_path / "kanibako.yaml"
+        glob = tmp_path / "kanibako_config.yaml"
         glob.write_text('box_image: "img"\nagent:\n  model: "sonnet"\n')
         self._call(
             tmp_path,
@@ -2091,6 +2093,7 @@ class TestApplySyncedCopies:
             base_template=tmp_path / "base_template",
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
+            settings=tmp_path / "settings.yaml",
         )
 
     def _proj(self, shell_path, group=None):

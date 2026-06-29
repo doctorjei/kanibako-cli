@@ -50,7 +50,7 @@ _DEFAULTS = {
 
 @dataclass
 class KanibakoConfig:
-    """Merged configuration (hardcoded defaults < kanibako.yaml < settings.yaml < CLI)."""
+    """Merged configuration (hardcoded defaults < kanibako_config.yaml < settings.yaml < CLI)."""
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     box_image: str = _DEFAULTS["box_image"]
@@ -59,10 +59,12 @@ class KanibakoConfig:
     box_shell: str = _DEFAULTS["box_shell"]
     allow_helpers: bool = True
     box_share_images: bool = False
-    # System-level config tier: raw set-values keyed by full dotted name
-    # (bare "system.<leaf>"), read from the file's flat [system] table.
-    # System-only (never supplied by project/workset configs).
-    system_paths: dict[str, str] = field(default_factory=dict)
+    # Bootstrap PATH set-values keyed by full dotted name — the MERGED Layer-1
+    # ``config.<leaf>`` foundation keys (from the ``[config]`` table) AND the
+    # Layer-2 ``system.<leaf>`` path settings (from the ``[system]`` table),
+    # read from ``kanibako_config.yaml``.  Config-file-only (never supplied by
+    # project/workset configs).
+    config_paths: dict[str, str] = field(default_factory=dict)
 
 
 def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
@@ -87,28 +89,19 @@ def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
 
 
 def config_file_path(config_home: Path) -> Path:
-    """Return the path to kanibako.yaml.
+    """Return the path to the bootstrap config file ``kanibako_config.yaml``.
 
-    Location: ``$XDG_CONFIG_HOME/kanibako.yaml``.
+    Location: ``$XDG_CONFIG_HOME/kanibako_config.yaml``.  CLEAN BREAK (JC-1): the
+    old ``kanibako.yaml`` name is NOT read-compat (pre-release; Jei's own data).
     """
-    return config_home / "kanibako.yaml"
-
-
-def machine_config_path() -> Path:
-    """Return the machine-wide config path (``/etc/kanibako/kanibako.yaml``).
-
-    This sits BELOW the user's ``~/.config`` config and ABOVE the built-in
-    ``_DEFAULTS``: a site admin can set defaults for all users that an individual
-    user can still override.  Missing file → treated as an empty level.
-    """
-    return Path("/etc/kanibako/kanibako.yaml")
+    return config_home / "kanibako_config.yaml"
 
 
 def config_base_path() -> Path:
     """Return the machine-wide CONFIG base file (``/etc/kanibako/config_base.yaml``).
 
-    The least-specific layer of the CONFIG (``system.*``) file set: a site admin
-    supplies overridable defaults that the user's ``~/.config/kanibako.yaml`` can
+    The least-specific layer of the bootstrap-PATH file set: a site admin supplies
+    overridable defaults that the user's ``~/.config/kanibako_config.yaml`` can
     still beat.  Missing file → treated as an empty level.
     """
     return Path("/etc/kanibako/config_base.yaml")
@@ -133,15 +126,17 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
     "reset to built-in default" sentinel; callers must distinguish it from an
     absent key (which simply won't appear in the returned dict).
 
-    The dict field (``system_paths``) is NOT included here; it keeps its own
+    The dict field (``config_paths``) is NOT included here; it keeps its own
     dedicated parsing/merge logic.
     """
     if not path.exists():
         return {}
     data = load_doc(path)
     # Drop the sections handled by dedicated logic so they don't leak into the
-    # scalar field overlay.  The whole [system] table is the config tier
-    # (handled by load_config's system_paths extraction), not flat fields.
+    # scalar field overlay.  The [config] (Layer-1) + [system] (Layer-2) tables
+    # are the bootstrap-PATH tier (handled by load_config's config_paths
+    # extraction), not flat scalar fields.
+    data.pop("config", None)
     data.pop("system", None)
     flat = _flatten_toml(data)
     valid_keys = {fld.name for fld in fields(KanibakoConfig)}
@@ -157,15 +152,20 @@ def load_config(path: Path) -> KanibakoConfig:
     cfg = KanibakoConfig()
     if path.exists():
         data = load_doc(path)
-        # Extract the [system] table: the system-level config tier (resolver
-        # expressions), keyed by bare ``system.<leaf>`` dotted names.  The table
-        # is flattened so nested sub-keys (e.g. ``system.channels.commons``)
-        # become dotted keys; scalar leaves (e.g. ``system.data``) stay flat.
+        # Extract the bootstrap-PATH tables: the Layer-1 ``[config]`` foundation
+        # keys (``config.<leaf>``) and the Layer-2 ``[system]`` path settings
+        # (``system.<leaf>``), merged into one ``config_paths`` set keyed by full
+        # dotted name.  Each table is flattened so nested sub-keys (e.g.
+        # ``system.channels.commons``) become dotted keys; scalar leaves
+        # (e.g. ``config.data``) stay flat.
+        merged: dict[str, str] = {}
+        config_tbl = data.get("config", {})
+        if isinstance(config_tbl, dict):
+            merged.update(_flatten_dotted(config_tbl, "config"))
         system_tbl = data.get("system", {})
         if isinstance(system_tbl, dict):
-            cfg.system_paths = _flatten_dotted(system_tbl, "system")
-        else:
-            cfg.system_paths = {}
+            merged.update(_flatten_dotted(system_tbl, "system"))
+        cfg.config_paths = merged
         # Scalar/bool fields: a present key sets the field; a ``None`` value
         # (YAML null/empty) resets it to the built-in default.
         for k, v in _present_scalar_fields(path).items():
@@ -183,14 +183,15 @@ def load_merged_config(
     workset_path: Path | None = None,
     cli_overrides: dict[str, str] | None = None,
 ) -> KanibakoConfig:
-    """Load machine + global config, overlay workset, project, then CLI overrides.
+    """Load global config, overlay workset, project, then CLI overrides.
 
-    Precedence: CLI flags > settings.yaml > workset config.yaml > kanibako.yaml
-    (user) > /etc/kanibako/kanibako.yaml (machine) > hardcoded defaults.
+    Precedence: CLI flags > settings.yaml > workset config.yaml >
+    kanibako_config.yaml (user) > hardcoded defaults.
 
-    The machine layer (``/etc/kanibako/kanibako.yaml``) is the least-specific
-    file source: it beats the built-in defaults but the user's ``~/.config``
-    global config beats it.  A missing machine file is an empty level.
+    The old machine-wide ``/etc/kanibako/kanibako.yaml`` third file is DELETED
+    (spec §2 — the admin authority is exactly the ``config_base.yaml`` /
+    ``settings_base.yaml`` base tiers, resolved on the PATH side; this scalar
+    loader starts from the built-in defaults).
     """
     defaults = KanibakoConfig()
 
@@ -200,7 +201,7 @@ def load_merged_config(
         Presence-based: a key absent from this layer leaves the underlying value
         untouched; a present key with a ``None`` value (YAML null/empty) resets
         the field to its built-in default; any other present value (including
-        ``""``) sets the field.  ``system_paths`` is SYSTEM-ONLY and handled
+        ``""``) sets the field.  ``config_paths`` is config-file-only and handled
         separately, so it never appears here.
         """
         for k, v in _present_scalar_fields(path).items():
@@ -209,17 +210,10 @@ def load_merged_config(
             else:
                 setattr(cfg, k, v)
 
-    # Start from the machine doc (least-specific file source), then overlay the
-    # user global, workset, and project layers in order so the most-specific
-    # present value wins (with null/empty resetting to the built-in default).
-    cfg = load_config(machine_config_path())
-    glob = load_config(global_path)
-    _overlay_scalars(cfg, global_path)
-    # system_paths: the global config wins when it supplies one (matches the
-    # prior behavior where load_config(global_path) was the base); else keep
-    # whatever the machine layer provided.
-    if glob.system_paths:
-        cfg.system_paths = glob.system_paths
+    # Start from the user global config (the least-specific FILE source now that
+    # the machine third-file is deleted), then overlay the workset + project
+    # layers so the most-specific present value wins (null/empty resets).
+    cfg = load_config(global_path)
     if workset_path and workset_path.exists():
         _overlay_scalars(cfg, workset_path)
     if project_path and project_path.exists():
@@ -239,22 +233,25 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
     """
     if cfg is None:
         cfg = KanibakoConfig()
-    # System-level config tier (settings-framework "system.*"), written at the
-    # DEFAULT expressions as a flat [system] table (bare ``system.<leaf>``).
-    # Kept in lock-step with paths.SYSTEM_PATH_DEFAULTS; the resolver fills
-    # these in if the file omits them, so only the most commonly-tuned roots
-    # are emitted (the channels skeleton + derived files resolve from these).
+    # Bootstrap PATH tier, written at the DEFAULT expressions in TWO tables:
+    #   * ``[config]`` — the Layer-1 foundation (the 5 ``config.*`` keys; spec §1)
+    #   * ``[system]`` — the Layer-2 ``system.*`` path SETTINGS (channelroot/
+    #     base_template/backup/cache/runtime + the channels skeleton; spec §2g)
+    # Kept in lock-step with paths.CONFIG_PATH_DEFAULTS / SYSTEM_PATH_DEFAULTS;
+    # the resolver fills in any omitted key, so only the most commonly-tuned
+    # roots are emitted (the derived files/dirs resolve from these).
     data: dict = {
-        "system": {
+        "config": {
             "data": "$XDG_DATA_HOME/kanibako",
-            "backup": "@system.data/backup",
-            "agents": "@system.data/agents",
-            "channelroot": "@system.data/channels",
-            "global": "@system.data/global",
-            "base_template": "@system.global/base_template",
-            "settings": "@system.global/settings.yaml",
-            "primary_workset": "@system.data/primary_workset",
-            "registry": "@system.global/registry.yaml",
+            "settings": "@config.data/global/settings.yaml",
+            "agents": "@config.data/agents",
+            "primary_workset": "@config.data/primary_workset",
+            "registry": "@config.data/global/registry.yaml",
+        },
+        "system": {
+            "backup": "@config.data/backup",
+            "channelroot": "@config.data/channels",
+            "base_template": "@config.data/global/base_template",
             "cache": "$XDG_CACHE_HOME/kanibako",
             "runtime": "$XDG_RUNTIME_DIR/kanibako",
         },
@@ -503,11 +500,11 @@ def read_default_agent(system_path: Path | None) -> str | None:
 
     ``system.default_agent`` is the lone ``system.*``-named key that lives in the
     SETTINGS file set (it is behavior, not a config path).  Its system tier reads
-    from ``@system.settings`` = ``global/settings.yaml`` (the ``std.settings``
+    from ``@config.settings`` = ``@config.data/global/settings.yaml`` (the ``std.settings``
     path) — the same place the system settings tier of :func:`load_settings`
     reads from — in the reserved any-agent ``agent.default`` table, under the key
     ``default_agent``.  Callers pass that settings-file path as *system_path*
-    (NOT the ``~/.config/kanibako.yaml`` CONFIG file, which holds only
+    (NOT the ``~/.config/kanibako_config.yaml`` CONFIG file, which holds only
     ``system.*`` layout keys).
 
     Returns the configured agent name, or ``None`` when unset/empty (meaning
@@ -526,10 +523,10 @@ def read_setup_completed(config_path: Path | None) -> str | None:
     ``system.setup_completed`` is a host-global ``system.*`` value recording the
     build version at which ``kanibako setup`` last succeeded (W1).  Unlike
     ``system.default_agent`` it is a plain ``[system]`` leaf in
-    ``~/.config/kanibako.yaml`` (NOT a settings-tier value), and the typed loader
+    ``~/.config/kanibako_config.yaml`` (NOT a settings-tier value), and the typed loader
     (``load_config`` → ``KanibakoConfig``) maps only KNOWN system leaves and
     ignores unknown ones — so this RAW reader is required for the setup-completion
-    gate to read it back.  *config_path* is the kanibako.yaml CONFIG file.
+    gate to read it back.  *config_path* is the kanibako_config.yaml CONFIG file.
 
     Returns the stored version string, or ``None`` when the file/key is absent or
     empty (meaning "setup never run" — the gate then re-nudges).

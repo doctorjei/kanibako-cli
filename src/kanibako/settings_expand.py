@@ -432,11 +432,22 @@ class _Expander:
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent:
         """Read the RAW (unexpanded) value at snapshot path *dotted*, 3-state.
 
+        Resolver SPLIT (spec §1A / JC-2): a ``config.*`` ref routes to the Layer-1
+        CONFIG-key FOUNDATION (``ctx.config``), NOT the settings snapshot — config
+        is a foundation, not a cascade level.  Every other prefix
+        (``system.*``/``workset.*``/``box.*``/``agent.*``) walks the merged
+        snapshot.  Foundation values are already-resolved absolute paths (terminals),
+        so a ``config.*`` hit returns its string verbatim; a ``config.*`` miss is
+        :data:`_ABSENT` (a dangling config ref).
+
         Walks the dotted segments with the UNBOUND ``dict.get(node, seg, _ABSENT)``
         probe (S3): any missing segment, or a non-KeyStore node reached before the
         last segment, yields :data:`_ABSENT` (the path does not exist). The final
         segment's value is returned verbatim (a present-``None`` leaf → ``None``).
         """
+        if dotted.startswith("config."):
+            # @config.* → the Layer-1 foundation (prefix-driven; single-route).
+            return self._ctx.config.get(dotted, _ABSENT)
         node: object = self._snapshot
         segments = dotted.split(".")
         for seg in segments[:-1]:

@@ -925,7 +925,7 @@ def run_rm(args: argparse.Namespace) -> int:
 
             if _purge_dir(metadata_dir):
                 print(f"Removed metadata: {metadata_dir}")
-                # Phase 5: PRIMARY vault lives under @system.primary_workset/
+                # Phase 5: PRIMARY vault lives under @config.primary_workset/
                 # vault/{ro,rw}/<name> (not under metadata_dir) — remove it too.
                 for vdir in (
                     std.primary_vault_ro / name,
@@ -942,7 +942,7 @@ def run_rm(args: argparse.Namespace) -> int:
                 )
 
             # Remove the per-box helper log if present.  PRIMARY logs live at
-            # @system.primary_workset/logs/<box>.jsonl (box == registry name).
+            # @config.primary_workset/logs/<box>.jsonl (box == registry name).
             log_file = std.primary_logs / f"{name}.jsonl"
             if log_file.is_file():
                 log_file.unlink()
