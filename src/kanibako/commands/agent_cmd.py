@@ -404,8 +404,8 @@ def run_reauth(args: argparse.Namespace) -> int:
     )
     agent_name = resolve_agent(
         explicit_agent=getattr(args, "agent", None),  # Phase D seam (--agent)
-        box_agent=merged.box_agent,
-        workset_agent=None,  # merged.box_agent already folds the workset tier
+        box_agent_name=merged.box_agent_name,
+        workset_agent=None,  # merged.box_agent_name already folds the workset tier
         system_default_path=std.settings,
         project_path=proj.project_path,
     )

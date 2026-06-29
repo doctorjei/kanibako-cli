@@ -42,7 +42,7 @@ def coerce_bool(value: object) -> bool | None:
 _DEFAULTS = {
     "paths_project_toml": BOX_META_FILE,
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "box_agent": "",
+    "box_agent_name": "",
     "box_bootstrap_program": "tmux",
     "box_shell": "",
 }
@@ -54,7 +54,7 @@ class KanibakoConfig:
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     box_image: str = _DEFAULTS["box_image"]
-    box_agent: str = _DEFAULTS["box_agent"]
+    box_agent_name: str = _DEFAULTS["box_agent_name"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
     box_shell: str = _DEFAULTS["box_shell"]
     allow_helpers: bool = True
@@ -260,7 +260,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
         },
         "box": {
             "image": cfg.box_image,
-            "agent": cfg.box_agent,
+            "agent_name": cfg.box_agent_name,
             "share_images": cfg.box_share_images,
         },
     }
@@ -471,7 +471,7 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     wins within a single file). This stops an override set while a box is on one
     agent (e.g. ``model`` under ``agent.claude``) from bleeding onto another
     agent after the box is switched (e.g. to ``goose``); identity keys live in
-    ``box.agent``, not here.
+    ``box.agent_name``, not here.
 
     ``agent.default`` is RESERVED as the any-agent default tier; no real agent
     may be named ``default``.
@@ -588,21 +588,21 @@ def setup_nudge_message(config_path: Path | None) -> str | None:
 
 # Pseudo-agents are DISCOUNTED from the implicit installed-count rule (so a host
 # with one real agent + no_agent is unambiguous, not "2+"), but remain EXPLICITLY
-# selectable via the cascade (``--agent no_agent`` / ``box.agent``).
+# selectable via the cascade (``--agent no_agent`` / ``box.agent_name``).
 _PSEUDO_AGENTS = frozenset({"no_agent", "general"})
 
 
 def resolve_agent(
     *,
     explicit_agent: str | None,
-    box_agent: str | None,
+    box_agent_name: str | None,
     workset_agent: str | None,
     system_default_path: Path | None,
     project_path: Path | None = None,
 ) -> str:
     """Resolve the effective agent name (cascade + installed-count rule).
 
-    Cascade precedence (highest first): *explicit_agent* > *box_agent* >
+    Cascade precedence (highest first): *explicit_agent* > *box_agent_name* >
     *workset_agent* > system default (read from *system_default_path* via
     :func:`read_default_agent`).  The FIRST non-empty tier "resolves a name".
 
@@ -645,7 +645,7 @@ def resolve_agent(
     # Cascade: first non-empty tier resolves a name.
     resolved = (
         _clean(explicit_agent)
-        or _clean(box_agent)
+        or _clean(box_agent_name)
         or _clean(workset_agent)
         or _clean(read_default_agent(system_default_path))
     )

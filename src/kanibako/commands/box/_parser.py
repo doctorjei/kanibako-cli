@@ -1064,13 +1064,13 @@ def run_info(args: argparse.Namespace) -> int:
     # display (box status), not an agent-requiring launch — so a resolution
     # failure (no default + 2+ agents, 0 agents, adapter missing) degrades to
     # "n/a (no target)" rather than erroring out.  Uses the unified
-    # resolve_agent cascade (workset_agent=None: merged.box_agent already folds
+    # resolve_agent cascade (workset_agent=None: merged.box_agent_name already folds
     # the workset tier).
     try:
         from kanibako.config import resolve_agent
         agent_name = resolve_agent(
             explicit_agent=None,
-            box_agent=merged.box_agent,
+            box_agent_name=merged.box_agent_name,
             workset_agent=None,
             system_default_path=std.settings,
             project_path=proj.project_path,
@@ -1237,10 +1237,10 @@ def run_config(args: argparse.Namespace) -> int:
                 # Informational --effective display: tolerate a resolution
                 # failure (degrade to the "general" no-agent state below)
                 # rather than erroring.  Unified cascade; workset_agent=None
-                # since merged.box_agent already folds the workset tier.
+                # since merged.box_agent_name already folds the workset tier.
                 agent_name = resolve_agent(
                     explicit_agent=None,
-                    box_agent=merged.box_agent,
+                    box_agent_name=merged.box_agent_name,
                     workset_agent=None,
                     system_default_path=std.settings,
                     project_path=proj.project_path,
@@ -1331,7 +1331,7 @@ def run_config(args: argparse.Namespace) -> int:
             )
             cascade_agent_name = resolve_agent(
                 explicit_agent=None,
-                box_agent=merged.box_agent,
+                box_agent_name=merged.box_agent_name,
                 workset_agent=None,
                 system_default_path=std.settings,
                 project_path=proj.project_path,
