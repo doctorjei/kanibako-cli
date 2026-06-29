@@ -917,15 +917,14 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     from kanibako.settings_assemble import assemble_levels
     from kanibako.settings_store import Bind, KeyStore, _MISSING
 
-    # assemble_levels returns [required, box, workset, agent.<active>, agent.default,
-    # system, base]; index 2 is the workset partial (the only file we pass).
+    # assemble_levels returns [box, workset, agent.<active>, agent.default,
+    # system, base]; index 1 is the workset partial (the only file we pass).
     levels = assemble_levels(
         agent_name="general",
         base_path=ws_config.parent / "__absent_base__",
-        required_path=ws_config.parent / "__absent_required__",
         workset_path=ws_config,
     )
-    workset_partial = levels[2]
+    workset_partial = levels[1]
     out: dict[tuple[str, str], object] = {}
     ws_node = dict.get(workset_partial, "workset", _MISSING)
     if not isinstance(ws_node, KeyStore):
@@ -996,11 +995,10 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         levels = assemble_levels(
             agent_name="general",
             base_path=ws_config.parent / "__absent_base__",
-            required_path=ws_config.parent / "__absent_required__",
             workset_path=ws_config,
             floor=floor,
         )
-        snapshot, _warnings = merge(levels)
+        snapshot = merge(levels)
         expanded = expand(snapshot, ctx)
         entries = snapshot_category_entries(
             expanded, active_agent="general", box_ctx=ctx, scope_roots=scope_roots,

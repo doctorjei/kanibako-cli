@@ -662,9 +662,9 @@ class TestCreateWorksetFailConsistent:
 
         root = tmp_home / "worksets" / "my-set"
 
-        # register_name is the LAST step (after dirs + worksets.yaml).  If it
-        # blows up, the whole create must roll back: no orphan dirs, nothing in
-        # the global registry, nothing in the name index.
+        # register_name is the LAST step (after the dirs).  It is the SOLE writer
+        # of the single ``worksets`` registry section.  If it blows up, the whole
+        # create must roll back: no orphan dirs, nothing in the registry.
         def boom(*a, **k):
             raise _Boom("register_name failed")
 
@@ -674,50 +674,12 @@ class TestCreateWorksetFailConsistent:
             create_workset("my-set", root, std)
 
         assert not root.exists(), "orphan dirs left behind"
-        assert "my-set" not in list_worksets(std), "stale worksets.yaml entry"
-        from kanibako.names import read_names
-        assert "my-set" not in read_names(std.data_path).get("worksets", {})
-
-    def test_registry_write_failure_unwinds_dirs(self, std, tmp_home, monkeypatch):
-        import kanibako.workset as ws_mod
-
-        root = tmp_home / "worksets" / "my-set"
-
-        def boom(*a, **k):
-            raise _Boom("worksets.yaml write failed")
-
-        monkeypatch.setattr(ws_mod, "_write_registry", boom)
-
-        with pytest.raises(_Boom):
-            create_workset("my-set", root, std)
-
-        # Dirs were created before the registry write — must be cleaned up.
-        assert not root.exists()
+        assert "my-set" not in list_worksets(std), "stale worksets entry"
         from kanibako.names import read_names
         assert "my-set" not in read_names(std.data_path).get("worksets", {})
 
 
 class TestDeleteWorksetSelfHealing:
-    def test_stale_name_index_recleaned_on_rerun(self, std, tmp_home):
-        # Simulate a prior delete that crashed after the worksets.yaml write but
-        # before unregister_name: the workset survives ONLY in names.yaml.  A
-        # re-run of delete must recognize + fully clean it (not raise "not
-        # registered").
-        from kanibako.names import read_names
-
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
-        # Drop only the worksets.yaml half (the crash-between state).
-        from kanibako.workset import _unregister_workset
-        _unregister_workset(std, "my-set")
-        assert "my-set" not in list_worksets(std)
-        assert "my-set" in read_names(std.data_path).get("worksets", {})
-
-        # Re-run delete: must succeed and clean the stale name-index entry.
-        ret = delete_workset("my-set", std)
-        assert ret == root.resolve()
-        assert "my-set" not in read_names(std.data_path).get("worksets", {})
-
     def test_irreversible_rmtree_after_registries_clean(self, std, tmp_home, monkeypatch):
         import kanibako.workset as ws_mod
 

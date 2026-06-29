@@ -1184,7 +1184,7 @@ def _run_container(
                 global_config_path=system_settings_path,
                 agent_name=agent_id,
             )
-        _snapshot, reconciled, _snap_warnings = _resolve_launch_snapshot(
+        _snapshot, reconciled = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -1360,7 +1360,7 @@ def _run_container(
                 # carrying ONLY the image table (include_base_families=False) — its
                 # box_dests are disjoint from the main reconcile, so a separate
                 # reconcile is byte-for-byte equivalent.
-                _img_snap, _img_rec, _ = _resolve_launch_snapshot(
+                _img_snap, _img_rec = _resolve_launch_snapshot(
                     std=std,
                     proj=proj,
                     agent_name=agent_id,
@@ -1563,7 +1563,7 @@ def _run_container(
             # carrying ONLY the helper table (include_base_families=False) — its
             # runtime-derived box_dests are disjoint from the main reconcile, so a
             # separate reconcile is byte-for-byte equivalent.
-            _hub_snap, _hub_rec, _ = _resolve_launch_snapshot(
+            _hub_snap, _hub_rec = _resolve_launch_snapshot(
                 std=std,
                 proj=proj,
                 agent_name=agent_id,
@@ -2117,7 +2117,7 @@ def _effective_behavior_for_display(
     # the per-agent file state as the agent.<active> slot. No category tables /
     # agent-binding inputs (display reads behavior only). The machine tier is CUT
     # (S14) — assemble_levels never consults /etc machine, matching the launch.
-    snapshot, _warnings = settings_launch.build_launch_snapshot(
+    snapshot = settings_launch.build_launch_snapshot(
         agent_name=target.name,
         ctx=ctx,
         system_path=global_config_path,
@@ -2179,7 +2179,7 @@ def _resolve_effective_group_auth(
     # here carries ONLY system.* — no category families) so any @-ref in the
     # chain that reached system.* would resolve; the chain itself does not, but
     # this keeps the focused snapshot consistent with the main one.
-    snapshot, _warnings = settings_launch.build_launch_snapshot(
+    snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_name,
         ctx=ctx,
         system_path=system_settings_path,
@@ -2320,7 +2320,7 @@ def _resolve_launch_snapshot(
     :func:`kanibako.settings_launch.build_launch_snapshot`.  The expanded snapshot
     is then adapted to ``CategoryEntry`` and reconciled ONCE.
 
-    Returns ``(snapshot, reconciled, warnings)``.  AGENT_CRITICAL delivery binds
+    Returns ``(snapshot, reconciled)``.  AGENT_CRITICAL delivery binds
     now flow through the snapshot's ``agent.bindings.*`` subtree (single-route),
     emitted by :func:`kanibako.settings_launch.agent_delivery_mounts` at the call
     site — NOT a parallel ``descriptor_mounts`` route.
@@ -2410,7 +2410,7 @@ def _resolve_launch_snapshot(
         if agent_cfg is not None:
             agent_state = dict(agent_cfg.state)
 
-    snapshot, warnings = settings_launch.build_launch_snapshot(
+    snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_name,
         ctx=ctx,
         system_path=system_settings_path,
@@ -2428,7 +2428,7 @@ def _resolve_launch_snapshot(
         snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,
     )
     reconciled = reconcile_categories(entries, group_auth=group_auth)
-    return snapshot, reconciled, warnings
+    return snapshot, reconciled
 
 
 def _emit_category_mounts(reconciled, *, label: str) -> list:
@@ -2519,7 +2519,7 @@ def _apply_init_seeds(
     # (``desc``/``install``/``binding_overrides``) are omitted — they feed only
     # ``agent.bindings.*`` MOUNTs, never the seeded COPY winners — so the resulting
     # ``reconciled.copies`` seeded set is byte-for-byte the old narrow resolve's.
-    _snapshot, reconciled, _warnings = _resolve_launch_snapshot(
+    _snapshot, reconciled = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -2616,7 +2616,7 @@ def _apply_synced_copies(
     # synced purely from the cascade config files, byte-for-byte the old resolve.
     # *target* is accepted for call-site symmetry and contributes nothing until
     # descriptors declare default synced entries.
-    _snapshot, reconciled, _warnings = _resolve_launch_snapshot(
+    _snapshot, reconciled = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,

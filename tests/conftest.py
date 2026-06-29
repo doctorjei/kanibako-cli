@@ -461,7 +461,7 @@ def start_mocks():
             m_resolve_target.return_value = target
 
             # Wire the launch-snapshot orchestrator stub (block 7b).  It returns a
-            # controlled ``(snapshot, reconciled, warnings)``: the reconcile's
+            # controlled ``(snapshot, reconciled)``: the reconcile's
             # MOUNT winners are ONLY the AGENT delivery binds (claude's descriptor,
             # resolved against the real ``install_mock`` paths via the real 7a
             # representation + the committed pipeline) so the descriptor-delivery
@@ -512,7 +512,7 @@ def start_mocks():
                         _floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
                     _state = dict(_agent_cfg.state)
-                snap, warns = build_launch_snapshot(
+                snap = build_launch_snapshot(
                     agent_name="claude", ctx=ctx,
                     system_path=None, agent_path=None,
                     workset_path=None, box_path=None,
@@ -530,7 +530,7 @@ def start_mocks():
                 rec = reconcile_categories(
                     entries, group_auth=kw.get("group_auth", True),
                 )
-                return snap, rec, warns
+                return snap, rec
 
             m_launch_mount_stubs[
                 "_resolve_launch_snapshot"

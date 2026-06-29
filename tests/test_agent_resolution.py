@@ -352,7 +352,7 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     ctx = ResolveCtx(
         agent_name=name, workset_name=None, host_home="/home/agent", xdg={},
     )
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name=name, ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=box_path,
         agent_state=agent_state,

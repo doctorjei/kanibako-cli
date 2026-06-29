@@ -14,9 +14,6 @@ The file has these top-level sections::
     worksets:
       clientwork: /home/user/worksets/client
 
-    workset_roots:
-      clientwork: /home/user/worksets/client
-
     connected:
       /abs/external/repo: {workset: myws, project: foo}
 
@@ -31,11 +28,10 @@ The file has these top-level sections::
 
 ``projects`` and ``worksets`` carry the two sections formerly in
 ``names.yaml`` (the human-name index used for name-based lookups).
-``workset_roots`` carries the former ``worksets.yaml`` name → root registry
-(used to discover/list worksets).  ``worksets`` and ``workset_roots`` hold the
-same name → root data and are kept as the two distinct copies they were AS-IS
-(redundant by design — a later sub-step may merge them; this backing-store swap
-preserves the two-writer behavior verbatim).  ``connected`` carries the former
+``worksets`` carries the workset name → root registry used both for name-based
+lookups AND to discover/list worksets (the former separate ``worksets.yaml`` and
+its ``workset_roots`` duplicate were collapsed onto this single section,
+2026-06-29f).  ``connected`` carries the former
 ``connected.yaml`` payload verbatim.  ``standalone`` is reserved for the
 standalone-box identity work in a later sub-step and stays empty here.
 ``rigs`` carries the former ``rigs.yaml`` payload (added-rig records keyed by
@@ -63,7 +59,6 @@ from kanibako.config_io import dump_doc, load_doc
 _SECTIONS: tuple[str, ...] = (
     "projects",
     "worksets",
-    "workset_roots",
     "connected",
     "standalone",
     "seeded",
@@ -72,7 +67,7 @@ _SECTIONS: tuple[str, ...] = (
 )
 # Name → path sections whose keys are sorted on write (legacy names.yaml shape).
 _NAME_SECTIONS: frozenset[str] = frozenset(
-    {"projects", "worksets", "workset_roots"}
+    {"projects", "worksets"}
 )
 
 
@@ -105,9 +100,6 @@ def load_registry(data_path: Path) -> dict[str, dict]:
         },
         "worksets": {
             k: str(v) for k, v in dict(data.get("worksets", {})).items()
-        },
-        "workset_roots": {
-            k: str(v) for k, v in dict(data.get("workset_roots", {})).items()
         },
         "connected": dict(data.get("connected", {})),
         "standalone": dict(data.get("standalone", {})),

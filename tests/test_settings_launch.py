@@ -39,7 +39,7 @@ def _ctx() -> ResolveCtx:
 
 
 def test_behavior_floor_maps_to_scope_qualified_agent_key():
-    snap, warns = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
         system_path=None,
@@ -48,7 +48,6 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
         box_path=None,
         behavior_floor={"model": "opus", "auto_approve": "true"},
     )
-    assert warns == []
     # OS1: bare floor → agent.default.<key> (the all-agents backstop, §2d/§0 L21 —
     # NO bare agent.<key>).
     assert snap.agent.default.model == "opus"
@@ -56,7 +55,7 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
 
 
 def test_category_default_table_folds_into_snapshot():
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
         system_path=None,
@@ -77,7 +76,7 @@ def test_category_default_table_folds_into_snapshot():
 def test_empty_string_default_suppression_dropped():
     # A ""-suppressed DEFAULT means "disabled" → dropped from the floor (absent),
     # matching resolve_categories' terminal skip (no shipped default uses "").
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
         system_path=None,
@@ -99,7 +98,7 @@ def test_agent_partial_inserted():
         {"agent": {"claude": {"bindings": {
             "ro": {"share": Bind("/orig", "/box/share", "ro")}}}}}
     )
-    snap_default, _ = build_launch_snapshot(
+    snap_default = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         agent_partial=agent_partial,
@@ -122,7 +121,7 @@ def test_override_bridge_repoints_agent_binding_by_name():
         {"agent": {"claude": {"bindings": {
             "ro": {"share": Bind("/orig", "/box/share", "ro")}}}}}
     )
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         agent_partial=agent_partial,
@@ -370,7 +369,7 @@ def _chain_snapshot(mode: str, *, agent_name: str = "claude", **overrides):
     chain = group_auth_chain_floor(
         mode=mode, agent_name=agent_name, **overrides
     )
-    snap, _warns = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name=agent_name,
         ctx=_ctx(),
         system_path=None,
@@ -424,7 +423,7 @@ def test_chain_noncapable_agent_off_everywhere():
     with no special-casing (the chain handles it)."""
     chain = group_auth_chain_floor(mode="primary", agent_name="claude")
     chain["agent.claude.group_auth_capable"] = False  # a future non-capable agent
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
         workset_path=None, box_path=None, group_auth_chain=chain,
     )
@@ -441,7 +440,7 @@ def test_chain_default_capable_floor_present():
 def test_effective_group_auth_no_box_node_fails_closed():
     """effective_group_auth fails CLOSED (False) if the chain floor was not
     injected (no box node) — never launders into True."""
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
         workset_path=None, box_path=None,
     )

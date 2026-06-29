@@ -248,18 +248,17 @@ def read_workset_meta(path: Path) -> dict | None:
 
 # ---------------------------------------------------------------------------
 # Global worksets registry: the ``worksets`` section of ``system.registry``.
+#
+# This is the SAME ``worksets`` section the human-name index (``names.py``) reads
+# and writes — the former duplicate ``workset_roots`` section was collapsed onto
+# it (2026-06-29f). The name index (``register_name`` / ``unregister_name``) is
+# the SOLE WRITER; this read helper serves the discovery / list / lookup paths.
 # ---------------------------------------------------------------------------
 
 def _load_registry(std: StandardPaths) -> dict[str, Path]:
     """Return ``{name: root_path}`` from the global worksets registry."""
-    section = registry_store.load_section(std.data_path, "workset_roots")
+    section = registry_store.load_section(std.data_path, "worksets")
     return {name: Path(root) for name, root in section.items()}
-
-
-def _write_registry(std: StandardPaths, registry: dict[str, Path]) -> None:
-    """Overwrite the global worksets registry."""
-    entries = {name: str(registry[name]) for name in sorted(registry)}
-    registry_store.save_section(std.data_path, "workset_roots", entries)
 
 
 # ---------------------------------------------------------------------------
@@ -384,26 +383,20 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
         )
         _write_workset_toml(ws)
 
-        # Register globally.
-        registry[name] = root
-        _write_registry(std, registry)
-        unwind.push(lambda: _unregister_workset(std, name))
-
-        # Register in the name index for name-based lookups.
+        # Register in the worksets index (name → root). This single section
+        # serves BOTH name-based lookups AND workset discovery/list (the former
+        # duplicate ``workset_roots`` section was collapsed onto it).
         register_name(std.data_path, name, str(root), section="worksets")
+
+        def _drop_workset() -> None:
+            unregister_name(std.data_path, name, section="worksets")
+
+        unwind.push(_drop_workset)
     except Exception:
         unwind.run()
         raise
 
     return ws
-
-
-def _unregister_workset(std: StandardPaths, name: str) -> None:
-    """Drop *name* from the global worksets.yaml registry (compensating action)."""
-    registry = _load_registry(std)
-    if name in registry:
-        del registry[name]
-        _write_registry(std, registry)
 
 
 def load_workset(root: Path) -> Workset:
@@ -498,22 +491,15 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     Raises ``WorksetError`` if the name is not registered.
     """
     registry = _load_registry(std)
-    name_index = read_names(std.data_path).get("worksets", {})
-    in_registry = name in registry
-    # Self-healing: also recognize a workset that survives ONLY in the name
-    # index (e.g. a prior delete that crashed after the worksets.yaml write but
-    # before unregister_name).  Re-running delete then cleans BOTH halves rather
-    # than raising "not registered" and stranding the stale name-index entry.
-    if not in_registry and name not in name_index:
+    if name not in registry:
         raise WorksetError(f"Workset '{name}' is not registered.")
 
-    root = registry.pop(name) if in_registry else Path(name_index[name])
+    root = registry[name]
 
-    # Drop both registry halves (both writes are idempotent: a missing entry is
-    # a no-op, so a partially-cleaned prior state heals on re-run).  The two
-    # removes leave a transient list-vs-index mismatch on a crash between them,
-    # but that state is recognized + fully cleaned by the next delete.
-    _write_registry(std, registry)
+    # Drop the workset from the single ``worksets`` index (the former duplicate
+    # ``workset_roots`` half was collapsed away, so there is now ONE registry
+    # entry to remove — no list-vs-index split to heal). Idempotent: a missing
+    # entry is a no-op.
     unregister_name(std.data_path, name, section="worksets")
 
     # Irreversible step LAST: only after both registry halves are clean.

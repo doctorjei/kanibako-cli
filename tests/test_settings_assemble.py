@@ -1,16 +1,16 @@
 """Unit tests for block 2a — cascade level assembly (settings_assemble).
 
-Covers the brief's checklist: the 7-level count + MOST-SPECIFIC-FIRST order;
+Covers the brief's checklist: the 6-level count + MOST-SPECIFIC-FIRST order;
 ``agent.default`` vs ``agent.<active>`` land in the RIGHT separate levels (NOT
 pre-merged), each under its TRUE discriminated §2d key (``agent.default.<key>`` /
 ``agent.<active-name>.<key>`` — NO bare-``agent`` collapse, spec §0 L21/§2d);
 binds become ``Bind`` with raw ``@``-refs / ``$vars``
 / ``~`` preserved (NOT expanded); ``masks`` is the keyed ``dict[box_dest →
 bool|None]`` shape; absent files → empty ``KeyStore`` partials; the floor lands
-on ``base``, the cap on ``required``; NO ``machine`` path is consulted; partials
-are NESTED ``KeyStore``s keyed by the scope-QUALIFIED keyspace (scope token kept,
-§0 namespace orthogonal to cascade); base/required use the SAME scoped keyspace
-as every other file (no synthetic ``base:``/``required:`` wrapper).
+on ``base``, the cascade ends at ``box`` (no ``required`` cap); NO ``machine``
+path is consulted; partials are NESTED ``KeyStore``s keyed by the scope-QUALIFIED
+keyspace (scope token kept, §0 namespace orthogonal to cascade); base uses the
+SAME scoped keyspace as every other file (no synthetic ``base:`` wrapper).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from kanibako.settings_resolve import SettingsError
 from kanibako.settings_store import _MISSING, Bind, KeyStore
 
 # Index of each level in the returned MOST-SPECIFIC-FIRST list (S8).
-REQUIRED, BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM, BASE = range(7)
+BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM, BASE = range(6)
 
 
 def _write(path: Path, data: dict) -> Path:
@@ -39,9 +39,9 @@ def _write(path: Path, data: dict) -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_returns_seven_levels_all_keystores() -> None:
+def test_returns_six_levels_all_keystores() -> None:
     levels = assemble_levels(agent_name="claude")
-    assert len(levels) == 7
+    assert len(levels) == 6
     assert all(isinstance(lv, KeyStore) for lv in levels)
 
 
@@ -52,7 +52,6 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     box = _write(tmp_path / "box.yaml", {"box": {"marker": "box"}})
     ws = _write(tmp_path / "ws.yaml", {"workset": {"marker": "workset"}})
     sysf = _write(tmp_path / "sys.yaml", {"system": {"marker": "system"}})
-    req = _write(tmp_path / "req.yaml", {"box": {"marker": "required"}})
     base = _write(tmp_path / "base.yaml", {"system": {"marker": "base"}})
     agent = _write(
         tmp_path / "agent.yaml",
@@ -65,14 +64,12 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
         agent_path=agent,
         workset_path=ws,
         box_path=box,
-        required_path=req,
     )
 
     def _marker(store: KeyStore, scope: str) -> object:
         sub = dict.get(store, scope, _MISSING)
         return dict.get(sub, "marker", _MISSING) if isinstance(sub, KeyStore) else _MISSING
 
-    assert _marker(levels[REQUIRED], "box") == "required"
     assert _marker(levels[BOX], "box") == "box"
     assert _marker(levels[WORKSET], "workset") == "workset"
     # The agent levels keep their TRUE discriminated key: the active level under
@@ -301,45 +298,42 @@ def test_absent_files_yield_empty_partials() -> None:
         agent_path=Path("/nonexistent/agent.yaml"),
         workset_path=Path("/nonexistent/ws.yaml"),
         box_path=Path("/nonexistent/box.yaml"),
-        required_path=Path("/nonexistent/req.yaml"),
     )
-    assert len(levels) == 7
+    assert len(levels) == 6
     assert all(len(lv) == 0 for lv in levels)
 
 
 def test_none_paths_yield_empty_partials() -> None:
-    # None for every optional path (base/required fall back to /etc, absent in the
+    # None for every optional path (base falls back to /etc, absent in the
     # test env → empty too).
     levels = assemble_levels(agent_name="claude")
-    assert len(levels) == 7
+    assert len(levels) == 6
     for idx in (BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM):
         assert len(levels[idx]) == 0
 
 
 # --------------------------------------------------------------------------- #
-# base/required: SAME scoped keyspace, NO synthetic wrapper                    #
+# base: SAME scoped keyspace, NO synthetic wrapper                            #
 # --------------------------------------------------------------------------- #
 
 
-def test_base_required_use_scoped_keyspace_no_wrapper(tmp_path: Path) -> None:
-    # Real /etc files have NO `base:`/`required:` table — they carry scope-rooted
-    # keys (agent/system/box…) exactly like every other file. A floor-cap example:
-    # base sets agent.default.model; required sets box.image.
+def test_base_uses_scoped_keyspace_no_wrapper(tmp_path: Path) -> None:
+    # Real /etc files have NO `base:` table — they carry scope-rooted
+    # keys (agent/system/box…) exactly like every other file. Example:
+    # base sets agent.default.model.
     base = _write(tmp_path / "base.yaml", {"agent": {"default": {"model": "bm"}}})
-    req = _write(tmp_path / "req.yaml", {"box": {"image": "reqimg"}})
     levels = assemble_levels(
-        agent_name="claude", base_path=base, required_path=req
+        agent_name="claude", base_path=base
     )
     # The base file's agent.default tier is read on the BASE level (scope kept),
     # NOT lost to a missing `base:` wrapper.
     assert (
         dict.get(levels[BASE]["agent"]["default"], "model", _MISSING) == "bm"
     )
-    assert dict.get(levels[REQUIRED]["box"], "image", _MISSING) == "reqimg"
 
 
 # --------------------------------------------------------------------------- #
-# Floor on base, cap on required                                              #
+# Floor on base; cascade ends at box (no required cap)                        #
 # --------------------------------------------------------------------------- #
 
 
@@ -390,12 +384,6 @@ def test_overlay_preserves_sibling_floor_leaves(tmp_path: Path) -> None:
     assert dict.get(sub, "b", _MISSING) == "floorB"  # sibling floor leaf survives
 
 
-def test_cap_lands_on_required_level(tmp_path: Path) -> None:
-    req = _write(tmp_path / "req.yaml", {"box": {"image": "capimg"}})
-    levels = assemble_levels(agent_name="claude", required_path=req)
-    assert dict.get(levels[REQUIRED]["box"], "image", _MISSING) == "capimg"
-
-
 # --------------------------------------------------------------------------- #
 # No machine tier (S14)                                                        #
 # --------------------------------------------------------------------------- #
@@ -410,7 +398,7 @@ def test_no_machine_path_consulted(monkeypatch) -> None:
 
     monkeypatch.setattr(cfg, "machine_config_path", _boom)
     levels = assemble_levels(agent_name="claude")
-    assert len(levels) == 7
+    assert len(levels) == 6
 
 
 # --------------------------------------------------------------------------- #
@@ -466,7 +454,7 @@ def _merged(tmp_path: Path, *, agent_name: str, agent: dict, box: dict) -> KeySt
     agent_p = _write(tmp_path / "agent.yaml", agent)
     box_p = _write(tmp_path / "box.yaml", box)
     levels = assemble_levels(agent_name=agent_name, agent_path=agent_p, box_path=box_p)
-    snap, _ = merge(levels)
+    snap = merge(levels)
     return snap
 
 

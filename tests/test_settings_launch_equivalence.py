@@ -126,7 +126,7 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
     # snapshot, adapt + reconcile.
     floor = dict(cats)
     floor.update(_RESOLVED_SYS)
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name=agent, ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories=floor,
@@ -199,7 +199,7 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, overrides=None):
     from kanibako.targets.base import BindScope
 
     partial = agent_default_partial(desc, install)
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name=agent, ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         agent_partial=partial,
@@ -287,7 +287,7 @@ def test_depth_order_preserved_across_families():
         "box.bindings.rw.deep": ("/h/d", "/home/agent/workspace/sub", "Z,U"),
     }
     ctx = _ctx("claude", None)
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name="claude", ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories=cats,
@@ -313,7 +313,7 @@ def _behavior_snapshot(agent, *, floor, agent_state, box_path, system_path):
     """Build the launch snapshot the LIVE behavior read consumes: the descriptor
     floor (→ agent.default.*), the per-agent FILE state (→ agent.<active>), and any
     box/system settings files (discriminated agent tables, read via assemble)."""
-    snap, _ = build_launch_snapshot(
+    snap = build_launch_snapshot(
         agent_name=agent, ctx=_ctx(agent, None),
         system_path=system_path, agent_path=None,
         workset_path=None, box_path=box_path,

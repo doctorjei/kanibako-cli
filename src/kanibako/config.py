@@ -108,22 +108,10 @@ def config_base_path() -> Path:
     """Return the machine-wide CONFIG base file (``/etc/kanibako/config_base.yaml``).
 
     The least-specific layer of the CONFIG (``system.*``) file set: a site admin
-    supplies overridable defaults that the user's ``~/.config/kanibako.yaml``
-    (and, above it, the non-overridable ``config_required.yaml``) can still beat.
-    Missing file → treated as an empty level.
+    supplies overridable defaults that the user's ``~/.config/kanibako.yaml`` can
+    still beat.  Missing file → treated as an empty level.
     """
     return Path("/etc/kanibako/config_base.yaml")
-
-
-def config_required_path() -> Path:
-    """Return the machine-wide CONFIG required file (``/etc/kanibako/config_required.yaml``).
-
-    The MOST-specific layer of the CONFIG (``system.*``) file set — it is
-    **non-overridable**: applied LAST so a site admin can pin values that neither
-    the base layer nor the user's ``~/.config/kanibako.yaml`` can override.
-    Missing file → treated as an empty level.
-    """
-    return Path("/etc/kanibako/config_required.yaml")
 
 
 def settings_base_path() -> Path:
@@ -135,18 +123,6 @@ def settings_base_path() -> Path:
     treated as an empty level (so its absence preserves current behavior).
     """
     return Path("/etc/kanibako/settings_base.yaml")
-
-
-def settings_required_path() -> Path:
-    """Return the machine-wide SETTINGS required file (``/etc/kanibako/settings_required.yaml``).
-
-    The MOST-specific (top) layer of the SETTINGS (behavior) cascade — it is
-    **non-overridable** and sits ABOVE ``box`` (decision D): applied LAST so a
-    site admin can pin behavior that no scope (not even ``box``) can override.
-    Missing file → treated as an empty level (so its absence preserves current
-    behavior).
-    """
-    return Path("/etc/kanibako/settings_required.yaml")
 
 
 def _present_scalar_fields(path: Path) -> dict[str, object]:
