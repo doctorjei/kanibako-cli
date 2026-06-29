@@ -628,3 +628,177 @@ def test_meta_runtime_coexists_with_group_auth_chain():
     assert dict.get(box_meta, "group_auth_available") is True
     # group-auth still resolves on (the chain is untouched by B1).
     assert effective_group_auth(snap) is True
+
+
+# --------------------------------------------------------------------------- #
+# meta.* IDENTITY-anchor materialization + @meta.*-routed binds (block B2)     #
+# spec §2c/§2d, §0                                                             #
+# --------------------------------------------------------------------------- #
+
+from kanibako.settings_launch import meta_identity_floor  # noqa: E402
+
+
+def _identity_snapshot(
+    *,
+    box_name="droste",
+    project_path="/code/droste",
+    inbox="/data/channels/mailboxes/__PRIMARY__/droste",
+    share_global="/data/channels/share/__PRIMARY__/droste",
+    share_workset="/code/kento/channels/share/droste",
+    workset_name="__PRIMARY__",
+    agent_name="claude",
+    default_categories=None,
+    ctx=None,
+):
+    """Build a snapshot carrying the B2 identity floor + optional @meta.*-routed
+    core-bind default tables (matching core-defaults.yaml's meta_ref entries)."""
+    ident = meta_identity_floor(
+        box_name=box_name,
+        project_path=project_path,
+        inbox=inbox,
+        share_global=share_global,
+        share_workset=share_workset,
+        workset_name=workset_name,
+        agent_name=agent_name,
+        agent_real_name=agent_name,
+    )
+    return build_launch_snapshot(
+        agent_name="claude",
+        ctx=ctx if ctx is not None else _ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        meta_identity=ident,
+        default_categories=default_categories,
+    )
+
+
+def test_meta_identity_box_keys_materialized():
+    """meta.box.{name,workspace,inbox,share_global,share_workset} + meta.workset.name
+    are REAL keys holding the resolved literals (spec §2c)."""
+    snap = _identity_snapshot()
+    mb = _meta_node(snap, "meta", "box")
+    assert dict.get(mb, "name") == "droste"
+    assert dict.get(mb, "workspace") == "/code/droste"
+    assert dict.get(mb, "inbox") == "/data/channels/mailboxes/__PRIMARY__/droste"
+    assert dict.get(mb, "share_global") == "/data/channels/share/__PRIMARY__/droste"
+    assert dict.get(mb, "share_workset") == "/code/kento/channels/share/droste"
+    assert dict.get(_meta_node(snap, "meta", "workset"), "name") == "__PRIMARY__"
+
+
+def test_meta_identity_agent_name_under_discriminated_slot():
+    """meta.agent.<a>.name is materialized under the agent's discriminated slot
+    (spec §2d L514)."""
+    snap = _identity_snapshot(agent_name="claude")
+    ma = _meta_node(snap, "meta", "agent", "claude")
+    assert dict.get(ma, "name") == "claude"
+
+
+def test_meta_identity_no_agent_omits_agent_key():
+    """A NO-AGENT box (agent_name=None) materializes NO meta.agent.* key."""
+    floor = meta_identity_floor(
+        box_name="x", project_path="/p", inbox="/i", share_global="/s",
+        share_workset=None, workset_name="__STANDALONE__", agent_name=None,
+    )
+    assert not any(k.startswith("meta.agent.") for k in floor)
+
+
+def test_meta_identity_standalone_share_workset_none_terminal():
+    """STANDALONE: share_workset is a whole-value None terminal — PRESENT with
+    value None (spec §2c L469), not dropped (mirrors meta.runtime.ws_settings)."""
+    snap = _identity_snapshot(
+        share_workset=None, workset_name="__STANDALONE__",
+    )
+    mb = _meta_node(snap, "meta", "box")
+    assert dict.__contains__(mb, "share_workset")
+    assert dict.get(mb, "share_workset") is None
+
+
+def test_workspace_bind_routes_through_meta_box_workspace():
+    """box.bindings.rw.workspace = (@meta.box.workspace, ~/workspace) expands to the
+    SAME host_src as the proj-attr literal (byte-identical, JC-B2-4)."""
+    snap = _identity_snapshot(
+        project_path="/code/droste",
+        default_categories={
+            "box.bindings.rw.workspace": ("@meta.box.workspace", "~/workspace", "Z,U"),
+        },
+    )
+    bind = _meta_node(snap, "box", "bindings", "rw", "workspace")
+    assert isinstance(bind, Bind)
+    # The @meta.box.workspace ref resolved to str(proj.project_path) — byte-identical
+    # to the old `source: project_path` injection.
+    assert bind.host == "/code/droste"
+    assert bind.box == "~/workspace"
+    assert bind.opts == "Z,U"
+
+
+def test_inbox_bind_routes_through_meta_box_inbox():
+    """box.bindings.rw.inbox = (@meta.box.inbox, ~/channels/inbox) expands to the
+    SAME host_src as the channels.box_channel_addresses literal (JC-B2-4)."""
+    snap = _identity_snapshot(
+        inbox="/data/channels/mailboxes/__PRIMARY__/droste",
+        default_categories={
+            "box.bindings.rw.inbox": ("@meta.box.inbox", "~/channels/inbox"),
+        },
+    )
+    bind = _meta_node(snap, "box", "bindings", "rw", "inbox")
+    assert isinstance(bind, Bind)
+    assert bind.host == "/data/channels/mailboxes/__PRIMARY__/droste"
+    assert bind.box == "~/channels/inbox"
+
+
+def test_meta_box_view_reads_b2_fields_typed():
+    """MetaBoxView reads the B2 leaves at their EXACT types; MetaAgentView reads
+    the agent name."""
+    import kanibako.settings_views as views
+
+    snap = _identity_snapshot(
+        share_workset="/code/kento/channels/share/droste",
+    )
+    mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
+    assert mb.name == "droste"
+    assert mb.workspace == Path("/code/droste")
+    assert mb.inbox == Path("/data/channels/mailboxes/__PRIMARY__/droste")
+    assert mb.share_global == Path("/data/channels/share/__PRIMARY__/droste")
+    assert mb.share_workset == Path("/code/kento/channels/share/droste")
+    ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
+    assert ma.name == "claude"
+    ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
+    assert ws.name == "__PRIMARY__"
+
+
+def test_meta_box_view_standalone_share_workset_none():
+    """MetaBoxView.share_workset is None (typed Path|None) for standalone."""
+    import kanibako.settings_views as views
+
+    snap = _identity_snapshot(share_workset=None, workset_name="__STANDALONE__")
+    mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
+    assert mb.share_workset is None
+
+
+def test_routed_bind_equivalence_vs_literal_injection():
+    """EQUIVALENCE BAR (JC-B2-4): for workspace + inbox, the @meta.*-routed bind
+    resolves to the IDENTICAL (host_src, box_dest, opts) the OLD literal-source
+    injection produced — proving the route swap is byte-identical."""
+    project_path = "/code/droste"
+    inbox = "/data/channels/mailboxes/__PRIMARY__/droste"
+
+    # NEW: @meta.* routed (what core-defaults.yaml now emits via meta_ref).
+    routed = _identity_snapshot(
+        project_path=project_path, inbox=inbox,
+        default_categories={
+            "box.bindings.rw.workspace": ("@meta.box.workspace", "~/workspace", "Z,U"),
+            "box.bindings.rw.inbox": ("@meta.box.inbox", "~/channels/inbox"),
+        },
+    )
+    # OLD: literal proj-attr source (pre-B2 form).
+    literal = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        default_categories={
+            "box.bindings.rw.workspace": (project_path, "~/workspace", "Z,U"),
+            "box.bindings.rw.inbox": (inbox, "~/channels/inbox"),
+        },
+    )
+    for key in ("workspace", "inbox"):
+        rb = _meta_node(routed, "box", "bindings", "rw", key)
+        lb = _meta_node(literal, "box", "bindings", "rw", key)
+        assert (rb.host, rb.box, rb.opts) == (lb.host, lb.box, lb.opts), key

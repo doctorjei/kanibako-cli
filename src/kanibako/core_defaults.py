@@ -110,8 +110,14 @@ def channel_default_categories(
         if source not in sources:
             # Workset-scoped entry on a standalone box: no host source → omit.
             continue
+        # B2: an entry with a ``meta_ref`` is ROUTED through that @meta.* reference
+        # (spec §2c) — the host_src is the @-ref STRING, which ``expand`` resolves
+        # to the SAME materialized identity literal as the runtime-probed source
+        # (byte-identical, JC-B2-4).  The ``source`` gate above still applies (so a
+        # workset-scoped meta_ref entry on a standalone box is still omitted).
+        host_src = entry.get("meta_ref", sources[source])
         binds[f"box.bindings.rw.{entry['key']}"] = (
-            sources[source],
+            host_src,
             str(entry["box_dest"]),
         )
     return binds
@@ -174,8 +180,13 @@ def core_default_categories(
             # rather than silently dropped when the source happens to be absent.
             src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
+        # B2: an entry with a ``meta_ref`` is ROUTED through that @meta.* reference
+        # (spec §2c) — the host_src is the @-ref STRING, which ``expand`` resolves
+        # to the SAME runtime-probed literal (byte-identical, JC-B2-4).  Falls back
+        # to the probed source for an un-routed entry.
+        host_src = entry.get("meta_ref", sources[entry["source"]])
         binds[f"box.{category}.{entry['key']}"] = (
-            sources[entry["source"]],
+            host_src,
             str(entry["box_dest"]),
             str(entry["options"]),
         )
