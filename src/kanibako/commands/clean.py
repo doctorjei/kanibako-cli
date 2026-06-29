@@ -150,7 +150,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         shutil.rmtree(root / "vault", ignore_errors=True)
     else:
         shutil.rmtree(proj.metadata_path)
-        # Phase 5: PRIMARY vault lives under @system.primary_workset (not under
+        # Phase 5: PRIMARY vault lives under @config.primary_workset (not under
         # metadata_path), so remove the per-box ro/rw dirs explicitly.
         if proj.mode is BoxMode.primary:
             for vault_dir in (proj.vault_ro_path, proj.vault_rw_path):
@@ -210,7 +210,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         label = str(project_path) if project_path else metadata_path.name
         print(f"Removing {label}... ", end="", flush=True)
         shutil.rmtree(metadata_path)
-        # Phase 5: PRIMARY vault lives under @system.primary_workset/vault/
+        # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
         # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
         for vault_dir in (
             std.primary_vault_ro / metadata_path.name,
@@ -220,7 +220,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                 shutil.rmtree(vault_dir, ignore_errors=True)
 
         # Remove the per-box helper log if it exists.  PRIMARY logs live at
-        # @system.primary_workset/logs/<box>.jsonl (box == metadata dir name).
+        # @config.primary_workset/logs/<box>.jsonl (box == metadata dir name).
         (std.primary_logs / f"{metadata_path.name}.jsonl").unlink(missing_ok=True)
 
         # M2: drop the now-dangling registry entry for this PRIMARY box.

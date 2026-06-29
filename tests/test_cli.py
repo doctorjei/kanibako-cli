@@ -909,7 +909,7 @@ class TestLazyInitExemptions:
 
     def test_box_helper_skips_lazy_init(self, tmp_path, monkeypatch):
         """'box helper' command should not trigger lazy init."""
-        # Point XDG_CONFIG_HOME to an empty dir (no kanibako.yaml)
+        # Point XDG_CONFIG_HOME to an empty dir (no kanibako_config.yaml)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
             "kanibako.commands.helper_cmd._helpers_dir",
@@ -954,7 +954,7 @@ class TestLazyInitExemptions:
             main(["system", "info"])
         assert exc_info.value.code == 0
         # Config should have been created by lazy init
-        assert (tmp_path / "config" / "kanibako.yaml").exists()
+        assert (tmp_path / "config" / "kanibako_config.yaml").exists()
 
 
 class TestVerboseFlag:
@@ -1021,7 +1021,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako.yaml"  # does not exist → absent marker
+        cf = tmp_path / "kanibako_config.yaml"  # does not exist → absent marker
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             result = _setup_nudge(self._ns("start"))
@@ -1035,7 +1035,7 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.5.0")
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
@@ -1048,7 +1048,7 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
         from kanibako.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
@@ -1060,7 +1060,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("agent", agent_command="reauth"))
@@ -1072,7 +1072,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako.yaml"  # absent marker
+        cf = tmp_path / "kanibako_config.yaml"  # absent marker
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("shell"))
@@ -1083,7 +1083,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("setup"))
@@ -1095,7 +1095,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako.yaml"
+        cf = tmp_path / "kanibako_config.yaml"
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("list"))
@@ -1159,7 +1159,7 @@ class TestShellAgentFlagIgnored:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako.yaml"  # absent marker
+        cf = tmp_path / "kanibako_config.yaml"  # absent marker
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(argparse.Namespace(command="shell"))

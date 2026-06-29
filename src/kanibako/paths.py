@@ -79,12 +79,15 @@ class StandardPaths:
     data_path: Path
     state_path: Path
     cache_path: Path
-    # System-level derived directories (settings-framework "system.*" config).
+    # System-level derived directories.  The path roots split into the Layer-1
+    # CONFIG-key foundation (``config.*``: data/settings/agents/primary_workset/
+    # registry) and the Layer-2 ``system.*`` path settings (channelroot/
+    # base_template/backup/cache/runtime).  ``global`` is ELIMINATED (children
+    # inline ``@config.data/global/...``).
     data: Path
     backup: Path
     agents: Path
     channels: Path
-    global_dir: Path        # ``global`` is a Python keyword → ``global_dir``.
     base_template: Path
     settings: Path
     primary_workset: Path
@@ -97,15 +100,15 @@ class StandardPaths:
     channels_broadcast: Path
     channels_mailboxes: Path
     channels_share: Path
-    # PRIMARY-workset box store: ``@system.primary_workset/boxes``.  Phase 5
-    # moved this here from the OLD ``@system.data/boxes`` location (the
+    # PRIMARY-workset box store: ``@config.primary_workset/boxes``.  Phase 5
+    # moved this here from the OLD ``@config.data/boxes`` location (the
     # transitional ``_boxes`` pseudo-key + alias property were retired with the
     # ``_migrate_settings_to_boxes`` shim).  Per-box metadata/shell live under
     # ``boxes/<name>/``; the PRIMARY vault/logs live as siblings under the
     # PRIMARY workset (see :func:`resolve_project`).
     boxes: Path
-    # PRIMARY-workset vault + logs roots: ``@system.primary_workset/vault/{ro,rw}``
-    # and ``@system.primary_workset/logs``.  Phase 5 moved the PRIMARY vault out
+    # PRIMARY-workset vault + logs roots: ``@config.primary_workset/vault/{ro,rw}``
+    # and ``@config.primary_workset/logs``.  Phase 5 moved the PRIMARY vault out
     # of the workspace into the PRIMARY workset.
     primary_vault_ro: Path
     primary_vault_rw: Path
@@ -423,33 +426,44 @@ def box_state_home(box_env: Mapping[str, str] | None) -> PurePosixPath:
 
 
 # ---------------------------------------------------------------------------
-# System-level config tier (settings-framework "system.*")
+# Layer 1 — the CONFIG-key FOUNDATION (spec §1; config keys finalized at 5)
 # ---------------------------------------------------------------------------
 #
-# These model the system-level config directories as resolver-backed path
-# expressions.  Keys are the FULL dotted names (bare ``system.*`` — the
-# ``.path`` segment was dropped in the system.* reorg) so ``@``-refs (e.g.
-# ``@system.data``) resolve against the same table.
+# The 5 bootstrap CONFIG keys live in ``kanibako_config.yaml`` (`.config`/`/etc`)
+# and resolve via a flat foundation resolver, NOT the keyspace pipeline
+# (chicken-and-egg: the pipeline needs these resolved to find its own input
+# files).  ``config.global`` is ELIMINATED — its children inline
+# ``@config.data/global/...`` (the ``global/`` dir is created on demand by the
+# atomic writer when those files are first written).  ``@config.*`` refs resolve
+# against THIS set; ``$XDG_*`` against the environment.
+CONFIG_PATH_DEFAULTS: dict[str, str] = {
+    "config.data": "$XDG_DATA_HOME/kanibako",
+    "config.settings": "@config.data/global/settings.yaml",
+    "config.agents": "@config.data/agents",
+    "config.primary_workset": "@config.data/primary_workset",
+    "config.registry": "@config.data/global/registry.yaml",
+}
+
+
+# ---------------------------------------------------------------------------
+# Layer 2 — system-scope SETTINGS keys that are PATHS (spec §1/§2g)
+# ---------------------------------------------------------------------------
 #
-# The data tree (``@system.data``) holds the persistent dirs; ``cache`` and
-# ``runtime`` deliberately live under their own XDG bases (NOT under data).
-# ``global`` holds the global settings/registry files; ``channelroot`` carries a
-# skeleton of sub-keys (their behavior/wiring is Phase 6 — here they only need
-# to resolve).  The OLD per-leaf ``boxes`` location is resolved separately as a
-# transitional value (see :func:`resolve_system_paths`) and is NOT a key here.
+# These are SETTINGS keys (system tier), NOT bootstrap config: each ``@``-refs a
+# Layer-1 config key (or an XDG base).  They resolve the normal way at launch
+# (assemble→merge→expand) — but the flat resolver below ALSO materializes them
+# into :class:`StandardPaths` (the legacy host-side path surface) by resolving
+# ``@config.*`` against the Layer-1 foundation.  ``channelroot`` moved to Layer 2
+# (its skeleton is created on the launch path, not at setup).  The OLD per-leaf
+# ``boxes`` location is resolved separately (see :func:`resolve_system_paths`)
+# and is NOT a key here.
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
-    "system.data": "$XDG_DATA_HOME/kanibako",
-    "system.backup": "@system.data/backup",
-    "system.agents": "@system.data/agents",
-    "system.channelroot": "@system.data/channels",
-    "system.global": "@system.data/global",
-    "system.base_template": "@system.global/base_template",
-    "system.settings": "@system.global/settings.yaml",
-    "system.primary_workset": "@system.data/primary_workset",
-    "system.registry": "@system.global/registry.yaml",
+    "system.backup": "@config.data/backup",
+    "system.channelroot": "@config.data/channels",
+    "system.base_template": "@config.data/global/base_template",
     "system.cache": "$XDG_CACHE_HOME/kanibako",
     "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
-    # Channels skeleton (Phase 6 fills sub-key behavior).
+    # Channels skeleton (the type-roots derive from system.channelroot).
     "system.channels.commons": "@system.channelroot/commons",
     "system.channels.chat": "@system.channelroot/chat",
     "system.channels.broadcast": "@system.channels.chat/broadcast.md",
@@ -458,32 +472,36 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
 }
 
 
-def resolve_system_paths(
-    set_values: Mapping[str, str], *, data_home: Path, home: Path,
-) -> dict[str, Path]:
-    """Resolve the ``system.path.*`` tier to concrete host paths.
+def _xdg_var_set(data_home: Path) -> dict[str, str]:
+    """Build the full ``$XDG_*`` map for the flat foundation/system resolver.
 
-    *set_values* holds raw user-set expressions keyed by their full dotted name
-    (bare ``system.<leaf>``); typically the global config's ``system_paths``.
-    *data_home* is the already-resolved XDG data base (e.g. ``~/.local/share``)
-    exposed to expressions as ``$XDG_DATA_HOME``; *home* expands a leading
-    ``~``.  Returns ``{full_dotted_key: Path}`` for every key in
-    :data:`SYSTEM_PATH_DEFAULTS`, plus the derived PRIMARY-workset pseudo-keys
-    ``system._boxes`` / ``system._primary_vault_ro`` /
-    ``system._primary_vault_rw`` / ``system._primary_logs`` (boxes/vault/logs
-    under ``@system.primary_workset``; Phase 5 moved them here).
+    *data_home* is passed in already-resolved (it anchors the default tree); the
+    rest resolve via the hardened resolver (honor-iff-absolute; runtime-dir
+    fallback+warn).
     """
-    # Populate the FULL XDG var set so ``$XDG_*`` references in system path
-    # expressions resolve.  ``data_home`` is passed in already-resolved (it
-    # anchors the default tree); the rest are resolved here via the hardened
-    # resolver (honor-iff-absolute; runtime-dir fallback+warn).
-    xdg_vars: dict[str, str] = {
+    return {
         "XDG_DATA_HOME": str(data_home),
         "XDG_CONFIG_HOME": str(resolve_xdg("XDG_CONFIG_HOME", ".config")),
         "XDG_STATE_HOME": str(resolve_xdg("XDG_STATE_HOME", ".local/state")),
         "XDG_CACHE_HOME": str(resolve_xdg("XDG_CACHE_HOME", ".cache")),
         "XDG_RUNTIME_DIR": str(resolve_xdg("XDG_RUNTIME_DIR", None)),
     }
+
+
+def resolve_config_paths(
+    set_values: Mapping[str, str], *, data_home: Path, home: Path,
+) -> dict[str, str]:
+    """Resolve the Layer-1 CONFIG-key foundation to concrete host paths.
+
+    *set_values* holds raw user-set ``config.<leaf>`` expressions (from the
+    ``kanibako_config.yaml`` set).  Returns ``{config.<key>: resolved_str}`` for
+    every key in :data:`CONFIG_PATH_DEFAULTS` — the FOUNDATION mapping injected
+    into :class:`~kanibako.settings_resolve.ResolveCtx.config` so ``@config.*``
+    refs resolve there (spec §1A / JC-2).  Flat by design (chicken-and-egg): the
+    keyspace pipeline needs these resolved to find its own input files, so they
+    resolve OUTSIDE it, with ``@config.*`` refs chained within this set only.
+    """
+    xdg_vars = _xdg_var_set(data_home)
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None,
@@ -491,10 +509,80 @@ def resolve_system_paths(
         xdg=xdg_vars,
     )
     levels = [
+        LevelView("config", values=dict(set_values), defaults=CONFIG_PATH_DEFAULTS)
+    ]
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):
+            raise SettingsError(f"Unknown @-reference: {ref}")
+        return expand_expr(
+            str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain,
+        )
+
+    resolved: dict[str, str] = {}
+    for key in CONFIG_PATH_DEFAULTS:
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):  # Unreachable: every key has a default.
+            raise SettingsError(f"Unresolvable config path: {key}")
+        resolved[key] = expand_expr(
+            str(rv.value), space="host", ctx=ctx, lookup=lookup,
+        )
+    return resolved
+
+
+def resolve_system_paths(
+    set_values: Mapping[str, str],
+    *,
+    data_home: Path,
+    home: Path,
+) -> dict[str, Path]:
+    """Resolve the path tier to concrete host paths.
+
+    *set_values* holds raw user-set expressions keyed by their full dotted name —
+    the MERGED config-file set (both Layer-1 ``config.<leaf>`` and Layer-2
+    ``system.<leaf>`` keys, e.g. the global config's ``config_paths``).  It is
+    split here by prefix: ``config.*`` seeds the Layer-1 foundation,
+    ``system.*`` the Layer-2 path settings.  *data_home* is the already-resolved
+    XDG data base exposed as ``$XDG_DATA_HOME``; *home* expands a leading ``~``.
+
+    Returns ``{full_dotted_key: Path}`` for every Layer-1 ``config.*`` key AND
+    every Layer-2 ``system.*`` key, plus the derived PRIMARY-workset pseudo-keys
+    ``system._boxes`` / ``system._primary_vault_ro`` /
+    ``system._primary_vault_rw`` / ``system._primary_logs`` (under
+    ``@config.primary_workset``).  The ``system.*`` defaults ``@``-ref a Layer-1
+    config key, resolved against the foundation injected into ``ctx.config``.
+    """
+    xdg_vars = _xdg_var_set(data_home)
+
+    # Split the merged set-values by layer prefix.
+    config_set = {k: v for k, v in set_values.items() if k.startswith("config.")}
+    set_values = {k: v for k, v in set_values.items() if k.startswith("system.")}
+
+    # Layer 1: resolve the config-key foundation first (chicken-and-egg).
+    config = resolve_config_paths(
+        config_set, data_home=data_home, home=home,
+    )
+
+    ctx = ResolveCtx(
+        agent_name=None,
+        workset_name=None,
+        host_home=str(home),
+        xdg=xdg_vars,
+        config=config,
+    )
+    levels = [
         LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)
     ]
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        # Resolver SPLIT (spec §1A / JC-2): ``@config.*`` → the Layer-1 foundation
+        # (``ctx.config``); ``@system.*`` → the system path set.  Prefix-driven.
+        if ref.startswith("config."):
+            try:
+                return config[ref]
+            except KeyError:
+                raise SettingsError(f"Unknown @config-reference: {ref}") from None
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
             raise SettingsError(f"Unknown @-reference: {ref}")
@@ -505,6 +593,10 @@ def resolve_system_paths(
         )
 
     resolved: dict[str, Path] = {}
+    # Layer 1 foundation paths are surfaced under their ``config.*`` keys.
+    for key, val in config.items():
+        resolved[key] = Path(val)
+    # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
     for key in SYSTEM_PATH_DEFAULTS:
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
@@ -513,10 +605,8 @@ def resolve_system_paths(
         resolved[key] = Path(expanded)
 
     # PRIMARY-workset box/vault/logs roots, derived from the resolved PRIMARY
-    # workset dir.  Phase 5 moved boxes/vault/logs out of ``@system.data/boxes``
-    # (and out of the per-project workspace, for the vault) into the PRIMARY
-    # workset so the PRIMARY workset is a real on-disk dir like a named one.
-    pw = resolved["system.primary_workset"]
+    # workset dir (``@config.primary_workset``).
+    pw = resolved["config.primary_workset"]
     resolved["system._boxes"] = pw / "boxes"
     resolved["system._primary_vault_ro"] = pw / "vault" / "ro"
     resolved["system._primary_vault_rw"] = pw / "vault" / "rw"
@@ -527,28 +617,24 @@ def resolve_system_paths(
 def load_system_config(
     user_config_path: Path, *, data_home: Path, home: Path,
 ) -> dict[str, Path]:
-    """Resolve the ``system.*`` config tier from the CONFIG file set.
+    """Resolve the path tier from the CONFIG file set.
 
-    The CONFIG (``system.*``) set is two files, read in cascade order so the
-    most-authoritative present value of each ``system.<leaf>`` set-value
-    wins **before** expression resolution:
+    The CONFIG file set is two files, read in cascade order so the
+    most-authoritative present value of each set-value wins **before**
+    expression resolution:
 
     1. ``/etc/kanibako/config_base.yaml`` — site-wide overridable defaults
        (least specific).
-    2. *user_config_path* — the user's global ``~/.config/kanibako.yaml``
+    2. *user_config_path* — the user's global ``~/.config/kanibako_config.yaml``
        (overrides the base).
 
     Missing files are skipped (each contributes nothing).  The merged set-values
-    are handed to :func:`resolve_system_paths`, which fills in
-    :data:`SYSTEM_PATH_DEFAULTS` and resolves ``@``-/``$XDG_*``-references.
+    are split by prefix into the Layer-1 ``config.*`` foundation and the Layer-2
+    ``system.*`` path settings, then handed to :func:`resolve_system_paths`,
+    which fills in the defaults and resolves ``@``-/``$XDG_*``-references.
 
-    Keys are the bare ``system.<leaf>`` form (the ``.path`` segment was dropped
-    in the system.* reorg); the on-disk config shape is a flat ``[system]``
-    table.
-
-    Back-compat: a user with only ``~/.config/kanibako.yaml`` (no ``/etc``
-    file) gets exactly the prior behavior — the base layer is empty, so the
-    user file is the sole source of set-values.
+    Back-compat: a user with only ``~/.config/kanibako_config.yaml`` (no ``/etc``
+    file) gets the base layer empty, so the user file is the sole set-source.
     """
     # Lazy import to avoid a config <-> paths import cycle at module load.
     from kanibako.config import (
@@ -556,14 +642,14 @@ def load_system_config(
         load_config,
     )
 
-    set_values: dict[str, str] = {}
-    # base < user.  load_config(...).system_paths yields the file's
-    # ``system.path.<leaf>`` set-values (full dotted keys), or {} when the file
-    # is absent — so missing layers are skipped automatically.
-    set_values.update(load_config(config_base_path()).system_paths)
-    set_values.update(load_config(user_config_path).system_paths)
+    raw: dict[str, str] = {}
+    # base < user.  load_config(...).config_paths yields the file's set-values
+    # keyed by their full dotted name (``config.*`` / ``system.*``), or {} when
+    # the file is absent — so missing layers are skipped automatically.
+    raw.update(load_config(config_base_path()).config_paths)
+    raw.update(load_config(user_config_path).config_paths)
 
-    return resolve_system_paths(set_values, data_home=data_home, home=home)
+    return resolve_system_paths(raw, data_home=data_home, home=home)
 
 
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
@@ -588,11 +674,11 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
 
     # Resolve the system-level path tier (settings-framework "system.path.*")
     # from the CONFIG file set: /etc config_base < user-global.  A user with
-    # only ~/.config/kanibako.yaml gets the prior behavior (empty /etc layer).
+    # only ~/.config/kanibako_config.yaml gets the prior behavior (empty /etc layer).
     resolved = load_system_config(
         config_file, data_home=data_home, home=Path.home(),
     )
-    data_path = resolved["system.data"]
+    data_path = resolved["config.data"]
     # state/cache paths track the data dir's leaf name (unchanged behavior:
     # default leaf "kanibako" under each XDG base).
     rel = data_path.name
@@ -614,15 +700,14 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         data_path=data_path,
         state_path=state_path,
         cache_path=cache_path,
-        data=resolved["system.data"],
+        data=resolved["config.data"],
         backup=resolved["system.backup"],
-        agents=resolved["system.agents"],
+        agents=resolved["config.agents"],
         channels=resolved["system.channelroot"],
-        global_dir=resolved["system.global"],
         base_template=resolved["system.base_template"],
-        settings=resolved["system.settings"],
-        primary_workset=resolved["system.primary_workset"],
-        registry=resolved["system.registry"],
+        settings=resolved["config.settings"],
+        primary_workset=resolved["config.primary_workset"],
+        registry=resolved["config.registry"],
         cache=resolved["system.cache"],
         runtime=resolved["system.runtime"],
         channels_commons=resolved["system.channels.commons"],
@@ -652,10 +737,10 @@ def resolve_project(
     are created and credential templates are copied in.  When False (used by
     subcommands like ``archive``/``purge``), the paths are merely computed.
 
-    Phase 5: PRIMARY boxes/vault/logs live under ``@system.primary_workset``
+    Phase 5: PRIMARY boxes/vault/logs live under ``@config.primary_workset``
     (the real PRIMARY-workset dir); there is no layout axis.  Per-box state is
     ``boxes/<name>/`` (metadata + shell) with the vault at
-    ``@system.primary_workset/vault/{ro,rw}/<name>``.
+    ``@config.primary_workset/vault/{ro,rw}/<name>``.
 
     *enable_vault* controls whether vault directories are created and mounted.
     Defaults to True for new projects; existing projects read from ``settings.yaml``.
@@ -686,7 +771,7 @@ def resolve_project(
     )
 
     # Drop-in import: the registry reverse-lookup missed, but an on-disk PRIMARY
-    # box for this workspace may exist under @system.primary_workset/boxes (a
+    # box for this workspace may exist under @config.primary_workset/boxes (a
     # dropped-in / moved tree).  On-disk metadata is authoritative — import it
     # (alert + register; name collision → refuse), then re-resolve the dir.
     if not project_name:
@@ -852,7 +937,7 @@ def _primary_box_paths(
     """Fixed PRIMARY-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
 
     Shell lives under the per-box metadata dir (``boxes/<name>/home``); the
-    vault lives under the PRIMARY workset (``@system.primary_workset/vault/{ro,
+    vault lives under the PRIMARY workset (``@config.primary_workset/vault/{ro,
     rw}/<name>``), NOT inside the user's workspace.  Phase 5 moved the PRIMARY
     vault out of the workspace so the PRIMARY workset owns boxes/vault/logs
     just like a named workset.
@@ -901,9 +986,9 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
 
     The log is the host source of the read-only ``helpers.jsonl`` bind into the
     box; it lives inside the box's own workset/box tree (never the old shared
-    ``@system.data/logs/<id>/`` location):
+    ``@config.data/logs/<id>/`` location):
 
-    * PRIMARY    → ``@system.primary_workset/logs/<box>.jsonl`` (``std.primary_logs``)
+    * PRIMARY    → ``@config.primary_workset/logs/<box>.jsonl`` (``std.primary_logs``)
     * NAMED      → ``@workset.logs/<box>.jsonl`` (``<workset_root>/logs/<box>``)
     * STANDALONE → ``@meta.workset.path/box_data/<box>.jsonl`` (inside ``box_data/``)
 

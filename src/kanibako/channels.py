@@ -27,7 +27,7 @@ roots — derived from the workset-name token + the box name.
 ``ProjectPaths`` (the legacy comms block used only ``proj.name``).  Per the
 design-review A8 resolution we derive them HERE from ``proj.mode`` + ``proj.
 group`` rather than widening the resolver's public shape: PRIMARY roots at
-``@system.primary_workset`` with token ``__PRIMARY__``; NAMED roots at
+``@config.primary_workset`` with token ``__PRIMARY__``; NAMED roots at
 ``proj.group.root`` with token ``proj.group.name``; STANDALONE roots at
 ``proj.metadata_path`` (the root; the workspace is a subdir) with token
 ``__STANDALONE__``.
@@ -164,7 +164,7 @@ def workset_name_token(proj: ProjectPaths) -> str:
 def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
     """Return ``@meta.workset.path`` for *proj*.
 
-    PRIMARY → ``@system.primary_workset``; NAMED → the named workset root
+    PRIMARY → ``@config.primary_workset``; NAMED → the named workset root
     (``proj.group.root``); STANDALONE → the project root itself
     (``proj.metadata_path``, which for standalone IS the root — the workspace is
     a ``workspace/`` subdir under it, so ``project_path`` is not the root).

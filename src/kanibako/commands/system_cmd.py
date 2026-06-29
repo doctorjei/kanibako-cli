@@ -97,8 +97,8 @@ def run_info(args: argparse.Namespace) -> int:
         from kanibako.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         data_path = resolve_system_paths(
-            config.system_paths, data_home=data_home, home=Path.home(),
-        )["system.data"]
+            config.config_paths, data_home=data_home, home=Path.home(),
+        )["config.data"]
         print(f"Data:      {data_path}")
     else:
         print(
@@ -161,15 +161,15 @@ def run_config(args: argparse.Namespace) -> int:
     """View or modify global configuration.
 
     The SYSTEM scope keeps CONFIG (``system.*`` layout) in the
-    ``~/.config/kanibako.yaml`` CONFIG file (``cf``) and routes behavior SETTINGS
-    (``system.default_agent`` + agent settings) to ``@system.settings`` =
+    ``~/.config/kanibako_config.yaml`` CONFIG file (``cf``) and routes behavior SETTINGS
+    (``system.default_agent`` + agent settings) to ``@config.settings`` =
     ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg.
     """
     from kanibako.paths import load_std_paths
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
-    # The system SETTINGS file (separate from the kanibako.yaml CONFIG file).
+    # The system SETTINGS file (separate from the kanibako_config.yaml CONFIG file).
     std = load_std_paths(load_config(cf))
     ssp = std.settings
 

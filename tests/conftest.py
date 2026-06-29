@@ -94,9 +94,9 @@ def tmp_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def config_file(tmp_home):
-    """Write a default kanibako.yaml and return its path."""
+    """Write a default kanibako_config.yaml and return its path."""
     config_home = tmp_home / "config"
-    cf = config_home / "kanibako.yaml"
+    cf = config_home / "kanibako_config.yaml"
     write_global_config(cf)
     return cf
 
@@ -109,7 +109,7 @@ def sample_config():
 
 @pytest.fixture
 def config(config_file):
-    """Load config from the default kanibako.yaml."""
+    """Load config from the default kanibako_config.yaml."""
     return load_config(config_file)
 
 
@@ -135,8 +135,8 @@ def credentials_dir(tmp_home, config_file):
     config = load_config(config_file)
     data_home = tmp_home / "data"
     data_path = resolve_system_paths(
-        config.system_paths, data_home=data_home, home=tmp_home,
-    )["system.data"]
+        config.config_paths, data_home=data_home, home=tmp_home,
+    )["config.data"]
     data_path.mkdir(parents=True, exist_ok=True)
 
     # Write host credentials (used directly by init now)

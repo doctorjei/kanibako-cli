@@ -640,9 +640,9 @@ class TestImageSharingConfig:
         assert cfg.box_share_images is False
 
     def test_loaded_from_toml(self, tmp_path):
-        """share_images can be set in kanibako.yaml ([box] section)."""
+        """share_images can be set in kanibako_config.yaml ([box] section)."""
         from kanibako.config import load_config
-        toml_path = tmp_path / "kanibako.yaml"
+        toml_path = tmp_path / "kanibako_config.yaml"
         toml_path.write_text("box:\n  share_images: true\n")
         cfg = load_config(toml_path)
         assert cfg.box_share_images is True
@@ -650,7 +650,7 @@ class TestImageSharingConfig:
     def test_false_in_toml(self, tmp_path):
         """share_images = false is loaded correctly."""
         from kanibako.config import load_config
-        toml_path = tmp_path / "kanibako.yaml"
+        toml_path = tmp_path / "kanibako_config.yaml"
         toml_path.write_text("box:\n  share_images: false\n")
         cfg = load_config(toml_path)
         assert cfg.box_share_images is False

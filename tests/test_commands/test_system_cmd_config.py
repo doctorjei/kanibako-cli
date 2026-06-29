@@ -80,16 +80,17 @@ class TestSystemConfigFileOnly:
         assert rc == 0
         assert "system.default_agent=codex" in capsys.readouterr().out
 
-    def test_get_system_path_key_reads_kanibako_yaml(
+    def test_get_config_path_key_reads_kanibako_config_yaml(
         self, config_file, tmp_home, capsys,
     ):
-        """system.data (CONFIG) is read from kanibako.yaml — get still works."""
+        """config.data (Layer-1 CONFIG) is read from kanibako_config.yaml — get
+        still works (the key moved system.data -> config.data in block #3a)."""
         from kanibako.commands.system_cmd import run_config
 
         custom = str(tmp_home / "custom-data")
-        _write_nested_toml_key(config_file, ("system",), "data", custom)
+        _write_nested_toml_key(config_file, ("config",), "data", custom)
         capsys.readouterr()
-        rc = run_config(_ns("system.data"))  # get
+        rc = run_config(_ns("config.data"))  # get
         assert rc == 0
         assert custom in capsys.readouterr().out
 

@@ -246,22 +246,19 @@ def _ensure_initialized() -> None:
     # Create data directories
     data_home = xdg("XDG_DATA_HOME", ".local/share")
     sys_paths = resolve_system_paths(
-        config.system_paths, data_home=data_home, home=Path.home(),
+        config.config_paths, data_home=data_home, home=Path.home(),
     )
-    data_path = sys_paths["system.data"]
+    data_path = sys_paths["config.data"]
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
     sys_paths["system._boxes"].mkdir(parents=True, exist_ok=True)
 
-    # Channels type-root skeleton (per-workset mailbox/share partitions + chat
-    # logs are guarantee-created on the launch path; see commands/install.py).
-    channels_dir = sys_paths["system.channelroot"]
-    (channels_dir / "commons").mkdir(parents=True, exist_ok=True)
-    (channels_dir / "share").mkdir(parents=True, exist_ok=True)
-    (channels_dir / "mailboxes").mkdir(parents=True, exist_ok=True)
-    chat_dir = channels_dir / "chat"
-    chat_dir.mkdir(parents=True, exist_ok=True)
-    (chat_dir / "general.md").touch(exist_ok=True)
-    (chat_dir / "broadcast.md").touch(exist_ok=True)
+    # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
+    # pre-created here.  ``channelroot`` moved to Layer 2 (a ``system.*`` settings
+    # key), and the launch path already creates the full skeleton — the L7
+    # guarantee-create for the type-root bind sources + ``_seed_channel_files``
+    # for the chat logs (start.py).  No host-side pre-launch consumer of the
+    # skeleton exists (audit: every reader is on the box-launch path), so the
+    # setup/init pre-creation was redundant and is dropped.
 
     # Create agents directory and generate default per-agent settings files.
     # Each agent's settings live INSIDE its store dir as
@@ -274,7 +271,7 @@ def _ensure_initialized() -> None:
     )
     from kanibako.targets import discover_targets
 
-    agents_path = sys_paths["system.agents"]
+    agents_path = sys_paths["config.agents"]
     agents_path.mkdir(parents=True, exist_ok=True)
 
     general_toml = agent_settings_path(agents_path, "general")
@@ -293,7 +290,7 @@ def _ensure_initialized() -> None:
     # stub + settings.json, goose config.yaml, codex config.toml) from these
     # CURATED templates instead.  The content ships as static package data and
     # is COPIED here into the runtime template dirs (@system.base_template +
-    # @system.agents/<agent>/template), create-if-absent so user edits survive
+    # @config.agents/<agent>/template), create-if-absent so user edits survive
     # an upgrade.  The layered seed-once stage+seed
     # (templates.stage_and_seed_templates) then copies them into each new box
     # home at creation.

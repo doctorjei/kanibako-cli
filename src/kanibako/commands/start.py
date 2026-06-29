@@ -647,8 +647,8 @@ def _run_container(
     config = load_config(config_file)
 
     std = load_std_paths(config)
-    # SYSTEM tier of the SETTINGS cascade = @system.settings = global/settings.yaml
-    # (behavior keys), distinct from the kanibako.yaml CONFIG file (system.* layout).
+    # SYSTEM tier of the SETTINGS cascade = @config.settings = global/settings.yaml
+    # (behavior keys), distinct from the kanibako_config.yaml CONFIG file (system.* layout).
     system_settings_path = std.settings
 
     # project_dir is the reconciled subject (positional OR --box) computed in
@@ -1492,7 +1492,7 @@ def _run_container(
             # Per-box, per-mode HOST helper log — lives inside the box's own
             # workset/box tree (PRIMARY → primary_workset/logs/<box>.jsonl,
             # NAMED → <workset_root>/logs/<box>.jsonl, STANDALONE →
-            # box_data/<box>.jsonl), not the old shared @system.data/logs/<id>/
+            # box_data/<box>.jsonl), not the old shared @config.data/logs/<id>/
             # location.  Guarantee-create the parent before the ro bind (L7).
             from kanibako.paths import helper_log_path
             log_path = helper_log_path(std, proj)
@@ -2207,18 +2207,19 @@ def _build_binding_overrides(
     :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
     then overlays the levels MOST-SPECIFIC-WINS:
 
-        box (settings.yaml) > workset > agent (agents/<name>/settings.yaml) > system > machine
+        box (settings.yaml) > workset > agent (agents/<name>/settings.yaml) > system
 
     Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
     common case).  A bad/unreadable level contributes nothing (the reader
     swallows its own errors).
     """
-    from kanibako.config import machine_config_path, read_binding_overrides
+    from kanibako.config import read_binding_overrides
 
     overrides: dict[str, str] = {}
-    # Least-specific first so each more-specific level's .update() wins.
+    # Least-specific first so each more-specific level's .update() wins. The old
+    # machine-wide third config file is DELETED (spec §2 clean break); the
+    # global user config is now the least-specific source.
     for path in (
-        machine_config_path(),
         global_config_path,
         agent_config_path,
         workset_config_path,
@@ -2264,24 +2265,32 @@ def _launch_snapshot_inputs(
     )
     from kanibako.settings_resolve import ResolveCtx
 
+    # Resolver SPLIT (spec §1A / JC-2): the Layer-1 ``config.*`` foundation goes
+    # into ``ctx.config`` (so ``@config.*`` category refs route THERE, not the
+    # snapshot); the Layer-2 ``system.*`` path settings stay folded into the
+    # snapshot floor (``resolved_sys``) so ``@system.*`` resolves from it.
     ctx = ResolveCtx(
         agent_name=agent_name,
         workset_name=workset_name,
         host_home=str(Path.home()),
         xdg={"XDG_DATA_HOME": str(std.data_home)},
+        config={
+            "config.data": str(std.data),
+            "config.agents": str(std.agents),
+            "config.registry": str(std.registry),
+            "config.primary_workset": str(std.primary_workset),
+            "config.settings": str(std.settings),
+        },
     )
 
-    # The system.* tier values the category @-refs resolve against.  In the
-    # snapshot model these are present IN the snapshot (folded into the floor as
-    # ``system.<leaf>`` keys) so ``expand`` resolves them — replicating the old
-    # ``_lookup``'s ``resolved_sys`` map.
+    # The Layer-2 system.* path tier the category @-refs resolve against.  These
+    # are present IN the snapshot (folded into the floor as ``system.<leaf>``
+    # keys) so ``expand`` resolves them — replicating the old ``_lookup``'s
+    # ``resolved_sys`` map.  channelroot/base_template @-ref a config key, already
+    # resolved into ``std`` by the flat foundation.
     resolved_sys = {
-        "system.data": str(std.data),
-        "system.agents": str(std.agents),
         "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
-        "system.registry": str(std.registry),
-        "system.primary_workset": str(std.primary_workset),
     }
     return ctx, scope_roots, resolved_sys
 

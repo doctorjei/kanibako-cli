@@ -56,8 +56,8 @@ def _known_target_names() -> list[str]:
 def _settings_paths() -> tuple[Path, Path]:
     """Resolve ``(config_file, system_settings_file)`` for programmatic writes.
 
-    ``config_file`` = ``~/.config/kanibako.yaml`` (holds ``[system]`` values like
-    ``setup_completed``).  ``system_settings_file`` = ``@system.settings`` =
+    ``config_file`` = ``~/.config/kanibako_config.yaml`` (holds ``[system]`` values like
+    ``setup_completed``).  ``system_settings_file`` = ``@config.settings`` =
     ``global/settings.yaml`` (holds the ``default_agent`` SETTING, where
     ``read_default_agent`` reads it back).
     """

@@ -77,16 +77,17 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "vault.enabled",
     "vault.ro",
     "vault.rw",
-    # System-level config settings (resolver-backed system.* tier)
-    "system.data",
+    # Layer-1 CONFIG-key foundation (bootstrap paths; ``[config]`` table, spec §1)
+    "config.data",
+    "config.settings",
+    "config.agents",
+    "config.primary_workset",
+    "config.registry",
+    # Layer-2 system.* path SETTINGS (``[system]`` table, spec §2g).  ``global``
+    # is ELIMINATED (children inline ``@config.data/global/...``).
     "system.backup",
-    "system.agents",
     "system.channelroot",
-    "system.global",
     "system.base_template",
-    "system.settings",
-    "system.primary_workset",
-    "system.registry",
     "system.cache",
     "system.runtime",
     # system.default_agent: the lone system.*-named SETTING (behavior, not a
@@ -256,7 +257,7 @@ def _is_agent_setting(key: str) -> bool:
 # a config path).  It does NOT land in the ``[system]`` config table; it lands in
 # the SYSTEM settings tier — the reserved any-agent ``agent.default`` table, key
 # ``default_agent`` — where ``config.read_default_agent`` reads it back.  Phase 5
-# re-points the system settings tier to ``@system.settings``.
+# re-points the system settings tier to ``@config.settings``.
 _DEFAULT_AGENT_KEY = "system.default_agent"
 _DEFAULT_AGENT_SECTIONS: tuple[str, ...] = ("agent", "default")
 _DEFAULT_AGENT_LEAF = "default_agent"
@@ -268,7 +269,11 @@ def _is_default_agent_key(key: str) -> bool:
 
 
 def _is_system_path_key(key: str) -> bool:
-    """Keys that belong in the ``[system]`` config table (system-only).
+    """Keys that belong in the bootstrap config file's PATH tables (file-only).
+
+    Covers BOTH the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1)
+    and the Layer-2 ``[system]`` path settings (``system.*``, spec §2g) — both
+    live in ``kanibako_config.yaml`` and are structural (file-only).
 
     ``system.default_agent`` is EXCLUDED — it is a SETTING, not a config path,
     and is handled by :func:`_is_default_agent_key` before this check.
@@ -277,9 +282,11 @@ def _is_system_path_key(key: str) -> bool:
     ``system.seeded.*`` / …) is ALSO excluded: categories exist at every scope
     INCLUDING system (spec §2a — e.g. global ``system.caches``), so a system-scope
     category repoint must reach the source-only ``config set`` path, NOT the
-    structural ``system.*`` file-only refusal. (Their dotted shape only LOOKS like
-    a ``system.*`` config key.)
+    structural file-only refusal. (Their dotted shape only LOOKS like a
+    ``system.*`` config key.)
     """
+    if key.startswith("config."):
+        return True
     if not key.startswith("system.") or _is_default_agent_key(key):
         return False
     return not _is_path_category_key(key)
@@ -313,7 +320,7 @@ def _is_path_category_key(key: str) -> bool:
     return BIND_KEY_RE.match(key) is not None
 
 
-def _set_time_ctx() -> "Any":
+def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     """Build the :class:`~kanibako.settings_resolve.ResolveCtx` for the set-time E3
     resolution probe.
 
@@ -325,6 +332,9 @@ def _set_time_ctx() -> "Any":
     a host-side ``$AGENT`` with no agent). Box-side ``$XDG``/``~`` in a ``box_dest``
     are NOT validated here — they are DEFERRED (S17) and the probe only resolves the
     host_src half.
+
+    *config* is the Layer-1 ``config.*`` foundation (resolved bootstrap paths) so an
+    ``@config.*`` host_src ref routes to the foundation (JC-2), NOT the snapshot.
     """
     from kanibako.paths import resolve_xdg, xdg
     from kanibako.settings_resolve import ResolveCtx
@@ -341,6 +351,7 @@ def _set_time_ctx() -> "Any":
         workset_name=None,
         host_home=str(Path.home()),
         xdg=xdg_vars,
+        config=config or {},
     )
 
 
@@ -372,7 +383,7 @@ def _category_resolves(
     TRUE precedence slot — EXACTLY as ``settings_launch.build_launch_snapshot`` /
     ``start._effective_behavior_for_display`` assemble for ``config --effective`` —
     plus the resolved ``system.*`` config tier folded as the ``base`` FLOOR (so
-    ``@system.data`` etc. resolve). So a cross-scope ``@``-ref in the edited value
+    ``@config.data`` etc. resolve). So a cross-scope ``@``-ref in the edited value
     (e.g. a ``box config`` value referencing ``@workset.vault_ro/x``) resolves at
     set-time exactly as it would at launch — no longer a false-block.
 
@@ -393,13 +404,14 @@ def _category_resolves(
     from kanibako.settings_expand import expand
     from kanibako.settings_merge import merge
 
-    ctx = _set_time_ctx()
-
-    # The system.* tier as the cascade FLOOR (resolved {system.<leaf>: Path}, the
-    # SAME tier ``get_config_value``'s ``system.*`` read consults), so an
-    # ``@system.*`` host_src ref resolves. A resolution failure here must NOT crash
-    # a config set — fall back to an empty floor (sibling refs still resolve).
+    # The path tier as the resolution context: the Layer-1 ``config.*`` foundation
+    # goes into ``ctx.config`` (so an ``@config.*`` host_src routes there — JC-2),
+    # and the Layer-2 ``system.*`` paths into the cascade FLOOR (so an
+    # ``@system.*`` host_src resolves from the snapshot). A resolution failure here
+    # must NOT crash a config set — fall back to empty (sibling refs still
+    # resolve).
     floor: dict[str, object] = {}
+    config_foundation: dict[str, str] = {}
     try:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         user_config = config_file_path(config_home)
@@ -407,9 +419,14 @@ def _category_resolves(
         for dotted, path in load_system_config(
             user_config, data_home=data_home, home=Path.home(),
         ).items():
-            floor[dotted] = str(path)
+            if dotted.startswith("config."):
+                config_foundation[dotted] = str(path)
+            elif dotted.startswith("system."):
+                floor[dotted] = str(path)
     except Exception:
         pass
+
+    ctx = _set_time_ctx(config=config_foundation)
 
     # Place the COMMAND-scope file (config_path) into its TRUE precedence slot by the
     # edited key's scope token — a box.* set lands in the box slot, workset.* in the
@@ -600,7 +617,7 @@ def get_config_value(
 
     *system_settings_path*, when supplied (the SYSTEM scope), is the file used
     for SETTINGS reads (``system.default_agent`` + agent settings) — i.e.
-    ``@system.settings`` = ``global/settings.yaml``.  When None (box/workset
+    ``@config.settings`` = ``global/settings.yaml``.  When None (box/workset
     scope) the existing ``project_toml``/``global_config_path`` paths are used,
     so those scopes keep their own ``settings.yaml`` behavior.  CONFIG
     (``system.*`` layout) reads always use ``global_config_path``.
@@ -628,7 +645,7 @@ def get_config_value(
         # ``agent.default`` tier; per-agent overrides live under ``agent.<name>``
         # and are resolved by the launch-time effective-state cascade.  For the
         # SYSTEM scope these are SETTINGS that live in the system settings file
-        # (system_settings_path), not the kanibako.yaml CONFIG file.
+        # (system_settings_path), not the kanibako_config.yaml CONFIG file.
         setting_src = (
             system_settings_path if system_settings_path is not None else project_toml
         )
@@ -639,7 +656,7 @@ def get_config_value(
         return None
 
     # system.default_agent — the SETTING (not a config path).  Read it from the
-    # system settings tier: ``@system.settings`` = ``global/settings.yaml``
+    # system settings tier: ``@config.settings`` = ``global/settings.yaml``
     # (system_settings_path) for the SYSTEM scope, else the project/global paths.
     if _is_default_agent_key(canonical):
         sources = (
@@ -655,11 +672,12 @@ def get_config_value(
                 return settings[_DEFAULT_AGENT_LEAF] or None
         return None
 
-    # system.* keys — read the raw set-value from the global config's [system]
-    # table (system-only tier; not a merged-config field).
+    # config.* / system.* path keys — read the raw set-value from the bootstrap
+    # config file's [config]/[system] tables (file-only tier; not a merged-config
+    # field).
     if _is_system_path_key(canonical):
         cfg = load_merged_config(global_config_path, project_toml)
-        return cfg.system_paths.get(canonical)
+        return cfg.config_paths.get(canonical)
 
     # Regular config keys — route via the SAME known-key table that set/reset
     # use (no get-validated/set-unguarded asymmetry).  An unknown key returns
@@ -716,11 +734,11 @@ def set_config_value(
 ) -> str:
     """Write a config value to the appropriate store.
 
-    *config_path* is the settings.yaml (for box/workset) or kanibako.yaml
+    *config_path* is the settings.yaml (for box/workset) or kanibako_config.yaml
     (for system).  *system_settings_path*, when supplied (the SYSTEM scope), is
     the file SETTINGS (``system.default_agent`` + agent settings) are written to
-    — ``@system.settings`` = ``global/settings.yaml`` — keeping them out of the
-    kanibako.yaml CONFIG file.  When None (box/workset) writes go to
+    — ``@config.settings`` = ``global/settings.yaml`` — keeping them out of the
+    kanibako_config.yaml CONFIG file.  When None (box/workset) writes go to
     ``config_path`` as before.  Returns a human-readable confirmation message.
 
     The ``cascade_*`` kwargs supply the FULL launch cascade (every scope's settings
@@ -823,7 +841,7 @@ def reset_config_value(
 
     *system_settings_path*, when supplied (SYSTEM scope), is where SETTINGS
     (``system.default_agent`` + agent settings) are removed from
-    (``@system.settings`` = ``global/settings.yaml``); when None (box/workset)
+    (``@config.settings`` = ``global/settings.yaml``); when None (box/workset)
     they are removed from ``config_path`` as before.
     """
     canonical = _resolve_key(key)
@@ -904,7 +922,7 @@ def reset_all(
 
     *system_settings_path*, when supplied (SYSTEM scope), is where the SETTINGS
     (the ``agent`` table + ``resource_overrides``) are cleared from
-    (``@system.settings`` = ``global/settings.yaml``), while CONFIG overrides are
+    (``@config.settings`` = ``global/settings.yaml``), while CONFIG overrides are
     cleared from ``config_path``.  When None (box/workset) everything is cleared
     from ``config_path`` as before.
     """
@@ -972,7 +990,7 @@ def show_config(
     - *effective=True*: show all resolved values including inherited defaults.
 
     *system_settings_path*, when supplied (SYSTEM scope), is the file the agent
-    SETTINGS + ``system.default_agent`` are DISPLAYED from (``@system.settings``
+    SETTINGS + ``system.default_agent`` are DISPLAYED from (``@config.settings``
     = ``global/settings.yaml``); the ``system.*`` CONFIG display always uses
     ``global_config_path``.  When None (box/workset) settings display reads
     ``config_path`` as before.

@@ -18,7 +18,7 @@ on-disk truth" mechanism (no per-mode special-casing):
   workset-root marker (a ``settings.yaml`` carrying a ``workset.meta`` identity)
   is found that is not a registered workset root.
 * **PRIMARY** — :func:`import_primary_box` (single box) and
-  :func:`reconcile_primary_boxes` (scan ``@system.primary_workset/boxes/*``),
+  :func:`reconcile_primary_boxes` (scan ``@config.primary_workset/boxes/*``),
   for re-associating a central primary box with its external workspace.
 
 Conflict semantics (all modes): if the import's NAME collides with an entity
@@ -204,7 +204,7 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
 def import_primary_box(data_path: Path, box_dir: Path) -> str | None:
     """Reconcile a single on-disk PRIMARY box at *box_dir* against ``registry.projects``.
 
-    *box_dir* is a per-box directory under ``@system.primary_workset/boxes/``;
+    *box_dir* is a per-box directory under ``@config.primary_workset/boxes/``;
     its ``settings.yaml`` carries ``project.name`` (the box name) and the real
     external ``workspace`` dir.  Reconciles name → workspace against
     ``registry.projects``:
@@ -243,7 +243,7 @@ def import_primary_box_for_workspace(
 ) -> str | None:
     """Import the on-disk PRIMARY box whose recorded workspace is *workspace*.
 
-    Scans *boxes_dir* (``@system.primary_workset/boxes``) for a box dir whose
+    Scans *boxes_dir* (``@config.primary_workset/boxes``) for a box dir whose
     ``settings.yaml`` records *workspace* as its workspace and is NOT yet in
     ``registry.projects``, then imports it (alert + register).  Used by
     :func:`kanibako.paths.resolve_project` to re-discover a primary box that was
@@ -276,7 +276,7 @@ def reconcile_primary_boxes(data_path: Path, boxes_dir: Path) -> list[str]:
     Imports each discovered-but-unregistered box via :func:`import_primary_box`
     (alert + register).  This is the registry-wide reconcile a future
     ``box import`` / ``diagnose`` would expose, and the same primitive the
-    per-box import uses.  *boxes_dir* is ``@system.primary_workset/boxes``
+    per-box import uses.  *boxes_dir* is ``@config.primary_workset/boxes``
     (``std.boxes``).
 
     Returns the list of box names imported during this scan (empty when every

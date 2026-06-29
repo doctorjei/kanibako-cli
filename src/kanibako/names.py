@@ -1,7 +1,7 @@
 """Project name registry (the ``projects``/``worksets`` sections of
 ``system.registry``).
 
-Central index at ``@system.registry`` (``{data_path}/global/registry.yaml``)
+Central index at ``@config.registry`` (``{data_path}/global/registry.yaml``)
 mapping human-readable names to project paths (for default-mode projects) and
 workset roots (for worksets).  Standalone projects are intentionally excluded
 here — their identity lives in the registry's ``standalone`` section (later

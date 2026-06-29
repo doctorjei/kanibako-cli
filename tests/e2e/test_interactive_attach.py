@@ -71,7 +71,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     """Isolated e2e environment whose default agent crashes on launch.
 
     Mirrors :func:`e2e_env` (isolated HOME / XDG dirs, image pinned via
-    ``kanibako.yaml``, podman storage pinned via the reused ``host_storage_conf``
+    ``kanibako_config.yaml``, podman storage pinned via the reused ``host_storage_conf``
     fixture) but targets the TESTING-ONLY ``DeadTarget`` instead of claude:
 
       - the ``dead-agent`` crash script is installed at
@@ -110,7 +110,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     shutil.copy2(_PLUGIN_SRC, plugin_dir / "dead.py")
 
     # Pin the e2e image (exactly as e2e_env does).
-    kanibako_config = config_home / "kanibako.yaml"
+    kanibako_config = config_home / "kanibako_config.yaml"
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
@@ -270,7 +270,7 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     shutil.copy2(_LIVE_PLUGIN_SRC, plugin_dir / "live.py")
 
     # Pin the e2e image (exactly as e2e_env / dead_env do).
-    kanibako_config = config_home / "kanibako.yaml"
+    kanibako_config = config_home / "kanibako_config.yaml"
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )

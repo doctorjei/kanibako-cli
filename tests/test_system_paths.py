@@ -1,12 +1,20 @@
-"""Tests for the system.* config tier (settings-framework path resolution).
+"""Tests for the two-layer path resolution (block #3a — settings-keyspace §1).
 
-Covers ``paths.resolve_system_paths`` (the resolver-backed system config tier),
-``config.load_config`` populating ``system_paths`` from a flat ``[system]``
-table, and ``load_std_paths`` reproducing today's default directory layout.
+Covers ``paths.resolve_config_paths`` (the Layer-1 ``config.*`` foundation),
+``paths.resolve_system_paths`` (Layer-1 foundation + the Layer-2 ``system.*``
+path settings, split by prefix), ``config.load_config`` populating
+``config_paths`` from the ``[config]`` + ``[system]`` tables, and
+``load_std_paths`` reproducing today's default directory layout.
 
-Keys are the bare ``system.<leaf>`` form (the ``.path`` segment was dropped in
-the system.* reorg).  The OLD per-project box store resolves under the
-transitional pseudo-key ``system._boxes`` (the ``StandardPaths.boxes`` alias).
+Keys are the FULL dotted form: Layer-1 ``config.{data,settings,agents,
+primary_workset,registry}`` (the bootstrap foundation) + Layer-2 ``system.*``
+path settings (channelroot/base_template/backup/cache/runtime + channels.*).
+``config.global`` is ELIMINATED.  The OLD per-project box store resolves under
+the transitional pseudo-key ``system._boxes`` (the ``StandardPaths.boxes`` alias).
+
+EQUIVALENCE ORACLE: the RESOLVED host paths are byte-identical to the pre-reshape
+build for the default config (modulo the dropped ``system.global`` field) — the 5
+extracted paths simply re-key ``system.{5}`` → ``config.{5}`` with the same values.
 """
 
 from __future__ import annotations
@@ -20,9 +28,11 @@ import pytest
 from kanibako.config import load_config
 from kanibako.paths import (
     BOX_HOME,
+    CONFIG_PATH_DEFAULTS,
     SYSTEM_PATH_DEFAULTS,
     box_state_home,
     load_system_config,
+    resolve_config_paths,
     resolve_system_paths,
     resolve_xdg,
 )
@@ -31,23 +41,42 @@ from kanibako.settings_resolve import SettingsError
 
 class TestResolveSystemPathsDefaults:
     def test_defaults_match_layout(self, tmp_path):
-        """Empty config → the data tree hangs off $XDG_DATA_HOME/kanibako."""
+        """Empty config → the data tree hangs off $XDG_DATA_HOME/kanibako.
+
+        Layer-1 ``config.*`` foundation + Layer-2 ``system.*`` path settings,
+        resolved to the SAME host paths the pre-reshape ``system.{5}`` build
+        produced (equivalence oracle; ``system.global`` is dropped).
+        """
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
         base = tmp_path / "kanibako"
-        assert resolved["system.data"] == base
+        # Layer-1 config-key foundation (was system.{data,agents,settings,
+        # primary_workset,registry} — same resolved values, re-keyed config.*).
+        assert resolved["config.data"] == base
+        assert resolved["config.agents"] == base / "agents"
+        assert resolved["config.settings"] == base / "global" / "settings.yaml"
+        assert resolved["config.primary_workset"] == base / "primary_workset"
+        assert resolved["config.registry"] == base / "global" / "registry.yaml"
+        # Layer-2 system.* path settings (@-ref a config key).
         assert resolved["system.backup"] == base / "backup"
-        assert resolved["system.agents"] == base / "agents"
         assert resolved["system.channelroot"] == base / "channels"
-        assert resolved["system.global"] == base / "global"
         assert resolved["system.base_template"] == base / "global" / "base_template"
-        assert resolved["system.settings"] == base / "global" / "settings.yaml"
-        assert resolved["system.primary_workset"] == base / "primary_workset"
-        assert resolved["system.registry"] == base / "global" / "registry.yaml"
         # Phase 5: PRIMARY box/vault/logs roots live under the PRIMARY workset.
         assert resolved["system._boxes"] == base / "primary_workset" / "boxes"
         assert resolved["system._primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
         assert resolved["system._primary_vault_rw"] == base / "primary_workset" / "vault" / "rw"
         assert resolved["system._primary_logs"] == base / "primary_workset" / "logs"
+
+    def test_config_foundation_resolves_standalone(self, tmp_path):
+        """The Layer-1 foundation resolves the 5 config keys on its own."""
+        config = resolve_config_paths({}, data_home=tmp_path, home=tmp_path)
+        base = tmp_path / "kanibako"
+        assert config == {
+            "config.data": str(base),
+            "config.settings": str(base / "global" / "settings.yaml"),
+            "config.agents": str(base / "agents"),
+            "config.primary_workset": str(base / "primary_workset"),
+            "config.registry": str(base / "global" / "registry.yaml"),
+        }
 
     def test_channels_skeleton_resolves(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
@@ -72,74 +101,104 @@ class TestResolveSystemPathsDefaults:
 
     def test_returns_every_declared_key(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        # Every declared default key plus the derived PRIMARY-workset pseudo-keys.
-        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {
-            "system._boxes",
-            "system._primary_vault_ro",
-            "system._primary_vault_rw",
-            "system._primary_logs",
-        }
+        # Every declared Layer-1 config key + Layer-2 system key + the derived
+        # PRIMARY-workset pseudo-keys.
+        assert set(resolved) == (
+            set(CONFIG_PATH_DEFAULTS)
+            | set(SYSTEM_PATH_DEFAULTS)
+            | {
+                "system._boxes",
+                "system._primary_vault_ro",
+                "system._primary_vault_rw",
+                "system._primary_logs",
+            }
+        )
 
 
 class TestResolveSystemPathsOverrides:
     def test_data_override_tracks_dependents(self, tmp_path):
-        """Overriding data moves dependents (which @-ref system.data)."""
+        """Overriding config.data moves dependents (which @-ref config.data)."""
         resolved = resolve_system_paths(
-            {"system.data": "$XDG_DATA_HOME/custom"},
+            {"config.data": "$XDG_DATA_HOME/custom"},
             data_home=tmp_path,
             home=tmp_path,
         )
         custom = tmp_path / "custom"
-        assert resolved["system.data"] == custom
-        assert resolved["system.agents"] == custom / "agents"
+        assert resolved["config.data"] == custom
+        assert resolved["config.agents"] == custom / "agents"
         assert resolved["system._boxes"] == custom / "primary_workset" / "boxes"
-        assert resolved["system.global"] == custom / "global"
+        # A Layer-2 system.* path @-refs config.data → tracks the override too.
+        assert resolved["system.channelroot"] == custom / "channels"
+        assert resolved["system.base_template"] == custom / "global" / "base_template"
 
     def test_absolute_leaf_override_isolated(self, tmp_path):
-        """An absolute agents override does not perturb the other keys."""
+        """An absolute config.agents override does not perturb the other keys."""
         resolved = resolve_system_paths(
-            {"system.agents": "/srv/agents"},
+            {"config.agents": "/srv/agents"},
             data_home=tmp_path,
             home=tmp_path,
         )
-        assert resolved["system.agents"] == Path("/srv/agents")
+        assert resolved["config.agents"] == Path("/srv/agents")
         # Others keep their defaults under $XDG_DATA_HOME/kanibako.
         base = tmp_path / "kanibako"
-        assert resolved["system.data"] == base
+        assert resolved["config.data"] == base
         assert resolved["system.channelroot"] == base / "channels"
 
     def test_tilde_expands_to_home(self, tmp_path):
         home = tmp_path / "h"
         resolved = resolve_system_paths(
-            {"system.data": "~/.kani"}, data_home=tmp_path, home=home,
+            {"config.data": "~/.kani"}, data_home=tmp_path, home=home,
         )
-        assert resolved["system.data"] == home / ".kani"
+        assert resolved["config.data"] == home / ".kani"
 
-    def test_unknown_ref_raises(self, tmp_path):
+    def test_unknown_system_ref_raises(self, tmp_path):
         with pytest.raises(SettingsError):
             resolve_system_paths(
-                {"system.agents": "@system.nope/x"},
+                {"system.channelroot": "@system.nope/x"},
+                data_home=tmp_path,
+                home=tmp_path,
+            )
+
+    def test_unknown_config_ref_raises(self, tmp_path):
+        with pytest.raises(SettingsError):
+            resolve_system_paths(
+                {"system.channelroot": "@config.nope/x"},
                 data_home=tmp_path,
                 home=tmp_path,
             )
 
 
-class TestLoadConfigSystemPaths:
-    def test_system_table_populates(self, tmp_path):
-        toml = tmp_path / "kanibako.yaml"
-        toml.write_text('system:\n  agents: "/x"\n')
+class TestLoadConfigPaths:
+    def test_config_table_populates(self, tmp_path):
+        toml = tmp_path / "kanibako_config.yaml"
+        toml.write_text('config:\n  agents: "/x"\n')
         cfg = load_config(toml)
-        assert cfg.system_paths == {"system.agents": "/x"}
+        assert cfg.config_paths == {"config.agents": "/x"}
+
+    def test_system_table_populates(self, tmp_path):
+        toml = tmp_path / "kanibako_config.yaml"
+        toml.write_text('system:\n  channelroot: "/x"\n')
+        cfg = load_config(toml)
+        assert cfg.config_paths == {"system.channelroot": "/x"}
+
+    def test_both_tables_merge(self, tmp_path):
+        toml = tmp_path / "kanibako_config.yaml"
+        toml.write_text('config:\n  data: "/d"\nsystem:\n  channelroot: "/c"\n')
+        cfg = load_config(toml)
+        assert cfg.config_paths == {
+            "config.data": "/d",
+            "system.channelroot": "/c",
+        }
 
     def test_nested_system_subkey_flattens(self, tmp_path):
-        toml = tmp_path / "kanibako.yaml"
+        toml = tmp_path / "kanibako_config.yaml"
         toml.write_text('system:\n  channels:\n    commons: "/c"\n')
         cfg = load_config(toml)
-        assert cfg.system_paths == {"system.channels.commons": "/c"}
+        assert cfg.config_paths == {"system.channels.commons": "/c"}
 
-    def test_empty_config_has_no_system_paths(self, tmp_path):
+    def test_empty_config_has_no_config_paths(self, tmp_path):
         cfg = load_config(tmp_path / "absent.yaml")
-        assert cfg.system_paths == {}
+        assert cfg.config_paths == {}
 
 
 class TestLoadStdPathsParity:
@@ -153,7 +212,6 @@ class TestLoadStdPathsParity:
         assert std.agents == std.data_path / "agents"
         assert std.channels == std.data_path / "channels"
         assert std.primary_workset == std.data_path / "primary_workset"
-        assert std.global_dir == std.data_path / "global"
         assert std.base_template == std.data_path / "global" / "base_template"
         assert std.registry == std.data_path / "global" / "registry.yaml"
         # Phase 5: PRIMARY box/vault/logs live under the PRIMARY workset.
@@ -197,12 +255,12 @@ class TestBoxesOverrideConsumers:
         custom_data = tmp_home / "srv_data"
         custom_boxes = custom_data / "primary_workset" / "boxes"
 
-        # Write a config that overrides system.data to the custom dir.
-        cf = tmp_home / "config" / "kanibako.yaml"
-        cf.write_text(f'system:\n  data: "{custom_data}"\n')
+        # Write a config that overrides config.data to the custom dir.
+        cf = tmp_home / "config" / "kanibako_config.yaml"
+        cf.write_text(f'config:\n  data: "{custom_data}"\n')
 
         config = load_config(cf)
-        assert config.system_paths == {"system.data": str(custom_data)}
+        assert config.config_paths == {"config.data": str(custom_data)}
         std = load_std_paths(config)
         assert std.boxes == custom_boxes
 
@@ -381,71 +439,75 @@ class TestLoadSystemConfig:
         monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
 
     def test_only_user_global_still_works(self, tmp_path, monkeypatch):
-        """Back-compat: a user with only ~/.config/kanibako.yaml (absent /etc
-        base) gets exactly the prior behavior."""
+        """Back-compat: a user with only ~/.config/kanibako_config.yaml (absent
+        /etc base) gets exactly the prior behavior."""
         base = tmp_path / "config_base.yaml"       # absent
         self._redirect(monkeypatch, base)
 
-        user = tmp_path / "kanibako.yaml"
-        user.write_text('system:\n  agents: "/u/agents"\n')
+        user = tmp_path / "kanibako_config.yaml"
+        user.write_text('config:\n  agents: "/u/agents"\n')
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.agents"] == Path("/u/agents")
+        assert resolved["config.agents"] == Path("/u/agents")
         # Unset keys fall back to defaults under $XDG_DATA_HOME/kanibako.
-        assert resolved["system.data"] == tmp_path / "kanibako"
+        assert resolved["config.data"] == tmp_path / "kanibako"
 
     def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako.yaml"  # absent
+        user = tmp_path / "kanibako_config.yaml"  # absent
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {
-            "system._boxes",
-            "system._primary_vault_ro",
-            "system._primary_vault_rw",
-            "system._primary_logs",
-        }
-        assert resolved["system.data"] == tmp_path / "kanibako"
+        assert set(resolved) == (
+            set(CONFIG_PATH_DEFAULTS)
+            | set(SYSTEM_PATH_DEFAULTS)
+            | {
+                "system._boxes",
+                "system._primary_vault_ro",
+                "system._primary_vault_rw",
+                "system._primary_logs",
+            }
+        )
+        assert resolved["config.data"] == tmp_path / "kanibako"
 
     def test_user_wins_over_base(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  agents: "/base/agents"\n')
-        user.write_text('system:\n  agents: "/user/agents"\n')
+        user = tmp_path / "kanibako_config.yaml"
+        base.write_text('config:\n  agents: "/base/agents"\n')
+        user.write_text('config:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.agents"] == Path("/user/agents")
+        assert resolved["config.agents"] == Path("/user/agents")
 
     def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
         """A base-only key is honored when the user file omits it."""
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako.yaml"
+        user = tmp_path / "kanibako_config.yaml"
         base.write_text('system:\n  channelroot: "/base/channels"\n')
-        user.write_text('system:\n  agents: "/user/agents"\n')
+        user.write_text('config:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
         assert resolved["system.channelroot"] == Path("/base/channels")
-        assert resolved["system.agents"] == Path("/user/agents")
+        assert resolved["config.agents"] == Path("/user/agents")
 
     def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
         """Each leaf cascades independently — base pins one key while the
-        user sets (and overrides) another."""
+        user sets (and overrides) another (spanning BOTH layers)."""
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako.yaml"
+        user = tmp_path / "kanibako_config.yaml"
         base.write_text(
-            'system:\n  data: "/base/data"\n  channelroot: "/base/channels"\n'
+            'config:\n  data: "/base/data"\nsystem:\n  channelroot: "/base/channels"\n'
         )
         user.write_text(
-            'system:\n  data: "/user/data"\n  agents: "/user/agents"\n'
+            'config:\n  data: "/user/data"\n  agents: "/user/agents"\n'
         )
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.data"] == Path("/user/data")    # user overrides base
-        assert resolved["system.agents"] == Path("/user/agents")  # user-only
+        assert resolved["config.data"] == Path("/user/data")    # user overrides base
+        assert resolved["config.agents"] == Path("/user/agents")  # user-only
         assert resolved["system.channelroot"] == Path("/base/channels")  # base-only
 
 
@@ -453,23 +515,103 @@ class TestResolveSystemPathsXdgCtx:
     """``resolve_system_paths`` populates the full XDG var set into ctx."""
 
     def test_xdg_config_state_cache_refs_resolve(self, tmp_path, monkeypatch):
-        """A system path expression referencing $XDG_CONFIG_HOME resolves."""
+        """A config path expression referencing $XDG_CONFIG_HOME resolves."""
         monkeypatch.setenv("HOME", str(tmp_path))
         cfg_home = tmp_path / "cfg"
         monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
         resolved = resolve_system_paths(
-            {"system.agents": "$XDG_CONFIG_HOME/kani-agents"},
+            {"config.agents": "$XDG_CONFIG_HOME/kani-agents"},
             data_home=tmp_path / "data",
             home=tmp_path,
         )
-        assert resolved["system.agents"] == cfg_home / "kani-agents"
+        assert resolved["config.agents"] == cfg_home / "kani-agents"
 
     def test_xdg_runtime_ref_resolves(self, tmp_path, monkeypatch):
         run_dir = tmp_path / "run"
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
         resolved = resolve_system_paths(
-            {"system.agents": "$XDG_RUNTIME_DIR/kani"},
+            {"config.agents": "$XDG_RUNTIME_DIR/kani"},
             data_home=tmp_path / "data",
             home=tmp_path,
         )
-        assert resolved["system.agents"] == run_dir / "kani"
+        assert resolved["config.agents"] == run_dir / "kani"
+
+
+class TestResolverSplitRouting:
+    """Spec §1A / JC-2: ``@config.*`` routes to the Layer-1 FOUNDATION
+    (``ctx.config``); ``@system.*`` to the merged settings snapshot.
+
+    These exercise the launch-path expand engine directly (the same router both
+    the launch snapshot and set-time validation use), proving the prefix-driven
+    split: a ``@config.*`` ref reads ``ctx.config`` even when the key is ABSENT
+    from the snapshot, while a ``@system.*`` ref reads the snapshot.
+    """
+
+    def _ctx(self, config):
+        from kanibako.settings_resolve import ResolveCtx
+
+        return ResolveCtx(
+            agent_name=None,
+            workset_name=None,
+            host_home="/home/u",
+            xdg={"XDG_DATA_HOME": "/data"},
+            config=config,
+        )
+
+    def test_config_ref_resolves_via_foundation_not_snapshot(self):
+        from kanibako.settings_expand import expand
+        from kanibako.settings_store import KeyStore
+
+        # The snapshot has NO config.* node — only ctx.config does.
+        snap = KeyStore()
+        snap["x"] = "@config.data/sub"
+        ctx = self._ctx({"config.data": "/foundation/data"})
+        out = expand(snap, ctx)
+        assert out["x"] == "/foundation/data/sub"
+
+    def test_dangling_config_ref_drops_whole_value(self):
+        from kanibako.settings_expand import expand
+        from kanibako.settings_store import KeyStore
+
+        # A whole-value @config.* ref to a key absent from the foundation is a
+        # dangling ref → the holder key is DROPPED (§6b propagation).
+        snap = KeyStore()
+        snap["x"] = "@config.missing"
+        ctx = self._ctx({"config.data": "/foundation/data"})
+        out = expand(snap, ctx)
+        assert "x" not in out
+
+    def test_system_ref_resolves_via_snapshot(self):
+        from kanibako.settings_expand import expand
+        from kanibako.settings_store import KeyStore
+
+        # @system.* reads the snapshot (NOT ctx.config).
+        snap = KeyStore()
+        sysnode = KeyStore()
+        sysnode["channelroot"] = "/snap/channels"
+        snap["system"] = sysnode
+        snap["x"] = "@system.channelroot/chat"
+        ctx = self._ctx({"config.data": "/foundation/data"})
+        out = expand(snap, ctx)
+        assert out["x"] == "/snap/channels/chat"
+
+
+class TestConfigDataCascade:
+    """A user ``kanibako_config.yaml`` override of ``config.data`` cascades to
+    every dependent (all 5 config keys + the Layer-2 system paths that @-ref it).
+    """
+
+    def test_config_data_override_cascades_to_all(self, tmp_path):
+        resolved = resolve_system_paths(
+            {"config.data": "/srv/kani"}, data_home=tmp_path, home=tmp_path,
+        )
+        root = Path("/srv/kani")
+        assert resolved["config.data"] == root
+        assert resolved["config.settings"] == root / "global" / "settings.yaml"
+        assert resolved["config.agents"] == root / "agents"
+        assert resolved["config.primary_workset"] == root / "primary_workset"
+        assert resolved["config.registry"] == root / "global" / "registry.yaml"
+        # Layer-2 system paths @-ref config.data → cascade too.
+        assert resolved["system.channelroot"] == root / "channels"
+        assert resolved["system.backup"] == root / "backup"
+        assert resolved["system.base_template"] == root / "global" / "base_template"

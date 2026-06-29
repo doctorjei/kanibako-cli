@@ -926,7 +926,7 @@ def _remove_old_metadata(
             return
         if state.metadata_path.is_dir():
             shutil.rmtree(state.metadata_path, ignore_errors=True)
-        # PRIMARY vault lives under @system.primary_workset/vault/{ro,rw}/<name>
+        # PRIMARY vault lives under @config.primary_workset/vault/{ro,rw}/<name>
         # (Phase 5), so it is NOT under metadata_path — remove the per-box ro/rw
         # dirs explicitly (NOT their shared parent, which holds every box's
         # vault).
@@ -990,7 +990,7 @@ def _to_default(
         )
 
     phash = project_hash(str(new_workspace.resolve()))
-    # Phase 5 fixed PRIMARY table: vault under @system.primary_workset.
+    # Phase 5 fixed PRIMARY table: vault under @config.primary_workset.
     vault_ro = std.primary_vault_ro / project_name
     vault_rw = std.primary_vault_rw / project_name
 
