@@ -14,8 +14,8 @@ design §6a / spec §0).
 Authority
 ---------
 * Spec ``settings-keyspace-1.6.0-target.md`` §2 L138–142 (cascade — PRIMARY
-  authority): the 7-level order ``base < system < agent.default < agent.<active> <
-  workset < box < required``, high→low precedence; ``agent.default`` is an EXPLICIT
+  authority): the 6-level order ``base < system < agent.default < agent.<active> <
+  workset < box``, high→low precedence; ``agent.default`` is an EXPLICIT
   level and both agent layers reuse the same linear ``_MISSING`` precedence (no
   nested mini-cascade) — the LEVEL ORDER is the precedence. §2d L356–378: the ONLY
   two agent key forms are ``agent.default.<key>`` and ``agent.<agent>.<key>`` (a
@@ -25,15 +25,16 @@ Authority
 * Spec ``settings-keyspace-1.6.0-target.md`` §2 (cascade + scopes) / §2a
   (categories + value types) / §0 (namespace ORTHOGONAL to cascade).
 * Keyspace audit 2026-06-27c #2: the ``machine`` (``/etc/kanibako.yaml``) tier is
-  CUT — cascade floor is ``base`` (overridable), cap is ``required``
-  (non-overridable). This module reads NO ``machine_config_path()``.
+  CUT — cascade floor is ``base`` (overridable) and the cascade ENDS at ``box``
+  (the former ``required`` non-overridable cap is CUT, 2026-06-29f). This module
+  reads NO ``machine_config_path()``.
 
 Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 -------------------------------------------------------
 * **S7** — partials are NESTED ``KeyStore``s (not flat dotted dicts); a scope
   file's nested tables are mirrored verbatim into the partial.
 * **S8** — output order is MOST-SPECIFIC-FIRST:
-  ``[required, box, workset, agent.<active>, agent.default, system, base]``. The
+  ``[box, workset, agent.<active>, agent.default, system, base]``. The
   two agent levels keep their TRUE discriminated keys (``agent.<active-name>.*`` /
   ``agent.default.*``, §2d) — NO bare-``agent`` collapse; level order is the
   cascade precedence.
@@ -41,7 +42,8 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
   left RAW inside ``host`` / ``box`` (expansion is block 3).
 * **S13** — ONE unified ``KeyStore`` partial per level holding BOTH behavior
   leaves AND category subtrees together (design §1/§2 single-source).
-* **S14** — no ``machine`` tier; floor → ``base``, cap → ``required``.
+* **S14** — no ``machine`` tier; floor → ``base``; cascade ends at ``box`` (no
+  ``required`` cap).
 
 Keyspace convention — scope token KEPT (namespace orthogonal to cascade, §0)
 ---------------------------------------------------------------------------
@@ -75,7 +77,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from kanibako.config import settings_base_path, settings_required_path
+from kanibako.config import settings_base_path
 from kanibako.config_io import load_doc
 from kanibako.settings_resolve import unpack_bind
 from kanibako.settings_store import Bind, KeyStore
@@ -129,8 +131,8 @@ def _file_partial(raw: dict) -> KeyStore:
     mirrored into a nested :class:`KeyStore` with the SCOPE TOKEN KEPT (§0:
     namespace orthogonal to cascade) — binds parsed to :class:`Bind`, refs raw.
     An empty / non-dict file → an empty :class:`KeyStore`. This is the rule for
-    every NON-agent level (``base`` / ``system`` / ``workset`` / ``box`` /
-    ``required``); the agent tier uses :func:`_agent_partial`.
+    every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the
+    agent tier uses :func:`_agent_partial`.
     """
     if not isinstance(raw, dict):
         return KeyStore()
@@ -230,18 +232,17 @@ def assemble_levels(
     agent_path: Path | None = None,
     workset_path: Path | None = None,
     box_path: Path | None = None,
-    required_path: Path | None = None,
     floor: dict[str, object] | None = None,
 ) -> list[KeyStore]:
     """Read each cascade scope's settings file into ONE nested ``KeyStore`` partial
     and return the ordered ``list[KeyStore]`` (MOST-SPECIFIC-FIRST, S8).
 
-    The 7 levels, in order::
+    The 6 levels, in order::
 
-        [required, box, workset, agent.<active>, agent.default, system, base]
+        [box, workset, agent.<active>, agent.default, system, base]
 
     matching design §4's ``base < system < agent.default < agent.<active> <
-    workset < box < required`` reversed to high→low precedence (block 2b walks
+    workset < box`` reversed to high→low precedence (block 2b walks
     this order; the first scope that SETS a leaf wins).
 
     Each non-agent level's partial = its file's WHOLE nested content, scope token
@@ -252,10 +253,10 @@ def assemble_levels(
 
     * *agent_name* selects the active agent's sub-table for the ``agent.<active>``
       level; ``agent.default`` reads the ``default`` sub-table from the SAME file.
-    * *base_path* / *required_path* default to ``settings_base_path()`` /
-      ``settings_required_path()`` (``/etc`` floor / cap) — no ``machine`` tier
-      (S14). These files use the SAME scoped keyspace as every other file (NOT a
-      synthetic ``base:`` / ``required:`` wrapper).
+    * *base_path* defaults to ``settings_base_path()`` (the ``/etc`` floor) — no
+      ``machine`` tier (S14); the cascade ends at ``box`` (no ``required`` cap).
+      The base file uses the SAME scoped keyspace as every other file (NOT a
+      synthetic ``base:`` wrapper).
     * *floor* (declared defaults + default-categories) is folded UNDER the base
       file's content into the ``base`` level — a base-FILE set-value beats the
       floor at the same key; the floor is the ultimate fallback.
@@ -265,14 +266,12 @@ def assemble_levels(
     (skipped cleanly by the merge). NO ``machine`` path is consulted.
     """
     base_p = base_path if base_path is not None else settings_base_path()
-    required_p = required_path if required_path is not None else settings_required_path()
 
     raw_base = load_doc(base_p)
     raw_system = load_doc(system_path)
     raw_agent = load_doc(agent_path)
     raw_workset = load_doc(workset_path)
     raw_box = load_doc(box_path)
-    raw_required = load_doc(required_p)
 
     # The base partial carries the declared-default floor UNDER any base-file
     # content: a base-FILE set-value beats the floor at the same key (the floor is
@@ -286,7 +285,6 @@ def assemble_levels(
     # default/<active> discriminator as the TRUE §2d key (``agent.default.*`` /
     # ``agent.<active-name>.*``), NO bare-``agent`` collapse.
     return [
-        _file_partial(raw_required),
         _file_partial(raw_box),
         _file_partial(raw_workset),
         _agent_partial(raw_agent, sub_key=agent_name),

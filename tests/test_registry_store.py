@@ -22,7 +22,6 @@ def test_fresh_tree_empty_sections(tmp_path: Path) -> None:
     assert reg == {
         "projects": {},
         "worksets": {},
-        "workset_roots": {},
         "connected": {},
         "standalone": {},
         "seeded": {"projects": {}, "standalone": {}},
@@ -36,7 +35,6 @@ def test_sections_round_trip(tmp_path: Path) -> None:
     reg = {
         "projects": {"myapp": "/home/user/myapp"},
         "worksets": {"ws": "/home/user/ws"},
-        "workset_roots": {"ws": "/home/user/ws"},
         "connected": {"/abs/ext": {"workset": "ws", "project": "foo"}},
         "standalone": {"abc_box": "/abs/proj"},
         "seeded": {
@@ -58,7 +56,7 @@ def test_save_creates_global_dir(tmp_path: Path) -> None:
 
 
 def test_name_sections_sorted_on_write(tmp_path: Path) -> None:
-    """projects/worksets/workset_roots keys are written sorted (stable diffs)."""
+    """projects/worksets keys are written sorted (stable diffs)."""
     registry_store.save_registry(
         tmp_path,
         {"projects": {"zed": "/z", "abe": "/a", "mid": "/m"}},

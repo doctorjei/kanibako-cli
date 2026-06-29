@@ -529,7 +529,7 @@ def load_system_config(
 ) -> dict[str, Path]:
     """Resolve the ``system.*`` config tier from the CONFIG file set.
 
-    The CONFIG (``system.*``) set is three files, read in cascade order so the
+    The CONFIG (``system.*``) set is two files, read in cascade order so the
     most-authoritative present value of each ``system.<leaf>`` set-value
     wins **before** expression resolution:
 
@@ -537,9 +537,6 @@ def load_system_config(
        (least specific).
     2. *user_config_path* — the user's global ``~/.config/kanibako.yaml``
        (overrides the base).
-    3. ``/etc/kanibako/config_required.yaml`` — site-wide **non-overridable**
-       values, applied LAST so they win over both the base and the user file
-       (decision D: ``*_required`` sits above everything else in the set).
 
     Missing files are skipped (each contributes nothing).  The merged set-values
     are handed to :func:`resolve_system_paths`, which fills in
@@ -550,23 +547,21 @@ def load_system_config(
     table.
 
     Back-compat: a user with only ``~/.config/kanibako.yaml`` (no ``/etc``
-    files) gets exactly the prior behavior — the base and required layers are
-    empty, so the user file is the sole source of set-values.
+    file) gets exactly the prior behavior — the base layer is empty, so the
+    user file is the sole source of set-values.
     """
     # Lazy import to avoid a config <-> paths import cycle at module load.
     from kanibako.config import (
         config_base_path,
-        config_required_path,
         load_config,
     )
 
     set_values: dict[str, str] = {}
-    # base < user < required.  load_config(...).system_paths yields the file's
+    # base < user.  load_config(...).system_paths yields the file's
     # ``system.path.<leaf>`` set-values (full dotted keys), or {} when the file
     # is absent — so missing layers are skipped automatically.
     set_values.update(load_config(config_base_path()).system_paths)
     set_values.update(load_config(user_config_path).system_paths)
-    set_values.update(load_config(config_required_path()).system_paths)
 
     return resolve_system_paths(set_values, data_home=data_home, home=home)
 
@@ -592,9 +587,8 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         config = load_config(config_file)
 
     # Resolve the system-level path tier (settings-framework "system.path.*")
-    # from the CONFIG file set: /etc config_base < user-global < /etc
-    # config_required (required is non-overridable, applied last).  A user with
-    # only ~/.config/kanibako.yaml gets the prior behavior (empty /etc layers).
+    # from the CONFIG file set: /etc config_base < user-global.  A user with
+    # only ~/.config/kanibako.yaml gets the prior behavior (empty /etc layer).
     resolved = load_system_config(
         config_file, data_home=data_home, home=Path.home(),
     )
@@ -1196,7 +1190,7 @@ def _check_workset(
     from kanibako import registry_store
 
     worksets_section = registry_store.load_section(
-        std.data_path, "workset_roots"
+        std.data_path, "worksets"
     )
     if not worksets_section:
         return None

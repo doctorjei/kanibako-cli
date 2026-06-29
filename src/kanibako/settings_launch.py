@@ -262,13 +262,13 @@ def build_launch_snapshot(
     binding_overrides: Mapping[str, str] | None = None,
     descriptor_bindings: "list[Binding] | None" = None,
     group_auth_chain: Mapping[str, object] | None = None,
-) -> tuple[KeyStore, list[str]]:
-    """Build the ONE expanded launch snapshot + the required-override warnings.
+) -> KeyStore:
+    """Build the ONE expanded launch snapshot.
 
     Folds the behavior floor (mapped to ``agent.default.<key>`` — OS1, the
     all-agents backstop) and every runtime ``default_categories`` table (a bare
     ``agent.<cat>.*`` table key re-rooted to the active slot ``agent.<agent_name>.
-    <cat>.*``) into ONE base-level floor, assembles the 7-level cascade (S8) with
+    <cat>.*``) into ONE base-level floor, assembles the 6-level cascade (S8) with
     7a's *agent_partial* inserted as an additional agent-level source (S27), merges
     (S15), and expands (S17/S19) with *ctx*. There is NO bare ``agent.<key>`` in the
     snapshot (spec §2d / §0 L21) — the agent tier is DISCRIMINATED throughout.
@@ -287,8 +287,7 @@ def build_launch_snapshot(
     NARROW resolve that does not need the chain (the seed/synced/image/helper
     sub-resolves), so those snapshots simply lack the chain keys.
 
-    Returns ``(snapshot, warnings)``; *warnings* is the ``required``-override
-    diagnostics channel (S10) the caller surfaces.
+    Returns the expanded ``snapshot``.
     """
     floor: dict[str, object] = {}
     # OS1: bare behavior keys → scope-qualified agent.default.<key>. The declared
@@ -350,15 +349,15 @@ def build_launch_snapshot(
         box_path=box_path,
         floor=floor,
     )
-    # ``assemble_levels`` ALWAYS returns the 7 levels MOST-SPECIFIC-FIRST (S8):
-    #   [required, box, workset, agent.<active>, agent.default, system, base]
-    #    idx 0       1     2        3              4              5       6
+    # ``assemble_levels`` ALWAYS returns the 6 levels MOST-SPECIFIC-FIRST (S8):
+    #   [box, workset, agent.<active>, agent.default, system, base]
+    #    idx 0    1        2              3              4       5
     # Build the FINAL ordered level list by splicing the optional extra partials at
     # their PRECISE precedence rungs, computed from these FIXED base indices (doing
     # all splices in one pass keeps the math robust — no chained index drift):
     #
     #   override bridge  — just below box (above workset): wins 7a's origin default
-    #                      by name, loses to a box-file / ``required`` set.
+    #                      by name, loses to a box-file set.
     #   agent_state      — the per-agent FILE's behavior, wrapped under the active
     #                      slot, at the AGENT-FILE rung (above the empty assemble
     #                      agent.<active> level, below workset): the OLD
@@ -372,23 +371,22 @@ def build_launch_snapshot(
     state_partial = _agent_state_partial(agent_name, agent_state)
 
     levels: list[KeyStore] = []
-    levels.append(base_levels[0])                       # required
-    levels.append(base_levels[1])                       # box
+    levels.append(base_levels[0])                       # box
     if bridge is not None:
         levels.append(bridge)                           # override bridge (below box)
-    levels.append(base_levels[2])                       # workset
+    levels.append(base_levels[1])                       # workset
     if state_partial is not None:
         levels.append(state_partial)                    # per-agent FILE behavior
-    levels.append(base_levels[3])                       # agent.<active> (file tables)
-    levels.append(base_levels[4])                       # agent.default
+    levels.append(base_levels[2])                       # agent.<active> (file tables)
+    levels.append(base_levels[3])                       # agent.default
     if agent_partial is not None:
         levels.append(agent_partial)                    # 7a descriptor default
-    levels.append(base_levels[5])                       # system
-    levels.append(base_levels[6])                       # base (+ folded floor)
+    levels.append(base_levels[4])                       # system
+    levels.append(base_levels[5])                       # base (+ folded floor)
 
-    snapshot, warnings = merge(levels)
+    snapshot = merge(levels)
     expanded = expand(snapshot, ctx)
-    return expanded, warnings
+    return expanded
 
 
 def _agent_state_partial(
@@ -430,7 +428,7 @@ def _override_bridge_partial(
     ``agent.<agent_name>.bindings.{ro,rw}.<key>`` (the §2d key form, §0 L21 — NO bare
     ``agent``), under the SAME active-agent slot 7a delivers the descriptor binds
     into (``install.name`` == *agent_name*). The caller splices it just BELOW box so
-    it beats 7a's origin default by name yet loses to a box-file / ``required`` set.
+    it beats 7a's origin default by name yet loses to a box-file set.
     """
     if not binding_overrides or not descriptor_bindings:
         return None

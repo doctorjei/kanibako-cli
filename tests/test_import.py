@@ -159,15 +159,11 @@ class TestNamedWorksetImport:
         create_workset("imported", ws_root, std)
         # Wipe the registry to simulate a dropped-in workset tree (settings.yaml
         # workset.meta on disk, no registry entry).
-        registry_store.save_section(std.data_path, "workset_roots", {})
         registry_store.save_section(std.data_path, "worksets", {})
         capsys.readouterr()
 
         name = import_reconcile.import_named_workset(std.data_path, ws_root)
         assert name == "imported"
-        assert registry_store.load_section(std.data_path, "workset_roots") == {
-            "imported": str(ws_root.resolve())
-        }
         assert registry_store.load_section(std.data_path, "worksets") == {
             "imported": str(ws_root.resolve())
         }
@@ -178,14 +174,13 @@ class TestNamedWorksetImport:
     ):
         ws_root = tmp_home / "worksets" / "wsdetect"
         create_workset("wsdetect", ws_root, std)
-        registry_store.save_section(std.data_path, "workset_roots", {})
         registry_store.save_section(std.data_path, "worksets", {})
         capsys.readouterr()
 
         # Detection walks up from inside the workset root and imports it.
         result = detect_project_mode(ws_root, std, config)
         assert result.mode is BoxMode.named
-        assert registry_store.load_section(std.data_path, "workset_roots").get(
+        assert registry_store.load_section(std.data_path, "worksets").get(
             "wsdetect"
         ) == str(ws_root.resolve())
         assert "Imported workset 'wsdetect'" in capsys.readouterr().err
@@ -193,13 +188,13 @@ class TestNamedWorksetImport:
     def test_import_is_idempotent_no_op(self, std, config, tmp_home, capsys):
         ws_root = tmp_home / "worksets" / "idem"
         create_workset("idem", ws_root, std)
-        before = registry_store.load_section(std.data_path, "workset_roots")
+        before = registry_store.load_section(std.data_path, "worksets")
         capsys.readouterr()
 
         assert (
             import_reconcile.import_named_workset(std.data_path, ws_root) == "idem"
         )
-        assert registry_store.load_section(std.data_path, "workset_roots") == before
+        assert registry_store.load_section(std.data_path, "worksets") == before
         assert "Imported" not in capsys.readouterr().err
 
     def test_name_collision_refuses(self, std, config, tmp_home):
@@ -207,11 +202,11 @@ class TestNamedWorksetImport:
         create_workset("clash", ws_root, std)
         # Same name already registered to a DIFFERENT root.
         registry_store.save_section(
-            std.data_path, "workset_roots", {"clash": "/other/root"},
+            std.data_path, "worksets", {"clash": "/other/root"},
         )
         with pytest.raises(ImportConflictError, match="rename"):
             import_reconcile.import_named_workset(std.data_path, ws_root)
-        assert registry_store.load_section(std.data_path, "workset_roots") == {
+        assert registry_store.load_section(std.data_path, "worksets") == {
             "clash": "/other/root"
         }
 

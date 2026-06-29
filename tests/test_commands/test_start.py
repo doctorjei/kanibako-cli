@@ -748,7 +748,7 @@ class TestPluginsAndCacheShares:
         # families. ``default_shares()`` is the claude plugin's agent-scope shared
         # table (plugins/cache under @system.agents/claude). All scope files are
         # absent (None) — this isolates the agent-share resolution.
-        _snap, reconciled, _w = _resolve_launch_snapshot(
+        _snap, reconciled = _resolve_launch_snapshot(
             std=std,
             proj=self._proj(std),
             agent_name="claude",

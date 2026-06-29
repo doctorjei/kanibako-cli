@@ -363,30 +363,28 @@ class TestBoxStateHome:
 
 
 class TestLoadSystemConfig:
-    """The 3-file CONFIG loader: config_base < user-global < config_required.
+    """The 2-file CONFIG loader: config_base < user-global.
 
-    ``config_base_path``/``config_required_path`` point at ``/etc/kanibako`` in
-    production; tests redirect them at tmp files via monkeypatch so the cascade
-    can be exercised hermetically.
+    ``config_base_path`` points at ``/etc/kanibako`` in production; tests redirect
+    it at a tmp file via monkeypatch so the cascade can be exercised hermetically.
+    (The former ``config_required`` non-overridable tier was CUT, 2026-06-29f.)
     """
 
-    def _redirect(self, monkeypatch, base: Path, required: Path) -> None:
-        """Point the /etc base+required CONFIG paths at tmp files.
+    def _redirect(self, monkeypatch, base: Path) -> None:
+        """Point the /etc base CONFIG path at a tmp file.
 
-        ``load_system_config`` imports these lazily from ``kanibako.config``, so
+        ``load_system_config`` imports this lazily from ``kanibako.config``, so
         patching the source module catches every call.
         """
         import kanibako.config as cfg_mod
 
         monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
-        monkeypatch.setattr(cfg_mod, "config_required_path", lambda: required)
 
     def test_only_user_global_still_works(self, tmp_path, monkeypatch):
         """Back-compat: a user with only ~/.config/kanibako.yaml (absent /etc
-        base+required) gets exactly the prior behavior."""
+        base) gets exactly the prior behavior."""
         base = tmp_path / "config_base.yaml"       # absent
-        required = tmp_path / "config_required.yaml"  # absent
-        self._redirect(monkeypatch, base, required)
+        self._redirect(monkeypatch, base)
 
         user = tmp_path / "kanibako.yaml"
         user.write_text('system:\n  agents: "/u/agents"\n')
@@ -398,9 +396,8 @@ class TestLoadSystemConfig:
 
     def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
-        required = tmp_path / "config_required.yaml"
         user = tmp_path / "kanibako.yaml"  # absent
-        self._redirect(monkeypatch, base, required)
+        self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
         assert set(resolved) == set(SYSTEM_PATH_DEFAULTS) | {
@@ -413,57 +410,43 @@ class TestLoadSystemConfig:
 
     def test_user_wins_over_base(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
-        required = tmp_path / "config_required.yaml"  # absent
         user = tmp_path / "kanibako.yaml"
         base.write_text('system:\n  agents: "/base/agents"\n')
         user.write_text('system:\n  agents: "/user/agents"\n')
-        self._redirect(monkeypatch, base, required)
+        self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
         assert resolved["system.agents"] == Path("/user/agents")
 
-    def test_required_wins_over_user_and_base(self, tmp_path, monkeypatch):
-        base = tmp_path / "config_base.yaml"
-        required = tmp_path / "config_required.yaml"
-        user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  agents: "/base/agents"\n')
-        user.write_text('system:\n  agents: "/user/agents"\n')
-        required.write_text('system:\n  agents: "/req/agents"\n')
-        self._redirect(monkeypatch, base, required)
-
-        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        # Required is non-overridable → wins over BOTH user and base.
-        assert resolved["system.agents"] == Path("/req/agents")
-
     def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
         """A base-only key is honored when the user file omits it."""
         base = tmp_path / "config_base.yaml"
-        required = tmp_path / "config_required.yaml"  # absent
         user = tmp_path / "kanibako.yaml"
         base.write_text('system:\n  channelroot: "/base/channels"\n')
         user.write_text('system:\n  agents: "/user/agents"\n')
-        self._redirect(monkeypatch, base, required)
+        self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
         assert resolved["system.channelroot"] == Path("/base/channels")
         assert resolved["system.agents"] == Path("/user/agents")
 
     def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
-        """Each leaf cascades independently — required pins one key while the
-        user still sets another."""
+        """Each leaf cascades independently — base pins one key while the
+        user sets (and overrides) another."""
         base = tmp_path / "config_base.yaml"
-        required = tmp_path / "config_required.yaml"
         user = tmp_path / "kanibako.yaml"
-        base.write_text('system:\n  data: "/base/data"\n')
+        base.write_text(
+            'system:\n  data: "/base/data"\n  channelroot: "/base/channels"\n'
+        )
         user.write_text(
             'system:\n  data: "/user/data"\n  agents: "/user/agents"\n'
         )
-        required.write_text('system:\n  data: "/req/data"\n')
-        self._redirect(monkeypatch, base, required)
+        self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.data"] == Path("/req/data")    # required wins
-        assert resolved["system.agents"] == Path("/user/agents")  # user kept
+        assert resolved["system.data"] == Path("/user/data")    # user overrides base
+        assert resolved["system.agents"] == Path("/user/agents")  # user-only
+        assert resolved["system.channelroot"] == Path("/base/channels")  # base-only
 
 
 class TestResolveSystemPathsXdgCtx:

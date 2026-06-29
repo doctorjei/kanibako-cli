@@ -156,14 +156,14 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
     """Reconcile an on-disk workset at *root* against the workset registry.
 
     Reads the workset name from *root*'s ``settings.yaml`` ``workset.meta`` table
-    and reconciles it against ``registry.workset_roots`` (the name → root index
-    that backs workset discovery, written by :mod:`kanibako.workset`):
+    and reconciles it against ``registry.worksets`` (the name → root index that
+    backs both name lookups AND workset discovery, written by
+    :mod:`kanibako.workset`):
 
     * The name is already registered to *root* → silent idempotent no-op.
     * The name is registered to a DIFFERENT root → :class:`ImportConflictError`.
-    * Otherwise register name → root (in both the ``workset_roots`` and the
-      ``worksets`` name-index sections, matching ``create_workset``), alert,
-      return the name.
+    * Otherwise register name → root in the ``worksets`` section (matching
+      ``create_workset``), alert, return the name.
 
     Returns the workset name, or ``None`` when *root* has no readable
     ``settings.yaml`` ``workset.meta`` identity (nothing to import).  Does NOT
@@ -182,18 +182,15 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
     if not name:
         return None
 
-    roots_section = registry_store.load_section(data_path, "workset_roots")
-    current = roots_section.get(name)
+    names_section = registry_store.load_section(data_path, "worksets")
+    current = names_section.get(name)
     if current is not None:
         if str(Path(current).resolve()) == root_str:
             return name  # Already registered to this root → no-op.
         raise _conflict("workset", name, root, str(current))
 
-    # Register name → root in both sections (mirrors create_workset's two
-    # writes: the workset_roots discovery registry + the worksets name index).
-    roots_section[name] = root_str
-    registry_store.save_section(data_path, "workset_roots", roots_section)
-    names_section = registry_store.load_section(data_path, "worksets")
+    # Register name → root in the ``worksets`` section (the single workset
+    # registry, matching ``create_workset``).
     names_section[name] = root_str
     registry_store.save_section(data_path, "worksets", names_section)
     _alert("workset", name, root)

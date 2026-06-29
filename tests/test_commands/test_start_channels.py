@@ -79,7 +79,7 @@ def _build(std, proj):
     channel path (start.py:1317-1318), no separate channel resolver.
     """
     _seed_channel_files(std, proj)
-    _snapshot, reconciled, _warnings = _resolve_launch_snapshot(
+    _snapshot, reconciled = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name="general",

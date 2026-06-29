@@ -442,7 +442,7 @@ def _category_resolves(
         box_path=box_p,
         floor=floor,
     )
-    base_snapshot, _warnings = merge(levels)
+    base_snapshot = merge(levels)
 
     def resolves(key: str, value: str) -> "str | None":
         # Apply the candidate raw host_src at *key* into a FRESH copy (S19 — never
