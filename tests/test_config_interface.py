@@ -1135,3 +1135,217 @@ class TestCrossScopeCascadeConfigSet:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(ws_f)["workset"]["shared"]["x"][0] == "@workset.vault_ro/sub"
+
+
+# ---------------------------------------------------------------------------
+# Scope-direction guard (block B4, spec §0 directional view/set + §2a)
+# ---------------------------------------------------------------------------
+
+class TestScopeDirectionGuard:
+    """A ``config set`` writes ONLY keys in the command scope's OWN namespace;
+    a cross-scope write (and any ``meta.*`` write) is REFUSED (spec §0 / §2a).
+
+    These exercise ``set_config_value`` directly with an explicit
+    ``command_scope`` (the token each command handler threads). When
+    ``command_scope`` is None the guard is skipped (back-compat) — covered by
+    the many pre-existing tests that omit it.
+    """
+
+    # --- cross-scope writes are REFUSED -----------------------------------
+
+    def test_box_scope_refuses_workset_key(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "workset.vault_ro", "/srv/x",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "workset" in msg and "box" in msg
+        # The file is NOT written (refused before dispatch).
+        assert not f.exists()
+
+    def test_box_scope_refuses_agent_key(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "agent.claude.model", "opus",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "agent" in msg
+        assert not f.exists()
+
+    def test_box_scope_refuses_system_key(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "system.cache", "/srv/cache",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "system" in msg
+        assert not f.exists()
+
+    def test_workset_scope_refuses_system_key(self, tmp_path):
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "system.cache", "/srv/cache",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "system" in msg and "workset" in msg
+        assert not f.exists()
+
+    def test_workset_scope_refuses_box_key(self, tmp_path):
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "box.image", "img:1",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "box" in msg and "workset" in msg
+        assert not f.exists()
+
+    def test_workset_scope_refuses_agent_key(self, tmp_path):
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "agent.claude.bindings.ro.x", "/srv/x",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "agent" in msg
+        assert not f.exists()
+
+    def test_system_scope_refuses_box_key(self, tmp_path):
+        f = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "box.image", "img:1",
+            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "box" in msg and "system" in msg
+        assert not f.exists()
+
+    def test_system_scope_refuses_workset_key(self, tmp_path):
+        f = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "workset.vault_ro", "/srv/x",
+            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "workset" in msg
+        assert not f.exists()
+
+    # --- meta.* is read-only from EVERY scope -----------------------------
+
+    def test_box_scope_refuses_meta_key(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "meta.box.name", "fred",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "read-only" in msg and "meta" in msg
+        assert not f.exists()
+
+    def test_workset_scope_refuses_meta_key(self, tmp_path):
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "meta.workset.path", "/srv/ws",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "read-only" in msg
+
+    def test_system_scope_refuses_meta_key(self, tmp_path):
+        f = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "meta.runtime.project_type", "primary",
+            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "read-only" in msg
+
+    def test_meta_refused_even_without_command_scope(self, tmp_path):
+        """meta.* is RO regardless of command scope — refused even when no
+        command_scope is threaded (it is a top-level RO namespace, not a
+        directional check)."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value("meta.box.name", "fred", config_path=f)
+        assert msg.startswith("Error:"), msg
+        assert "read-only" in msg
+
+    # --- same-scope writes SUCCEED ----------------------------------------
+
+    def test_box_scope_allows_box_key(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.image", "img:1",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["box"]["image"] == "img:1"
+
+    def test_box_scope_allows_box_agent_key(self, tmp_path):
+        """``box.agent.<key>`` (the §2b B5 downward-tweak mirror) is the BOX
+        namespace — the guard keys on the TOP-LEVEL ``box`` token, so it passes
+        as a same-scope box write (B5 not yet implemented downstream, so it may
+        still be an unknown-key after the guard — what matters is the guard does
+        NOT refuse it for direction)."""
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.agent.model", "opus",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        # The scope-direction guard MUST NOT be the thing that refuses it.
+        assert "cannot be set from the box scope" not in msg
+
+    def test_workset_scope_allows_workset_key(self, tmp_path):
+        f = tmp_path / "ws-settings.yaml"
+        dump_doc(f, {"workset": {"shared": {"x": ["/old", "/home/agent/x"]}}})
+        msg = set_config_value(
+            "workset.shared.x", "/new",
+            config_path=f, cascade_workset_path=f,
+            command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["workset"]["shared"]["x"][0] == "/new"
+
+    def test_system_scope_allows_config_key(self, tmp_path):
+        """JC-B4-1: the Layer-1 ``config.*`` foundation is owned by the SYSTEM
+        command scope, so the direction guard PERMITS it (the later file-only
+        refusal still points the user at the file — the guard is not that
+        refusal)."""
+        f = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "config.data", "/srv/data",
+            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+        )
+        # NOT refused for DIRECTION — config.* is the system command scope's own.
+        assert "cannot be set from the system scope" not in msg
+
+    def test_system_scope_allows_system_category_key(self, tmp_path):
+        f = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "system.caches.x", "/srv/cache",
+            config_path=f, is_system=True,
+            cascade_system_path=f, command_scope=ConfigLevel.system,
+        )
+        assert "cannot be set from the system scope" not in msg
+
+    # --- scopeless keys always pass the guard -----------------------------
+
+    def test_scopeless_env_key_allowed_at_box(self, tmp_path):
+        env_f = tmp_path / "env"
+        msg = set_config_value(
+            "env.FOO", "bar",
+            config_path=tmp_path / "settings.yaml", env_path=env_f,
+            command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+
+    def test_scopeless_vault_key_allowed_at_workset(self, tmp_path):
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "vault.enabled", "false",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg

@@ -175,6 +175,7 @@ def run_config(args: argparse.Namespace) -> int:
 
     from kanibako.config_interface import (
         ConfigAction,
+        ConfigLevel,
         get_config_value,
         is_known_key,
         parse_config_arg,
@@ -244,6 +245,7 @@ def run_config(args: argparse.Namespace) -> int:
         msg = set_config_value(
             key, value, config_path=cf, is_system=True, system_settings_path=ssp,
             cascade_system_path=cf,
+            command_scope=ConfigLevel.system,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

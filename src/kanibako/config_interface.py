@@ -329,6 +329,77 @@ def _is_path_category_key(key: str) -> bool:
     return BIND_KEY_RE.match(key) is not None
 
 
+# ---------------------------------------------------------------------------
+# Scope-direction guard (block B4, spec §0 directional view/set + §2a)
+# ---------------------------------------------------------------------------
+
+# The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
+# A key whose first segment is NOT one of these (``env.*`` / ``resource.*`` and
+# the un-prefixed scalars ``model`` / ``start_mode`` / ``autonomous`` /
+# ``allow_helpers`` / ``vault.*``) is SCOPELESS — it always writes to the command
+# scope's OWN file, so the direction guard does not apply to it.
+_SCOPE_NAMESPACES: frozenset[str] = frozenset({
+    "system", "agent", "workset", "box", "config", "meta",
+})
+
+# Which key-scope namespaces a COMMAND scope is allowed to WRITE (spec §0:
+# a scope writes ONLY its OWN namespace; ``meta.*`` is RO everywhere; the
+# Layer-1 ``config.*`` foundation is owned by the SYSTEM command scope, JC-B4-1).
+# ``box.agent.*`` (the §2b B5 downward-tweak mirror) is the BOX namespace —
+# the guard keys on the TOP-LEVEL token (``box``), so ``box config set
+# box.agent.X`` is a legal SAME-scope write.
+_SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
+    ConfigLevel.system: frozenset({"system", "config"}),
+    ConfigLevel.agent: frozenset({"agent"}),
+    ConfigLevel.workset: frozenset({"workset"}),
+    ConfigLevel.box: frozenset({"box"}),
+}
+
+
+def _scope_direction_error(
+    canonical: str, command_scope: "ConfigLevel | None"
+) -> str | None:
+    """Enforce the §0 directional-WRITE rule for ``config set`` (block B4).
+
+    A ``config set`` writes ONLY keys in the command scope's OWN namespace;
+    writing a CONTAINING (or any other) scope's key is REFUSED (spec §0
+    "Directional view/set" + §2a "Scope-direction guard"). ``meta.*`` is a
+    TOP-LEVEL read-only namespace — refused from EVERY scope.
+
+    Returns an ``Error: …`` string when the write is REFUSED, or ``None`` when it
+    is permitted (so the caller proceeds to dispatch).
+
+    *command_scope* is the scope the ``config set`` was issued at (threaded by
+    each caller; see the 4 command handlers). When ``None`` the guard is skipped
+    (no command-scope context available — preserves callers that do not supply
+    one).
+
+    The guard keys on the key's TOP-LEVEL dotted token. A SCOPELESS key
+    (``env.*`` / ``resource.*`` / the un-prefixed scalars) is always permitted —
+    it writes to the command scope's own file by construction.
+    """
+    key_scope = canonical.split(".", 1)[0]
+    if key_scope not in _SCOPE_NAMESPACES:
+        # Scopeless key (env.*, resource.*, model, vault.*, …) — own-file write.
+        return None
+    if key_scope == "meta":
+        return (
+            f"Error: '{canonical}' is a read-only meta.* identity key and cannot "
+            f"be set from the CLI (meta.* is set by the construct-time/bootstrap "
+            f"layer, spec §0)."
+        )
+    if command_scope is None:
+        return None
+    allowed = _SCOPE_WRITE_ALLOWED.get(command_scope, frozenset())
+    if key_scope in allowed:
+        return None
+    return (
+        f"Error: '{canonical}' (scope '{key_scope}') cannot be set from the "
+        f"{command_scope.value} scope. A config set writes only keys in its own "
+        f"scope's namespace (spec §0). Set it at the {key_scope} scope instead."
+    )
+
+
 def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     """Build the :class:`~kanibako.settings_resolve.ResolveCtx` for the set-time E3
     resolution probe.
@@ -741,6 +812,7 @@ def set_config_value(
     cascade_workset_path: Path | None = None,
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
+    command_scope: ConfigLevel | None = None,
 ) -> str:
     """Write a config value to the appropriate store.
 
@@ -758,8 +830,21 @@ def set_config_value(
     context and thread it here so a cross-scope ``@``-ref resolves at set-time
     exactly as it would at launch. They are additive and only consulted on the
     category path; absent, the command-scope file is still placed in its true slot.
+
+    *command_scope* is the scope the ``config set`` was issued at (block B4). It
+    drives the §0 directional-write guard (``_scope_direction_error``): a write is
+    permitted ONLY for a key in the command scope's OWN namespace; a cross-scope
+    write (and any ``meta.*`` write) is REFUSED. When ``None`` the guard is skipped.
     """
     canonical = _resolve_key(key)
+
+    # Scope-direction guard (block B4, spec §0 + §2a) — enforced at the TOP, after
+    # canonical key resolution and BEFORE any dispatch branch (env / resource /
+    # category / system / regular), so EVERY write path is gated uniformly.
+    scope_err = _scope_direction_error(canonical, command_scope)
+    if scope_err is not None:
+        return scope_err
+
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path
     )
