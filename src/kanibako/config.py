@@ -273,7 +273,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
             "data": "$XDG_DATA_HOME/kanibako",
             "backup": "@system.data/backup",
             "agents": "@system.data/agents",
-            "channels": "@system.data/channels",
+            "channelroot": "@system.data/channels",
             "global": "@system.data/global",
             "base_template": "@system.global/base_template",
             "settings": "@system.global/settings.yaml",
