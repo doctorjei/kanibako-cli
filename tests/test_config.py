@@ -40,6 +40,36 @@ class TestLoadConfig:
         assert loaded.system_paths["system.data"] == "$XDG_DATA_HOME/kanibako"
         assert loaded.system_paths["system.agents"] == "@system.data/agents"
 
+    def test_emits_channelroot_not_stale_channels_leaf(self, tmp_path):
+        """write_global_config emits the RENAMED ``system.channelroot`` root leaf.
+
+        The 198e6ea rename made the channels-root key ``channelroot`` (a node is a
+        scalar XOR a subtree, so the old bare ``channels`` leaf collided with the
+        ``channels.*`` branch).  This writer's L268 comment promises lock-step with
+        ``SYSTEM_PATH_DEFAULTS``, which uses ``channelroot`` — so the emitted key
+        must be ``channelroot``, never the stale ``channels``.
+        """
+        path = tmp_path / "g.yaml"
+        write_global_config(path)
+        loaded = load_config(path)
+        assert loaded.system_paths["system.channelroot"] == "@system.data/channels"
+        # The stale bare leaf must NOT be emitted (it would collide in the
+        # nested KeyStore with the system.channels.* branch).
+        assert "system.channels" not in loaded.system_paths
+
+    def test_channelroot_round_trips_through_load_std_paths(self, tmp_home):
+        """A config written by write_global_config resolves cleanly end-to-end:
+        the renamed channelroot leaf AND the channels.* children all resolve."""
+        from kanibako.paths import load_std_paths
+
+        cf = tmp_home / "config" / "kanibako.yaml"
+        write_global_config(cf)
+        std = load_std_paths(load_config(cf))
+        # channelroot leaf -> the channels root dir; children hang off it.
+        assert std.channels == std.data_path / "channels"
+        assert std.channels_commons == std.channels / "commons"
+        assert std.channels_broadcast == std.channels / "chat" / "broadcast.md"
+
     def test_null_value_resolves_to_default(self, tmp_path):
         """A lone file with ``foo: null`` resolves foo to its built-in default."""
         path = tmp_path / "n.yaml"
