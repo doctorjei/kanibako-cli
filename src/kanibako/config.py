@@ -542,25 +542,38 @@ def read_setup_completed(config_path: Path | None) -> str | None:
     return value or None
 
 
-def setup_nudge_message(config_path: Path | None) -> str | None:
-    """Return the Gate-1 setup-completion nudge for *config_path*, or ``None``.
+def setup_compat_gate(config_path: Path | None) -> str | None:
+    """Run the 5-band setup/config compatibility gate for *config_path*.
 
-    Gate 1 (§Design 3/4): fires when the ``system.setup_completed`` marker is
-    ABSENT, or STALE (its version is older than the build's
-    ``OLDEST_COMPATIBLE_SETUP_VERSION``, compared via PEP 440
+    Compares the recorded ``system.setup_completed`` marker (ConfigVer) against
+    the running build (CurrentVer = ``__version__``) and the two build constants
+    ``SETUP_BCV``/``SETUP_FCV``.  All comparisons are by BASE version (PEP 440
     ``packaging.version.Version`` — the project's own versions, e.g.
-    ``1.6.0.dev25`` / ``1.6.0-rc1``, are PEP 440, not strict semver).
+    ``1.6.0.dev25`` / ``1.6.0-rc1``, are PEP 440), so a dev/rc build of the same
+    base as the released marker reads as ``==``, not "from the future".
 
-    * absent → "kanibako isn't set up yet. Run 'kanibako setup' to get started."
-    * stale  → "kanibako setup is out of date — re-run 'kanibako setup'."
-    * else   → ``None`` (no nudge).
+    The bands (design ``plans/2026-06-23-setup-version-tiers-NEXT.md``):
 
-    This is a NON-BLOCKING advisory (the Phase-E Gate-1 DECISION): callers print
-    the message to stderr and CONTINUE to normal agent resolution.  An
-    unparseable stored marker is treated as present-and-current (no spurious
-    nudge — better than nagging a user who has a hand-edited value).
+    * ``ConfigVer > CurrentVer`` → **raise** :class:`~kanibako.errors.ConfigError`
+      (config from a NEWER build than is running).
+    * ``ConfigVer == CurrentVer`` → ``None`` (fully current; no message).
+    * ``FCV <= ConfigVer < CurrentVer`` → **silently bump** the marker forward to
+      CurrentVer ONCE (via ``config_interface.write_system_value``), return
+      ``None``.  A failed bump write (e.g. read-only config) is swallowed so the
+      gate never blocks a command.
+    * ``BCV <= ConfigVer < FCV`` → return the NUDGE string (non-blocking;
+      re-run ``kanibako setup``).
+    * ``ConfigVer < BCV`` → **raise** :class:`~kanibako.errors.ConfigError`
+      (too old to auto-fill; must re-run ``kanibako setup``).
+    * absent marker → return the first-run nudge (Jei 2026-06-23).
+    * unparseable marker → ``None`` (don't nag a hand-edited value).
+
+    The two ``raise`` bands are the only blocking outcomes; the CLI surfaces them
+    as rc1.  Returning a string is a NON-BLOCKING advisory the caller prints to
+    stderr before continuing.
     """
-    from kanibako import OLDEST_COMPATIBLE_SETUP_VERSION
+    from kanibako import SETUP_BCV, SETUP_FCV, __version__
+    from kanibako.errors import ConfigError
 
     marker = read_setup_completed(config_path)
     if marker is None:
@@ -569,19 +582,42 @@ def setup_nudge_message(config_path: Path | None) -> str | None:
     from packaging.version import InvalidVersion, Version
 
     try:
-        # Compare by BASE version so a dev/rc/pre-release build of the same (or
-        # newer) base as the constant does NOT nag (PEP 440 makes
-        # ``1.6.0.dev26 < 1.6.0`` True, which would nag every dev build right
-        # after setup).  Genuinely older releases (e.g. ``1.5.0``) still nag.
-        if Version(Version(marker).base_version) < Version(
-            OLDEST_COMPATIBLE_SETUP_VERSION
-        ):
-            return "kanibako setup is out of date — re-run 'kanibako setup'."
+        config_ver = Version(Version(marker).base_version)
     except InvalidVersion:
         # Hand-edited / unrecognized marker: assume the user knows what they're
-        # doing; don't nag.
+        # doing; don't nag and don't block.
         return None
-    return None
+
+    current_ver = Version(Version(__version__).base_version)
+    bcv = Version(Version(SETUP_BCV).base_version)
+    fcv = Version(Version(SETUP_FCV).base_version)
+
+    if config_ver > current_ver:
+        raise ConfigError(
+            "This kanibako config was written by a newer kanibako "
+            f"({marker}) than the one running ({__version__}). "
+            "Upgrade kanibako, or re-run 'kanibako setup' to rebuild it."
+        )
+    if config_ver == current_ver:
+        return None
+    if config_ver >= fcv:
+        # Forward-compatible (nothing new since): silently advance the marker so
+        # subsequent runs hit the ``==`` no-op.  The bump must never block — a
+        # failed write (read-only config, missing path) falls through silently.
+        try:
+            from kanibako.config_interface import write_system_value
+
+            if config_path is not None:
+                write_system_value(config_path, "setup_completed", __version__)
+        except Exception:  # pragma: no cover - defensive; bump is best-effort
+            pass
+        return None
+    if config_ver >= bcv:
+        return "kanibako setup is out of date — re-run 'kanibako setup'."
+    raise ConfigError(
+        f"This kanibako config ({marker}) is too old to auto-update. "
+        "Re-run 'kanibako setup' before agent commands."
+    )
 
 
 # Pseudo-agents are DISCOUNTED from the implicit installed-count rule (so a host

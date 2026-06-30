@@ -2,10 +2,24 @@
 
 __version__ = "1.6.0"
 
-# The oldest build version whose ``setup`` run is still considered current.  The
-# setup-completion gate (W1) re-nudges the user to re-run ``kanibako setup`` when
-# the recorded ``system.setup_completed`` version is ABSENT or strictly older
-# than this constant (PEP 440 comparison via ``packaging.version``).  Bump this
-# ONLY when a setup change requires users to re-run setup — routine releases
-# leave it untouched so they never trigger a spurious re-nudge.
-OLDEST_COMPATIBLE_SETUP_VERSION = "1.6.0"
+# Two-tier setup/config compatibility constants for the 5-band setup-completion
+# gate (design: ``plans/2026-06-23-setup-version-tiers-NEXT.md``).  Both are
+# compared against the recorded ``system.setup_completed`` marker by BASE version
+# (PEP 440 via ``packaging.version``), so a dev/rc build of the same base reads
+# as the released base, not "from the future".
+#
+# * ``SETUP_BCV`` — backward-compatible version: the OLDEST setup/config version
+#   this build can function with AT ALL.  Below it, the build can no longer
+#   auto-fill the gaps → the gate ERRORS (rc1) and the user must re-run setup.
+#   Bump only when a setup change can no longer be auto-filled.
+# * ``SETUP_FCV`` — forward-compatible version: the oldest version whose setup is
+#   COMPLETELY compatible (nothing new since).  At or above it (but below the
+#   running build) the gate SILENTLY bumps the marker forward.  Between BCV and
+#   FCV the gate NUDGES (non-blocking) to re-run setup.  Bump whenever setup adds
+#   a new feature/case.
+#
+# Invariant: ``SETUP_BCV <= SETUP_FCV <= __version__`` (base versions).  Most
+# releases change setup in no way → bump NEITHER → existing configs land
+# ``>= FCV`` → silent.
+SETUP_BCV = "1.6.0"
+SETUP_FCV = "1.6.0"
