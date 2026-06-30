@@ -401,19 +401,22 @@ def _is_path_category_key(key: str) -> bool:
 # A key whose first segment is NOT one of these (``env.*`` / ``resource.*`` and
 # the un-prefixed scalars ``model`` / ``start_mode`` / ``autonomous`` /
 # ``allow_helpers`` / ``vault.*``) is SCOPELESS — it always writes to the command
-# scope's OWN file, so the direction guard does not apply to it.
+# scope's OWN file, so the direction guard does not apply to it. ``config`` is a
+# real namespace (config.* keys exist) but no config.* key actually REACHES this
+# guard: set/reset short-circuit config.* earlier with the file-only refusal (B2).
 _SCOPE_NAMESPACES: frozenset[str] = frozenset({
     "system", "agent", "workset", "box", "config", "meta",
 })
 
 # Which key-scope namespaces a COMMAND scope is allowed to WRITE (spec §0:
-# a scope writes ONLY its OWN namespace; ``meta.*`` is RO everywhere; the
-# Layer-1 ``config.*`` foundation is owned by the SYSTEM command scope, JC-B4-1).
-# ``box.agent.*`` (the §2b B5 downward-tweak mirror) is the BOX namespace —
-# the guard keys on the TOP-LEVEL token (``box``), so ``box config set
-# box.agent.X`` is a legal SAME-scope write.
+# a scope writes ONLY its OWN namespace; ``meta.*`` is RO everywhere). ``config.*``
+# is NOT writable from ANY command scope (block B2 — it is bootstrap/file-only and
+# is refused BEFORE this guard, so it appears in no allow-set; the older JC-B4-1
+# "system owns config.*" rule is superseded). ``box.agent.*`` (the §2b B5
+# downward-tweak mirror) is the BOX namespace — the guard keys on the TOP-LEVEL
+# token (``box``), so ``box config set box.agent.X`` is a legal SAME-scope write.
 _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
-    ConfigLevel.system: frozenset({"system", "config"}),
+    ConfigLevel.system: frozenset({"system"}),
     ConfigLevel.agent: frozenset({"agent"}),
     ConfigLevel.workset: frozenset({"workset"}),
     ConfigLevel.box: frozenset({"box"}),
