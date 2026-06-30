@@ -586,7 +586,11 @@ def run_config(args: argparse.Namespace) -> int:
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
+            command_scope=ConfigLevel.workset,
         )
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
         print(msg)
         return 0
 

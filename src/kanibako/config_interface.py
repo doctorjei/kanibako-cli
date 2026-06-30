@@ -319,6 +319,9 @@ def _is_system_path_key(key: str) -> bool:
     ``system.*`` config key.)
     """
     if key.startswith("config."):
+        # Still consulted on the READ/show path. The set/reset paths now
+        # short-circuit config.* earlier with the ruled refusal (block B2), so this
+        # branch no longer reaches _system_key_refusal for a config.* set/reset.
         return True
     if not key.startswith("system.") or _is_default_agent_key(key):
         return False
@@ -336,6 +339,43 @@ def _system_key_refusal(key: str, config_path: Path) -> str:
         f"Error: '{key}' is a structural config key and is not settable from "
         f"the CLI. Edit the config file directly:\n  {config_path}\n"
         f"(or re-run 'kanibako setup')."
+    )
+
+
+def _config_key_refusal(canonical: str, *, action: str) -> str:
+    """Error string refusing a CLI set/reset of a ``config.*`` foundation key.
+
+    RATIONALE (Jei, load-bearing): ``config.*`` keys LOCATE the files everything
+    else is stored in (``config.settings`` IS where the settings file lives;
+    ``config.registry`` IS the registry).  A key cannot live IN the file it
+    locates → they live in the bootstrap config file, resolved BEFORE anything
+    loads.  So the CLI is a *settings* manager: it READS ``config.*`` (to find
+    where to write settings) but NEVER WRITES them — there is no coherent file to
+    write them to.  The bootstrap config file is a HUMAN/ADMIN hand-edited
+    surface.  The message deliberately does NOT mention ``setup`` (naming it would
+    wrongly imply it is how you set a ``config.*`` value).
+
+    *action* is ``"set"`` or ``"reset"`` — selects the verb (a ``set`` can only be
+    done by editing the file; a ``reset`` is a change, so it says "changed") while
+    pointing at the SAME resolved config file.
+
+    The path is RENDERED (JC-B2-1) so a non-default ``$XDG_CONFIG_HOME`` shows the
+    user's real file. But this is an ERROR path — it must never itself raise: if
+    XDG/``$HOME`` resolution fails (``xdg`` falls back to ``Path.home()``, which
+    raises when ``$HOME`` is unset), fall back to the documented literal default
+    rather than turning a clean refusal into a traceback.
+    """
+    from kanibako.config import config_file_path
+    from kanibako.paths import xdg
+
+    try:
+        config_file: Path | str = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    except Exception:
+        config_file = "~/.config/kanibako_config.yaml"
+    verb = "changed" if action == "reset" else "set"
+    return (
+        f"Error: config.* keys can only be {verb} by editing the configuration "
+        f"file ({config_file})."
     )
 
 
@@ -862,6 +902,16 @@ def set_config_value(
     """
     canonical = _resolve_key(key)
 
+    # config.* foundation keys are NEVER CLI-settable (block B2): they locate the
+    # files everything else lands in, so they cannot live in those files — they
+    # live in the bootstrap config file, hand-edited by a human/admin. Refused
+    # EXPLICITLY here, BEFORE the scope guard, so every command scope gets the same
+    # ruled message (not the cross-scope guard message, and not the older generic
+    # _system_key_refusal that mentions `setup`). The READ/show path still consults
+    # _is_system_path_key's config. branch — only set/reset short-circuit here.
+    if canonical.startswith("config."):
+        return _config_key_refusal(canonical, action="set")
+
     # Scope-direction guard (block B4, spec §0 + §2a) — enforced at the TOP, after
     # canonical key resolution and BEFORE any dispatch branch (env / resource /
     # category / system / regular), so EVERY write path is gated uniformly.
@@ -976,6 +1026,7 @@ def reset_config_value(
     config_path: Path,
     env_path: Path | None = None,
     system_settings_path: Path | None = None,
+    command_scope: ConfigLevel | None = None,
 ) -> str:
     """Remove an override for a single key.  Returns confirmation message.
 
@@ -983,8 +1034,30 @@ def reset_config_value(
     (``system.default_agent`` + agent settings) are removed from
     (``@config.settings`` = ``global/settings.yaml``); when None (box/workset)
     they are removed from ``config_path`` as before.
+
+    *command_scope* is the scope the ``config --reset`` was issued at (block B2,
+    RESET-GUARD). It drives the §0 directional-write guard
+    (``_scope_direction_error``) symmetrically with ``set_config_value``: a reset
+    is permitted ONLY for a key in the command scope's OWN namespace; a cross-scope
+    reset (and any ``meta.*`` reset) is REFUSED. When ``None`` the guard is skipped.
     """
     canonical = _resolve_key(key)
+
+    # config.* foundation keys are NEVER CLI-resettable (block B2) — same rationale
+    # as set (they locate files everything else lands in; hand-edited in the
+    # bootstrap config file). Refused FIRST, BEFORE the scope guard, with the ruled
+    # message (verb "changed" — a reset is a change, not a "set"), pointing at the
+    # SAME config file.
+    if canonical.startswith("config."):
+        return _config_key_refusal(canonical, action="reset")
+
+    # Scope-direction guard (block B2 RESET-GUARD, mirrors set_config_value's B4
+    # guard, spec §0 + §2a) — after config.* forbid and BEFORE any dispatch branch,
+    # so every reset path is gated uniformly.
+    scope_err = _scope_direction_error(canonical, command_scope)
+    if scope_err is not None:
+        return scope_err
+
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path
     )
