@@ -22,6 +22,7 @@ names to root paths so they can be discovered from anywhere.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,40 @@ class _Unwind:
                 action()
             except Exception:  # noqa: BLE001 - best-effort restore
                 pass
+
+
+@contextmanager
+def _journal_connect(
+    journal: Path | None,
+    box_path: Path,
+    *,
+    name: str,
+    workset: str | None = None,
+):
+    """Bracket a ``connect`` (workset-membership) register with a journal entry.
+
+    J2 write-ahead for the register-only CONNECT flow: write ``op: connect``
+    entry -> (the membership write, the ``with`` body) -> clear entry.  Connect
+    REGISTERS an externally-existing dir into a workset and NEVER seeds (the dir
+    already holds the user's content), so this bracket has NO seed step.  The
+    entry is cleared immediately after the membership write (HARD INVARIANT:
+    registered ==> no pending entry).  If the body raises, the entry is LEFT
+    (incomplete) and the exception propagates (``add_project``'s ``_Unwind``
+    rolls back the in-process effects).  A None *journal* is a no-op bracket
+    (plain write), preserving the pre-J2 behavior.  *box_path* is the host-side
+    box dir (``ws.projects_dir / name``), the uniform J1/J2 key.
+    """
+    if journal is None:
+        yield
+        return
+    from kanibako import journal as journal_mod
+
+    journal_mod.write_entry(
+        journal, box_path, op="connect", name=name, mode="named",
+        workset=workset,
+    )
+    yield
+    journal_mod.clear_entry(journal, box_path)
 
 
 # Identity of the synthesized "default" workset (the group of default-mode
@@ -658,6 +693,17 @@ def add_project(
 
         # Durable registry write LAST.  If it fails the unwind removes the
         # symlink/redirect/dirs above, leaving no orphaned connected.yaml entry.
+        #
+        # J2 lifecycle journal: the write-ahead ``op: connect`` entry that
+        # brackets this durable membership write lives in the CONNECT COMMAND
+        # (``commands.workset_cmd.run_connect``), NOT here — ``add_project`` is
+        # also the membership-write seam for the DEFERRED move/convert/duplicate
+        # pipelines (``commands.box._lifecycle``), which must NOT journal a
+        # ``connect`` op (their in-process ``_Unwind`` covers them; full
+        # journaling is a later block).  Scoping the entry to ``run_connect``
+        # ensures only an ACTUAL connect op emits a ``connect`` entry.  The
+        # write-ahead order still holds: ``run_connect`` writes the entry BEFORE
+        # this call and clears it immediately after the call returns.
         proj = WorksetProject(name=name, source_path=resolved_source)
         ws.projects.append(proj)
         unwind.push(lambda: _detach_project(ws, name))

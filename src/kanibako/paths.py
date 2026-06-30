@@ -806,6 +806,7 @@ def resolve_project(
 
         imported = import_reconcile.import_primary_box_for_workspace(
             std.registry, std.boxes, project_path, register=register,
+            journal=std.journal,
         )
         if imported:
             if register:
@@ -1284,7 +1285,9 @@ def detect_project_mode(
         # workset.meta identity, name not in the registry).  Import it, then the
         # standard workset check resolves it.
         if read_workset_meta(current / WORKSET_META_FILE) is not None:
-            import_reconcile.import_named_workset(std.registry, current)
+            import_reconcile.import_named_workset(
+                std.registry, current, journal=std.journal,
+            )
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:
                 return ws_after
@@ -1293,7 +1296,9 @@ def detect_project_mode(
         # file (box.mode = "standalone").  A bare directory is not enough (the
         # metadata file must declare standalone mode).
         if _is_standalone_meta_dir(current):
-            import_reconcile.import_standalone(std.registry, current)
+            import_reconcile.import_standalone(
+                std.registry, current, journal=std.journal,
+            )
             return DetectionResult(BoxMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
@@ -1429,6 +1434,25 @@ def resolve_workset_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
+
+    # J2 connect self-heal (symmetry with the import path): reaching here means
+    # *project_name* IS a registered member of *ws* (the membership guard above
+    # raised otherwise), so a lingering ``connect`` entry for this box is a
+    # register->clear-window stale entry — the box is already registered, so
+    # recovery == clear the entry (NO re-register, NO seed).  This restores
+    # ``registered ==> no pending entry`` eventually-on-resolve for connect,
+    # matching ``import_reconcile._clear_stale_import``.  The key is the host-side
+    # box dir (``Path(shell_path).parent`` == ``ws.projects_dir/project_name`` ==
+    # the connect-entry key).  Guarded + minimal: only fires when ``std.journal``
+    # exists AND a register-only (import/connect) entry is actually pending for
+    # this exact key — so the normal workset-resolve hot path and J1's create
+    # entry are untouched.
+    journal_path = getattr(std, "journal", None)
+    if journal_path is not None:
+        from kanibako import journal as _journal
+        box_key = Path(shell_path).parent
+        if _journal.pending_import(journal_path, box_key) is not None:
+            _journal.clear_entry(journal_path, box_key)
 
     return ProjectPaths(
         project_path=project_path,

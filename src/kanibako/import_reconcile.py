@@ -31,11 +31,19 @@ registered to its current path, the import is a silent idempotent no-op.
 from __future__ import annotations
 
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from kanibako import registry_store
 from kanibako.config import BOX_META_FILE, read_project_meta
 from kanibako.errors import KanibakoError
+
+
+# The standalone box's host-side box dir (sibling of ``settings.yaml`` under the
+# project root, holding ``home/``); mirrors ``paths._STANDALONE_META_DIR``.  The
+# J2 journal entry for a standalone import is keyed by ``<root>/box_data`` (the
+# dir CONTAINING ``home/``), the uniform host-side box-dir key scheme.
+_STANDALONE_BOX_DIR = "box_data"
 
 
 class ImportConflictError(KanibakoError):
@@ -84,10 +92,96 @@ def _conflict(
 
 
 # ---------------------------------------------------------------------------
+# J2 lifecycle journal — register-only write-ahead for import/connect
+# ---------------------------------------------------------------------------
+#
+# Import/connect REGISTER an externally-seeded box and NEVER seed (CONVENTIONS
+# "Seed model" B7).  J2 makes the register seam ATOMIC via the journal: a
+# write-ahead ``op: import``/``op: connect`` entry brackets the register so a
+# crash between write-entry and clear-entry leaves the entry, and the NEXT
+# resolve re-enters this same (idempotent, register-if-absent) import and
+# replays it — register-if-absent -> clear, NO seed.  The op TYPE (import, not
+# create) is what keeps "import never seeds" true: the replay table for these
+# ops has no seed step (the box was seeded where it was created).  Because the
+# import functions ARE the lazy-on-resolve trigger, wrapping them here gives BOTH
+# write-ahead atomicity AND recovery — re-running the resolve completes a
+# half-done import and clears the entry.
+#
+# The journal path is threaded as an OPTIONAL ``journal`` argument from the
+# resolver call sites (``std.journal``).  When it is None (a std-less direct
+# caller that has no journal — e.g. a low-level test or a registry-only utility),
+# the wrapper degrades to a plain register, so default behavior is byte-identical
+# to the pre-J2 register-only path: the entry is written and cleared WITHIN the
+# call, leaving the journal empty at rest (HARD INVARIANT: registered ==> no
+# pending entry).
+
+
+@contextmanager
+def _journal_register(
+    journal: Path | None,
+    box_path: Path,
+    *,
+    op: str,
+    name: str,
+    mode: str,
+    workset: str | None = None,
+):
+    """Bracket a register-only import/connect with a write-ahead journal entry.
+
+    Write-ahead order (DESIGN): write entry -> (register body, the ``with``
+    block) -> clear entry.  The entry is cleared as the IMMEDIATE step after the
+    register, so ``registered ==> no pending entry`` holds at rest.  If the
+    register body raises (a genuine collision), the entry is intentionally LEFT
+    (the import is incomplete) and the exception propagates — recovery resumes it
+    on the next resolve.  A None *journal* (std-less caller) is a no-op bracket
+    (plain register), preserving the pre-J2 behavior exactly.
+
+    *box_path* is the host-side box dir (the dir CONTAINING ``home/``), the same
+    key scheme as J1 (``str(Path(shell_path).parent)``) — known pre-registration.
+    """
+    if journal is None:
+        yield
+        return
+    from kanibako import journal as journal_mod
+
+    journal_mod.write_entry(
+        journal, box_path, op=op, name=name, mode=mode, workset=workset,
+    )
+    yield
+    # Committing step done (register returned) — clear immediately.  A crash here
+    # (register done, entry not yet cleared) leaves a stale entry that the next
+    # resolve clears via this same idempotent replay.
+    journal_mod.clear_entry(journal, box_path)
+
+
+def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
+    """Clear a stale register-only entry on an already-registered box.
+
+    The register -> clear-entry window (crash AFTER the registry write, BEFORE
+    the entry cleared) leaves the box REGISTERED with a lingering ``import`` /
+    ``connect`` entry.  A re-resolve / reconcile sweep that finds the box already
+    registered hits the import's idempotent NO-OP branch and would otherwise skip
+    the clear; calling this there completes the recovery (register-if-absent is
+    already satisfied, so recovery == clear the stale entry), restoring the HARD
+    INVARIANT ``registered ==> no pending entry``.  Only a register-only
+    (import/connect) entry is cleared — a ``create`` entry is left for the
+    create-recovery path.  A None *journal* is a no-op.
+    """
+    if journal is None:
+        return
+    from kanibako import journal as journal_mod
+
+    if journal_mod.pending_import(journal, box_path) is not None:
+        journal_mod.clear_entry(journal, box_path)
+
+
+# ---------------------------------------------------------------------------
 # STANDALONE
 # ---------------------------------------------------------------------------
 
-def import_standalone(registry: Path, root: Path) -> str | None:
+def import_standalone(
+    registry: Path, root: Path, *, journal: Path | None = None,
+) -> str | None:
     """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
 
     Behavior (see module docstring):
@@ -108,9 +202,12 @@ def import_standalone(registry: Path, root: Path) -> str | None:
     root = root.resolve()
     root_str = str(root)
 
-    # Already registered to this exact root → idempotent no-op.
+    # Already registered to this exact root → idempotent no-op.  J2: a re-resolve
+    # over a complete box clears any stale register-only entry (register->clear
+    # window crash recovery).
     existing_name = registry_store.standalone_name_for_root(registry, root)
     if existing_name is not None:
+        _clear_stale_import(journal, root / _STANDALONE_BOX_DIR)
         return existing_name
 
     # Box meta lives at the ROOT (the ``box_data/`` marker dir holds only home/
@@ -134,7 +231,13 @@ def import_standalone(registry: Path, root: Path) -> str | None:
         # ``project.name``, matching write/read_project_meta) so the identity is
         # stable across future resolves.
         _persist_box_name(meta_path, name)
-        registry_store.register_standalone(registry, name, root)
+        # J2: write-ahead the register (NO seed — the box is already seeded on
+        # disk).  box dir = <root>/box_data (where home/ lives).
+        with _journal_register(
+            journal, root / _STANDALONE_BOX_DIR,
+            op="import", name=name, mode="standalone",
+        ):
+            registry_store.register_standalone(registry, name, root)
         _alert("standalone box", name, root)
         return name
 
@@ -143,7 +246,12 @@ def import_standalone(registry: Path, root: Path) -> str | None:
     if other_root is not None and other_root != root_str:
         raise _conflict("standalone box", persisted_name, root, other_root)
 
-    registry_store.register_standalone(registry, persisted_name, root)
+    # J2: write-ahead the register (register-only; NO seed).
+    with _journal_register(
+        journal, root / _STANDALONE_BOX_DIR,
+        op="import", name=persisted_name, mode="standalone",
+    ):
+        registry_store.register_standalone(registry, persisted_name, root)
     _alert("standalone box", persisted_name, root)
     return persisted_name
 
@@ -152,7 +260,9 @@ def import_standalone(registry: Path, root: Path) -> str | None:
 # NAMED (worksets)
 # ---------------------------------------------------------------------------
 
-def import_named_workset(registry: Path, root: Path) -> str | None:
+def import_named_workset(
+    registry: Path, root: Path, *, journal: Path | None = None,
+) -> str | None:
     """Reconcile an on-disk workset at *root* against the workset registry.
 
     Reads the workset name from *root*'s ``settings.yaml`` ``workset.meta`` table
@@ -186,13 +296,21 @@ def import_named_workset(registry: Path, root: Path) -> str | None:
     current = names_section.get(name)
     if current is not None:
         if str(Path(current).resolve()) == root_str:
-            return name  # Already registered to this root → no-op.
+            # Already registered to this root → no-op; clear a stale entry.
+            _clear_stale_import(journal, root)
+            return name
         raise _conflict("workset", name, root, str(current))
 
     # Register name → root in the ``worksets`` section (the single workset
-    # registry, matching ``create_workset``).
-    names_section[name] = root_str
-    registry_store.save_section(registry, "worksets", names_section)
+    # registry, matching ``create_workset``).  J2: write-ahead the register
+    # (register-only; a workset import never seeds a box).  A workset has no
+    # single ``home/`` dir, so its journal key is the workset ROOT (the host-side
+    # identity dir, known pre-registration).
+    with _journal_register(
+        journal, root, op="import", name=name, mode="named", workset=name,
+    ):
+        names_section[name] = root_str
+        registry_store.save_section(registry, "worksets", names_section)
     _alert("workset", name, root)
     return name
 
@@ -201,7 +319,9 @@ def import_named_workset(registry: Path, root: Path) -> str | None:
 # PRIMARY (central box store → external workspace)
 # ---------------------------------------------------------------------------
 
-def import_primary_box(registry: Path, box_dir: Path) -> str | None:
+def import_primary_box(
+    registry: Path, box_dir: Path, *, journal: Path | None = None,
+) -> str | None:
     """Reconcile a single on-disk PRIMARY box at *box_dir* against ``registry.projects``.
 
     *box_dir* is a per-box directory under ``@config.primary_workset/boxes/``;
@@ -229,17 +349,25 @@ def import_primary_box(registry: Path, box_dir: Path) -> str | None:
     current = projects.get(name)
     if current is not None:
         if str(Path(current).resolve()) == workspace_str:
-            return name  # Already registered to this workspace → no-op.
+            # Already registered to this workspace → no-op; clear a stale entry.
+            _clear_stale_import(journal, box_dir)
+            return name
         raise _conflict("primary box", name, Path(workspace_str), str(current))
 
-    projects[name] = workspace_str
-    registry_store.save_section(registry, "projects", projects)
+    # J2: write-ahead the register (register-only; the primary box is already
+    # seeded on disk under *box_dir*).  box dir IS *box_dir* (it holds ``home/``).
+    with _journal_register(
+        journal, box_dir, op="import", name=name, mode="primary",
+    ):
+        projects[name] = workspace_str
+        registry_store.save_section(registry, "projects", projects)
     _alert("primary box", name, Path(workspace_str))
     return name
 
 
 def import_primary_box_for_workspace(
-    registry: Path, boxes_dir: Path, workspace: Path, *, register: bool = True,
+    registry: Path, boxes_dir: Path, workspace: Path, *,
+    register: bool = True, journal: Path | None = None,
 ) -> str | None:
     """Import the on-disk PRIMARY box whose recorded workspace is *workspace*.
 
@@ -279,11 +407,13 @@ def import_primary_box_for_workspace(
             # the deferred-registration caller completes the create + registers.
             name = (meta.get("name") or "").strip()
             return name or None
-        return import_primary_box(registry, entry)
+        return import_primary_box(registry, entry, journal=journal)
     return None
 
 
-def reconcile_primary_boxes(registry: Path, boxes_dir: Path) -> list[str]:
+def reconcile_primary_boxes(
+    registry: Path, boxes_dir: Path, *, journal: Path | None = None,
+) -> list[str]:
     """Scan *boxes_dir* for on-disk PRIMARY boxes missing from ``registry.projects``.
 
     Imports each discovered-but-unregistered box via :func:`import_primary_box`
@@ -315,8 +445,8 @@ def reconcile_primary_boxes(registry: Path, boxes_dir: Path) -> list[str]:
         projects = registry_store.load_section(registry, "projects")
         if name in projects:
             # Already present — let import_primary_box decide no-op vs conflict.
-            import_primary_box(registry, entry)
+            import_primary_box(registry, entry, journal=journal)
             continue
-        if import_primary_box(registry, entry) is not None:
+        if import_primary_box(registry, entry, journal=journal) is not None:
             imported.append(name)
     return imported

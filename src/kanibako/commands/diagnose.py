@@ -200,6 +200,51 @@ def _check_agents(
     return results
 
 
+def _check_journal(std, box_key: str | None = None) -> list[tuple[str, str]]:
+    """Check the lifecycle journal for lingering in-flight / interrupted ops.
+
+    Reads ``std.journal`` (J1/J2 write-ahead log).  The journal is normally
+    EMPTY — an entry is the rare in-flight or crashed lifecycle op (create /
+    import / connect) that never cleared.  Each pending entry is reported as a
+    WARNING (``!!``) carrying op + box + ``started_at``, so a broken-state box is
+    visible; an empty journal is a clean ``ok``.
+
+    *box_key* (per-box diagnose): when given, only the entry keyed by that
+    host-side box dir is considered — a clean ``ok`` when that one box has no
+    pending op, regardless of unrelated entries elsewhere.  When None (system
+    diagnose) every entry is surfaced.
+
+    Returns a LIST of ``(status, detail)`` lines (one per pending entry, or a
+    single clean line).  Defensive: any failure degrades to a single ``--``
+    ("cannot check") line rather than crashing diagnose.
+    """
+    try:
+        from kanibako import journal
+
+        entries = journal.read_journal(std.journal)
+    except Exception:
+        return [("--", "cannot read journal")]
+
+    if box_key is not None:
+        entry = entries.get(box_key)
+        entries = {box_key: entry} if entry is not None else {}
+
+    if not entries:
+        return [("ok", "no in-flight operations")]
+
+    lines: list[tuple[str, str]] = []
+    for key, entry in sorted(entries.items()):
+        op = entry.get("op", "?")
+        name = entry.get("name", "?")
+        started = entry.get("started_at", "?")
+        lines.append((
+            "!!",
+            f"interrupted {op} of '{name}' at {key} (started {started}) -- "
+            "will be completed on next resolve",
+        ))
+    return lines
+
+
 def _check_storage(data_path: Path) -> tuple[str, str]:
     """Check available disk space at the data path."""
     try:
@@ -283,6 +328,14 @@ def run_system_diagnose(args: object) -> int:
     except Exception:
         print(_format_check("--", "Storage", "cannot check"))
 
+    # Lifecycle journal: surface any lingering in-flight / interrupted ops
+    # (create/import/connect) globally.  Normally empty -> a clean PASS line.
+    if std is not None:
+        for status, detail in _check_journal(std):
+            print(_format_check(status, "Journal", detail))
+    else:
+        print(_format_check("--", "Journal", "cannot check"))
+
     print()
     return 0
 
@@ -355,6 +408,15 @@ def run_box_diagnose(args: object) -> int:
     # Runtime check
     status, detail = _check_runtime()
     print(_format_check(status, "Container runtime", detail))
+
+    # Lifecycle journal (this box only): a pending create/import/connect entry
+    # for THIS box's host-side dir is an interrupted op needing attention.  The
+    # key is the dir CONTAINING home/ (Path(shell_path).parent), the uniform
+    # J1/J2 key scheme.  Normally absent -> a clean PASS line.
+    if proj.shell_path is not None:
+        box_key = str(Path(proj.shell_path).parent)
+        for status, detail in _check_journal(std, box_key=box_key):
+            print(_format_check(status, "Journal", detail))
 
     print()
     return 0

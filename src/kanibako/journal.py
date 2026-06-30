@@ -142,3 +142,27 @@ def pending_create(journal_path: Path, box_path: str | Path) -> dict | None:
     if entry is not None and entry.get("op") == "create":
         return entry
     return None
+
+
+# Register-only ops (J2): import/connect REGISTER an externally-seeded box and
+# NEVER seed (CONVENTIONS "Seed model" B7).  Their replay is register-if-absent
+# -> clear, with NO seed step — so the op-typed entry is exactly how the journal
+# distinguishes a create (seed+register) from an import/connect (register-only).
+_IMPORT_OPS = ("import", "connect")
+
+
+def pending_import(journal_path: Path, box_path: str | Path) -> dict | None:
+    """Return the pending entry for *box_path* iff it is a register-only op.
+
+    The import/connect recovery signal: a non-``None`` result means a
+    register-only op (``import`` or ``connect``) was started for this box but
+    never completed (crash before ``clear_entry``).  Distinct from
+    :func:`pending_create` so a create entry never drives a register-only replay
+    (and vice-versa) — the op TYPE selects the replay table (DESIGN "Recovery
+    model"): a ``create`` replays seed+register, an ``import``/``connect``
+    replays register-only (NO seed).
+    """
+    entry = pending_entry(journal_path, box_path)
+    if entry is not None and entry.get("op") in _IMPORT_OPS:
+        return entry
+    return None

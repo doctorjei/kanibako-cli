@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from kanibako.commands.diagnose import (
     _check_agents,
     _check_image,
+    _check_journal,
     _check_runtime,
     _check_storage,
     _diagnose_baseline,
@@ -314,6 +315,117 @@ class TestCheckStorage:
         status, detail = _check_storage(Path("/nonexistent/path/xyz"))
         assert status == "--"
         assert "cannot check" in detail
+
+
+class TestCheckJournal:
+    """J2: diagnose surfaces lingering lifecycle-journal entries."""
+
+    def _std(self, tmp_path: Path):
+        from types import SimpleNamespace
+        return SimpleNamespace(journal=tmp_path / "journal.yaml")
+
+    def test_empty_journal_is_clean_ok(self, tmp_path: Path) -> None:
+        """A normally-empty journal reports a single clean ok line."""
+        lines = _check_journal(self._std(tmp_path))
+        assert lines == [("ok", "no in-flight operations")]
+
+    def test_pending_entry_reported_as_warning(self, tmp_path: Path) -> None:
+        """A pending entry → a `!!` finding carrying op + box + started_at."""
+        from kanibako import journal
+
+        std = self._std(tmp_path)
+        box = tmp_path / "boxes" / "myapp"
+        journal.write_entry(std.journal, box, op="import", name="myapp", mode="primary")
+
+        lines = _check_journal(std)
+        assert len(lines) == 1
+        status, detail = lines[0]
+        assert status == "!!"
+        assert "import" in detail
+        assert "myapp" in detail
+        assert str(box) in detail
+
+    def test_box_key_filters_to_that_box(self, tmp_path: Path) -> None:
+        """With box_key, only THAT box's entry is surfaced (a clean ok for an
+        unrelated box even when other entries exist)."""
+        from kanibako import journal
+
+        std = self._std(tmp_path)
+        mine = tmp_path / "boxes" / "mine"
+        other = tmp_path / "boxes" / "other"
+        journal.write_entry(std.journal, other, op="import", name="other", mode="primary")
+
+        # My box has no entry → clean even though the journal is non-empty.
+        assert _check_journal(std, box_key=str(mine)) == [
+            ("ok", "no in-flight operations")
+        ]
+        # My box's own entry IS surfaced when present.
+        journal.write_entry(std.journal, mine, op="connect", name="mine", mode="named")
+        lines = _check_journal(std, box_key=str(mine))
+        assert len(lines) == 1
+        assert lines[0][0] == "!!"
+        assert "mine" in lines[0][1]
+
+    def test_multiple_entries_each_reported(self, tmp_path: Path) -> None:
+        from kanibako import journal
+
+        std = self._std(tmp_path)
+        journal.write_entry(std.journal, tmp_path / "a", op="import", name="a", mode="primary")
+        journal.write_entry(std.journal, tmp_path / "b", op="connect", name="b", mode="named")
+        lines = _check_journal(std)
+        assert len(lines) == 2
+        assert all(s == "!!" for s, _ in lines)
+
+    def test_unreadable_journal_degrades_to_skip(self) -> None:
+        # A std whose .journal access blows up → defensive `--` line.
+        class Boom:
+            @property
+            def journal(self):
+                raise RuntimeError("boom")
+
+        lines = _check_journal(Boom())
+        assert lines == [("--", "cannot read journal")]
+
+
+class TestSystemDiagnoseJournal:
+    def test_system_diagnose_reports_pending_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ) -> None:
+        """A pending journal entry shows up in `run_system_diagnose` output."""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+        from kanibako import journal
+        from kanibako.errors import ContainerError
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        journal.write_entry(
+            std.journal, tmp_home / "boxes" / "stuck",
+            op="import", name="stuck", mode="primary",
+        )
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Journal" in out
+        assert "stuck" in out
+
+    def test_system_diagnose_clean_when_empty(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ) -> None:
+        from kanibako.errors import ContainerError
+
+        with patch(
+            "kanibako.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "[ok] Journal: no in-flight operations" in out
 
 
 class TestCheckImage:
