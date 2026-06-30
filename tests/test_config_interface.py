@@ -755,6 +755,37 @@ class TestSystemConfigFileOnly:
             assert msg.startswith("Error:"), key
             assert "structural config key" in msg
 
+    def test_set_config_foundation_key_refused_every_scope(self, tmp_path):
+        """Block B2: ``config.*`` keys are refused via ``config set`` at EVERY
+        command scope with the ruled bootstrap-file message (NOT the older generic
+        ``_system_key_refusal`` that named ``setup``)."""
+        for scope in (None, ConfigLevel.system, ConfigLevel.box, ConfigLevel.workset):
+            cf = tmp_path / "kanibako_config.yaml"
+            for key in (
+                "config.data", "config.settings", "config.agents",
+                "config.primary_workset", "config.registry",
+            ):
+                msg = set_config_value(key, "x", config_path=cf, command_scope=scope)
+                assert msg.startswith(
+                    "Error: config.* keys can only be set by editing"
+                ), (key, scope)
+                assert "structural config key" not in msg
+                assert "kanibako setup" not in msg
+            assert not cf.exists()  # nothing written
+
+    def test_reset_config_foundation_key_refused_every_scope(self, tmp_path):
+        """Block B2: ``config.*`` keys are refused via ``--reset`` at EVERY command
+        scope with the ruled message (verb "changed" — a reset is a change)."""
+        for scope in (None, ConfigLevel.system, ConfigLevel.box, ConfigLevel.workset):
+            cf = tmp_path / "kanibako_config.yaml"
+            for key in ("config.data", "config.registry"):
+                msg = reset_config_value(key, config_path=cf, command_scope=scope)
+                assert msg.startswith(
+                    "Error: config.* keys can only be changed by editing"
+                ), (key, scope)
+                assert "structural config key" not in msg
+                assert "kanibako setup" not in msg
+
     def test_get_system_config_key_still_reads(self, tmp_path):
         """Reads/shows are unaffected — only writes are refused."""
         from kanibako.config_interface import _write_nested_toml_key
@@ -1311,18 +1342,24 @@ class TestScopeDirectionGuard:
         assert not msg.startswith("Error:"), msg
         assert load_doc(f)["workset"]["shared"]["x"][0] == "/new"
 
-    def test_system_scope_allows_config_key(self, tmp_path):
-        """JC-B4-1: the Layer-1 ``config.*`` foundation is owned by the SYSTEM
-        command scope, so the direction guard PERMITS it (the later file-only
-        refusal still points the user at the file — the guard is not that
-        refusal)."""
+    def test_system_config_key_refused_with_ruled_message(self, tmp_path):
+        """Block B2: ``config.*`` foundation keys are NEVER CLI-settable — refused
+        from EVERY scope (including SYSTEM, which the B4 direction guard would
+        otherwise own) with the ruled bootstrap-file message, BEFORE the scope
+        guard. Not the direction-guard message, not the older generic
+        ``_system_key_refusal`` (which named ``setup``)."""
         f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "config.data", "/srv/data",
             config_path=f, is_system=True, command_scope=ConfigLevel.system,
         )
-        # NOT refused for DIRECTION — config.* is the system command scope's own.
+        assert msg.startswith("Error: config.* keys can only be set by editing"), msg
+        # Refused by B2, not by the direction guard nor the generic refusal.
         assert "cannot be set from the system scope" not in msg
+        assert "structural config key" not in msg
+        assert "kanibako setup" not in msg
+        # File untouched (refused before any write).
+        assert not f.exists()
 
     def test_system_scope_allows_system_category_key(self, tmp_path):
         f = tmp_path / "kanibako_config.yaml"
