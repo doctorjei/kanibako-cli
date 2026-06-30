@@ -226,6 +226,7 @@ def test_resolved_name_not_installed(monkeypatch):
     _patch_targets(monkeypatch, ["goose"])  # claude NOT present
     _no_default(monkeypatch)
     monkeypatch.delenv("PIPX_HOME", raising=False)
+    monkeypatch.delenv("PIPX_BIN_DIR", raising=False)
     monkeypatch.delenv("UV_TOOL_DIR", raising=False)
     monkeypatch.setattr("sys.prefix", "/usr")
     monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
