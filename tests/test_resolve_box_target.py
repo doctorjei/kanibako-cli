@@ -154,7 +154,7 @@ class TestNonConformingNameFlagged:
             project_hash=project_hash(str(root.resolve())),
             name=bad_name,
         )
-        registry_store.register_standalone(std.data_path, bad_name, root)
+        registry_store.register_standalone(std.registry, bad_name, root)
 
         with caplog.at_level(logging.WARNING):
             proj = resolve_box_target(std, config, bad_name)

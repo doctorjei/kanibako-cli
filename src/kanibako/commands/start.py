@@ -1466,6 +1466,7 @@ def _run_container(
                 project_path=proj.project_path,
                 data_path=std.data_path,
                 boxes=std.boxes,
+                registry=std.registry,
             )
 
             msg_log = MessageLog(log_path)

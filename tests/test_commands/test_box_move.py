@@ -42,7 +42,7 @@ class TestBoxMove:
         assert not project_dir.exists()
 
         # names.yaml updated to the new path.
-        names = read_names(std.data_path)
+        names = read_names(std.registry)
         assert str(dest) in names["projects"].values()
         assert str(project_dir) not in names["projects"].values()
 

@@ -536,7 +536,7 @@ def run_list(args: argparse.Namespace) -> int:
     # STANDALONE boxes live only in registry.standalone (box name → root); they
     # are not in names.yaml / iter_projects, so list them explicitly (BUG-E).
     from kanibako import registry_store
-    standalone = registry_store.load_standalone(std.data_path)
+    standalone = registry_store.load_standalone(std.registry)
 
     if orphan_only:
         return _list_orphans(projects, ws_data, std, quiet)
@@ -556,7 +556,7 @@ def run_list(args: argparse.Namespace) -> int:
         return 0
 
     # Build reverse lookup from path → name using names.yaml.
-    names_data = read_names(std.data_path)
+    names_data = read_names(std.registry)
     path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
     any_output = False
@@ -704,7 +704,7 @@ def _list_orphans(
             print("No orphaned projects found.")
         return 0
 
-    names_data = read_names(std.data_path)
+    names_data = read_names(std.registry)
     path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
     if ac_orphans:
@@ -778,7 +778,7 @@ def _resolve_standalone_target(
     from kanibako.paths import BoxMode, detect_project_mode
 
     # 1) Direct standalone-name lookup.
-    entries = registry_store.load_standalone(std.data_path)
+    entries = registry_store.load_standalone(std.registry)
     if target in entries:
         return target, Path(entries[target])
 
@@ -791,7 +791,7 @@ def _resolve_standalone_target(
             return None, None
         if detection.mode is BoxMode.standalone:
             root = detection.project_root
-            sa_name = registry_store.standalone_name_for_root(std.data_path, root)
+            sa_name = registry_store.standalone_name_for_root(std.registry, root)
             if sa_name is not None:
                 return sa_name, root
     return None, None
@@ -812,7 +812,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     from kanibako.utils import confirm_prompt
 
     print(f"Removing standalone box: {box_name} ({root})")
-    registry_store.unregister_standalone(std.data_path, box_name)
+    registry_store.unregister_standalone(std.registry, box_name)
     print(f"Removed '{box_name}' from the registry")
 
     metadata_dir = Path(root) / _STANDALONE_META_DIR if root is not None else None
@@ -871,7 +871,7 @@ def run_rm(args: argparse.Namespace) -> int:
     if not target:
         print("Error: no box specified to remove.", file=sys.stderr)
         return 1
-    names = read_names(std.data_path)
+    names = read_names(std.registry)
 
     # Resolve target: try as a registered name first, then as a path.
     name: str | None = None
@@ -887,7 +887,7 @@ def run_rm(args: argparse.Namespace) -> int:
 
     if name is None:
         # Try as a path (reverse lookup).
-        result = lookup_by_path(std.data_path, target)
+        result = lookup_by_path(std.registry, target)
         if result is not None:
             name, section = result
             path = names[section][name]
@@ -910,7 +910,7 @@ def run_rm(args: argparse.Namespace) -> int:
     print(f"Removing {kind}: {name} ({path})")
 
     # Unregister from the registry.
-    unregister_name(std.data_path, name, section=section)
+    unregister_name(std.registry, name, section=section)
     print(f"Removed '{name}' from the registry")
 
     if args.purge:

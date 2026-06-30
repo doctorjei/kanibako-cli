@@ -35,7 +35,7 @@ from kanibako import registry_store
 #       sha256:abc...: /bin/bash
 #
 # This module owns the section's shape and reads/writes it via
-# ``registry_store.load_section_at`` / ``save_section_at`` (which preserve every
+# ``registry_store.load_section`` / ``save_section`` (which preserve every
 # sibling section).  The public ``std``-based API is unchanged from when this was
 # its own ``image-shells.yaml`` — only the on-disk *location* moved.
 # ---------------------------------------------------------------------------
@@ -44,7 +44,9 @@ _STORE_SECTION = "image_shells"
 
 
 def _store_path(std):
-    return registry_store.registry_path(std.data_path)
+    # Single source of the registry location: the resolved ``config.registry``
+    # (a repointed ``config.registry`` is honored).
+    return std.registry
 
 
 def load_image_shells(std) -> dict[str, str]:
@@ -54,7 +56,7 @@ def load_image_shells(std) -> dict[str, str]:
     crash the launch/diagnose path — the shell falls back to ``sh``).
     """
     try:
-        section = registry_store.load_section_at(_store_path(std), _STORE_SECTION)
+        section = registry_store.load_section(_store_path(std), _STORE_SECTION)
     except Exception:
         return {}
     if not isinstance(section, dict):
@@ -66,7 +68,7 @@ def save_image_shell(std, key: str, shell: str) -> None:
     """Upsert one ``key -> shell`` entry, preserving existing entries."""
     mapping = load_image_shells(std)
     mapping[key] = shell
-    registry_store.save_section_at(_store_path(std), _STORE_SECTION, mapping)
+    registry_store.save_section(_store_path(std), _STORE_SECTION, mapping)
 
 
 def image_store_key(runtime, image: str) -> str:

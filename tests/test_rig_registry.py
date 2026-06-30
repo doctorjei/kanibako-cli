@@ -52,7 +52,7 @@ def _extended() -> RigRecord:
 
 def test_registry_path_uses_consolidated_registry() -> None:
     class _Std:
-        data_path = Path("/some/data")
+        registry = Path("/some/data/global/registry.yaml")
 
     assert rig_registry.registry_path(_Std()) == Path(  # type: ignore[arg-type]
         "/some/data/global/registry.yaml"

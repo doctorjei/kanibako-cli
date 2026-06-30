@@ -33,41 +33,43 @@ from kanibako.errors import ProjectError
 # I/O helpers — back the projects/worksets sections of system.registry.
 # ---------------------------------------------------------------------------
 
-def _load(data_path: Path) -> dict[str, dict[str, str]]:
+def _load(registry: Path) -> dict[str, dict[str, str]]:
     """Load the projects/worksets sections of registry.yaml."""
-    registry = registry_store.load_registry(data_path)
+    sections = registry_store.load_registry(registry)
     return {
-        "projects": dict(registry["projects"]),
-        "worksets": dict(registry["worksets"]),
+        "projects": dict(sections["projects"]),
+        "worksets": dict(sections["worksets"]),
     }
 
 
-def _save(data_path: Path, names: dict[str, dict[str, str]]) -> None:
+def _save(registry: Path, names: dict[str, dict[str, str]]) -> None:
     """Write the projects/worksets sections of registry.yaml.
 
     Reads the full registry first so the ``connected``/``standalone`` sections
     (owned elsewhere) are preserved.
     """
-    registry = registry_store.load_registry(data_path)
-    registry["projects"] = dict(names.get("projects", {}))
-    registry["worksets"] = dict(names.get("worksets", {}))
-    registry_store.save_registry(data_path, registry)
+    sections = registry_store.load_registry(registry)
+    sections["projects"] = dict(names.get("projects", {}))
+    sections["worksets"] = dict(names.get("worksets", {}))
+    registry_store.save_registry(registry, sections)
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def read_names(data_path: Path) -> dict[str, dict[str, str]]:
+def read_names(registry: Path) -> dict[str, dict[str, str]]:
     """Load names.yaml.
 
     Returns ``{"projects": {name: path, ...}, "worksets": {name: path, ...}}``.
+
+    *registry* is the resolved ``config.registry`` file path (``std.registry``).
     """
-    return _load(data_path)
+    return _load(registry)
 
 
 def register_name(
-    data_path: Path,
+    registry: Path,
     name: str,
     path: str,
     section: str = "projects",
@@ -83,7 +85,7 @@ def register_name(
             "Refusing to register $HOME as a project path — this would "
             "mount your entire home directory as the workspace."
         )
-    names = _load(data_path)
+    names = _load(registry)
     # Check for duplicates across both sections.
     for sec in ("projects", "worksets"):
         if name in names[sec]:
@@ -92,11 +94,11 @@ def register_name(
                 f" ({sec}: {names[sec][name]})"
             )
     names[section][name] = path
-    _save(data_path, names)
+    _save(registry, names)
 
 
 def update_name_path(
-    data_path: Path,
+    registry: Path,
     name: str,
     new_path: str,
     section: str = "projects",
@@ -111,16 +113,16 @@ def update_name_path(
             "Refusing to register $HOME as a project path — this would "
             "mount your entire home directory as the workspace."
         )
-    names = _load(data_path)
+    names = _load(registry)
     if name not in names.get(section, {}):
         return False
     names[section][name] = new_path
-    _save(data_path, names)
+    _save(registry, names)
     return True
 
 
 def unregister_name(
-    data_path: Path,
+    registry: Path,
     name: str,
     section: str = "projects",
 ) -> bool:
@@ -128,16 +130,16 @@ def unregister_name(
 
     Returns True if the name was found and removed, False otherwise.
     """
-    names = _load(data_path)
+    names = _load(registry)
     if name not in names.get(section, {}):
         return False
     del names[section][name]
-    _save(data_path, names)
+    _save(registry, names)
     return True
 
 
 def lookup_by_path(
-    data_path: Path,
+    registry: Path,
     path: str,
 ) -> tuple[str, str] | None:
     """Find a registered name by its path value.
@@ -145,7 +147,7 @@ def lookup_by_path(
     Returns ``(name, section)`` if found, ``None`` otherwise.
     """
     resolved = str(Path(path).resolve())
-    names = _load(data_path)
+    names = _load(registry)
     for section in ("projects", "worksets"):
         for name, registered_path in names[section].items():
             if str(Path(registered_path).resolve()) == resolved:
@@ -154,7 +156,7 @@ def lookup_by_path(
 
 
 def resolve_name(
-    data_path: Path,
+    registry: Path,
     name: str,
     cwd: Path | None = None,
 ) -> tuple[str, str]:
@@ -169,7 +171,7 @@ def resolve_name(
     *kind* is ``"project"`` or ``"workset"``.
     Raises ``ProjectError`` if no match is found.
     """
-    names = _load(data_path)
+    names = _load(registry)
 
     # 1. Context-aware: if cwd is inside a registered workset, check its
     #    projects first.
@@ -196,7 +198,7 @@ def resolve_name(
 
 
 def resolve_qualified_name(
-    data_path: Path,
+    registry: Path,
     qualified: str,
 ) -> tuple[str, str]:
     """Resolve a qualified name (``workset/project``).
@@ -209,7 +211,7 @@ def resolve_qualified_name(
             f"Not a qualified name (expected workset/project): '{qualified}'"
         )
     ws_name, proj_name = qualified.split("/", 1)
-    names = _load(data_path)
+    names = _load(registry)
 
     if ws_name not in names["worksets"]:
         raise ProjectError(f"Unknown workset: '{ws_name}'")
@@ -224,7 +226,7 @@ def resolve_qualified_name(
 
 
 def assign_name(
-    data_path: Path,
+    registry: Path,
     path: str,
     section: str = "projects",
 ) -> str:
@@ -237,7 +239,7 @@ def assign_name(
     if not base:
         base = "project"
 
-    names = _load(data_path)
+    names = _load(registry)
     all_names = set(names["projects"]) | set(names["worksets"])
 
     candidate = base
@@ -246,5 +248,5 @@ def assign_name(
         candidate = f"{base}{n}"
         n += 1
 
-    register_name(data_path, candidate, path, section=section)
+    register_name(registry, candidate, path, section=section)
     return candidate

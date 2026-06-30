@@ -36,6 +36,7 @@ class HelperContext:
     project_path: Path | None = None   # host-side workspace directory
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
     boxes: Path | None = None          # resolved system.path.boxes (std.boxes)
+    registry: Path | None = None       # resolved config.registry file (std.registry)
 
 
 class HelperHub:
@@ -364,8 +365,16 @@ class HelperHub:
         ctx = self._ctx
         if ctx is None:
             return {"status": "error", "message": "no context"}
-        if ctx.project_path is None or ctx.data_path is None or ctx.boxes is None:
-            return {"status": "error", "message": "fork requires project_path, data_path and boxes"}
+        if (
+            ctx.project_path is None
+            or ctx.data_path is None
+            or ctx.boxes is None
+            or ctx.registry is None
+        ):
+            return {
+                "status": "error",
+                "message": "fork requires project_path, data_path, boxes and registry",
+            }
 
         name = request.get("name", "")
         if not name:
@@ -392,7 +401,7 @@ class HelperHub:
 
         boxes_base = ctx.boxes
         source_meta_dir: Path | None = None
-        names = read_names(ctx.data_path)
+        names = read_names(ctx.registry)
         for rname, rpath in names["projects"].items():
             if rpath == str(ctx.project_path):
                 candidate = boxes_base / rname
@@ -408,7 +417,7 @@ class HelperHub:
 
         # Assign a new name for the fork
         try:
-            new_name = assign_name(ctx.data_path, str(new_path))
+            new_name = assign_name(ctx.registry, str(new_path))
         except Exception as e:
             return {"status": "error", "message": f"name assignment failed: {e}"}
 

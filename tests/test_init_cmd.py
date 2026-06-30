@@ -219,7 +219,7 @@ class TestRunCreate:
         rc = run_create(args)
 
         assert rc == 0
-        names = read_names(credentials_dir)
+        names = read_names(credentials_dir / "global" / "registry.yaml")
         assert "custom-name" in names["projects"], (
             f"Expected 'custom-name' in registered projects, got: {names}"
         )

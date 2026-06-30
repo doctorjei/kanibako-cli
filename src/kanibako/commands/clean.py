@@ -67,18 +67,18 @@ def _unregister_purged(std, proj) -> None:
     try:
         if proj.mode is BoxMode.standalone:
             name = registry_store.standalone_name_for_root(
-                std.data_path, proj.project_path,
+                std.registry, proj.project_path,
             ) or proj.name
             if name:
-                registry_store.unregister_standalone(std.data_path, name)
+                registry_store.unregister_standalone(std.registry, name)
             return
 
         # PRIMARY (named-workset boxes are unregistered via remove_project, not
         # purge): the registry maps name → workspace path, so reverse-resolve.
-        found = lookup_by_path(std.data_path, str(proj.project_path))
+        found = lookup_by_path(std.registry, str(proj.project_path))
         name = found[0] if found else (proj.name or proj.metadata_path.name)
         if name:
-            unregister_name(std.data_path, name)
+            unregister_name(std.registry, name)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 
@@ -95,13 +95,13 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
     try:
         name: str | None = None
         if project_path is not None:
-            found = lookup_by_path(std.data_path, str(project_path))
+            found = lookup_by_path(std.registry, str(project_path))
             if found:
                 name = found[0]
         if name is None:
             name = metadata_path.name
         if name:
-            unregister_name(std.data_path, name)
+            unregister_name(std.registry, name)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 

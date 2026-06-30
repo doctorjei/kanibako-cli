@@ -221,7 +221,7 @@ def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
     guarded so one failure does not mask the rest.
     """
     try:
-        unregister_name(std.data_path, project_name)
+        unregister_name(std.registry, project_name)
     except Exception:  # noqa: BLE001 - best-effort restore
         pass
     try:
@@ -238,7 +238,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
-    project_name = assign_name(std.data_path, str(new_path))
+    project_name = assign_name(std.registry, str(new_path))
     projects_base = std.boxes
     dst_project = projects_base / project_name
 
@@ -506,7 +506,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 3. Source must have kanibako metadata.
     source_name, source_project_dir = _resolve_local_dir(
-        std.data_path, str(source_path), std.boxes,
+        std.registry, str(source_path), std.boxes,
     )
 
     if not source_project_dir.is_dir():
@@ -527,7 +527,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 5. Destination metadata must not already exist (unless --force).
     new_name, new_project_dir = _resolve_local_dir(
-        std.data_path, str(new_path), std.boxes,
+        std.registry, str(new_path), std.boxes,
     )
 
     if new_project_dir.is_dir() and not args.force:
@@ -568,7 +568,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
-    dup_name = assign_name(std.data_path, str(new_path))
+    dup_name = assign_name(std.registry, str(new_path))
     new_project_dir = std.boxes / dup_name
 
     # Failure-consistency: a crash AFTER assign_name but DURING the metadata copy
