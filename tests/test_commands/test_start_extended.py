@@ -362,18 +362,17 @@ class TestAgentConfigFirstUse:
         """A new box stages+seeds the ordered template layers once."""
         import kanibako.templates
         with start_mocks() as m:
+            # B7 seed-at-create / membership model: the one-time home seed is
+            # gated SOLELY on ``proj.is_new`` (a box that already exists in the
+            # registry was already seeded).  ``_box_already_seeded`` was deleted,
+            # so ``is_new = True`` alone drives the first-start seed path.
             m.proj.is_new = True
             m.load_agent_config.return_value = m.agent_cfg
-            # First-start seed path: the gate detects an UN-seeded box.
-            with patch(
-                "kanibako.commands.start._box_already_seeded",
-                return_value=False,
-            ):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
             # The already-patched stage_and_seed_templates should have been
             # called once, seeding the box home from the resolved layer specs.
             mock_fn = kanibako.templates.stage_and_seed_templates

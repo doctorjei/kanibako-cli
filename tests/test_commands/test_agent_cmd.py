@@ -383,6 +383,14 @@ class TestRunReauth:
         with (
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
+            # The effective group-auth bool is now resolved through the launch
+            # capability chain (block #2), which needs a real ``proj.mode``; stub
+            # it to the value this test means by ``proj.group_auth = True`` so the
+            # group-auth branch under test is reached unchanged.
+            patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=True,
+            ),
         ):
             target = MagicMock()
             target.has_binary = True
@@ -415,6 +423,12 @@ class TestRunReauth:
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch("kanibako.targets.credsync.refresh_cred_files") as mock_refresh,
+            # group-auth is resolved via the launch chain now (block #2); stub it
+            # to the value this test means by ``proj.group_auth = True``.
+            patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=True,
+            ),
         ):
             target = MagicMock()
             target.has_binary = True
@@ -446,6 +460,12 @@ class TestRunReauth:
         with (
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
+            # Distinct auth = effective group-auth FALSE (block #2 chain); stub it
+            # to the value this test means by ``proj.group_auth = False``.
+            patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=False,
+            ),
         ):
             target = MagicMock()
             target.has_binary = True
@@ -481,6 +501,12 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._run_container", return_value=0,
             ) as m_run,
+            # group-auth via the launch chain (block #2); stub to this test's
+            # intended ``proj.group_auth = True`` so the auth-fail path is reached.
+            patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=True,
+            ),
         ):
             target = MagicMock()
             target.has_binary = True
@@ -513,6 +539,12 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._run_container",
             ) as m_run,
+            # group-auth via the launch chain (block #2); stub to this test's
+            # intended ``proj.group_auth = True`` so the auth-fail path is reached.
+            patch(
+                "kanibako.commands.start._resolve_effective_group_auth",
+                return_value=True,
+            ),
         ):
             target = MagicMock()
             target.has_binary = True
