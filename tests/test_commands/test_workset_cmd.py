@@ -580,43 +580,35 @@ class TestWorksetInfo:
 class TestWorksetConfig:
     def test_config_show_empty(self, config_file, tmp_home, capsys):
         """Config show with no overrides prints '(no overrides)'."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_show
 
         config = load_config(config_file)
         std = load_std_paths(config)
         create_workset("cfgws", tmp_home / "ws_cfg", std)
 
-        args = argparse.Namespace(
-            workset="cfgws", key_value=None,
-            effective=False, reset=None, reset_all=False,
-            force=False, local=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(workset="cfgws", effective=False)
+        rc = run_show(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "no overrides" in out
 
     def test_config_get_auth(self, config_file, tmp_home, capsys):
         """Getting group_auth key returns value from the workset.meta identity."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_get
 
         config = load_config(config_file)
         std = load_std_paths(config)
         create_workset("authcfg", tmp_home / "ws_authcfg", std)
 
-        args = argparse.Namespace(
-            workset="authcfg", key_value="group_auth",
-            effective=False, reset=None, reset_all=False,
-            force=False, local=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(workset="authcfg", key="group_auth")
+        rc = run_get(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "True" in out
 
     def test_config_set_auth_distinct(self, config_file, tmp_home, capsys):
         """Setting group_auth=false updates the workset.meta identity and clears credentials."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_set
         from unittest.mock import MagicMock, patch
 
         config = load_config(config_file)
@@ -628,14 +620,13 @@ class TestWorksetConfig:
 
         args = argparse.Namespace(
             workset="setauth", key_value="group_auth=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         with patch(
             "kanibako.targets.resolve_target",
             return_value=mock_target,
         ):
-            rc = run_config(args)
+            rc = run_set(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "distinct" in out
@@ -652,7 +643,7 @@ class TestWorksetConfig:
         credentials across ALL KNOWN agents (discover_targets), not just the
         single agent the cascade would resolve — a workset may have been used
         with several agents, so the cleanup must hit every one."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_set
         from unittest.mock import MagicMock, patch
 
         config = load_config(config_file)
@@ -669,7 +660,6 @@ class TestWorksetConfig:
 
         args = argparse.Namespace(
             workset="multiauth", key_value="group_auth=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         with patch(
@@ -678,7 +668,7 @@ class TestWorksetConfig:
         ) as mock_discover, patch(
             "kanibako.targets.resolve_target", side_effect=_resolve,
         ):
-            rc = run_config(args)
+            rc = run_set(args)
 
         assert rc == 0
         # Iterated the full known-agent set (not a single resolved agent).
@@ -689,7 +679,7 @@ class TestWorksetConfig:
 
     def test_config_set_auth_invalid(self, config_file, tmp_home, capsys):
         """Setting group_auth to invalid value produces error."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_set
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -697,10 +687,9 @@ class TestWorksetConfig:
 
         args = argparse.Namespace(
             workset="badauth", key_value="group_auth=bogus",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
-        rc = run_config(args)
+        rc = run_set(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "true" in err or "false" in err
@@ -713,7 +702,7 @@ class TestWorksetConfig:
         ``box.image`` (a box.* key) would now be REFUSED at the workset scope —
         see ``TestWorksetScopeDirection`` for that refusal.
         """
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_set
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -721,10 +710,9 @@ class TestWorksetConfig:
 
         args = argparse.Namespace(
             workset="regcfg", key_value="vault.enabled=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
-        rc = run_config(args)
+        rc = run_set(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Set" in out
@@ -732,7 +720,7 @@ class TestWorksetConfig:
 
     def test_config_reset_key(self, config_file, tmp_home, capsys):
         """Resetting a config key removes the override."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_reset, run_set
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -742,26 +730,23 @@ class TestWorksetConfig:
         # the workset scope under the B4 scope-direction guard).
         set_args = argparse.Namespace(
             workset="resetcfg", key_value="vault.enabled=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
-        run_config(set_args)
+        run_set(set_args)
         capsys.readouterr()
 
         # Then reset it.
         reset_args = argparse.Namespace(
-            workset="resetcfg", key_value=None,
-            effective=False, reset="vault.enabled", reset_all=False,
-            force=False, local=False,
+            workset="resetcfg", key="vault.enabled", reset_all=False, force=False,
         )
-        rc = run_config(reset_args)
+        rc = run_reset(reset_args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "Reset" in out or "No override" in out
 
     def test_config_reset_auth(self, config_file, tmp_home, capsys):
         """Resetting group_auth key reverts to True (shared)."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_reset, run_set
         from unittest.mock import MagicMock, patch
 
         config = load_config(config_file)
@@ -773,20 +758,17 @@ class TestWorksetConfig:
         mock_target.invalidate_credentials.return_value = None
         set_args = argparse.Namespace(
             workset="resetauth", key_value="group_auth=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         with patch("kanibako.targets.resolve_target", return_value=mock_target):
-            run_config(set_args)
+            run_set(set_args)
         capsys.readouterr()
 
         # Then reset.
         reset_args = argparse.Namespace(
-            workset="resetauth", key_value=None,
-            effective=False, reset="group_auth", reset_all=False,
-            force=False, local=False,
+            workset="resetauth", key="group_auth", reset_all=False, force=False,
         )
-        rc = run_config(reset_args)
+        rc = run_reset(reset_args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "group_auth" in out
@@ -796,8 +778,8 @@ class TestWorksetConfig:
         assert ws.group_auth is True
 
     def test_config_reset_all(self, config_file, tmp_home, capsys):
-        """--reset --all clears all overrides."""
-        from kanibako.commands.workset_cmd import run_config
+        """reset --all clears all overrides."""
+        from kanibako.commands.workset_cmd import run_reset, run_set
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -807,31 +789,39 @@ class TestWorksetConfig:
         # the workset scope under the B4 scope-direction guard).
         set_args = argparse.Namespace(
             workset="resetall", key_value="vault.enabled=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
-        run_config(set_args)
+        run_set(set_args)
         capsys.readouterr()
 
         # Reset all.
         reset_args = argparse.Namespace(
-            workset="resetall", key_value=None,
-            effective=False, reset="__ALL__", reset_all=True,
-            force=True, local=False,
+            workset="resetall", key=None, reset_all=True, force=True,
         )
-        rc = run_config(reset_args)
+        rc = run_reset(reset_args)
         assert rc == 0
+
+    def test_config_reset_requires_key(self, config_file, tmp_home, capsys):
+        """reset without a key or --all is an error."""
+        from kanibako.commands.workset_cmd import run_reset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("resetbare", tmp_home / "ws_resetbare", std)
+
+        args = argparse.Namespace(
+            workset="resetbare", key=None, reset_all=False, force=False,
+        )
+        rc = run_reset(args)
+        assert rc == 1
+        assert "requires a key" in capsys.readouterr().err
 
     def test_config_unknown_workset(self, config_file, tmp_home, capsys):
         """Config on unknown workset returns error."""
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_show
 
-        args = argparse.Namespace(
-            workset="nosuchws", key_value=None,
-            effective=False, reset=None, reset_all=False,
-            force=False, local=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(workset="nosuchws", effective=False)
+        rc = run_show(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "not registered" in err
@@ -845,21 +835,20 @@ class TestDefaultWorksetCli:
     def test_config_set_group_auth_roundtrips_via_config_toml(
         self, config_file, tmp_home, capsys,
     ):
-        """`workset config default group_auth=false` writes config.yaml, not a
+        """`workset set default group_auth=false` writes config.yaml, not a
         workset.yaml."""
         from unittest.mock import MagicMock, patch
 
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_set
         std = self._std(config_file)
 
         mock_target = MagicMock()
         args = argparse.Namespace(
             workset="default", key_value="group_auth=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
         with patch("kanibako.targets.resolve_target", return_value=mock_target):
-            rc = run_config(args)
+            rc = run_set(args)
         assert rc == 0
 
         # No workset.yaml created at the data path.
@@ -877,28 +866,22 @@ class TestDefaultWorksetCli:
         assert default_workset(std).group_auth is False
 
     def test_config_get_group_auth(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_config
-        args = argparse.Namespace(
-            workset="default", key_value="group_auth",
-            effective=False, reset=None, reset_all=False,
-            force=False, local=False,
-        )
-        rc = run_config(args)
+        from kanibako.commands.workset_cmd import run_get
+        args = argparse.Namespace(workset="default", key="group_auth")
+        rc = run_get(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "True" in out
 
     def test_config_reset_group_auth(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_reset
         std = self._std(config_file)
         (std.data_path / "config.yaml").write_text("project:\n  group_auth: false\n")
 
         args = argparse.Namespace(
-            workset="default", key_value=None,
-            effective=False, reset="group_auth", reset_all=False,
-            force=False, local=False,
+            workset="default", key="group_auth", reset_all=False, force=False,
         )
-        rc = run_config(args)
+        rc = run_reset(args)
         assert rc == 0
         from kanibako.workset import default_workset
         assert default_workset(std).group_auth is True
@@ -910,15 +893,14 @@ class TestDefaultWorksetCli:
         # scope under the B4 scope-direction guard (it lands in [project], its
         # real stored key being enable_vault). ``box.image`` (a box.* key) would
         # be REFUSED here — see TestWorksetScopeDirection.
-        from kanibako.commands.workset_cmd import run_config
+        from kanibako.commands.workset_cmd import run_set
         std = self._std(config_file)
 
         args = argparse.Namespace(
             workset="default", key_value="vault.enabled=false",
-            effective=False, reset=None, reset_all=False,
             force=False, local=False,
         )
-        rc = run_config(args)
+        rc = run_set(args)
         assert rc == 0
         import yaml
         with open(std.data_path / "config.yaml") as f:

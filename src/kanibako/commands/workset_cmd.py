@@ -28,7 +28,7 @@ from kanibako.workset import (
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "workset",
-        help="Working set commands (create, list, info, rm, config, connect, disconnect, share)",
+        help="Working set commands (create, list, info, rm, set, get, show, reset, connect, disconnect, share)",
         description="Create and manage working sets of related projects.",
     )
     ws_sub = p.add_subparsers(dest="workset_command", metavar="COMMAND")
@@ -140,49 +140,82 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     info_p.add_argument("name", help="Name of the working set")
     info_p.set_defaults(func=run_info)
 
-    # kanibako workset config <workset> [key[=value]] [--effective] [--reset]
-    #                         [--all] [--force] [--local]
-    config_p = ws_sub.add_parser(
-        "config",
-        help="View or modify working set configuration",
+    # kanibako workset set <workset> <key>=<value> [--force] [--local]
+    set_p = ws_sub.add_parser(
+        "set",
+        help="Set a working set configuration value",
         description=(
-            "Unified config interface for working set settings.\n\n"
-            "  workset config myws                show overrides\n"
-            "  workset config myws --effective     show resolved values\n"
-            "  workset config myws model           get the value of 'model'\n"
-            "  workset config myws model=sonnet    set 'model' to 'sonnet'\n"
-            "  workset config myws group_auth=false set auth mode\n"
-            "  workset config myws --reset model   reset one key\n"
-            "  workset config myws --reset --all   reset all overrides\n"
+            "Set a working set setting (key=value).\n\n"
+            "  workset set myws model=sonnet      set 'model'\n"
+            "  workset set myws group_auth=false  set auth mode\n"
+            "  workset set myws resource.plugins=/p  set resource path\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    config_p.add_argument("workset", help="Name of the working set")
-    config_p.add_argument(
-        "key_value", nargs="?", default=None,
-        help="Config key or key=value pair",
+    set_p.add_argument("workset", help="Name of the working set")
+    set_p.add_argument("key_value", help="key=value pair")
+    set_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
     )
-    config_p.add_argument(
-        "--effective", action="store_true",
-        help="Show resolved values including inherited defaults",
-    )
-    config_p.add_argument(
-        "--reset", metavar="KEY", nargs="?", const="__ALL__", default=None,
-        help="Remove override for KEY (or all overrides with --all)",
-    )
-    config_p.add_argument(
-        "--all", action="store_true", dest="reset_all",
-        help="Reset all overrides (only valid with --reset)",
-    )
-    config_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompts",
-    )
-    config_p.add_argument(
+    set_p.add_argument(
         "--local", action="store_true",
         help="Set resource to project-isolated (resource keys only)",
     )
-    config_p.set_defaults(func=run_config)
+    set_p.set_defaults(func=run_set)
+
+    # kanibako workset reset <workset> <key> | --all  [--force]
+    reset_p = ws_sub.add_parser(
+        "reset",
+        help="Reset (remove) a working set configuration override",
+        description=(
+            "Remove a working set override, reverting to the inherited value.\n\n"
+            "  workset reset myws model           reset one key\n"
+            "  workset reset myws --all           reset all overrides\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    reset_p.add_argument("workset", help="Name of the working set")
+    reset_p.add_argument("key", nargs="?", default=None, help="Config key to reset")
+    reset_p.add_argument(
+        "--all", action="store_true", dest="reset_all",
+        help="Reset all overrides",
+    )
+    reset_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
+    )
+    reset_p.set_defaults(func=run_reset)
+
+    # kanibako workset get <workset> <key>
+    get_p = ws_sub.add_parser(
+        "get",
+        help="Get a working set configuration value",
+        description=(
+            "Read one working set setting.\n\n"
+            "  workset get myws model             get 'model'\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    get_p.add_argument("workset", help="Name of the working set")
+    get_p.add_argument("key", help="Config key to read")
+    get_p.set_defaults(func=run_get)
+
+    # kanibako workset show <workset> [--effective]
+    show_p = ws_sub.add_parser(
+        "show",
+        help="Show working set configuration overrides",
+        description=(
+            "Show working set settings.\n\n"
+            "  workset show myws                  show overrides\n"
+            "  workset show myws --effective      show resolved values\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    show_p.add_argument("workset", help="Name of the working set")
+    show_p.add_argument(
+        "--effective", action="store_true",
+        help="Show resolved values including inherited defaults",
+    )
+    show_p.set_defaults(func=run_show)
 
     # kanibako workset share add|rm|list
     share_p = ws_sub.add_parser(
@@ -542,8 +575,49 @@ def run_info(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_config(args: argparse.Namespace) -> int:
-    """Unified config interface for working set settings.
+def run_set(args: argparse.Namespace) -> int:
+    """``workset set <workset> <key>=<value>``."""
+    args.reset = None
+    args.reset_all = False
+    args.effective = False
+    return _run_workset_config(args)
+
+
+def run_reset(args: argparse.Namespace) -> int:
+    """``workset reset <workset> <key>`` / ``workset reset <workset> --all``."""
+    reset_all = getattr(args, "reset_all", False)
+    key = getattr(args, "key", None)
+    if not reset_all and not key:
+        print("Error: reset requires a key (or --all)", file=sys.stderr)
+        return 1
+    args.reset = "__ALL__" if reset_all else key
+    args.key_value = None
+    args.effective = False
+    args.local = False
+    return _run_workset_config(args)
+
+
+def run_get(args: argparse.Namespace) -> int:
+    """``workset get <workset> <key>``."""
+    args.key_value = args.key
+    args.reset = None
+    args.reset_all = False
+    args.effective = False
+    args.local = False
+    return _run_workset_config(args)
+
+
+def run_show(args: argparse.Namespace) -> int:
+    """``workset show <workset> [--effective]``."""
+    args.key_value = None
+    args.reset = None
+    args.reset_all = False
+    args.local = False
+    return _run_workset_config(args)
+
+
+def _run_workset_config(args: argparse.Namespace) -> int:
+    """Shared working-set config engine dispatch.
 
     Handles get, set, show, reset operations via the config_interface engine.
     The ``group_auth`` key is special-cased to update the workset.meta identity

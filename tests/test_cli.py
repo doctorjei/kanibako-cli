@@ -348,38 +348,47 @@ class TestParser:
         assert args.command == "system"
         assert hasattr(args, "func")
 
-    def test_system_config(self):
+    def test_system_show(self):
         parser = build_parser()
-        args = parser.parse_args(["system", "config"])
+        args = parser.parse_args(["system", "show"])
         assert args.command == "system"
-        assert args.system_command == "config"
+        assert args.system_command == "show"
+        assert args.func.__name__ == "run_show"
 
-    def test_system_config_set(self):
+    def test_system_set(self):
         parser = build_parser()
-        args = parser.parse_args(["system", "config", "image=custom:v1"])
+        args = parser.parse_args(["system", "set", "image=custom:v1"])
         assert args.key_value == "image=custom:v1"
+        assert args.func.__name__ == "run_set"
 
-    def test_system_config_get(self):
+    def test_system_get(self):
         parser = build_parser()
-        args = parser.parse_args(["system", "config", "image"])
-        assert args.key_value == "image"
+        args = parser.parse_args(["system", "get", "image"])
+        assert args.key == "image"
+        assert args.func.__name__ == "run_get"
 
-    def test_system_config_reset(self):
+    def test_system_reset(self):
         parser = build_parser()
-        args = parser.parse_args(["system", "config", "--reset", "image"])
-        assert args.reset is True
-        assert args.key_value == "image"
+        args = parser.parse_args(["system", "reset", "image"])
+        assert args.key == "image"
+        assert args.all_keys is False
+        assert args.func.__name__ == "run_reset"
 
-    def test_system_config_reset_all(self):
+    def test_system_reset_all(self):
         parser = build_parser()
-        args = parser.parse_args(["system", "config", "--reset", "--all"])
-        assert args.reset is True
+        args = parser.parse_args(["system", "reset", "--all"])
         assert args.all_keys is True
 
-    def test_system_config_effective(self):
+    def test_system_show_effective(self):
         parser = build_parser()
-        args = parser.parse_args(["system", "config", "--effective"])
+        args = parser.parse_args(["system", "show", "--effective"])
         assert args.effective is True
+
+    def test_system_config_subcommand_retired(self):
+        import pytest
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["system", "config"])
 
     def test_system_upgrade(self):
         parser = build_parser()
@@ -429,35 +438,43 @@ class TestParser:
         assert args.command == "agent"
         assert args.agent_id == "myagent"
 
-    def test_agent_config_show(self):
+    def test_agent_show(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent"])
+        args = parser.parse_args(["agent", "show", "myagent"])
         assert args.command == "agent"
-        assert args.agent_command == "config"
+        assert args.agent_command == "show"
         assert args.agent_id == "myagent"
-        assert args.key_value is None
+        assert args.func.__name__ == "run_show"
 
-    def test_agent_config_set(self):
+    def test_agent_set(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "model=sonnet"])
+        args = parser.parse_args(["agent", "set", "myagent", "model=sonnet"])
         assert args.agent_id == "myagent"
         assert args.key_value == "model=sonnet"
+        assert args.func.__name__ == "run_set"
 
-    def test_agent_config_get(self):
+    def test_agent_get(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "model"])
-        assert args.key_value == "model"
+        args = parser.parse_args(["agent", "get", "myagent", "model"])
+        assert args.key == "model"
+        assert args.func.__name__ == "run_get"
 
-    def test_agent_config_reset(self):
+    def test_agent_reset(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "--reset", "model"])
-        assert args.reset == "model"
+        args = parser.parse_args(["agent", "reset", "myagent", "model"])
+        assert args.key == "model"
+        assert args.func.__name__ == "run_reset"
 
-    def test_agent_config_reset_all(self):
+    def test_agent_reset_all(self):
         parser = build_parser()
-        args = parser.parse_args(["agent", "config", "myagent", "--reset", "--all"])
-        assert args.reset == "__RESET__"
+        args = parser.parse_args(["agent", "reset", "myagent", "--all"])
         assert args.all_keys is True
+
+    def test_agent_config_subcommand_retired(self):
+        import pytest
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["agent", "config", "myagent"])
 
     def test_agent_reauth(self):
         parser = build_parser()
@@ -679,13 +696,40 @@ class TestParser:
         assert args.command == "workset"
         assert args.name == "myws"
 
-    def test_workset_config(self):
+    def test_workset_set(self):
         parser = build_parser()
-        args = parser.parse_args(["workset", "config", "myws", "model=sonnet"])
+        args = parser.parse_args(["workset", "set", "myws", "model=sonnet"])
         assert args.command == "workset"
-        assert args.workset_command == "config"
+        assert args.workset_command == "set"
         assert args.workset == "myws"
         assert args.key_value == "model=sonnet"
+        assert args.func.__name__ == "run_set"
+
+    def test_workset_show(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "show", "myws", "--effective"])
+        assert args.workset == "myws"
+        assert args.effective is True
+        assert args.func.__name__ == "run_show"
+
+    def test_workset_get(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "get", "myws", "model"])
+        assert args.workset == "myws"
+        assert args.key == "model"
+        assert args.func.__name__ == "run_get"
+
+    def test_workset_reset_all(self):
+        parser = build_parser()
+        args = parser.parse_args(["workset", "reset", "myws", "--all"])
+        assert args.workset == "myws"
+        assert args.reset_all is True
+        assert args.func.__name__ == "run_reset"
+
+    def test_workset_config_subcommand_retired(self):
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["workset", "config", "myws", "model=sonnet"])
 
     def test_box_convert_workset_flag(self):
         parser = build_parser()
@@ -1255,6 +1299,56 @@ class TestShellAgentFlagIgnored:
         ns = argparse.Namespace(command="list", agent="goose", box=None)
         with pytest.raises(FlagRelevanceError):
             check_flag_relevance(ns)
+
+
+class TestBoxConfigVerbsAcceptBoxFlag:
+    """Regression (B1): every box config verb accepts ``--box`` as the subject
+    selector — the shared dispatch reads ``args.box`` via resolve_subject_value,
+    so set/reset/get/show must all be in BOX_FLAG_COMMANDS or check_flag_relevance
+    hard-errors before the handler runs."""
+
+    @pytest.mark.parametrize("verb", ["set", "reset", "get", "show"])
+    def test_box_verb_with_box_flag_does_not_raise(self, verb):
+        import argparse
+
+        from kanibako.commands.flags import check_flag_relevance
+
+        ns = argparse.Namespace(
+            command="box", box_command=verb, agent=None, box="myproj",
+        )
+        # Must NOT raise FlagRelevanceError (would, if the verb weren't whitelisted).
+        check_flag_relevance(ns)
+
+    def test_box_set_with_box_routes_to_named_subject(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """End-to-end: ``box set --box <proj> <key>=<value>`` routes the set to the
+        named subject box (not cwd) and writes its override."""
+        import argparse
+
+        from kanibako.commands.box._parser import run_set
+        from kanibako.config import load_config, load_project_overrides
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = tmp_home / "subjectproj"
+        src.mkdir()
+        project_dir = str(src)
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # ``--box`` names the subject; positional args carry only the key=value.
+        args = argparse.Namespace(
+            args=["box.image=subject-img:v1"], force=False, local=False,
+            box=project_dir,
+        )
+        rc = run_set(args)
+        assert rc == 0
+        assert "subject-img:v1" in capsys.readouterr().out
+
+        # The override landed in the NAMED subject's settings file.
+        overrides = load_project_overrides(proj.metadata_path / "settings.yaml")
+        assert overrides.get("box_image") == "subject-img:v1"
 
     def test_shell_never_nudges_after_reorder(self, tmp_path, capsys):
         """Regression: shell stays nudge-silent (Gate-1 excludes it)."""

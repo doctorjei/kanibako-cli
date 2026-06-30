@@ -37,43 +37,70 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     info_p.add_argument("agent_id", help="Agent identifier")
     info_p.set_defaults(func=run_info)
 
-    # agent config <agent> [key[=value]] [--effective] [--reset] [--all] [--force]
-    config_p = agent_sub.add_parser(
-        "config",
-        help="View or modify agent configuration",
+    # agent set <agent> <key>=<value>
+    set_p = agent_sub.add_parser(
+        "set",
+        help="Set an agent configuration value",
         description=(
-            "Unified config interface for agent settings.\n\n"
-            "  agent config myagent                 show all settings\n"
-            "  agent config myagent model            get the value of 'model'\n"
-            "  agent config myagent model=sonnet     set 'model' to 'sonnet'\n"
-            "  agent config myagent env.FOO=bar      set env var FOO\n"
-            "  agent config myagent --reset model    reset one key\n"
-            "  agent config myagent --reset --all    reset all overrides\n"
+            "Set an agent setting (key=value).\n\n"
+            "  agent set myagent model=sonnet     set 'model'\n"
+            "  agent set myagent env.FOO=bar      set env var FOO\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    config_p.add_argument("agent_id", help="Agent identifier")
-    config_p.add_argument(
-        "key_value", nargs="?", default=None,
-        help="Config key or key=value pair",
+    set_p.add_argument("agent_id", help="Agent identifier")
+    set_p.add_argument("key_value", help="key=value pair")
+    set_p.set_defaults(func=run_set)
+
+    # agent reset <agent> <key> | --all  [--force]
+    reset_p = agent_sub.add_parser(
+        "reset",
+        help="Reset (remove) an agent configuration override",
+        description=(
+            "Remove an agent override, reverting to the default.\n\n"
+            "  agent reset myagent model          reset one key\n"
+            "  agent reset myagent --all          reset all overrides\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    config_p.add_argument(
+    reset_p.add_argument("agent_id", help="Agent identifier")
+    reset_p.add_argument("key", nargs="?", default=None, help="Config key to reset")
+    reset_p.add_argument(
+        "--all", action="store_true", dest="all_keys",
+        help="Reset all overrides",
+    )
+    reset_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
+    )
+    reset_p.set_defaults(func=run_reset)
+
+    # agent get <agent> <key>
+    get_p = agent_sub.add_parser(
+        "get",
+        help="Get an agent configuration value",
+        description="Read one agent setting.",
+    )
+    get_p.add_argument("agent_id", help="Agent identifier")
+    get_p.add_argument("key", help="Config key to read")
+    get_p.set_defaults(func=run_get)
+
+    # agent show <agent> [--effective]
+    show_p = agent_sub.add_parser(
+        "show",
+        help="Show agent configuration",
+        description=(
+            "Show agent settings.\n\n"
+            "  agent show myagent                 show all settings\n"
+            "  agent show myagent --effective     show resolved values\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    show_p.add_argument("agent_id", help="Agent identifier")
+    show_p.add_argument(
         "--effective", action="store_true",
         help="Show resolved values including defaults",
     )
-    config_p.add_argument(
-        "--reset", nargs="?", const="__RESET__", default=None,
-        help="Remove override for the given key",
-    )
-    config_p.add_argument(
-        "--all", action="store_true", dest="all_keys",
-        help="Reset all overrides (only valid with --reset)",
-    )
-    config_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompts",
-    )
-    config_p.set_defaults(func=run_config)
+    show_p.set_defaults(func=run_show)
 
     # agent reauth [project]
     reauth_p = agent_sub.add_parser(
@@ -191,8 +218,51 @@ def run_info(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_config(args: argparse.Namespace) -> int:
-    """View or modify agent configuration.
+def run_set(args: argparse.Namespace) -> int:
+    """``agent set <agent> <key>=<value>``."""
+    args.reset = None
+    args.all_keys = False
+    args.effective = False
+    args.force = False
+    return _run_agent_config(args)
+
+
+def run_reset(args: argparse.Namespace) -> int:
+    """``agent reset <agent> <key>`` / ``agent reset <agent> --all``."""
+    key = getattr(args, "key", None)
+    all_keys = getattr(args, "all_keys", False)
+    if not all_keys and not key:
+        print("Error: reset requires a key (or --all)", file=sys.stderr)
+        return 1
+    # The shared body uses ``reset`` as a presence sentinel and reads the key
+    # from ``reset`` (or, with the const fallback, from ``key_value``).
+    args.reset = key if key else "__RESET__"
+    args.key_value = key
+    args.effective = False
+    return _run_agent_config(args)
+
+
+def run_get(args: argparse.Namespace) -> int:
+    """``agent get <agent> <key>``."""
+    args.key_value = args.key
+    args.reset = None
+    args.all_keys = False
+    args.effective = False
+    args.force = False
+    return _run_agent_config(args)
+
+
+def run_show(args: argparse.Namespace) -> int:
+    """``agent show <agent> [--effective]``."""
+    args.key_value = None
+    args.reset = None
+    args.all_keys = False
+    args.force = False
+    return _run_agent_config(args)
+
+
+def _run_agent_config(args: argparse.Namespace) -> int:
+    """Shared agent-config engine dispatch.
 
     Maps config keys to agent config sections:
       model, start_mode, etc. -> state keys
@@ -245,7 +315,7 @@ def run_config(args: argparse.Namespace) -> int:
         # Key can come from --reset VALUE or from positional key_value.
         reset_key = args.reset if args.reset != "__RESET__" else key_value
         if not reset_key:
-            print("Error: --reset requires a key name (or --all)", file=sys.stderr)
+            print("Error: reset requires a key (or --all)", file=sys.stderr)
             return 1
 
         key = reset_key.strip()

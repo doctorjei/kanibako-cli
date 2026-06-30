@@ -39,12 +39,12 @@ by the `kanibako` meta-package); other agents can be added as plugins.
 - **Vault snapshots** -- per-box read-only and read-write shared
   directories with smart snapshot strategy detection (reflink, hardlink,
   or tar.xz depending on filesystem)
-- **Shell customization** -- per-box environment variables (`box config
+- **Shell customization** -- per-box environment variables (`box set
   env.*`), drop-in init scripts (`shell.d/`), and layered seed-once home
   templates
 - **Agent configuration** -- per-agent YAML config with default args, state
   knobs, env vars, and shared caches; per-box setting overrides via
-  `box config`
+  `box set`
 - **Shared caches** -- global download caches (pip, cargo, npm, etc.)
   shared across boxes; agent-level caches via the agent config
 - **Plugin system** -- agent-agnostic core (`kanibako-cli`); Claude/Codex/Goose
@@ -220,7 +220,7 @@ shortcuts for common operations:
 | `box list` / `box ls` | List projects (`--all`, `--orphan`, `-q`) |
 | `box info` / `box inspect` | Project details (mode, paths, lock, rig) |
 | `box rm` / `box delete` | Remove project (`--purge` deletes metadata, `--force` skips confirm) |
-| `box config` | View or modify project configuration |
+| `box set` / `box get` / `box show` / `box reset` | View or modify project configuration |
 | `box diagnose [project]` | Check project box health |
 
 **Relocation & conversion:**
@@ -265,7 +265,7 @@ shortcuts for common operations:
 | `workset list` / `workset ls` | List working sets (`-q`) |
 | `workset info` / `workset inspect` | Working set details |
 | `workset rm` / `workset delete` | Remove working set (`--purge`, `--force`) |
-| `workset config` | View or modify workset configuration (use `workset config default <key>=<value>` for default-workset defaults) |
+| `workset set` / `workset get` / `workset show` / `workset reset` | View or modify workset configuration (use `workset set default <key>=<value>` for default-workset defaults) |
 | `workset connect <workset> [source]` | Add project to working set (`--name`) |
 | `workset disconnect <workset> <project>` | Remove project from working set (`--force`) |
 
@@ -275,7 +275,7 @@ shortcuts for common operations:
 |------------|-------------|
 | `agent list` / `agent ls` | List configured agents (`-q`) |
 | `agent info` / `agent inspect` | Agent configuration details |
-| `agent config` | View or modify agent configuration |
+| `agent set` / `agent get` / `agent show` / `agent reset` | View or modify agent configuration |
 | `agent reauth [project]` | Refresh credentials |
 
 ### `box helper` / `box fork` Subcommands
@@ -300,7 +300,7 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 | Subcommand | Description |
 |------------|-------------|
 | `system info` / `system inspect` | System details (version, runtime, paths) |
-| `system config` | View or modify global configuration |
+| `system set` / `system get` / `system show` / `system reset` | View or modify global configuration |
 | `system upgrade` | Self-update (`--check` for dry run) |
 | `system diagnose` | Check system health (runtime, images, agents, storage) |
 
@@ -349,7 +349,7 @@ error, not a silent no-op).
 #### `--box`: operate on any box
 
 `--box` substitutes for being in the box's directory: `kanibako stop --box myproj`,
-`kanibako box config --box myproj model=opus`. The value is a **box name (resolved
+`kanibako box set --box myproj model=opus`. The value is a **box name (resolved
 first) or a path**. It is the *subject* the command acts on, and stays orthogonal to
 the `move`/`convert` *destination* group, so they coexist:
 
@@ -408,7 +408,7 @@ confirm. Non-TTY runs (CI / headless) skip the prompt gracefully.
 nudge to run `setup` if it has never been run, then proceed.
 
 Because `system.*` keys are **file-only** (see [Configuration](#configuration)),
-the default agent is *not* settable via `kanibako system config` -- use `setup` or
+the default agent is *not* settable via `kanibako system set` -- use `setup` or
 edit `global/settings.yaml` directly.
 
 ## Project Modes
@@ -431,11 +431,11 @@ and run `kanibako`, and the box joins the primary workset.
 
 The primary workset is addressable through the same `workset` commands as named
 worksets (workset name token `__PRIMARY__`), so primary-workset settings use the
-ordinary `workset config default` mechanism (see [Configuration](#configuration)):
+ordinary `workset set default` mechanism (see [Configuration](#configuration)):
 
 ```bash
-kanibako workset config default model=opus          # default for ALL primary-mode boxes
-kanibako workset config default group_auth=false    # distinct credentials by default
+kanibako workset set default model=opus          # default for ALL primary-mode boxes
+kanibako workset set default group_auth=false    # distinct credentials by default
 ```
 
 The names `__PRIMARY__` / `__STANDALONE__` (and legacy `default`) are reserved
@@ -629,9 +629,9 @@ container:
 
 ```bash
 # Persistent (stored in project config)
-kanibako box config env.EDITOR=vim           # project-level
-kanibako system config env.EDITOR=nano       # global (all projects)
-kanibako box config env.EDITOR               # show one value
+kanibako box set env.EDITOR=vim              # project-level
+kanibako system set env.EDITOR=nano          # global (all projects)
+kanibako box get env.EDITOR                  # show one value
 
 # Per-run (not persisted)
 kanibako start -e EDITOR=vim -e DEBUG=1
@@ -644,7 +644,7 @@ Project env vars override global ones.
 The shell prompt is controlled by the `KANIBAKO_PS1` environment variable:
 
 ```bash
-kanibako box config env.KANIBAKO_PS1="(myproject) \u:\w\$ "
+kanibako box set env.KANIBAKO_PS1="(myproject) \u:\w\$ "
 ```
 
 ### Init scripts
@@ -702,8 +702,8 @@ Manage agent settings via the CLI:
 
 ```bash
 kanibako agent list                    # list configured agents
-kanibako agent config model            # show effective model
-kanibako agent config model=sonnet     # set agent-level default
+kanibako agent get claude model        # show the agent's model
+kanibako agent set claude model=sonnet # set agent-level default
 ```
 
 ## Home Templates
@@ -822,7 +822,7 @@ guide.
 pip install kanibako-target-myagent
 
 # Use a specific target
-kanibako box config box.agent=myagent
+kanibako box set box.agent=myagent
 kanibako start
 
 # (`crab_name` is gone -- select the agent via box.agent)
@@ -846,29 +846,30 @@ CLI flag > settings_required > box > workset > agent.<agent> > system > settings
 **file-only** -- the CLI reads and shows them but refuses to set them (edit the
 file directly); `setup` and programmatic writers still write them.
 
-All settings levels share a unified interface:
+All settings levels share the same four verbs -- `set` / `get` / `show` /
+`reset`:
 
 ```bash
 # Box level
-kanibako box config                     # show box overrides
-kanibako box config --effective         # show resolved values (inherited + overrides)
-kanibako box config model               # get one key
-kanibako box config model=sonnet        # set one key
-kanibako box config --reset model       # remove override, back to default
+kanibako box show                       # show box overrides
+kanibako box show --effective           # show resolved values (inherited + overrides)
+kanibako box get model                  # get one key
+kanibako box set model=sonnet           # set one key
+kanibako box reset model                # remove override, back to default
 
 # Workset level (group defaults inherited by member boxes)
-kanibako workset config <workset> model=opus
-kanibako workset config default model=opus   # primary-workset default
+kanibako workset set <workset> model=opus
+kanibako workset set default model=opus      # primary-workset default
 
 # Agent level (defaults for all boxes using this agent)
-kanibako agent config model=opus
+kanibako agent set claude model=opus
 
 # System level (global settings defaults)
-kanibako system config model=opus
-kanibako system config --reset --all    # reset all global settings
+kanibako system set model=opus
+kanibako system reset --all             # reset all global settings
 ```
 
-`kanibako system config` sets **non-`system.`** settings only. `system.*`-prefixed
+`kanibako system set` sets **non-`system.`** settings only. `system.*`-prefixed
 keys (layout paths AND `system.default_agent`) are **file-only**: the CLI shows them
 but refuses to set/reset them, pointing you at the config file. Set the default agent
 with `kanibako setup`; edit structural paths in `~/.config/kanibako.yaml` directly.

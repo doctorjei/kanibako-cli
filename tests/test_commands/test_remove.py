@@ -1,7 +1,7 @@
 """Tests for kanibako.commands.system_cmd (system subcommand).
 
 Replaces the old test_remove.py which tested the now-removed ``remove``
-command.  Config removal is now handled via ``system config --reset --all``.
+command.  Config removal is now handled via ``system reset --all``.
 """
 
 from __future__ import annotations
@@ -69,73 +69,55 @@ class TestSystemInfo:
 
 class TestSystemConfig:
     def test_show_no_overrides(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_config
+        from kanibako.commands.system_cmd import run_show
 
-        args = argparse.Namespace(
-            key_value=None, effective=False, reset=False,
-            all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(effective=False)
+        rc = run_show(args)
         assert rc == 0
 
     def test_show_effective(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_config
+        from kanibako.commands.system_cmd import run_show
 
-        args = argparse.Namespace(
-            key_value=None, effective=True, reset=False,
-            all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(effective=True)
+        rc = run_show(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "box_image" in out
 
     def test_get_known_key(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_config
+        from kanibako.commands.system_cmd import run_get
 
-        args = argparse.Namespace(
-            key_value="box.image", effective=False, reset=False,
-            all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(key="box.image")
+        rc = run_get(args)
         assert rc == 0
 
     def test_get_unknown_key(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_config
+        from kanibako.commands.system_cmd import run_get
 
-        args = argparse.Namespace(
-            key_value="nonexistent_key_xyz", effective=False, reset=False,
-            all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(key="nonexistent_key_xyz")
+        rc = run_get(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "unknown config key" in err
 
     def test_set_value(self, tmp_home, config_file, capsys):
-        # B4 R2 cross-scope write guard: a SYSTEM-scope ``config set`` writes only
+        # B4 R2 cross-scope write guard: a SYSTEM-scope ``set`` writes only
         # keys in its own scope's namespace (spec §0).  ``box.image`` is a box-scope
         # key, so setting it from the system scope is now correctly REFUSED (rc 1)
         # with the scope-error message — it must be set at the box scope instead.
-        from kanibako.commands.system_cmd import run_config
+        from kanibako.commands.system_cmd import run_set
 
-        args = argparse.Namespace(
-            key_value="box.image=custom:v2", effective=False, reset=False,
-            all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(key_value="box.image=custom:v2", force=False)
+        rc = run_set(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "cannot be set from the system scope" in err
 
     def test_reset_requires_key(self, tmp_home, config_file, capsys):
-        from kanibako.commands.system_cmd import run_config
+        from kanibako.commands.system_cmd import run_reset
 
-        args = argparse.Namespace(
-            key_value=None, effective=False, reset=True,
-            all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(key=None, all_keys=False, force=False)
+        rc = run_reset(args)
         assert rc == 1
         err = capsys.readouterr().err
-        assert "--reset requires a key" in err
+        assert "requires a key" in err

@@ -149,59 +149,44 @@ class TestRunInfo:
 
 class TestRunConfig:
     def test_config_show(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_show
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value=None,
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", effective=False)
+        rc = run_show(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "model = opus" in out
 
     def test_config_get_state_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_get
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value="model",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", key="model")
+        rc = run_get(args)
         assert rc == 0
         assert "opus" in capsys.readouterr().out
 
     def test_config_get_env_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_get
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value="env.EDITOR",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", key="env.EDITOR")
+        rc = run_get(args)
         assert rc == 0
         assert "vim" in capsys.readouterr().out
 
     def test_config_get_missing_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_get
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value="nonexistent",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", key="nonexistent")
+        rc = run_get(args)
         assert rc == 0
         assert "not set" in capsys.readouterr().err
 
     def test_config_set_state_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_set
         from kanibako.agent_config import agent_config_path, load_agent_config
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value="model=sonnet",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", key_value="model=sonnet")
+        rc = run_set(args)
         assert rc == 0
         assert "Set model=sonnet" in capsys.readouterr().out
 
@@ -211,14 +196,11 @@ class TestRunConfig:
         assert cfg.state["model"] == "sonnet"
 
     def test_config_set_env_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_set
         from kanibako.agent_config import agent_config_path, load_agent_config
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value="env.PAGER=less",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", key_value="env.PAGER=less")
+        rc = run_set(args)
         assert rc == 0
         assert "Set env.PAGER=less" in capsys.readouterr().out
 
@@ -230,14 +212,11 @@ class TestRunConfig:
         # The template-variant ``shell`` axis was removed; ``shell`` is no longer
         # an AgentConfig identity field, so a ``shell=`` set now lands in generic
         # state (not as a dedicated identity knob).
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_set
         from kanibako.agent_config import agent_config_path, load_agent_config
 
-        args = argparse.Namespace(
-            agent_id="claude", key_value="shell=bash",
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="claude", key_value="shell=bash")
+        rc = run_set(args)
         assert rc == 0
 
         path = agent_config_path(agent_env, "claude")
@@ -246,14 +225,13 @@ class TestRunConfig:
         assert cfg.state["shell"] == "bash"
 
     def test_config_reset_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_reset
         from kanibako.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
-            agent_id="claude", key_value="model",
-            effective=False, reset="__RESET__", all_keys=False, force=False,
+            agent_id="claude", key="model", all_keys=False, force=False,
         )
-        rc = run_config(args)
+        rc = run_reset(args)
         assert rc == 0
         assert "Reset model" in capsys.readouterr().out
 
@@ -262,14 +240,13 @@ class TestRunConfig:
         assert "model" not in cfg.state
 
     def test_config_reset_env_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_reset
         from kanibako.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
-            agent_id="claude", key_value="env.EDITOR",
-            effective=False, reset="__RESET__", all_keys=False, force=False,
+            agent_id="claude", key="env.EDITOR", all_keys=False, force=False,
         )
-        rc = run_config(args)
+        rc = run_reset(args)
         assert rc == 0
         assert "Reset env.EDITOR" in capsys.readouterr().out
 
@@ -278,25 +255,23 @@ class TestRunConfig:
         assert "EDITOR" not in cfg.env
 
     def test_config_reset_missing_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_reset
 
         args = argparse.Namespace(
-            agent_id="claude", key_value="nonexistent",
-            effective=False, reset="__RESET__", all_keys=False, force=False,
+            agent_id="claude", key="nonexistent", all_keys=False, force=False,
         )
-        rc = run_config(args)
+        rc = run_reset(args)
         assert rc == 0
         assert "No override" in capsys.readouterr().out
 
     def test_config_reset_all_forced(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_reset
         from kanibako.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
-            agent_id="claude", key_value=None,
-            effective=False, reset="__RESET__", all_keys=True, force=True,
+            agent_id="claude", key=None, all_keys=True, force=True,
         )
-        rc = run_config(args)
+        rc = run_reset(args)
         assert rc == 0
         assert "Reset all" in capsys.readouterr().out
 
@@ -307,24 +282,20 @@ class TestRunConfig:
         assert cfg.run_args == []
 
     def test_config_reset_requires_key(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_reset
 
         args = argparse.Namespace(
-            agent_id="claude", key_value=None,
-            effective=False, reset="__RESET__", all_keys=False, force=False,
+            agent_id="claude", key=None, all_keys=False, force=False,
         )
-        rc = run_config(args)
+        rc = run_reset(args)
         assert rc == 1
         assert "requires a key" in capsys.readouterr().err
 
     def test_config_missing_agent(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_config
+        from kanibako.commands.agent_cmd import run_show
 
-        args = argparse.Namespace(
-            agent_id="nonexistent", key_value=None,
-            effective=False, reset=None, all_keys=False, force=False,
-        )
-        rc = run_config(args)
+        args = argparse.Namespace(agent_id="nonexistent", effective=False)
+        rc = run_show(args)
         assert rc == 1
         assert "not found" in capsys.readouterr().err
 
