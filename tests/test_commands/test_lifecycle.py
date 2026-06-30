@@ -198,7 +198,7 @@ class TestConvertInPlace:
         meta = read_project_meta(pdir / "settings.yaml")
         assert meta["mode"] == "standalone"
         # default-mode name unregistered.
-        assert str(pdir) not in read_names(std.data_path)["projects"].values()
+        assert str(pdir) not in read_names(std.registry)["projects"].values()
 
     def test_convert_to_standalone_is_detectable(self, env):
         config, std, tmp_home = env
@@ -229,7 +229,7 @@ class TestConvertInPlace:
         src_state = resolve_lifecycle_target(str(pdir), std, config)
         src_name = src_state.name
         # The primary source is registered in names.yaml at the project path.
-        assert str(pdir) in read_names(std.data_path)["projects"].values()
+        assert str(pdir) in read_names(std.registry)["projects"].values()
 
         new = execute_lifecycle(
             src_state, TargetSpec(location=INPLACE, ownership="standalone"),
@@ -254,13 +254,13 @@ class TestConvertInPlace:
         assert new.name == new_name
 
         # (3) Registered in registry.standalone keyed by the canonical name.
-        standalone = load_standalone(std.data_path)
+        standalone = load_standalone(std.registry)
         assert new_name in standalone
         assert standalone[new_name] == str(pdir)
 
         # (4) The old primary names.yaml entry is gone (no dangling registration).
-        assert str(pdir) not in read_names(std.data_path)["projects"].values()
-        assert src_name not in read_names(std.data_path)["projects"]
+        assert str(pdir) not in read_names(std.registry)["projects"].values()
+        assert src_name not in read_names(std.registry)["projects"]
 
     def test_convert_standalone_no_name_generates_fresh(self, env):
         """No --name on a standalone convert → a freshly generated canonical id
@@ -296,7 +296,7 @@ class TestConvertInPlace:
         assert new.name == "ab2c3_proj"
         meta = read_project_meta(pdir / "settings.yaml")
         assert meta["name"] == "ab2c3_proj"
-        standalone = load_standalone(std.data_path)
+        standalone = load_standalone(std.registry)
         assert standalone["ab2c3_proj"] == str(pdir)
 
     def test_convert_standalone_noncanonical_name_becomes_leaf(self, env):
@@ -350,7 +350,7 @@ class TestConvertInPlace:
         # old in-tree metadata gone.
         assert not (pdir / "box_data").exists()
         # name registered.
-        assert str(pdir) in read_names(std.data_path)["projects"].values()
+        assert str(pdir) in read_names(std.registry)["projects"].values()
 
     def test_default_to_workset_external(self, env):
         config, std, tmp_home = env
@@ -371,7 +371,7 @@ class TestConvertInPlace:
         assert meta["mode"] == "named"
         assert meta["workspace"] == str(pdir.resolve())
         # old default name unregistered.
-        assert str(pdir) not in read_names(std.data_path)["projects"].values()
+        assert str(pdir) not in read_names(std.registry)["projects"].values()
 
     def test_standalone_to_workset_external(self, env):
         config, std, tmp_home = env
@@ -404,7 +404,7 @@ class TestConvertInPlace:
         assert new.mode == BoxMode.primary
         # Name reused (no auto-suffix), path unchanged.
         assert new.name == "proj"
-        projects = read_names(std.data_path)["projects"]
+        projects = read_names(std.registry)["projects"]
         assert projects.get("proj") == str(pdir)
         # No stranded suffixed entry.
         assert "proj2" not in projects
@@ -522,8 +522,8 @@ class TestMoveSameOwner:
         from kanibako.utils import project_hash
         assert meta["project_hash"] == project_hash(str(dest.resolve()))
         # names.yaml updated.
-        assert str(dest) in read_names(std.data_path)["projects"].values()
-        assert str(pdir) not in read_names(std.data_path)["projects"].values()
+        assert str(dest) in read_names(std.registry)["projects"].values()
+        assert str(pdir) not in read_names(std.registry)["projects"].values()
 
 
 # ---------------------------------------------------------------------------
@@ -754,7 +754,7 @@ class TestUnwind:
         state = resolve_lifecycle_target(str(pdir), std, config)
         dest = tmp_home / "unwind_dest"
 
-        names_before = dict(read_names(std.data_path)["projects"])
+        names_before = dict(read_names(std.registry)["projects"])
         meta_before = read_project_meta(state.metadata_path / "settings.yaml")
 
         # Force the standalone ownership step to raise AFTER file move + name
@@ -774,7 +774,7 @@ class TestUnwind:
         assert not dest.exists()
         assert pdir.is_dir() and (pdir / "file.txt").read_text() == "unwind"
         # Names + metadata unchanged.
-        assert dict(read_names(std.data_path)["projects"]) == names_before
+        assert dict(read_names(std.registry)["projects"]) == names_before
         assert read_project_meta(state.metadata_path / "settings.yaml") == meta_before
 
     def test_workset_failure_unwinds_registration(self, env, monkeypatch):
@@ -803,5 +803,5 @@ class TestUnwind:
         ws2 = load_workset(ws.root)
         assert not any(p.name == "proj" for p in ws2.projects)
         # original default project intact.
-        assert str(pdir) in read_names(std.data_path)["projects"].values()
+        assert str(pdir) in read_names(std.registry)["projects"].values()
         assert read_project_meta(state.metadata_path / "settings.yaml")["mode"] == "primary"

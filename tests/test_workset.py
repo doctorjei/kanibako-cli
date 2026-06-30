@@ -126,8 +126,8 @@ class TestDefaultWorkset:
         proj_b = tmp_home / "proj_b"
         proj_a.mkdir()
         proj_b.mkdir()
-        register_name(std.data_path, "alpha", str(proj_a))
-        register_name(std.data_path, "beta", str(proj_b))
+        register_name(std.registry, "alpha", str(proj_a))
+        register_name(std.registry, "beta", str(proj_b))
 
         ws = default_workset(std)
         by_name = {p.name: p.source_path for p in ws.projects}
@@ -673,7 +673,7 @@ class TestCreateWorksetFailConsistent:
         assert not root.exists(), "orphan dirs left behind"
         assert "my-set" not in list_worksets(std), "stale worksets entry"
         from kanibako.names import read_names
-        assert "my-set" not in read_names(std.data_path).get("worksets", {})
+        assert "my-set" not in read_names(std.registry).get("worksets", {})
 
 
 class TestDeleteWorksetSelfHealing:

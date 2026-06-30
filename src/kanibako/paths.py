@@ -752,7 +752,7 @@ def resolve_project(
     # informative.
     if raw and "/" not in raw and not Path(raw).exists():
         try:
-            resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
+            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd())
             if kind == "project":
                 raw = resolved
         except ProjectError:
@@ -767,7 +767,7 @@ def resolve_project(
 
     # Determine the project directory: name-based (boxes/{name}/).
     project_name, project_dir_path = _resolve_local_dir(
-        std.data_path, project_path_str, std.boxes,
+        std.registry, project_path_str, std.boxes,
     )
 
     # Drop-in import: the registry reverse-lookup missed, but an on-disk PRIMARY
@@ -778,11 +778,11 @@ def resolve_project(
         from kanibako import import_reconcile
 
         imported = import_reconcile.import_primary_box_for_workspace(
-            std.data_path, std.boxes, project_path,
+            std.registry, std.boxes, project_path,
         )
         if imported:
             project_name, project_dir_path = _resolve_local_dir(
-                std.data_path, project_path_str, std.boxes,
+                std.registry, project_path_str, std.boxes,
             )
 
     metadata_path = project_dir_path
@@ -831,10 +831,10 @@ def resolve_project(
         # An explicit override (e.g. `kanibako create --name X`) registers
         # strictly; collisions error rather than auto-suffix.
         if name_override:
-            register_name(std.data_path, name_override, project_path_str)
+            register_name(std.registry, name_override, project_path_str)
             project_name = name_override
         else:
-            project_name = assign_name(std.data_path, project_path_str)
+            project_name = assign_name(std.registry, project_path_str)
         project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
@@ -909,7 +909,7 @@ def resolve_project(
 
 
 def _resolve_local_dir(
-    data_path: Path,
+    registry: Path,
     project_path_str: str,
     boxes_dir: Path,
 ) -> tuple[str, Path]:
@@ -917,13 +917,13 @@ def _resolve_local_dir(
 
     Looks up the project name via names.yaml reverse lookup and returns
     ``(project_name, boxes_dir/{name}/)`` path.  *boxes_dir* is the resolved
-    transitional ``std.boxes`` box-store directory; *data_path* is still
-    needed to read ``names.yaml``.
+    transitional ``std.boxes`` box-store directory; *registry* is the resolved
+    ``config.registry`` file path (``std.registry``) used to read the name index.
 
     Returns ``("", empty_path)`` when no name is registered — the caller
     (``resolve_project``) will assign a name during initialization.
     """
-    names = read_names(data_path)
+    names = read_names(registry)
     # Reverse lookup: path → name.
     for name, path in names["projects"].items():
         if path == project_path_str:
@@ -1129,16 +1129,17 @@ def _init_project(
 
 
 
-def _find_local_ancestor(target: Path, data_path: Path, boxes_dir: Path) -> Path | None:
+def _find_local_ancestor(target: Path, registry: Path, boxes_dir: Path) -> Path | None:
     """Find the deepest registered default-mode project that is an ancestor of *target*.
 
     Reads ``names.yaml`` and, for each entry whose registered path is a
     prefix of *target*, checks that ``boxes_dir/{name}/`` actually exists on
     disk.  Among all valid matches, the deepest (most path components)
     wins.  Returns the matched path or ``None``.  *boxes_dir* is the resolved
-    transitional ``std.boxes`` box-store directory.
+    transitional ``std.boxes`` box-store directory; *registry* is the resolved
+    ``config.registry`` file path (``std.registry``).
     """
-    names = read_names(data_path)
+    names = read_names(registry)
     best: Path | None = None
     best_depth = -1
     for name, path_str in names["projects"].items():
@@ -1220,7 +1221,7 @@ def detect_project_mode(
         return DetectionResult(BoxMode.named, resolved)
 
     # 2. Name-based default-mode check (one-pass scan, deepest match wins).
-    ac_ancestor = _find_local_ancestor(resolved, std.data_path, std.boxes)
+    ac_ancestor = _find_local_ancestor(resolved, std.registry, std.boxes)
     if ac_ancestor is not None:
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
@@ -1240,7 +1241,7 @@ def detect_project_mode(
         # workset.meta identity, name not in the registry).  Import it, then the
         # standard workset check resolves it.
         if read_workset_meta(current / WORKSET_META_FILE) is not None:
-            import_reconcile.import_named_workset(std.data_path, current)
+            import_reconcile.import_named_workset(std.registry, current)
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:
                 return ws_after
@@ -1249,7 +1250,7 @@ def detect_project_mode(
         # file (box.mode = "standalone").  A bare directory is not enough (the
         # metadata file must declare standalone mode).
         if _is_standalone_meta_dir(current):
-            import_reconcile.import_standalone(std.data_path, current)
+            import_reconcile.import_standalone(std.registry, current)
             return DetectionResult(BoxMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
@@ -1277,7 +1278,7 @@ def _check_workset(
     from kanibako import registry_store
 
     worksets_section = registry_store.load_section(
-        std.data_path, "worksets"
+        std.registry, "worksets"
     )
     if not worksets_section:
         return None
@@ -1619,7 +1620,7 @@ def resolve_any_project(
     raw_name = raw
     if raw and "/" not in raw and not Path(raw).exists():
         try:
-            resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
+            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd())
             if kind in ("project", "workset"):
                 # Update `raw` for BOTH kinds: a bare workset name resolves to
                 # the workset ROOT, which detect_project_mode must see (without
@@ -1648,7 +1649,7 @@ def resolve_any_project(
     # through to the path-ify behavior below and fails exactly as before.
     if "/" in raw and not Path(raw).exists():
         try:
-            project_workspace, _ws_name = resolve_qualified_name(std.data_path, raw)
+            project_workspace, _ws_name = resolve_qualified_name(std.registry, raw)
             raw = project_workspace
         except ProjectError:
             pass
@@ -1725,7 +1726,7 @@ def resolve_box_target(
     if "/" not in value:
         from kanibako import registry_store
 
-        standalone = registry_store.load_standalone(std.data_path)
+        standalone = registry_store.load_standalone(std.registry)
         # Box names are lowercase (R2); fold the query for the lookup.
         root_str = standalone.get(value.lower())
         if root_str is not None:
@@ -1805,7 +1806,7 @@ def establish_standalone(
     # each call site's prior behavior.
     phash = project_hash(str(root.resolve()))
 
-    existing = registry_store.standalone_box_names(std.data_path)
+    existing = registry_store.standalone_box_names(std.registry)
     box_name = box_identity.resolve_standalone_name(root, name, existing)
 
     write_project_meta(
@@ -1821,7 +1822,7 @@ def establish_standalone(
         project_hash=phash,
         name=box_name,
     )
-    registry_store.register_standalone(std.data_path, box_name, root)
+    registry_store.register_standalone(std.registry, box_name, root)
     return box_name, shell_path, vault_ro_path, vault_rw_path
 
 
@@ -1915,7 +1916,7 @@ def resolve_standalone_project(
         from kanibako import box_identity, registry_store
         box_identity.validate_standalone_name(
             requested_name,
-            registry_store.standalone_box_names(std.data_path),
+            registry_store.standalone_box_names(std.registry),
         )
         _init_standalone_project(
             std, box_data, shell_path,

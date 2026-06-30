@@ -36,14 +36,14 @@ class TestStandaloneImport:
             std, config, str(project_dir), initialize=True,
         )
         name = proj.name
-        registry_store.save_section(std.data_path, "standalone", {})
+        registry_store.save_section(std.registry, "standalone", {})
         capsys.readouterr()  # drain init output
 
         # Detection walks to the box_data/ marker and imports it.
         result = detect_project_mode(project_dir, std, config)
         assert result.mode is BoxMode.standalone
 
-        standalone = registry_store.load_standalone(std.data_path)
+        standalone = registry_store.load_standalone(std.registry)
         assert standalone.get(name) == str(project_dir.resolve())
         err = capsys.readouterr().err
         assert f"Imported standalone box '{name}'" in err
@@ -54,13 +54,13 @@ class TestStandaloneImport:
     ):
         # Already-registered standalone box → no re-register, no alert.
         resolve_standalone_project(std, config, str(project_dir), initialize=True)
-        before = registry_store.load_standalone(std.data_path)
+        before = registry_store.load_standalone(std.registry)
         capsys.readouterr()
 
         detect_project_mode(project_dir, std, config)
         detect_project_mode(project_dir, std, config)
 
-        assert registry_store.load_standalone(std.data_path) == before
+        assert registry_store.load_standalone(std.registry) == before
         assert "Imported" not in capsys.readouterr().err
 
     def test_name_collision_refuses(
@@ -72,12 +72,12 @@ class TestStandaloneImport:
         )
         name = proj.name
         registry_store.save_section(
-            std.data_path, "standalone", {name: "/some/other/root"},
+            std.registry, "standalone", {name: "/some/other/root"},
         )
         with pytest.raises(ImportConflictError, match="rename"):
-            import_reconcile.import_standalone(std.data_path, project_dir)
+            import_reconcile.import_standalone(std.registry, project_dir)
         # Refusal must NOT mutate the registry.
-        assert registry_store.load_standalone(std.data_path) == {
+        assert registry_store.load_standalone(std.registry) == {
             name: "/some/other/root"
         }
 
@@ -100,19 +100,19 @@ class TestStandaloneImport:
         )
         capsys.readouterr()
 
-        name = import_reconcile.import_standalone(std.data_path, project_dir)
+        name = import_reconcile.import_standalone(std.registry, project_dir)
         assert name  # a fresh <random24>_<leaf> name was minted
         # Persisted back into the metadata (project.name).
         assert read_project_meta(meta_file)["name"] == name
         # Registered + alerted.
-        assert registry_store.load_standalone(std.data_path).get(name) == str(
+        assert registry_store.load_standalone(std.registry).get(name) == str(
             project_dir.resolve()
         )
         assert f"Imported standalone box '{name}'" in capsys.readouterr().err
 
     def test_no_metadata_returns_none(self, std, config, project_dir):
         # box_data/ absent → nothing to import.
-        assert import_reconcile.import_standalone(std.data_path, project_dir) is None
+        assert import_reconcile.import_standalone(std.registry, project_dir) is None
 
     def test_moved_standalone_rebases_resolved_paths(
         self, std, config, tmp_home, credentials_dir, capsys,
@@ -127,10 +127,10 @@ class TestStandaloneImport:
         # Move the whole tree to a new path; clear the registry (simulate a move).
         moved = tmp_home / "moved"
         shutil.move(str(orig), str(moved))
-        registry_store.save_section(std.data_path, "standalone", {})
+        registry_store.save_section(std.registry, "standalone", {})
         capsys.readouterr()
         # Import + resolve from the NEW location.
-        import_reconcile.import_standalone(std.data_path, moved)
+        import_reconcile.import_standalone(std.registry, moved)
         resolved = resolve_standalone_project(
             std, config, str(moved), initialize=False,
         )
@@ -159,12 +159,12 @@ class TestNamedWorksetImport:
         create_workset("imported", ws_root, std)
         # Wipe the registry to simulate a dropped-in workset tree (settings.yaml
         # workset.meta on disk, no registry entry).
-        registry_store.save_section(std.data_path, "worksets", {})
+        registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
 
-        name = import_reconcile.import_named_workset(std.data_path, ws_root)
+        name = import_reconcile.import_named_workset(std.registry, ws_root)
         assert name == "imported"
-        assert registry_store.load_section(std.data_path, "worksets") == {
+        assert registry_store.load_section(std.registry, "worksets") == {
             "imported": str(ws_root.resolve())
         }
         assert "Imported workset 'imported'" in capsys.readouterr().err
@@ -174,13 +174,13 @@ class TestNamedWorksetImport:
     ):
         ws_root = tmp_home / "worksets" / "wsdetect"
         create_workset("wsdetect", ws_root, std)
-        registry_store.save_section(std.data_path, "worksets", {})
+        registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
 
         # Detection walks up from inside the workset root and imports it.
         result = detect_project_mode(ws_root, std, config)
         assert result.mode is BoxMode.named
-        assert registry_store.load_section(std.data_path, "worksets").get(
+        assert registry_store.load_section(std.registry, "worksets").get(
             "wsdetect"
         ) == str(ws_root.resolve())
         assert "Imported workset 'wsdetect'" in capsys.readouterr().err
@@ -188,13 +188,13 @@ class TestNamedWorksetImport:
     def test_import_is_idempotent_no_op(self, std, config, tmp_home, capsys):
         ws_root = tmp_home / "worksets" / "idem"
         create_workset("idem", ws_root, std)
-        before = registry_store.load_section(std.data_path, "worksets")
+        before = registry_store.load_section(std.registry, "worksets")
         capsys.readouterr()
 
         assert (
-            import_reconcile.import_named_workset(std.data_path, ws_root) == "idem"
+            import_reconcile.import_named_workset(std.registry, ws_root) == "idem"
         )
-        assert registry_store.load_section(std.data_path, "worksets") == before
+        assert registry_store.load_section(std.registry, "worksets") == before
         assert "Imported" not in capsys.readouterr().err
 
     def test_name_collision_refuses(self, std, config, tmp_home):
@@ -202,18 +202,18 @@ class TestNamedWorksetImport:
         create_workset("clash", ws_root, std)
         # Same name already registered to a DIFFERENT root.
         registry_store.save_section(
-            std.data_path, "worksets", {"clash": "/other/root"},
+            std.registry, "worksets", {"clash": "/other/root"},
         )
         with pytest.raises(ImportConflictError, match="rename"):
-            import_reconcile.import_named_workset(std.data_path, ws_root)
-        assert registry_store.load_section(std.data_path, "worksets") == {
+            import_reconcile.import_named_workset(std.registry, ws_root)
+        assert registry_store.load_section(std.registry, "worksets") == {
             "clash": "/other/root"
         }
 
     def test_no_workset_yaml_returns_none(self, std, config, tmp_home):
         plain = tmp_home / "plaindir"
         plain.mkdir()
-        assert import_reconcile.import_named_workset(std.data_path, plain) is None
+        assert import_reconcile.import_named_workset(std.registry, plain) is None
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ class TestPrimaryBoxImport:
             std, config, project_dir=str(project_dir), initialize=True,
         )
         name = proj.name
-        registry_store.save_section(std.data_path, "projects", {})
+        registry_store.save_section(std.registry, "projects", {})
         capsys.readouterr()
 
         # Re-resolving the same workspace re-discovers + imports the box.
@@ -238,7 +238,7 @@ class TestPrimaryBoxImport:
             std, config, project_dir=str(project_dir), initialize=False,
         )
         assert proj2.name == name
-        assert registry_store.load_section(std.data_path, "projects").get(
+        assert registry_store.load_section(std.registry, "projects").get(
             name
         ) == str(project_dir.resolve())
         assert f"Imported primary box '{name}'" in capsys.readouterr().err
@@ -250,14 +250,14 @@ class TestPrimaryBoxImport:
             std, config, project_dir=str(project_dir), initialize=True,
         )
         name = proj.name
-        registry_store.save_section(std.data_path, "projects", {})
+        registry_store.save_section(std.registry, "projects", {})
         capsys.readouterr()
 
         imported = import_reconcile.reconcile_primary_boxes(
-            std.data_path, std.boxes,
+            std.registry, std.boxes,
         )
         assert imported == [name]
-        assert registry_store.load_section(std.data_path, "projects").get(
+        assert registry_store.load_section(std.registry, "projects").get(
             name
         ) == str(project_dir.resolve())
         assert f"Imported primary box '{name}'" in capsys.readouterr().err
@@ -268,11 +268,11 @@ class TestPrimaryBoxImport:
         resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
-        before = registry_store.load_section(std.data_path, "projects")
+        before = registry_store.load_section(std.registry, "projects")
         capsys.readouterr()
 
-        assert import_reconcile.reconcile_primary_boxes(std.data_path, std.boxes) == []
-        assert registry_store.load_section(std.data_path, "projects") == before
+        assert import_reconcile.reconcile_primary_boxes(std.registry, std.boxes) == []
+        assert registry_store.load_section(std.registry, "projects") == before
         assert "Imported" not in capsys.readouterr().err
 
     def test_name_collision_refuses(
@@ -284,15 +284,15 @@ class TestPrimaryBoxImport:
         name = proj.name
         # The box's name is registered to a DIFFERENT workspace.
         registry_store.save_section(
-            std.data_path, "projects", {name: "/some/other/workspace"},
+            std.registry, "projects", {name: "/some/other/workspace"},
         )
         box_dir = std.boxes / name
         with pytest.raises(ImportConflictError, match="rename"):
-            import_reconcile.import_primary_box(std.data_path, box_dir)
-        assert registry_store.load_section(std.data_path, "projects") == {
+            import_reconcile.import_primary_box(std.registry, box_dir)
+        assert registry_store.load_section(std.registry, "projects") == {
             name: "/some/other/workspace"
         }
 
     def test_no_boxes_dir_returns_empty(self, std, config, tmp_home):
         missing = tmp_home / "no-boxes"
-        assert import_reconcile.reconcile_primary_boxes(std.data_path, missing) == []
+        assert import_reconcile.reconcile_primary_boxes(std.registry, missing) == []

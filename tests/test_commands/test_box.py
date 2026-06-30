@@ -472,7 +472,7 @@ class TestBoxDuplicate:
 
         dst_dir = tmp_home / "orphan_dst"
 
-        names_before = read_names(std.data_path)["projects"]
+        names_before = read_names(std.registry)["projects"]
 
         # bare=True so only the metadata copytree runs (no prior workspace copy).
         with patch(
@@ -485,7 +485,7 @@ class TestBoxDuplicate:
                 pass
 
         # Name NOT left registered.
-        names_after = read_names(std.data_path)["projects"]
+        names_after = read_names(std.registry)["projects"]
         assert names_after == names_before
         assert "orphan_dst" not in names_after
         # No partial dest metadata dir.
@@ -691,7 +691,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "tlfail_dst"
 
-        names_before = read_names(std.data_path)["projects"]
+        names_before = read_names(std.registry)["projects"]
 
         # bare=True isolates the metadata copytree inside _duplicate_to_local.
         with patch(
@@ -703,7 +703,7 @@ class TestBoxDuplicateCrossMode:
             except RuntimeError:
                 pass
 
-        names_after = read_names(std.data_path)["projects"]
+        names_after = read_names(std.registry)["projects"]
         assert names_after == names_before
         assert "tlfail_dst" not in names_after
         assert not (std.boxes / "tlfail_dst").exists()
@@ -814,7 +814,7 @@ class TestBoxDuplicateCrossMode:
         assert leaf == "b3_dst"
 
         # (3) Registered in registry.standalone keyed by the new name → dst root.
-        standalone = load_standalone(std.data_path)
+        standalone = load_standalone(std.registry)
         assert new_name in standalone
         assert standalone[new_name] == str(dst_dir)
 
@@ -1524,7 +1524,7 @@ class TestBoxDuplicateNoToMode:
         assert (dst_dir / "workspace" / "code.py").read_text() == "print('sa')"
         assert (dst_dir / "box_data").is_dir()
         assert (dst_dir / "settings.yaml").is_file()
-        sa = registry_store.load_standalone(std.data_path)
+        sa = registry_store.load_standalone(std.registry)
         dst_names = [n for n, root in sa.items() if root == str(dst_dir.resolve())]
         assert len(dst_names) == 1
         # Fresh identity (not the source's box name).
@@ -1579,7 +1579,7 @@ class TestBoxRmStandalone:
 
         rc = run_rm(self._rm_args(box_name))
         assert rc == 0
-        assert box_name not in registry_store.load_standalone(std.data_path)
+        assert box_name not in registry_store.load_standalone(std.registry)
         # Metadata left in place without --purge.
         assert (root / "box_data").is_dir()
 
@@ -1593,7 +1593,7 @@ class TestBoxRmStandalone:
 
         rc = run_rm(self._rm_args(root))
         assert rc == 0
-        assert box_name not in registry_store.load_standalone(std.data_path)
+        assert box_name not in registry_store.load_standalone(std.registry)
 
     def test_rm_purge_removes_metadata(self, config_file, tmp_home, credentials_dir):
         from kanibako import registry_store
@@ -1605,7 +1605,7 @@ class TestBoxRmStandalone:
 
         rc = run_rm(self._rm_args(box_name, purge=True))
         assert rc == 0
-        assert box_name not in registry_store.load_standalone(std.data_path)
+        assert box_name not in registry_store.load_standalone(std.registry)
         assert not (root / "box_data").exists()
 
     def test_rm_unknown_target_errors(self, config_file, tmp_home, credentials_dir):

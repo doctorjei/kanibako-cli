@@ -87,7 +87,7 @@ def _conflict(
 # STANDALONE
 # ---------------------------------------------------------------------------
 
-def import_standalone(data_path: Path, root: Path) -> str | None:
+def import_standalone(registry: Path, root: Path) -> str | None:
     """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
 
     Behavior (see module docstring):
@@ -109,7 +109,7 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
     root_str = str(root)
 
     # Already registered to this exact root → idempotent no-op.
-    existing_name = registry_store.standalone_name_for_root(data_path, root)
+    existing_name = registry_store.standalone_name_for_root(registry, root)
     if existing_name is not None:
         return existing_name
 
@@ -121,20 +121,20 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
         return None  # No standalone metadata on disk → nothing to import.
 
     persisted_name = (meta.get("name") or "").strip()
-    registered = registry_store.load_standalone(data_path)
+    registered = registry_store.load_standalone(registry)
 
     if not persisted_name:
         # Hand-created tree with no persisted identity: mint one and persist it.
         from kanibako import box_identity
 
         name = box_identity.make_standalone_box_name(
-            root, registry_store.standalone_box_names(data_path),
+            root, registry_store.standalone_box_names(registry),
         )
         # Persist the generated name back into the box metadata (under
         # ``project.name``, matching write/read_project_meta) so the identity is
         # stable across future resolves.
         _persist_box_name(meta_path, name)
-        registry_store.register_standalone(data_path, name, root)
+        registry_store.register_standalone(registry, name, root)
         _alert("standalone box", name, root)
         return name
 
@@ -143,7 +143,7 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
     if other_root is not None and other_root != root_str:
         raise _conflict("standalone box", persisted_name, root, other_root)
 
-    registry_store.register_standalone(data_path, persisted_name, root)
+    registry_store.register_standalone(registry, persisted_name, root)
     _alert("standalone box", persisted_name, root)
     return persisted_name
 
@@ -152,7 +152,7 @@ def import_standalone(data_path: Path, root: Path) -> str | None:
 # NAMED (worksets)
 # ---------------------------------------------------------------------------
 
-def import_named_workset(data_path: Path, root: Path) -> str | None:
+def import_named_workset(registry: Path, root: Path) -> str | None:
     """Reconcile an on-disk workset at *root* against the workset registry.
 
     Reads the workset name from *root*'s ``settings.yaml`` ``workset.meta`` table
@@ -182,7 +182,7 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
     if not name:
         return None
 
-    names_section = registry_store.load_section(data_path, "worksets")
+    names_section = registry_store.load_section(registry, "worksets")
     current = names_section.get(name)
     if current is not None:
         if str(Path(current).resolve()) == root_str:
@@ -192,7 +192,7 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
     # Register name → root in the ``worksets`` section (the single workset
     # registry, matching ``create_workset``).
     names_section[name] = root_str
-    registry_store.save_section(data_path, "worksets", names_section)
+    registry_store.save_section(registry, "worksets", names_section)
     _alert("workset", name, root)
     return name
 
@@ -201,7 +201,7 @@ def import_named_workset(data_path: Path, root: Path) -> str | None:
 # PRIMARY (central box store → external workspace)
 # ---------------------------------------------------------------------------
 
-def import_primary_box(data_path: Path, box_dir: Path) -> str | None:
+def import_primary_box(registry: Path, box_dir: Path) -> str | None:
     """Reconcile a single on-disk PRIMARY box at *box_dir* against ``registry.projects``.
 
     *box_dir* is a per-box directory under ``@config.primary_workset/boxes/``;
@@ -225,7 +225,7 @@ def import_primary_box(data_path: Path, box_dir: Path) -> str | None:
         return None
     workspace_str = str(Path(workspace).resolve())
 
-    projects = registry_store.load_section(data_path, "projects")
+    projects = registry_store.load_section(registry, "projects")
     current = projects.get(name)
     if current is not None:
         if str(Path(current).resolve()) == workspace_str:
@@ -233,13 +233,13 @@ def import_primary_box(data_path: Path, box_dir: Path) -> str | None:
         raise _conflict("primary box", name, Path(workspace_str), str(current))
 
     projects[name] = workspace_str
-    registry_store.save_section(data_path, "projects", projects)
+    registry_store.save_section(registry, "projects", projects)
     _alert("primary box", name, Path(workspace_str))
     return name
 
 
 def import_primary_box_for_workspace(
-    data_path: Path, boxes_dir: Path, workspace: Path,
+    registry: Path, boxes_dir: Path, workspace: Path,
 ) -> str | None:
     """Import the on-disk PRIMARY box whose recorded workspace is *workspace*.
 
@@ -266,11 +266,11 @@ def import_primary_box_for_workspace(
         ws = (meta.get("workspace") or "").strip()
         if not ws or str(Path(ws).resolve()) != target:
             continue
-        return import_primary_box(data_path, entry)
+        return import_primary_box(registry, entry)
     return None
 
 
-def reconcile_primary_boxes(data_path: Path, boxes_dir: Path) -> list[str]:
+def reconcile_primary_boxes(registry: Path, boxes_dir: Path) -> list[str]:
     """Scan *boxes_dir* for on-disk PRIMARY boxes missing from ``registry.projects``.
 
     Imports each discovered-but-unregistered box via :func:`import_primary_box`
@@ -299,11 +299,11 @@ def reconcile_primary_boxes(data_path: Path, boxes_dir: Path) -> list[str]:
             continue
         # Only import the ones missing (idempotent: registered → no-op, and
         # import_primary_box returns the name without alerting).
-        projects = registry_store.load_section(data_path, "projects")
+        projects = registry_store.load_section(registry, "projects")
         if name in projects:
             # Already present — let import_primary_box decide no-op vs conflict.
-            import_primary_box(data_path, entry)
+            import_primary_box(registry, entry)
             continue
-        if import_primary_box(data_path, entry) is not None:
+        if import_primary_box(registry, entry) is not None:
             imported.append(name)
     return imported

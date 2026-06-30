@@ -273,7 +273,7 @@ class TestBoxesOverrideConsumers:
 
         # Reverse-lookup (path -> name -> dir) resolves under the custom dir.
         name, box_dir = _resolve_local_dir(
-            std.data_path, str(workspace.resolve()), std.boxes,
+            std.registry, str(workspace.resolve()), std.boxes,
         )
         assert name == proj.name
         assert box_dir == custom_boxes / proj.name
@@ -281,7 +281,7 @@ class TestBoxesOverrideConsumers:
         # Deepest-ancestor lookup also keys off the custom boxes dir.
         sub = workspace / "src"
         sub.mkdir()
-        ancestor = _find_local_ancestor(sub.resolve(), std.data_path, std.boxes)
+        ancestor = _find_local_ancestor(sub.resolve(), std.registry, std.boxes)
         assert ancestor == workspace.resolve()
 
         # Listing enumerates the custom boxes dir.

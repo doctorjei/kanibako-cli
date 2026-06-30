@@ -68,6 +68,7 @@ def fork_ctx(tmp_path):
         binary_mounts=[],
         project_path=project_path,
         data_path=data_path,
+        registry=data_path / "global" / "registry.yaml",
         boxes=data_path / "boxes",
     )
 
@@ -126,7 +127,7 @@ class TestHandleFork:
         assert "name" in resp
         # The assigned name should be registered in names.yaml
         from kanibako.names import read_names
-        names = read_names(ctx.data_path)
+        names = read_names(ctx.registry)
         assert resp["name"] in names["projects"]
 
     def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):

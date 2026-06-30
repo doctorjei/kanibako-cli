@@ -279,7 +279,7 @@ class TestStandaloneIdentity:
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
-        standalone = registry_store.load_standalone(std.data_path)
+        standalone = registry_store.load_standalone(std.registry)
         assert standalone.get(proj.name) == str(project_dir.resolve())
 
     def test_reinit_reuses_stored_name(
@@ -315,7 +315,7 @@ class TestStandaloneAtomicCreate:
         front, leaving NO half-created box_data/ or vault/ tree (BUG-A)."""
         # Register a canonical id so the requested --name collides.
         taken = "abcde_taken"
-        registry_store.register_standalone(std.data_path, taken, project_dir)
+        registry_store.register_standalone(std.registry, taken, project_dir)
 
         with pytest.raises(ProjectError):
             resolve_standalone_project(

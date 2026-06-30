@@ -6,8 +6,8 @@ emitted as plain YAML mapping keys (the YAML writer quotes them as needed).
 
 The records live as the ``rigs:`` top-level section of the consolidated
 ``system.registry`` file (``registry.yaml``); this module owns that section's
-shape and reads/writes it via ``registry_store.load_section_at`` /
-``save_section_at`` (which preserve every sibling section).  ``RigRecord`` and
+shape and reads/writes it via ``registry_store.load_section`` /
+``save_section`` (which preserve every sibling section).  ``RigRecord`` and
 the public load/save/query API (all path-based) are unchanged from when this was
 its own ``rigs.yaml`` — only the on-disk *location* moved.
 
@@ -59,10 +59,12 @@ _INNER_FIELDS: tuple[str, ...] = tuple(
 def registry_path(std: StandardPaths) -> Path:
     """Return the path to the consolidated ``registry.yaml`` (``system.registry``).
 
-    Rig records live as the ``rigs:`` section of this file; the path-based public
-    API keeps its ``StandardPaths``-derived signature, so call sites are unchanged.
+    The single source of the registry location is the resolved ``config.registry``
+    surfaced as ``std.registry`` (a repointed ``config.registry`` is honored).  Rig
+    records live as the ``rigs:`` section of this file; the path-based public API
+    keeps its ``StandardPaths``-derived signature, so call sites are unchanged.
     """
-    return registry_store.registry_path(std.data_path)
+    return std.registry
 
 
 def load_registry(path: Path) -> dict[str, RigRecord]:
@@ -76,7 +78,7 @@ def load_registry(path: Path) -> dict[str, RigRecord]:
             kind: prefab
             ...
     """
-    rigs = registry_store.load_section_at(path, _SECTION)
+    rigs = registry_store.load_section(path, _SECTION)
     records: dict[str, RigRecord] = {}
     for name, table in rigs.items():
         kwargs: dict[str, object] = {"name": name}
@@ -104,7 +106,7 @@ def save_registry(path: Path, records: dict[str, RigRecord]) -> None:
             table[field_name] = value
         rigs[name] = table
 
-    registry_store.save_section_at(path, _SECTION, rigs)
+    registry_store.save_section(path, _SECTION, rigs)
 
 
 def upsert(path: Path, record: RigRecord) -> None:

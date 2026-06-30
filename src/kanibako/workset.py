@@ -261,7 +261,7 @@ def read_workset_meta(path: Path) -> dict | None:
 
 def _load_registry(std: StandardPaths) -> dict[str, Path]:
     """Return ``{name: root_path}`` from the global worksets registry."""
-    section = registry_store.load_section(std.data_path, "worksets")
+    section = registry_store.load_section(std.registry, "worksets")
     return {name: Path(root) for name, root in section.items()}
 
 
@@ -280,13 +280,13 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 
 def _load_connected(std: StandardPaths) -> dict[str, dict]:
     """Return ``{abs_path: {"workset": ..., "project": ...}}`` from the index."""
-    return dict(registry_store.load_section(std.data_path, "connected"))
+    return dict(registry_store.load_section(std.registry, "connected"))
 
 
 def _write_connected(std: StandardPaths, mapping: dict[str, dict]) -> None:
     """Overwrite the connected-external redirect index."""
     entries = {key: mapping[key] for key in sorted(mapping)}
-    registry_store.save_section(std.data_path, "connected", entries)
+    registry_store.save_section(std.registry, "connected", entries)
 
 
 def _find_connected_project(
@@ -390,10 +390,10 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
         # Register in the worksets index (name → root). This single section
         # serves BOTH name-based lookups AND workset discovery/list (the former
         # duplicate ``workset_roots`` section was collapsed onto it).
-        register_name(std.data_path, name, str(root), section="worksets")
+        register_name(std.registry, name, str(root), section="worksets")
 
         def _drop_workset() -> None:
-            unregister_name(std.data_path, name, section="worksets")
+            unregister_name(std.registry, name, section="worksets")
 
         unwind.push(_drop_workset)
     except Exception:
@@ -439,7 +439,7 @@ def default_workset(std: StandardPaths) -> Workset:
     ``{data_path}/config.yaml``.  This object is NEVER persisted to disk (no
     root settings.yaml / registry write).
     """
-    projects_map = read_names(std.data_path).get("projects", {})
+    projects_map = read_names(std.registry).get("projects", {})
     projects = [
         WorksetProject(name=name, source_path=Path(path))
         for name, path in projects_map.items()
@@ -504,7 +504,7 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     # ``workset_roots`` half was collapsed away, so there is now ONE registry
     # entry to remove — no list-vs-index split to heal). Idempotent: a missing
     # entry is a no-op.
-    unregister_name(std.data_path, name, section="worksets")
+    unregister_name(std.registry, name, section="worksets")
 
     # Irreversible step LAST: only after both registry halves are clean.
     if remove_files and root.is_dir():

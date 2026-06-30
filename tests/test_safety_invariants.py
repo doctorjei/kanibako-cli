@@ -288,7 +288,7 @@ class TestStaleNameSafety:
 
         # Register a stale entry pointing at $HOME.
         from kanibako.names import register_name
-        register_name(std.data_path, "jjb", str(home.resolve()))
+        register_name(std.registry, "jjb", str(home.resolve()))
         # Intentionally do NOT create boxes/jjb/
 
         # Run detection from a subdirectory of $HOME.

@@ -197,7 +197,7 @@ def resolve_lifecycle_target(
     if raw and "/" not in raw and not Path(raw).exists():
         from kanibako.paths import resolve_name
         try:
-            resolved, kind = resolve_name(std.data_path, raw, cwd=Path.cwd())
+            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd())
             if kind in ("project", "workset"):
                 # Update `raw` for BOTH kinds (mirrors resolve_any_project): a
                 # bare workset name resolves to the workset ROOT, which
@@ -225,7 +225,7 @@ def resolve_lifecycle_target(
         from kanibako.names import resolve_qualified_name
         try:
             project_workspace, _ws_name = resolve_qualified_name(
-                std.data_path, raw,
+                std.registry, raw,
             )
             raw = project_workspace
         except ProjectError:
@@ -271,7 +271,7 @@ def _default_state_from_meta(
     """
     from kanibako.names import read_names
 
-    names = read_names(std.data_path)
+    names = read_names(std.registry)
     name: str | None = None
     for n, p in names["projects"].items():
         if Path(p).resolve() == workspace.resolve():
@@ -901,7 +901,7 @@ def _remove_old_metadata(
         from kanibako import registry_store
         if state.name:
             try:
-                registry_store.unregister_standalone(std.data_path, state.name)
+                registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
         # metadata_path is the standalone ROOT (drift I); remove only the
@@ -925,7 +925,7 @@ def _remove_old_metadata(
         reused_in_place = preserve_name is not None and state.name == preserve_name
         if state.name and not reused_in_place:
             try:
-                unregister_name(std.data_path, state.name)
+                unregister_name(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
         if reused_in_place:
@@ -973,7 +973,7 @@ def _to_default(
     # name is reused; the later _remove_old_metadata unregister then no-ops.
     preserved_name: str | None = None
     if state.mode == BoxMode.primary and state.name:
-        existing = lookup_by_path(std.data_path, str(new_workspace))
+        existing = lookup_by_path(std.registry, str(new_workspace))
         if existing is not None and existing[1] == "projects":
             # Path unchanged + still registered: free the name so it is reused
             # verbatim rather than suffixed, and mark it preserved so
@@ -981,7 +981,7 @@ def _to_default(
             # reused metadata.
             preserved_name = existing[0]
             _safe_unregister(std, existing[0])
-    project_name = assign_name(std.data_path, str(new_workspace))
+    project_name = assign_name(std.registry, str(new_workspace))
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
@@ -1195,7 +1195,7 @@ def _to_standalone(
         name=requested_name,
     )
     unwind.push(
-        lambda: registry_store.unregister_standalone(std.data_path, box_name)
+        lambda: registry_store.unregister_standalone(std.registry, box_name)
     )
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
@@ -1457,7 +1457,7 @@ def _relocate_channel_partition(
 
 def _safe_unregister(std: StandardPaths, name: str) -> None:
     try:
-        unregister_name(std.data_path, name)
+        unregister_name(std.registry, name)
     except Exception:  # noqa: BLE001
         pass
 

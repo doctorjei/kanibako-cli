@@ -46,9 +46,14 @@ the former ``image-shells.yaml`` map (image store key → captured login shell;
 the ``shells`` module owns its shape).
 
 The ``rigs`` and ``image_shells`` sections are owned by ``rig_registry`` and
-``shells`` respectively, which read/write them through the path-based
-``load_section_at``/``save_section_at`` helpers (preserving sibling sections);
-this module passes their values through verbatim.
+``shells`` respectively, which read/write them through ``load_section`` /
+``save_section`` (preserving sibling sections); this module passes their values
+through verbatim.
+
+Every public function takes the resolved ``config.registry`` FILE path
+(``std.registry``) — the single source of the registry location.  A repointed
+``config.registry`` is honored end-to-end; nothing reconstructs the path from
+``config.data``.
 
 No on-disk migration is performed: the old files are NOT read.  A fresh tree
 (absent ``registry.yaml``) yields empty sections.  Writes are atomic (via
@@ -76,36 +81,20 @@ _NAME_SECTIONS: frozenset[str] = frozenset(
 )
 
 
-def registry_path(data_path: Path) -> Path:
-    """Return the path to ``registry.yaml`` for *data_path*.
+def load_registry(registry: Path) -> dict[str, dict]:
+    """Load the ``registry.yaml`` at *registry* and return all sections.
 
-    CURRENTLY derived ``data_path``-relative: the ``global/registry.yaml`` tail
-    matches the DEFAULT expression of the ``config.registry`` config key relative
-    to ``config.data`` (``@config.registry`` = ``@config.data/global/registry.yaml``,
-    :data:`kanibako.paths.CONFIG_PATH_DEFAULTS`), and *data_path* is the resolved
-    ``config.data`` root — so the default case matches and the name stores keep
-    their ``data_path``-based public signatures.
-
-    NOT YET single-source: a user who REPOINTS ``config.registry`` off its default
-    is currently NOT honored here (this derivation ignores the foundation's
-    resolved ``config.registry`` value).  Threading the resolved ``config.registry``
-    through the name-store API (the single-source cleanup) is DEFERRED to a
-    separate follow-up block — it touches the registry_store API plus image.py /
-    shells.py / rig_registry.py, distinct from the path-extraction work.
-    """
-    return data_path / "global" / "registry.yaml"
-
-
-def load_registry(data_path: Path) -> dict[str, dict]:
-    """Load ``registry.yaml`` and return all sections.
+    *registry* is the resolved ``config.registry`` file path (the single source of
+    the registry location; callers pass ``std.registry``).  A user who repoints
+    ``config.registry`` is honored end-to-end — there is no ``data_path``-relative
+    reconstruction.
 
     Absent file → empty sections.  Every section key is always present so
     callers can index it without a ``.get`` default.  ``projects``/``worksets``
     are ``{name: path_str}``; ``connected``/``standalone`` are passed through as
     stored.
     """
-    path = registry_path(data_path)
-    data = load_doc(path) if path.is_file() else {}
+    data = load_doc(registry) if registry.is_file() else {}
     return {
         "projects": {
             k: str(v) for k, v in dict(data.get("projects", {})).items()
@@ -120,67 +109,38 @@ def load_registry(data_path: Path) -> dict[str, dict]:
     }
 
 
-def save_registry(data_path: Path, registry: dict[str, dict]) -> None:
-    """Atomically write *registry* to ``registry.yaml``.
+def save_registry(registry: Path, sections: dict[str, dict]) -> None:
+    """Atomically write *sections* to the ``registry.yaml`` at *registry*.
 
-    Only the canonical sections are persisted; ``projects``/``worksets`` keys
-    are sorted for stable diffs (matching the legacy ``names.yaml`` writer).
-    Missing sections default to empty.
+    *registry* is the resolved ``config.registry`` file path.  Only the canonical
+    sections are persisted; ``projects``/``worksets`` keys are sorted for stable
+    diffs (matching the legacy ``names.yaml`` writer).  Missing sections default
+    to empty.
     """
     data: dict = {}
     for section in _SECTIONS:
-        entries = registry.get(section, {}) or {}
+        entries = sections.get(section, {}) or {}
         if section in _NAME_SECTIONS:
             data[section] = {name: entries[name] for name in sorted(entries)}
         else:
             data[section] = dict(entries)
-    dump_doc(registry_path(data_path), data)
+    dump_doc(registry, data)
 
 
-def load_section(data_path: Path, section: str) -> dict:
-    """Return a single section of ``registry.yaml``."""
-    return load_registry(data_path)[section]
+def load_section(registry: Path, section: str) -> dict:
+    """Return a single section of the ``registry.yaml`` at *registry*."""
+    return load_registry(registry)[section]
 
 
-def save_section(data_path: Path, section: str, entries: dict) -> None:
-    """Replace a single section of ``registry.yaml`` and write atomically.
+def save_section(registry: Path, section: str, entries: dict) -> None:
+    """Replace a single section of the ``registry.yaml`` at *registry*, atomically.
 
     Reads the current registry, swaps *section*, and writes the whole file so
     the other sections are preserved.
     """
-    registry = load_registry(data_path)
-    registry[section] = dict(entries)
-    save_registry(data_path, registry)
-
-
-# ---------------------------------------------------------------------------
-# Path-based section access (for section-owners with a path-based public API)
-# ---------------------------------------------------------------------------
-#
-# ``rig_registry`` and ``shells`` expose path-based functions (they take the
-# ``registry.yaml`` path directly, not ``data_path``).  These two helpers let
-# them read/write their own section of the consolidated file while preserving
-# every sibling section — without restructuring their public signatures.  The
-# ``data_path`` is recovered from the registry path (``…/global/registry.yaml``
-# → ``…``) so the canonical loader/writer is reused unchanged.
-
-
-def _data_path_for(registry_file: Path) -> Path:
-    """Recover ``data_path`` from a ``…/global/registry.yaml`` path."""
-    return registry_file.parent.parent
-
-
-def load_section_at(registry_file: Path, section: str) -> dict:
-    """Return *section* of the ``registry.yaml`` located at *registry_file*."""
-    return load_section(_data_path_for(registry_file), section)
-
-
-def save_section_at(registry_file: Path, section: str, entries: dict) -> None:
-    """Replace *section* of the ``registry.yaml`` at *registry_file*, atomically.
-
-    Sibling sections are preserved (whole-file rewrite via ``save_registry``).
-    """
-    save_section(_data_path_for(registry_file), section, entries)
+    sections = load_registry(registry)
+    sections[section] = dict(entries)
+    save_registry(registry, sections)
 
 
 # ---------------------------------------------------------------------------
@@ -193,42 +153,42 @@ def save_section_at(registry_file: Path, section: str, entries: dict) -> None:
 # collision check (D-M13) and the drop-in import work in the next sub-step.
 
 
-def load_standalone(data_path: Path) -> dict[str, str]:
+def load_standalone(registry: Path) -> dict[str, str]:
     """Return the ``standalone`` section as ``{box_name: root_str}``."""
-    return {k: str(v) for k, v in load_section(data_path, "standalone").items()}
+    return {k: str(v) for k, v in load_section(registry, "standalone").items()}
 
 
-def standalone_box_names(data_path: Path) -> set[str]:
+def standalone_box_names(registry: Path) -> set[str]:
     """Return the set of registered standalone box names (the collision domain)."""
-    return set(load_standalone(data_path))
+    return set(load_standalone(registry))
 
 
-def register_standalone(data_path: Path, box_name: str, root: Path) -> None:
+def register_standalone(registry: Path, box_name: str, root: Path) -> None:
     """Register a standalone box (``box_name`` → *root*) in the registry.
 
     Idempotent for a matching ``(box_name, root)`` pair; overwrites the stored
     root if the same name re-registers a different root (a moved box).
     """
-    entries = load_standalone(data_path)
+    entries = load_standalone(registry)
     entries[box_name] = str(root)
-    save_section(data_path, "standalone", entries)
+    save_section(registry, "standalone", entries)
 
 
-def unregister_standalone(data_path: Path, box_name: str) -> None:
+def unregister_standalone(registry: Path, box_name: str) -> None:
     """Remove *box_name* from the ``standalone`` section (no-op if absent)."""
-    entries = load_standalone(data_path)
+    entries = load_standalone(registry)
     if entries.pop(box_name, None) is not None:
-        save_section(data_path, "standalone", entries)
+        save_section(registry, "standalone", entries)
 
 
-def standalone_name_for_root(data_path: Path, root: Path) -> str | None:
+def standalone_name_for_root(registry: Path, root: Path) -> str | None:
     """Return the registered standalone box name whose root is *root*, if any.
 
     Lets a caller (e.g. the next drop-in-import sub-step) check whether an
     on-disk standalone root is already registered, and reuse its name.
     """
     target = str(root)
-    for name, root_str in load_standalone(data_path).items():
+    for name, root_str in load_standalone(registry).items():
         if root_str == target:
             return name
     return None

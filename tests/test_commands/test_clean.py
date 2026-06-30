@@ -42,14 +42,14 @@ class TestClean:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Initialized → registered.
-        assert lookup_by_path(std.data_path, project_dir) is not None
+        assert lookup_by_path(std.registry, project_dir) is not None
 
         args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
         assert run(args) == 0
 
         # No dangling name → path entry remains.
-        assert lookup_by_path(std.data_path, project_dir) is None
-        assert project_dir not in read_names(std.data_path)["projects"].values()
+        assert lookup_by_path(std.registry, project_dir) is None
+        assert project_dir not in read_names(std.registry)["projects"].values()
 
     def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
         """M2 mirror: --all purge clears every primary registry entry."""
@@ -68,7 +68,7 @@ class TestClean:
         args = argparse.Namespace(path=None, all_projects=True, force=True)
         assert run(args) == 0
 
-        projects = read_names(std.data_path)["projects"]
+        projects = read_names(std.registry)["projects"]
         assert a not in projects.values()
         assert b not in projects.values()
 

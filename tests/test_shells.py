@@ -18,10 +18,16 @@ from kanibako.shells import (
 
 
 class _Std:
-    """Minimal stand-in for StandardPaths: only ``data_path`` is used."""
+    """Minimal stand-in for StandardPaths.
+
+    ``shells`` reads the registry FILE path via ``std.registry`` (the resolved
+    ``config.registry``); at default config that is
+    ``{data_path}/global/registry.yaml``.
+    """
 
     def __init__(self, data_path):
         self.data_path = data_path
+        self.registry = data_path / "global" / "registry.yaml"
 
 
 class _Runtime:

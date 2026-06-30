@@ -103,7 +103,7 @@ class TestRemap:
         assert rc == 0
         # File untouched (records-only).
         assert (new / "file.txt").read_text() == "keep"
-        names = read_names(std.data_path)
+        names = read_names(std.registry)
         assert str(new) in names["projects"].values()
 
         proj = resolve_project(std, config, project_dir=str(new), initialize=False)
