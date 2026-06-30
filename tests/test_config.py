@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-
+import pytest
 
 from kanibako.config import (
     KanibakoConfig,
@@ -93,16 +93,21 @@ class TestLoadConfig:
 
 
 class TestSetupVersionConstant:
-    """OLDEST_COMPATIBLE_SETUP_VERSION is a PEP-440-parseable version string."""
+    """SETUP_BCV/SETUP_FCV are PEP-440 strings obeying BCV <= FCV <= CurrentVer."""
 
-    def test_constant_present_and_parseable(self):
+    def test_constants_present_and_parseable(self):
         from packaging.version import Version
 
-        from kanibako import OLDEST_COMPATIBLE_SETUP_VERSION, __version__
+        from kanibako import SETUP_BCV, SETUP_FCV, __version__
 
-        assert OLDEST_COMPATIBLE_SETUP_VERSION == "1.6.0"
-        # It must never be NEWER than the running build (would self-nudge).
-        assert Version(OLDEST_COMPATIBLE_SETUP_VERSION) <= Version(__version__)
+        assert SETUP_BCV == "1.6.0"
+        assert SETUP_FCV == "1.6.0"
+        # Invariant: BCV <= FCV <= CurrentVer (compared by base version so a
+        # dev/rc build of the same base counts as the released base).
+        bcv = Version(Version(SETUP_BCV).base_version)
+        fcv = Version(Version(SETUP_FCV).base_version)
+        cur = Version(Version(__version__).base_version)
+        assert bcv <= fcv <= cur
 
 
 class TestReadSetupCompleted:
@@ -145,89 +150,176 @@ class TestReadSetupCompleted:
         assert data["box"]["agent_name"] != "none"
 
 
-class TestSetupNudgeMessage:
-    """setup_nudge_message: Gate-1 absent/stale/current advisory (non-blocking)."""
+class TestSetupCompatGate:
+    """setup_compat_gate: the 5-band setup/config compatibility gate.
 
+    The shipped constants are BCV == FCV == CurrentVer == 1.6.0, which collapses
+    several bands to empty ranges.  To exercise EACH band independently of the
+    build version, most tests patch ``kanibako.__version__`` (CurrentVer) and the
+    ``SETUP_BCV``/``SETUP_FCV`` module constants — the gate imports them inside
+    the function, so patching the ``kanibako`` module attributes is honoured.
+    """
+
+    # --- helpers -----------------------------------------------------------
+    def _gate(self):
+        from kanibako.config import setup_compat_gate
+
+        return setup_compat_gate
+
+    def _marker(self, tmp_path, value):
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "setup_completed", value)
+        return cf
+
+    def _patch_bands(self, *, version, bcv, fcv):
+        """Patch CurrentVer + the two constants on the ``kanibako`` package."""
+        from unittest.mock import patch
+
+        import kanibako
+
+        return [
+            patch.object(kanibako, "__version__", version),
+            patch.object(kanibako, "SETUP_BCV", bcv),
+            patch.object(kanibako, "SETUP_FCV", fcv),
+        ]
+
+    # --- absent / unparseable ---------------------------------------------
     def test_absent_marker_nudges_setup(self, tmp_path):
-        from kanibako.config import setup_nudge_message
-
         cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)  # no setup_completed
-        msg = setup_nudge_message(cf)
-        assert msg == "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+        assert self._gate()(cf) == (
+            "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+        )
 
     def test_missing_file_nudges_setup(self, tmp_path):
-        from kanibako.config import setup_nudge_message
-
-        assert setup_nudge_message(tmp_path / "nope.yaml") == (
+        gate = self._gate()
+        assert gate(tmp_path / "nope.yaml") == (
             "kanibako isn't set up yet. Run 'kanibako setup' to get started."
         )
-        assert setup_nudge_message(None) == (
+        assert gate(None) == (
             "kanibako isn't set up yet. Run 'kanibako setup' to get started."
         )
 
-    def test_stale_marker_nudges_reupdate(self, tmp_path):
-        from kanibako.config import setup_nudge_message
-        from kanibako.config_interface import write_system_value
+    def test_unparseable_marker_no_nudge_no_error(self, tmp_path):
+        """A hand-edited unparseable marker is treated as present (no nag/error)."""
+        cf = self._marker(tmp_path, "custom-build")
+        assert self._gate()(cf) is None
 
-        cf = tmp_path / "kanibako_config.yaml"
-        # A version older than OLDEST_COMPATIBLE_SETUP_VERSION (== "1.6.0").
-        write_system_value(cf, "setup_completed", "1.5.0")
-        assert setup_nudge_message(cf) == (
-            "kanibako setup is out of date — re-run 'kanibako setup'."
-        )
+    # --- band: ConfigVer == CurrentVer (no-op) -----------------------------
+    def test_current_marker_no_op(self, tmp_path):
+        cf = self._marker(tmp_path, "1.6.0")
+        assert self._gate()(cf) is None
 
-    def test_current_marker_no_nudge(self, tmp_path):
-        from kanibako.config import setup_nudge_message
-        from kanibako.config_interface import write_system_value
+    def test_dev_marker_of_current_base_no_op(self, tmp_path):
+        """A dev build of the current base reads as == (base-version compare)."""
+        cf = self._marker(tmp_path, "1.6.0.dev26")
+        assert self._gate()(cf) is None
 
-        cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.6.0")
-        assert setup_nudge_message(cf) is None
+    # --- band: ConfigVer > CurrentVer (ERROR) ------------------------------
+    def test_newer_than_build_raises(self, tmp_path):
+        from kanibako.errors import ConfigError
 
-    def test_newer_marker_no_nudge(self, tmp_path):
-        from kanibako.config import setup_nudge_message
-        from kanibako.config_interface import write_system_value
+        cf = self._marker(tmp_path, "1.7.0")  # base > 1.6.0 build
+        with pytest.raises(ConfigError) as exc:
+            self._gate()(cf)
+        assert "newer kanibako" in str(exc.value)
 
-        cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.7.0")
-        assert setup_nudge_message(cf) is None
+    # --- band: FCV <= ConfigVer < CurrentVer (SILENT BUMP) -----------------
+    def test_forward_compatible_silently_bumps(self, tmp_path):
+        from kanibako.config import read_setup_completed
 
-    def test_dev_marker_of_current_base_no_nudge(self, tmp_path):
-        """A dev/rc build of the current base must NOT nag right after setup.
+        cf = self._marker(tmp_path, "1.6.0")
+        # Pretend the build advanced to 1.8.0 with BCV/FCV still 1.6.0.
+        patches = self._patch_bands(version="1.8.0", bcv="1.6.0", fcv="1.6.0")
+        for p in patches:
+            p.start()
+        try:
+            assert self._gate()(cf) is None  # silent, no message
+            # SIDE EFFECT: marker rewritten forward to CurrentVer.
+            assert read_setup_completed(cf) == "1.8.0"
+        finally:
+            for p in patches:
+                p.stop()
 
-        ``setup`` writes the running ``__version__`` (e.g. ``1.6.0.dev26``) as
-        the marker.  PEP 440 makes ``1.6.0.dev26 < 1.6.0`` True, so a naive
-        compare nags every dev build.  We compare by BASE version instead, so a
-        dev build of the same base as the constant (== "1.6.0") is current.
-        """
-        from kanibako.config import setup_nudge_message
-        from kanibako.config_interface import write_system_value
+    def test_silent_bump_persists_then_no_op(self, tmp_path):
+        """After a bump, a second run hits the == band (no further write)."""
+        from kanibako.config import read_setup_completed
 
-        cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.6.0.dev26")
-        assert setup_nudge_message(cf) is None
+        cf = self._marker(tmp_path, "1.6.0")
+        patches = self._patch_bands(version="1.8.0", bcv="1.6.0", fcv="1.6.0")
+        for p in patches:
+            p.start()
+        try:
+            gate = self._gate()
+            assert gate(cf) is None
+            assert read_setup_completed(cf) == "1.8.0"
+            # Re-run: now ConfigVer == CurrentVer → no-op, marker unchanged.
+            assert gate(cf) is None
+            assert read_setup_completed(cf) == "1.8.0"
+        finally:
+            for p in patches:
+                p.stop()
 
-    def test_dev_marker_of_older_base_nudges(self, tmp_path):
-        """A dev/rc build of a genuinely older base still nags."""
-        from kanibako.config import setup_nudge_message
-        from kanibako.config_interface import write_system_value
+    def test_silent_bump_failure_does_not_raise(self, tmp_path):
+        """A failed bump WRITE must fall through (return None), never block."""
+        from unittest.mock import patch
 
-        cf = tmp_path / "kanibako_config.yaml"
-        # 1.5.0.dev1 has base 1.5.0 < 1.6.0 → stale.
-        write_system_value(cf, "setup_completed", "1.5.0.dev1")
-        assert setup_nudge_message(cf) == (
-            "kanibako setup is out of date — re-run 'kanibako setup'."
-        )
+        from kanibako.config import read_setup_completed
 
-    def test_unparseable_marker_no_nudge(self, tmp_path):
-        """A hand-edited unparseable marker is treated as present (no nag)."""
-        from kanibako.config import setup_nudge_message
-        from kanibako.config_interface import write_system_value
+        cf = self._marker(tmp_path, "1.6.0")
+        patches = self._patch_bands(version="1.8.0", bcv="1.6.0", fcv="1.6.0")
+        for p in patches:
+            p.start()
+        try:
+            with patch(
+                "kanibako.config_interface.write_system_value",
+                side_effect=OSError("read-only"),
+            ):
+                assert self._gate()(cf) is None  # swallowed, no raise
+            # Marker stays unchanged (the bump failed).
+            assert read_setup_completed(cf) == "1.6.0"
+        finally:
+            for p in patches:
+                p.stop()
 
-        cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "custom-build")
-        assert setup_nudge_message(cf) is None
+    # --- band: BCV <= ConfigVer < FCV (NUDGE) ------------------------------
+    def test_between_bcv_and_fcv_nudges(self, tmp_path):
+        cf = self._marker(tmp_path, "1.6.0")
+        # build 1.8.0, BCV 1.5.0, FCV 1.7.0 → 1.6.0 is in [BCV, FCV) → nudge.
+        patches = self._patch_bands(version="1.8.0", bcv="1.5.0", fcv="1.7.0")
+        for p in patches:
+            p.start()
+        try:
+            assert self._gate()(cf) == (
+                "kanibako setup is out of date — re-run 'kanibako setup'."
+            )
+            # NUDGE band does NOT rewrite the marker.
+            from kanibako.config import read_setup_completed
+
+            assert read_setup_completed(cf) == "1.6.0"
+        finally:
+            for p in patches:
+                p.stop()
+
+    # --- band: ConfigVer < BCV (ERROR) -------------------------------------
+    def test_older_than_bcv_raises(self, tmp_path):
+        from kanibako.errors import ConfigError
+
+        cf = self._marker(tmp_path, "1.5.0")
+        # With the shipped 1.6.0 constants, 1.5.0 < BCV → too old → ERROR.
+        with pytest.raises(ConfigError) as exc:
+            self._gate()(cf)
+        assert "too old to auto-update" in str(exc.value)
+
+    def test_dev_marker_of_older_base_raises(self, tmp_path):
+        """A dev build of a genuinely older base is still < BCV → ERROR."""
+        from kanibako.errors import ConfigError
+
+        cf = self._marker(tmp_path, "1.5.0.dev1")  # base 1.5.0 < BCV 1.6.0
+        with pytest.raises(ConfigError):
+            self._gate()(cf)
 
 
 class TestMergedConfig:

@@ -1029,17 +1029,27 @@ class TestSetupNudge:
         err = capsys.readouterr().err
         assert "kanibako isn't set up yet" in err
 
-    def test_stale_marker_nudges_agent_command(self, tmp_path, capsys):
+    def test_nudge_band_prints_advisory_non_blocking(self, tmp_path, capsys):
+        """NUDGE band ([BCV, FCV)) prints 'out of date' on stderr, no raise.
+
+        The shipped constants collapse this band (BCV == FCV), so patch the build
+        version + constants to put the 1.6.0 marker into [BCV, FCV).
+        """
         from unittest.mock import patch
 
+        import kanibako
         from kanibako.cli import _setup_nudge
         from kanibako.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.5.0")
+        write_system_value(cf, "setup_completed", "1.6.0")
         with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
-            _setup_nudge(self._ns("start"))
+             patch("kanibako.paths.xdg", return_value=tmp_path), \
+             patch.object(kanibako, "__version__", "1.8.0"), \
+             patch.object(kanibako, "SETUP_BCV", "1.5.0"), \
+             patch.object(kanibako, "SETUP_FCV", "1.7.0"):
+            # Non-blocking: prints, does not raise.
+            assert _setup_nudge(self._ns("start")) is None
         assert "out of date" in capsys.readouterr().err
 
     def test_current_marker_no_nudge(self, tmp_path, capsys):
@@ -1100,6 +1110,100 @@ class TestSetupNudge:
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("list"))
             _setup_nudge(self._ns("agent", agent_command="list"))
+        assert capsys.readouterr().err == ""
+
+    def test_too_old_marker_propagates_error(self, tmp_path):
+        """ERROR band (ConfigVer < BCV) → KanibakoError propagates (rc1)."""
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+        from kanibako.config_interface import write_system_value
+        from kanibako.errors import KanibakoError
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "setup_completed", "1.5.0")  # < BCV (1.6.0)
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            with pytest.raises(KanibakoError) as exc:
+                _setup_nudge(self._ns("start"))
+        assert "too old to auto-update" in str(exc.value)
+
+    def test_newer_than_build_propagates_error(self, tmp_path):
+        """ERROR band (ConfigVer > CurrentVer) → KanibakoError propagates (rc1)."""
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+        from kanibako.config_interface import write_system_value
+        from kanibako.errors import KanibakoError
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "setup_completed", "1.7.0")  # > build (1.6.0)
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            with pytest.raises(KanibakoError) as exc:
+                _setup_nudge(self._ns("start"))
+        assert "newer kanibako" in str(exc.value)
+
+    def test_unexpected_failure_swallowed(self, tmp_path, capsys):
+        """A non-KanibakoError failure is swallowed (gate never breaks a command)."""
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako_config.yaml"
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path), \
+             patch(
+                 "kanibako.config.setup_compat_gate",
+                 side_effect=RuntimeError("boom"),
+             ):
+            # Must NOT raise — unexpected errors are swallowed.
+            assert _setup_nudge(self._ns("start")) is None
+        assert capsys.readouterr().err == ""
+
+    def test_main_error_band_exits_rc1_with_clean_message(self, tmp_path, capsys):
+        """E2E through main(): an ERROR band exits rc1 with a clean 'Error: …'.
+
+        Drives the full main([...]) path (NOT _setup_nudge directly) to prove the
+        gate's ConfigError is converted to the standard clean rc1 — not an
+        uncaught traceback — since the _setup_nudge call sits OUTSIDE the func()
+        KanibakoError handler.
+        """
+        from unittest.mock import patch
+
+        from kanibako.cli import main
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "setup_completed", "1.5.0")  # < BCV → ERROR band
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path), \
+             patch("kanibako.cli._ensure_initialized"):
+            with pytest.raises(SystemExit) as exc:
+                main(["start"])
+        assert exc.value.code == 1  # clean rc1, not the interpreter default
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")  # the standard clean handling
+        assert "too old to auto-update" in err
+
+    def test_silent_bump_propagates_no_error_and_no_message(self, tmp_path, capsys):
+        """SILENT-BUMP band via _setup_nudge: no message, no raise, marker bumped."""
+        from unittest.mock import patch
+
+        import kanibako
+        from kanibako.cli import _setup_nudge
+        from kanibako.config import read_setup_completed
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "setup_completed", "1.6.0")
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path), \
+             patch.object(kanibako, "__version__", "1.8.0"), \
+             patch.object(kanibako, "SETUP_BCV", "1.6.0"), \
+             patch.object(kanibako, "SETUP_FCV", "1.6.0"):
+            assert _setup_nudge(self._ns("start")) is None
+            assert read_setup_completed(cf) == "1.8.0"
         assert capsys.readouterr().err == ""
 
 

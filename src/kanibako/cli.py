@@ -318,7 +318,7 @@ def _ensure_initialized() -> None:
 
 
 def _setup_nudge(args: argparse.Namespace) -> None:
-    """Gate-1 NON-BLOCKING setup-completion nudge (§Design 3/4).
+    """Gate-1 setup/config compatibility gate (§Design 3/4; 5-band).
 
     Fires only for the agent-requiring commands (those in
     :data:`~kanibako.commands.flags.AGENT_FLAG_COMMANDS` — ``start``,
@@ -326,22 +326,34 @@ def _setup_nudge(args: argparse.Namespace) -> None:
     resolver.  ``shell`` and ``setup`` itself, plus pure config/list commands,
     are intentionally excluded.
 
-    If the ``system.setup_completed`` marker is absent or stale, prints an
-    advisory to stderr and RETURNS — the command then proceeds to normal agent
-    resolution.  This never blocks (a fresh user with exactly one installed
-    agent still launches), and any failure reading the marker is swallowed (the
-    nudge must never break a command).
+    Delegates the band logic to :func:`~kanibako.config.setup_compat_gate`:
+
+    * NUDGE bands (absent/stale marker) → print the advisory to stderr and RETURN
+      (non-blocking — the command then proceeds to normal agent resolution).
+    * SILENT-BUMP / no-op bands → nothing printed, RETURN.
+    * ERROR bands (config from a newer build, or too old to auto-fill) → the gate
+      raises :class:`~kanibako.errors.ConfigError` (a
+      :class:`~kanibako.errors.KanibakoError`), which PROPAGATES so the CLI
+      converts it to the standard clean rc1.
+
+    A deliberate :class:`ConfigError` (``KanibakoError``) band error is allowed
+    through; any other UNEXPECTED failure (a marker-read bug, missing file, a
+    failed silent-bump write) is swallowed so the gate never breaks a command.
     """
     from kanibako.commands.flags import AGENT_FLAG_COMMANDS, command_key
 
     if command_key(args) not in AGENT_FLAG_COMMANDS:
         return
+
     try:
-        from kanibako.config import config_file_path, setup_nudge_message
+        from kanibako.config import config_file_path, setup_compat_gate
         from kanibako.paths import xdg
 
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        message = setup_nudge_message(cf)
+        message = setup_compat_gate(cf)
+    except KanibakoError:
+        # Deliberate ERROR band — propagate so the CLI surfaces rc1.
+        raise
     except Exception:  # pragma: no cover - defensive; never break a command
         return
     if message:
@@ -411,11 +423,17 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(2)
 
-        # Gate 1 (§Design 3/4): a NON-BLOCKING setup-completion nudge for the
-        # agent-requiring commands (those that run the unified resolver).  Prints
-        # to stderr and CONTINUES — never blocks, so a fresh user with exactly
-        # one installed agent still launches (just with a nudge).
-        _setup_nudge(args)
+        # Gate 1 (§Design 3/4): the 5-band setup/config compatibility gate for
+        # the agent-requiring commands (those that run the unified resolver).
+        # NUDGE bands print to stderr and CONTINUE (never block); the two ERROR
+        # bands raise ConfigError (a KanibakoError), which we convert to the same
+        # clean rc1 every other KanibakoError path produces (mirrors the func()
+        # handler below — this call is OUTSIDE that try block).
+        try:
+            _setup_nudge(args)
+        except KanibakoError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
         if args.command == "start":
             args.agent_args = post_dash or []
