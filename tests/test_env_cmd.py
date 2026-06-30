@@ -1,7 +1,7 @@
-"""Tests for environment variable management via box config env.* interface.
+"""Tests for environment variable management via the box env.* interface.
 
 These tests verify that env vars can be set, get, and unset through the
-unified ``box config`` command (via config_interface.py env.* key routing).
+``box set`` / ``box get`` verbs (via config_interface.py env.* key routing).
 """
 
 from __future__ import annotations

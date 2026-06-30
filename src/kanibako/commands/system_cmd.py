@@ -26,32 +26,69 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     info_p.set_defaults(func=run_info)
 
-    # system config [key[=value]] [--effective] [--reset] [--all] [--force]
-    config_p = sys_sub.add_parser(
-        "config",
-        help="View or modify global configuration",
+    # system set <key>=<value> [--force]
+    set_p = sys_sub.add_parser(
+        "set",
+        help="Set a global configuration value",
+        description=(
+            "Set a global setting (key=value).\n\n"
+            "  system set model=opus              set the global default model\n"
+            "  system set env.EDITOR=nano         set a global env var\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    config_p.add_argument(
-        "key_value", nargs="?", default=None,
-        help="key or key=value",
+    set_p.add_argument("key_value", help="key=value pair")
+    set_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
     )
-    config_p.add_argument(
+    set_p.set_defaults(func=run_set)
+
+    # system reset <key> | --all  [--force]
+    reset_p = sys_sub.add_parser(
+        "reset",
+        help="Reset (remove) a global configuration override",
+        description=(
+            "Remove a global override, reverting to the default.\n\n"
+            "  system reset model                 reset one key\n"
+            "  system reset --all                 reset all overrides\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    reset_p.add_argument("key", nargs="?", default=None, help="Config key to reset")
+    reset_p.add_argument(
+        "--all", action="store_true", dest="all_keys",
+        help="Remove all overrides",
+    )
+    reset_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
+    )
+    reset_p.set_defaults(func=run_reset)
+
+    # system get <key>
+    get_p = sys_sub.add_parser(
+        "get",
+        help="Get a global configuration value",
+        description="Read one global setting.",
+    )
+    get_p.add_argument("key", help="Config key to read")
+    get_p.set_defaults(func=run_get)
+
+    # system show [--effective]
+    show_p = sys_sub.add_parser(
+        "show",
+        help="Show global configuration",
+        description=(
+            "Show global settings.\n\n"
+            "  system show                        show overrides\n"
+            "  system show --effective            show resolved values\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    show_p.add_argument(
         "--effective", action="store_true",
         help="Show all resolved values including defaults",
     )
-    config_p.add_argument(
-        "--reset", action="store_true",
-        help="Remove an override (revert to default)",
-    )
-    config_p.add_argument(
-        "--all", action="store_true", dest="all_keys",
-        help="With --reset: remove all overrides",
-    )
-    config_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompts",
-    )
-    config_p.set_defaults(func=run_config)
+    show_p.set_defaults(func=run_show)
 
     # system upgrade [--check]
     from kanibako.commands.upgrade import run as run_upgrade_fn
@@ -157,8 +194,43 @@ def run_info(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_config(args: argparse.Namespace) -> int:
-    """View or modify global configuration.
+def run_set(args: argparse.Namespace) -> int:
+    """``system set <key>=<value>``."""
+    args.reset = False
+    args.all_keys = False
+    args.effective = False
+    return _run_system_config(args)
+
+
+def run_reset(args: argparse.Namespace) -> int:
+    """``system reset <key>`` / ``system reset --all``."""
+    args.reset = True
+    args.key_value = getattr(args, "key", None)
+    args.effective = False
+    return _run_system_config(args)
+
+
+def run_get(args: argparse.Namespace) -> int:
+    """``system get <key>``."""
+    args.key_value = args.key
+    args.reset = False
+    args.all_keys = False
+    args.effective = False
+    args.force = False
+    return _run_system_config(args)
+
+
+def run_show(args: argparse.Namespace) -> int:
+    """``system show [--effective]``."""
+    args.key_value = None
+    args.reset = False
+    args.all_keys = False
+    args.force = False
+    return _run_system_config(args)
+
+
+def _run_system_config(args: argparse.Namespace) -> int:
+    """Shared global-config engine dispatch.
 
     The SYSTEM scope keeps CONFIG (``system.*`` layout) in the
     ``~/.config/kanibako_config.yaml`` CONFIG file (``cf``) and routes behavior SETTINGS
@@ -198,7 +270,7 @@ def run_config(args: argparse.Namespace) -> int:
     if args.reset:
         if not key:
             print(
-                "Error: --reset requires a key (or use --reset --all).",
+                "Error: reset requires a key (or --all).",
                 file=sys.stderr,
             )
             return 1

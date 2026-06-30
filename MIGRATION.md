@@ -187,7 +187,7 @@ The `crab` command is **CUT**. Its verbs split between `agent` (config) and `box
 |---|---|
 | `crab list` | `agent list` |
 | `crab info` | `agent info` |
-| `crab config` | `agent config` |
+| `crab config` | `agent set` / `agent get` / `agent show` / `agent reset` |
 | `crab reauth` | `agent reauth` |
 | `crab helper` | `box helper` |
 | `crab fork` | `box fork` |
@@ -271,10 +271,10 @@ The old default-agent selector `system.agent` is renamed to **`system.default_ag
 
 The system tier of these behavior settings now lives in **`global/settings.yaml`**
 (`@system.settings`), separate from the `~/.config/kanibako.yaml` CONFIG file (which
-holds only `system.*` layout/path keys). The `kanibako system config` command READS /
-SHOWS `system.*` keys (e.g. `system.default_agent`, `system.data`) but — as of the W1
-overhaul (see §10) — **refuses to SET them**: all `system.*`-prefixed keys are
-file-only. Non-`system.` settings (e.g. `model`) stay CLI-settable at the global tier
+holds only `system.*` layout/path keys). The `kanibako system get` / `system show`
+commands READ / SHOW `system.*` keys (e.g. `system.default_agent`, `system.data`) but
+— as of the W1 overhaul (see §10) — `system set` **refuses to set them**: all
+`system.*`-prefixed keys are file-only. Non-`system.` settings (e.g. `model`) stay CLI-settable at the global tier
 and are written to `global/settings.yaml`. **No automatic migration:** if you
 previously set `system.default_agent` in `kanibako.yaml`, choose it with
 **`kanibako setup`** (which writes it for you) or move the `[agent.default]` table
@@ -920,7 +920,7 @@ proceed — it never blocks the single-agent happy path.
 
 ### 10.3 `system.*` config keys are file-only (BREAKING)
 
-`kanibako system config system.<key> <value>` (and the reset path) no longer SET any
+`kanibako system set system.<key>=<value>` (and `system reset`) no longer SET any
 `system.`-prefixed key — including `system.default_agent`. The CLI still **reads and
 shows** them; it refuses to set them and points you at the config file:
 
@@ -929,9 +929,9 @@ shows** them; it refuses to set them and points you at the config file:
 - To change a structural path (e.g. `system.data`): edit `~/.config/kanibako.yaml`.
 
 Non-`system.`-prefixed settings (e.g. `model`, `box.image`) remain CLI-settable at
-every scope, including the global tier (`kanibako system config model=opus`).
+every scope, including the global tier (`kanibako system set model=opus`).
 
-**What you must do:** replace any scripted `kanibako system config system.*=…`
+**What you must do:** replace any scripted `kanibako system set system.*=…`
 invocations with a `setup` run or a direct file edit.
 
 ### 10.4 Blanket `--agent` and `--box` flags
@@ -1023,7 +1023,9 @@ them yourself:
 
 ```bash
 mv ~/.config/kanibako/kanibako.yaml ~/.config/kanibako.yaml
-mv ~/.config/kanibako/env "$(kanibako system config system.data)/env"
+# Find your data dir with `kanibako system get system.data` (prints
+# `system.data=<path>`), then move the env file under it:
+mv ~/.config/kanibako/env <data>/env
 ```
 
 (`$XDG_CONFIG_HOME` defaults to `~/.config`. Adjust if you set it explicitly.)

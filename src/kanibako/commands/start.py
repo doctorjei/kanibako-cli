@@ -1997,7 +1997,7 @@ def _build_config_env(
 ) -> dict[str, str]:
     """Layer config-level env vars, low->high: system < agent < workset < box.
 
-    Shared between container launch (start) and ``box config --effective`` so
+    Shared between container launch (start) and ``box show --effective`` so
     the resolved config-env matches exactly. Runtime-only layers (target state
     env, per-run ``-e``) are applied by the caller ON TOP of this and are NOT
     config, so they are excluded here.

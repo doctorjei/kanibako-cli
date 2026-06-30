@@ -346,7 +346,7 @@ def repoint_host_src(
     """Repoint a category key's ``host_src`` in the COMMAND-scope file, RAW (S24).
 
     Reads the EXISTING raw tuple at dotted *key* in *scope_path* (the command's
-    scope file — ``box config`` → box file, ``workset config`` → workset file, …),
+    scope file — ``box set`` → box file, ``workset set`` → workset file, …),
     replaces ONLY element 0 (``host_src``) with *new_host_src* VERBATIM, PRESERVES
     ``box_dest`` + any options string (elements 1/2) in their RAW form, and writes
     the FULL tuple back via the existing YAML I/O. The key MUST ALREADY EXIST in

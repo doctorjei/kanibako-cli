@@ -290,7 +290,7 @@ more-specific scope.  The defaults return `{}`.
 ### `setting_descriptors() -> list[TargetSetting]`
 
 Advertise runtime settings (key, default, optional `choices`).  Users override
-them per-box via `kanibako box config`.  Constrained settings (non-empty
+them per-box via `kanibako box set`.  Constrained settings (non-empty
 `choices`) reject out-of-range values at the CLI; freeform settings accept any
 value.
 
@@ -362,7 +362,7 @@ entirely (a plain shell with no agent binary or credentials).
 Select a target for a box explicitly:
 
 ```bash
-kanibako box config box.agent=myagent
+kanibako box set box.agent=myagent
 ```
 
 ## Packaging

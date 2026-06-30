@@ -291,50 +291,85 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     info_p.add_argument("path", nargs="?", default=None, help="Project directory (default: cwd)")
     info_p.set_defaults(func=run_info)
 
-    # kanibako box config [project] [key[=value]] [--effective] [--reset KEY]
-    #                     [--all] [--force] [--local]
-    config_p = box_sub.add_parser(
-        "config",
-        help="View or modify project configuration",
+    # kanibako box set [project] <key>=<value> [--force] [--local]
+    set_p = box_sub.add_parser(
+        "set",
+        help="Set a project configuration value",
         description=(
-            "Unified config interface for project settings.\n\n"
-            "  box config                       show overrides for cwd project\n"
-            "  box config myproj                show overrides for named project\n"
-            "  box config --effective           show resolved values\n"
-            "  box config model                 get the value of 'model'\n"
-            "  box config model=sonnet          set 'model' to 'sonnet'\n"
-            "  box config env.MY_VAR=hello      set env var\n"
-            "  box config resource.plugins=/p   set resource path\n"
-            "  box config --reset model         reset one key\n"
-            "  box config --reset --all         reset all overrides\n"
+            "Set a project setting (key=value).\n\n"
+            "  box set model=sonnet            set 'model' for cwd project\n"
+            "  box set myproj model=sonnet     set 'model' for named project\n"
+            "  box set env.MY_VAR=hello        set env var\n"
+            "  box set resource.plugins=/p     set resource path\n"
+            "  box set resource.plugins --local  project-isolated resource\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    config_p.add_argument(
-        "args", nargs="*", default=[],
-        help="[project] [key[=value]]",
+    set_p.add_argument("args", nargs="*", default=[], help="[project] key=value")
+    set_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
     )
-    config_p.add_argument(
-        "--effective", action="store_true",
-        help="Show resolved values including inherited defaults",
-    )
-    config_p.add_argument(
-        "--reset", metavar="KEY", nargs="?", const="__ALL__", default=None,
-        help="Remove override for KEY (or all overrides with --all)",
-    )
-    config_p.add_argument(
-        "--all", action="store_true", dest="reset_all",
-        help="Reset all overrides (only valid with --reset)",
-    )
-    config_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompts",
-    )
-    config_p.add_argument(
+    set_p.add_argument(
         "--local", action="store_true",
         help="Set resource to project-isolated (resource keys only)",
     )
-    config_p.set_defaults(func=run_config)
+    set_p.set_defaults(func=run_set)
+
+    # kanibako box reset [project] <key> | --all  [--force]
+    reset_p = box_sub.add_parser(
+        "reset",
+        help="Reset (remove) a project configuration override",
+        description=(
+            "Remove a project override, reverting to the inherited value.\n\n"
+            "  box reset model                 reset one key for cwd project\n"
+            "  box reset myproj model          reset one key for named project\n"
+            "  box reset --all                 reset all overrides\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    reset_p.add_argument("args", nargs="*", default=[], help="[project] [key]")
+    reset_p.add_argument(
+        "--all", action="store_true", dest="reset_all",
+        help="Reset all overrides",
+    )
+    reset_p.add_argument(
+        "--force", action="store_true", help="Skip confirmation prompts",
+    )
+    reset_p.set_defaults(func=run_reset)
+
+    # kanibako box get [project] <key>
+    get_p = box_sub.add_parser(
+        "get",
+        help="Get a project configuration value",
+        description=(
+            "Read one project setting.\n\n"
+            "  box get model                   get 'model' for cwd project\n"
+            "  box get myproj model            get 'model' for named project\n"
+            "  box get env.MY_VAR              read an env var\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    get_p.add_argument("args", nargs="*", default=[], help="[project] key")
+    get_p.set_defaults(func=run_get)
+
+    # kanibako box show [project] [--effective]
+    show_p = box_sub.add_parser(
+        "show",
+        help="Show project configuration overrides",
+        description=(
+            "Show project settings.\n\n"
+            "  box show                        show overrides for cwd project\n"
+            "  box show myproj                 show overrides for named project\n"
+            "  box show --effective            show resolved values\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    show_p.add_argument("args", nargs="*", default=[], help="[project]")
+    show_p.add_argument(
+        "--effective", action="store_true",
+        help="Show resolved values including inherited defaults",
+    )
+    show_p.set_defaults(func=run_show)
 
     # kanibako box ps [--all] [-q/--quiet]
     ps_p = box_sub.add_parser(
@@ -1164,8 +1199,84 @@ def run_info(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_config(args: argparse.Namespace) -> int:
-    """Unified config interface for project settings.
+# ---------------------------------------------------------------------------
+# Project config verbs (set / reset / get / show)
+#
+# Each verb parser registers its own thin entry point below; they normalize the
+# per-verb Namespace into the shared shape the engine dispatch (_run_box_config)
+# expects, then thread the SAME context.  The config_interface engine — and with
+# it the B2 config.*-forbid guard, the B4/R2 scope-direction guard, and the Q9
+# full-cascade set-time validation — is unchanged: every set still routes
+# through set_config_value with command_scope=ConfigLevel.box.
+# ---------------------------------------------------------------------------
+
+def run_set(args: argparse.Namespace) -> int:
+    """``box set [project] <key>=<value>`` — set a project setting."""
+    args.reset = None
+    args.reset_all = False
+    args.effective = False
+    return _run_box_config(args)
+
+
+def run_reset(args: argparse.Namespace) -> int:
+    """``box reset [project] <key>`` / ``box reset [project] --all``."""
+    from kanibako.config_interface import is_known_key
+
+    positional = list(getattr(args, "args", []))
+    reset_all = getattr(args, "reset_all", False)
+    # Positional shape: [project] [key].  Disambiguate a lone token as a key
+    # when it looks like one (matches the get/show heuristic).
+    project: str | None = None
+    key: str | None = None
+    if len(positional) == 0:
+        pass
+    elif len(positional) == 1:
+        tok = positional[0]
+        if is_known_key(tok):
+            key = tok
+        else:
+            project = tok
+    elif len(positional) == 2:
+        project, key = positional[0], positional[1]
+    else:
+        print("Error: too many arguments (expected [project] [key])", file=sys.stderr)
+        return 1
+
+    if not reset_all and key is None:
+        print("Error: reset requires a key (or --all)", file=sys.stderr)
+        return 1
+
+    # Rebuild the legacy shape: positionals carry only [project]; the key (or the
+    # all-sentinel) rides on ``reset``.
+    args.args = [project] if project is not None else []
+    args.reset = "__ALL__" if reset_all else key
+    args.effective = False
+    args.local = False
+    return _run_box_config(args)
+
+
+def run_get(args: argparse.Namespace) -> int:
+    """``box get [project] <key>`` — read one project setting."""
+    if not getattr(args, "args", []):
+        print("Error: get requires a key", file=sys.stderr)
+        return 1
+    args.reset = None
+    args.reset_all = False
+    args.effective = False
+    args.local = False
+    return _run_box_config(args)
+
+
+def run_show(args: argparse.Namespace) -> int:
+    """``box show [project] [--effective]`` — show overrides / resolved values."""
+    args.reset = None
+    args.reset_all = False
+    args.local = False
+    return _run_box_config(args)
+
+
+def _run_box_config(args: argparse.Namespace) -> int:
+    """Shared project-config engine dispatch.
 
     Handles get, set, show, reset operations via the config_interface engine.
     Uses the known-key heuristic to disambiguate project names from config keys.

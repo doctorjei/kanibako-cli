@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (CLI): the overloaded `config` subcommand is retired** at every
+  scope (`box`, `workset`, `system`, `agent`) in favor of four discrete verbs —
+  `set` / `get` / `show` / `reset`. There is no `config` alias (clean break,
+  pre-release). The old positional/flag mode-switching maps as follows:
+  - `<scope> config` → `<scope> show`
+  - `<scope> config --effective` → `<scope> show --effective`
+  - `<scope> config <key>` → `<scope> get <key>`
+  - `<scope> config <key>=<value>` → `<scope> set <key>=<value>`
+  - `<scope> config --reset <key>` → `<scope> reset <key>`
+  - `<scope> config --reset --all` → `<scope> reset --all`
+
+  `set` keeps `--force` and `--local` (resource keys); `reset` keeps `--all` and
+  `--force`; `show` keeps `--effective`; `get` is bare. Each scope's positional
+  (box `[project]`, workset/agent `<name>`) is unchanged, as are the
+  config.*-forbid guard, the cross-scope write-direction guard, and the set-time
+  cascade validation — only the parser/dispatch surface changed.
+
 ## [1.6.0] - 2026-06-26
 
 This release generalizes kanibako's agent-plugin interface so that any agent is

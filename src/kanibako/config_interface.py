@@ -275,7 +275,7 @@ def _is_box_agent_key(key: str) -> bool:
     <key>`` and the box overriding any ``box.agent.<key>`` is an ORDINARY same-scope
     (box) write (§0: the no-special-case downward tweak; §2b). It is the BOX
     namespace (top-level token ``box``), so the B4 directional guard ALLOWS
-    ``box config set box.agent.<key>`` as a same-scope write (the guard keys on the
+    ``box set box.agent.<key>`` as a same-scope write (the guard keys on the
     ``box`` token). It is settable here so the override lands in the box settings
     file — exactly the box-scope override the materializer (settings_launch) then
     keeps (it gap-fills only the names the box did NOT set).
@@ -414,7 +414,7 @@ _SCOPE_NAMESPACES: frozenset[str] = frozenset({
 # is refused BEFORE this guard, so it appears in no allow-set; the older JC-B4-1
 # "system owns config.*" rule is superseded). ``box.agent.*`` (the §2b B5
 # downward-tweak mirror) is the BOX namespace — the guard keys on the TOP-LEVEL
-# token (``box``), so ``box config set box.agent.X`` is a legal SAME-scope write.
+# token (``box``), so ``box set box.agent.X`` is a legal SAME-scope write.
 _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
     ConfigLevel.system: frozenset({"system"}),
     ConfigLevel.agent: frozenset({"agent"}),
@@ -531,7 +531,7 @@ def _category_resolves(
     ``start._effective_behavior_for_display`` assemble for ``config --effective`` —
     plus the resolved ``system.*`` config tier folded as the ``base`` FLOOR (so
     ``@config.data`` etc. resolve). So a cross-scope ``@``-ref in the edited value
-    (e.g. a ``box config`` value referencing ``@workset.vault_ro/x``) resolves at
+    (e.g. a ``box set`` value referencing ``@workset.vault_ro/x``) resolves at
     set-time exactly as it would at launch — no longer a false-block.
 
     The COMMAND-scope file (*config_path*) is placed into its OWN precedence slot by
