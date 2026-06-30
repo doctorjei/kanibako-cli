@@ -113,6 +113,10 @@ class TestSystemConfig:
         assert "unknown config key" in err
 
     def test_set_value(self, tmp_home, config_file, capsys):
+        # B4 R2 cross-scope write guard: a SYSTEM-scope ``config set`` writes only
+        # keys in its own scope's namespace (spec §0).  ``box.image`` is a box-scope
+        # key, so setting it from the system scope is now correctly REFUSED (rc 1)
+        # with the scope-error message — it must be set at the box scope instead.
         from kanibako.commands.system_cmd import run_config
 
         args = argparse.Namespace(
@@ -120,9 +124,9 @@ class TestSystemConfig:
             all_keys=False, force=False,
         )
         rc = run_config(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Set" in out
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "cannot be set from the system scope" in err
 
     def test_reset_requires_key(self, tmp_home, config_file, capsys):
         from kanibako.commands.system_cmd import run_config
