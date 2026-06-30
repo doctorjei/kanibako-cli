@@ -429,8 +429,28 @@ def run_connect(args: argparse.Namespace) -> int:
     source = Path(args.source) if args.source else Path(os.getcwd())
     project_name = args.project_name or source.resolve().name
 
+    # J2 lifecycle journal: write-ahead a ``op: connect`` entry around the
+    # register-only membership write (connect REGISTERS an externally-existing
+    # dir into a workset and NEVER seeds).  The bracket lives HERE (the actual
+    # connect command), not in ``add_project`` — which is also the membership-
+    # write seam for the deferred move/convert/duplicate pipelines that must NOT
+    # journal a ``connect`` op.  Write-ahead order: write entry BEFORE
+    # ``add_project`` (the durable membership write), clear immediately after it
+    # returns (HARD INVARIANT: registered ==> no pending entry at rest).  The key
+    # is the host-side box dir (``ws.projects_dir / project_name``, the dir
+    # CONTAINING ``home/`` — uniform J1/J2 key).  On a crash before the clear the
+    # entry lingers; ``resolve_workset_project`` clears a stale ``connect`` entry
+    # on the next resolve of the now-member box (self-heal, symmetric with the
+    # import path).  If ``add_project`` raises, the entry is LEFT (incomplete) and
+    # the error propagates after ``_Unwind`` rolls back the in-process effects.
+    from kanibako.workset import _journal_connect
+
     try:
-        proj = add_project(ws, project_name, source, std)
+        with _journal_connect(
+            std.journal, ws.projects_dir / project_name,
+            name=project_name, workset=ws.name,
+        ):
+            proj = add_project(ws, project_name, source, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
