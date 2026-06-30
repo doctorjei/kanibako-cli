@@ -629,7 +629,10 @@ def _run_container(
     # project_dir is the reconciled subject (positional OR --box) computed in
     # run_start/run_shell.  Route it through the path-or-name resolver so a bare
     # registered box name selects that box even when not cwd (§Design 8).
-    proj = resolve_box_target(std, config, project_dir, initialize=True)
+    # B3: register=False defers a NEW box's registration past the home seed — the
+    # seed gate below runs marker -> seed -> register -> remove-marker so an
+    # interrupted auto-create is forward-recoverable (registered ==> seeded).
+    proj = resolve_box_target(std, config, project_dir, initialize=True, register=False)
 
     # Hint about orphaned project data when initializing a new project
     if proj.is_new and proj.group is not None and proj.group.is_default:
@@ -969,14 +972,26 @@ def _run_container(
         # home seed runs ATOMICALLY with box registration: registry MEMBERSHIP is
         # the seed signal, so a box that already exists was already seeded and
         # this launch must NOT re-seed it (user edits survive).  ``proj.is_new``
-        # is True exactly when THIS resolve_box_target call materialized +
-        # registered the box (all three modes set it on first creation), so a
-        # box auto-created by `start` is seeded here, while every subsequent
-        # launch of an existing box (is_new False) skips the seed entirely.
-        # (`box create` seeds via the same helper from run_create.)  Seed
-        # application is create-if-absent, so even a re-create into a leftover
-        # dir never clobbers content.
-        if proj.is_new:
+        # is True exactly when THIS resolve_box_target call materialized the box
+        # (all three modes set it on first creation), so a box auto-created by
+        # `start` is seeded here, while every subsequent launch of an existing box
+        # (is_new False, no pending entry) skips the seed entirely.  (`box create`
+        # seeds via the same helper from run_create.)  Seed application is
+        # create-if-absent, so even a re-create into a leftover dir never clobbers
+        # content.
+        #
+        # J1 lifecycle journal: the gate is ``is_new OR pending create entry``.
+        # A pending create journal entry overrides membership so an interrupted
+        # auto-create (crash between seed-start and registry write, leaving a
+        # registered-or-unregistered box with the entry) re-seeds and completes.
+        # The flow is write-ahead: write-entry -> seed -> register -> clear-entry,
+        # with the entry cleared as the IMMEDIATE step after the registry write
+        # (HARD INVARIANT: registered ==> no pending entry at rest).
+        # ``register=False`` above deferred registration to here;
+        # ``_register_new_box`` is idempotent so a recovery of an already-
+        # registered box (stale entry) is a no-op + entry clear.
+        if proj.is_new or _pending_create_entry(std, proj) is not None:
+            _write_create_entry(std, proj)
             _seed_box_home(
                 std=std, proj=proj, target=target, desc=desc,
                 agent_id=agent_id, agent_cfg_path=agent_cfg_path,
@@ -984,6 +999,8 @@ def _run_container(
                 project_toml=project_toml, workset_path=workset_path,
                 effective_group_auth=effective_group_auth, logger=logger,
             )
+            _register_new_box(std, proj)
+            _clear_create_entry(std, proj)
 
         # Synced copies (the `<scope>.synced.<name>` category) — applied on
         # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
@@ -2665,6 +2682,98 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         project_toml=project_toml, workset_path=workset_path,
         effective_group_auth=effective_group_auth, logger=logger,
     )
+
+
+# ---------------------------------------------------------------------------
+# Interrupted-create recovery via the LIFECYCLE JOURNAL (J1, Jei 2026-06-30b).
+#
+# A write-ahead journal entry (``kanibako.journal``) records an in-flight create
+# so an interrupted `create`/auto-create-at-launch (a crash between seed-start
+# and registry write) is forward-recoverable.  Sequence per create:
+#   write-entry -> seed -> register -> clear-entry.
+# The seed gate becomes "is_new OR pending create entry", so the next
+# create/launch re-seeds (create-if-absent, no clobber), registers idempotently,
+# and clears the entry.  HARD INVARIANT: registered ==> no pending entry at rest
+# — the entry is cleared as the IMMEDIATE step right after the registry write,
+# never before it.  IMPORT/CONNECT (register-only) boxes NEVER get a create
+# entry — they do not seed (a create entry on them would wrongly trigger
+# re-seed).  This SUPERSEDES the B3 ``.seeding`` file marker; the journal is a
+# TRUE write-ahead store (the entry predates any directory), and lives globally
+# beside the registry (``config.journal``), so recovery is "pending create entry
+# for this box path? -> replay" rather than fighting import_reconcile + is_new.
+# ---------------------------------------------------------------------------
+
+
+def _box_journal_key(proj) -> str:
+    """Journal entry KEY for *proj*: the host-side box dir (UNIFORM all modes).
+
+    ``str(Path(proj.shell_path).parent)`` — ``shell_path`` always ends in
+    ``home/``, so its parent is the host-side box dir that CONTAINS ``home/``
+    (PRIMARY/NAMED ``boxes/<name>``; STANDALONE ``<root>/box_data``).  Known at
+    write-ahead time; no per-mode special-casing.
+    """
+    return str(Path(proj.shell_path).parent)
+
+
+def _write_create_entry(std, proj) -> None:
+    """Write the write-ahead ``create`` journal entry for *proj* (intent)."""
+    from kanibako import journal
+
+    workset = proj.group.name if getattr(proj, "group", None) is not None else None
+    journal.write_entry(
+        std.journal, _box_journal_key(proj),
+        op="create", name=proj.name, mode=proj.mode.value, workset=workset,
+    )
+
+
+def _clear_create_entry(std, proj) -> None:
+    """Clear the ``create`` journal entry for *proj* (no-op if already absent)."""
+    from kanibako import journal
+
+    journal.clear_entry(std.journal, _box_journal_key(proj))
+
+
+def _pending_create_entry(std, proj) -> dict | None:
+    """Return the pending ``create`` journal entry for *proj*, or ``None``.
+
+    The recovery signal: a non-``None`` result means a create was started for
+    this box but never completed (crash before the entry was cleared).
+    """
+    from kanibako import journal
+
+    return journal.pending_create(std.journal, _box_journal_key(proj))
+
+
+def _register_new_box(std, proj) -> None:
+    """Register a freshly-created box (idempotent), mode-appropriate (B3).
+
+    The deferred-registration commit step: the create paths resolve with
+    ``register=False`` (the resolver creates the dir + meta + sets ``is_new`` but
+    does NOT write the registry), seed the home, then call this to register.
+
+    Idempotent for the SAME box (recovery re-entry after a crash in the tiny
+    register -> clear-entry window leaves the box already registered): PRIMARY
+    uses :func:`names.register_name_if_absent` (no-op iff the identical name->path
+    mapping is present, re-raises a real collision); STANDALONE uses
+    :func:`registry_store.register_standalone` (already idempotent — overwrites a
+    matching name->root).  NAMED boxes carry no name-registry entry on create
+    (workset membership lives in the workset YAML), so there is nothing to defer
+    or register here.
+    """
+    from kanibako.paths import BoxMode
+
+    if proj.mode is BoxMode.standalone:
+        from kanibako import registry_store
+        # STANDALONE root == metadata_path (resolve_standalone sets it to root).
+        registry_store.register_standalone(
+            std.registry, proj.name, Path(proj.metadata_path),
+        )
+    elif proj.mode is BoxMode.primary:
+        from kanibako.names import register_name_if_absent
+        register_name_if_absent(
+            std.registry, proj.name, str(proj.project_path),
+        )
+    # NAMED: no name-registry write on create (membership is the workset list).
 
 
 def _apply_init_seeds(

@@ -465,45 +465,93 @@ def run_create(args: argparse.Namespace) -> int:
         if not target.exists():
             target.mkdir(parents=True)
 
+    # J1 lifecycle journal: resolve with register=False so registration is
+    # DEFERRED past the home seed (write-entry -> seed -> register -> clear-entry
+    # below), giving the invariant "registered ==> fully seeded".  The resolver
+    # still creates the box dir + meta and sets is_new; only the registry write
+    # is held back to the caller.  On a RE-CREATE of an interrupted box the
+    # register=False import HONORS the flag (resolves the box name from on-disk
+    # meta without registering), so the box resolves with is_new False BUT a
+    # pending create journal entry — the recovery signal handled below.
     if args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
             enable_vault=enable_vault, group_auth=group_auth,
             name=getattr(args, "name", None) or "",
+            register=False,
         )
     else:
         proj = resolve_project(
             std, config, project_dir=project_dir, initialize=True,
             enable_vault=enable_vault if not enable_vault else None,
             name_override=getattr(args, "name", None),
+            register=False,
         )
 
-    if not proj.is_new:
+    from kanibako.commands.start import (
+        _clear_create_entry,
+        _pending_create_entry,
+        _register_new_box,
+        _write_create_entry,
+        seed_new_box,
+    )
+
+    # J1 interrupted-create RECOVERY: a box that resolves NOT-new but carries a
+    # pending create journal entry is a half-completed create (crash between
+    # seed-start and the registry write).  COMPLETE it by replay (seed
+    # create-if-absent -> register-if-absent -> clear-entry) instead of bailing
+    # "already initialized".  A box that is NOT new AND has no pending entry is
+    # genuinely already initialized → the original error.  This is the central
+    # J1 fix: the journal entry (not is_new) drives completion, restoring the
+    # HARD INVARIANT "registered ==> no pending entry" for PRIMARY and STANDALONE.
+    is_recovery = (not proj.is_new) and _pending_create_entry(std, proj) is not None
+    if not proj.is_new and not is_recovery:
         print(
             f"Error: project already initialized in {proj.project_path}",
             file=sys.stderr,
         )
         return 1
 
-    # Persist image setting.
-    image = args.image or config.box_image
-    project_toml = proj.metadata_path / BOX_META_FILE
-    write_project_config(project_toml, image)
+    # Persist image + standalone .gitignore only on a FRESH create — a recovery
+    # re-create reuses the half-built box's already-written meta (the on-disk
+    # record is authoritative; do not overwrite it with possibly-different args).
+    if proj.is_new:
+        # Persist image setting.
+        image = args.image or config.box_image
+        project_toml = proj.metadata_path / BOX_META_FILE
+        write_project_config(project_toml, image)
 
-    # Write .gitignore for standalone projects only — at the project ROOT
-    # (metadata_path), where box_data/ + vault/ live and need ignoring (drift
-    # H+I: project_path is the workspace subdir, not the root).
-    if args.standalone:
-        write_project_gitignore(proj.metadata_path)
+        # Write .gitignore for standalone projects only — at the project ROOT
+        # (metadata_path), where box_data/ + vault/ live and need ignoring (drift
+        # H+I: project_path is the workspace subdir, not the root).
+        if args.standalone:
+            write_project_gitignore(proj.metadata_path)
 
     # Seed the box home NOW, atomically with creation (keyspace spec §0/§5).
     # The one-time home seed runs at `create`, not at first launch — registry
     # MEMBERSHIP is the seed signal, so `start` never re-seeds an existing box.
-    from kanibako.commands.start import seed_new_box
+    #
+    # J1 lifecycle journal (Jei 2026-06-30b): the four ordered steps are
+    # write-ahead.  Write the create journal entry (intent), seed the home
+    # (create-if-absent), THEN register (deferred via register=False above), then
+    # clear the entry — clearing is the IMMEDIATE step after the registry write
+    # (HARD INVARIANT: registered ==> no pending entry at rest).  A crash anywhere
+    # before the entry is cleared leaves it, so the next `create`/launch re-seeds
+    # + completes registration + clears the entry (forward-recovery, not
+    # rollback).  ``_register_new_box`` is register-if-absent so a recovery of an
+    # already-registered box (register -> clear-entry window crash) is a no-op
+    # + entry clear.  If register raises a genuine collision the entry is
+    # intentionally LEFT (the box is incomplete) and propagates.
+    _write_create_entry(std, proj)
     seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
+    _register_new_box(std, proj)
+    _clear_create_entry(std, proj)
 
     mode = "standalone" if args.standalone else "default"
-    print(f"Created {mode} project in {proj.project_path}")
+    if is_recovery:
+        print(f"Resumed interrupted {mode} project in {proj.project_path}")
+    else:
+        print(f"Created {mode} project in {proj.project_path}")
     return 0
 
 

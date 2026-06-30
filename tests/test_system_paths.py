@@ -67,7 +67,7 @@ class TestResolveSystemPathsDefaults:
         assert resolved["system._primary_logs"] == base / "primary_workset" / "logs"
 
     def test_config_foundation_resolves_standalone(self, tmp_path):
-        """The Layer-1 foundation resolves the 5 config keys on its own."""
+        """The Layer-1 foundation resolves the 6 config keys on its own."""
         config = resolve_config_paths({}, data_home=tmp_path, home=tmp_path)
         base = tmp_path / "kanibako"
         assert config == {
@@ -76,6 +76,8 @@ class TestResolveSystemPathsDefaults:
             "config.agents": str(base / "agents"),
             "config.primary_workset": str(base / "primary_workset"),
             "config.registry": str(base / "global" / "registry.yaml"),
+            # J1: the lifecycle journal, beside the registry.
+            "config.journal": str(base / "global" / "journal.yaml"),
         }
 
     def test_channels_skeleton_resolves(self, tmp_path):

@@ -97,6 +97,33 @@ def register_name(
     _save(registry, names)
 
 
+def register_name_if_absent(
+    registry: Path,
+    name: str,
+    path: str,
+    section: str = "projects",
+) -> None:
+    """Idempotent :func:`register_name` for the interrupted-create recovery path.
+
+    A no-op when *name* is already registered in *section* with the SAME
+    *path* (the only at-rest collision the deferred-registration marker flow can
+    legitimately re-enter — a crash in the tiny register→remove-marker window
+    leaves the box registered, so re-running the create/seed recovery must not
+    raise on the already-present mapping).  Anything else — the name registered
+    in the OTHER section, or in *section* under a DIFFERENT path — is a genuine
+    collision and re-raises via :func:`register_name`.
+    """
+    if Path(path).resolve() == Path.home().resolve():
+        # Surface the $HOME guard with the same message as register_name.
+        register_name(registry, name, path, section=section)
+        return
+    names = _load(registry)
+    existing = names[section].get(name)
+    if existing is not None and existing == path:
+        return  # identical mapping already present → no-op.
+    register_name(registry, name, path, section=section)
+
+
 def update_name_path(
     registry: Path,
     name: str,
@@ -225,15 +252,30 @@ def resolve_qualified_name(
     return str(candidate), ws_name
 
 
-def assign_name(
+def pick_name(
     registry: Path,
     path: str,
     section: str = "projects",
+    boxes_dir: Path | None = None,
 ) -> str:
-    """Auto-assign a name from the basename of *path*.
+    """Pick a collision-free name from the basename of *path* WITHOUT writing.
 
-    Handles collisions by appending a number: ``name``, ``name2``, ``name3``, ...
-    Registers the name and returns it.
+    The candidate-selection core of :func:`assign_name`, split out so the
+    deferred-registration (interrupted-create) path can obtain the name a box
+    will be registered under WITHOUT writing the registry yet (marker → seed →
+    register → remove-marker, B3).
+
+    Collisions append a number: ``name``, ``name2``, ``name3``, ...  A candidate
+    is rejected when it is already a registered name (either section) OR — when
+    *boxes_dir* is supplied — when its box directory ``boxes_dir/<candidate>``
+    already EXISTS on disk.  The directory check guards the deferred-registration
+    window: a half-built box (dir present, name not yet registered after a crash)
+    keeps its name reserved so a SECOND create cannot grab it and seed over the
+    interrupted box's home.  Recovery of that interrupted box resolves it by its
+    directory, not through ``pick_name``.
+
+    Performs NO registration and NO filesystem mutation — caller registers (or
+    defers).
     """
     base = Path(path).name
     if not base:
@@ -242,11 +284,35 @@ def assign_name(
     names = _load(registry)
     all_names = set(names["projects"]) | set(names["worksets"])
 
+    def taken(cand: str) -> bool:
+        if cand in all_names:
+            return True
+        if boxes_dir is not None and (boxes_dir / cand).exists():
+            return True
+        return False
+
     candidate = base
     n = 2
-    while candidate in all_names:
+    while taken(candidate):
         candidate = f"{base}{n}"
         n += 1
 
+    return candidate
+
+
+def assign_name(
+    registry: Path,
+    path: str,
+    section: str = "projects",
+    boxes_dir: Path | None = None,
+) -> str:
+    """Auto-assign a name from the basename of *path*.
+
+    Handles collisions by appending a number: ``name``, ``name2``, ``name3``, ...
+    Registers the name and returns it.  Equivalent to :func:`pick_name` followed
+    by :func:`register_name` (behavior-identical for existing callers; *boxes_dir*
+    is forwarded to the directory-aware collision check when supplied).
+    """
+    candidate = pick_name(registry, path, section=section, boxes_dir=boxes_dir)
     register_name(registry, candidate, path, section=section)
     return candidate

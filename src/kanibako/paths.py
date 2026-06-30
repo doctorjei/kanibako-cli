@@ -34,6 +34,7 @@ from kanibako.settings_resolve import (
 )
 from kanibako.names import (
     assign_name,
+    pick_name,
     read_names,
     register_name,
     resolve_name,
@@ -92,6 +93,10 @@ class StandardPaths:
     settings: Path
     primary_workset: Path
     registry: Path
+    # Lifecycle journal — write-ahead log of in-flight box-lifecycle ops, beside
+    # the registry (``config.journal = @config.data/global/journal.yaml``).
+    # PATH-BASED on the resolved key (mirrors ``registry``; no reconstruction).
+    journal: Path
     cache: Path
     runtime: Path
     # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
@@ -442,6 +447,10 @@ CONFIG_PATH_DEFAULTS: dict[str, str] = {
     "config.agents": "@config.data/agents",
     "config.primary_workset": "@config.data/primary_workset",
     "config.registry": "@config.data/global/registry.yaml",
+    # The LIFECYCLE JOURNAL (write-ahead log of in-flight box-lifecycle ops),
+    # beside the registry.  The registry is the steady-state truth; the journal
+    # is the transient truth (normally empty).  See ``kanibako.journal``.
+    "config.journal": "@config.data/global/journal.yaml",
 }
 
 
@@ -708,6 +717,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         settings=resolved["config.settings"],
         primary_workset=resolved["config.primary_workset"],
         registry=resolved["config.registry"],
+        journal=resolved["config.journal"],
         cache=resolved["system.cache"],
         runtime=resolved["system.runtime"],
         channels_commons=resolved["system.channels.commons"],
@@ -730,6 +740,7 @@ def resolve_project(
     initialize: bool = False,
     enable_vault: bool | None = None,
     name_override: str | None = None,
+    register: bool = True,
 ) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths (PRIMARY mode).
 
@@ -744,6 +755,15 @@ def resolve_project(
 
     *enable_vault* controls whether vault directories are created and mounted.
     Defaults to True for new projects; existing projects read from ``settings.yaml``.
+
+    *register* (B3 interrupted-create marker): when False AND this call
+    materializes a NEW box, the box dir + meta are created and ``is_new`` is set,
+    but the name is NOT written to the registry — the caller defers registration
+    until AFTER the home seed (marker → seed → register → remove-marker) so the
+    invariant "registered ⟹ fully seeded" holds.  The picked name is still
+    reserved against a concurrent create via the directory-aware
+    :func:`names.pick_name`.  Defaults True (every other caller registers inline,
+    unchanged).
     """
     raw = project_dir or os.getcwd()
     # If the user passed a bare token (no path separator) and no file/dir of
@@ -774,16 +794,29 @@ def resolve_project(
     # box for this workspace may exist under @config.primary_workset/boxes (a
     # dropped-in / moved tree).  On-disk metadata is authoritative — import it
     # (alert + register; name collision → refuse), then re-resolve the dir.
+    #
+    # J1: when register=False (a deferred-registration create/recovery resolve),
+    # the import HONORS the flag — it resolves the box's name from on-disk meta
+    # WITHOUT registering, so re-discovering a half-built box during a re-create
+    # does NOT prematurely register it (the caller completes seed -> register ->
+    # clear-entry).  The returned name re-associates the on-disk dir directly
+    # (the registry is still empty, so _resolve_local_dir would miss again).
     if not project_name:
         from kanibako import import_reconcile
 
         imported = import_reconcile.import_primary_box_for_workspace(
-            std.registry, std.boxes, project_path,
+            std.registry, std.boxes, project_path, register=register,
         )
         if imported:
-            project_name, project_dir_path = _resolve_local_dir(
-                std.registry, project_path_str, std.boxes,
-            )
+            if register:
+                project_name, project_dir_path = _resolve_local_dir(
+                    std.registry, project_path_str, std.boxes,
+                )
+            else:
+                # register=False: the registry was not written; bind the dir to
+                # the resolved on-disk name directly.
+                project_name = imported
+                project_dir_path = std.boxes / imported
 
     metadata_path = project_dir_path
 
@@ -830,11 +863,21 @@ def resolve_project(
         # New project: assign a name first, then create boxes/{name}/.
         # An explicit override (e.g. `kanibako create --name X`) registers
         # strictly; collisions error rather than auto-suffix.
+        # B3: when *register* is False the name is PICKED (directory-aware, so a
+        # half-built box's dir keeps its name reserved) but NOT written — the
+        # caller registers after seeding (marker → seed → register → remove).
         if name_override:
-            register_name(std.registry, name_override, project_path_str)
+            if register:
+                register_name(std.registry, name_override, project_path_str)
             project_name = name_override
+        elif register:
+            project_name = assign_name(
+                std.registry, project_path_str, boxes_dir=std.boxes,
+            )
         else:
-            project_name = assign_name(std.registry, project_path_str)
+            project_name = pick_name(
+                std.registry, project_path_str, boxes_dir=std.boxes,
+            )
         project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
@@ -1603,12 +1646,18 @@ def resolve_any_project(
     project_dir: str | None = None,
     *,
     initialize: bool = False,
+    register: bool = True,
 ) -> ProjectPaths:
     """Auto-detect project mode and resolve paths accordingly.
 
     Uses ``detect_project_mode`` to walk ancestor directories and find the
     project root.  The resolved *project_root* (not the raw CWD) is passed
     to the appropriate resolver.
+
+    *register* (B3) is forwarded to the PRIMARY/STANDALONE resolvers so the
+    ``start`` auto-create path can defer registration until after the home seed
+    (the NAMED branch never writes the name registry on create, so the flag is a
+    no-op there).  Defaults True.
     """
     raw = project_dir or os.getcwd()
     # CLI front-door: a bare token (no path separator) that doesn't exist in
@@ -1668,8 +1717,12 @@ def resolve_any_project(
             WorksetSpec.from_workset(ws), proj_name, std, config, initialize=initialize,
         )
     if detection.mode == BoxMode.standalone:
-        return resolve_standalone_project(std, config, root_str, initialize=initialize)
-    return resolve_project(std, config, project_dir=root_str, initialize=initialize)
+        return resolve_standalone_project(
+            std, config, root_str, initialize=initialize, register=register,
+        )
+    return resolve_project(
+        std, config, project_dir=root_str, initialize=initialize, register=register,
+    )
 
 
 def resolve_box_target(
@@ -1678,6 +1731,7 @@ def resolve_box_target(
     value: str | None = None,
     *,
     initialize: bool = False,
+    register: bool = True,
 ) -> ProjectPaths:
     """Resolve a ``--box`` value (a box NAME or a path) to its :class:`ProjectPaths`.
 
@@ -1712,11 +1766,17 @@ def resolve_box_target(
 
     ``None`` / empty *value* resolves the cwd box (delegates to
     :func:`resolve_any_project`), matching the positional-``project`` default.
+
+    *register* (B3) is forwarded to the PRIMARY/STANDALONE resolvers; ``start``
+    passes ``register=False`` so an auto-created box defers registration until
+    after its home seed (marker → seed → register → remove).  Defaults True.
     """
     # Empty / None -> cwd resolution (same as a bare positional default).
     if not value:
         return _flag_nonconforming(
-            resolve_any_project(std, config, value, initialize=initialize)
+            resolve_any_project(
+                std, config, value, initialize=initialize, register=register,
+            )
         )
 
     # NAME-first: a bare token (no separator) that names a registered STANDALONE
@@ -1733,13 +1793,16 @@ def resolve_box_target(
             return _flag_nonconforming(
                 resolve_standalone_project(
                     std, config, root_str, initialize=initialize,
+                    register=register,
                 )
             )
 
     # Else: NAME (projects/worksets/qualified) or PATH, both via the existing
     # resolver (name-precedence for bare tokens is already handled there).
     return _flag_nonconforming(
-        resolve_any_project(std, config, value, initialize=initialize)
+        resolve_any_project(
+            std, config, value, initialize=initialize, register=register,
+        )
     )
 
 
@@ -1772,6 +1835,7 @@ def establish_standalone(
     enable_vault: bool,
     group_auth: bool,
     name: str = "",
+    register: bool = True,
 ) -> tuple[str, Path, Path, Path]:
     """Establish a standalone box at *root*: identity + meta + registration.
 
@@ -1795,6 +1859,13 @@ def establish_standalone(
     result state without recomputing the table.  Callers own their own
     surrounding concerns (file copies, unwind registration, old-name
     unregister) — only the identity/meta/register core lives here.
+
+    *register* (B3 interrupted-create marker): when False the identity is still
+    resolved and the meta file written, but the box is NOT registered in
+    ``registry.standalone`` — the caller defers registration until AFTER the home
+    seed (marker → seed → register → remove-marker), so a crash mid-seed leaves
+    an UNregistered box that recovery resolves by its on-disk root.  Defaults True
+    (the convert/duplicate lifecycle callers register inline, unchanged).
     """
     from kanibako import box_identity, registry_store
 
@@ -1822,7 +1893,8 @@ def establish_standalone(
         project_hash=phash,
         name=box_name,
     )
-    registry_store.register_standalone(std.registry, box_name, root)
+    if register:
+        registry_store.register_standalone(std.registry, box_name, root)
     return box_name, shell_path, vault_ro_path, vault_rw_path
 
 
@@ -1835,6 +1907,7 @@ def resolve_standalone_project(
     enable_vault: bool | None = None,
     group_auth: bool | None = None,
     name: str = "",
+    register: bool = True,
 ) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths for standalone mode.
 
@@ -1849,6 +1922,11 @@ def resolve_standalone_project(
     ``<box>.jsonl`` helper log, and ``vault/{ro,rw}/``.  The box identity is
     ``<random24>_<sanitized leaf>`` (generated + registered in
     ``registry.standalone`` at create time; reused from the stored meta after).
+
+    *register* (B3 interrupted-create marker): forwarded to
+    :func:`establish_standalone`; when False on a NEW box the meta is written and
+    ``is_new`` set but the box is NOT registered, so the caller can register after
+    the home seed.  Defaults True (existing callers unchanged).
     """
     raw = project_dir or os.getcwd()
     root = Path(raw).resolve()
@@ -1926,11 +2004,15 @@ def resolve_standalone_project(
         # Identity + meta + registration via the shared establish core.  The
         # init block is only reached when no meta exists, so the identity is
         # resolved fresh from the user-supplied --name (empty → fresh canonical).
+        # B3: defer registration to the caller (marker → seed → register →
+        # remove) when register=False; the identity + meta are still written so
+        # recovery can resolve the box by its on-disk root.
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
             std, root,
             enable_vault=actual_vault_enabled,
             group_auth=box_group_auth,
             name=requested_name,
+            register=register,
         )
         is_new = True
 

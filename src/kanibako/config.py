@@ -247,6 +247,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
             "agents": "@config.data/agents",
             "primary_workset": "@config.data/primary_workset",
             "registry": "@config.data/global/registry.yaml",
+            "journal": "@config.data/global/journal.yaml",
         },
         "system": {
             "backup": "@config.data/backup",
