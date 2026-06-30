@@ -254,6 +254,84 @@ class TestAssignName:
 
 
 # ---------------------------------------------------------------------------
+# pick_name (B3 — no-write candidate selection + directory-awareness)
+# ---------------------------------------------------------------------------
+
+class TestPickName:
+    def test_picks_basename_without_writing(self, registry: Path) -> None:
+        from kanibako.names import pick_name
+
+        name = pick_name(registry, "/home/user/projects/myapp")
+        assert name == "myapp"
+        # No registry write — the section stays empty.
+        assert read_names(registry)["projects"] == {}
+
+    def test_collision_numbering_matches_assign(self, registry: Path) -> None:
+        from kanibako.names import pick_name
+
+        register_name(registry, "myapp", "/first")
+        assert pick_name(registry, "/second/myapp") == "myapp2"
+
+    def test_skips_existing_box_dir(self, tmp_path: Path, registry: Path) -> None:
+        """A candidate whose box dir already EXISTS is skipped, even though the
+        name is NOT registered (the interrupted-create reservation guard)."""
+        from kanibako.names import pick_name
+
+        boxes = tmp_path / "boxes"
+        (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
+        name = pick_name(registry, "/x/myapp", boxes_dir=boxes)
+        assert name == "myapp2"
+
+    def test_no_boxes_dir_only_checks_registry(self, registry: Path) -> None:
+        from kanibako.names import pick_name
+
+        # Without boxes_dir, only the registry is consulted (legacy behavior).
+        assert pick_name(registry, "/x/myapp") == "myapp"
+
+    def test_assign_name_uses_pick_then_registers(self, registry: Path) -> None:
+        """assign_name == pick_name + register_name (behavior-identical)."""
+        name = assign_name(registry, "/x/myapp")
+        assert name == "myapp"
+        assert read_names(registry)["projects"]["myapp"] == "/x/myapp"
+
+
+# ---------------------------------------------------------------------------
+# register_name_if_absent (B3 — idempotent recovery register)
+# ---------------------------------------------------------------------------
+
+class TestRegisterNameIfAbsent:
+    def test_registers_when_absent(self, registry: Path) -> None:
+        from kanibako.names import register_name_if_absent
+
+        register_name_if_absent(registry, "myapp", "/p/myapp")
+        assert read_names(registry)["projects"]["myapp"] == "/p/myapp"
+
+    def test_noop_on_identical_mapping(self, registry: Path) -> None:
+        """Recovery re-entry: same name->same path is a silent no-op (no raise)."""
+        from kanibako.names import register_name_if_absent
+
+        register_name(registry, "myapp", "/p/myapp")
+        register_name_if_absent(registry, "myapp", "/p/myapp")  # must not raise.
+        assert read_names(registry)["projects"]["myapp"] == "/p/myapp"
+
+    def test_raises_on_different_path_collision(self, registry: Path) -> None:
+        """A real collision (same name, DIFFERENT path) still raises."""
+        from kanibako.names import register_name_if_absent
+
+        register_name(registry, "myapp", "/p/myapp")
+        with pytest.raises(ProjectError):
+            register_name_if_absent(registry, "myapp", "/OTHER/myapp")
+
+    def test_raises_on_cross_section_collision(self, registry: Path) -> None:
+        """Name registered in the OTHER section is a genuine collision."""
+        from kanibako.names import register_name_if_absent
+
+        register_name(registry, "myapp", "/ws", section="worksets")
+        with pytest.raises(ProjectError):
+            register_name_if_absent(registry, "myapp", "/p/myapp")
+
+
+# ---------------------------------------------------------------------------
 # Phase 2: Name assignment wiring into project/workset creation
 # ---------------------------------------------------------------------------
 

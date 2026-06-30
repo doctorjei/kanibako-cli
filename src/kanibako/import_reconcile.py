@@ -239,7 +239,7 @@ def import_primary_box(registry: Path, box_dir: Path) -> str | None:
 
 
 def import_primary_box_for_workspace(
-    registry: Path, boxes_dir: Path, workspace: Path,
+    registry: Path, boxes_dir: Path, workspace: Path, *, register: bool = True,
 ) -> str | None:
     """Import the on-disk PRIMARY box whose recorded workspace is *workspace*.
 
@@ -253,6 +253,14 @@ def import_primary_box_for_workspace(
     on-disk box is found.  Idempotent: a box already registered to *workspace*
     is found by the caller's normal reverse-lookup, so this is only reached on a
     genuine miss.
+
+    *register* (J1 interrupted-create recovery): when False, the matching on-disk
+    box's NAME is RESOLVED and returned (so the caller can re-associate the dir)
+    but the registry is NOT written.  This honors a ``register=False`` resolve —
+    the create path defers registration past the home seed (journal entry ->
+    seed -> register -> clear-entry), so re-discovering a half-built box during a
+    re-create must NOT prematurely register it and break ``is_new``.  Defaults
+    True (every other resolve registers a dropped-in box inline, unchanged).
     """
     if not boxes_dir.is_dir():
         return None
@@ -266,6 +274,11 @@ def import_primary_box_for_workspace(
         ws = (meta.get("workspace") or "").strip()
         if not ws or str(Path(ws).resolve()) != target:
             continue
+        if not register:
+            # Resolve the box's name from its on-disk meta WITHOUT registering;
+            # the deferred-registration caller completes the create + registers.
+            name = (meta.get("name") or "").strip()
+            return name or None
         return import_primary_box(registry, entry)
     return None
 

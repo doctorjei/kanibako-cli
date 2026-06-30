@@ -282,12 +282,26 @@ def start_mocks():
             # Several same-module ``kanibako.commands.start`` patches are folded
             # into ONE ``patch.multiple`` to keep this large ``with`` under
             # Python's statically-nested-block limit (20).
+            # J1 lifecycle journal: the launch seed gate now wraps
+            # ``_seed_box_home`` with the write-ahead journal flow (write-entry ->
+            # seed -> register -> clear-entry).  ``_write_create_entry`` /
+            # ``_clear_create_entry`` / ``_register_new_box`` read
+            # ``proj.shell_path``/``proj.mode``/``proj.name`` and write the
+            # journal/registry, which — driven by the MagicMock proj here — would
+            # write a literal ``MagicMock`` path key into the journal/registry, so
+            # stub them to no-ops (same rationale as ``_seed_channel_files``). The
+            # journal/recovery semantics are covered by the dedicated suites with
+            # REAL paths (test_journal.py / test_create_recovery.py).
             patch.multiple(
                 "kanibako.commands.start",
                 _resolve_launch_snapshot=DEFAULT,
                 _seed_channel_files=DEFAULT,
                 _container_logs=DEFAULT,
                 registry_path=DEFAULT,
+                _write_create_entry=DEFAULT,
+                _clear_create_entry=DEFAULT,
+                _pending_create_entry=DEFAULT,
+                _register_new_box=DEFAULT,
             ) as m_launch_mount_stubs,
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
@@ -335,6 +349,13 @@ def start_mocks():
             # AGENT delivery binds derive from are built.
             m_launch_mount_stubs["_seed_channel_files"].return_value = None
             m_launch_mount_stubs["_container_logs"].return_value = ""
+            m_launch_mount_stubs["_write_create_entry"].return_value = None
+            m_launch_mount_stubs["_clear_create_entry"].return_value = None
+            # Relaunch default: no pending create entry → the seed gate does not
+            # fire for an ordinary launch of an existing box.  Tests exercising
+            # auto-create-at-launch set proj.is_new = True (or override this).
+            m_launch_mount_stubs["_pending_create_entry"].return_value = None
+            m_launch_mount_stubs["_register_new_box"].return_value = None
 
             proj = MagicMock()
             proj.is_new = False
