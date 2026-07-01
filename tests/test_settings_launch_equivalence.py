@@ -191,23 +191,29 @@ def _shipped_descriptor(agent: str):
     return PluginDescriptor(command=(agent,), bindings=binds, mode={})
 
 
-def _new_delivery_mounts(agent, install, desc, ctx, *, overrides=None):
+def _new_delivery_mounts(agent, install, desc, ctx, *, overrides=None, node_name=None):
     """The NEW single-route delivery: 7a partial (+ override bridge) → snapshot →
-    adapter → reconcile → agent_delivery_mounts (critical-set exit-1)."""
+    adapter → reconcile → agent_delivery_mounts (critical-set exit-1).
+
+    *node_name* (Block E fix 2a) is the ACTIVE node the read path (active_agent)
+    walks; defaults to *agent* (the harness == install.name for a bare agent). For
+    a RIDER (node ≠ harness) the partial MUST root under the node, else the binds
+    orphan at agent.<harness>.* and vanish from the emit."""
     from kanibako.agent_representation import agent_default_partial
     from kanibako.settings_launch import agent_delivery_mounts
     from kanibako.targets.base import BindScope
 
-    partial = agent_default_partial(desc, install)
+    active = node_name if node_name is not None else agent
+    partial = agent_default_partial(desc, install, node_name=active)
     snap = build_launch_snapshot(
-        agent_name=agent, ctx=ctx,
+        agent_name=active, ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         agent_partial=partial,
         binding_overrides=overrides,
         descriptor_bindings=list(desc.bindings),
     )
     rec = reconcile_categories(
-        snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx)
+        snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
     )
     critical = frozenset(
         bd.key for bd in desc.bindings if bd.scope is BindScope.AGENT_CRITICAL
@@ -257,6 +263,58 @@ def test_delivery_override_bridge_matches(agent, tmp_path):
     new = _new_delivery_mounts(agent, install, desc, ctx, overrides=overrides)
     assert _mount_sig(new) == _mount_sig(old)
     assert str(repoint) in {str(m.source) for m in new}  # the repoint took.
+
+
+# --------------------------------------------------------------------------- #
+# RIDER FULL-LAUNCH delivery (Block E fix 2a) — the test that WOULD have caught #
+# the e2e defect: a ℘ NODE resolves through the FULL snapshot → reconcile →     #
+# agent_delivery_mounts path with the descriptor's install.name = HARNESS.      #
+# --------------------------------------------------------------------------- #
+
+
+def test_rider_node_delivery_binds_emitted_under_node(tmp_path):
+    # A rider: the CLAUDE harness (install.name == "claude", claude's share +
+    # launcher descriptor) driven at the active NODE "navigator℘claude". The read
+    # side (snapshot_category_entries active_agent=node) walks agent.default ∪
+    # agent.<node>, so the 7a partial MUST root under the NODE — else the launcher
+    # + share (AGENT_CRITICAL) binds orphan at agent.claude.* and are NEVER emitted
+    # (the e2e symptom: no -v .../.local/bin/claude → container exits immediately).
+    #
+    # MUTATION-CHECK: revert fix 2a (agent_representation.py roots the partial under
+    # install.name instead of node_name) → these binds vanish from `new` → the
+    # non-empty + launcher/share asserts below FAIL. This is the coverage gap that
+    # let the defect through (Block A's units never ran a ℘ node through the emit).
+    node = "navigator℘claude"
+    install = _install("claude", tmp_path)         # install.name == harness "claude"
+    desc = _shipped_descriptor("claude")           # share (dir) + launcher (file)
+    ctx = _ctx(node, None)                          # ctx keyed by the NODE
+
+    new = _new_delivery_mounts("claude", install, desc, ctx, node_name=node)
+
+    # The launcher + install-dir (share) binds ARE emitted (not orphaned/vanished).
+    sources = {str(m.source) for m in new}
+    assert new, "rider delivery binds must NOT vanish (fix 2a)"
+    assert str(install.launcher) in sources
+    assert str(install.install_dir) in sources
+    # Byte-identical to what the SAME descriptor emits — the node keys the slot,
+    # the bind SET is exactly claude's (the harness plugin's) delivery mounts.
+    bare = _new_delivery_mounts("claude", install, desc, _ctx("claude", None))
+    assert _mount_sig(new) == _mount_sig(bare)
+
+
+def test_bare_delivery_byte_identical_before_after_node_threading(tmp_path):
+    # Backward-compat (load-bearing): for a BARE agent node == harness == install.name,
+    # so threading the node-name is a no-op. Passing node_name explicitly must equal
+    # omitting it (which falls back to install.name).
+    for agent in ("claude", "goose", "codex"):
+        sub = tmp_path / agent
+        sub.mkdir()
+        install = _install(agent, sub)
+        desc = _shipped_descriptor(agent)
+        ctx = _ctx(agent, None)
+        threaded = _new_delivery_mounts(agent, install, desc, ctx, node_name=agent)
+        default = _new_delivery_mounts(agent, install, desc, ctx)  # node_name=None
+        assert _mount_sig(threaded) == _mount_sig(default)
 
 
 @pytest.mark.parametrize("agent", ["claude", "goose", "codex"])

@@ -337,3 +337,56 @@ def test_does_not_mutate_inputs() -> None:
     assert tuple(d.bindings) == before
     # install fields unchanged.
     assert INSTALL.binary == Path("/nope/bin/claude")
+
+
+# --------------------------------------------------------------------------- #
+# RIDER node-name rooting (Block E fix 2a) — binds root under the ACTIVE node, #
+# NOT install.name (the harness); bare (node==harness) stays byte-identical.   #
+# --------------------------------------------------------------------------- #
+
+
+def test_rider_node_name_roots_binds_under_node_not_harness() -> None:
+    # A rider's active node is ``navigator℘claude``; install.name is the HARNESS
+    # ``claude`` (hardcoded in claude's detect()). The binds MUST land under the
+    # node the read side (_agent_pick_node walks agent.<active_agent>) can see.
+    node = "navigator℘claude"
+    d = _descriptor(
+        _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/l"),
+        _binding(key="share", origin=HostSrcOrigin.INSTALL_DIR, box_dest="/s"),
+    )
+    partial = agent_default_partial(d, INSTALL, node_name=node)
+    # Binds land under agent.<node>.bindings.* ...
+    launcher = _get(partial, "agent", node, "bindings", "ro", "launcher")
+    share = _get(partial, "agent", node, "bindings", "ro", "share")
+    assert isinstance(launcher, Bind) and launcher.host == str(INSTALL.launcher)
+    assert isinstance(share, Bind) and share.host == str(INSTALL.install_dir)
+    # ... and NOT orphaned at agent.claude.* (the harness = install.name), which
+    # the rider read path never walks (the e2e-observed defect).
+    assert _get(partial, "agent", "claude") is _MISSING
+
+
+def test_bare_node_name_matches_harness_byte_identical() -> None:
+    # Bare claude: the node-name IS the harness "claude" == install.name, so
+    # passing node_name explicitly is byte-identical to the install.name default.
+    d = _descriptor(
+        _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/l"),
+        _binding(key="cfg", origin=HostSrcOrigin.LITERAL,
+                 literal_src=Path("/host/cfg"), box_dest="/c", ro=False),
+    )
+    default = agent_default_partial(d, INSTALL)            # node_name omitted
+    explicit = agent_default_partial(d, INSTALL, node_name="claude")
+    assert default == explicit
+    # Both root at agent.claude (node == harness).
+    assert _get(explicit, "agent", "claude", "bindings", "ro", "launcher") is not _MISSING
+
+
+def test_node_name_none_falls_back_to_install_name() -> None:
+    # Legacy / test-convenience default: node_name=None → install.name.
+    inst = AgentInstall(
+        name="x", binary=Path("/nope/bin/x"), install_dir=Path("/nope/share/x"),
+    )
+    d = _descriptor(
+        _binding(key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/b"),
+    )
+    partial = agent_default_partial(d, inst)  # no node_name
+    assert _get(partial, "agent", "x", "bindings", "ro", "launcher") is not _MISSING

@@ -88,16 +88,28 @@ if TYPE_CHECKING:
 def agent_default_partial(
     descriptor: PluginDescriptor,
     install: AgentInstall,
+    node_name: str | None = None,
 ) -> KeyStore:
     """Represent a descriptor's delivery bindings as an agent-level KeyStore partial.
 
     Returns a :class:`~kanibako.settings_store.KeyStore` partial rooted at
-    ``agent.<name>`` where ``<name>`` is the descriptor's OWN agent (``install.name``;
-    S27 / §2d), holding each resolvable :class:`~kanibako.targets.base.Binding` as a
-    ``agent.<name>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf —
+    ``agent.<node>`` where ``<node>`` is the ACTIVE node-name (*node_name*), holding
+    each resolvable :class:`~kanibako.targets.base.Binding` as a
+    ``agent.<node>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf —
     mirroring :func:`~kanibako.targets.assembly.resolve_binding_source` with NO
     override and NO existence check (S26). See the module docstring for the full
     rules and the None-origin OMIT contract.
+
+    RIDER threading (Block E fix 2a): the read side (``_agent_pick_node``) walks
+    ``agent.default`` ∪ ``agent.<active_agent>``, where ``<active_agent>`` is the
+    resolved NODE-name (``navigator℘claude`` for a rider). The descriptor's
+    ``install.name`` is the HARNESS (``"claude"``, hardcoded in claude's ``detect()``),
+    so rooting the binds under ``install.name`` ORPHANS a rider's AGENT_CRITICAL
+    delivery binds at ``agent.claude.*`` (never read → the ``claude`` binary is never
+    mounted → the container exits immediately). So the partial roots under the ACTIVE
+    node-name (*node_name*). For a BARE agent node==harness=="claude", so the binds
+    still land at ``agent.claude.*`` — byte-identical. *node_name* falls back to
+    ``install.name`` only when a caller omits it (legacy / test convenience).
 
     The partial nests ``agent.<name>.bindings`` with ``ro`` / ``rw`` sub-tables; a
     sub-table is present only if at least one binding lands in it, ``bindings`` is
@@ -134,12 +146,14 @@ def agent_default_partial(
     if dict.__len__(rw_binds):
         bindings["rw"] = rw_binds
 
-    # Root under the descriptor's OWN agent name (§2d ``agent.<agent>.*``): the
-    # claude descriptor's binds land at ``agent.claude.bindings.*``. The agent NAME
-    # is part of the KEY PATH (NOT a bare ``agent`` token, §0 L21) — so this partial
-    # merges BY NAME with 2a's discriminated ``agent.<active>.*`` level and any
-    # higher-scope ``agent.<name>.*`` override (block 2b).
-    name = install.name
+    # Root under the ACTIVE node-name (§2d ``agent.<agent>.*``): for a BARE agent the
+    # node-name IS the harness (``agent.claude.bindings.*``); for a RIDER it is the
+    # composite node (``agent.navigator℘claude.bindings.*``) the read side actually
+    # walks (fix 2a). The agent NAME is part of the KEY PATH (NOT a bare ``agent``
+    # token, §0 L21) — so this partial merges BY NAME with 2a's discriminated
+    # ``agent.<active>.*`` level and any higher-scope ``agent.<node>.*`` override
+    # (block 2b), including the node-keyed override bridge.
+    name = node_name if node_name is not None else install.name
     agent_sub = KeyStore()
     if dict.__len__(bindings):
         agent_sub["bindings"] = bindings
