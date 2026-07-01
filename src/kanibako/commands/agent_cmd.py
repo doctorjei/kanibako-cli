@@ -47,6 +47,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Set an agent setting (key=value).\n\n"
             "  agent set myagent model=sonnet     set 'model'\n"
             "  agent set myagent env.FOO=bar      set env var FOO\n"
+            "  agent set myagent env_file.TOKEN=~/.config/claude/foo/token\n"
+            "                                     env var TOKEN from a host file\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -223,6 +225,13 @@ def run_info(args: argparse.Namespace) -> int:
     else:
         print("Env:          (none)")
 
+    # env-from-file POINTERS (VAR -> host path). The token file contents (the
+    # secret) are never read here — only the path is shown.
+    if cfg.env_file:
+        print("Env (file):")
+        for k, v in sorted(cfg.env_file.items()):
+            print(f"  {k} = {v}")
+
     return 0
 
 
@@ -320,6 +329,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # Reset to defaults
             cfg.state.clear()
             cfg.env.clear()
+            cfg.env_file.clear()
             cfg.run_args.clear()
             write_agent_config(path, cfg)
             print("Reset all agent config overrides.")
@@ -366,6 +376,12 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
 def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     """Read a single key from agent config."""
+    # env_file.<VAR> — the env-from-file POINTER (host path). Checked before the
+    # ``env.`` prefix so ``env_file.X`` is not mis-parsed as ``env.`` + ``file.X``.
+    # Returns the stored PATH, never the (secret) file contents.
+    if key.startswith("env_file."):
+        var = key[len("env_file."):]
+        return cfg.env_file.get(var)
     if key.startswith("env."):
         env_name = key[4:]
         return cfg.env.get(env_name)
@@ -379,7 +395,13 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
 
 def _set_agent_key(cfg: AgentConfig, key: str, value: str) -> None:
     """Set a single key in agent config."""
-    if key.startswith("env."):
+    # env_file.<VAR> = <host-path>: store the POINTER only. The secret (the
+    # token) stays in the host file; only the PATH is persisted here (spec §2d).
+    # Checked before ``env.`` so ``env_file.X`` routes correctly.
+    if key.startswith("env_file."):
+        var = key[len("env_file."):]
+        cfg.env_file[var] = value
+    elif key.startswith("env."):
         env_name = key[4:]
         cfg.env[env_name] = value
     elif key == "name":
@@ -393,6 +415,13 @@ def _set_agent_key(cfg: AgentConfig, key: str, value: str) -> None:
 
 def _reset_agent_key(cfg: AgentConfig, key: str) -> bool:
     """Remove a single key from agent config.  Returns True if found."""
+    # env_file.<VAR> — drop the pointer (checked before ``env.``).
+    if key.startswith("env_file."):
+        var = key[len("env_file."):]
+        if var in cfg.env_file:
+            del cfg.env_file[var]
+            return True
+        return False
     if key.startswith("env."):
         env_name = key[4:]
         if env_name in cfg.env:
@@ -437,6 +466,13 @@ def _show_agent_config(
     if cfg.env:
         for k, v in sorted(cfg.env.items()):
             print(f"  env.{k} = {v}")
+        has_output = True
+
+    # [env_file] section — the env-from-file POINTERS (VAR -> host path). Only the
+    # PATH is shown; the token file contents (the secret) are never read here.
+    if cfg.env_file:
+        for k, v in sorted(cfg.env_file.items()):
+            print(f"  env_file.{k} = {v}")
         has_output = True
 
     if not has_output:

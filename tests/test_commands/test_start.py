@@ -1071,6 +1071,48 @@ class TestAgentConfigIntegration:
             env = m.runtime.run.call_args.kwargs.get("env") or {}
             assert env.get("MY_VAR") == "hello"
 
+    def test_env_file_token_delivered_to_container_env(self, start_mocks, tmp_path):
+        """Block C: the active agent's env_file pointer → the container env VALUE
+        is the file's CONTENTS (secret read at the env-emission seam, per-node)."""
+        tok = tmp_path / "token"
+        tok.write_text("sk-rider-bearer\n")
+        with start_mocks() as m:
+            m.agent_cfg.env_file = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert env.get("ANTHROPIC_AUTH_TOKEN") == "sk-rider-bearer"
+
+    def test_env_file_missing_does_not_crash_launch(self, start_mocks, tmp_path):
+        """A missing token file fails soft: the var is unset, launch proceeds."""
+        with start_mocks() as m:
+            m.agent_cfg.env_file = {"ANTHROPIC_AUTH_TOKEN": str(tmp_path / "absent")}
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            # Launch still happened; the var is simply absent.
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert "ANTHROPIC_AUTH_TOKEN" not in env
+
+    def test_no_env_file_is_byte_identical(self, start_mocks):
+        """Backward-compat: no env_file set → the container env is unaffected."""
+        with start_mocks() as m:
+            # default AgentConfig().env_file == {}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert "ANTHROPIC_AUTH_TOKEN" not in env
+
     def test_state_env_merged_into_container_env(self, start_mocks):
         """Descriptor container_env is merged into the container env.
 
@@ -3079,3 +3121,136 @@ class TestSeedNewBoxCreateEntry:
         assert kwargs["std"] is std
         # <None> endpoint → the seed is NOT told to suppress the OAuth cred (bare).
         assert kwargs["suppress_oauth"] is False
+
+
+class TestResolveEnvFiles:
+    """Block C: env-from-file token delivery (secret hygiene + fail-soft)."""
+
+    def _logger(self):
+        import logging
+        return logging.getLogger("test_resolve_env_files")
+
+    def _call(self, env_file):
+        from kanibako.commands.start import _resolve_env_files
+        return _resolve_env_files(env_file, self._logger())
+
+    def test_reads_file_into_var(self, tmp_path):
+        tok = tmp_path / "token"
+        tok.write_text("sk-secret-123\n")
+        out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        # One trailing newline stripped.
+        assert out == {"ANTHROPIC_AUTH_TOKEN": "sk-secret-123"}
+
+    def test_no_trailing_newline_kept_whole(self, tmp_path):
+        tok = tmp_path / "token"
+        tok.write_text("sk-secret-123")  # no trailing newline
+        out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert out == {"ANTHROPIC_AUTH_TOKEN": "sk-secret-123"}
+
+    def test_only_one_trailing_newline_stripped(self, tmp_path):
+        tok = tmp_path / "token"
+        tok.write_text("sk-secret-123\n\n")  # two trailing newlines
+        out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        # Exactly ONE newline removed (a token ending in whitespace not mangled).
+        assert out == {"ANTHROPIC_AUTH_TOKEN": "sk-secret-123\n"}
+
+    def test_empty_map_is_empty(self):
+        assert self._call({}) == {}
+
+    def test_missing_file_var_unset_no_crash(self, tmp_path, caplog):
+        import logging
+        missing = tmp_path / "nope" / "token"
+        with caplog.at_level(logging.WARNING):
+            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(missing)})
+        # Fail-soft: var UNSET, no exception raised.
+        assert out == {}
+        # WARN loudly, referencing the VAR + path.
+        assert any("not found" in r.getMessage() for r in caplog.records)
+        assert any("ANTHROPIC_AUTH_TOKEN" in r.getMessage() for r in caplog.records)
+
+    def test_missing_file_warning_is_nonvacuous(self, tmp_path, caplog):
+        # Mutation-check: a PRESENT file must NOT emit the not-found warning
+        # (proves the warning is gated on the real failure, not always emitted).
+        import logging
+        tok = tmp_path / "token"
+        tok.write_text("v\n")
+        with caplog.at_level(logging.WARNING):
+            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert out == {"ANTHROPIC_AUTH_TOKEN": "v"}
+        assert not any("not found" in r.getMessage() for r in caplog.records)
+
+    def test_empty_file_var_unset_warns(self, tmp_path, caplog):
+        import logging
+        tok = tmp_path / "token"
+        tok.write_text("")  # empty
+        with caplog.at_level(logging.WARNING):
+            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert out == {}
+        assert any("empty" in r.getMessage() for r in caplog.records)
+
+    def test_newline_only_file_is_empty(self, tmp_path, caplog):
+        # A file containing only a trailing newline strips to "" -> unset.
+        import logging
+        tok = tmp_path / "token"
+        tok.write_text("\n")
+        with caplog.at_level(logging.WARNING):
+            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert out == {}
+        assert any("empty" in r.getMessage() for r in caplog.records)
+
+    def test_unreadable_file_var_unset_no_crash(self, tmp_path, caplog):
+        import logging
+        import os
+        tok = tmp_path / "token"
+        tok.write_text("sk-secret\n")
+        os.chmod(tok, 0o000)
+        try:
+            with caplog.at_level(logging.WARNING):
+                out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        finally:
+            os.chmod(tok, 0o600)  # restore so tmp cleanup works
+        # Root runs as uid 0 and can read 0o000 files; skip the assert then.
+        if os.geteuid() != 0:
+            assert out == {}
+            assert any("cannot read" in r.getMessage() for r in caplog.records)
+
+    def test_tilde_expansion(self, tmp_path, monkeypatch):
+        # ~ expands against HOME.
+        home = tmp_path / "home"
+        (home / ".config").mkdir(parents=True)
+        (home / ".config" / "token").write_text("tok-tilde\n")
+        monkeypatch.setenv("HOME", str(home))
+        out = self._call({"ANTHROPIC_AUTH_TOKEN": "~/.config/token"})
+        assert out == {"ANTHROPIC_AUTH_TOKEN": "tok-tilde"}
+
+    def test_env_var_expansion(self, tmp_path, monkeypatch):
+        # $VAR in the path expands.
+        d = tmp_path / "secrets"
+        d.mkdir()
+        (d / "token").write_text("tok-envvar\n")
+        monkeypatch.setenv("SECRETS_DIR", str(d))
+        out = self._call({"ANTHROPIC_AUTH_TOKEN": "$SECRETS_DIR/token"})
+        assert out == {"ANTHROPIC_AUTH_TOKEN": "tok-envvar"}
+
+    def test_token_value_never_logged(self, tmp_path, caplog):
+        # LOAD-BEARING: the secret value must NOT appear in any log record, on
+        # either the success path or (by construction) the warn paths.
+        import logging
+        secret = "sk-super-secret-do-not-log-XYZ"
+        tok = tmp_path / "token"
+        tok.write_text(secret + "\n")
+        with caplog.at_level(logging.DEBUG):
+            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert out == {"ANTHROPIC_AUTH_TOKEN": secret}
+        for r in caplog.records:
+            assert secret not in r.getMessage()
+
+    def test_per_var_isolation_missing_does_not_block_present(self, tmp_path):
+        # Multiple entries: a missing one is skipped, a present one still delivered.
+        good = tmp_path / "good"
+        good.write_text("good-tok\n")
+        out = self._call({
+            "GOOD": str(good),
+            "MISSING": str(tmp_path / "absent"),
+        })
+        assert out == {"GOOD": "good-tok"}

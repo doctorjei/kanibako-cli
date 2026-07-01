@@ -33,6 +33,47 @@ class TestAgentConfigDefaults:
         assert cfg.env == {"FOO": "bar"}
 
 
+class TestAgentConfigEnvFile:
+    """The env_file POINTER family (VAR -> host path; secret stays in the file)."""
+
+    def test_default_empty(self):
+        assert AgentConfig().env_file == {}
+
+    def test_custom_value(self):
+        cfg = AgentConfig(env_file={"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"})
+        assert cfg.env_file == {"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"}
+
+    def test_load_env_file_section(self, tmp_path):
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'agent:\n'
+            '  name: "rider"\n'
+            'env_file:\n'
+            '  ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
+        )
+        cfg = load_agent_config(cfg_path)
+        # Only the PATH is loaded (a pointer), never any secret value.
+        assert cfg.env_file == {"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"}
+
+    def test_load_missing_env_file_section(self, tmp_path):
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text('agent:\n  name: "x"\n')
+        assert load_agent_config(cfg_path).env_file == {}
+
+    def test_round_trip_env_file(self, tmp_path):
+        path = tmp_path / "test.yaml"
+        original = AgentConfig(
+            name="rider",
+            env_file={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
+        )
+        write_agent_config(path, original)
+        # The written file stores the PATH, not any token contents.
+        content = path.read_text()
+        assert "/secure/token" in content
+        loaded = load_agent_config(path)
+        assert loaded.env_file == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
+
+
 class TestAgentsDir:
     def test_default(self, tmp_path):
         result = agents_dir(tmp_path)
