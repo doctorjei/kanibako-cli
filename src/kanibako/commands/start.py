@@ -51,6 +51,79 @@ from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
 
 
+def ensure_rider_share_symlinks(std, agent_id, target) -> None:
+    """Point a rider's agent-scope share dirs at the harness's (symlink shim).
+
+    A rider is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
+    dir is its own store, but whose plugins/cache SHOULD be shared with the bare
+    harness (``agents/claude/``) rather than starting empty.  Rather than re-root
+    the resolver, we lay a SYMLINK shim: for every agent-scope share the target
+    declares (``target.default_shares()`` — claude's ``plugins`` / ``cache``),
+    ``agents/<node>/<host_src>`` becomes a symlink -> ``agents/<harness>/<host_src>``.
+    The resolver + spec are UNCHANGED; the L7 guarantee-create later (``mkdir
+    parents=True, exist_ok=True`` on the rw source) is a no-op on the symlink-to-
+    existing-dir, so the harness dir is the real writeback target.
+
+    Driven by the descriptor's declared shares (generic over harnesses; NO
+    per-plugin code).  Call at rider-dir MATERIALIZATION, BEFORE mount assembly /
+    share source resolution, so the symlink pre-dates any real-dir guarantee-create.
+
+    Edge cases (idempotent + fail-safe, NEVER clobber):
+      * BARE (``agent_id == harness``) -> return immediately, do nothing.  Every
+        existing (non-rider) agent path is byte-for-byte unchanged: no symlink,
+        no new dir.
+      * harness dir made FIRST (``mkdir parents``) so the link never dangles.
+      * node path already the CORRECT symlink -> no-op.
+      * node path ABSENT -> create the symlink.
+      * node path EXISTS as a real dir OR a WRONG-target symlink -> LEAVE it +
+        debug-log (a rider that legitimately has its own dir wins).
+    """
+    harness = harness_of(agent_id)
+    if agent_id == harness:
+        # Bare agent (node == harness): nothing to shim.  Backward-compatible.
+        return
+    if target is None:
+        return
+
+    logger = get_logger("start")
+    agents_root = std.agents
+    for host_src, *_rest in target.default_shares().values():
+        harness_dir = Path(agents_root) / harness / host_src
+        node_link = Path(agents_root) / agent_id / host_src
+
+        # Create the harness (real) dir FIRST so the symlink never dangles.
+        harness_dir.mkdir(parents=True, exist_ok=True)
+        node_link.parent.mkdir(parents=True, exist_ok=True)
+
+        if node_link.is_symlink():
+            # An existing symlink: no-op if it already points at the harness dir,
+            # otherwise LEAVE it (a rider that repointed its own share wins).
+            try:
+                correct = node_link.readlink() == harness_dir
+            except OSError:
+                correct = False
+            if correct:
+                continue
+            logger.debug(
+                "rider share %s: node link %s -> %s (not the harness dir %s); "
+                "leaving as-is",
+                host_src, node_link, os.readlink(node_link), harness_dir,
+            )
+            continue
+        if node_link.exists():
+            # A real dir/file already at the node path: the rider owns it; leave.
+            logger.debug(
+                "rider share %s: node path %s is a real dir; leaving as-is "
+                "(not sharing the harness dir)",
+                host_src, node_link,
+            )
+            continue
+        node_link.symlink_to(harness_dir)
+        logger.debug(
+            "rider share %s: linked %s -> %s", host_src, node_link, harness_dir,
+        )
+
+
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "start",
@@ -859,6 +932,10 @@ def _run_container(
         write_agent_config(agent_cfg_path, agent_cfg)
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
+    # Rider share shim: point agents/<node>/{plugins,cache} at the harness's dirs
+    # BEFORE mount assembly / share-source guarantee-create resolves them.  A bare
+    # agent (node == harness) is a no-op.
+    ensure_rider_share_symlinks(std, agent_id, target)
 
     # Auth 3-tier SHARING chain + rider endpoint: resolve BOTH per-box decisions ONCE
     # here off a SINGLE launch snapshot (single-route), BEFORE the first consumer (the
@@ -2909,6 +2986,10 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         # First-use: generate the default agent config so the seed reconcile
         # reads a real agent-config file (mirrors the launch path).
         write_agent_config(agent_cfg_path, target.generate_agent_config())
+    # Rider share shim (mirrors the launch path): link agents/<node>/{plugins,cache}
+    # to the harness's dirs BEFORE the seed reconcile resolves share sources.  Bare
+    # agent (node == harness) is a no-op.
+    ensure_rider_share_symlinks(std, agent_id, target)
     if target is not None:
         desc = target.descriptor
 

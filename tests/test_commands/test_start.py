@@ -828,6 +828,133 @@ class TestPluginsAndCacheShares:
         assert len(self._by_dest(mounts, self._CACHE_DEST)) == 1
 
 
+class TestRiderShareSymlinks:
+    """Block D: ``ensure_rider_share_symlinks`` lays a symlink shim so a RIDER
+    node (``navigator℘claude``) shares the harness's ``agents/claude/{plugins,
+    cache}`` instead of getting its own empty dirs.  Bare (node == harness) is a
+    no-op (byte-identical to every existing agent path)."""
+
+    _HARNESS = "claude"
+    _NODE = "navigator℘claude"
+
+    def _target(self, shares=None):
+        from types import SimpleNamespace
+        if shares is None:
+            shares = {
+                "agent.shared.plugins": ("plugins", "/home/agent/.claude/plugins"),
+                "agent.shared.cache": ("cache", "/home/agent/.claude/cache"),
+            }
+        return SimpleNamespace(name=self._HARNESS, default_shares=lambda: shares)
+
+    def _std(self, tmp_path):
+        from types import SimpleNamespace
+        agents = tmp_path / "agents"
+        agents.mkdir()
+        return SimpleNamespace(agents=agents)
+
+    # --- rider: symlinks created, harness dir first, no dangling -------------
+
+    def test_rider_symlinks_created_for_each_share(self, tmp_path):
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        ensure_rider_share_symlinks(std, self._NODE, self._target())
+        for name in ("plugins", "cache"):
+            node_link = std.agents / self._NODE / name
+            harness_dir = std.agents / self._HARNESS / name
+            assert node_link.is_symlink(), f"{name} not a symlink"
+            # Harness dir made FIRST -> the link is NOT dangling.
+            assert harness_dir.is_dir(), f"harness {name} dir missing"
+            assert node_link.resolve() == harness_dir.resolve()
+            assert node_link.readlink() == harness_dir
+
+    def test_rider_idempotent_second_call_noop(self, tmp_path):
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        ensure_rider_share_symlinks(std, self._NODE, self._target())
+        before = {
+            name: (std.agents / self._NODE / name).readlink()
+            for name in ("plugins", "cache")
+        }
+        # Second call: still symlinks, same target (no clobber, no error).
+        ensure_rider_share_symlinks(std, self._NODE, self._target())
+        for name in ("plugins", "cache"):
+            link = std.agents / self._NODE / name
+            assert link.is_symlink()
+            assert link.readlink() == before[name]
+
+    def test_rider_real_dir_at_node_left_alone(self, tmp_path):
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        # A rider that legitimately has its OWN real plugins dir.
+        real = std.agents / self._NODE / "plugins"
+        real.mkdir(parents=True)
+        (real / "sentinel.txt").write_text("mine")
+        ensure_rider_share_symlinks(std, self._NODE, self._target())
+        # NOT clobbered: still a real dir with its sentinel.
+        assert real.is_dir() and not real.is_symlink()
+        assert (real / "sentinel.txt").read_text() == "mine"
+        # The OTHER share (cache) still got its symlink.
+        cache_link = std.agents / self._NODE / "cache"
+        assert cache_link.is_symlink()
+
+    def test_rider_wrong_target_symlink_left_alone(self, tmp_path):
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        # Pre-existing symlink pointing somewhere ELSE (not the harness dir).
+        elsewhere = tmp_path / "elsewhere_plugins"
+        elsewhere.mkdir()
+        node_link = std.agents / self._NODE / "plugins"
+        node_link.parent.mkdir(parents=True)
+        node_link.symlink_to(elsewhere)
+        ensure_rider_share_symlinks(std, self._NODE, self._target())
+        # LEFT alone: still points at ``elsewhere``, not the harness dir.
+        assert node_link.is_symlink()
+        assert node_link.readlink() == elsewhere
+
+    # --- bare (node == harness): strict no-op -------------------------------
+
+    def test_bare_agent_is_noop(self, tmp_path):
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        ensure_rider_share_symlinks(std, self._HARNESS, self._target())
+        # Mutation-check: NOTHING created for a bare agent — no node dir, no
+        # harness share dirs, no symlink.  (If the helper failed to early-return,
+        # it would have made agents/claude/{plugins,cache}.)
+        assert not (std.agents / self._HARNESS).exists()
+        assert list(std.agents.iterdir()) == []
+
+    def test_bare_agent_noop_even_with_shares(self, tmp_path):
+        # Same as above but proves the guard is on node==harness, not on empty
+        # shares: a fully-declared target still yields no dirs for bare.
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        target = self._target()
+        ensure_rider_share_symlinks(std, self._HARNESS, target)
+        assert list(std.agents.iterdir()) == []
+
+    def test_none_target_is_noop(self, tmp_path):
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        ensure_rider_share_symlinks(std, self._NODE, None)
+        assert list(std.agents.iterdir()) == []
+
+    # --- ORDERING: the L7 guarantee-create is a no-op on the symlink --------
+
+    def test_guarantee_create_mkdir_does_not_clobber_symlink(self, tmp_path):
+        """The share source guarantee-create later runs
+        ``Path.mkdir(parents=True, exist_ok=True)`` on the rw source.  On our
+        symlink-to-existing-dir that is a silent no-op (verified here), so the
+        harness dir stays the real writeback target."""
+        from kanibako.commands.start import ensure_rider_share_symlinks
+        std = self._std(tmp_path)
+        ensure_rider_share_symlinks(std, self._NODE, self._target())
+        node_link = std.agents / self._NODE / "plugins"
+        # Simulate the L7 guarantee-create on the (already-symlinked) source.
+        node_link.mkdir(parents=True, exist_ok=True)
+        assert node_link.is_symlink()  # NOT replaced by a real dir
+        assert node_link.resolve() == (std.agents / self._HARNESS / "plugins").resolve()
+
+
 class TestCredsyncRouting:
     """Step 1f: descriptor-bearing targets route their credential lifecycle
     (init / pre-launch refresh / post-session writeback) through the credsync
