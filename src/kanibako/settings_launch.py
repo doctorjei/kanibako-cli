@@ -72,8 +72,9 @@ S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1; spec ``settings-keyspace-1.6.0-target.md
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING, Literal, Mapping
 
 from kanibako.settings_assemble import assemble_levels
 from kanibako.settings_categories import (
@@ -105,114 +106,134 @@ _SCOPES: tuple[str, ...] = ("system", "agent", "workset", "box")
 
 
 # --------------------------------------------------------------------------- #
-# Group-auth capability chain (block #2 — ratified 2026-06-29)                 #
+# Auth 3-tier SHARING chain (spec §2a/§2b/§2c/§2d — 2026-07-01 redesign)        #
 # --------------------------------------------------------------------------- #
 #
-# The spec's CAPABILITY CHAIN rooted at the agent tier (spec §2a L184 / §2b L282 /
-# §2c L315-316,331-332,381 / §2d L399; design L689-719). These keys are injected
-# into the launch snapshot floor so ``expand`` resolves the @-ref chain ONCE
-# (single-route — NO second resolver). A scope FILE may still override a key by
-# name (the floor sits under ``base``), preserving the cascade.
+# REPLACES the boolean group_auth chain with a global/workset/box SHARING model
+# that COMPOSES: a box can be global-shared AND/OR workset-shared. The keys are
+# injected into the launch snapshot floor so ``expand`` resolves the @-ref chain
+# ONCE (single-route — NO second resolver). A settable scope FILE may still
+# override a settable key by name (the floor sits under ``base``); the ``meta.*``
+# capability keys are RO / construct-set (a scope file cannot fake them).
 #
-# Chain (the WHAT — the spec is the authority):
-#   agent.default.group_auth_capable  = True   (UNIVERSAL floor; every agent
-#                                               inherits via agent.<agent>.<key> |
-#                                               agent.default.<key>)
-#   meta.workset.group_auth_available = @agent.<agent>.group_auth_capable  (ceiling)
-#   workset.group_auth_enabled        = @meta.workset.group_auth_available  (policy)
-#   meta.box.group_auth_available     = @workset.group_auth_enabled         (box ceiling)
-#   box.group_auth_on                 = True   (box's CHOICE; settable)
-#   effective_group_auth = meta.box.group_auth_available AND box.group_auth_on
+# The FINAL KEY MODEL (design FINAL — the authority):
+#   meta.agent.<agent>.auth.share_support   <plugin-set>   shared creds supported?
+#   system.auth.share_allowed             = true           global share allowed?
+#   workset.auth.share_allowed            = @system.auth.share_allowed
+#   workset.auth.global_sync              = @system.auth.share_allowed
+#   meta.box.agent.auth.share_support     = @meta.agent.<@box.agent_name>.auth.share_support
+#                                           (mirror, materialized when box.agent_name set)
+#   box.auth.global_enabled  = %@meta.box.agent.auth.share_support && @system.auth.share_allowed%
+#   box.auth.workset_enabled = %@meta.box.agent.auth.share_support && @workset.auth.share_allowed%
+#   workset.auth.path        = @meta.workset.path/auth        (workset auth dir, per workset)
+#   box.auth.workset_path    = @workset.auth.path/@box.agent_name  (this box's per-agent source root)
 #
-# STANDALONE (degenerate lone box, spec §2c L315-316): meta.workset.group_auth_
-# available AND workset.group_auth_enabled are the LITERAL False (NOT the @-ref) —
-# so meta.box.group_auth_available short-circuits to False WITHOUT traversing to
-# the agent tier (and the @-ref still RESOLVES — closes the standalone gap).
+# STORES: GLOBAL = host home (host_rel, NOT managed) · WORKSET = @workset.auth.path/<agent>/
+# (layout MIRRORS the in-guest mount = home_rel) · BOX = private (no source).
+# Precedence: workset > global.
+#
+# ‼ ENABLE COMPUTATION (impl note): the spec writes the two box enables as
+# ``%@support && @allow%`` expressions, but the launch ``expand`` engine resolves
+# ONLY @-refs / $VAR / ~ — it does NOT evaluate ``&&`` boolean expressions (the
+# spec's ``%…%`` conditionals are computed in Python today, cf. the images bind in
+# core_defaults). So the floor materializes the settable box ENABLE as a plain
+# per-tier bool DEFAULT (``True``, the box's own volitional knob a box may override
+# to ``false`` to opt out of a tier) and the resolvable INPUTS (the capability
+# mirror + the system/workset allow flags); :func:`resolve_auth_source` then ANDs
+# support && allow && box_enable in PYTHON — exactly as the old effective_group_auth
+# did ``available AND on``. The box's ``*_enabled`` key thus IS its opt-out knob;
+# the composed gate is the Python AND. (Folding the ``&&`` into the expand engine is
+# a deferred generalization — flagged for the Editor.)
+#
+# STANDALONE (degenerate lone box, spec §2c): no workset group → workset_enabled
+# degenerates false (the workset keys pin to the LITERAL False, so the Python AND
+# for the workset tier is false regardless of the box knob), but global_enabled =
+# support && system.auth.share_allowed && box_knob STILL applies — a standalone box
+# CAN use global/host creds (deliberate change, IMPL-arc noted).
 
-#: The agent-tier capability FLOOR. JC-1 (ruling pending): the single universal
-#: source — one literal, every target (incl. NoAgent / future) inherits it via the
-#: generic ``agent.<agent>.<key> | agent.default.<key>`` rule. NOT duplicated per
-#: plugin (single-source principle). A future non-capable agent overrides
-#: ``agent.<x>.group_auth_capable = False`` in its own settings.
-_GROUP_AUTH_CAPABLE_KEY = "agent.default.group_auth_capable"
-#: The box's settable CHOICE default (spec §2b L282) — replaces the per-box
-#: ``[project].group_auth`` narrowing. A box file / read-compat may override it.
-_BOX_GROUP_AUTH_ON_KEY = "box.group_auth_on"
+#: The GLOBAL-share gate default (spec §2g / §2b). The single host-wide allow flag.
+_SYSTEM_SHARE_ALLOWED_KEY = "system.auth.share_allowed"
 
 
-def group_auth_chain_floor(
+def auth_chain_floor(
     *,
     mode: str,
     agent_name: str,
-    workset_enabled_override: bool | None = None,
-    box_on_override: bool | None = None,
 ) -> dict[str, object]:
-    """Build the group-auth capability-chain floor keys for *mode* (JC-2 seam).
+    """Build the auth 3-tier SHARING chain floor keys for *mode*.
 
-    Returns the ``{dotted_key: value}`` floor fragment for the spec's group-auth
-    chain (spec §2a/§2b/§2c/§2d; design L689-719). The caller folds it into
-    ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref chain ONCE
-    (single-route). *mode* is the box's :class:`~kanibako.paths.BoxMode` value
-    (``"primary"`` / ``"named"`` / ``"standalone"``), passed as a plain string to
-    avoid a paths import.
+    Returns the ``{dotted_key: value}`` floor fragment for the spec's auth.*
+    sharing chain (spec §2a/§2b/§2c/§2d; design FINAL KEY MODEL). The caller folds
+    it into ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref
+    chain ONCE (single-route). *mode* is the box's
+    :class:`~kanibako.paths.BoxMode` value (``"primary"`` / ``"named"`` /
+    ``"standalone"``), passed as a plain string to avoid a paths import.
 
-    PRIMARY / NAMED use the @-ref forms (the policy derives from the active
-    agent's capability via the meta ceiling). STANDALONE pins the two workset keys
-    to the LITERAL ``False`` so ``meta.box.group_auth_available`` short-circuits
-    without traversing to the agent tier (spec §2c L315-316) — the @-ref still
-    RESOLVES (the gap this chain closes).
+    The ``meta.agent.<agent>.auth.share_support`` CAPABILITY is set by the PLUGIN
+    (``*-defaults.yaml``) — NOT here (it rides the meta identity floor). This floor
+    materializes the ``meta.box.agent.auth.share_support`` MIRROR
+    (=``@meta.agent.<agent>.auth.share_support``, the 29g box.agent mirror pattern
+    made concrete for the @-ref's literal-path resolution), the system/workset
+    allow knobs, the two settable box ENABLE knobs (per-tier opt-out defaults), and
+    the workset store path anchors. :func:`resolve_auth_source` computes the
+    effective enable = ``support && allow && knob`` in Python (see the module note).
 
-    *workset_enabled_override* / *box_on_override* are the JC-3 read-compat inputs:
-    an existing on-disk ``[project].group_auth=false`` (workset policy or per-box
-    choice) maps HERE to ``workset.group_auth_enabled=False`` /
-    ``box.group_auth_on=False`` so a distinct-auth box keeps working — WITHOUT ever
-    writing the old form. ``None`` (the common case) leaves the spec default. An
-    override is layered as a literal in the FLOOR; a scope FILE that sets the new
-    key (a post-reshape config) still wins by name through the cascade.
+    PRIMARY / NAMED use the @-ref forms. STANDALONE pins the two workset keys
+    (``workset.auth.share_allowed`` / ``workset.auth.global_sync``) to the LITERAL
+    ``False`` so the workset tier degenerates false without a workset group;
+    ``box.auth.global_enabled`` still derives from the global gate (a standalone box
+    CAN use global/host creds).
     """
     floor: dict[str, object] = {
-        # The universal agent-tier capability floor (JC-1): the all-agents
-        # backstop, spec §2d L399. Recorded under ``agent.default`` so the agent
-        # tier is consistent with the spec's ``agent.default.<key>`` shape.
-        _GROUP_AUTH_CAPABLE_KEY: True,
-        # The ACTIVE agent's capability slot, MATERIALIZED from the floor so the
-        # whole-value @-ref ``@agent.<agent>.group_auth_capable`` RESOLVES at
-        # expand time (``expand`` follows the literal dotted path — it does NOT
-        # apply the active-over-default consumer pick that ``effective_behavior``
-        # does). Seeding the active slot to the same floor default means every
-        # shipped agent inherits ``True``; a future NON-capable agent's settings
-        # file sets ``agent.<agent>.group_auth_capable=false``, which WINS by name
-        # through the cascade (the floor sits under ``base``). This is the §2d
-        # ``agent.<agent>.<key> | agent.default.<key>`` rule made concrete for the
-        # @-ref's literal-path resolution.
-        f"agent.{agent_name}.group_auth_capable": True,
-        # The box ceiling @-ref — identical in EVERY mode (it resolves to the
-        # workset literal under standalone, or down the chain otherwise).
-        "meta.box.group_auth_available": "@workset.group_auth_enabled",
-        # The box's settable choice — default ON (spec §2b L282).
-        _BOX_GROUP_AUTH_ON_KEY: True,
+        # The GLOBAL-share gate — the single host-wide allow flag (settable).
+        _SYSTEM_SHARE_ALLOWED_KEY: True,
+        # The box-scoped MIRROR of the active agent's capability (RO / meta). The
+        # 29g box.agent mirror pattern: rather than re-do the nested dynamic lookup
+        # ``@meta.agent.<@box.agent_name>.auth.share_support`` at every reference,
+        # materialize a box-scoped @-ref to the ACTIVE agent's capability slot,
+        # which ``expand`` follows by literal path. The plugin/agent capability
+        # ``meta.agent.<agent>.auth.share_support`` rides the meta identity floor.
+        "meta.box.agent.auth.share_support": (
+            f"@meta.agent.{agent_name}.auth.share_support"
+        ),
+        # The two INDEPENDENT box ENABLE knobs (COMPOSE — a box can be global-
+        # AND/OR workset-shared). Settable per-tier opt-out defaults (True = opt
+        # in). resolve_auth_source ANDs each with the mirrored capability + the
+        # relevant allow flag (support && allow && knob) — the Python AND that
+        # stands in for the spec's ``%… && …%`` (see module note).
+        "box.auth.global_enabled": True,
+        "box.auth.workset_enabled": True,
+        # This box's per-agent WORKSET source root (@workset.auth.path/<agent>).
+        # The workset auth dir mirrors the in-guest layout (home_rel); this is the
+        # box's own root within it, keyed by the active agent name.
+        "box.auth.workset_path": f"@workset.auth.path/{agent_name}",
     }
     if mode == "standalone":
-        # STANDALONE short-circuit (spec §2c L315-316): a lone box has no group →
-        # the workset keys are the LITERAL False, NOT the agent-tier @-ref.
-        floor["meta.workset.group_auth_available"] = False
-        floor["workset.group_auth_enabled"] = False
+        # STANDALONE: a lone box has no workset group → the workset allow keys are
+        # the LITERAL False, so the workset tier's Python AND is false regardless
+        # of the box knob. global still derives from the global gate (standalone
+        # CAN use global/host creds).
+        floor["workset.auth.share_allowed"] = False
+        floor["workset.auth.global_sync"] = False
+        # No workset store for a lone box — the workset auth dir path anchor is
+        # absent (present-None), and the box's per-agent source root is pinned None
+        # too (defensive root-cause fix): otherwise ``box.auth.workset_path`` =
+        # ``@workset.auth.path/<agent>`` would resolve against the absent
+        # ``workset.auth.path`` and expand to the literal ``/<agent>`` (an @-ref to
+        # an absent key renders ``""``, not a drop) — garbage the credsync
+        # dir-creation would mkdir against the host ROOT. The workset enable is
+        # false anyway, so this source is never consulted; pinning None makes that
+        # explicit at the floor, belt-and-braces with the resolver's scrub.
+        floor["workset.auth.path"] = None
+        floor["box.auth.workset_path"] = None
     else:
-        # PRIMARY / NAMED (ALL WORKSETS, spec §2c L331-332): availability = the
-        # ACTIVE agent's capability; policy defaults to availability.
-        floor["meta.workset.group_auth_available"] = (
-            f"@agent.{agent_name}.group_auth_capable"
-        )
-        floor["workset.group_auth_enabled"] = "@meta.workset.group_auth_available"
-        # JC-3 read-compat: an existing on-disk workset-level group_auth=false
-        # overrides the policy key (workset → group_auth_enabled). Only False is
-        # carried (True is the spec default already); never written back.
-        if workset_enabled_override is False:
-            floor["workset.group_auth_enabled"] = False
-    # JC-3 read-compat: an existing on-disk per-box [project].group_auth=false
-    # maps to box.group_auth_on (the box's choice). Mode-independent.
-    if box_on_override is False:
-        floor[_BOX_GROUP_AUTH_ON_KEY] = False
+        # PRIMARY / NAMED (ALL WORKSETS): workset allow defaults to the system
+        # gate; the workset dir syncs UP to global by default.
+        floor["workset.auth.share_allowed"] = "@system.auth.share_allowed"
+        floor["workset.auth.global_sync"] = "@system.auth.share_allowed"
+        # The workset auth dir (one per workset) — a sibling to boxes/vault/logs
+        # off the workset root, mirroring the in-guest mount layout underneath.
+        floor["workset.auth.path"] = "@meta.workset.path/auth"
     return floor
 
 
@@ -371,6 +392,7 @@ def meta_identity_floor(
     workset_name: str,
     agent_name: str | None = None,
     agent_real_name: str | None = None,
+    agent_auth_share_support: bool = False,
 ) -> dict[str, object]:
     """Build the construct-time ``meta.*`` IDENTITY-anchor floor keys (block B2).
 
@@ -378,7 +400,7 @@ def meta_identity_floor(
     construct-time identity anchors (spec §2c/§2d; §0 meta-RO). The caller folds it
     into ``build_launch_snapshot``'s floor so ``expand`` resolves the @meta.* binds
     ONCE (single-route — NO second resolver), exactly like
-    :func:`meta_runtime_floor` / :func:`group_auth_chain_floor`.
+    :func:`meta_runtime_floor` / :func:`auth_chain_floor`.
 
     Every value is the RESOLVED LITERAL the launch already computes (the box name
     on ``proj.name``, the workspace source ``str(proj.project_path)``, the channel
@@ -419,6 +441,15 @@ def meta_identity_floor(
     if agent_name is not None:
         floor[f"meta.agent.{agent_name}.name"] = (
             agent_real_name if agent_real_name is not None else agent_name
+        )
+        # The agent's credential-SHARING CAPABILITY (spec §2d; design step 2):
+        # plugin-set, RO — the hard floor a user can't fake. The auth chain's
+        # meta.box.agent.auth.share_support mirror views UP to this key, so it must
+        # be present in the snapshot whenever an agent exists. A NO-AGENT box omits
+        # it (no agent capability to mirror → the mirror @-ref resolves to <None>
+        # and the box enables degenerate false).
+        floor[f"meta.agent.{agent_name}.auth.share_support"] = bool(
+            agent_auth_share_support
         )
     return floor
 
@@ -510,42 +541,170 @@ def workset_anchor_floor(
     return floor
 
 
-def effective_group_auth(snapshot: KeyStore, *, mode: str | None = None) -> bool:
-    """Read ``effective_group_auth`` off the expanded snapshot (spec §2b L282).
+#: The auth SHARING tier a box resolves to (design §3, precedence workset>global).
+AuthTier = Literal["workset", "global", "box"]
 
-    ``effective = meta.box.group_auth_available AND box.group_auth_on`` — the
-    SINGLE bool that feeds the existing gates (``reconcile_categories``, credsync,
-    auto-auth, writeback, the ``kanibako agent`` display) UNCHANGED. Reads the
-    ``meta.box`` node via the typed :class:`~kanibako.settings_views.MetaView`
-    (``group_auth_available`` — the demo view, now wired) and ``box.group_auth_on``
-    via the typed bool view — NOT a hand-parse (design §5 typed access). Both are
-    resolved (block 7) to real ``bool`` terminals by ``expand`` (a whole-value
-    @-ref inherits its referent's type), so :func:`as_bool` does not launder.
 
-    Raises :class:`~kanibako.settings_views.ViewError` only on a BUILD-invariant
-    breach (a chain key absent / mistyped) — which would mean the floor injection
-    failed; that is a programming error, surfaced loudly, never a launder.
+@dataclass(frozen=True)
+class AuthSource:
+    """The resolved credential-SHARING decision for one box (spec §2b; design §3).
+
+    Replaces the single ``effective_group_auth`` bool. Carries the per-box tier
+    the credsync engine syncs against, the two box enables (for diagnostics /
+    display), and the workset↔global up-sync flag. The two enables COMPOSE — a
+    box can be global-shared AND/OR workset-shared — but the SELECTED source obeys
+    precedence workset>global (design PRECEDENCE): when the workset tier is enabled
+    AND its store is present, WORKSET wins; else global (if enabled); else private.
+
+    * *tier* — the SELECTED source tier: ``"workset"`` / ``"global"`` / ``"box"``
+      (``"box"`` = private, no source — today's distinct-auth). The credsync gate
+      keys off this: ``box`` drops synced / credential-seeded deliveries.
+    * *global_enabled* / *workset_enabled* — the resolved box enables (both may be
+      true; the enables are what COMPOSE, the *tier* is the precedence winner).
+    * *global_sync* — the workset auth dir syncs UP to global (design SYNC): when
+      true and the box syncs the WORKSET tier, the workset store is first refreshed
+      from / written back to global (the uniform primitive at the second level).
+    * *workset_source* — the resolved workset per-agent source root
+      (``box.auth.workset_path``), or ``None`` for standalone / when absent. The
+      GLOBAL source is the host home (``host_rel``), not carried here (implicit).
+    """
+
+    tier: AuthTier
+    global_enabled: bool
+    workset_enabled: bool
+    global_sync: bool
+    workset_source: str | None
+
+    @property
+    def shares(self) -> bool:
+        """True when the box shares creds at ANY tier (not private/box).
+
+        The single-bool analog of the old ``effective_group_auth`` for the gates
+        that only care "is this box sharing at all" (auto-auth, the host-source
+        credsync hops, the reconcile drop). ``False`` ≡ the old distinct-auth.
+        """
+        return self.tier != "box"
+
+
+def resolve_auth_source(
+    snapshot: KeyStore, *, mode: str | None = None
+) -> AuthSource:
+    """Resolve the box's credential-SHARING SOURCE off the expanded snapshot.
+
+    Reads the auth 3-tier chain (spec §2b; design §3) from the ONE expanded
+    snapshot and returns the :class:`AuthSource` the credsync engine consumes.
+    Computes each tier's EFFECTIVE enable in Python (the spec's ``%support && allow
+    && knob%`` — the expand engine does not evaluate ``&&``, see the module note):
+
+    * GLOBAL:  ``meta.box.agent.auth.share_support && system.auth.share_allowed &&
+      box.auth.global_enabled``
+    * WORKSET: ``meta.box.agent.auth.share_support && workset.auth.share_allowed &&
+      box.auth.workset_enabled`` (AND a present ``box.auth.workset_path`` store)
+
+    Selection (design PRECEDENCE workset>global):
+
+    * workset ENABLED (+ store present) → tier ``"workset"`` (the more specific);
+    * else global ENABLED → tier ``"global"`` (host home source);
+    * else tier ``"box"`` (private, no source — distinct auth).
+
+    Each input is resolved to a real ``bool`` terminal by ``expand``;
+    :func:`as_bool` does not launder. ``box.auth.workset_path`` is a resolved string
+    (or ``None`` for standalone). ``workset.auth.global_sync`` is the workset↔global
+    up-sync flag.
+
+    An absent ``box`` node means the floor was not injected → fail CLOSED (tier
+    ``"box"``, no sharing) rather than launder.
     """
     from kanibako.settings_views import as_bool
 
     box_node = dict.get(snapshot, "box", _MISSING)
     if not isinstance(box_node, KeyStore):
-        # The chain floor always seeds box.* — an absent box node means the floor
-        # was not injected. Fail closed (no group auth) rather than launder.
-        return False
-    # The availability ceiling now lives under the top-level ``meta`` namespace
-    # (meta.box.group_auth_available); the box's CHOICE stays on the box node.
+        return AuthSource(
+            tier="box",
+            global_enabled=False,
+            workset_enabled=False,
+            global_sync=False,
+            workset_source=None,
+        )
+
+    # The box-scoped capability mirror (RO): meta.box.agent.auth.share_support.
     meta_node = dict.get(snapshot, "meta", _MISSING)
-    box_meta = (
-        dict.get(meta_node, "box", _MISSING)
-        if isinstance(meta_node, KeyStore)
+    support = False
+    if isinstance(meta_node, KeyStore):
+        meta_box = dict.get(meta_node, "box", _MISSING)
+        if isinstance(meta_box, KeyStore):
+            meta_box_agent = dict.get(meta_box, "agent", _MISSING)
+            if isinstance(meta_box_agent, KeyStore):
+                mba_auth = dict.get(meta_box_agent, "auth", _MISSING)
+                if isinstance(mba_auth, KeyStore):
+                    support = as_bool(
+                        dict.get(mba_auth, "share_support", False)
+                    )
+
+    # The system + workset allow flags.
+    system_node = dict.get(snapshot, "system", _MISSING)
+    system_allow = False
+    if isinstance(system_node, KeyStore):
+        sys_auth = dict.get(system_node, "auth", _MISSING)
+        if isinstance(sys_auth, KeyStore):
+            system_allow = as_bool(dict.get(sys_auth, "share_allowed", False))
+
+    workset_node = dict.get(snapshot, "workset", _MISSING)
+    workset_auth = (
+        dict.get(workset_node, "auth", _MISSING)
+        if isinstance(workset_node, KeyStore)
         else _MISSING
     )
-    available = False
-    if isinstance(box_meta, KeyStore):
-        available = as_bool(dict.get(box_meta, "group_auth_available", False))
-    on = as_bool(dict.get(box_node, "group_auth_on", False))
-    return bool(available and on)
+    workset_allow = False
+    global_sync = False
+    if isinstance(workset_auth, KeyStore):
+        workset_allow = as_bool(dict.get(workset_auth, "share_allowed", False))
+        global_sync = as_bool(dict.get(workset_auth, "global_sync", False))
+
+    # The two settable box ENABLE knobs + the workset source path.
+    box_auth = dict.get(box_node, "auth", _MISSING)
+    global_knob = True
+    workset_knob = True
+    workset_source: str | None = None
+    if isinstance(box_auth, KeyStore):
+        global_knob = as_bool(dict.get(box_auth, "global_enabled", True))
+        workset_knob = as_bool(dict.get(box_auth, "workset_enabled", True))
+        wp = dict.get(box_auth, "workset_path", _MISSING)
+        if isinstance(wp, str) and wp:
+            workset_source = wp
+
+    # Effective enables (the Python AND standing in for the spec's %… && …%).
+    global_enabled = bool(support and system_allow and global_knob)
+    workset_enabled = bool(support and workset_allow and workset_knob)
+
+    # Precedence workset>global: the workset tier wins when enabled AND its store
+    # path is present (a lone/standalone box has no workset store → degenerate to
+    # global/box, as distinct-auth did for the workset level).
+    if workset_enabled and workset_source is not None:
+        tier: AuthTier = "workset"
+    elif global_enabled:
+        tier = "global"
+    else:
+        tier = "box"
+
+    # Null out the workset source UNLESS the workset tier was selected. Otherwise a
+    # standalone/global/private box carries the resolved ``box.auth.workset_path``,
+    # which — for standalone — is the GARBAGE ``@workset.auth.path/<agent>`` with
+    # ``workset.auth.path=None``: expand renders an @-ref to an absent/None key as
+    # ``""`` (NOT a drop), so it collapses to the literal ``/<agent>``. Leaving that
+    # live makes the credsync dir-creation mkdir against the host ROOT. Only the
+    # workset tier ever consults ``workset_source``, so scrub it for every other
+    # tier — no ``/<agent>`` escapes onto the AuthSource.
+    if tier != "workset":
+        workset_source = None
+
+    return AuthSource(
+        tier=tier,
+        global_enabled=global_enabled,
+        workset_enabled=workset_enabled,
+        global_sync=global_sync,
+        workset_source=workset_source,
+    )
 
 
 def build_launch_snapshot(
@@ -562,7 +721,7 @@ def build_launch_snapshot(
     agent_state: Mapping[str, str] | None = None,
     binding_overrides: Mapping[str, str] | None = None,
     descriptor_bindings: "list[Binding] | None" = None,
-    group_auth_chain: Mapping[str, object] | None = None,
+    auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
     meta_identity: Mapping[str, object] | None = None,
     workset_anchor: Mapping[str, object] | None = None,
@@ -584,9 +743,9 @@ def build_launch_snapshot(
     repoints (bridge), placed via *descriptor_bindings* (each ``Binding`` supplies
     the ``ro`` flag selecting ``bindings.ro`` vs ``bindings.rw``).
 
-    *group_auth_chain* is the group-auth capability-chain floor fragment (block
-    #2) built by :func:`group_auth_chain_floor` per box mode — the spec's @-ref /
-    literal chain keys (spec §2a/§2b/§2c/§2d; design L689-719). Folded into the
+    *auth_chain* is the auth 3-tier SHARING chain floor fragment built by
+    :func:`auth_chain_floor` per box mode — the spec's @-ref / literal ``auth.*``
+    chain keys (spec §2a/§2b/§2c/§2d; design FINAL KEY MODEL). Folded into the
     SAME floor so ``expand`` resolves the chain ONCE (single-route). ``None`` for a
     NARROW resolve that does not need the chain (the seed/synced/image/helper
     sub-resolves), so those snapshots simply lack the chain keys.
@@ -647,15 +806,16 @@ def build_launch_snapshot(
                 continue
             floor[key] = val
 
-    # Group-auth capability chain (block #2): the @-ref / literal chain keys
-    # (spec §2a/§2b/§2c/§2d; design L689-719) fold into the SAME floor so
+    # Auth 3-tier SHARING chain: the @-ref / literal ``auth.*`` chain keys (spec
+    # §2a/§2b/§2c/§2d; design FINAL KEY MODEL) fold into the SAME floor so
     # ``expand`` resolves the chain ONCE (single-route). Built per mode by
-    # :func:`group_auth_chain_floor`; a scope FILE still overrides a key by name
-    # (the floor sits under ``base``). Injected AFTER the category tables so the
-    # dotted chain keys (``box.group_auth_on`` / ``meta.box.group_auth_available``
-    # / ``workset.*``) land in the floor unconditionally.
-    if group_auth_chain:
-        for key, val in group_auth_chain.items():
+    # :func:`auth_chain_floor`; a settable scope FILE still overrides a settable
+    # key by name (the floor sits under ``base``); the ``meta.*`` capability keys
+    # are RO. Injected AFTER the category tables so the dotted chain keys
+    # (``box.auth.*`` / ``workset.auth.*`` / ``system.auth.*``) land in the floor
+    # unconditionally.
+    if auth_chain:
+        for key, val in auth_chain.items():
             floor[key] = val
 
     # meta.runtime.* materialization (block B1): the runtime identity anchors +

@@ -236,7 +236,7 @@ class TestDeferredCreateReservesDir:
 
 def _create_args(path, **over):
     ns = argparse.Namespace(
-        path=str(path), standalone=False, no_vault=True, distinct_auth=False,
+        path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
     )
     for k, v in over.items():

@@ -354,97 +354,170 @@ def test_delivery_ignores_non_agent_entries(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
-# Group-auth capability chain (block #2 — ratified 2026-06-29)                #
-# spec §2a L184 / §2b L282 / §2c L315-316,331-332,381 / §2d L399              #
+# Auth 3-tier SHARING chain (2026-07-01 redesign)                             #
+# spec §2a/§2b/§2c/§2d; design FINAL KEY MODEL                                 #
 # --------------------------------------------------------------------------- #
 
 from kanibako.settings_launch import (  # noqa: E402
-    effective_group_auth,
-    group_auth_chain_floor,
+    auth_chain_floor,
+    meta_identity_floor as _mid_floor,
+    meta_runtime_floor as _mr_floor,
+    resolve_auth_source,
 )
 
 
-def _chain_snapshot(mode: str, *, agent_name: str = "claude", **overrides):
-    """Build a focused snapshot carrying ONLY the group-auth chain floor."""
-    chain = group_auth_chain_floor(
-        mode=mode, agent_name=agent_name, **overrides
+def _auth_snapshot(
+    mode: str,
+    *,
+    agent_name: str = "claude",
+    support: bool = True,
+    box_file: dict | None = None,
+):
+    """Build a focused snapshot carrying the auth chain + the agent capability.
+
+    The capability ``meta.agent.<agent>.auth.share_support`` rides the meta
+    identity floor (as it does in the real launch); *box_file* is written to a
+    temp settings file to exercise a box-scope override of the settable enables.
+    """
+    import tempfile
+    from kanibako.config_io import dump_doc
+
+    chain = auth_chain_floor(mode=mode, agent_name=agent_name)
+    meta_id = _mid_floor(
+        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+        share_workset=None, workset_name="__PRIMARY__", agent_name=agent_name,
+        agent_real_name=agent_name, agent_auth_share_support=support,
     )
-    snap = build_launch_snapshot(
-        agent_name=agent_name,
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        group_auth_chain=chain,
+    mr = _mr_floor(
+        mode=mode, ws_root_literal=("/ws" if mode != "primary" else None)
     )
-    return snap
-
-
-def test_chain_primary_resolves_on():
-    """PRIMARY: agent.capable → meta.workset.available → workset.enabled →
-    meta.box.available → effective True (default-on, the safety-swap baseline)."""
-    snap = _chain_snapshot("primary")
-    assert effective_group_auth(snap) is True
-
-
-def test_chain_named_resolves_on():
-    """NAMED resolves to on via the active agent's capability (default-on)."""
-    assert effective_group_auth(_chain_snapshot("named")) is True
-
-
-def test_chain_standalone_short_circuits_off():
-    """STANDALONE: workset keys are the LITERAL False (spec §2c L315-316) — the
-    @-ref RESOLVES (no dangling, closes the gap) and effective is False without
-    traversing to the agent tier."""
-    snap = _chain_snapshot("standalone")
-    assert effective_group_auth(snap) is False
-    # The chain keys RESOLVED (present), not dropped as dangling.
-    import kanibako.settings_views as views
-    box_meta = dict.get(dict.get(snap, "meta"), "box")
-    assert views.as_bool(dict.get(box_meta, "group_auth_available")) is False
-
-
-def test_chain_box_off_overrides_to_off():
-    """box.group_auth_on=False over an available workset → effective off
-    (effective = available AND on)."""
-    snap = _chain_snapshot("primary", box_on_override=False)
-    assert effective_group_auth(snap) is False
-
-
-def test_chain_workset_policy_off_overrides_to_off():
-    """A workset group_auth_enabled=False override → effective off for its boxes."""
-    snap = _chain_snapshot("named", workset_enabled_override=False)
-    assert effective_group_auth(snap) is False
-
-
-def test_chain_noncapable_agent_off_everywhere():
-    """A non-capable agent (agent.<x>.group_auth_capable=false) → off everywhere,
-    with no special-casing (the chain handles it)."""
-    chain = group_auth_chain_floor(mode="primary", agent_name="claude")
-    chain["agent.claude.group_auth_capable"] = False  # a future non-capable agent
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
-        workset_path=None, box_path=None, group_auth_chain=chain,
+    bp = None
+    if box_file is not None:
+        bp = Path(tempfile.mktemp(suffix=".yaml"))
+        dump_doc(bp, box_file)
+    return build_launch_snapshot(
+        agent_name=agent_name, ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=bp,
+        auth_chain=chain, meta_runtime=mr, meta_identity=meta_id,
     )
-    assert effective_group_auth(snap) is False
 
 
-def test_chain_default_capable_floor_present():
-    """The universal floor agent.default.group_auth_capable=True is seeded (JC-1)."""
-    snap = _chain_snapshot("primary")
-    agent_default = dict.get(dict.get(snap, "agent"), "default")
-    assert dict.get(agent_default, "group_auth_capable") is True
+def test_auth_primary_default_workset_tier():
+    """PRIMARY, capable, all-default: both enables true → WORKSET wins
+    (precedence workset>global) and global_sync is on."""
+    a = resolve_auth_source(_auth_snapshot("primary"), mode="primary")
+    assert a.tier == "workset"
+    assert a.global_enabled and a.workset_enabled
+    assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
+    assert a.global_sync is True
+    assert a.shares is True
 
 
-def test_effective_group_auth_no_box_node_fails_closed():
-    """effective_group_auth fails CLOSED (False) if the chain floor was not
-    injected (no box node) — never launders into True."""
+def test_auth_named_default_workset_tier():
+    """NAMED resolves the same as primary (all-default → workset tier)."""
+    a = resolve_auth_source(_auth_snapshot("named"), mode="named")
+    assert a.tier == "workset"
+
+
+def test_auth_capability_gating_no_share_support():
+    """share_support=False (a non-capable agent) → NO sharing at any tier
+    (tier box), regardless of the allow flags (the hard capability floor)."""
+    a = resolve_auth_source(_auth_snapshot("primary", support=False), mode="primary")
+    assert a.tier == "box"
+    assert not a.global_enabled and not a.workset_enabled
+    assert a.shares is False
+
+
+def test_auth_box_opts_out_of_workset_falls_to_global():
+    """box.auth.workset_enabled=false → global tier (precedence still workset>global
+    but workset is disabled, so global wins)."""
+    a = resolve_auth_source(
+        _auth_snapshot("primary", box_file={"box": {"auth": {"workset_enabled": False}}}),
+        mode="primary",
+    )
+    assert a.tier == "global"
+    assert a.global_enabled and not a.workset_enabled
+
+
+def test_auth_box_opts_out_of_both_is_private():
+    """A box disabling BOTH enables → private (tier box), the distinct-auth
+    replacement (no flag, just the settable knobs)."""
+    a = resolve_auth_source(
+        _auth_snapshot(
+            "primary",
+            box_file={"box": {"auth": {"workset_enabled": False, "global_enabled": False}}},
+        ),
+        mode="primary",
+    )
+    assert a.tier == "box"
+    assert a.shares is False
+
+
+def test_auth_standalone_global_only():
+    """STANDALONE (deliberate behavior change): the workset tier degenerates false
+    (no workset group), but the GLOBAL tier still applies — a standalone box CAN
+    use global/host creds."""
+    a = resolve_auth_source(_auth_snapshot("standalone"), mode="standalone")
+    assert a.tier == "global"
+    assert a.global_enabled and not a.workset_enabled
+
+
+def test_auth_system_disallow_is_private():
+    """system.auth.share_allowed=false → the global gate is off; the workset allow
+    defaults to @system so it is off too → private everywhere."""
+    a = resolve_auth_source(
+        _auth_snapshot(
+            "primary", box_file={"system": {"auth": {"share_allowed": False}}}
+        ),
+        mode="primary",
+    )
+    assert a.tier == "box"
+
+
+def test_auth_workset_allow_off_falls_to_global():
+    """workset.auth.share_allowed=false (workset opts out) but the global gate is on
+    → the box uses the global tier."""
+    a = resolve_auth_source(
+        _auth_snapshot(
+            "primary", box_file={"workset": {"auth": {"share_allowed": False}}}
+        ),
+        mode="primary",
+    )
+    assert a.tier == "global"
+
+
+def test_auth_no_box_node_fails_closed():
+    """resolve_auth_source fails CLOSED (tier box) when the chain floor was not
+    injected — never launders into sharing."""
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
         workset_path=None, box_path=None,
     )
-    assert effective_group_auth(snap) is False
+    a = resolve_auth_source(snap)
+    assert a.tier == "box" and a.shares is False
+
+
+def test_auth_clean_break_no_group_auth_keys():
+    """CLEAN BREAK: the old group_auth chain keys are GONE — the floor emits only
+    the new auth.* keys, no group_auth_capable / group_auth_on / group_auth_available."""
+    chain = auth_chain_floor(mode="primary", agent_name="claude")
+    joined = " ".join(chain.keys())
+    assert "group_auth" not in joined
+    assert "system.auth.share_allowed" in chain
+    assert "box.auth.global_enabled" in chain
+    assert "box.auth.workset_enabled" in chain
+    assert "box.auth.workset_path" in chain
+    assert chain["box.auth.workset_path"] == "@workset.auth.path/claude"
+
+
+def test_auth_capability_mirror_is_ref_to_agent_slot():
+    """The box mirror meta.box.agent.auth.share_support is an @-ref to the active
+    agent's capability slot (the 29g box.agent mirror pattern)."""
+    chain = auth_chain_floor(mode="primary", agent_name="goose")
+    assert (
+        chain["meta.box.agent.auth.share_support"]
+        == "@meta.agent.goose.auth.share_support"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -610,24 +683,28 @@ def test_meta_runtime_floor_requires_literal_for_non_primary():
     assert floor["meta.runtime.ws_root"] == "@config.primary_workset"
 
 
-def test_meta_runtime_coexists_with_group_auth_chain():
-    """The B1 meta.runtime floor + the block-#2 group-auth chain BOTH inject
-    under meta.box.* — distinct leaves, no collision (the main launch path passes
-    both)."""
+def test_meta_runtime_coexists_with_auth_chain():
+    """The B1 meta.runtime floor + the auth chain BOTH inject under meta.box.* —
+    distinct leaves, no collision (the main launch path passes both)."""
     meta = meta_runtime_floor(mode="primary")
-    chain = group_auth_chain_floor(mode="primary", agent_name="claude")
+    chain = auth_chain_floor(mode="primary", agent_name="claude")
+    meta_id = _mid_floor(
+        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+        share_workset=None, workset_name="__PRIMARY__", agent_name="claude",
+        agent_real_name="claude", agent_auth_share_support=True,
+    )
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx_with_config("/data/pw"),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
-        meta_runtime=meta, group_auth_chain=chain,
+        meta_runtime=meta, auth_chain=chain, meta_identity=meta_id,
     )
     box_meta = _meta_node(snap, "meta", "box")
-    # B1 identity anchor + #2 availability ceiling both present.
+    # B1 identity anchor present; the auth mirror capability resolved.
     assert dict.get(box_meta, "mode") == "primary"
-    assert dict.get(box_meta, "group_auth_available") is True
-    # group-auth still resolves on (the chain is untouched by B1).
-    assert effective_group_auth(snap) is True
+    # auth still resolves to sharing (the chain is untouched by B1).
+    a = resolve_auth_source(snap, mode="primary")
+    assert a.shares is True
 
 
 # --------------------------------------------------------------------------- #

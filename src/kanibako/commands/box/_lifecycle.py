@@ -113,7 +113,6 @@ class ProjectState:
     is_external: bool = False
     ws: Workset | None = None
     enable_vault: bool = True
-    group_auth: bool = True
 
     @property
     def is_workset(self) -> bool:
@@ -298,7 +297,6 @@ def _default_state_from_meta(
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
         enable_vault=bool(meta.get("enable_vault", True)),
-        group_auth=bool(meta.get("group_auth", True)),
     )
 
 
@@ -354,7 +352,6 @@ def _state_from_paths(
         is_external=is_external,
         ws=ws,
         enable_vault=proj.enable_vault,
-        group_auth=proj.group_auth,
     )
 
 
@@ -1008,7 +1005,6 @@ def _to_default(
         vault_ro=str(vault_ro),
         vault_rw=str(vault_rw),
         enable_vault=state.enable_vault,
-        group_auth=state.group_auth,
         metadata=str(dst_metadata),
         project_hash=phash,
         name=project_name,
@@ -1027,7 +1023,7 @@ def _to_default(
         workspace_path=new_workspace, metadata_path=dst_metadata,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=state.enable_vault, group_auth=state.group_auth,
+        enable_vault=state.enable_vault,
     )
 
 
@@ -1191,7 +1187,6 @@ def _to_standalone(
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.enable_vault,
-        group_auth=state.group_auth,
         name=requested_name,
     )
     unwind.push(
@@ -1213,7 +1208,7 @@ def _to_standalone(
         workspace_path=workspace_subdir, metadata_path=root,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=state.enable_vault, group_auth=state.group_auth,
+        enable_vault=state.enable_vault,
     )
 
 
@@ -1347,7 +1342,6 @@ def _to_workset(
         vault_ro=str(vault_ro),
         vault_rw=str(vault_rw),
         enable_vault=state.enable_vault,
-        group_auth=state.group_auth,
         metadata=str(dst_project),
         project_hash=phash,
         name=new_name,
@@ -1364,7 +1358,7 @@ def _to_workset(
         workspace_path=recorded_workspace, metadata_path=dst_project,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=not internal, ws=target_ws,
-        enable_vault=state.enable_vault, group_auth=state.group_auth,
+        enable_vault=state.enable_vault,
     )
 
 

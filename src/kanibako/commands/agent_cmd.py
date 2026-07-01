@@ -485,13 +485,12 @@ def run_reauth(args: argparse.Namespace) -> int:
         print("No agent target configured.", file=sys.stderr)
         return 1
 
-    # Group-auth (block #2): resolve the EFFECTIVE group-auth bool through the
-    # capability chain (single-route — the same launch-snapshot pipeline ``start``
-    # uses), for the resolved agent, replacing the flat ``proj.group_auth``
-    # side-channel. The auth display below gates on the effective value.
+    # Auth 3-tier SHARING: resolve the box's SOURCE decision through the auth
+    # chain (single-route — the same launch-snapshot pipeline ``start`` uses), for
+    # the resolved agent. The auth display below gates on whether the box shares.
     from kanibako.agent_config import agent_settings_path
-    from kanibako.commands.start import _resolve_effective_group_auth
-    effective_group_auth = _resolve_effective_group_auth(
+    from kanibako.commands.start import _resolve_box_auth_source
+    auth_src = _resolve_box_auth_source(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -501,8 +500,8 @@ def run_reauth(args: argparse.Namespace) -> int:
         agent_cfg_path=agent_settings_path(std.agents, agent_name),
     )
 
-    if not effective_group_auth:
-        # Check project's own credentials instead of host.
+    if not auth_src.shares:
+        # Private box: check project's own credentials instead of the source.
         creds_path = target.credential_check_path(proj.shell_path)
         if creds_path and creds_path.is_file():
             print(
@@ -525,16 +524,16 @@ def run_reauth(args: argparse.Namespace) -> int:
         # (desc is None) targets fall back to the per-plugin refresh hook.  An
         # ungated target.refresh_credentials here would push a descriptor agent
         # (e.g. goose) down its legacy path / bespoke copy.
-        if effective_group_auth:
+        if auth_src.shares:
             from pathlib import Path
 
             from kanibako.targets import credsync
 
             desc = target.descriptor
             if desc is not None:
-                credsync.refresh_cred_files(
-                    desc, target, host_home=Path.home(),
-                    project_home=proj.shell_path, group_auth=effective_group_auth,
+                credsync.refresh_box_credentials(
+                    desc, target, auth=auth_src, host_home=Path.home(),
+                    project_home=proj.shell_path,
                 )
             else:
                 target.refresh_credentials(proj.shell_path)

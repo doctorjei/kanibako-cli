@@ -835,14 +835,14 @@ def _run_container(
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
 
-    # Group-auth capability chain (block #2): resolve the EFFECTIVE group-auth
-    # gate ONCE here, through the launch snapshot (single-route), BEFORE the first
-    # consumer (the reattach refresh below + the seed/refresh/reconcile/auto-auth/
-    # writeback gates). This REPLACES the flat ``proj.group_auth`` side-channel;
-    # every gate downstream feeds from ``effective_group_auth``. The active agent
-    # is known here (``agent_id``), so the chain's @agent.<agent>.group_auth_capable
-    # resolves to the right capability. The gate SEMANTICS are unchanged.
-    effective_group_auth = _resolve_effective_group_auth(
+    # Auth 3-tier SHARING chain: resolve the box's SOURCE decision ONCE here,
+    # through the launch snapshot (single-route), BEFORE the first consumer (the
+    # reattach refresh below + the seed/refresh/reconcile/auto-auth/writeback
+    # sites). Yields an AuthSource (tier/source + enables) threaded to every
+    # credsync/gate consumer. The active agent is known here (``agent_id``), so the
+    # chain's meta.box.agent.auth.share_support mirror resolves to the right
+    # capability. Private/no-share = box.auth.{global,workset}_enabled=false.
+    auth_src = _resolve_box_auth_source(
         std=std,
         proj=proj,
         agent_name=agent_id,
@@ -880,11 +880,11 @@ def _run_container(
                 file=sys.stderr,
             )
             # Refresh credentials before reattaching
-            if target and effective_group_auth:
+            if target and auth_src.shares:
                 if desc is not None:
-                    credsync.refresh_cred_files(
-                        desc, target, host_home=Path.home(),
-                        project_home=proj.shell_path, group_auth=effective_group_auth,
+                    credsync.refresh_box_credentials(
+                        desc, target, auth=auth_src, host_home=Path.home(),
+                        project_home=proj.shell_path,
                     )
                 else:
                     target.refresh_credentials(proj.shell_path)
@@ -895,7 +895,7 @@ def _run_container(
             # An in-box login during this attach must reach the host, so write
             # back here too — the reattach path (4a32871) previously skipped the
             # post-session cred lifecycle entirely.
-            writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
+            writeback_session_credentials(target, proj, auth_src=auth_src)
             # Two-state lifecycle ("d"): tear down on exit, keep on detach.
             _teardown_persistent_box(runtime, container_name)
             return reattach_rc
@@ -997,7 +997,7 @@ def _run_container(
                 agent_id=agent_id, agent_cfg_path=agent_cfg_path,
                 system_settings_path=system_settings_path,
                 project_toml=project_toml, workset_path=workset_path,
-                effective_group_auth=effective_group_auth, logger=logger,
+                auth_src=auth_src, logger=logger,
             )
             _register_new_box(std, proj)
             _clear_create_entry(std, proj)
@@ -1007,13 +1007,13 @@ def _run_container(
         # plugin descriptor's `cred_files` credsync engine above (that is
         # descriptor-driven; this is settings-driven), so there is no double
         # application.  ADDITIVE: with no `synced.*` keys configured the
-        # reconciled copy set has no synced winners -> no-op.  The group_auth
-        # gate (D-M4) suppresses every synced entry when group_auth is False.
+        # reconciled copy set has no synced winners -> no-op.  The share gate
+        # (D-M4) suppresses every synced entry for a PRIVATE box (shares False).
         _apply_synced_copies(
             std=std, proj=proj, agent_name=agent_id, target=target,
             global_config_path=system_settings_path, project_toml=project_toml,
             workset_config_path=workset_path, agent_config_path=agent_cfg_path,
-            logger=logger, group_auth=effective_group_auth,
+            logger=logger, shares=auth_src.shares,
         )
 
         # Plugin-owned pre-launch host preparation (agent-agnostic call).
@@ -1026,7 +1026,7 @@ def _run_container(
         if target and install and is_agent_mode:
             target.prepare_host(
                 install,
-                auto_auth=bool(effective_group_auth and not no_auto_auth),
+                auto_auth=bool(auth_src.shares and not no_auto_auth),
                 data_path=std.data_path,
             )
             # Re-detect after the update gate.  prepare_host() can repoint /
@@ -1081,7 +1081,7 @@ def _run_container(
         # agent with no setup command (claude, by default) errors out here as
         # before.  ``needs_inbox_setup`` carries the decision to the launch block.
         needs_inbox_setup = False
-        if target and install and effective_group_auth:
+        if target and install and auth_src.shares:
             if not target.check_auth():
                 if target.setup_entrypoint is not None:
                     needs_inbox_setup = True
@@ -1094,12 +1094,12 @@ def _run_container(
                     )
                     return 1
 
-        # Credential refresh via target (skip for distinct auth)
-        if target and effective_group_auth:
+        # Credential refresh via target (skip for a private/distinct box)
+        if target and auth_src.shares:
             if desc is not None:
-                credsync.refresh_cred_files(
-                    desc, target, host_home=Path.home(),
-                    project_home=proj.shell_path, group_auth=effective_group_auth,
+                credsync.refresh_box_credentials(
+                    desc, target, auth=auth_src, host_home=Path.home(),
+                    project_home=proj.shell_path,
                 )
             else:
                 target.refresh_credentials(proj.shell_path)
@@ -1143,7 +1143,7 @@ def _run_container(
             target=target,
             agent_cfg=agent_cfg,
             binding_overrides=binding_overrides,
-            group_auth=effective_group_auth,
+            shares=auth_src.shares,
         )
 
         # Build CLI args via target, merging agent run_args and state
@@ -1319,7 +1319,7 @@ def _run_container(
                     target=None,
                     graph_root=graph_root,
                     storage_conf_path=storage_conf_path,
-                    group_auth=effective_group_auth,
+                    shares=auth_src.shares,
                     include_base_families=False,
                 )
                 img_mounts = _emit_category_mounts(_img_rec, label="images")
@@ -1524,7 +1524,7 @@ def _run_container(
                 box_state_kanibako=str(box_state_kanibako),
                 socket_path=socket_path,
                 log_path=log_path,
-                group_auth=effective_group_auth,
+                shares=auth_src.shares,
                 include_base_families=False,
             )
             helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
@@ -1861,7 +1861,7 @@ def _run_container(
                 # never loop back into setup.  Still write back first: a partial
                 # in-box login may have produced credentials worth propagating.
                 if target and logs and target.should_run_setup(logs):
-                    writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
+                    writeback_session_credentials(target, proj, auth_src=auth_src)
                     _print_setup_did_not_take(target)
                     return 1
 
@@ -1872,14 +1872,14 @@ def _run_container(
             # moments so an in-box login reaches the host.  (The new-session
             # retry above returns early and re-enters this function, which writes
             # back on its own teardown.)
-            writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
+            writeback_session_credentials(target, proj, auth_src=auth_src)
             # Two-state lifecycle ("d"): an exited box (tmux session ended ->
             # container not running) is torn down so the next start/shell is
             # fresh; a detached box (still running) is kept reattachable.
             _teardown_persistent_box(runtime, container_name)
         else:
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
-            writeback_session_credentials(target, proj, effective_group_auth=effective_group_auth)
+            writeback_session_credentials(target, proj, auth_src=auth_src)
 
             # Hint when agent exits non-zero and --continue/--resume was used
             if rc != 0 and is_agent_mode and not new_session:
@@ -1921,44 +1921,65 @@ def _print_setup_did_not_take(target) -> None:
 
 
 def writeback_session_credentials(
-    target, proj, *, effective_group_auth: bool
+    target, proj, *, auth_src
 ) -> None:
-    """Project -> host credential writeback for a finished/detached session.
+    """Project -> selected-source credential writeback for a finished session.
 
     The SINGLE writeback site for ALL session-end paths (FIX 1): clean exit,
     DETACH, reattach-exit, and ``kanibako stop``.  An in-box login must reach the
-    host regardless of how the session ends, so every path that releases a box
-    funnels through here.
+    shared store regardless of how the session ends, so every path that releases a
+    box funnels through here.
 
-    Gated on *effective_group_auth* (block #2 — the capability-chain gate, was the
-    flat ``proj.group_auth``): under distinct auth (effective False) the box's
-    credentials are private to the project and never propagate to the host.  The
-    caller resolves the effective bool through the launch snapshot (single-route)
-    and passes it in.  No-ops when *target* is None (no-agent box) or has no
+    Gated on *auth_src* (the resolved
+    :class:`~kanibako.settings_launch.AuthSource`): a PRIVATE box (tier ``"box"``,
+    ``auth_src.shares`` False) keeps its credentials project-local and never
+    propagates them.  Otherwise the box writes BOTTOM-UP to the selected source
+    (host home for GLOBAL, the workset dir for WORKSET, then up to global when
+    ``global_sync``).  No-ops when *target* is None (no-agent box) or has no
     credential lifecycle.
 
-    Writes the descriptor's SYNC ``cred_files`` back (creating a missing host
+    Writes the descriptor's SYNC ``cred_files`` back (creating a missing source
     destination — a deauthed host has no ``~/.claude/.credentials.json``) and the
     plugin's :meth:`~kanibako.targets.base.Target.writeback_extra` (claude merges
     ``oauthAccount`` from the box's ``.claude.json`` into the host's without
     clobbering machine-specific fields).  Best-effort: a writeback failure must
     never crash the lifecycle path that called it.
     """
-    if target is None or not effective_group_auth:
+    if target is None or not auth_src.shares:
         return
     desc = target.descriptor
+    host_home = Path.home()
     try:
         if desc is not None:
-            credsync.writeback_cred_files(
-                desc, target, host_home=Path.home(),
-                project_home=proj.shell_path, group_auth=effective_group_auth,
+            credsync.writeback_box_credentials(
+                desc, target, auth=auth_src, host_home=host_home,
+                project_home=proj.shell_path,
             )
         else:
             target.writeback_credentials(proj.shell_path)
         # Plugin-specific writeback beyond the cred_files specs (e.g. claude's
         # .claude.json oauthAccount merge-back, not modelled as a cred_file
-        # because its host->project IMPORT was removed in 1.6.0).
-        target.writeback_extra(project_home=proj.shell_path, host_home=Path.home())
+        # because its host->project IMPORT was removed in 1.6.0). Route it to the
+        # SELECTED tier source root (the SAME destination the cred_files writeback
+        # used), NOT unconditionally to host home — otherwise a workset-tier box
+        # (which explicitly isolated its identity to the workset store) would leak
+        # its oauthAccount to GLOBAL. The private/box tier is already excluded by
+        # the ``auth_src.shares`` guard above.
+        extra_dest = credsync.selected_source_root(auth_src, host_home=host_home)
+        if extra_dest is not None:
+            target.writeback_extra(
+                project_home=proj.shell_path, host_home=extra_dest
+            )
+            # global_sync: mirror the workset store's .claude.json UP to global,
+            # matching the cred_files bottom-up hop (box→workset→global).
+            if (
+                auth_src.tier == "workset"
+                and auth_src.global_sync
+                and extra_dest != host_home
+            ):
+                target.writeback_extra(
+                    project_home=extra_dest, host_home=host_home
+                )
     except Exception as exc:  # never crash a teardown path on writeback
         get_logger("start").warning("Credential writeback failed: %s", exc)
 
@@ -2077,7 +2098,7 @@ def _effective_behavior_for_display(
     return settings_launch.effective_behavior(snapshot, active_agent=target.name)
 
 
-def _resolve_effective_group_auth(
+def _resolve_box_auth_source(
     *,
     std,
     proj,
@@ -2086,46 +2107,42 @@ def _resolve_effective_group_auth(
     project_toml,
     workset_path,
     agent_cfg_path,
-) -> bool:
-    """Resolve ``effective_group_auth`` for *proj* through the capability chain.
+):
+    """Resolve the box's credential-SHARING SOURCE through the auth 3-tier chain.
 
-    The SINGLE source of the launch's group-auth gate (block #2): builds a
-    FOCUSED launch snapshot carrying ONLY the group-auth capability-chain floor
-    (``settings_launch.group_auth_chain_floor`` for the box mode, with the JC-3
-    read-compat overrides from ``proj``) plus the scope settings files, expands it
-    ONCE, and reads ``effective_group_auth`` off it (``meta.box.group_auth_available
-    AND box.group_auth_on``). This is the SINGLE-ROUTE chain resolve — the same
-    ``build_launch_snapshot`` → ``expand`` pipeline the launch uses, mirroring
-    :func:`_effective_behavior_for_display`.
+    The SINGLE source of the launch's sharing decision (auth-level redesign):
+    builds a FOCUSED launch snapshot carrying ONLY the auth ``auth.*`` chain floor
+    (``settings_launch.auth_chain_floor`` for the box mode) plus the scope settings
+    files + the meta identity floor (which carries the agent capability
+    ``meta.agent.<agent>.auth.share_support`` the mirror views up), expands it
+    ONCE, and reads the :class:`~kanibako.settings_launch.AuthSource` off it
+    (``resolve_auth_source`` — the per-box tier/source resolver, precedence
+    workset>global). Same ``build_launch_snapshot`` → ``expand`` pipeline the
+    launch uses (single-route).
 
-    Computed ONCE per launch and threaded to every consumer (the early reattach /
-    seed / refresh sites that run BEFORE the main category snapshot, the main
-    ``reconcile_categories(group_auth=…)`` feed, and the credsync / auto-auth /
-    writeback gates) so the effective bool is consistent everywhere. It REPLACES
-    the flat ``proj.group_auth`` side-channel; the gate SEMANTICS downstream are
-    unchanged (this is a derivation swap, the load-bearing safety swap).
+    Computed ONCE per launch and threaded to every credsync/gate consumer (the
+    early reattach / seed / refresh sites, the main ``reconcile_categories`` feed,
+    and the auto-auth / writeback gates) so the decision is consistent everywhere.
+    Private/no-share = ``box.auth.{global,workset}_enabled=false`` (settable via
+    config); there is no flag to plumb.
 
-    A scope settings FILE that sets the new chain keys (``box.group_auth_on`` /
-    ``workset.group_auth_enabled``) wins by name through the cascade; the floor
-    (incl. the read-compat overrides) is the backstop.
+    A scope settings FILE that overrides a settable chain key
+    (``box.auth.global_enabled`` / ``workset.auth.share_allowed`` / …) wins by name
+    through the cascade; the floor is the backstop.
     """
     from kanibako import settings_launch
 
     ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
         _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     )
-    chain = settings_launch.group_auth_chain_floor(
+    chain = settings_launch.auth_chain_floor(
         mode=proj.mode.value,
         agent_name=agent_name,
-        workset_enabled_override=(
-            False if not proj.workset_group_auth else None
-        ),
-        box_on_override=False if not proj.group_auth else None,
     )
     # The resolved system.* tier is folded into the floor (default_categories
     # here carries ONLY system.* — no category families) so any @-ref in the
-    # chain that reached system.* would resolve; the chain itself does not, but
-    # this keeps the focused snapshot consistent with the main one.
+    # chain that reaches system.* resolves; this keeps the focused snapshot
+    # consistent with the main one.
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_name,
         ctx=ctx,
@@ -2134,12 +2151,12 @@ def _resolve_effective_group_auth(
         workset_path=workset_path,
         box_path=project_toml,
         default_categories=dict(resolved_sys),
-        group_auth_chain=chain,
+        auth_chain=chain,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
     )
-    return settings_launch.effective_group_auth(snapshot, mode=proj.mode.value)
+    return settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
 
 
 def _build_binding_overrides(
@@ -2306,6 +2323,32 @@ def _launch_snapshot_inputs(
 
     addr = _channels.box_channel_addresses(proj, std)
     ws_token = _channels.workset_name_token(proj)
+    # The agent's credential-SHARING CAPABILITY (spec §2d; auth-level design step 2):
+    # the plugin-set RO ``meta.agent.<agent>.auth.share_support`` the box's mirror
+    # views up. Read off the descriptor for the ACTIVE agent (single-source: the
+    # plugin declares it in its *-defaults.yaml). Absent / NO-AGENT → False (the
+    # box enables degenerate false). Best-effort: an unresolvable target is treated
+    # as non-capable rather than crashing the snapshot build.
+    agent_auth_support = False
+    if agent_name:
+        from kanibako.targets import resolve_target
+
+        try:
+            _desc = resolve_target(agent_name, proj.project_path).descriptor
+            agent_auth_support = bool(
+                _desc.auth_share_support if _desc is not None else False
+            )
+        except (KeyError, ValueError):
+            # GENUINELY ABSENT: no matching target (KeyError) or the target lacks a
+            # meta.agent.<agent>.name (ValueError). Treat as non-capable (no
+            # sharing). We do NOT swallow arbitrary exceptions — a transient
+            # resolution error should NOT silently disable sharing for a capable
+            # agent; it surfaces to the caller.
+            get_logger("start").debug(
+                "auth capability: no descriptor for agent %r → non-capable",
+                agent_name,
+            )
+            agent_auth_support = False
     meta_identity = settings_launch_module.meta_identity_floor(
         box_name=proj.name,
         project_path=str(proj.project_path),
@@ -2320,6 +2363,7 @@ def _launch_snapshot_inputs(
         # box (empty name) — it has no agent identity.
         agent_name=agent_name if agent_name else None,
         agent_real_name=agent_name if agent_name else None,
+        agent_auth_share_support=agent_auth_support,
     )
 
     # workset PATH-anchor materialization (block B2b, spec §2c/§2g). The workset-
@@ -2390,7 +2434,7 @@ def _resolve_launch_snapshot(
     graph_root=None,
     storage_conf_path=None,
     binding_overrides=None,
-    group_auth: bool = True,
+    shares: bool = True,
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
 ):
@@ -2515,7 +2559,7 @@ def _resolve_launch_snapshot(
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,
     )
-    reconciled = reconcile_categories(entries, group_auth=group_auth)
+    reconciled = reconcile_categories(entries, shares=shares)
     return snapshot, reconciled
 
 
@@ -2575,7 +2619,7 @@ def _seed_box_home(
     system_settings_path,
     project_toml,
     workset_path,
-    effective_group_auth: bool,
+    auth_src,
     logger,
 ) -> None:
     """Apply the one-time home seed for a freshly-created box (seed-at-create).
@@ -2604,15 +2648,15 @@ def _seed_box_home(
         proj.shell_path, template_layer_specs(target, proj, std)
     )
     if target and desc is not None:
-        credsync.seed_cred_files(
-            desc, target, host_home=Path.home(),
-            project_home=proj.shell_path, group_auth=effective_group_auth,
+        credsync.seed_box_credentials(
+            desc, target, auth=auth_src, host_home=Path.home(),
+            project_home=proj.shell_path,
         )
     _apply_init_seeds(
         std=std, proj=proj, agent_name=agent_id, target=target,
         global_config_path=system_settings_path, project_toml=project_toml,
         workset_config_path=workset_path, agent_config_path=agent_cfg_path,
-        logger=logger, group_auth=effective_group_auth,
+        logger=logger, shares=auth_src.shares,
     )
 
 
@@ -2669,7 +2713,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     if target is not None:
         desc = target.descriptor
 
-    effective_group_auth = _resolve_effective_group_auth(
+    auth_src = _resolve_box_auth_source(
         std=std, proj=proj, agent_name=agent_id,
         system_settings_path=system_settings_path, project_toml=project_toml,
         workset_path=workset_path, agent_cfg_path=agent_cfg_path,
@@ -2680,7 +2724,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         agent_id=agent_id, agent_cfg_path=agent_cfg_path,
         system_settings_path=system_settings_path,
         project_toml=project_toml, workset_path=workset_path,
-        effective_group_auth=effective_group_auth, logger=logger,
+        auth_src=auth_src, logger=logger,
     )
 
 
@@ -2787,7 +2831,7 @@ def _apply_init_seeds(
     workset_config_path,
     agent_config_path,
     logger,
-    group_auth: bool = True,
+    shares: bool = True,
 ) -> None:
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
 
@@ -2798,8 +2842,8 @@ def _apply_init_seeds(
     path under proj.shell_path and copying host_src -> that path once (dir ->
     copytree dirs_exist_ok; file -> copy2).
 
-    The ``group_auth`` credential gate (D-M4) is applied during reconcile: a
-    credential-flagged ``seeded`` entry is suppressed when *group_auth* is False.
+    The credential gate (D-M4) is applied during reconcile: a credential-flagged
+    ``seeded`` entry is suppressed for a PRIVATE box (*shares* False).
     """
     import shutil
 
@@ -2833,7 +2877,7 @@ def _apply_init_seeds(
         agent_cfg=None,
         include_base_families=False,
         extra_default_categories=default_seeds,
-        group_auth=group_auth,
+        shares=shares,
     )
 
     for seed in reconciled.copies:
@@ -2881,7 +2925,7 @@ def _apply_synced_copies(
     workset_config_path,
     agent_config_path,
     logger,
-    group_auth: bool = True,
+    shares: bool = True,
 ) -> None:
     """Apply the ``<scope>.synced.<name>`` category copies into the box shell dir.
 
@@ -2896,8 +2940,8 @@ def _apply_synced_copies(
     descriptor's ``cred_files`` credsync engine (descriptor-driven) — the two do
     not overlap, so there is no double application.
 
-    The ``group_auth`` credential gate (D-M4) is applied during reconcile: every
-    ``synced`` entry is suppressed when *group_auth* is False.
+    The credential gate (D-M4) is applied during reconcile: every ``synced``
+    entry is suppressed for a PRIVATE box (*shares* False).
 
     ADDITIVE: with no ``synced.*`` keys configured (and no target default synced
     entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
@@ -2929,7 +2973,7 @@ def _apply_synced_copies(
         target=target,
         agent_cfg=None,
         include_base_families=False,
-        group_auth=group_auth,
+        shares=shares,
     )
 
     for sync in reconciled.copies:

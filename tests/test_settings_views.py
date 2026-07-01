@@ -253,7 +253,6 @@ def _meta_node() -> KeyStore:
     node = KeyStore()
     node["name"] = "mybox"
     node["root"] = "/workset/boxes/mybox"
-    node["group_auth_available"] = True
     return node
 
 
@@ -263,13 +262,11 @@ def test_meta_view_exact_types() -> None:
     assert isinstance(view.name, str)
     assert view.root == Path("/workset/boxes/mybox")
     assert isinstance(view.root, Path)
-    assert view.group_auth_available is True
-    assert isinstance(view.group_auth_available, bool)
 
 
 def test_meta_view_missing_field_raises() -> None:
     node = KeyStore()
-    node["name"] = "x"  # no ``root`` / ``group_auth_available``
+    node["name"] = "x"  # no ``root``
     view = MetaView(node)
     assert view.name == "x"
     with pytest.raises(ViewError):

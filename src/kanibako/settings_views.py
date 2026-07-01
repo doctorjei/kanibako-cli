@@ -440,16 +440,14 @@ class MetaView(FiniteView):
     """A small WORKED EXAMPLE of a tier-1 finite view (design §5 tier-1).
 
     Wraps a ``meta`` NODE and exposes a few representative fields at their EXACT
-    types — a ``Path`` (``root``), a ``str`` (``name``), and a ``bool``
-    (``group_auth_available``). It demonstrates the :class:`typed_field` +
-    :class:`FiniteView` mechanism; it is NOT the full ``meta`` schema and is NOT
-    wired into any consumer (that is block 7). Add more fields by declaring more
-    :class:`typed_field` descriptors.
+    types — a ``Path`` (``root``) and a ``str`` (``name``). It demonstrates the
+    :class:`typed_field` + :class:`FiniteView` mechanism; it is NOT the full
+    ``meta`` schema and is NOT wired into any consumer (that is block 7). Add more
+    fields by declaring more :class:`typed_field` descriptors.
     """
 
     name: str = typed_field(as_str)  # type: ignore[assignment]
     root: Path = typed_field(as_path)  # type: ignore[assignment]
-    group_auth_available: bool = typed_field(as_bool)  # type: ignore[assignment]
 
 
 class MetaRuntimeView(FiniteView):
@@ -485,8 +483,7 @@ class MetaBoxView(FiniteView):
     * ``share_workset`` (B2) — this box's workset-local share dir, ``None`` for
       STANDALONE (spec §2c L469).
 
-    Read-only; wraps ``store.meta.box``. (``group_auth_available`` is read off the
-    bare node by ``effective_group_auth``; ``container_name`` / ``helper_num`` are
+    Read-only; wraps ``store.meta.box``. (``container_name`` / ``helper_num`` are
     a non-bind RENDER, not materialized here — JC-B2-3.)
     """
 

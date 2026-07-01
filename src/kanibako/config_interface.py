@@ -67,11 +67,12 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "box.share_images",
     "box.shell",
     "box.bootstrap_program",
-    # Auth / project — the box's group-auth CHOICE (block #2, §2b L282). The bare
-    # ``group_auth`` token stays recognized as a back-compat INPUT alias
-    # (canonicalized to ``box.group_auth_on`` in _resolve_key).
-    "box.group_auth_on",
-    "group_auth",
+    # Auth sharing — settable 3-tier chain (system/workset/box.auth.*)
+    "system.auth.share_allowed",
+    "workset.auth.share_allowed",
+    "workset.auth.global_sync",
+    "box.auth.global_enabled",
+    "box.auth.workset_enabled",
     # ``mode`` is NO LONGER a settable config-set key (block B1, spec §2b L486 /
     # §0): the project mode is the RO identity anchor ``meta.box.mode`` (surfacing
     # the runtime-resolved ``@meta.runtime.project_type``), set by the construct-
@@ -148,15 +149,18 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "box.shell": (("box",), "shell"),
     "box.bootstrap_program": (("box",), "bootstrap_program"),
     "box.share_images": (("box",), "share_images"),
-    # Project section ([project] table) — group_auth_on/mode/vault.* are read back
-    # by read_project_meta(); vault.enabled lands in its real stored key
+    # Auth sharing — settable 3-tier chain (system/workset/box.auth.*). These are
+    # ordinary SETTINGS keys: each routes to its nested ``<scope>.auth.<leaf>``
+    # slot in the command-scope settings file (the same nested-settings pattern as
+    # ``box.image`` etc.), NOT the [project] meta table.
+    "system.auth.share_allowed": (("system", "auth"), "share_allowed"),
+    "workset.auth.share_allowed": (("workset", "auth"), "share_allowed"),
+    "workset.auth.global_sync": (("workset", "auth"), "global_sync"),
+    "box.auth.global_enabled": (("box", "auth"), "global_enabled"),
+    "box.auth.workset_enabled": (("box", "auth"), "workset_enabled"),
+    # Project section ([project] table) — vault.* are read back by
+    # read_project_meta(); vault.enabled lands in its real stored key
     # ``enable_vault`` (the H1 alias fix).
-    # Group-auth (block #2): the box's CHOICE is the new spec key
-    # ``box.group_auth_on`` (settable, §2b L282), stored on-disk as
-    # ``[project].group_auth_on``. The bare ``group_auth`` token is canonicalized
-    # to ``box.group_auth_on`` in :func:`_resolve_key` (back-compat INPUT — an old
-    # ``config group_auth=false`` writes the NEW key), so both route here.
-    "box.group_auth_on": (("project",), "group_auth_on"),
     # ``mode`` removed from the settable routing table (block B1, spec §2b L486 /
     # §0 meta-RO): the project mode is the RO identity anchor ``meta.box.mode``,
     # set by the bootstrap layer at box creation, never via ``config set``. The
@@ -172,14 +176,18 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # Keys whose values must be coerced to a real type before writing (the H2 fix).
 # Boolean keys parse true/false/1/0/yes/no (case-insensitive) to a Python bool
 # so the loader reads back a real bool (``set box.share_images false`` actually
-# disables it).  Build this extensibly — later phases add box.group_auth /
+# disables it).  Build this extensibly — later phases add
 # vault_enabled / agent.*.{auto_approve,allow_helpers} etc.  The truth table
 # itself lives in ``config`` (shared with the box.meta writer); see
 # ``config.coerce_bool``.
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
     "allow_helpers": "bool",
-    "box.group_auth_on": "bool",
+    "system.auth.share_allowed": "bool",
+    "workset.auth.share_allowed": "bool",
+    "workset.auth.global_sync": "bool",
+    "box.auth.global_enabled": "bool",
+    "box.auth.workset_enabled": "bool",
     "vault.enabled": "bool",
 }
 
@@ -243,14 +251,7 @@ def _resolve_key(raw: str) -> str:
     Config keys are already canonical (dot-notation like ``box.image`` or
     ``vault.enabled``, or a raw flat key); this is the single canonicalization
     seam every get/set/reset path routes through.
-
-    Group-auth (block #2): the bare ``group_auth`` token is a back-compat INPUT
-    alias for the box's choice — canonicalized to the new spec key
-    ``box.group_auth_on`` so an old ``config group_auth=false`` writes the NEW
-    on-disk key (never the old form), and get/set/reset all route consistently.
     """
-    if raw == "group_auth":
-        return "box.group_auth_on"
     return raw
 
 
@@ -845,7 +846,7 @@ def get_config_value(
             return str(val).lower()
         return str(val) if val else None
 
-    # Keys with no flat field (group_auth, vault.*) land in [project]/root — read
+    # Keys with no flat field (vault.*, *.auth.*) land in [project]/nested — read
     # the raw set-value from the routed location. (``mode`` is no longer a settable
     # key — it is the RO identity anchor meta.box.mode, block B1.)
     sections, leaf = route

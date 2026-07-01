@@ -459,9 +459,8 @@ class TestPersistentMode:
         """Reattach refreshes credentials before exec (legacy hook path).
 
         A descriptor-bearing target routes the reattach refresh through the
-        credsync engine (TestCredsyncRouting.
-        test_descriptor_reattach_refresh_uses_refresh_cred_files); this pins the
-        legacy hook explicitly.
+        credsync engine's tier orchestrator (refresh_box_credentials); this pins
+        the legacy hook explicitly.
         """
         with start_mocks() as m:
             m.target.descriptor = None
@@ -1398,7 +1397,7 @@ class TestReattachAgentSourcing:
             assert m.runtime.exec.called
             assert not m.runtime.run.called
             # Cred refresh ran for the sourced agent (descriptor path).
-            assert m.credsync.refresh_cred_files.called
+            assert m.credsync.refresh_box_credentials.called
             # Heads-up went to STDERR, names the box + agent.
             err = capsys.readouterr().err
             assert "Reattaching to running box 'testproject'" in err

@@ -133,14 +133,6 @@ class TestDefaultWorkset:
         by_name = {p.name: p.source_path for p in ws.projects}
         assert by_name == {"alpha": proj_a, "beta": proj_b}
 
-    def test_group_auth_defaults_true(self, std):
-        assert default_workset(std).group_auth is True
-
-    def test_group_auth_read_from_config(self, std):
-        config_path = std.data_path / "config.yaml"
-        config_path.write_text("project:\n  group_auth: false\n")
-        assert default_workset(std).group_auth is False
-
     def test_not_persisted(self, std):
         # Synthesizing the default workset must not create a registry or
         # a workset.yaml.
@@ -583,10 +575,6 @@ class TestWorksetSettingsFile:
         assert not (root.resolve() / "workset.yaml").exists()
         data = load_doc(settings)
         assert data["workset"]["meta"]["name"] == "mset"
-        # Block #2: the workset POLICY persists as the NEW spec key
-        # ``group_auth_enabled`` in workset.meta (never the old ``group_auth``).
-        assert data["workset"]["meta"]["group_auth_enabled"] is True
-        assert "group_auth" not in data["workset"]["meta"]
 
     def test_identity_and_cascade_coexist(self, std, tmp_home):
         """Cascade settings + the workset.meta identity share one file without
@@ -604,18 +592,16 @@ class TestWorksetSettingsFile:
         )["data"] = "/host:/guest"
         dump_doc(settings, data)
 
-        # An identity update (group_auth) must preserve the cascade key.
-        ws.group_auth = False
+        # Re-writing the workset identity must preserve the cascade key.
         from kanibako.workset import _write_workset_toml
         _write_workset_toml(ws)
 
-        # Both survive: the binding key is intact on disk, identity reload sees auth.
+        # Both survive: the binding key is intact on disk, identity reload works.
         reloaded_data = load_doc(settings)
         assert (
             reloaded_data["workset"]["bindings"]["rw"]["data"] == "/host:/guest"
         )
         reloaded = load_workset(root)
-        assert reloaded.group_auth is False
         assert reloaded.name == "coexist"
 
     def test_detection_marker_is_workset_meta(self, std, tmp_home, config):

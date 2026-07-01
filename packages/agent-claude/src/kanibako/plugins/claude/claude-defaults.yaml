@@ -83,6 +83,9 @@ descriptor:
 
   host_prep: true
   init_dirs: [".claude"]
+  # Credential-SHARING CAPABILITY (spec §2d): claude supports shared creds
+  # (per-agent host login). RO / plugin-set → meta.agent.claude.auth.share_support.
+  auth_share_support: true
 
 # AGENT-scope shared dirs (plugins + cache), rooted under the per-agent store dir
 # @meta.agent.claude.path = @system.agents/claude (core's agent.shared scope-root).

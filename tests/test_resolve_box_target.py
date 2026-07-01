@@ -30,7 +30,7 @@ def _make_standalone(std, tmp_home, leaf: str = "sa", name: str = ""):
     root.mkdir()
     (root / "box_data").mkdir()
     box_name, *_ = establish_standalone(
-        std, root, enable_vault=True, group_auth=True, name=name,
+        std, root, enable_vault=True, name=name,
     )
     return box_name, root
 
@@ -149,7 +149,7 @@ class TestNonConformingNameFlagged:
             mode="standalone",
             workspace=str(root / "workspace"),
             shell=str(shell_p), vault_ro=str(vro), vault_rw=str(vrw),
-            enable_vault=True, group_auth=True,
+            enable_vault=True,
             metadata=str(root / "box_data"),
             project_hash=project_hash(str(root.resolve())),
             name=bad_name,

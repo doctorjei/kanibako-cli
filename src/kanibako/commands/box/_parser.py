@@ -75,7 +75,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     box_sub = p.add_subparsers(dest="box_command", metavar="COMMAND")
 
     # kanibako box create [path] [--name NAME] [--standalone] [--image IMAGE]
-    #                     [--no-vault] [--distinct-auth]
+    #                     [--no-vault]
     create_p = box_sub.add_parser(
         "create",
         help="Create a new kanibako project",
@@ -104,10 +104,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--no-vault", action="store_true",
         help="Disable vault directories (shared read-only and read-write mounts)",
-    )
-    create_p.add_argument(
-        "--distinct-auth", action="store_true",
-        help="Use distinct credentials (no sync from host)",
     )
     create_p.add_argument(
         "--allow-home", action="store_true",
@@ -461,7 +457,6 @@ def run_create(args: argparse.Namespace) -> int:
     std = load_std_paths(config)
 
     enable_vault = not getattr(args, "no_vault", False)
-    group_auth = False if getattr(args, "distinct_auth", False) else None
     project_dir = args.path
 
     # R2: every box name is lowercase — silently fold a user-supplied --name.
@@ -511,7 +506,7 @@ def run_create(args: argparse.Namespace) -> int:
     if args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
-            enable_vault=enable_vault, group_auth=group_auth,
+            enable_vault=enable_vault,
             name=getattr(args, "name", None) or "",
             register=False,
         )

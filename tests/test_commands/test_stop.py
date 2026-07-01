@@ -7,6 +7,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.commands.stop import run, _stop_one, _stop_all
+from kanibako.settings_launch import AuthSource
+
+_SHARED_AUTH = AuthSource(
+    tier="global",
+    global_enabled=True,
+    workset_enabled=False,
+    global_sync=False,
+    workset_source=None,
+)
 
 
 @pytest.fixture
@@ -242,8 +251,8 @@ class TestStopWriteback:
             patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
             patch("kanibako.targets.resolve_target") as m_resolve_target,
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=True,
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
             ),
             patch(
                 "kanibako.commands.start.writeback_session_credentials"
@@ -257,10 +266,10 @@ class TestStopWriteback:
             rc = _stop_one(mock_runtime, project_dir=None)
             assert rc == 0
             mock_runtime.inspect_env.assert_called_once()
-            # Block #2: writeback gates on the EFFECTIVE group-auth bool (resolved
-            # through the chain), passed as a keyword.
+            # Block #2: writeback gets the resolved AuthSource (the 3-tier
+            # SHARING source), passed as the ``auth_src`` keyword.
             m_wb.assert_called_once_with(
-                target, proj, effective_group_auth=True
+                target, proj, auth_src=_SHARED_AUTH
             )
 
     def test_no_writeback_without_agent_stamp(self, mock_runtime):

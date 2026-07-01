@@ -760,7 +760,7 @@ class TestHelperDefaultCategories:
         entries = resolve_categories(
             levels=levels, ctx=ctx, lookup=lookup, scope_roots=None
         )
-        reconciled = reconcile_categories(entries, group_auth=True)
+        reconciled = reconcile_categories(entries, shares=True)
         sock_mount = next(
             e for e in reconciled.mounts if e.name == "helper_sock"
         )
