@@ -1432,6 +1432,27 @@ class TestReattachAgentSourcing:
             assert "--agent 'goose'" in msg
             assert "kanibako stop testproject" in msg
 
+    def test_reattach_mismatch_error_renders_plus_not_pomo(self, start_mocks):
+        """A RIDER mismatch must render the user-facing ``+`` separator, never the
+        canonical ``℘`` (display-swap rule): the stored stamp is a NODE-name with
+        ``℘``; the error text shows ``navigator+claude`` / ``pilot+goose``."""
+        from kanibako.errors import KanibakoError
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            # KANIBAKO_AGENT stamps the canonical node (℘).
+            m.runtime.inspect_env.return_value = "navigator℘claude"
+            with pytest.raises(KanibakoError) as exc:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, explicit_agent="pilot+goose",
+                )
+            msg = str(exc.value)
+            # Mutation-check: BOTH refs shown with '+', and the raw '℘' must NOT leak.
+            assert "navigator+claude" in msg
+            assert "pilot+goose" in msg
+            assert "℘" not in msg
+
     def test_reattach_differing_default_superseded_silently(
         self, start_mocks, capsys
     ):

@@ -244,6 +244,97 @@ def test_resolved_name_not_installed(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# 5a. Rider refs (persona+harness) — Block A: validate the HARNESS, return NODE
+# ---------------------------------------------------------------------------
+
+
+def test_rider_explicit_returns_node_name(monkeypatch):
+    # A rider ref validates the HARNESS (claude) ∈ installed, and RETURNS the
+    # canonical node-name (persona℘harness), NOT the composite or the harness.
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(
+            explicit_agent="navigator+claude",
+            box_agent_name=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+        == "navigator℘claude"
+    )
+
+
+def test_rider_canonical_separator_accepted(monkeypatch):
+    # The ℘ literal is accepted on input too and returns the same node.
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(
+            explicit_agent="navigator℘claude",
+            box_agent_name=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+        == "navigator℘claude"
+    )
+
+
+def test_rider_harness_not_installed_errors_on_harness(monkeypatch):
+    # The composite persona is free-form; the error must name the HARNESS, not
+    # the whole ref (the harness is what needs installing).
+    _patch_targets(monkeypatch, ["goose"])  # claude NOT installed
+    _no_default(monkeypatch)
+    monkeypatch.delenv("PIPX_HOME", raising=False)
+    monkeypatch.delenv("PIPX_BIN_DIR", raising=False)
+    monkeypatch.delenv("UV_TOOL_DIR", raising=False)
+    monkeypatch.setattr("sys.prefix", "/usr")
+    monkeypatch.setattr(
+        "kanibako.install_method.is_externally_managed", lambda: False
+    )
+    with pytest.raises(AgentNotInstalledError) as ei:
+        resolve_agent(
+            explicit_agent="navigator+claude",
+            box_agent_name=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+    msg = str(ei.value)
+    # Names the harness for the install hint; does NOT leak the persona/node.
+    assert "kanibako-agent-claude" in msg
+    assert "navigator" not in msg
+
+
+def test_bare_claude_unchanged_with_rider_support(monkeypatch):
+    # BACKWARD-COMPAT: a bare ref still returns the bare name byte-for-byte.
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(
+            explicit_agent="claude",
+            box_agent_name=None,
+            workset_agent=None,
+            system_default_path=None,
+        )
+        == "claude"
+    )
+
+
+def test_rider_box_tier_canonicalized(monkeypatch):
+    # A rider ref supplied at the BOX tier (not just explicit) is canonicalised.
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(
+            explicit_agent=None,
+            box_agent_name="navigator+claude",
+            workset_agent=None,
+            system_default_path=None,
+        )
+        == "navigator℘claude"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 5b. System-default tier round-trip through a real settings file
 # ---------------------------------------------------------------------------
 

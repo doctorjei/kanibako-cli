@@ -80,8 +80,11 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
         )
         from kanibako.agent_config import agent_settings_path
         from kanibako.config import BOX_META_FILE
+        from kanibako.agent_ref import harness_of
         from kanibako.targets import resolve_target
-        target = resolve_target(agent, proj.project_path)
+        # KANIBAKO_AGENT stamps the NODE-name; the target/plugin is keyed by the
+        # HARNESS. ``agent_name=agent`` below keeps the node (keyspace slot).
+        target = resolve_target(harness_of(agent), proj.project_path)
         auth_src = _resolve_box_auth_source(
             std=std,
             proj=proj,

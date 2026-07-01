@@ -637,6 +637,7 @@ def resolve_agent(
     """
     # Lazy import: kanibako.targets imports paths/config indirectly, so importing
     # it at module scope risks a cycle. Mirror discover_targets' use elsewhere.
+    from kanibako.agent_ref import canonicalize_agent_ref, harness_of
     from kanibako.errors import (
         AgentNotInstalledError,
         NoAgentInstalledError,
@@ -658,22 +659,31 @@ def resolve_agent(
     # the full `installed` set).
     real_installed = installed - _PSEUDO_AGENTS
 
-    # Cascade: first non-empty tier resolves a name.
-    resolved = (
+    # Cascade: first non-empty tier resolves a name.  Each ref source may be a
+    # rider ref (``persona+harness``); canonicalise the winning tier to its
+    # node-name (``persona℘harness``; bare stays byte-identical) so callers see a
+    # uniform node-name.  The canonicalize call also VALIDATES the ref shape
+    # (raises ConfigError on a malformed segment).
+    raw_resolved = (
         _clean(explicit_agent)
         or _clean(box_agent_name)
         or _clean(workset_agent)
         or _clean(read_default_agent(system_default_path))
     )
 
-    if resolved:
-        # An explicitly-named agent (incl. a pseudo agent like ``no_agent``)
+    if raw_resolved:
+        # Canonicalise ``+`` -> ``℘`` and validate the ref shape; the HARNESS
+        # (right of ``℘``, the whole name when bare) is what must be an installed
+        # target — NOT the composite node-name (a rider's persona is free-form).
+        node = canonicalize_agent_ref(raw_resolved)
+        harness = harness_of(node)
+        # An explicitly-named harness (incl. a pseudo agent like ``no_agent``)
         # validates against the FULL installed set.
-        if resolved in installed:
-            return resolved
+        if harness in installed:
+            return node
         raise AgentNotInstalledError(
-            f"Agent '{resolved}' is not installed. Install it with:\n"
-            f"  {install_command(f'kanibako-agent-{resolved}')}\n"
+            f"Agent '{harness}' is not installed. Install it with:\n"
+            f"  {install_command(f'kanibako-agent-{harness}')}\n"
             f"Or run 'kanibako agent list' to see installed agents."
         )
 

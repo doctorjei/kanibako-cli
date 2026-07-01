@@ -6,6 +6,8 @@ import argparse
 import sys
 from typing import TYPE_CHECKING
 
+from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
+
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
     from kanibako.paths import StandardPaths
@@ -166,13 +168,14 @@ def run_list(args: argparse.Namespace) -> int:
     quiet = getattr(args, "quiet", False)
     if quiet:
         for f in settings_files:
-            print(f.parent.name)
+            # The on-disk dir name is the canonical NODE (``℘``); show ``+`` to the user.
+            print(display_agent_ref(f.parent.name))
         return 0
 
     print(f"{'NAME':<20} {'MODEL'}")
     for f in settings_files:
         cfg = load_agent_config(f)
-        name = f.parent.name
+        name = display_agent_ref(f.parent.name)
         model = cfg.state.get("model", "-")
         print(f"{name:<20} {model}")
     return 0
@@ -188,14 +191,19 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    agent_id = args.agent_id
+    # The positional may be a rider ref with the typable ``+``; canonicalise to
+    # the ``℘`` node-name to locate the on-disk dir, but DISPLAY the ``+`` form.
+    agent_id = canonicalize_agent_ref(args.agent_id)
+    agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
-        print(f"Error: agent '{agent_id}' not found ({path})", file=sys.stderr)
+        print(
+            f"Error: agent '{agent_display}' not found ({path})", file=sys.stderr
+        )
         return 1
 
     cfg = load_agent_config(path)
-    print(f"Name:         {cfg.name or agent_id}")
+    print(f"Name:         {cfg.name or agent_display}")
     if cfg.run_args:
         print(f"Default args: {' '.join(cfg.run_args)}")
     else:
@@ -281,10 +289,15 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    agent_id = args.agent_id
+    # Canonicalise the (possibly ``+``) rider ref to the ``℘`` node to locate the
+    # on-disk dir; DISPLAY the ``+`` form.
+    agent_id = canonicalize_agent_ref(args.agent_id)
+    agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
-        print(f"Error: agent '{agent_id}' not found ({path})", file=sys.stderr)
+        print(
+            f"Error: agent '{agent_display}' not found ({path})", file=sys.stderr
+        )
         return 1
 
     cfg = load_agent_config(path)
@@ -330,7 +343,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # Parse key/value argument
     if key_value is None:
         # Show mode
-        return _show_agent_config(cfg, args.agent_id, effective=args.effective)
+        return _show_agent_config(cfg, agent_display, effective=args.effective)
 
     if "=" in key_value:
         key, _, value = key_value.partition("=")
@@ -441,6 +454,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         load_merged_config,
         resolve_agent,
     )
+    from kanibako.agent_ref import harness_of
     from kanibako.paths import xdg, load_std_paths
     from kanibako.targets import resolve_target
 
@@ -479,7 +493,9 @@ def run_reauth(args: argparse.Namespace) -> int:
         system_default_path=std.settings,
         project_path=proj.project_path,
     )
-    target = resolve_target(agent_name, proj.project_path)
+    # ``agent_name`` is the NODE-name (rider identity); the target/plugin is keyed
+    # by the HARNESS. ``agent_settings_path`` above keeps the node (keyspace slot).
+    target = resolve_target(harness_of(agent_name), proj.project_path)
 
     if not target.has_binary:
         print("No agent target configured.", file=sys.stderr)
