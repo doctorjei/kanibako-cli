@@ -681,3 +681,80 @@ class TestNoHostRootEscape:
         assert escapes == [], f"seed created dirs outside project/host: {escapes}"
         # init_dirs still land INSIDE the project home (positive control).
         assert (proj / ".config/goose").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# Rider endpoint cred fork (block B, 2026-07-01c) — suppress_oauth
+# ---------------------------------------------------------------------------
+
+
+class TestEndpointCredFork:
+    """The fail-safe half of the rider cred fork: when the active agent resolves a
+    non-<None> ``agent.<node>.endpoint`` (``suppress_oauth=True``), the box's
+    host-login OAuth (the SYNC-cadence cred_files) is DROPPED so the Anthropic token
+    is never delivered to a box pointed at a third-party endpoint. SEED_ONCE specs
+    (static, non-login) survive. ``suppress_oauth=False`` (bare / <None>) is
+    byte-identical to today.
+    """
+
+    def test_refresh_suppresses_oauth_sync_when_endpoint_set(
+        self, tmp_path: Path
+    ) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".claude/.credentials.json", "OAUTH")
+        refresh_box_credentials(
+            CLAUDE_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=True,
+        )
+        # The OAuth (SYNC, filtered) cred is NOT synced into the box.
+        assert not (proj / ".claude/.credentials.json").exists()
+
+    def test_refresh_syncs_oauth_when_endpoint_unset(self, tmp_path: Path) -> None:
+        # MUTATION CHECK: the ONLY difference from the suppressed case is the flag.
+        # With suppress_oauth=False (bare / <None>), the OAuth cred IS synced —
+        # proving the suppression above is non-vacuous.
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".claude/.credentials.json", "OAUTH")
+        refresh_box_credentials(
+            CLAUDE_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=False,
+        )
+        assert (proj / ".claude/.credentials.json").read_text() == "MARKER:in:OAUTH"
+
+    def test_refresh_default_is_no_suppression(self, tmp_path: Path) -> None:
+        # Backward-compat: omitting suppress_oauth entirely == today's behavior
+        # (OAuth synced). Byte-identical to the pre-block-B call signature.
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".claude/.credentials.json", "OAUTH")
+        refresh_box_credentials(
+            CLAUDE_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+        )
+        assert (proj / ".claude/.credentials.json").read_text() == "MARKER:in:OAUTH"
+
+    def test_seed_suppresses_oauth_sync_when_endpoint_set(
+        self, tmp_path: Path
+    ) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".claude/.credentials.json", "OAUTH")
+        seed_box_credentials(
+            CLAUDE_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=True,
+        )
+        assert not (proj / ".claude/.credentials.json").exists()
+        # init_dirs still created (the box home is still prepared).
+        assert (proj / ".claude").is_dir()
+
+    def test_seed_syncs_oauth_when_endpoint_unset(self, tmp_path: Path) -> None:
+        # MUTATION CHECK for the seed path.
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".claude/.credentials.json", "OAUTH")
+        seed_box_credentials(
+            CLAUDE_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=False,
+        )
+        assert (proj / ".claude/.credentials.json").read_text() == "MARKER:in:OAUTH"

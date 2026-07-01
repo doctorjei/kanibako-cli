@@ -380,8 +380,8 @@ class TestRunReauth:
             # it to a SHARING AuthSource so the ``auth_src.shares`` branch under
             # test is reached unchanged.
             patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None),
             ),
         ):
             target = MagicMock()
@@ -420,8 +420,8 @@ class TestRunReauth:
             # SHARING box resolved via the launch chain (auth 3-tier redesign);
             # stub a SHARING AuthSource so the credsync refresh branch is reached.
             patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None),
             ),
         ):
             target = MagicMock()
@@ -443,6 +443,54 @@ class TestRunReauth:
         mock_refresh.assert_called_once_with(
             desc, target, auth=_SHARED_AUTH, host_home=Path.home(),
             project_home=proj.shell_path,
+            suppress_oauth=False,
+        )
+
+    def test_reauth_suppresses_oauth_when_endpoint_set(
+        self, config_file, tmp_home, capsys
+    ):
+        """Block B (LEAK-PATH fix): reauth on an ENDPOINT-riding box must SUPPRESS
+        the OAuth cred sync — else it would push the Anthropic token into a box
+        pointed at a third-party endpoint. The resolved endpoint (non-None) →
+        ``suppress_oauth=True`` on the credsync refresh.
+
+        Mutation check: the sibling test above (endpoint None) asserts
+        ``suppress_oauth=False`` on the SAME call, so this True is non-vacuous.
+        """
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+            patch(
+                "kanibako.targets.credsync.refresh_box_credentials"
+            ) as mock_refresh,
+            # SHARING box, but with a resolved rider endpoint → the fork fires.
+            patch(
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, "http://localhost:8080"),
+            ),
+        ):
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = True
+            target.display_name = "Claude Code"
+            desc = MagicMock()
+            target.descriptor = desc
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        assert rc == 0
+        mock_refresh.assert_called_once_with(
+            desc, target, auth=_SHARED_AUTH, host_home=Path.home(),
+            project_home=proj.shell_path,
+            suppress_oauth=True,
         )
 
     def test_reauth_skips_refresh_for_distinct(self, config_file, tmp_home, capsys):
@@ -456,8 +504,8 @@ class TestRunReauth:
             # Distinct auth = PRIVATE box (tier ``box``, ``.shares`` False); stub a
             # private AuthSource so the distinct-auth branch is taken.
             patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_PRIVATE_AUTH,
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_PRIVATE_AUTH, None),
             ),
         ):
             target = MagicMock()
@@ -496,8 +544,8 @@ class TestRunReauth:
             # SHARING box via the launch chain (auth 3-tier redesign); stub a
             # SHARING AuthSource so the shared-auth-fail path is reached.
             patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None),
             ),
         ):
             target = MagicMock()
@@ -533,8 +581,8 @@ class TestRunReauth:
             # SHARING box via the launch chain (auth 3-tier redesign); stub a
             # SHARING AuthSource so the shared-auth-fail path is reached.
             patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None),
             ),
         ):
             target = MagicMock()

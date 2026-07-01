@@ -552,8 +552,8 @@ class TestDistinctAuth:
     def test_distinct_auth_skips_refresh(self, start_mocks):
         """A PRIVATE box (auth_src.shares False) -> refresh_credentials skipped."""
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=_PRIVATE_AUTH,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_PRIVATE_AUTH, None),
         ):
             rc = _run_container(
                 project_dir=None,
@@ -571,8 +571,8 @@ class TestDistinctAuth:
     def test_distinct_auth_skips_check_auth(self, start_mocks):
         """A PRIVATE box (auth_src.shares False) -> check_auth skipped."""
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=_PRIVATE_AUTH,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_PRIVATE_AUTH, None),
         ):
             rc = _run_container(
                 project_dir=None,
@@ -930,8 +930,8 @@ class TestCredsyncRouting:
         refresh/writeback are gated out by the ``auth_src.shares`` guard
         (credsync.refresh/writeback never reached)."""
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=_PRIVATE_AUTH,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_PRIVATE_AUTH, None),
         ):
             self._drive_descriptor(m)
             # Seed-at-create path: a brand-new (just-registered) box seeds now.
@@ -1653,8 +1653,8 @@ class TestPrepareHostHook:
     def test_hook_auto_auth_false_for_distinct_auth(self, start_mocks):
         """Distinct auth (PRIVATE box, auth_src.shares False) -> auto_auth=False."""
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=_PRIVATE_AUTH,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_PRIVATE_AUTH, None),
         ):
             _run_container(
                 project_dir=None,
@@ -2886,8 +2886,8 @@ class TestWritebackAllPaths:
             global_sync=False, workset_source=str(ws_store),
         )
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=workset_auth,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(workset_auth, None),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -2913,8 +2913,8 @@ class TestWritebackAllPaths:
             global_sync=True, workset_source=str(ws_store),
         )
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=workset_auth,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(workset_auth, None),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -2960,8 +2960,8 @@ class TestWritebackAllPaths:
         """Distinct auth (PRIVATE box, auth_src.shares False) -> NO writeback on
         any path."""
         with start_mocks() as m, patch(
-            "kanibako.commands.start._resolve_box_auth_source",
-            return_value=_PRIVATE_AUTH,
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_PRIVATE_AUTH, None),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -3065,9 +3065,10 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.commands.start.agent_settings_path"),
             patch("kanibako.commands.start.write_agent_config"),
             patch(
-                "kanibako.commands.start._resolve_box_auth_source",
-                return_value=_SHARED_AUTH,
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None),
             ),
+            patch("kanibako.commands.start.load_agent_config"),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
         ):
             m_rt.return_value.name = "claude"
@@ -3076,3 +3077,5 @@ class TestSeedNewBoxCreateEntry:
         kwargs = m_seed.call_args.kwargs
         assert kwargs["proj"] is proj
         assert kwargs["std"] is std
+        # <None> endpoint → the seed is NOT told to suppress the OAuth cred (bare).
+        assert kwargs["suppress_oauth"] is False

@@ -462,6 +462,67 @@ def test_env_goose_model_absent_when_value_falsy() -> None:
     assert "GOOSE_MODEL" not in env
 
 
+def _claude_endpoint_descriptor() -> PluginDescriptor:
+    """Claude descriptor mirroring the shipped one: FLAG model + ENV endpoint."""
+    return PluginDescriptor(
+        command=("claude",),
+        bindings=(),
+        mode={"start": (), "continue": ("--continue",)},
+        settings=(
+            SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),
+            SettingArg(
+                setting_key="endpoint",
+                channel=Channel.ENV,
+                env_var="ANTHROPIC_BASE_URL",
+            ),
+        ),
+        container_env={"DISABLE_AUTOUPDATER": "1"},
+    )
+
+
+def test_env_claude_endpoint_emits_base_url_when_set() -> None:
+    # Block B: endpoint (ENV channel) → ANTHROPIC_BASE_URL when the resolved
+    # agent.<node>.endpoint is set (a rider pointing at an alternate endpoint).
+    d = _claude_endpoint_descriptor()
+    env = assemble_env(
+        d, safe_mode_off=True,
+        setting_values={"model": "opus", "endpoint": "http://localhost:8080"},
+    )
+    assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8080"
+
+
+def test_env_claude_endpoint_absent_when_none() -> None:
+    # <None> case: unset endpoint (absent / empty) emits NO ANTHROPIC_BASE_URL —
+    # bare claude is byte-identical to today. Mutation check: the ONLY difference
+    # vs the set case is the env key, so its absence here is non-vacuous.
+    d = _claude_endpoint_descriptor()
+    env_absent = assemble_env(d, safe_mode_off=True, setting_values={"model": "opus"})
+    env_empty = assemble_env(
+        d, safe_mode_off=True, setting_values={"model": "opus", "endpoint": ""},
+    )
+    assert "ANTHROPIC_BASE_URL" not in env_absent
+    assert "ANTHROPIC_BASE_URL" not in env_empty
+    # Bare env is exactly the base container_env — no endpoint leakage.
+    assert env_absent == {"DISABLE_AUTOUPDATER": "1"}
+    assert env_empty == {"DISABLE_AUTOUPDATER": "1"}
+
+
+def test_argv_claude_endpoint_never_in_argv() -> None:
+    # endpoint is ENV-only; it must never appear on the argv even when set.
+    from kanibako.targets.assembly import assemble_argv
+
+    d = _claude_endpoint_descriptor()
+    argv = assemble_argv(
+        d, mode_key="start", safe_mode_off=True,
+        setting_values={"model": "opus", "endpoint": "http://localhost:8080"},
+        op=None, extra_args=[],
+    )
+    assert "http://localhost:8080" not in argv
+    assert "ANTHROPIC_BASE_URL" not in argv
+    # model FLAG still emits normally.
+    assert "--model" in argv and "opus" in argv
+
+
 def test_env_goose_secure_emits_goose_mode_approve_on_safe_on() -> None:
     # The A1 fix: an ENV safe-bypass with secure_env_value emits the restrictive
     # value on safe-ON (goose GOOSE_MODE=approve), because goose's unset default

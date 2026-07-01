@@ -352,6 +352,33 @@ class TestTargetSettings:
         msg = reset_config_value("model", config_path=project_toml)
         assert "Reset model" in msg
 
+    def test_endpoint_is_known_key(self):
+        # Block B: endpoint is a settable agent setting, a sibling of model.
+        assert is_known_key("endpoint") is True
+
+    def test_set_endpoint(self, tmp_path):
+        # endpoint accepted the SAME way as model — writes agent.default tier.
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "endpoint", "http://localhost:8080", config_path=project_toml
+        )
+        assert "Set endpoint=http://localhost:8080" in msg
+        data = load_doc(project_toml)
+        assert data["agent"]["default"]["endpoint"] == "http://localhost:8080"
+
+    def test_get_endpoint(self, tmp_path):
+        project_toml = tmp_path / "settings.yaml"
+        dump_doc(
+            project_toml,
+            {"agent": {"default": {"endpoint": "http://ep:9000"}}},
+        )
+        val = get_config_value(
+            "endpoint",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=project_toml,
+        )
+        assert val == "http://ep:9000"
+
 
 # ---------------------------------------------------------------------------
 # show_config

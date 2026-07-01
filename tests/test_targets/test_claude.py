@@ -451,6 +451,15 @@ class TestSettingDescriptors:
         assert descriptors["access"].default == "permissive"
         assert descriptors["access"].choices == ("permissive", "restricted")
 
+    def test_endpoint_setting(self):
+        # Block B: endpoint declared with an empty (<None>) default → unset by
+        # default (bare/harness-default), freeform URL (no choices).
+        t = ClaudeTarget()
+        descriptors = {d.key: d for d in t.setting_descriptors()}
+        assert "endpoint" in descriptors
+        assert descriptors["endpoint"].default == ""
+        assert descriptors["endpoint"].choices == ()
+
 
 class TestGenerateAgentConfig:
     def test_returns_claude_defaults(self):
@@ -579,11 +588,22 @@ class TestDescriptor:
 
     def test_settings_model(self):
         d = ClaudeTarget().descriptor
-        assert len(d.settings) == 1
-        model = d.settings[0]
-        assert model.setting_key == "model"
+        # model (FLAG) + endpoint (ENV) — the rider endpoint is a sibling of model.
+        assert len(d.settings) == 2
+        by_key = {s.setting_key: s for s in d.settings}
+        model = by_key["model"]
         assert model.channel == Channel.FLAG
         assert model.flag == ("--model",)
+
+    def test_settings_endpoint(self):
+        # Block B: endpoint is delivered via the ENV channel to the harness-specific
+        # ANTHROPIC_BASE_URL base-url env var.
+        d = ClaudeTarget().descriptor
+        by_key = {s.setting_key: s for s in d.settings}
+        endpoint = by_key["endpoint"]
+        assert endpoint.channel == Channel.ENV
+        assert endpoint.env_var == "ANTHROPIC_BASE_URL"
+        assert endpoint.flag == ()
 
     def test_container_env(self):
         env = ClaudeTarget().descriptor.container_env

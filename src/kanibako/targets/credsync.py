@@ -336,6 +336,31 @@ def _create_workset_source_dirs(
         (root / spec.host_rel).parent.mkdir(parents=True, exist_ok=True)
 
 
+def _cred_descriptor(
+    descriptor: PluginDescriptor, *, suppress_oauth: bool
+) -> PluginDescriptor:
+    """The descriptor view the cred lifecycle acts on — the RIDER cred fork.
+
+    THE single fail-safe fork (rider MVP block B): when *suppress_oauth* is set
+    (the active agent resolved a non-``<None>`` ``agent.<node>.endpoint``, i.e. a
+    rider pointing the harness at a THIRD-PARTY endpoint), the host-login cred sync
+    is DROPPED — the descriptor's SYNC-cadence ``cred_files`` (claude's
+    ``.claude/.credentials.json`` OAuth token) are filtered out so the user's
+    Anthropic token is never delivered to a box that talks to a non-Anthropic
+    endpoint. Fail-safe: a rider just has NO token here (block C supplies the
+    bearer token); it is never a leak.
+
+    When *suppress_oauth* is False (the ``endpoint is None`` bare case), the
+    descriptor is returned UNCHANGED — byte-identical to today's cred lifecycle.
+    Only SYNC specs are dropped; ``SEED_ONCE`` specs (static, non-login) survive.
+    """
+    if not suppress_oauth:
+        return descriptor
+    from dataclasses import replace
+    kept = tuple(s for s in descriptor.cred_files if s.cadence is not Cadence.SYNC)
+    return replace(descriptor, cred_files=kept)
+
+
 def seed_box_credentials(
     descriptor: PluginDescriptor,
     target: Target,
@@ -343,6 +368,7 @@ def seed_box_credentials(
     auth: AuthSource,
     host_home: Path,
     project_home: Path,
+    suppress_oauth: bool = False,
 ) -> None:
     """Seed a fresh box's creds from the SELECTED tier source (design step 4/5).
 
@@ -352,7 +378,12 @@ def seed_box_credentials(
     workset tier is global-synced), then seed the box FROM the selected source root
     (workset dir / host home / None). ``init_dirs`` in the box home are always
     created (even for the private tier, which seeds no cred content).
+
+    *suppress_oauth* is the rider cred fork (see :func:`_cred_descriptor`): when
+    set, the SYNC host-login creds are dropped so an endpoint-riding box never
+    receives the Anthropic OAuth token. Default False = today's behavior unchanged.
     """
+    descriptor = _cred_descriptor(descriptor, suppress_oauth=suppress_oauth)
     _create_workset_source_dirs(descriptor, auth=auth)
     _sync_workset_dir_from_global(
         descriptor, target, auth=auth, host_home=host_home
@@ -371,6 +402,7 @@ def refresh_box_credentials(
     auth: AuthSource,
     host_home: Path,
     project_home: Path,
+    suppress_oauth: bool = False,
 ) -> None:
     """Pre-launch refresh from the SELECTED tier source (design step 4).
 
@@ -379,7 +411,12 @@ def refresh_box_credentials(
     is a no-op (source_root None). The workset source dirs are ensured present
     (idempotent) so a box that adopted the workset tier after creation still finds
     its source layout.
+
+    *suppress_oauth* is the rider cred fork (see :func:`_cred_descriptor`): when
+    set, the SYNC host-login creds are dropped so an endpoint-riding box never
+    receives the Anthropic OAuth token. Default False = today's behavior unchanged.
     """
+    descriptor = _cred_descriptor(descriptor, suppress_oauth=suppress_oauth)
     _create_workset_source_dirs(descriptor, auth=auth)
     _sync_workset_dir_from_global(
         descriptor, target, auth=auth, host_home=host_home

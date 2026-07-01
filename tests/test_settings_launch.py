@@ -296,6 +296,32 @@ def test_effective_behavior_discovers_all_keys_when_keys_none():
     assert "bindings" not in eff and "meta" not in eff
 
 
+def test_effective_behavior_endpoint_resolves_per_active_node():
+    # Block B (rider): endpoint is a per-node scalar read by the SAME §2d pick as
+    # model. The active NODE slot wins; a sibling node's endpoint does NOT leak.
+    snap = KeyStore({"agent": {
+        "default": {"endpoint": ""},  # <None> floor (empty)
+        "navigator℘claude": {"endpoint": "http://gemma:9000"},
+        "claude": {"endpoint": ""},   # bare node stays unset
+    }})
+    eff_rider = effective_behavior(snap, active_agent="navigator℘claude")
+    assert eff_rider["endpoint"] == "http://gemma:9000"
+    # Bare node: the empty floor/slot yields NO usable endpoint (falsy) → the
+    # assembler emits no ANTHROPIC_BASE_URL. Non-vacuous vs the rider above.
+    eff_bare = effective_behavior(snap, active_agent="claude")
+    assert eff_bare.get("endpoint", "") == ""
+
+
+def test_effective_behavior_endpoint_default_none_omits_emission():
+    # <None> = the empty floor default: present but falsy, so assemble_env's
+    # `if value:` gate emits nothing (bare/harness-default). Byte-identical to
+    # today for a box with no endpoint set.
+    snap = KeyStore({"agent": {"default": {"endpoint": "", "model": "opus"}}})
+    eff = effective_behavior(snap, active_agent="claude", keys=["endpoint", "model"])
+    assert eff.get("endpoint", "") == ""
+    assert eff["model"] == "opus"
+
+
 # --------------------------------------------------------------------------- #
 # agent_delivery_mounts — the AGENT_CRITICAL exit-1 safe-fail                  #
 # --------------------------------------------------------------------------- #
