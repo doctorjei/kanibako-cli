@@ -516,8 +516,11 @@ def start_mocks():
                 )
                 _desc = kw.get("desc")
                 _install = kw.get("install")
+                # Mirror the real orchestrator: root the 7a partial under the
+                # ACTIVE node-name (fix 2a), not install.name (the harness).
+                _node = kw.get("agent_name", "claude")
                 partial = (
-                    agent_default_partial(_desc, _install)
+                    agent_default_partial(_desc, _install, node_name=_node)
                     if _desc is not None and _install is not None
                     else None
                 )
@@ -539,7 +542,7 @@ def start_mocks():
                 if _agent_cfg is not None:
                     _state = dict(_agent_cfg.state)
                 snap = build_launch_snapshot(
-                    agent_name="claude", ctx=ctx,
+                    agent_name=_node, ctx=ctx,
                     system_path=None, agent_path=None,
                     workset_path=None, box_path=None,
                     behavior_floor=_floor, default_categories=None,
@@ -551,7 +554,7 @@ def start_mocks():
                     ),
                 )
                 entries = snapshot_category_entries(
-                    snap, active_agent="claude", box_ctx=ctx,
+                    snap, active_agent=_node, box_ctx=ctx,
                 )
                 rec = reconcile_categories(
                     entries, shares=kw.get("shares", True),

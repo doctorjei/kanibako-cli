@@ -2225,6 +2225,7 @@ def _effective_behavior_for_display(
     *,
     global_config_path,
     workset_config_path=None,
+    node_name=None,
 ) -> dict[str, str]:
     """Resolve the effective agent BEHAVIOR state for the ``config --effective``
     DISPLAY, off the SAME KeyStore snapshot the live launch reads (block 7c).
@@ -2259,8 +2260,16 @@ def _effective_behavior_for_display(
     behavior_floor = {d.key: d.default for d in descriptors}
     agent_state = dict(agent_cfg.state)
 
+    # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a rider
+    # (``navigator℘claude``) the per-node ``agents/<node>/settings.yaml`` state and
+    # the ``agent.<node>.*`` cascade slot key on the node, NOT the harness
+    # (``target.name``) — else ``config --effective`` shows the bare-harness view
+    # for a rider. Bare: node==harness==target.name → byte-identical. Falls back to
+    # ``target.name`` when a caller omits the node (legacy / test convenience).
+    active = node_name if node_name is not None else target.name
+
     ctx = ResolveCtx(
-        agent_name=target.name,
+        agent_name=active,
         workset_name=None,
         host_home=str(Path.home()),
         xdg={},
@@ -2271,7 +2280,7 @@ def _effective_behavior_for_display(
     # agent-binding inputs (display reads behavior only). The machine tier is CUT
     # (S14) — assemble_levels never consults /etc machine, matching the launch.
     snapshot = settings_launch.build_launch_snapshot(
-        agent_name=target.name,
+        agent_name=active,
         ctx=ctx,
         system_path=global_config_path,
         agent_path=None,
@@ -2280,7 +2289,7 @@ def _effective_behavior_for_display(
         behavior_floor=behavior_floor,
         agent_state=agent_state,
     )
-    return settings_launch.effective_behavior(snapshot, active_agent=target.name)
+    return settings_launch.effective_behavior(snapshot, active_agent=active)
 
 
 def _resolve_box_auth_source(
@@ -2789,7 +2798,7 @@ def _resolve_launch_snapshot(
     default_categories.update(resolved_sys)
 
     agent_partial = (
-        agent_default_partial(desc, install)
+        agent_default_partial(desc, install, node_name=agent_name)
         if desc is not None and install is not None
         else None
     )

@@ -1430,6 +1430,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     target, agent_cfg, project_toml,
                     global_config_path=std.settings,
                     workset_config_path=workset_path,
+                    node_name=agent_id,
                 )
             workset_env_path = (
                 proj.group.root / "env"
