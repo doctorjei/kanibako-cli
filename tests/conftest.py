@@ -347,6 +347,13 @@ def start_mocks():
             # patch.multiple rationale above); the snapshot orchestrator stub's
             # return value is wired below, once the descriptor + install_mock the
             # AGENT delivery binds derive from are built.
+            # ``selected_source_root`` is a PURE helper (AuthSource → source Path)
+            # that start.py calls to route ``writeback_extra`` to the correct tier
+            # destination. Keep it REAL on the otherwise-mocked credsync module so
+            # tier-routing tests observe the true selected source (host home for
+            # global, the workset store for workset), not a MagicMock.
+            from kanibako.targets.credsync import selected_source_root as _real_ssr
+            m_credsync.selected_source_root = _real_ssr
             m_launch_mount_stubs["_seed_channel_files"].return_value = None
             m_launch_mount_stubs["_container_logs"].return_value = ""
             m_launch_mount_stubs["_write_create_entry"].return_value = None
@@ -547,7 +554,7 @@ def start_mocks():
                     snap, active_agent="claude", box_ctx=ctx,
                 )
                 rec = reconcile_categories(
-                    entries, group_auth=kw.get("group_auth", True),
+                    entries, shares=kw.get("shares", True),
                 )
                 return snap, rec
 

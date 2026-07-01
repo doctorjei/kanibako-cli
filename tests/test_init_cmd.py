@@ -315,57 +315,6 @@ class TestCreateNoVault:
         assert (project / "vault" / "rw").is_dir()
 
 
-class TestCreateDistinctAuth:
-    """Tests for --distinct-auth flag on box create."""
-
-    def test_create_distinct_auth_skips_creds(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        project = tmp_home / "distinct-project"
-        project.mkdir()
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
-        rc = run_create(args)
-
-        assert rc == 0
-        shell = project / "box_data" / "home"
-        assert shell.is_dir()
-        # Credentials should NOT have been copied from host.
-        assert not (shell / ".claude" / ".credentials.json").exists()
-
-    def test_create_distinct_auth_sets_meta(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        from kanibako.config import read_project_meta
-        project = tmp_home / "distinct-meta"
-        project.mkdir()
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(project), "--distinct-auth"])
-        run_create(args)
-
-        meta = read_project_meta(project / "settings.yaml")
-        assert meta is not None
-        assert meta["group_auth"] is False
-
-    def test_parser_accepts_distinct_auth(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", "--distinct-auth"])
-        assert args.distinct_auth is True
-
-    def test_create_distinct_auth_new_dir(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        target = tmp_home / "distinct-new"
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "--standalone", str(target), "--distinct-auth"])
-        rc = run_create(args)
-
-        assert rc == 0
-        shell = target / "box_data" / "home"
-        assert shell.is_dir()
-        assert not (shell / ".claude" / ".credentials.json").exists()
-
-
 class TestCreateImage:
     """Tests for --image flag persistence."""
 

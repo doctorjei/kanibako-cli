@@ -199,6 +199,8 @@ class PluginDescriptor:
     cred_files: tuple[CredFileSpec, ...] = ()
     host_prep: bool = False           # True -> core calls Target.prepare_host before mounts
     init_dirs: tuple[str, ...] = ()   # extra dirs to mkdir in the project home (home-relative), e.g. (".claude",)
+    auth_share_support: bool = False  # RO CAPABILITY (spec §2d): does this agent SUPPORT shared credentials?
+                                      # Materialized as meta.agent.<agent>.auth.share_support (plugin-set, not overridable).
 
 
 def _validate_agent_binary(binary: Path) -> str | None:

@@ -20,7 +20,7 @@ class TestWorksetCreate:
         ws_root = tmp_home / "myworkset"
         args = argparse.Namespace(
             path=str(ws_root), name=None,
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args)
         assert rc == 0
@@ -34,7 +34,7 @@ class TestWorksetCreate:
         ws_root = tmp_home / "myworkset2"
         args = argparse.Namespace(
             path=str(ws_root), name="custom-name",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args)
         assert rc == 0
@@ -51,7 +51,7 @@ class TestWorksetCreate:
         # test that path=None uses cwd by checking the error message
         args = argparse.Namespace(
             path=None, name="cwdws",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args)
         # cwd already exists, so this should fail with "already exists"
@@ -65,14 +65,14 @@ class TestWorksetCreate:
         ws_root1 = tmp_home / "ws1"
         args1 = argparse.Namespace(
             path=str(ws_root1), name="dup",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         run_create(args1)
 
         ws_root2 = tmp_home / "ws2"
         args2 = argparse.Namespace(
             path=str(ws_root2), name="dup",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args2)
         assert rc == 1
@@ -84,7 +84,7 @@ class TestWorksetCreate:
 
         args = argparse.Namespace(
             path=str(tmp_home / "ws-primary"), name="__PRIMARY__",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args)
         assert rc == 1
@@ -100,7 +100,7 @@ class TestWorksetCreate:
         first = tmp_home / "a" / "shared"
         args1 = argparse.Namespace(
             path=str(first), name=None,
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         assert run_create(args1) == 0
         capsys.readouterr()
@@ -108,7 +108,7 @@ class TestWorksetCreate:
         second = tmp_home / "b" / "shared"
         args2 = argparse.Namespace(
             path=str(second), name=None,
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args2)
         assert rc == 1
@@ -121,28 +121,12 @@ class TestWorksetCreate:
         ws_root.mkdir()
         args = argparse.Namespace(
             path=str(ws_root), name="ex",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
+            standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "already exists" in err
-
-    def test_create_with_distinct_auth(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create
-
-        ws_root = tmp_home / "distinct_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="distinctws",
-            standalone=False, image=None, no_vault=False, distinct_auth=True,
-        )
-        rc = run_create(args)
-        assert rc == 0
-
-        # Verify auth mode is set to distinct
-        from kanibako.workset import load_workset
-        ws = load_workset(ws_root.resolve())
-        assert ws.group_auth is False
 
     def test_create_with_image(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
@@ -150,7 +134,7 @@ class TestWorksetCreate:
         ws_root = tmp_home / "image_ws"
         args = argparse.Namespace(
             path=str(ws_root), name="imagews",
-            standalone=False, image="custom:latest", no_vault=False, distinct_auth=False,
+            standalone=False, image="custom:latest", no_vault=False,
         )
         rc = run_create(args)
         assert rc == 0
@@ -559,23 +543,6 @@ class TestWorksetInfo:
         err = capsys.readouterr().err
         assert "not registered" in err
 
-    def test_info_shows_auth(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_create, run_info
-
-        ws_root = tmp_home / "authws"
-        run_create(argparse.Namespace(
-            path=str(ws_root), name="authws",
-            standalone=False, image=None, no_vault=False, distinct_auth=False,
-        ))
-        capsys.readouterr()
-
-        args = argparse.Namespace(name="authws")
-        rc = run_info(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Group auth:" in out
-        assert "True" in out
-
 
 class TestWorksetConfig:
     def test_config_show_empty(self, config_file, tmp_home, capsys):
@@ -592,107 +559,28 @@ class TestWorksetConfig:
         out = capsys.readouterr().out
         assert "no overrides" in out
 
-    def test_config_get_auth(self, config_file, tmp_home, capsys):
-        """Getting group_auth key returns value from the workset.meta identity."""
-        from kanibako.commands.workset_cmd import run_get
+    def test_config_set_get_share_allowed_roundtrips(self, config_file, tmp_home, capsys):
+        """``workset.auth.share_allowed`` is now an ORDINARY settable bool key;
+        setting it then getting it round-trips through the set/get plumbing."""
+        from kanibako.commands.workset_cmd import run_get, run_set
 
         config = load_config(config_file)
         std = load_std_paths(config)
         create_workset("authcfg", tmp_home / "ws_authcfg", std)
 
-        args = argparse.Namespace(workset="authcfg", key="group_auth")
-        rc = run_get(args)
+        set_args = argparse.Namespace(
+            workset="authcfg", key_value="workset.auth.share_allowed=false",
+            force=False, local=False,
+        )
+        rc = run_set(set_args)
+        assert rc == 0
+        capsys.readouterr()
+
+        get_args = argparse.Namespace(workset="authcfg", key="workset.auth.share_allowed")
+        rc = run_get(get_args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "True" in out
-
-    def test_config_set_auth_distinct(self, config_file, tmp_home, capsys):
-        """Setting group_auth=false updates the workset.meta identity and clears credentials."""
-        from kanibako.commands.workset_cmd import run_set
-        from unittest.mock import MagicMock, patch
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("setauth", tmp_home / "ws_setauth", std)
-
-        mock_target = MagicMock()
-        mock_target.invalidate_credentials.return_value = None
-
-        args = argparse.Namespace(
-            workset="setauth", key_value="group_auth=false",
-            force=False, local=False,
-        )
-        with patch(
-            "kanibako.targets.resolve_target",
-            return_value=mock_target,
-        ):
-            rc = run_set(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "distinct" in out
-
-        # Verify the workset.meta identity was updated
-        from kanibako.workset import load_workset
-        ws = load_workset((tmp_home / "ws_setauth").resolve())
-        assert ws.group_auth is False
-
-    def test_config_set_auth_distinct_invalidates_all_agents(
-        self, config_file, tmp_home, capsys
-    ):
-        """§Design 8(b): switching group_auth shared→distinct invalidates
-        credentials across ALL KNOWN agents (discover_targets), not just the
-        single agent the cascade would resolve — a workset may have been used
-        with several agents, so the cleanup must hit every one."""
-        from kanibako.commands.workset_cmd import run_set
-        from unittest.mock import MagicMock, patch
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        # Create a workset with a project so there is a shell dir to clear.
-        create_workset("multiauth", tmp_home / "ws_multiauth", std)
-
-        # Two fake known agents.
-        agent_a = MagicMock()
-        agent_b = MagicMock()
-
-        def _resolve(name, *a, **kw):
-            return {"alpha": agent_a, "beta": agent_b}[name]
-
-        args = argparse.Namespace(
-            workset="multiauth", key_value="group_auth=false",
-            force=False, local=False,
-        )
-        with patch(
-            "kanibako.targets.discover_targets",
-            return_value={"alpha": object, "beta": object},
-        ) as mock_discover, patch(
-            "kanibako.targets.resolve_target", side_effect=_resolve,
-        ):
-            rc = run_set(args)
-
-        assert rc == 0
-        # Iterated the full known-agent set (not a single resolved agent).
-        mock_discover.assert_called_once_with()
-        # Both agents were resolved for invalidation.
-        # (invalidate_credentials only fires when a shell dir exists; the
-        # all-agents iteration is the asserted contract.)
-
-    def test_config_set_auth_invalid(self, config_file, tmp_home, capsys):
-        """Setting group_auth to invalid value produces error."""
-        from kanibako.commands.workset_cmd import run_set
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        create_workset("badauth", tmp_home / "ws_badauth", std)
-
-        args = argparse.Namespace(
-            workset="badauth", key_value="group_auth=bogus",
-            force=False, local=False,
-        )
-        rc = run_set(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "true" in err or "false" in err
+        assert "false" in out.lower()
 
     def test_config_set_regular_key(self, config_file, tmp_home, capsys):
         """Setting a regular config key writes to config.yaml.
@@ -744,38 +632,32 @@ class TestWorksetConfig:
         out = capsys.readouterr().out
         assert "Reset" in out or "No override" in out
 
-    def test_config_reset_auth(self, config_file, tmp_home, capsys):
-        """Resetting group_auth key reverts to True (shared)."""
+    def test_config_reset_share_allowed(self, config_file, tmp_home, capsys):
+        """Resetting the ordinary ``workset.auth.share_allowed`` override removes
+        it via the standard reset plumbing."""
         from kanibako.commands.workset_cmd import run_reset, run_set
-        from unittest.mock import MagicMock, patch
 
         config = load_config(config_file)
         std = load_std_paths(config)
         create_workset("resetauth", tmp_home / "ws_resetauth", std)
 
-        # First set to distinct.
-        mock_target = MagicMock()
-        mock_target.invalidate_credentials.return_value = None
+        # First set an override.
         set_args = argparse.Namespace(
-            workset="resetauth", key_value="group_auth=false",
+            workset="resetauth", key_value="workset.auth.share_allowed=false",
             force=False, local=False,
         )
-        with patch("kanibako.targets.resolve_target", return_value=mock_target):
-            run_set(set_args)
+        run_set(set_args)
         capsys.readouterr()
 
-        # Then reset.
+        # Then reset it.
         reset_args = argparse.Namespace(
-            workset="resetauth", key="group_auth", reset_all=False, force=False,
+            workset="resetauth", key="workset.auth.share_allowed",
+            reset_all=False, force=False,
         )
         rc = run_reset(reset_args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "group_auth" in out
-
-        from kanibako.workset import load_workset
-        ws = load_workset((tmp_home / "ws_resetauth").resolve())
-        assert ws.group_auth is True
+        assert "Reset" in out or "No override" in out
 
     def test_config_reset_all(self, config_file, tmp_home, capsys):
         """reset --all clears all overrides."""
@@ -831,60 +713,6 @@ class TestDefaultWorksetCli:
     def _std(self, config_file):
         config = load_config(config_file)
         return load_std_paths(config)
-
-    def test_config_set_group_auth_roundtrips_via_config_toml(
-        self, config_file, tmp_home, capsys,
-    ):
-        """`workset set default group_auth=false` writes config.yaml, not a
-        workset.yaml."""
-        from unittest.mock import MagicMock, patch
-
-        from kanibako.commands.workset_cmd import run_set
-        std = self._std(config_file)
-
-        mock_target = MagicMock()
-        args = argparse.Namespace(
-            workset="default", key_value="group_auth=false",
-            force=False, local=False,
-        )
-        with patch("kanibako.targets.resolve_target", return_value=mock_target):
-            rc = run_set(args)
-        assert rc == 0
-
-        # No workset.yaml created at the data path.
-        assert not (std.data_path / "workset.yaml").exists()
-        # Block #2: the workset POLICY persists in config.yaml [project] as the
-        # NEW spec key ``group_auth_enabled`` (never the old form).
-        import yaml
-        with open(std.data_path / "config.yaml") as f:
-            data = yaml.safe_load(f)
-        assert data["project"]["group_auth_enabled"] is False
-        assert "group_auth" not in data["project"]
-
-        # And it reads back via the default workset (new-wins-old).
-        from kanibako.workset import default_workset
-        assert default_workset(std).group_auth is False
-
-    def test_config_get_group_auth(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_get
-        args = argparse.Namespace(workset="default", key="group_auth")
-        rc = run_get(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "True" in out
-
-    def test_config_reset_group_auth(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_reset
-        std = self._std(config_file)
-        (std.data_path / "config.yaml").write_text("project:\n  group_auth: false\n")
-
-        args = argparse.Namespace(
-            workset="default", key="group_auth", reset_all=False, force=False,
-        )
-        rc = run_reset(args)
-        assert rc == 0
-        from kanibako.workset import default_workset
-        assert default_workset(std).group_auth is True
 
     def test_config_set_regular_key_writes_config_toml(
         self, config_file, tmp_home, capsys,

@@ -70,3 +70,6 @@ descriptor:
 
   host_prep: false
   init_dirs: [".codex"]
+  # Credential-SHARING CAPABILITY (spec §2d): codex supports shared creds.
+  # RO / plugin-set → meta.agent.codex.auth.share_support.
+  auth_share_support: true

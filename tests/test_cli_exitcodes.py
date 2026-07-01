@@ -270,16 +270,16 @@ class TestStandaloneLaunch:
         assert call_kwargs["vault_rw_path"] == project / "vault" / "rw"
 
     def test_start_standalone_credential_flow(self, start_mocks, tmp_path):
-        """A standalone box has NO group → the credential lifecycle is SKIPPED.
+        """A standalone box shares at the GLOBAL tier → cred hooks DO run.
 
-        Standalone mode short-circuits group-auth OFF (spec §2c L420-421:
-        ``meta.box.group_auth_available`` resolves to ``workset.group_auth_enabled
-        = False`` with no traversal to the agent tier), so
-        ``effective_group_auth`` is False and the ``if target and
-        effective_group_auth`` cred-refresh / writeback gates never fire.  (Prior
-        to the group-auth capability chain — commit bc609bd — the gate fed off the
-        flat ``proj.group_auth`` side-channel, a truthy MagicMock on this mock, so
-        it used to fire; this assertion was stale from that era.)
+        Under the auth 3-tier SHARING model (2026-07-01 redesign) a standalone
+        box has no WORKSET group, so the workset tier degenerates false — but the
+        GLOBAL tier is still enabled by default (``box.auth.global_enabled``), so
+        the resolved :class:`AuthSource` has ``tier == "global"`` and
+        ``auth_src.shares`` is True.  The ``if target and auth_src.shares``
+        cred-refresh / writeback gates therefore FIRE (source = the host home).
+        (The prior "standalone short-circuits auth OFF" behavior was removed with
+        the boolean group_auth chain.)
         """
         from kanibako.commands.start import _run_container
 
@@ -300,9 +300,9 @@ class TestStandaloneLaunch:
                 extra_args=[],
             )
 
-        # Standalone has no group-auth → neither cred hook runs.
-        m.target.refresh_credentials.assert_not_called()
-        m.target.writeback_credentials.assert_not_called()
+        # Standalone shares at the global tier → both cred hooks run.
+        m.target.refresh_credentials.assert_called()
+        m.target.writeback_credentials.assert_called()
 
     def test_shell_works_with_standalone(self, start_mocks, tmp_path):
         """shell auto-detects standalone mode via resolve_any_project."""

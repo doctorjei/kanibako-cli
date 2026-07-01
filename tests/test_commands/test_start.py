@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,33 @@ from kanibako.commands.start import (
     run_start,
 )
 from kanibako.paths import BoxMode
+from kanibako.settings_launch import AuthSource
+
+# Auth-level redesign: the boolean ``effective_group_auth`` was replaced by an
+# ``AuthSource`` (``kanibako.settings_launch``).  These two module-level
+# constants stand in for the two ends the old bool covered:
+#   * ``_SHARED_AUTH`` — a sharing box (``.shares`` True; old ``group_auth=True``).
+#     A minimal GLOBAL-tier source (the common shared case).
+#   * ``_PRIVATE_AUTH`` — a private/distinct box (``.shares`` False; tier "box";
+#     old ``group_auth=False``).  ``_selected_source_root`` is ``None`` → the
+#     credsync primitives no-op.
+# Tests that need PRIVATE behavior must patch ``_resolve_box_auth_source`` to
+# return ``_PRIVATE_AUTH`` explicitly: ``start_mocks`` leaves that resolver REAL,
+# and against the MagicMock ``proj`` it resolves to the GLOBAL tier (shares True).
+_SHARED_AUTH = AuthSource(
+    tier="global",
+    global_enabled=True,
+    workset_enabled=False,
+    global_sync=False,
+    workset_source=None,
+)
+_PRIVATE_AUTH = AuthSource(
+    tier="box",
+    global_enabled=False,
+    workset_enabled=False,
+    global_sync=False,
+    workset_source=None,
+)
 
 
 class TestTargetWarnings:
@@ -522,9 +550,11 @@ class TestDistinctAuth:
     """Verify distinct auth skips host credential sync."""
 
     def test_distinct_auth_skips_refresh(self, start_mocks):
-        """When proj.group_auth is False, refresh_credentials is not called."""
-        with start_mocks() as m:
-            m.proj.group_auth = False
+        """A PRIVATE box (auth_src.shares False) -> refresh_credentials skipped."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=_PRIVATE_AUTH,
+        ):
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -539,9 +569,11 @@ class TestDistinctAuth:
             m.target.writeback_credentials.assert_not_called()
 
     def test_distinct_auth_skips_check_auth(self, start_mocks):
-        """When proj.group_auth is False, check_auth is not called."""
-        with start_mocks() as m:
-            m.proj.group_auth = False
+        """A PRIVATE box (auth_src.shares False) -> check_auth skipped."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=_PRIVATE_AUTH,
+        ):
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -555,15 +587,16 @@ class TestDistinctAuth:
             m.target.check_auth.assert_not_called()
 
     def test_shared_auth_calls_refresh(self, start_mocks):
-        """When proj.group_auth is True, refresh_credentials is called.
+        """A SHARING box (auth_src.shares True) -> refresh_credentials is called.
 
         Pins the legacy (descriptor-less) credential hook: a descriptor-bearing
         target routes refresh through the credsync engine instead, covered by
         TestCredsyncRouting.test_descriptor_refresh_uses_refresh_cred_files.
+        The real ``_resolve_box_auth_source`` (unpatched here) resolves the
+        MagicMock proj to the GLOBAL tier, so ``.shares`` is True.
         """
         with start_mocks() as m:
             m.target.descriptor = None
-            m.proj.group_auth = True
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -732,7 +765,6 @@ class TestPluginsAndCacheShares:
         # the @config.primary_workset @-ref so project_path is unused here).
         proj.mode = BoxMode.primary
         proj.project_path = std.data
-        proj.group_auth = True
         proj.enable_vault = False
         # B2: meta.box.* identity anchors need a real box name (proj.name) for the
         # channel partition addresses (box_channel_addresses).
@@ -766,7 +798,7 @@ class TestPluginsAndCacheShares:
             agent_cfg=None,
             include_base_families=False,
             extra_default_categories=target.default_shares(),
-            group_auth=True,
+            shares=True,
         )
         return _emit_category_mounts(reconciled, label="share")
 
@@ -815,14 +847,13 @@ class TestCredsyncRouting:
     # ---- descriptor path: credsync engine is used, legacy hooks bypassed ----
 
     def test_descriptor_init_uses_seed_cred_files(self, start_mocks):
-        """New descriptor-bearing project: seed_cred_files invoked with the
-        descriptor/target/host_home/project_home/group_auth, and the legacy
+        """New descriptor-bearing project: seed_box_credentials invoked with the
+        descriptor/target/auth/host_home/project_home, and the legacy
         init_home hook is NOT called."""
         with start_mocks() as m:
             self._drive_descriptor(m)
             # Seed-at-create path: a brand-new (just-registered) box seeds now.
             m.proj.is_new = True
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -830,21 +861,20 @@ class TestCredsyncRouting:
                     extra_args=[],
                 )
             assert rc == 0
-            m_credsync.seed_cred_files.assert_called_once()
-            call = m_credsync.seed_cred_files.call_args
+            m_credsync.seed_box_credentials.assert_called_once()
+            call = m_credsync.seed_box_credentials.call_args
             assert call.args[0] is m.target.descriptor
             assert call.args[1] is m.target
             assert call.kwargs["project_home"] is m.proj.shell_path
-            assert call.kwargs["group_auth"] is True
+            assert call.kwargs["auth"].shares is True
             from pathlib import Path
             assert call.kwargs["host_home"] == Path.home()
 
     def test_descriptor_refresh_uses_refresh_cred_files(self, start_mocks):
-        """Pre-launch (shared auth): refresh_cred_files invoked, legacy
+        """Pre-launch (shared auth): refresh_box_credentials invoked, legacy
         refresh_credentials NOT called."""
         with start_mocks() as m:
             self._drive_descriptor(m)
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -852,19 +882,18 @@ class TestCredsyncRouting:
                     extra_args=[],
                 )
             assert rc == 0
-            m_credsync.refresh_cred_files.assert_called_once()
-            call = m_credsync.refresh_cred_files.call_args
+            m_credsync.refresh_box_credentials.assert_called_once()
+            call = m_credsync.refresh_box_credentials.call_args
             assert call.args[0] is m.target.descriptor
             assert call.kwargs["project_home"] is m.proj.shell_path
-            assert call.kwargs["group_auth"] is True
+            assert call.kwargs["auth"].shares is True
             m.target.refresh_credentials.assert_not_called()
 
     def test_descriptor_writeback_uses_writeback_cred_files(self, start_mocks):
-        """Post-session (non-persistent, shared auth): writeback_cred_files
+        """Post-session (non-persistent, shared auth): writeback_box_credentials
         invoked, legacy writeback_credentials NOT called."""
         with start_mocks() as m:
             self._drive_descriptor(m)
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -872,19 +901,18 @@ class TestCredsyncRouting:
                     extra_args=[], persistent=False,
                 )
             assert rc == 0
-            m_credsync.writeback_cred_files.assert_called_once()
-            call = m_credsync.writeback_cred_files.call_args
+            m_credsync.writeback_box_credentials.assert_called_once()
+            call = m_credsync.writeback_box_credentials.call_args
             assert call.args[0] is m.target.descriptor
             assert call.kwargs["project_home"] is m.proj.shell_path
-            assert call.kwargs["group_auth"] is True
+            assert call.kwargs["auth"].shares is True
             m.target.writeback_credentials.assert_not_called()
 
     def test_descriptor_reattach_refresh_uses_refresh_cred_files(self, start_mocks):
         """Persistent reattach (container already running): the short-circuit
-        refresh routes through refresh_cred_files, not refresh_credentials."""
+        refresh routes through refresh_box_credentials, not refresh_credentials."""
         with start_mocks() as m:
             self._drive_descriptor(m)
-            m.proj.group_auth = True
             m.runtime.is_running.return_value = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
@@ -893,18 +921,21 @@ class TestCredsyncRouting:
                     extra_args=[], persistent=True,
                 )
             assert rc == 0
-            m_credsync.refresh_cred_files.assert_called_once()
+            m_credsync.refresh_box_credentials.assert_called_once()
             m.target.refresh_credentials.assert_not_called()
 
     def test_descriptor_distinct_auth_still_seeds_but_skips_sync(self, start_mocks):
-        """group_auth=False: init still seeds (the seed transform creates the
-        dir / empty config), but refresh/writeback are gated out by the guard
+        """PRIVATE box (auth_src.shares False): init still seeds (the orchestrator
+        creates the box home/dirs; a private tier seeds no cred content), but
+        refresh/writeback are gated out by the ``auth_src.shares`` guard
         (credsync.refresh/writeback never reached)."""
-        with start_mocks() as m:
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=_PRIVATE_AUTH,
+        ):
             self._drive_descriptor(m)
             # Seed-at-create path: a brand-new (just-registered) box seeds now.
             m.proj.is_new = True
-            m.proj.group_auth = False
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -912,23 +943,24 @@ class TestCredsyncRouting:
                     extra_args=[],
                 )
             assert rc == 0
-            # seed runs on init regardless of group_auth (it internally decides
-            # what to copy); but the group_auth guard skips refresh/writeback.
-            m_credsync.seed_cred_files.assert_called_once()
-            m_credsync.refresh_cred_files.assert_not_called()
-            m_credsync.writeback_cred_files.assert_not_called()
+            # seed_box_credentials runs on init regardless of tier (it creates the
+            # box home dirs; a private tier seeds no cred content internally); but
+            # the auth_src.shares guard skips refresh/writeback.
+            m_credsync.seed_box_credentials.assert_called_once()
+            assert m_credsync.seed_box_credentials.call_args.kwargs["auth"].shares is False
+            m_credsync.refresh_box_credentials.assert_not_called()
+            m_credsync.writeback_box_credentials.assert_not_called()
 
     # ---- legacy path: per-plugin hooks still used, credsync untouched -------
 
     def test_legacy_init_seeds_nothing(self, start_mocks):
         """Non-descriptor target (descriptor=None, the conftest default): init
         seeds NOTHING.  The vestigial init_home hook was removed in 1.6.0, and a
-        descriptor-less target has no creds to seed, so credsync.seed_cred_files
+        descriptor-less target has no creds to seed, so credsync.seed_box_credentials
         is NOT called (its dirs come from the layered template apply)."""
         with start_mocks() as m:
             m.target.descriptor = None
             m.proj.is_new = True
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -936,14 +968,13 @@ class TestCredsyncRouting:
                     extra_args=[],
                 )
             assert rc == 0
-            m_credsync.seed_cred_files.assert_not_called()
+            m_credsync.seed_box_credentials.assert_not_called()
 
     def test_legacy_refresh_uses_refresh_credentials(self, start_mocks):
         """Non-descriptor target: pre-launch refresh calls the legacy
-        refresh_credentials hook, credsync.refresh_cred_files NOT called."""
+        refresh_credentials hook, credsync.refresh_box_credentials NOT called."""
         with start_mocks() as m:
             m.target.descriptor = None
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -952,14 +983,13 @@ class TestCredsyncRouting:
                 )
             assert rc == 0
             m.target.refresh_credentials.assert_called_once()
-            m_credsync.refresh_cred_files.assert_not_called()
+            m_credsync.refresh_box_credentials.assert_not_called()
 
     def test_legacy_writeback_uses_writeback_credentials(self, start_mocks):
         """Non-descriptor target: post-session writeback calls the legacy
-        writeback_credentials hook, credsync.writeback_cred_files NOT called."""
+        writeback_credentials hook, credsync.writeback_box_credentials NOT called."""
         with start_mocks() as m:
             m.target.descriptor = None
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -968,7 +998,7 @@ class TestCredsyncRouting:
                 )
             assert rc == 0
             m.target.writeback_credentials.assert_called_once()
-            m_credsync.writeback_cred_files.assert_not_called()
+            m_credsync.writeback_box_credentials.assert_not_called()
 
 
 class TestAgentConfigIntegration:
@@ -1621,9 +1651,11 @@ class TestPrepareHostHook:
             assert m.target.prepare_host.call_args.kwargs["auto_auth"] is False
 
     def test_hook_auto_auth_false_for_distinct_auth(self, start_mocks):
-        """Distinct auth (group_auth False) -> auto_auth=False."""
-        with start_mocks() as m:
-            m.proj.group_auth = False
+        """Distinct auth (PRIVATE box, auth_src.shares False) -> auto_auth=False."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=_PRIVATE_AUTH,
+        ):
             _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -1918,7 +1950,7 @@ class TestApplyInitSeeds:
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, project_toml=None,
               workset_config_path=None, agent_config_path=None,
-              group_auth=True):
+              shares=True):
         from kanibako.commands.start import _apply_init_seeds
         _apply_init_seeds(
             std=std or self._std(tmp_path),
@@ -1930,7 +1962,7 @@ class TestApplyInitSeeds:
             workset_config_path=workset_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
-            group_auth=group_auth,
+            shares=shares,
         )
 
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
@@ -2074,9 +2106,10 @@ class TestApplyInitSeeds:
 
         assert (shell / "note.md").read_text() == "USER EDIT"
 
-    def test_non_credential_seed_copied_even_when_group_auth_false(self, tmp_path):
-        """group_auth=False suppresses only credential-flagged seeds; a plain
-        config seed (is_credential False) still copies (D-M4 gate is scoped)."""
+    def test_non_credential_seed_copied_even_when_not_sharing(self, tmp_path):
+        """shares=False (private box) suppresses only credential-flagged seeds; a
+        plain config seed (is_credential False) still copies (D-M4 gate is
+        scoped)."""
         shell = self._shell(tmp_path)
         src = tmp_path / "src"
         src.mkdir()
@@ -2087,7 +2120,7 @@ class TestApplyInitSeeds:
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
-            group_auth=False,
+            shares=False,
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
@@ -2146,7 +2179,7 @@ class TestApplySyncedCopies:
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, project_toml=None,
               workset_config_path=None, agent_config_path=None,
-              group_auth=True):
+              shares=True):
         from kanibako.commands.start import _apply_synced_copies
         _apply_synced_copies(
             std=std or self._std(tmp_path),
@@ -2158,7 +2191,7 @@ class TestApplySyncedCopies:
             workset_config_path=workset_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
-            group_auth=group_auth,
+            shares=shares,
         )
 
     def test_empty_no_config_copies_nothing(self, tmp_path):
@@ -2177,8 +2210,8 @@ class TestApplySyncedCopies:
         self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
         assert (shell / "cred.txt").read_text() == "token"
 
-    def test_synced_suppressed_when_group_auth_false(self, tmp_path):
-        """group_auth=False suppresses every synced entry (D-M4)."""
+    def test_synced_suppressed_when_not_sharing(self, tmp_path):
+        """shares=False (private box) suppresses every synced entry (D-M4)."""
         shell = self._shell(tmp_path)
         src = tmp_path / "creds.txt"
         src.write_text("token")
@@ -2186,7 +2219,7 @@ class TestApplySyncedCopies:
         ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
         self._call(
             tmp_path, proj=self._proj(shell), project_toml=ptoml,
-            group_auth=False,
+            shares=False,
         )
         assert not (shell / "cred.txt").exists()
 
@@ -2818,9 +2851,10 @@ class TestPostLaunchSetupDetection:
 class TestWritebackAllPaths:
     """FIX 1: project -> host credential writeback fires on EVERY session-end path.
 
-    The descriptor path routes through ``credsync.writeback_cred_files`` (mocked
-    in ``start_mocks``), plus the plugin ``writeback_extra`` hook.  group_auth is
-    truthy on the mock proj by default; a test sets it False to assert the gate.
+    The descriptor path routes through ``credsync.writeback_box_credentials``
+    (mocked in ``start_mocks``), plus the plugin ``writeback_extra`` hook.  The
+    real ``_resolve_box_auth_source`` resolves the mock proj to a SHARING tier by
+    default; a test patches it to ``_PRIVATE_AUTH`` to assert the gate.
     """
 
     def test_writeback_on_ephemeral_exit(self, start_mocks):
@@ -2830,8 +2864,68 @@ class TestWritebackAllPaths:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=False,
             )
-            assert m.credsync.writeback_cred_files.called
+            assert m.credsync.writeback_box_credentials.called
             assert m.target.writeback_extra.called
+            # GLOBAL tier (_SHARED_AUTH): writeback_extra targets the HOST home
+            # (the selected source root == host home for the global tier).
+            _, kw = m.target.writeback_extra.call_args
+            assert kw["host_home"] == Path.home()
+
+    def test_writeback_extra_routed_to_workset_store(self, start_mocks, tmp_path):
+        """MEDIUM #5: for a WORKSET-tier box, writeback_extra (claude's
+        .claude.json oauthAccount merge) must target the WORKSET store — NOT host
+        home — so the account identity is not leaked to global. With global_sync
+        OFF the workset store is the SOLE writeback_extra destination.
+
+        Mutation proof: revert the source-root routing (host_home=Path.home()
+        unconditionally) → the assertion that host home is NOT a destination fails.
+        """
+        ws_store = tmp_path / "ws_auth" / "claude"
+        workset_auth = AuthSource(
+            tier="workset", global_enabled=True, workset_enabled=True,
+            global_sync=False, workset_source=str(ws_store),
+        )
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=workset_auth,
+        ):
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False,
+            )
+            assert m.target.writeback_extra.called
+            # Every writeback_extra destination is the WORKSET store, never host
+            # home (global_sync OFF → no up-hop to global).
+            dests = [
+                kw["host_home"] for _, kw in m.target.writeback_extra.call_args_list
+            ]
+            assert Path(ws_store) in dests
+            assert Path.home() not in dests
+
+    def test_writeback_extra_global_sync_mirrors_up(self, start_mocks, tmp_path):
+        """WORKSET tier with global_sync ON: writeback_extra hits the workset store
+        AND mirrors UP to global (host home) — the bottom-up hop matching the
+        cred_files writeback."""
+        ws_store = tmp_path / "ws_auth" / "claude"
+        workset_auth = AuthSource(
+            tier="workset", global_enabled=True, workset_enabled=True,
+            global_sync=True, workset_source=str(ws_store),
+        )
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=workset_auth,
+        ):
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=False,
+            )
+            dests = [
+                kw["host_home"] for _, kw in m.target.writeback_extra.call_args_list
+            ]
+            assert Path(ws_store) in dests   # box -> workset store
+            assert Path.home() in dests      # workset store -> global (up-hop)
 
     def test_writeback_on_persistent_detach_or_exit(self, start_mocks):
         """Genuine launch then detach/exit (NOT the reattach fast path) ->
@@ -2845,7 +2939,7 @@ class TestWritebackAllPaths:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=True,
             )
-            assert m.credsync.writeback_cred_files.called
+            assert m.credsync.writeback_box_credentials.called
             assert m.target.writeback_extra.called
 
     def test_writeback_on_reattach_exit(self, start_mocks):
@@ -2859,25 +2953,28 @@ class TestWritebackAllPaths:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=True,
             )
-            assert m.credsync.writeback_cred_files.called
+            assert m.credsync.writeback_box_credentials.called
             assert m.target.writeback_extra.called
 
     def test_no_writeback_when_group_auth_false(self, start_mocks):
-        """Distinct auth (group_auth=False) -> NO writeback on any path."""
-        with start_mocks() as m:
-            m.proj.group_auth = False
+        """Distinct auth (PRIVATE box, auth_src.shares False) -> NO writeback on
+        any path."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_auth_source",
+            return_value=_PRIVATE_AUTH,
+        ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=False,
             )
-            assert not m.credsync.writeback_cred_files.called
+            assert not m.credsync.writeback_box_credentials.called
             assert not m.target.writeback_extra.called
 
     def test_writeback_is_best_effort(self, start_mocks):
         """A writeback exception must not crash the teardown path."""
         with start_mocks() as m:
-            m.credsync.writeback_cred_files.side_effect = RuntimeError("boom")
+            m.credsync.writeback_box_credentials.side_effect = RuntimeError("boom")
             # Should not raise.
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -2933,7 +3030,6 @@ class TestLaunchSeedGate:
             m.target.descriptor = _CLAUDE_DESCRIPTOR
             m.target.setting_descriptors.return_value = []
             m.proj.is_new = False
-            m.proj.group_auth = True
             with patch("kanibako.commands.start.credsync") as m_credsync:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -2942,17 +3038,17 @@ class TestLaunchSeedGate:
                 )
             assert rc == 0
             # No one-time seed on a relaunch...
-            m_credsync.seed_cred_files.assert_not_called()
+            m_credsync.seed_box_credentials.assert_not_called()
             # ...but the per-launch refresh still happens.
-            m_credsync.refresh_cred_files.assert_called_once()
+            m_credsync.refresh_box_credentials.assert_called_once()
 
 
 class TestSeedNewBoxCreateEntry:
     """`seed_new_box` (the `box create` entry) delegates to `_seed_box_home`.
 
-    The context-building internals (merged config / agent resolve / group-auth)
-    are patched out — this asserts the create entry routes to the single shared
-    seed implementation with the box it was given.
+    The context-building internals (merged config / agent resolve / auth-source
+    resolve) are patched out — this asserts the create entry routes to the single
+    shared seed implementation with the box it was given.
     """
 
     def test_delegates_to_seed_box_home(self):
@@ -2969,8 +3065,8 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.commands.start.agent_settings_path"),
             patch("kanibako.commands.start.write_agent_config"),
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=True,
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
             ),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
         ):

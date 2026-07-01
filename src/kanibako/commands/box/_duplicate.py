@@ -199,7 +199,6 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     establish_standalone(
         std, new_path,
         enable_vault=src_proj.enable_vault,
-        group_auth=src_proj.group_auth,
     )
 
     write_project_gitignore(new_path)

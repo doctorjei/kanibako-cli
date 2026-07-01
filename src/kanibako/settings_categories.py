@@ -10,8 +10,8 @@ mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
 Cross-category collision resolution (identical-dest authority order, depth-order,
-``synced``↔``binding`` errors, the ``group_auth`` gate) is :func:`reconcile_categories`
-(sub-step 4b), layered on top of category entries.
+``synced``↔``binding`` errors, the credential ``shares`` gate) is
+:func:`reconcile_categories` (sub-step 4b), layered on top of category entries.
 
 **Block 7c status:** :func:`reconcile_categories` is LIVE — the by-dest pass the
 KeyStore snapshot path uses (fed by ``settings_launch.snapshot_category_entries``).
@@ -178,9 +178,10 @@ class CategoryEntry:
     resolved variable VALUE (env carries no path / mount flags).
 
     *is_credential* tags an entry whose content is an agent CREDENTIAL.  It is the
-    hook the ``group_auth`` gate (D-M4) keys off for ``seeded`` entries: a
-    credential ``seeded`` copy is suppressed when ``group_auth`` is False, exactly
-    as ``synced`` (always credential-bearing) is.  Core never sets it; the agent
+    hook the credential ``shares`` gate (D-M4) keys off for ``seeded`` entries: a
+    credential ``seeded`` copy is suppressed when the box is PRIVATE (``shares``
+    False), exactly as ``synced`` (always credential-bearing) is.  Core never sets
+    it; the agent
     plugin marks its cred seeds (Phase 8).  Defaults to False.
     """
 
@@ -444,7 +445,7 @@ def _path_depth(box_dest: str) -> int:
 def reconcile_categories(
     entries: list[CategoryEntry],
     *,
-    group_auth: bool = True,
+    shares: bool = True,
 ) -> ReconciledCategories:
     """Resolve cross-category collisions and partition for emission (4b, D-B1).
 
@@ -467,21 +468,26 @@ def reconcile_categories(
     (mask-inside-``~/workspace``, ``home``-under-everything).  COPY and ENV lists
     keep a deterministic order.
 
-    *group_auth* gates credential delivery (D-M4): when False, every ``synced``
-    entry is SUPPRESSED, as is any ``seeded`` entry flagged
-    :attr:`CategoryEntry.is_credential` (the plugin's cred-seed hook).  When True
-    they are kept.  The gate is applied BEFORE collision resolution, so a
-    suppressed ``synced`` cannot win — or error against — a colliding binding.
+    *shares* gates credential delivery (D-M4; auth-level design step 4): when
+    False — the box is PRIVATE (auth tier ``"box"``, no shared source, today's
+    distinct-auth) — every ``synced`` entry is SUPPRESSED, as is any ``seeded``
+    entry flagged :attr:`CategoryEntry.is_credential` (the plugin's cred-seed
+    hook).  When True (the box shares at the global OR workset tier) they are kept.
+    The gate is applied BEFORE collision resolution, so a suppressed ``synced``
+    cannot win — or error against — a colliding binding. (Callers pass
+    ``shares=auth.shares`` off the resolved
+    :class:`~kanibako.settings_launch.AuthSource`.)
 
     Raises :class:`~kanibako.errors.ConfigError` on a ``synced``↔``binding``
     identical-dest collision.
     """
     from kanibako.errors import ConfigError
 
-    # --- group_auth gate (D-M4): suppress cred deliveries up front.
+    # --- share gate (D-M4): a PRIVATE box (shares=False) suppresses cred
+    # deliveries up front — the same drop today's group_auth=False produced.
     gated: list[CategoryEntry] = []
     for e in entries:
-        if not group_auth:
+        if not shares:
             if e.category == "synced":
                 continue
             if e.category == "seeded" and e.is_credential:

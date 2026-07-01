@@ -158,7 +158,6 @@ class Workset:
     root: Path
     created: str                            # ISO 8601, UTC
     projects: list[WorksetProject] = field(default_factory=list)
-    group_auth: bool = field(default=True)  # True = shared creds, False = distinct
     is_default: bool = False                 # True = synthesized default workset
 
     # Convenience paths -------------------------------------------------------
@@ -214,10 +213,9 @@ def _write_workset_toml(ws: Workset) -> None:
     workset_tbl["meta"] = {
         "name": ws.name,
         "created": ws.created,
-        # Group-auth (block #2): the workset POLICY is written as the NEW spec key
-        # ``group_auth_enabled`` (``workset.group_auth_enabled``), NOT the old flat
-        # ``group_auth`` — the clean-break WRITE surface. Read new-wins-old below.
-        "group_auth_enabled": ws.group_auth,
+        # Credential sharing is NO LONGER a workset.meta identity key — it is an
+        # ordinary settable cascade key (``workset.auth.share_allowed``) stored in
+        # the workset's [project]/settings cascade like any other setting.
         "projects": [
             {
                 "name": proj.name,
@@ -245,10 +243,6 @@ def _load_workset_toml(root: Path) -> Workset:
             f"{WORKSET_META_FILE} in {root} has no 'name' key"
         )
     created = meta.get("created", "")
-    # Group-auth (block #2): read the workset POLICY new-wins-old — the new spec
-    # key ``group_auth_enabled`` takes precedence; an existing on-disk
-    # ``group_auth`` is the read-compat fallback (JC-3). Never written back.
-    group_auth = bool(meta.get("group_auth_enabled", meta.get("group_auth", True)))
     projects = []
     for entry in meta.get("projects", []):
         projects.append(
@@ -257,7 +251,7 @@ def _load_workset_toml(root: Path) -> Workset:
                 source_path=Path(entry["source_path"]),
             )
         )
-    return Workset(name=name, root=root, created=created, projects=projects, group_auth=group_auth)
+    return Workset(name=name, root=root, created=created, projects=projects)
 
 
 def read_workset_meta(path: Path) -> dict | None:
@@ -470,8 +464,9 @@ def default_workset(std: StandardPaths) -> Workset:
     """Synthesize the default workset (the group of default-mode projects).
 
     The default workset is virtual: its members are the default-mode projects
-    in ``names.yaml [projects]`` and its ``group_auth`` lives as a normal key in
-    ``{data_path}/config.yaml``.  This object is NEVER persisted to disk (no
+    in ``names.yaml [projects]``.  Credential sharing is now a normal settable
+    cascade key (``workset.auth.share_allowed``), resolved through the settings
+    pipeline — NOT a workset field.  This object is NEVER persisted to disk (no
     root settings.yaml / registry write).
     """
     projects_map = read_names(std.registry).get("projects", {})
@@ -480,30 +475,11 @@ def default_workset(std: StandardPaths) -> Workset:
         for name, path in projects_map.items()
     ]
 
-    group_auth = True
-    config_path = std.data_path / "config.yaml"
-    if config_path.is_file():
-        data = load_doc(config_path)
-        # Group-auth (block #2): the default-workset POLICY lives in the [project]
-        # section of config.yaml. Read new-wins-old — the new key
-        # ``group_auth_enabled`` takes precedence, the old ``group_auth`` is the
-        # read-compat fallback (JC-3) — and tolerate a top-level key for either.
-        project_sec = data.get("project", {})
-        if "group_auth_enabled" in project_sec:
-            group_auth = bool(project_sec["group_auth_enabled"])
-        elif "group_auth" in project_sec:
-            group_auth = bool(project_sec["group_auth"])
-        elif "group_auth_enabled" in data:
-            group_auth = bool(data["group_auth_enabled"])
-        elif "group_auth" in data:
-            group_auth = bool(data["group_auth"])
-
     return Workset(
         name=DEFAULT_WORKSET_ID,
         root=std.data_path,
         created="",
         projects=projects,
-        group_auth=group_auth,
         is_default=True,
     )
 

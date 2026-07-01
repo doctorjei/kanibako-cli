@@ -6,7 +6,6 @@ import json
 
 import pytest
 
-from kanibako.config import read_project_meta
 from kanibako.errors import WorksetError
 from kanibako.paths import (
     BoxMode,
@@ -263,102 +262,6 @@ class TestIterWorksetProjects:
         assert len(results) == 0
         err = capsys.readouterr().err
         assert "Warning" in err
-
-
-# ---------------------------------------------------------------------------
-# Characterization: workset group_auth-override chain (pins behavior for #71 B0)
-# ---------------------------------------------------------------------------
-
-class TestWorksetAuthOverrideChain:
-    """Pin ``resolve_workset_project``'s group-auth carriers (block #2 reshape).
-
-    The flat narrowing chain (``actual_group_auth = ws.group_auth AND
-    meta.group_auth``) is RETIRED. The resolver now carries the two levels
-    SEPARATELY for the capability chain: the WORKSET policy on
-    ``ProjectPaths.workset_group_auth`` (from ``ws.group_auth``, read-compat for
-    the on-disk workset key) and the BOX choice on ``ProjectPaths.group_auth``
-    (from the box's stored choice). The EFFECTIVE bool is resolved through the
-    chain at launch (``meta.box.group_auth_available AND box.group_auth_on``); the
-    box choice is persisted as the NEW on-disk key ``group_auth_on``.
-    """
-
-    def test_workset_distinct_policy_on_carrier(
-        self, workset_env, std, config, credentials_dir,
-    ):
-        """A workset with group_auth=False surfaces on the WORKSET policy carrier."""
-        ws, name = workset_env
-        ws.group_auth = False  # Workset is a mutable dataclass.
-
-        proj = resolve_workset_project(
-            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
-        )
-
-        # Workset policy carrier reflects the distinct workset; box choice default.
-        assert proj.workset_group_auth is False
-        assert proj.group_auth is True
-        # The box choice is persisted as the NEW on-disk key (group_auth_on),
-        # default True; the workset policy lives in the workset settings.yaml.
-        meta = read_project_meta(proj.metadata_path / "settings.yaml")
-        assert meta is not None
-        assert meta["group_auth"] is True  # box choice carrier (group_auth_on)
-
-    def test_box_stored_choice_on_box_carrier(
-        self, workset_env, std, config, credentials_dir,
-    ):
-        """A box's stored choice surfaces on the BOX carrier; workset policy
-        independent.  Read-compat: an existing on-disk ``group_auth`` (old key) is
-        read as the box choice."""
-        ws, name = workset_env
-        assert ws.group_auth is True  # Fixture default (shared).
-
-        proj = resolve_workset_project(
-            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
-        )
-        assert proj.group_auth is True
-        assert proj.workset_group_auth is True
-
-        # Set the box's stored choice to False using the OLD on-disk key directly
-        # (read-compat), preserving the rest of the resolved metadata.
-        project_toml = proj.metadata_path / "settings.yaml"
-        meta = read_project_meta(project_toml)
-        assert meta is not None
-        from kanibako.config_io import dump_doc, load_doc
-        doc = load_doc(project_toml)
-        proj_sec = doc.setdefault("project", {})
-        # Simulate a TRUE legacy box: only the OLD on-disk key exists (the init
-        # write put the new ``group_auth_on``; drop it so read-compat is exercised).
-        proj_sec.pop("group_auth_on", None)
-        proj_sec["group_auth"] = False  # old key (read-compat)
-        dump_doc(project_toml, doc)
-
-        # Re-resolve: the box choice carrier reflects the stored False (read-compat),
-        # the workset policy stays True (independent level).
-        proj2 = resolve_workset_project(
-            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
-        )
-        assert proj2.group_auth is False
-        assert proj2.workset_group_auth is True
-
-    def test_box_choice_new_key_wins_over_old(
-        self, workset_env, std, config, credentials_dir,
-    ):
-        """An on-disk ``group_auth_on`` (new key) wins over old ``group_auth``."""
-        ws, name = workset_env
-        proj = resolve_workset_project(
-            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
-        )
-        project_toml = proj.metadata_path / "settings.yaml"
-        from kanibako.config_io import dump_doc, load_doc
-        doc = load_doc(project_toml)
-        proj_sec = doc.setdefault("project", {})
-        proj_sec["group_auth"] = True       # old key (read-compat fallback)
-        proj_sec["group_auth_on"] = False   # new key wins
-        dump_doc(project_toml, doc)
-
-        proj2 = resolve_workset_project(
-            WorksetSpec.from_workset(ws), name, std, config, initialize=True,
-        )
-        assert proj2.group_auth is False
 
 
 # ---------------------------------------------------------------------------

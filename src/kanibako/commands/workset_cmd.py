@@ -14,7 +14,6 @@ from kanibako.utils import confirm_prompt
 from kanibako.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
-    _write_workset_toml,
     add_project,
     create_workset,
     delete_workset,
@@ -34,7 +33,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     ws_sub = p.add_subparsers(dest="workset_command", metavar="COMMAND")
 
     # kanibako workset create [path] [--name NAME] [--standalone] [--image IMAGE]
-    #                         [--no-vault] [--distinct-auth]
+    #                         [--no-vault]
     create_p = ws_sub.add_parser(
         "create",
         help="Create a new working set",
@@ -59,10 +58,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--no-vault", action="store_true",
         help="Disable vault directories",
-    )
-    create_p.add_argument(
-        "--distinct-auth", action="store_true",
-        help="Use distinct credentials (no sync from host)",
     )
     create_p.set_defaults(func=run_create)
 
@@ -147,7 +142,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Set a working set setting (key=value).\n\n"
             "  workset set myws model=sonnet      set 'model'\n"
-            "  workset set myws group_auth=false  set auth mode\n"
+            "  workset set myws workset.auth.share_allowed=false  set sharing\n"
             "  workset set myws resource.plugins=/p  set resource path\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -335,19 +330,14 @@ def run_create(args: argparse.Namespace) -> int:
     path = Path(path).resolve()
     name = args.name or path.name
 
-    # Store additional flags in workset config if provided.
-    group_auth = not getattr(args, "distinct_auth", False)
-
     try:
         ws = create_workset(name, path, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Set auth mode if distinct.
-    if not group_auth:
-        ws.group_auth = group_auth
-        _write_workset_toml(ws)
+    # Credential SHARING is now a settable cascade key (workset.auth.share_allowed
+    # via config), NOT a create-time flag — the --distinct-auth flag is retired.
 
     # Store additional cascade settings in the workset settings.yaml.  Merge
     # into the existing file (created with the workset.meta identity by
@@ -565,7 +555,6 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"Name:     {ws.name}")
     print(f"Root:     {root_display}")
     print(f"Created:  {ws.created}")
-    print(f"Group auth: {ws.group_auth}")
     if ws.projects:
         print(f"Projects: {len(ws.projects)}")
         for proj in ws.projects:
@@ -620,8 +609,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     """Shared working-set config engine dispatch.
 
     Handles get, set, show, reset operations via the config_interface engine.
-    The ``group_auth`` key is special-cased to update the workset.meta identity
-    directly.
+    Credential sharing is an ordinary settable cascade key
+    (``workset.auth.share_allowed``) routed through the engine like any other — no
+    special-casing (the old ``group_auth`` workset.meta identity key is retired).
     """
     from kanibako.config_interface import (
         ConfigAction,
@@ -658,25 +648,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             return 0
 
         reset_key = args.reset
-        # Special case: resetting group_auth reverts to True (shared)
-        if reset_key == "group_auth":
-            ws.group_auth = True
-            if ws.is_default:
-                # Default workset has no settings.yaml identity — clear the key in
-                # config.yaml's [project] section. Remove BOTH the new spec key
-                # (group_auth_enabled) and any old read-compat residue (group_auth)
-                # so the reset truly reverts to the default (block #2).
-                from kanibako.config_interface import _remove_toml_key
-                _remove_toml_key(ws_config, "project", "group_auth_enabled")
-                _remove_toml_key(ws_config, "project", "group_auth")
-            else:
-                # _write_workset_toml rewrites workset.meta with the new key only
-                # (group_auth=True → group_auth_enabled=true); the old residue is
-                # dropped because the meta table is fully replaced on write.
-                _write_workset_toml(ws)
-            print("Reset group_auth (reverts to default: true)")
-            return 0
-
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
@@ -703,11 +674,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
-        # Special case: group_auth key lives in the workset.meta identity
-        if key == "group_auth":
-            print(ws.group_auth)
-            return 0
-
         val = get_config_value(
             key,
             global_config_path=config_file,
@@ -720,61 +686,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Special case: group_auth key updates the workset.meta identity directly
-        if key == "group_auth":
-            normalized = value.strip().lower()
-            if normalized in ("true", "1"):
-                new_group_auth = True
-            elif normalized in ("false", "0"):
-                new_group_auth = False
-            else:
-                print(
-                    f"Error: group_auth must be 'true' or 'false', got '{value}'",
-                    file=sys.stderr,
-                )
-                return 1
-
-            old_group_auth = ws.group_auth
-            ws.group_auth = new_group_auth
-            if ws.is_default:
-                # Default workset has no settings.yaml identity — write the POLICY
-                # as the NEW spec key ``group_auth_enabled`` in config.yaml's
-                # [project] section (block #2 clean-break WRITE surface; read
-                # new-wins-old in default_workset). Never write the old form.
-                from kanibako.config_interface import _write_toml_key
-                _write_toml_key(
-                    ws_config, "project", "group_auth_enabled", new_group_auth
-                )
-            else:
-                _write_workset_toml(ws)
-
-            if (not new_group_auth) and old_group_auth:
-                # Switched shared→distinct: invalidate credentials in all
-                # shells, across ALL KNOWN AGENTS (§Design 8(b)).  Cred
-                # invalidation is a cleanup op that must NOT depend on
-                # single-agent resolution — a workset may have been used with
-                # several agents, so clear every installed agent's creds rather
-                # than the one the cascade happens to resolve.
-                from kanibako.targets import resolve_target, discover_targets
-                targets = []
-                for agent_name in discover_targets().keys():
-                    try:
-                        targets.append(resolve_target(agent_name))
-                    except (KeyError, ValueError):
-                        continue
-                for proj in ws.projects:
-                    shell_path = ws.projects_dir / proj.name / "home"
-                    if shell_path.is_dir():
-                        for target in targets:
-                            target.invalidate_credentials(shell_path)
-                print(
-                    f"Set group_auth to false (distinct) for '{ws.name}'. "
-                    f"Credentials cleared in {len(ws.projects)} project(s).",
-                )
-            else:
-                print(f"Set group_auth to {str(new_group_auth).lower()} for '{ws.name}'.")
-            return 0
-
         # Handle --local for resource keys
         if args.local:
             from kanibako.config_interface import _is_resource_key, _resolve_key

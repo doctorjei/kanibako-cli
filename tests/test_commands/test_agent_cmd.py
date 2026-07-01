@@ -14,6 +14,27 @@ from kanibako.agent_config import (
     agents_dir,
     write_agent_config,
 )
+from kanibako.settings_launch import AuthSource
+
+# Auth 3-tier SHARING fixtures replacing the old ``effective_group_auth`` bool
+# (2026-07-01 redesign). ``_resolve_box_auth_source`` returns an ``AuthSource``;
+# ``.shares`` is the single-bool gate the reauth path consults. A SHARING box
+# picks a non-``box`` tier (here ``global``, ``.shares`` True); a PRIVATE box is
+# tier ``box`` (``.shares`` False), the old distinct-auth.
+_SHARED_AUTH = AuthSource(
+    tier="global",
+    global_enabled=True,
+    workset_enabled=False,
+    global_sync=False,
+    workset_source=None,
+)
+_PRIVATE_AUTH = AuthSource(
+    tier="box",
+    global_enabled=False,
+    workset_enabled=False,
+    global_sync=False,
+    workset_source=None,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -354,13 +375,13 @@ class TestRunReauth:
         with (
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
-            # The effective group-auth bool is now resolved through the launch
-            # capability chain (block #2), which needs a real ``proj.mode``; stub
-            # it to the value this test means by ``proj.group_auth = True`` so the
-            # group-auth branch under test is reached unchanged.
+            # The box's SHARING decision is resolved through the launch capability
+            # chain (auth 3-tier redesign), which needs a real ``proj.mode``; stub
+            # it to a SHARING AuthSource so the ``auth_src.shares`` branch under
+            # test is reached unchanged.
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=True,
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
             ),
         ):
             target = MagicMock()
@@ -372,7 +393,6 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.group_auth = True
                 mock_proj.return_value = proj
 
                 rc = run_reauth(args)
@@ -385,20 +405,23 @@ class TestRunReauth:
 
         B2 fix: ``run_reauth`` previously called ``target.refresh_credentials``
         UNGATED, sending a descriptor agent (e.g. goose) down its bypassed legacy
-        path.  It now mirrors the three start.py sites: descriptor present ->
-        ``credsync.refresh_cred_files`` with the same arg shape."""
+        path.  It now mirrors the start.py site: descriptor present ->
+        ``credsync.refresh_box_credentials`` (the 3-tier orchestrator) with the
+        resolved ``AuthSource``."""
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
         with (
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
-            patch("kanibako.targets.credsync.refresh_cred_files") as mock_refresh,
-            # group-auth is resolved via the launch chain now (block #2); stub it
-            # to the value this test means by ``proj.group_auth = True``.
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=True,
+                "kanibako.targets.credsync.refresh_box_credentials"
+            ) as mock_refresh,
+            # SHARING box resolved via the launch chain (auth 3-tier redesign);
+            # stub a SHARING AuthSource so the credsync refresh branch is reached.
+            patch(
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
             ),
         ):
             target = MagicMock()
@@ -411,7 +434,6 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.group_auth = True
                 mock_proj.return_value = proj
 
                 rc = run_reauth(args)
@@ -419,8 +441,8 @@ class TestRunReauth:
         assert rc == 0
         target.refresh_credentials.assert_not_called()
         mock_refresh.assert_called_once_with(
-            desc, target, host_home=Path.home(),
-            project_home=proj.shell_path, group_auth=proj.group_auth,
+            desc, target, auth=_SHARED_AUTH, host_home=Path.home(),
+            project_home=proj.shell_path,
         )
 
     def test_reauth_skips_refresh_for_distinct(self, config_file, tmp_home, capsys):
@@ -431,11 +453,11 @@ class TestRunReauth:
         with (
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
-            # Distinct auth = effective group-auth FALSE (block #2 chain); stub it
-            # to the value this test means by ``proj.group_auth = False``.
+            # Distinct auth = PRIVATE box (tier ``box``, ``.shares`` False); stub a
+            # private AuthSource so the distinct-auth branch is taken.
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=False,
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_PRIVATE_AUTH,
             ),
         ):
             target = MagicMock()
@@ -445,7 +467,6 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.group_auth = False
                 # Distinct auth with credentials present returns 0 before check_auth
                 creds_path = MagicMock()
                 creds_path.is_file.return_value = True
@@ -472,11 +493,11 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._run_container", return_value=0,
             ) as m_run,
-            # group-auth via the launch chain (block #2); stub to this test's
-            # intended ``proj.group_auth = True`` so the auth-fail path is reached.
+            # SHARING box via the launch chain (auth 3-tier redesign); stub a
+            # SHARING AuthSource so the shared-auth-fail path is reached.
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=True,
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
             ),
         ):
             target = MagicMock()
@@ -488,7 +509,6 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.group_auth = True
                 mock_proj.return_value = proj
 
                 rc = run_reauth(args)
@@ -510,11 +530,11 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._run_container",
             ) as m_run,
-            # group-auth via the launch chain (block #2); stub to this test's
-            # intended ``proj.group_auth = True`` so the auth-fail path is reached.
+            # SHARING box via the launch chain (auth 3-tier redesign); stub a
+            # SHARING AuthSource so the shared-auth-fail path is reached.
             patch(
-                "kanibako.commands.start._resolve_effective_group_auth",
-                return_value=True,
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
             ),
         ):
             target = MagicMock()
@@ -526,7 +546,6 @@ class TestRunReauth:
 
             with patch("kanibako.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
-                proj.group_auth = True
                 mock_proj.return_value = proj
 
                 rc = run_reauth(args)

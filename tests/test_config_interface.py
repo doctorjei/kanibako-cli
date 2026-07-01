@@ -69,7 +69,7 @@ class TestIsKnownKey:
     def test_known_static_key(self):
         assert is_known_key("box.image") is True
         assert is_known_key("model") is True
-        assert is_known_key("group_auth") is True
+        assert is_known_key("box.auth.global_enabled") is True
 
     def test_short_aliases_no_longer_known(self):
         """W2a: the image/agent short-name aliases were removed (canonical only)."""
@@ -533,24 +533,25 @@ class TestH1NoCrashOnAdvertisedKeys:
     unknown keys.
     """
 
-    def test_set_group_auth_no_crash(self, tmp_path):
+    def test_set_box_auth_global_enabled_no_crash(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
-        # Block #2: the bare ``group_auth`` token canonicalizes to the new spec
-        # key ``box.group_auth_on`` (back-compat INPUT), written as the NEW on-disk
-        # key ``[project].group_auth_on`` (never the old form). Must not raise.
-        msg = set_config_value("group_auth", "false", config_path=project_toml)
+        # Auth 3-tier SHARING (2026-07-01 redesign): the box's per-tier opt-out
+        # knob, a typed bool routed to the box.auth section. Must not raise.
+        msg = set_config_value(
+            "box.auth.global_enabled", "false", config_path=project_toml
+        )
         assert msg.startswith("Set")
         data = load_doc(project_toml)
-        assert data["project"]["group_auth_on"] is False
-        assert "group_auth" not in data["project"]  # old form never written
+        assert data["box"]["auth"]["global_enabled"] is False
 
-    def test_set_box_group_auth_on_no_crash(self, tmp_path):
+    def test_set_box_auth_workset_enabled_no_crash(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
-        # The canonical box choice key (block #2, §2b L282), typed bool.
-        msg = set_config_value("box.group_auth_on", "false", config_path=project_toml)
+        msg = set_config_value(
+            "box.auth.workset_enabled", "false", config_path=project_toml
+        )
         assert msg.startswith("Set")
         data = load_doc(project_toml)
-        assert data["project"]["group_auth_on"] is False
+        assert data["box"]["auth"]["workset_enabled"] is False
 
     def test_set_allow_helpers_no_crash(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
@@ -611,7 +612,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         global_cfg.write_text("")
         project_toml = tmp_path / "settings.yaml"
         for key, val in [
-            ("group_auth", "false"),
+            ("box.auth.global_enabled", "false"),
             ("box.image", "custom:latest"),
             ("vault.ro", "/ro"),
         ]:

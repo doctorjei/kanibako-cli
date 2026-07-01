@@ -63,10 +63,10 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
     Best-effort: a stop must succeed even if writeback can't run (e.g. no stamp,
     no agent, container already gone).
 
-    Group-auth (block #2): the writeback gate is the EFFECTIVE group-auth bool,
-    resolved through the capability chain (single-route, the same launch-snapshot
-    pipeline ``start`` uses) for the box's stamped agent — under distinct auth the
-    box's creds stay private and are NOT written back.
+    Auth 3-tier SHARING: the writeback tier/source is the resolved AuthSource,
+    resolved through the auth chain (single-route, the same launch-snapshot
+    pipeline ``start`` uses) for the box's stamped agent — a PRIVATE box keeps its
+    creds project-local and they are NOT written back.
     """
     if not runtime.is_running(container_name):
         return
@@ -75,14 +75,14 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
         return
     try:
         from kanibako.commands.start import (
-            _resolve_effective_group_auth,
+            _resolve_box_auth_source,
             writeback_session_credentials,
         )
         from kanibako.agent_config import agent_settings_path
         from kanibako.config import BOX_META_FILE
         from kanibako.targets import resolve_target
         target = resolve_target(agent, proj.project_path)
-        eff = _resolve_effective_group_auth(
+        auth_src = _resolve_box_auth_source(
             std=std,
             proj=proj,
             agent_name=agent,
@@ -94,7 +94,7 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
             ),
             agent_cfg_path=agent_settings_path(std.agents, agent),
         )
-        writeback_session_credentials(target, proj, effective_group_auth=eff)
+        writeback_session_credentials(target, proj, auth_src=auth_src)
     except Exception:
         # Never let a writeback problem block the stop.
         pass

@@ -567,13 +567,13 @@ class TestIsCategoryKey:
 # Authority order (identical box_dest, later WINS): seed < cache < binding <
 # shared < synced < masks. Ties within a category -> box scope wins. synced
 # (COPY) vs binding (MOUNT) at the same dest -> ConfigError. MOUNTs emit
-# depth-sorted (shallow first). group_auth=False suppresses synced + cred seeds.
+# depth-sorted (shallow first). shares=False suppresses synced + cred seeds.
 # ---------------------------------------------------------------------------
 
 
-def _reconcile(levels, ctx, *, group_auth=True, scope_roots=None):
+def _reconcile(levels, ctx, *, shares=True, scope_roots=None):
     return reconcile_categories(
-        _resolve(levels, ctx, scope_roots=scope_roots), group_auth=group_auth
+        _resolve(levels, ctx, scope_roots=scope_roots), shares=shares
     )
 
 
@@ -722,26 +722,26 @@ class TestReconcileDepthOrder:
 
 
 class TestReconcileGroupAuthGate:
-    def test_group_auth_false_suppresses_synced(self):
+    def test_shares_false_suppresses_synced(self):
         synced = _entry("synced", box_dest="/g/cred")
         binding = _entry("bindings.rw", box_dest="/g/keep")
-        rec = reconcile_categories([synced, binding], group_auth=False)
+        rec = reconcile_categories([synced, binding], shares=False)
         cats = [w.category for w in (rec.mounts + rec.copies)]
         assert "synced" not in cats
         assert "bindings.rw" in cats
 
-    def test_group_auth_false_suppresses_credential_seed_only(self):
+    def test_shares_false_suppresses_credential_seed_only(self):
         cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
         plain_seed = _entry("seeded", box_dest="/g/plain", is_credential=False)
-        rec = reconcile_categories([cred_seed, plain_seed], group_auth=False)
+        rec = reconcile_categories([cred_seed, plain_seed], shares=False)
         dests = [c.box_dest for c in rec.copies]
         assert "/g/cred" not in dests
         assert "/g/plain" in dests
 
-    def test_group_auth_true_keeps_synced_and_cred_seed(self):
+    def test_shares_true_keeps_synced_and_cred_seed(self):
         synced = _entry("synced", box_dest="/g/s")
         cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
-        rec = reconcile_categories([synced, cred_seed], group_auth=True)
+        rec = reconcile_categories([synced, cred_seed], shares=True)
         dests = {c.box_dest for c in rec.copies}
         assert dests == {"/g/s", "/g/cred"}
 
@@ -749,7 +749,7 @@ class TestReconcileGroupAuthGate:
         # synced suppressed by gate -> no clash with the binding at same dest.
         synced = _entry("synced", box_dest="/g/d")
         binding = _entry("bindings.rw", box_dest="/g/d")
-        rec = reconcile_categories([synced, binding], group_auth=False)
+        rec = reconcile_categories([synced, binding], shares=False)
         assert [m.category for m in rec.mounts] == ["bindings.rw"]
 
 

@@ -90,3 +90,6 @@ descriptor:
 
   host_prep: false
   init_dirs: [".config/goose", ".local/share/goose/sessions"]
+  # Credential-SHARING CAPABILITY (spec §2d): goose supports shared creds.
+  # RO / plugin-set → meta.agent.goose.auth.share_support.
+  auth_share_support: true

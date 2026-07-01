@@ -159,6 +159,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         cred_files=tuple(_build_cred_file(c) for c in desc.get("cred_files", [])),
         host_prep=bool(desc.get("host_prep", False)),
         init_dirs=tuple(desc.get("init_dirs", ())),
+        auth_share_support=bool(desc.get("auth_share_support", False)),
     )
 
 

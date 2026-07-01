@@ -279,7 +279,6 @@ def write_project_meta(
     vault_ro: str,
     vault_rw: str,
     enable_vault: bool = True,
-    group_auth: bool = True,
     metadata: str = "",
     project_hash: str = "",
     name: str = "",
@@ -289,24 +288,16 @@ def write_project_meta(
     Phase 5 removed the layout axis: ``mode`` (``box.mode``) is the sole
     on-disk shape descriptor now.  No ``layout`` field is written.
 
-    The bool meta keys (``enable_vault``/``group_auth_on``) are routed through the
-    shared :func:`coerce_bool` so they round-trip identically to the typed
-    ``config set`` writer (H1/H2 fix); a non-bool literal falls back to raw.
-
-    Group-auth (block #2): the box's choice is written as ``group_auth_on`` (the
-    NEW spec key ``box.group_auth_on``), NOT the old flat ``group_auth`` — the
-    clean-break WRITE surface. ``read_project_meta`` reads the new key new-wins-old
-    for read-compat with existing on-disk ``group_auth`` (JC-3). The *group_auth*
-    parameter carries the box choice value (kept for caller symmetry).
+    The bool meta key (``enable_vault``) is routed through the shared
+    :func:`coerce_bool` so it round-trips identically to the typed ``config set``
+    writer (H1/H2 fix); a non-bool literal falls back to raw.
     """
     existing = load_doc(path)
 
     ev = coerce_bool(enable_vault)
-    ga = coerce_bool(group_auth)
     project_sec: dict = {
         "mode": mode,
         "enable_vault": ev if ev is not None else enable_vault,
-        "group_auth_on": ga if ga is not None else group_auth,
     }
     if name:
         project_sec["name"] = name
@@ -344,18 +335,9 @@ def read_project_meta(path: Path) -> dict | None:
     # boxes (``default``/``workset``/``account_centric``/…) are unsupported.
     mode = project_sec["mode"]
 
-    # Group-auth (block #2): read the box's CHOICE new-wins-old — the new spec key
-    # ``group_auth_on`` (``box.group_auth_on``) takes precedence; an existing
-    # on-disk ``group_auth`` (pre-reshape boxes) is the read-compat fallback
-    # (JC-3). The old key is never written back (write_project_meta writes the new
-    # key). Returned under the stable ``"group_auth"`` dict slot the carriers read.
-    box_group_auth_on = project_sec.get(
-        "group_auth_on", project_sec.get("group_auth", True)
-    )
     return {
         "mode": mode,
         "enable_vault": project_sec.get("enable_vault", True),
-        "group_auth": box_group_auth_on,
         "name": project_sec.get("name", ""),
         "workspace": resolved_sec.get("workspace", ""),
         "shell": resolved_sec.get("shell", ""),
