@@ -229,6 +229,52 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.env["PAGER"] == "less"
 
+    def test_config_set_env_file_key(self, agent_env, capsys):
+        # env_file.<VAR>=<path> stores the POINTER (not a secret) under env_file.
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.agent_config import agent_config_path, load_agent_config
+
+        args = argparse.Namespace(
+            agent_id="claude",
+            key_value="env_file.ANTHROPIC_AUTH_TOKEN=~/.config/claude/nav/token",
+        )
+        rc = run_set(args)
+        assert rc == 0
+        assert "Set env_file.ANTHROPIC_AUTH_TOKEN=" in capsys.readouterr().out
+
+        path = agent_config_path(agent_env, "claude")
+        cfg = load_agent_config(path)
+        assert cfg.env_file["ANTHROPIC_AUTH_TOKEN"] == "~/.config/claude/nav/token"
+        # It must NOT have leaked into the plain env map.
+        assert "ANTHROPIC_AUTH_TOKEN" not in cfg.env
+
+    def test_config_get_env_file_key(self, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set, run_get
+
+        run_set(argparse.Namespace(
+            agent_id="claude", key_value="env_file.TOKEN=/secure/token",
+        ))
+        capsys.readouterr()
+        rc = run_get(argparse.Namespace(agent_id="claude", key="env_file.TOKEN"))
+        assert rc == 0
+        assert "/secure/token" in capsys.readouterr().out
+
+    def test_config_reset_env_file_key(self, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set, run_reset
+        from kanibako.agent_config import agent_config_path, load_agent_config
+
+        run_set(argparse.Namespace(
+            agent_id="claude", key_value="env_file.TOKEN=/secure/token",
+        ))
+        capsys.readouterr()
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key="env_file.TOKEN", all_keys=False, force=False,
+        ))
+        assert rc == 0
+        assert "Reset env_file.TOKEN" in capsys.readouterr().out
+        cfg = load_agent_config(agent_config_path(agent_env, "claude"))
+        assert "TOKEN" not in cfg.env_file
+
     def test_config_shell_is_no_longer_an_identity_key(self, agent_env, capsys):
         # The template-variant ``shell`` axis was removed; ``shell`` is no longer
         # an AgentConfig identity field, so a ``shell=`` set now lands in generic

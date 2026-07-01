@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import os
 import shutil
 import subprocess
 import sys
@@ -1402,6 +1403,15 @@ def _run_container(
         container_env.update(
             {e.box_dest: e.options for e in reconciled.envs}
         )
+        # env-from-file (spec §2d): the ACTIVE rider's ``env_file`` pointers —
+        # VAR -> host token PATH — are read HERE (the env-emission seam), the file
+        # CONTENTS become the env VALUE (one trailing newline stripped). The SECRET
+        # (e.g. the bearer ANTHROPIC_AUTH_TOKEN) reaches the container ENV only;
+        # its value is NEVER in the snapshot/keystore nor logged. Per-node: only the
+        # active node's agent_cfg loaded. Missing/unreadable/empty file -> WARN +
+        # var UNSET (fail-soft, no crash). Sits at the agent config-env level, BELOW
+        # target state env and CLI -e (so a per-run -e can still override).
+        container_env.update(_resolve_env_files(agent_cfg.env_file, logger))
         container_env.update(state_env)                        # target-derived state env
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
@@ -2072,6 +2082,63 @@ def _build_config_env(
         env.update(read_env_file(workset_env_path))  # workset
     env.update(read_env_file(project_env_path))  # box (highest config level)
     return env
+
+
+def _resolve_env_files(
+    env_file: dict[str, str], logger,
+) -> dict[str, str]:
+    """Resolve the ACTIVE agent's ``env_file`` pointers to ``{VAR: value}``.
+
+    Each entry maps an env VAR to a HOST PATH (the token file — spec §2d). This
+    reads each file and returns the var VALUE = the file's contents with a SINGLE
+    trailing newline stripped. This is the env-from-file mechanism (the rider's
+    ``ANTHROPIC_AUTH_TOKEN`` bearer token): the SECRET lives only in the host file
+    (0600) and reaches the container as an ENV var — it is NEVER stored in the
+    keystore/snapshot as a value nor written to any box file.
+
+    ``~`` and ``$VAR`` in the path are expanded (a user writes
+    ``~/.config/claude/navigator/token``). The map is already per-node: only the
+    ACTIVE agent's ``agents/<node>/settings.yaml`` is loaded (a sibling rider's
+    ``env_file`` never reaches here).
+
+    FAIL-SOFT: a missing / unreadable / empty file is WARNED (loudly, to stderr
+    via the WARNING logger) and the var is left UNSET — never a crash/traceback.
+    A rider then fails auth with a clear symptom, which is the right UX. Every log
+    line references the VAR name + source PATH only — the token VALUE is NEVER
+    logged.
+    """
+    resolved: dict[str, str] = {}
+    for var, raw_path in env_file.items():
+        # Expand $VAR then ~ against the LAUNCHING user's environment/home.
+        expanded = Path(os.path.expandvars(str(raw_path))).expanduser()
+        try:
+            # utf-8 text read; a single trailing newline is stripped (the common
+            # "echo token > file" shape). Only ONE trailing \n is removed so a
+            # token that legitimately ends in whitespace is not further mangled.
+            contents = expanded.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.warning(
+                "env_file: token file not found at %s; %s unset "
+                "(rider will fail auth)", expanded, var,
+            )
+            continue
+        except OSError as e:
+            # Unreadable (perms, is-a-dir, io error). Reference the errno class
+            # only — never the file contents.
+            logger.warning(
+                "env_file: cannot read token file at %s (%s); %s unset "
+                "(rider will fail auth)", expanded, e.strerror or "unreadable", var,
+            )
+            continue
+        value = contents[:-1] if contents.endswith("\n") else contents
+        if not value:
+            logger.warning(
+                "env_file: token file at %s is empty; %s unset "
+                "(rider will fail auth)", expanded, var,
+            )
+            continue
+        resolved[var] = value
+    return resolved
 
 
 def _effective_behavior_for_display(

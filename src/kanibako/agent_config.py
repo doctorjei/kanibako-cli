@@ -16,15 +16,19 @@ class AgentConfig:
     """Per-agent configuration loaded from an agent YAML file.
 
     Sections:
-      agent  — identity (name, run_args) plus agent-state knobs
-               (model, access, start_mode, autonomous, …)
-      env    — raw env vars injected into container
+      agent     — identity (name, run_args) plus agent-state knobs
+                  (model, access, start_mode, autonomous, …)
+      env       — raw env vars injected into container (VAR -> value)
+      env_file  — env-from-file pointers (VAR -> host PATH): at launch the
+                  file's contents become the env var's VALUE (secret stays in
+                  the host file, only the path is stored — spec §2d).
     """
 
     name: str = ""
     run_args: list[str] = field(default_factory=list)
     state: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
+    env_file: dict[str, str] = field(default_factory=dict)
     tweakcc: dict = field(default_factory=dict)
 
 
@@ -76,6 +80,10 @@ def load_agent_config(path: Path) -> AgentConfig:
         k: str(v) for k, v in agent_sec.items() if k not in IDENTITY_KEYS
     }
     cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
+    # env_file: VAR -> host PATH pointer (the token file). Stored as a plain
+    # string path; the file's CONTENTS (the secret) are never persisted here —
+    # they are read into the container env only at launch (spec §2d).
+    cfg.env_file = {k: str(v) for k, v in data.get("env_file", {}).items()}
     cfg.tweakcc = dict(data.get("tweakcc", {}))
 
     return cfg
@@ -93,6 +101,7 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
     data: dict = {
         "agent": agent_sec,
         "env": dict(cfg.env),
+        "env_file": dict(cfg.env_file),
         "tweakcc": dict(cfg.tweakcc),
     }
     # The settings file lives inside the per-agent store dir
