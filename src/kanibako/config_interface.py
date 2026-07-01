@@ -61,6 +61,8 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "start_mode",
     "autonomous",
     "model",
+    # endpoint (rider): alternate harness base-URL, a sibling of model (block B).
+    "endpoint",
     # Box
     "box.image",
     "box.agent_name",
@@ -265,7 +267,7 @@ def _is_resource_key(key: str) -> bool:
 
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
-    return key in {"model", "start_mode", "autonomous"}
+    return key in {"model", "start_mode", "autonomous", "endpoint"}
 
 
 def _is_box_agent_key(key: str) -> bool:

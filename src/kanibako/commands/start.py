@@ -9,6 +9,10 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kanibako.settings_launch import AuthSource
 
 from kanibako.agent_config import (
     agent_settings_path,
@@ -855,22 +859,29 @@ def _run_container(
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
 
-    # Auth 3-tier SHARING chain: resolve the box's SOURCE decision ONCE here,
-    # through the launch snapshot (single-route), BEFORE the first consumer (the
-    # reattach refresh below + the seed/refresh/reconcile/auto-auth/writeback
-    # sites). Yields an AuthSource (tier/source + enables) threaded to every
-    # credsync/gate consumer. The active agent is known here (``agent_id``), so the
-    # chain's meta.box.agent.auth.share_support mirror resolves to the right
-    # capability. Private/no-share = box.auth.{global,workset}_enabled=false.
-    auth_src = _resolve_box_auth_source(
+    # Auth 3-tier SHARING chain + rider endpoint: resolve BOTH per-box decisions ONCE
+    # here off a SINGLE launch snapshot (single-route), BEFORE the first consumer (the
+    # reattach refresh below + the seed/refresh/reconcile/auto-auth/writeback sites).
+    # Yields the AuthSource (tier/source + enables) threaded to every credsync/gate
+    # consumer, AND the active-node ``agent.<node>.endpoint`` (block B rider cred
+    # fork). The active agent is known here (``agent_id``), so the chain's
+    # meta.box.agent.auth.share_support mirror resolves to the right capability.
+    # Private/no-share = box.auth.{global,workset}_enabled=false. ``endpoint is None``
+    # = <None>/unset = BARE (byte-identical to today); a set endpoint is the cred fork
+    # signal → ``suppress_oauth`` drops the host OAuth cred sync so the Anthropic token
+    # never reaches a box pointed at a third-party endpoint.
+    auth_src, active_endpoint = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
+        target=target,
         agent_name=agent_id,
+        agent_cfg=agent_cfg,
         system_settings_path=system_settings_path,
         project_toml=project_toml,
         workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
+    suppress_oauth = active_endpoint is not None
 
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
@@ -908,6 +919,7 @@ def _run_container(
                     credsync.refresh_box_credentials(
                         desc, target, auth=auth_src, host_home=Path.home(),
                         project_home=proj.shell_path,
+                        suppress_oauth=suppress_oauth,
                     )
                 else:
                     target.refresh_credentials(proj.shell_path)
@@ -1021,6 +1033,7 @@ def _run_container(
                 system_settings_path=system_settings_path,
                 project_toml=project_toml, workset_path=workset_path,
                 auth_src=auth_src, logger=logger,
+                suppress_oauth=suppress_oauth,
             )
             _register_new_box(std, proj)
             _clear_create_entry(std, proj)
@@ -1123,6 +1136,7 @@ def _run_container(
                 credsync.refresh_box_credentials(
                     desc, target, auth=auth_src, host_home=Path.home(),
                     project_home=proj.shell_path,
+                    suppress_oauth=suppress_oauth,
                 )
             else:
                 target.refresh_credentials(proj.shell_path)
@@ -2186,6 +2200,90 @@ def _resolve_box_auth_source(
     return settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
 
 
+def _resolve_box_launch_decisions(
+    *,
+    std,
+    proj,
+    target,
+    agent_name: str,
+    agent_cfg,
+    system_settings_path,
+    project_toml,
+    workset_path,
+    agent_cfg_path,
+) -> "tuple[AuthSource, str | None]":
+    """Resolve the launch's per-box decisions (auth SOURCE + rider endpoint) off ONE
+    snapshot — the single-source consolidation of the auth resolve and the endpoint
+    resolve.
+
+    ``build_launch_snapshot`` accepts BOTH the auth 3-tier ``auth_chain`` floor AND
+    the behavior ``behavior_floor`` in a single call, so the box's sharing decision
+    (:class:`~kanibako.settings_launch.AuthSource`, ``resolve_auth_source``) and its
+    active-node ``agent.<node>.endpoint`` (``effective_behavior``) are read off the
+    SAME expanded snapshot — no duplicate build. Same pipeline the main launch uses
+    (single-route).
+
+    * *auth_src* — the credential-SHARING SOURCE (tier/source + enables), threaded to
+      every credsync/gate consumer, exactly as :func:`_resolve_box_auth_source`.
+    * *endpoint* — the resolved RIDER endpoint URL, or ``None`` when unset
+      (``<None>`` / empty / no descriptors / no target) — the cred-fork signal
+      (non-None ⇒ suppress the OAuth cred). ``None`` is byte-identical to today.
+
+    The behavior floor folds in as ``agent.default.<key>`` (OS1) and the per-agent
+    FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
+    yields the endpoint for the NODE (rider identity). A target with no declared
+    settings contributes no floor → endpoint ``None`` (bare).
+    """
+    from kanibako import settings_launch
+
+    ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
+        _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
+    )
+    chain = settings_launch.auth_chain_floor(
+        mode=proj.mode.value,
+        agent_name=agent_name,
+    )
+    descriptors = target.setting_descriptors() if target is not None else []
+    # A real target returns a list of TargetSetting; guard against a non-list (e.g.
+    # a MagicMock target in unit tests) so the behavior floor / endpoint read is
+    # skipped rather than iterating a mock — endpoint then stays None (bare).
+    behavior_floor = (
+        {d.key: d.default for d in descriptors}
+        if isinstance(descriptors, list)
+        else {}
+    )
+    snapshot = settings_launch.build_launch_snapshot(
+        agent_name=agent_name,
+        ctx=ctx,
+        system_path=system_settings_path,
+        agent_path=agent_cfg_path,
+        workset_path=workset_path,
+        box_path=project_toml,
+        behavior_floor=behavior_floor or None,
+        # agent_state (the active-node slot) is only needed when we actually read
+        # behavior; gated on behavior_floor so a no-descriptor / mock target never
+        # dereferences agent_cfg.state.
+        agent_state=(
+            dict(agent_cfg.state)
+            if behavior_floor and agent_cfg is not None
+            else None
+        ),
+        default_categories=dict(resolved_sys),
+        auth_chain=chain,
+        meta_runtime=meta_runtime,
+        meta_identity=meta_identity,
+        workset_anchor=workset_anchor,
+    )
+    auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
+    endpoint: str | None = None
+    if behavior_floor:
+        effective = settings_launch.effective_behavior(
+            snapshot, active_agent=agent_name
+        )
+        endpoint = effective.get("endpoint", "") or None
+    return auth_src, endpoint
+
+
 def _build_binding_overrides(
     *,
     project_toml,
@@ -2650,6 +2748,7 @@ def _seed_box_home(
     workset_path,
     auth_src,
     logger,
+    suppress_oauth: bool = False,
 ) -> None:
     """Apply the one-time home seed for a freshly-created box (seed-at-create).
 
@@ -2680,6 +2779,7 @@ def _seed_box_home(
         credsync.seed_box_credentials(
             desc, target, auth=auth_src, host_home=Path.home(),
             project_home=proj.shell_path,
+            suppress_oauth=suppress_oauth,
         )
     _apply_init_seeds(
         std=std, proj=proj, agent_name=agent_id, target=target,
@@ -2745,11 +2845,17 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     if target is not None:
         desc = target.descriptor
 
-    auth_src = _resolve_box_auth_source(
-        std=std, proj=proj, agent_name=agent_id,
-        system_settings_path=system_settings_path, project_toml=project_toml,
-        workset_path=workset_path, agent_cfg_path=agent_cfg_path,
+    # Auth SOURCE + rider endpoint off ONE snapshot (single-source). At CREATE, a
+    # fresh endpoint-riding box is seeded WITHOUT the host OAuth cred (fail-safe;
+    # <None>/no-target = bare, byte-identical to today).
+    seed_agent_cfg = load_agent_config(agent_cfg_path) if target is not None else None
+    auth_src, active_endpoint = _resolve_box_launch_decisions(
+        std=std, proj=proj, target=target, agent_name=agent_id,
+        agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
+        project_toml=project_toml, workset_path=workset_path,
+        agent_cfg_path=agent_cfg_path,
     )
+    suppress_oauth = active_endpoint is not None
 
     _seed_box_home(
         std=std, proj=proj, target=target, desc=desc,
@@ -2757,6 +2863,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         system_settings_path=system_settings_path,
         project_toml=project_toml, workset_path=workset_path,
         auth_src=auth_src, logger=logger,
+        suppress_oauth=suppress_oauth,
     )
 
 

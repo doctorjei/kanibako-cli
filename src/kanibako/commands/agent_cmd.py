@@ -501,20 +501,30 @@ def run_reauth(args: argparse.Namespace) -> int:
         print("No agent target configured.", file=sys.stderr)
         return 1
 
-    # Auth 3-tier SHARING: resolve the box's SOURCE decision through the auth
-    # chain (single-route — the same launch-snapshot pipeline ``start`` uses), for
-    # the resolved agent. The auth display below gates on whether the box shares.
-    from kanibako.agent_config import agent_settings_path
-    from kanibako.commands.start import _resolve_box_auth_source
-    auth_src = _resolve_box_auth_source(
+    # Auth 3-tier SHARING + rider endpoint: resolve BOTH per-box decisions off ONE
+    # launch snapshot (single-route — the same pipeline ``start`` uses), for the
+    # resolved agent. The auth display below gates on whether the box shares; the
+    # endpoint drives the OAuth-suppress cred fork (block B) so a reauth on an
+    # endpoint-riding box never syncs the Anthropic token into a box pointed at a
+    # third-party endpoint.
+    from kanibako.agent_config import agent_settings_path, load_agent_config
+    from kanibako.commands.start import _resolve_box_launch_decisions
+    agent_cfg_path = agent_settings_path(std.agents, agent_name)
+    reauth_agent_cfg = (
+        load_agent_config(agent_cfg_path) if agent_cfg_path.exists() else None
+    )
+    auth_src, active_endpoint = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
+        target=target,
         agent_name=agent_name,
+        agent_cfg=reauth_agent_cfg,
         system_settings_path=std.settings,
         project_toml=project_toml,
         workset_path=workset_path,
-        agent_cfg_path=agent_settings_path(std.agents, agent_name),
+        agent_cfg_path=agent_cfg_path,
     )
+    suppress_oauth = active_endpoint is not None
 
     if not auth_src.shares:
         # Private box: check project's own credentials instead of the source.
@@ -550,6 +560,7 @@ def run_reauth(args: argparse.Namespace) -> int:
                 credsync.refresh_box_credentials(
                     desc, target, auth=auth_src, host_home=Path.home(),
                     project_home=proj.shell_path,
+                    suppress_oauth=suppress_oauth,
                 )
             else:
                 target.refresh_credentials(proj.shell_path)

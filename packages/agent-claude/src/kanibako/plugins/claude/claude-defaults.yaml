@@ -65,6 +65,14 @@ descriptor:
     - setting_key: model
       channel: flag
       flag: ["--model"]
+    # endpoint (rider): the alternate harness base-URL.  ENV channel -> the
+    # harness-specific ANTHROPIC_BASE_URL (env-var name is HARNESS-specific, so it
+    # lives in the descriptor).  Unset (<None>) emits nothing (bare/harness-default);
+    # set = point claude at a third-party endpoint (paired with the OAuth-suppress
+    # cred fork so the Anthropic token is never sent there).
+    - setting_key: endpoint
+      channel: env
+      env_var: "ANTHROPIC_BASE_URL"
 
   # BOTH claude env vars: DISABLE_AUTOUPDATER (also set by apply_state) AND
   # CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC.
