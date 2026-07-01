@@ -35,6 +35,12 @@ from kanibako.paths import (
     load_std_paths,
     resolve_box_target,
 )
+from kanibako.agent_ref import (
+    canonicalize_agent_ref,
+    display_agent_ref,
+    harness_of,
+    with_harness,
+)
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
@@ -713,11 +719,18 @@ def _run_container(
             container_name_for(proj), "KANIBAKO_AGENT"
         )
         if stored_agent:
-            if explicit_agent is not None and explicit_agent != stored_agent:
+            # KANIBAKO_AGENT stamps a NODE-NAME (canonical ``℘`` form); an
+            # explicit ``--agent`` may still be a raw ``+`` ref. Canonicalise both
+            # to node-form before comparing so pasting the same ref back (with
+            # either separator) is idempotent, not a false mismatch.
+            if explicit_agent is not None and (
+                canonicalize_agent_ref(explicit_agent)
+                != canonicalize_agent_ref(stored_agent)
+            ):
                 raise KanibakoError(
                     f"Box '{proj.name}' is already running agent "
-                    f"'{stored_agent}'; cannot reattach with --agent "
-                    f"'{explicit_agent}'. Stop it first "
+                    f"'{display_agent_ref(stored_agent)}'; cannot reattach with "
+                    f"--agent '{display_agent_ref(explicit_agent)}'. Stop it first "
                     f"(`kanibako stop {proj.name}`) to relaunch with a "
                     f"different agent."
                 )
@@ -742,7 +755,9 @@ def _run_container(
             system_default_path=system_settings_path,
             project_path=proj.project_path,
         )
-        target = resolve_target(agent_name, proj.project_path)
+        # ``agent_name`` is the NODE-name (rider identity); the TARGET/plugin is
+        # keyed by the HARNESS (right of ``℘``; the whole name when bare).
+        target = resolve_target(harness_of(agent_name), proj.project_path)
         logger.debug("Resolved target: %s", target.display_name)
         # First detect: early-out / "is the agent present on the host". The
         # "Using host ...:" line is deferred until after prepare_host() (the
@@ -825,8 +840,13 @@ def _run_container(
         ) is _BOOTSTRAP_MISSING:
             return 1
 
-    # Load agent config
-    agent_id = target.name if target else "general"
+    # Load agent config.  ``agent_id`` is the NODE-name (rider identity), NOT the
+    # bare harness: it keys the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*``
+    # keyspace slot, and the active-agent snapshot discriminator.  ``with_harness``
+    # swaps in the ACTUALLY-resolved target name (so a NoAgent/other fallback is
+    # reflected while the rider persona is preserved).  For a bare agent whose
+    # target resolved as requested, node == harness == target.name -> byte-identical.
+    agent_id = with_harness(agent_name, target.name) if target else "general"
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     if target and not agent_cfg_path.exists():
         # First-use: generate default agent config from target plugin
@@ -871,8 +891,11 @@ def _run_container(
         if runtime.is_running(container_name):
             # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
             # stream we're about to attach to).
-            agent_label = target.name if target else (
-                stored_agent if reattach_running and stored_agent else "shell"
+            # Show the NODE-name (rider identity) in user-facing ``+`` form; a
+            # bare node == harness == target.name, so the label is byte-identical.
+            agent_label = display_agent_ref(agent_id) if target else (
+                display_agent_ref(stored_agent)
+                if reattach_running and stored_agent else "shell"
             )
             print(
                 f"Reattaching to running box '{proj.name}' "
@@ -1387,7 +1410,11 @@ def _run_container(
         # stamped for a real agent launch; no-agent/shell launches (target is
         # None) carry no agent, so the var is left unset.
         if target is not None:
-            container_env["KANIBAKO_AGENT"] = target.name
+            # Stamp the NODE-name (full rider identity), NOT the harness
+            # (``target.name``): the reattach fast-source + stop writeback read
+            # this back and derive the harness via ``harness_of`` where a target
+            # is needed. Bare node == harness == target.name (byte-identical).
+            container_env["KANIBAKO_AGENT"] = agent_id
 
         # Helper hub: start listener before director, mount socket
         hub = None
@@ -2334,7 +2361,9 @@ def _launch_snapshot_inputs(
         from kanibako.targets import resolve_target
 
         try:
-            _desc = resolve_target(agent_name, proj.project_path).descriptor
+            _desc = resolve_target(
+                harness_of(agent_name), proj.project_path
+            ).descriptor
             agent_auth_support = bool(
                 _desc.auth_share_support if _desc is not None else False
             )
@@ -2699,12 +2728,15 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
             system_default_path=system_settings_path,
             project_path=proj.project_path,
         )
-        target = resolve_target(agent_name, proj.project_path)
+        target = resolve_target(harness_of(agent_name), proj.project_path)
     except Exception:  # pragma: no cover - no-agent / unresolved → template-only
         logger.debug("seed_new_box: no agent resolved; template-only seed", exc_info=True)
         target = None
 
-    agent_id = target.name if target else "general"
+    # NODE-name (rider identity) keys the agents/<node>/ dir + agent.<node>.*
+    # slot; with_harness swaps in the actually-resolved target name (fallback-safe),
+    # persona preserved. Bare + as-requested -> node == harness == target.name.
+    agent_id = with_harness(agent_name, target.name) if target else "general"
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     if target and not agent_cfg_path.exists():
         # First-use: generate the default agent config so the seed reconcile

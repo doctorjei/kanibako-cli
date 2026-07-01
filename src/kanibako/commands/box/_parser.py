@@ -28,6 +28,7 @@ from kanibako.paths import (
     resolve_project,
     resolve_standalone_project,
 )
+from kanibako.agent_ref import harness_of, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import container_name_for, short_hash, write_project_gitignore
 
@@ -1159,7 +1160,7 @@ def run_info(args: argparse.Namespace) -> int:
             system_default_path=std.settings,
             project_path=proj.project_path,
         )
-        target = resolve_target(agent_name, proj.project_path)
+        target = resolve_target(harness_of(agent_name), proj.project_path)
         creds_file = target.credential_check_path(proj.shell_path)
     except Exception:
         creds_file = None
@@ -1410,10 +1411,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     system_default_path=std.settings,
                     project_path=proj.project_path,
                 )
-                target = resolve_target(agent_name, proj.project_path)
+                target = resolve_target(harness_of(agent_name), proj.project_path)
             except Exception:
                 target = None
-            agent_id = target.name if target else "general"
+            # NODE-name keys the agent.<node>.* keyspace slot / agents/<node>/ dir
+            # for the --effective display; with_harness reflects the resolved target
+            # (fallback-safe), persona preserved. Bare + as-requested == target.name.
+            agent_id = with_harness(agent_name, target.name) if target else "general"
             agent_cfg_path = agent_settings_path(std.agents, agent_id)
             if target and not agent_cfg_path.exists():
                 agent_cfg = target.generate_agent_config()
