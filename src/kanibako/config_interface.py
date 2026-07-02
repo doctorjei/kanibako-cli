@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.config import (
-    _DEFAULTS,
     coerce_bool,
     load_merged_config,
     load_project_overrides,
@@ -516,6 +515,22 @@ def _scope_direction_error(
     )
 
 
+def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
+    """Thin module-PRIVATE delegate to :func:`kanibako.paths.host_xdg_map`.
+
+    Exists so the ONE canonical XDG-map builder is reachable as a
+    ``config_interface`` attribute (patchable, single-source) WITHOUT a
+    module-load import of ``paths`` (which would cycle: ``config_interface`` ↔
+    ``paths``). Underscored so it is NOT a second PUBLIC import surface for the
+    builder (Editor NIT): the one public builder stays ``paths.host_xdg_map``;
+    this is only the deferred-import hook ``_set_time_ctx`` calls. There is no
+    second hand-rolled XDG map (spec §1 XDG clause + L2 §3).
+    """
+    from kanibako.paths import host_xdg_map
+
+    return host_xdg_map(data_home)
+
+
 def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     """Build the :class:`~kanibako.settings_resolve.ResolveCtx` for the set-time E3
     resolution probe.
@@ -531,22 +546,21 @@ def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
 
     *config* is the Layer-1 ``config.*`` foundation (resolved bootstrap paths) so an
     ``@config.*`` host_src ref routes to the foundation (JC-2), NOT the snapshot.
+
+    The ``$XDG_*`` map is built by the ONE canonical builder
+    :func:`kanibako.paths.host_xdg_map` (spec §1 XDG clause + L2 §3 single-source-
+    of-truth: a hand-rolled per-context map is a bug), reached through the
+    module-private :func:`_host_xdg_map` deferred-import hook (avoids the
+    ``config_interface`` ↔ ``paths`` module-load cycle) so it stays a single
+    source.
     """
-    from kanibako.paths import resolve_xdg, xdg
     from kanibako.settings_resolve import ResolveCtx
 
-    xdg_vars: dict[str, str] = {
-        "XDG_DATA_HOME": str(xdg("XDG_DATA_HOME", ".local/share")),
-        "XDG_CONFIG_HOME": str(xdg("XDG_CONFIG_HOME", ".config")),
-        "XDG_STATE_HOME": str(resolve_xdg("XDG_STATE_HOME", ".local/state")),
-        "XDG_CACHE_HOME": str(resolve_xdg("XDG_CACHE_HOME", ".cache")),
-        "XDG_RUNTIME_DIR": str(resolve_xdg("XDG_RUNTIME_DIR", None)),
-    }
     return ResolveCtx(
         agent_name=None,
         workset_name=None,
         host_home=str(Path.home()),
-        xdg=xdg_vars,
+        xdg=_host_xdg_map(),
         config=config or {},
     )
 
@@ -860,8 +874,26 @@ def get_config_value(
     scope) the existing ``project_toml``/``global_config_path`` paths are used,
     so those scopes keep their own ``settings.yaml`` behavior.  CONFIG
     (``system.*`` layout) reads always use ``global_config_path``.
+
+    GET SEMANTICS (spec §2a is SILENT on read semantics; director's model,
+    2026-07-02): a plain ``get <key>`` returns the value STORED AT THIS NOUN'S
+    settings file (including a downward key it stored), else ``None`` (rendered
+    "(not set)").  It NEVER fabricates a built-in default and NEVER returns
+    another tier's value — that is the ``--effective`` cascade view (the
+    ``show`` path), which is unchanged.  So a settings read here reads the
+    NOUN'S file (``settings_dest`` = ``system_settings_path`` at SYSTEM, else
+    ``project_toml``) — get reads exactly where ``set`` wrote (F5/F6 + the
+    F2/F3-class downward-key sibling: all "get reads where set wrote").
     """
     canonical = _resolve_key(key)
+
+    # The NOUN's settings file — the SAME per-noun selection ``set``/``reset``
+    # use (``settings_dest``): the system settings file at SYSTEM scope, else the
+    # command's own settings file (box/workset ``project_toml``).  A plain get
+    # reads ONLY this file for settings keys.
+    noun_file = (
+        system_settings_path if system_settings_path is not None else project_toml
+    )
 
     # env.* keys — read from env files
     if _is_env_key(canonical):
@@ -911,6 +943,20 @@ def get_config_value(
                 return settings[_DEFAULT_AGENT_LEAF] or None
         return None
 
+    # box.agent.<key> — the box-scoped agent mirror (F5, block B5, spec §2b
+    # L380). SYMMETRIC with the set/reset branches: read the value STORED at the
+    # nested ``box.agent.<key>`` path in the NOUN's settings file (== the box
+    # file at box scope). ``get_config_value`` previously lacked this branch (set
+    # was test-pinned; get untested), so a ``box get box.agent.<key>`` returned
+    # "(not set)" for what ``box set box.agent.<key>`` had just written. Checked
+    # BEFORE the routing table so a ``box.agent.bindings.ro.X`` reads its box
+    # override, not a routing miss. A plain get is stored-at-noun-only (the
+    # cascade fallback to the mirrored ``agent.<box.agent_name>.<key>`` default is
+    # the ``--effective`` view, not this).
+    if _is_box_agent_key(canonical):
+        tail = canonical.split(".")  # ["box", "agent", <key...>, leaf]
+        return _read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
+
     # config.* / system.* path keys — read the raw set-value from the bootstrap
     # config file's [config]/[system] tables (file-only tier; not a merged-config
     # field).
@@ -926,46 +972,59 @@ def get_config_value(
     if route is None:
         return None
 
-    # Keys backed by a flat KanibakoConfig field use the merged config so
-    # defaults + inheritance apply (box.*, allow_helpers, box.share_images).
-    flat = _dot_to_flat(routed)
-    cfg = load_merged_config(global_config_path, project_toml)
-    valid = {fld.name for fld in fields(cfg)}
-    if flat in valid:
-        val = getattr(cfg, flat)
-        if isinstance(val, bool):
-            return str(val).lower()
-        return str(val) if val else None
-
-    # Keys with no flat field (vault.*, *.auth.*) land in [project]/nested — read
-    # the raw set-value from the routed location. (``mode`` is no longer a settable
-    # key — it is the RO identity anchor meta.box.mode, block B1.)
-    # At the SYSTEM scope (system_settings_path supplied) the nested-settings
-    # source is the system SETTINGS file — the file the set path (settings_dest)
-    # writes and the launch cascade's system tier reads (F2: get/set/launch
-    # agree; e.g. ``system.auth.share_allowed``, and downward nested writes).
-    # Box/workset scopes keep their (project_toml, global_config_path) sources.
+    # Read the value STORED AT THIS NOUN (F6 + the F2/F3-class sibling). The OLD
+    # path returned ``getattr(load_merged_config(...), flat)`` — the merged
+    # dataclass, which fabricates the built-in DEFAULT when the noun stored
+    # nothing (the F6 lie: ``box get box.image`` printing the default image) and
+    # folds in the GLOBAL config file (returning another tier's value). Under the
+    # get model a plain get reads ONLY the file ``set`` wrote to, at the routed
+    # ``(sections, leaf)`` slot. Mirror ``set``/``reset``'s ``dest`` selection
+    # EXACTLY: a scope-prefixed SETTINGS key ({system,agent,workset,box}.*,
+    # including a downward key) lands in — and is read from — the NOUN's settings
+    # file (``settings_dest``); a SCOPELESS key (vault.*, allow_helpers) lands in
+    # the command's own config file (``project_toml`` at box/workset,
+    # ``global_config_path`` at SYSTEM). (F2/F3 sibling: a downward ``box.image``
+    # set at the system noun lands in the system settings file and is read back
+    # HERE.) Absent → ``None`` ("(not set)"); the resolved-with-defaults value is
+    # the ``--effective`` cascade (``show``).
     sections, leaf = route
-    nested_fallback = (
-        system_settings_path
-        if system_settings_path is not None
-        else global_config_path
-    )
-    for src in (project_toml, nested_fallback):
-        if src is None or not src.exists():
-            continue
-        node: object = load_doc(src)
-        for sec in sections:
-            if not isinstance(node, dict):
-                node = None
-                break
-            node = node.get(sec)
-        if isinstance(node, dict) and leaf in node:
-            v = node[leaf]
-            if isinstance(v, bool):
-                return str(v).lower()
-            return str(v) if v != "" else None
-    return None
+    if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS:
+        read_file = noun_file
+    else:
+        read_file = (
+            global_config_path if system_settings_path is not None else project_toml
+        )
+    return _read_stored_leaf(read_file, sections, leaf)
+
+
+def _read_stored_leaf(
+    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
+) -> str | None:
+    """Return the value STORED at ``sections/leaf`` in *noun_file* (the get
+    model's stored-at-noun read), or ``None`` when absent / no file.
+
+    A root-level scalar (empty *sections*, e.g. ``allow_helpers``) reads the
+    document root. Bools render lowercase "true"/"false" (matching ``set``'s
+    coercion + ``show``'s rendering); a stored empty string reads as ``None``
+    ("(not set)"), preserving the prior "empty ⇒ unset" convention.
+    """
+    if noun_file is None or not noun_file.exists():
+        return None
+    node: object = load_doc(noun_file)
+    for sec in sections:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(sec)
+    if not isinstance(node, dict) or leaf not in node:
+        return None
+    return _render_stored_scalar(node[leaf])
+
+
+def _render_stored_scalar(v: object) -> str | None:
+    """Render a stored scalar for ``get`` output: bools lowercase, empty → None."""
+    if isinstance(v, bool):
+        return str(v).lower()
+    return str(v) if v != "" else None
 
 
 def set_config_value(
@@ -1282,9 +1341,39 @@ def reset_config_value(
     )
     flat = _dot_to_flat(routed)
     if removed:
-        default_val = _DEFAULTS.get(flat, "(none)")
-        return f"Reset {flat} (reverts to default: {default_val})"
+        return _honest_reset_message(flat, command_scope)
     return f"No override for {flat}"
+
+
+def _honest_reset_message(
+    flat: str, command_scope: "ConfigLevel | None",
+) -> str:
+    """The HONEST ``reset`` confirmation (F7, Jei-ruled 2026-07-02d).
+
+    The behavior is right — clearing a scope override lets the value fall back
+    through the cascade — but the OLD message lied: it printed "reverts to
+    default: <built-in>" even when the fallback lands on a HIGHER-TIER stored
+    default (a workset/system value), not the built-in.  The ruling: say we
+    CLEARED the value set on THIS noun (named from the COMMAND scope, not
+    hardcoded "box"), and — "where cheap" — show the now-effective value + its
+    source tier.
+
+    Here it is NOT cheap: ``reset_config_value`` is not threaded the resolved
+    cascade, so the now-effective value/source is not available without a fresh
+    assembly this seam does not own.  Per the ruling ("where cheap") and
+    evidence honesty, we OMIT the effective value rather than guess a wrong one
+    (the old built-in guess is exactly the lie being fixed).  A caller that
+    holds the cascade can surface the effective value separately.
+    """
+    scope_phrase = (
+        f"the {command_scope.value} scope"
+        if command_scope is not None
+        else "this scope"
+    )
+    return (
+        f"Cleared {flat} set on {scope_phrase}; it now falls back through the "
+        f"cascade."
+    )
 
 
 def write_system_value(config_path: Path, leaf: str, value: object) -> None:

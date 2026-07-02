@@ -630,7 +630,9 @@ class TestWorksetConfig:
         rc = run_reset(reset_args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Reset" in out or "No override" in out
+        # F7 honest message on a successful clear (or "No override" if absent).
+        assert "cleared" in out.lower() or "No override" in out
+        assert "reverts to default" not in out
 
     def test_config_reset_share_allowed(self, config_file, tmp_home, capsys):
         """Resetting the ordinary ``workset.auth.share_allowed`` override removes
@@ -657,7 +659,9 @@ class TestWorksetConfig:
         rc = run_reset(reset_args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Reset" in out or "No override" in out
+        # F7 honest message on a successful clear (or "No override" if absent).
+        assert "cleared" in out.lower() or "No override" in out
+        assert "reverts to default" not in out
 
     def test_config_reset_all(self, config_file, tmp_home, capsys):
         """reset --all clears all overrides."""
