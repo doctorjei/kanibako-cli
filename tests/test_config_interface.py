@@ -1201,8 +1201,12 @@ class TestCrossScopeCascadeConfigSet:
 # ---------------------------------------------------------------------------
 
 class TestScopeDirectionGuard:
-    """A ``config set`` writes ONLY keys in the command scope's OWN namespace;
-    a cross-scope write (and any ``meta.*`` write) is REFUSED (spec §0 / §2a).
+    """A ``config set`` writes keys of the command scope's OWN namespace and of
+    any scope it CONTAINS (``system ⊃ agent ⊃ workset ⊃ box``, command-scope ≥
+    key-scope) — a downward write lands in the COMMAND scope's file, scope token
+    kept, as an overridable default; an UPWARD write (and any ``meta.*`` write)
+    is REFUSED (spec §0 "Directional view/set" + §2a "Scope-direction guard",
+    repaired 2026-07-02).
 
     These exercise ``set_config_value`` directly with an explicit
     ``command_scope`` (the token each command handler threads). When
@@ -1210,7 +1214,7 @@ class TestScopeDirectionGuard:
     the many pre-existing tests that omit it.
     """
 
-    # --- cross-scope writes are REFUSED -----------------------------------
+    # --- UPWARD writes are REFUSED ----------------------------------------
 
     def test_box_scope_refuses_workset_key(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
@@ -1253,17 +1257,23 @@ class TestScopeDirectionGuard:
         assert "system" in msg and "workset" in msg
         assert not f.exists()
 
-    def test_workset_scope_refuses_box_key(self, tmp_path):
+    def test_workset_scope_allows_box_key_downward(self, tmp_path):
+        """DOWNWARD (workset ⊃ box): ``workset config set box.image`` is
+        ACCEPTED and stored in the WORKSET file, nested under the key's own
+        scope token (``box:``) — the form ``assemble_levels`` mirrors as an
+        overridable workset-level default. NOT remapped to any box file."""
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
             "box.image", "img:1",
             config_path=f, command_scope=ConfigLevel.workset,
         )
-        assert msg.startswith("Error:"), msg
-        assert "box" in msg and "workset" in msg
-        assert not f.exists()
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["box"]["image"] == "img:1"
+        # The workset file is the ONLY file written (no key-scope remap).
+        assert [p.name for p in tmp_path.iterdir()] == ["ws-settings.yaml"]
 
     def test_workset_scope_refuses_agent_key(self, tmp_path):
+        # UPWARD: agent CONTAINS workset (system ⊃ agent ⊃ workset ⊃ box).
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
             "agent.claude.bindings.ro.x", "/srv/x",
@@ -1273,24 +1283,76 @@ class TestScopeDirectionGuard:
         assert "agent" in msg
         assert not f.exists()
 
-    def test_system_scope_refuses_box_key(self, tmp_path):
-        f = tmp_path / "kanibako_config.yaml"
+    def test_agent_scope_refuses_system_key(self, tmp_path):
+        """UPWARD (system CONTAINS agent): an agent-scope command may not write
+        a system.* key. (No command handler threads ConfigLevel.agent today —
+        commands/agent_cmd.py bypasses the engine, a noted gap — but the
+        containment table carries the row, so pin its direction.)"""
+        f = tmp_path / "agent-settings.yaml"
         msg = set_config_value(
-            "box.image", "img:1",
-            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+            "system.cache", "/srv/cache",
+            config_path=f, command_scope=ConfigLevel.agent,
         )
         assert msg.startswith("Error:"), msg
-        assert "box" in msg and "system" in msg
+        assert "system" in msg and "agent" in msg
         assert not f.exists()
 
-    def test_system_scope_refuses_workset_key(self, tmp_path):
-        f = tmp_path / "kanibako_config.yaml"
+    def test_system_scope_allows_box_key_downward(self, tmp_path):
+        """DOWNWARD (system ⊃ box): accepted, and stored in the system
+        SETTINGS file (``@config.settings``) with the ``box:`` scope token kept
+        — NOT in the Layer-1 kanibako_config.yaml (spec §1: settings keys never
+        live in the bootstrap config file)."""
+        cf = tmp_path / "kanibako_config.yaml"
+        ssp = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "workset.vault_ro", "/srv/x",
-            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+            "box.image", "img:1",
+            config_path=cf, is_system=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
         )
-        assert msg.startswith("Error:"), msg
-        assert "workset" in msg
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ssp)["box"]["image"] == "img:1"
+        # The Layer-1 config file is untouched.
+        assert not cf.exists()
+
+    def test_system_scope_allows_workset_key_downward(self, tmp_path):
+        """DOWNWARD (system ⊃ workset): a REGISTERED workset key is accepted
+        and nests under ``workset:`` in the system SETTINGS file."""
+        cf = tmp_path / "kanibako_config.yaml"
+        ssp = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.auth.share_allowed", "false",
+            config_path=cf, is_system=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ssp)["workset"]["auth"]["share_allowed"] is False
+        assert not cf.exists()
+
+    def test_system_scope_passes_guard_for_agent_key(self, tmp_path):
+        """DOWNWARD (system ⊃ agent): the direction guard PERMITS an agent.*
+        key from the system scope. No agent.* scalar is registered in
+        _KEY_ROUTES, so the write still fails — but at the REGISTRY (unknown
+        key), never at the direction guard. (The ``agent`` NOUN's engine
+        bypass in commands/agent_cmd.py is a separate, noted gap.)"""
+        cf = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "agent.claude.model", "opus",
+            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+        )
+        assert "cannot be set from the system scope" not in msg
+        # The registry (not the guard) is what rejects it today.
+        assert msg.startswith("Error: unknown config key"), msg
+
+    def test_downward_unknown_key_still_rejected_by_registry(self, tmp_path):
+        """A downward write of an UNREGISTERED key passes the guard but is
+        still rejected as an unknown config key (registry rejection is not
+        relaxed by the containment rule)."""
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "box.no_such_key", "x",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error: unknown config key"), msg
         assert not f.exists()
 
     # --- meta.* is read-only from EVERY scope -----------------------------
@@ -1416,6 +1478,132 @@ class TestScopeDirectionGuard:
             config_path=f, command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
+
+    # --- reset follows the same directional rule ---------------------------
+
+    def test_box_scope_reset_refuses_workset_key(self, tmp_path):
+        """UPWARD reset is refused, symmetric with set."""
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"workset": {"auth": {"share_allowed": False}}})
+        msg = reset_config_value(
+            "workset.auth.share_allowed",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "workset" in msg and "box" in msg
+        # The pre-existing entry is untouched (refused before dispatch).
+        assert load_doc(f)["workset"]["auth"]["share_allowed"] is False
+
+    def test_workset_scope_reset_removes_downward_key_from_workset_file(
+        self, tmp_path
+    ):
+        """DOWNWARD reset removes the key from the COMMAND scope's file."""
+        f = tmp_path / "ws-settings.yaml"
+        set_config_value(
+            "box.image", "img:1",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        msg = reset_config_value(
+            "box.image", config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        doc = load_doc(f)
+        assert "image" not in doc.get("box", {})
+
+    # --- downward CATEGORY writes: guard passes, must-exist still bites -----
+
+    def test_downward_category_key_still_must_exist(self, tmp_path):
+        """A downward category repoint (``workset set box.bindings.rw.X``) now
+        passes the direction guard, but the source-only MUST-EXIST rule is
+        unrelaxed: the key absent from the COMMAND-scope file refuses via
+        ConfigSetError and writes NOTHING. (NOTE, not fixed here: the
+        containment relaxation makes the F10 divergence — code checks
+        exists-in-COMMAND-FILE, spec §2a says exists-in-CASCADE — reachable
+        on the downward path; that is the separately-queued F10 fix.)"""
+        f = tmp_path / "ws-settings.yaml"
+        dump_doc(f, {"workset": {"foo": "bar"}})  # file exists, key absent
+        msg = set_config_value(
+            "box.bindings.rw.newmount", str(tmp_path),
+            config_path=f, cascade_workset_path=f,
+            command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "must already exist" in msg
+        # Nothing was created in the file.
+        assert load_doc(f) == {"workset": {"foo": "bar"}}
+
+
+# ---------------------------------------------------------------------------
+# workset-defaults-box cascade (the §0 downward-default ruling, end-to-end)
+# ---------------------------------------------------------------------------
+
+class TestWorksetDefaultsBoxCascade:
+    """The §0 ruling end-to-end (Jei 2026-07-02): ``workset config set
+    box.image`` stores the key in the WORKSET yaml (scope token kept) → the
+    launch snapshot resolves it for the workset's boxes → a box-level set of
+    the same key OVERRIDES it (contained scope wins) → a box-level reset falls
+    back to the workset default.
+
+    Mutation-proof: step 1 asserts the workset file is the ONLY file written,
+    and the final fallback assertion fails if the workset-scope write had
+    landed in the box file (the box reset would then drop it to the floor
+    default, not the workset value)."""
+
+    @staticmethod
+    def _snapshot_image(ws, box):
+        """Resolve ``box.image`` through the REAL launch snapshot (assemble →
+        merge → expand) over the two settings files, with a floor default
+        underneath (so a wrong-file write is distinguishable from fallback)."""
+        from kanibako.settings_launch import build_launch_snapshot
+        from kanibako.settings_resolve import ResolveCtx
+
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None,
+            host_home="/home/host", xdg={},
+        )
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=None, agent_path=None,
+            workset_path=ws, box_path=box,
+            default_categories={"box.image": "floor-img:0"},
+        )
+        return snap.box.image
+
+    def test_workset_default_resolves_overrides_and_falls_back(self, tmp_path):
+        ws = tmp_path / "ws-settings.yaml"
+        box = tmp_path / "box-settings.yaml"
+
+        # 1. workset-scope downward set → stored in the WORKSET yaml under the
+        #    key's own scope token; the box file is NOT created (no remap).
+        msg = set_config_value(
+            "box.image", "ws-img:1",
+            config_path=ws, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ws)["box"]["image"] == "ws-img:1"
+        assert not box.exists()
+
+        # 2. The launch snapshot resolves the workset value for the box
+        #    (workset level beats the floor default).
+        assert self._snapshot_image(ws, box) == "ws-img:1"
+
+        # 3. A box-level set of the SAME key overrides the workset default
+        #    (box is the most-specific cascade level).
+        msg = set_config_value(
+            "box.image", "box-img:2",
+            config_path=box, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(box)["box"]["image"] == "box-img:2"
+        assert self._snapshot_image(ws, box) == "box-img:2"
+
+        # 4. Box-level reset → falls BACK to the workset default (not the
+        #    floor). Fails if step 1's write had landed in the box file.
+        msg = reset_config_value(
+            "box.image", config_path=box, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert self._snapshot_image(ws, box) == "ws-img:1"
 
 
 # ---------------------------------------------------------------------------
