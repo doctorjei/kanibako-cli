@@ -298,6 +298,25 @@ def test_present_none_category_leaf_omitted() -> None:
     assert _probe(snap, "system", "caches", "pip") is _MISSING
 
 
+def test_present_none_lone_subtree_category_omitted_scalar_kept() -> None:
+    # The LONE-subtree case (only ONE level sets the containing subtree): the §3
+    # type-split must STILL fire on its leaves. A category present-None inside a
+    # single-setter subtree is OMITTED; a scalar present-None in the SAME subtree is
+    # KEPT. (Before the recursion-always merge fix, a lone KeyStore winner was
+    # deep-copied VERBATIM, so its present-None leaves survived un-classified — the
+    # F8 latent crash when a box.agent null had no co-setting default.)
+    lone = KeyStore(
+        {"agent": {"claude": {
+            "seeded": {"x": None},   # category leaf None → OMIT
+            "model": None,           # scalar None → KEEP
+        }}}
+    )
+    snap = merge([lone])
+    assert _probe(snap, "agent", "claude", "seeded", "x") is _MISSING  # OMITTED
+    # The seeded subtree survives (now empty of x); the scalar None is kept.
+    assert _probe(snap, "agent", "claude", "model") is None  # KEPT
+
+
 def test_present_none_masks_unmasked() -> None:
     # workset masks a path; box sets it to None → UNMASK (omitted). A sibling
     # mask survives. masks rides the generic merge (§6f).

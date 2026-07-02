@@ -140,11 +140,16 @@ def _merge_nodes(
         # setters is non-empty (name came from the union of set names).
         winning_val = setters[0][1]
 
-        # RECURSE only when the winner is a subtree AND at least one LOWER setter is
-        # also a subtree (§6e). A lower non-subtree value at this name is shadowed by
-        # the higher subtree.
+        # RECURSE whenever the winner is a subtree — ALWAYS, not only when a LOWER
+        # setter is also a subtree (§6e). Recursing a LONE subtree winner too is what
+        # carries the §3 present-None type-split into its leaves (a present-None
+        # category/masks leaf under a subtree that ONLY ONE level sets must still be
+        # OMITted — see _resolve_present_none). The recursion also yields a fresh,
+        # non-aliasing node (S15), so it subsumes the old single-subtree deep-copy
+        # branch. A lower non-subtree setter at this name is shadowed by the higher
+        # subtree (filtered out of *subtrees*), unchanged.
         subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
-        if isinstance(winning_val, KeyStore) and len(subtrees) > 1:
+        if isinstance(winning_val, KeyStore):
             out[name] = _merge_nodes(
                 subtrees,
                 path=(*path, name),
@@ -159,14 +164,8 @@ def _merge_nodes(
             out[name] = None  # scalar present-None → KEEP None (consumer default).
             continue
 
-        # A KeyStore winner with NO lower subtree to union (the recursion branch did
-        # not fire) is still a SUBTREE: deep-copy it so the snapshot never ALIASES an
-        # input partial (S15 — the snapshot must be a fresh tree, immune to a later
-        # in-place edit leaking back into a partial). A non-KeyStore leaf is
-        # immutable (Bind tuple / str / int / bool / None) or a fresh ``list`` ref.
-        if isinstance(winning_val, KeyStore):
-            out[name] = _deep_copy_store(winning_val)
-            continue
+        # A non-KeyStore leaf: immutable (Bind tuple / str / int / bool) or a fresh
+        # ``list`` ref — the snapshot must never ALIAS an input partial (S15).
         if isinstance(winning_val, list):
             out[name] = list(winning_val)  # fresh list — never alias the input.
             continue

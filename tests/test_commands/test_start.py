@@ -2181,10 +2181,6 @@ class TestApplyInitSeeds:
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="box.agent.* category suppression — queued follow-up block",
-    )
     def test_box_suppresses_target_default_seed(self, tmp_path):
         """A box-level present-None (``null``) suppresses the target-declared
         default seed (the KeyStore merge suppression idiom, §3/§6e — present-None
@@ -2193,15 +2189,12 @@ class TestApplyInitSeeds:
         Director ruling (F8, 2026-07-02): the capability is spec-implied — the
         §2b ``box.agent.*`` mirror is THE sanctioned route for a box tweaking its
         agent (a box file may NOT set ``agent.<name>.*`` directly: an upward
-        write, dropped at RESOLVE per spec §0 clause 4). Re-pointed to the legal
-        ``box.agent.seeded.x: null`` route — but the mirror is not yet
-        category-aware: ``snapshot_category_entries`` reads only the effective
-        agent node, so the suppression does not flow through; worse, the mirror's
-        present-None leaf currently reaches the category collector, which RAISES
-        ``SettingsError`` ("category agent.seeded.x is NoneType, expected a
-        Bind") — the latent present-None collector bug found in the F8 review.
-        The category-awareness fix is a QUEUED follow-up block; strict xfail
-        forces that block to un-xfail this pin.
+        write, dropped at RESOLVE per spec §0 clause 4). Routed to the legal
+        ``box.agent.seeded.x: null`` route: the box.agent.* CATEGORY tweaks fold
+        into ``agent.<active>`` at box precedence PRE-merge
+        (``_box_agent_category_fold``), so the present-None OMITs the target seed
+        AT MERGE (the §3 type-split) — one route, no post-expand overlay, no
+        collector raise.
         """
         from types import SimpleNamespace
         shell = self._shell(tmp_path)
