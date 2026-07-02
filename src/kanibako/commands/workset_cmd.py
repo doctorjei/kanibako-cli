@@ -971,6 +971,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     joined under the working set root; an absolute host_src passes through; the
     default workset has no root, so relative paths are not joined.
     """
+    from kanibako.paths import host_xdg_map
     from kanibako.settings_assemble import assemble_levels
     from kanibako.settings_expand import expand
     from kanibako.settings_launch import snapshot_category_entries
@@ -984,12 +985,14 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         scope_roots["workset.bindings.rw"] = ws_root
 
     # Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` → ``ctx.config``
-    # foundation; Layer-2 ``system.*`` → the snapshot floor.
+    # foundation; Layer-2 ``system.*`` → the snapshot floor.  The xdg map is the
+    # canonical FULL host map (a data-home-only partial map raised on stored
+    # ``$XDG_CACHE_HOME/...`` values), anchored on the resolved ``std.data_home``.
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None if ws.is_default else ws.name,
         host_home=str(Path.home()),
-        xdg={"XDG_DATA_HOME": str(std.data_home)},
+        xdg=host_xdg_map(std.data_home),
         config={
             "config.data": str(std.data),
             "config.agents": str(std.agents),

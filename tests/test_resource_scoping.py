@@ -371,3 +371,102 @@ class TestBuildEffectiveState:
             goose, agent_cfg, project_toml, global_config_path=None
         )
         assert res_goose["model"] == "haiku"  # default tier applies
+
+
+class TestXdgFallbackRegression:
+    """Stored ``$XDG_*`` values must expand through the ``config --effective``
+    behavior-snapshot ctx — the 2026-07-02 live-dogfood XDG-fallback bug.
+
+    Pre-fix, ``start._effective_behavior_for_display`` built its ResolveCtx with
+    ``xdg={}``, so ANY stored ``$XDG_CACHE_HOME/...`` value (e.g. the
+    setup-materialized ``system.cache`` in a 1.6.0-era global config, expanded
+    eagerly by the strict launch-snapshot pipeline) raised ``Variable
+    $XDG_CACHE_HOME is not set in this context`` — even with the env var
+    exported, because the resolver reads ONLY the ctx map, never the
+    environment.  The fix routes every host-side ResolveCtx through the
+    canonical ``paths.host_xdg_map()`` (Jei ruling: XDG vars have fallbacks).
+
+    All three tests were verified to FAIL on the pre-fix baseline
+    (``SettingsError: Variable $XDG_CACHE_HOME is not set in this context``)
+    and pass with the fix.
+    """
+
+    def _seeded_setup(self, tmp_path):
+        """Build a target + stored configs carrying raw ``$XDG_CACHE_HOME``.
+
+        The global config mirrors the live carrier state: the
+        setup-materialized ``system.cache`` entry (the value that crashed the
+        launch) PLUS a declared behavior key with the same token, so the
+        expanded value is assertable end-to-end through the display read.
+        """
+        from kanibako.config import write_project_meta
+
+        target = MagicMock()
+        target.setting_descriptors.return_value = [
+            TargetSetting(key="cache_probe", description="Probe", default="unset"),
+        ]
+        target.name = "claude"
+
+        global_toml = tmp_path / "kanibako_config.yaml"
+        global_toml.write_text(
+            "system:\n"
+            "  cache: $XDG_CACHE_HOME/kanibako\n"
+            "agent:\n"
+            "  claude:\n"
+            "    cache_probe: $XDG_CACHE_HOME/kanibako/probe\n"
+        )
+
+        proj_dir = tmp_path / "proj"
+        proj_dir.mkdir()
+        project_toml = proj_dir / "settings.yaml"
+        write_project_meta(
+            project_toml,
+            mode="primary",
+            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
+        )
+        return target, AgentConfig(), project_toml, global_toml
+
+    def test_stored_xdg_cache_value_with_env_var_set(self, tmp_path, monkeypatch):
+        """THE dogfood repro (map-not-env): the env var IS exported, yet the
+        pre-fix ctx still raised — its map simply lacked the key.  With the fix
+        the stored value expands to the env var's value."""
+        from kanibako.commands.start import _effective_behavior_for_display
+
+        monkeypatch.setenv("XDG_CACHE_HOME", "/custom/cache")
+        target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
+
+        result = _effective_behavior_for_display(
+            target, agent_cfg, project_toml, global_config_path=global_toml
+        )
+        assert result["cache_probe"] == "/custom/cache/kanibako/probe"
+
+    def test_stored_xdg_cache_value_env_unset_falls_back(self, tmp_path, monkeypatch):
+        """Unset env var → the stored value expands to the XDG-spec default
+        ``<home>/.cache/...`` instead of raising."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _effective_behavior_for_display
+
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
+
+        result = _effective_behavior_for_display(
+            target, agent_cfg, project_toml, global_config_path=global_toml
+        )
+        expected = str(Path.home() / ".cache" / "kanibako" / "probe")
+        assert result["cache_probe"] == expected
+
+    def test_stored_xdg_cache_value_env_empty_falls_back(self, tmp_path, monkeypatch):
+        """An EMPTY env var is as good as unset (per the spec) → default."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _effective_behavior_for_display
+
+        monkeypatch.setenv("XDG_CACHE_HOME", "")
+        target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
+
+        result = _effective_behavior_for_display(
+            target, agent_cfg, project_toml, global_config_path=global_toml
+        )
+        expected = str(Path.home() / ".cache" / "kanibako" / "probe")
+        assert result["cache_probe"] == expected

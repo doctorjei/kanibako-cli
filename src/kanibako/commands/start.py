@@ -2276,6 +2276,7 @@ def _effective_behavior_for_display(
     early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
     """
     from kanibako import settings_launch
+    from kanibako.paths import host_xdg_map
     from kanibako.settings_resolve import ResolveCtx
 
     descriptors = target.setting_descriptors()
@@ -2293,11 +2294,15 @@ def _effective_behavior_for_display(
     # ``target.name`` when a caller omits the node (legacy / test convenience).
     active = node_name if node_name is not None else target.name
 
+    # Canonical host XDG map (never a partial one): stored settings-file values
+    # (e.g. a 1.6.0-era ``$XDG_CACHE_HOME/...`` cache entry) expand through this
+    # ctx too, and the resolver reads ONLY the map — an empty map raised
+    # "Variable $XDG_CACHE_HOME is not set in this context" here.
     ctx = ResolveCtx(
         agent_name=active,
         workset_name=None,
         host_home=str(Path.home()),
-        xdg={},
+        xdg=host_xdg_map(),
     )
     # Behavior-only snapshot: the scope settings files (box/workset/system) feed
     # their discriminated agent tables; the floor folds in as agent.default.* and
@@ -2543,18 +2548,21 @@ def _launch_snapshot_inputs(
         else None
     )
     from kanibako import settings_launch as settings_launch_module
-    from kanibako.paths import ProjectError
+    from kanibako.paths import ProjectError, host_xdg_map
     from kanibako.settings_resolve import ResolveCtx
 
     # Resolver SPLIT (spec §1A / JC-2): the Layer-1 ``config.*`` foundation goes
     # into ``ctx.config`` (so ``@config.*`` category refs route THERE, not the
     # snapshot); the Layer-2 ``system.*`` path settings stay folded into the
     # snapshot floor (``resolved_sys``) so ``@system.*`` resolves from it.
+    # The xdg map is the canonical FULL host map (a data-home-only partial map
+    # raised on stored ``$XDG_CACHE_HOME/...`` values), anchored on the resolved
+    # ``std.data_home``.
     ctx = ResolveCtx(
         agent_name=agent_name,
         workset_name=workset_name,
         host_home=str(Path.home()),
-        xdg={"XDG_DATA_HOME": str(std.data_home)},
+        xdg=host_xdg_map(std.data_home),
         config={
             "config.data": str(std.data),
             "config.agents": str(std.agents),
