@@ -702,9 +702,8 @@ class TestH2BoolCoercion:
 def _seed_default_agent(path, name):
     """Programmatically write system.default_agent (the path setup uses).
 
-    The CLI now REFUSES to set system.default_agent (W1 file-only), so tests
-    that need a stored default seed it directly into the agent.default table —
-    exactly what config.read_default_agent reads back.
+    Writes the agent.default table — exactly what config.read_default_agent
+    reads back and where the CLI ``set`` now also writes (F3).
     """
     from kanibako.config_interface import _write_nested_toml_key
 
@@ -712,31 +711,32 @@ def _seed_default_agent(path, name):
 
 
 class TestSystemDefaultAgent:
-    """system.default_agent: a host-global system.* value (W1).
+    """system.default_agent: a SETTINGS key (F3 — the old ALL-system.*
+    FILE-ONLY pin is deliberately flipped).
 
-    The CLI READS/SHOWS it (from the settings tier's agent.default table) but
-    REFUSES to set/reset it — it is FILE-ONLY along with the rest of system.*.
-    setup writes it programmatically.  config.read_default_agent reads it back.
+    set/reset route to the settings tier's ``agent.default`` table — the exact
+    location ``config.read_default_agent`` (the launch reader) and ``setup``
+    already use — so set → get → launch agree on one storage location.
     """
 
-    def test_set_refused_file_only(self, tmp_path):
-        cf = tmp_path / "kanibako_config.yaml"
-        msg = set_config_value("system.default_agent", "claude", config_path=cf)
-        assert msg.startswith("Error:")
-        assert "structural config key" in msg
-        assert str(cf) in msg
-        # Nothing was written.
-        assert not cf.exists()
-
-    def test_reset_refused_file_only(self, tmp_path):
-        cf = tmp_path / "kanibako_config.yaml"
-        _seed_default_agent(cf, "claude")
-        msg = reset_config_value("system.default_agent", config_path=cf)
-        assert msg.startswith("Error:")
-        assert "structural config key" in msg
-        # The seeded value survives the refused reset.
+    def test_set_writes_the_settings_tier(self, tmp_path):
         from kanibako.config import read_default_agent
-        assert read_default_agent(cf) == "claude"
+
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value("system.default_agent", "claude", config_path=f)
+        assert not msg.startswith("Error:"), msg
+        # Stored exactly where the shipped reader reads.
+        assert load_doc(f)["agent"]["default"]["default_agent"] == "claude"
+        assert read_default_agent(f) == "claude"
+
+    def test_reset_removes_the_setting(self, tmp_path):
+        from kanibako.config import read_default_agent
+
+        f = tmp_path / "settings.yaml"
+        _seed_default_agent(f, "claude")
+        msg = reset_config_value("system.default_agent", config_path=f)
+        assert not msg.startswith("Error:"), msg
+        assert read_default_agent(f) is None
 
     def test_get_reads_programmatic_write(self, tmp_path):
         from kanibako.config import read_default_agent
@@ -756,32 +756,48 @@ class TestSystemDefaultAgent:
 
 
 class TestSystemConfigFileOnly:
-    """W1: ALL system.*-prefixed keys are FILE-ONLY (CLI set/reset refused).
+    """The STRUCTURAL system.* path-tier family is FILE-ONLY (F2 narrowing:
+    the old ALL-system.* catch-all is deliberately flipped).
 
-    config == system.* (structural layout + host-global default_agent); the CLI
-    reads/shows them but refuses to write, pointing at the config file.
-    system.default_agent now joins this rule (no longer a CLI-settable SETTING).
+    Only the ``SYSTEM_PATH_DEFAULTS`` family (+ ``system.setup_completed``,
+    whose shipped reader reads the config file) is refused, pointing at the
+    REAL resolved bootstrap config file.  Retired key names (``system.data``
+    → ``config.data``) and settings keys are NOT this family.
     """
 
-    def test_set_system_config_key_refused(self, tmp_path):
+    def test_set_structural_system_key_refused(self, tmp_path):
         cf = tmp_path / "kanibako_config.yaml"
         for key in (
-            "system.data", "system.agents", "system.channels.commons",
-            "system.default_agent",
+            "system.cache", "system.backup", "system.channelroot",
+            "system.base_template", "system.runtime",
+            "system.channels.commons", "system.setup_completed",
         ):
             msg = set_config_value(key, "x", config_path=cf)
             assert msg.startswith("Error:"), key
             assert "structural config key" in msg
-            assert str(cf) in msg  # pointer to the file
+            # The advice names the REAL bootstrap config file (the [system]
+            # table resolve_system_paths reads) — never the command scope's
+            # settings file.
+            assert "kanibako_config.yaml" in msg
         # Nothing was written to the file.
         assert not cf.exists()
 
-    def test_reset_system_config_key_refused(self, tmp_path):
+    def test_reset_structural_system_key_refused(self, tmp_path):
         cf = tmp_path / "kanibako_config.yaml"
-        for key in ("system.data", "system.default_agent"):
+        for key in ("system.cache", "system.setup_completed"):
             msg = reset_config_value(key, config_path=cf)
             assert msg.startswith("Error:"), key
             assert "structural config key" in msg
+
+    def test_retired_system_key_is_unknown_not_structural(self, tmp_path):
+        """``system.data`` was RENAMED to ``config.data`` (block #3a): it is
+        not in the structural family, so it is an unknown key — pointing a
+        user at the config file for a key the resolver drops would be the
+        exact wrong-file advice F2 eliminates."""
+        cf = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value("system.data", "x", config_path=cf)
+        assert msg.startswith("Error: unknown config key"), msg
+        assert not cf.exists()
 
     def test_set_config_foundation_key_refused_every_scope(self, tmp_path):
         """Block B2: ``config.*`` keys are refused via ``config set`` at EVERY
@@ -819,8 +835,11 @@ class TestSystemConfigFileOnly:
         from kanibako.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
-        _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
-        assert get_config_value("system.data", global_config_path=cf) == "/custom/data"
+        _write_nested_toml_key(cf, ("system",), "cache", "/custom/cache")
+        assert (
+            get_config_value("system.cache", global_config_path=cf)
+            == "/custom/cache"
+        )
 
     def test_non_system_key_still_settable_at_global_tier(self, tmp_path):
         """Narrow scope (a): only system.*-prefixed keys are refused.  A
@@ -856,19 +875,19 @@ class TestSystemSettingsTierSplit:
     ``global_config_path`` (which remain the CONFIG file for ``system.*``).
     """
 
-    def test_default_agent_set_refused_even_with_settings_path(self, tmp_path):
+    def test_default_agent_set_routes_to_settings_file(self, tmp_path):
+        """F3 flip: the set SUCCEEDS and lands in the system SETTINGS file's
+        agent.default table — never the kanibako_config.yaml CONFIG file."""
         cf = tmp_path / "kanibako_config.yaml"        # CONFIG file
         ssp = tmp_path / "global" / "settings.yaml"  # SETTINGS file
+        ssp.parent.mkdir(parents=True, exist_ok=True)
         msg = set_config_value(
             "system.default_agent", "claude",
             config_path=cf, system_settings_path=ssp,
         )
-        # W1: system.default_agent is FILE-ONLY — refused at the CLI regardless
-        # of scope (the settings path doesn't unlock the write).
-        assert msg.startswith("Error:")
-        assert "structural config key" in msg
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ssp)["agent"]["default"]["default_agent"] == "claude"
         assert not cf.exists()
-        assert not ssp.exists()
 
     def test_default_agent_reads_from_settings_file(self, tmp_path):
         from kanibako.config import read_default_agent
@@ -901,34 +920,35 @@ class TestSystemSettingsTierSplit:
         ) == "gpt-5"
 
     def test_system_config_key_stays_in_config_file(self, tmp_path):
-        """system.* CONFIG read uses global_config_path (kanibako_config.yaml), even
-        when a settings file is supplied — config/settings stay separate."""
+        """STRUCTURAL system.* CONFIG read uses global_config_path
+        (kanibako_config.yaml), even when a settings file is supplied —
+        config/settings stay separate."""
         from kanibako.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        _write_nested_toml_key(cf, ("system",), "data", "/custom/data")
+        _write_nested_toml_key(cf, ("system",), "cache", "/custom/cache")
         assert get_config_value(
-            "system.data", global_config_path=cf, system_settings_path=ssp,
-        ) == "/custom/data"
+            "system.cache", global_config_path=cf, system_settings_path=ssp,
+        ) == "/custom/cache"
         # The settings file was never touched by a CONFIG read.
         assert not ssp.exists()
 
-    def test_reset_default_agent_refused_keeps_settings_file(self, tmp_path):
+    def test_reset_default_agent_removes_from_settings_file(self, tmp_path):
+        """F3 flip: reset removes the setting from the SETTINGS file (where the
+        launch reader looks), leaving the CONFIG file untouched."""
         from kanibako.config import read_default_agent
         from kanibako.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        # Seed programmatically (CLI set is refused).
         _write_nested_toml_key(ssp, ("agent", "default"), "default_agent", "claude")
         msg = reset_config_value(
             "system.default_agent", config_path=cf, system_settings_path=ssp,
         )
-        # W1: reset of system.* is refused too — the value survives.
-        assert msg.startswith("Error:")
-        assert "structural config key" in msg
-        assert read_default_agent(ssp) == "claude"
+        assert not msg.startswith("Error:"), msg
+        assert read_default_agent(ssp) is None
+        assert not cf.exists()
 
     def test_reset_all_clears_settings_and_config_separately(self, tmp_path):
         from kanibako.config_interface import _write_nested_toml_key
@@ -1073,10 +1093,13 @@ class TestCategoryConfigSet:
         assert load_doc(f)["system"]["caches"]["x"] == ["/tmp", "/home/agent/.cache/x"]
 
     def test_structural_system_key_still_refused(self, tmp_path):
-        """A real structural system.* config key is still file-only refused."""
+        """A real structural system.* config key is still file-only refused.
+
+        (``system.data`` is a RETIRED name — ``config.data`` — so the pin uses
+        a live SYSTEM_PATH_DEFAULTS member; F2 narrowed the family.)"""
         f = tmp_path / "kanibako_config.yaml"
-        dump_doc(f, {"system": {"data": "/x"}})
-        msg = set_config_value("system.data", "/tmp", config_path=f, is_system=True)
+        dump_doc(f, {"system": {"cache": "/x"}})
+        msg = set_config_value("system.cache", "/tmp", config_path=f, is_system=True)
         assert msg.startswith("Error:")
         assert "structural" in msg
 

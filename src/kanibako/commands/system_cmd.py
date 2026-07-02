@@ -232,10 +232,18 @@ def run_show(args: argparse.Namespace) -> int:
 def _run_system_config(args: argparse.Namespace) -> int:
     """Shared global-config engine dispatch.
 
-    The SYSTEM scope keeps CONFIG (``system.*`` layout) in the
-    ``~/.config/kanibako_config.yaml`` CONFIG file (``cf``) and routes behavior SETTINGS
-    (``system.default_agent`` + agent settings) to ``@config.settings`` =
-    ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg.
+    The SYSTEM scope keeps STRUCTURAL CONFIG (the ``system.*`` path-tier
+    family) in the ``~/.config/kanibako_config.yaml`` CONFIG file (``cf``) and
+    routes SETTINGS (``system.default_agent``, the ``system.auth.*`` chain,
+    agent settings, downward scope defaults) to ``@config.settings`` =
+    ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
+    the same file the launch cascade's system tier reads (F2/F3).
+
+    The system-tier ENV file is ``@config.data/env`` (``env_sys``) — the exact
+    file the launch env layering reads as its system tier (start.py
+    ``global_env_path = std.data_path / "env"``; precedence system < agent <
+    workset < box), threaded into every verb so ``system set env.X`` lands
+    where the launch reads it.
     """
     from kanibako.paths import load_std_paths
 
@@ -244,6 +252,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # The system SETTINGS file (separate from the kanibako_config.yaml CONFIG file).
     std = load_std_paths(load_config(cf))
     ssp = std.settings
+    # The system-tier env file (mirrors the launch's system env source).
+    env_sys = std.data_path / "env"
 
     from kanibako.config_interface import (
         ConfigAction,
@@ -262,7 +272,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     # --reset --all
     if args.reset and getattr(args, "all_keys", False):
-        msg = reset_all(config_path=cf, force=args.force, system_settings_path=ssp)
+        msg = reset_all(
+            config_path=cf, env_path=env_sys, force=args.force,
+            system_settings_path=ssp,
+        )
         print(msg)
         return 0
 
@@ -277,7 +290,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # Ensure the system settings dir exists for SETTINGS removals.
         ssp.parent.mkdir(parents=True, exist_ok=True)
         msg = reset_config_value(
-            key, config_path=cf, system_settings_path=ssp,
+            key, config_path=cf, env_path=env_sys, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
         if msg.startswith("Error:"):
@@ -291,6 +304,9 @@ def _run_system_config(args: argparse.Namespace) -> int:
         show_config(
             global_config_path=cf,
             config_path=cf,
+            # The system env file IS this level's own env tier: env_project is
+            # the "this level's overrides" slot (shown by the plain view too).
+            env_project=env_sys,
             effective=args.effective,
             system_settings_path=ssp,
         )
@@ -301,7 +317,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
         if not is_known_key(key):
             print(f"Error: unknown config key: {key}", file=sys.stderr)
             return 1
-        val = get_config_value(key, global_config_path=cf, system_settings_path=ssp)
+        val = get_config_value(
+            key, global_config_path=cf, env_global=env_sys,
+            system_settings_path=ssp,
+        )
         if val is None:
             print(f"{key}: (not set)")
         else:
@@ -318,7 +337,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # so cf goes in the system slot for sibling @-refs; the resolved system.*
         # config tier is folded in as the FLOOR regardless.
         msg = set_config_value(
-            key, value, config_path=cf, is_system=True, system_settings_path=ssp,
+            key, value, config_path=cf, env_path=env_sys, is_system=True,
+            system_settings_path=ssp,
             cascade_system_path=cf,
             command_scope=ConfigLevel.system,
         )

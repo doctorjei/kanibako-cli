@@ -1428,7 +1428,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             if target is not None and agent_cfg is not None:
                 agent_state = _effective_behavior_for_display(
                     target, agent_cfg, project_toml,
-                    global_config_path=std.settings,
+                    system_settings_path=std.settings,
                     workset_config_path=workset_path,
                     node_name=agent_id,
                 )
