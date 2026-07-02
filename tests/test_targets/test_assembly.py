@@ -482,7 +482,7 @@ def _claude_endpoint_descriptor() -> PluginDescriptor:
 
 def test_env_claude_endpoint_emits_base_url_when_set() -> None:
     # Block B: endpoint (ENV channel) → ANTHROPIC_BASE_URL when the resolved
-    # agent.<node>.endpoint is set (a rider pointing at an alternate endpoint).
+    # agent.<node>.endpoint is set (a persona pointing at an alternate endpoint).
     d = _claude_endpoint_descriptor()
     env = assemble_env(
         d, safe_mode_off=True,

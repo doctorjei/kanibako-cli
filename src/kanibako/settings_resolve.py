@@ -47,11 +47,11 @@ GUEST_HOME = "/home/agent"
 MAX_REF_DEPTH = 64
 
 _VAR_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-# The ``@``-ref name grammar MUST admit the rider node-separator ``℘`` (U+2118,
-# ``agent_ref.CANONICAL_SEP``) so a rider node-name segment resolves as ONE ref
+# The ``@``-ref name grammar MUST admit the persona node-separator ``℘`` (U+2118,
+# ``agent_ref.CANONICAL_SEP``) so a persona node-name segment resolves as ONE ref
 # component (``@meta.agent.navigator℘claude.auth.share_support`` — a whole key,
 # not truncated at ``℘`` to the garbage ``…navigator``, which fed a bad literal
-# into ``as_bool`` and crashed every rider launch). NARROW addition only: ``℘``
+# into ``as_bool`` and crashed every persona launch). NARROW addition only: ``℘``
 # is added to both dotted-segment char classes; a broad ``[^\s@]+`` is REJECTED
 # (it would swallow ``/`` and break embedded ``@config.data/...`` path refs).
 _REF_SEG = f"[A-Za-z0-9_{CANONICAL_SEP}]+"

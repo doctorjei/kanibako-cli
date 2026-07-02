@@ -1,4 +1,4 @@
-"""Agent-ref parsing: the ``persona+harness`` selection grammar (rider MVP).
+"""Agent-ref parsing: the ``persona+harness`` selection grammar (persona MVP).
 
 An ``--agent`` value is a *ref* that names an agent as ``persona+harness`` —
 for example ``navigator+claude``.  This module is the single, dependency-light,
@@ -10,7 +10,8 @@ Terminology (design SOT ``plans/2026-06-24-agent-variant-DESIGN.md``):
 
 * **harness** — the agent runtime/plugin, right of the separator (``claude``).
   Resolves the target/plugin (``resolve_target`` / ``discover_targets`` key).
-* **persona** — the identity, left of the separator (``navigator``).
+* **persona** — the identity, left of the separator (``navigator``); a node
+  whose persona name differs from its harness is itself called *a persona*.
 * **node-name** — the canonical fused form ``persona℘harness`` (``navigator℘claude``).
   This is the on-disk ``agents/<node>/`` dir and the keyspace ``agent.<node>.*``
   slot.  It is what ``resolve_agent`` returns and what ``KANIBAKO_AGENT`` stamps.
@@ -23,7 +24,7 @@ follows, verbatim, and is likewise separator-checked).
 
 Backward compatibility (LOAD-BEARING): a bare ref with no separator (``claude``)
 parses to ``(raw, raw)`` — node == harness == the bare name — so every bare path
-is byte-for-byte identical to pre-rider behaviour.
+is byte-for-byte identical to pre-persona behaviour.
 """
 
 from __future__ import annotations
@@ -126,16 +127,16 @@ def harness_of(node: str) -> str:
 def with_harness(node: str, harness: str) -> str:
     """Return *node* with its harness segment REPLACED by *harness*.
 
-    Preserves the persona (left of ``℘``) while swapping the harness — used when
+    Preserves the persona name (left of ``℘``) while swapping the harness — used when
     the actually-RESOLVED target differs from the requested harness (e.g. the
     ``NoAgentTarget`` fallback when a named agent's binary is absent), so the
     on-disk ``agents/<node>/`` dir + keyspace slot follow the real target.
 
     * bare node (``"claude"``, harness ``"claude"``) -> ``"claude"`` (unchanged);
     * bare node, fallback harness (``"claude"``, ``"no_agent"``) -> ``"no_agent"``;
-    * rider node (``"navigator℘claude"``, ``"claude"``) -> ``"navigator℘claude"``;
-    * rider node, fallback (``"navigator℘claude"``, ``"no_agent"``) ->
-      ``"navigator℘no_agent"`` (persona kept, harness swapped).
+    * persona node (``"navigator℘claude"``, ``"claude"``) -> ``"navigator℘claude"``;
+    * persona node, fallback (``"navigator℘claude"``, ``"no_agent"``) ->
+      ``"navigator℘no_agent"`` (persona name kept, harness swapped).
     """
     persona, sep, _ = node.rpartition(CANONICAL_SEP)
     if not sep:

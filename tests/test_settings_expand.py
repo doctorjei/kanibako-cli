@@ -448,7 +448,7 @@ def test_box_side_braced_var_deferred_verbatim() -> None:
     ("$VAR", None),
     ("", None),
     ("plain", None),
-    # RIDER node-separator ℘ (U+2118) is a valid ref-name char (Block E fix 1a):
+    # PERSONA node-separator ℘ (U+2118) is a valid ref-name char (Block E fix 1a):
     # a whole ref containing a ℘ node-name matches WHOLE, not truncated at ℘.
     ("@meta.agent.navigator℘claude.auth.share_support",
      "meta.agent.navigator℘claude.auth.share_support"),
@@ -460,8 +460,8 @@ def test_is_whole_value_ref(value: str, expected: str | None) -> None:
     assert _is_whole_value_ref(value) == expected
 
 
-def test_ref_regex_admits_rider_node_separator() -> None:
-    # Block E fix 1a: _REF_NAME_RE must match a rider node-name (persona℘harness)
+def test_ref_regex_admits_persona_node_separator() -> None:
+    # Block E fix 1a: _REF_NAME_RE must match a persona node-name (persona℘harness)
     # as ONE component. Mutation-check: revert the ℘ addition to the char classes
     # and this fails (the match truncates to "…navigator", end() != len).
     from kanibako.settings_resolve import _REF_NAME_RE
@@ -475,7 +475,7 @@ def test_ref_regex_admits_rider_node_separator() -> None:
     assert mp is not None and mp.group(0) == "config.data"
 
 
-def test_whole_value_rider_ref_resolves_bool_not_valueerror() -> None:
+def test_whole_value_persona_ref_resolves_bool_not_valueerror() -> None:
     # The e2e-crashing case: an @-ref whose key contains a ℘ node-name resolves to
     # the value AT that key (a bool), not the garbage-truncated "…navigator"
     # sub-string that fed as_bool a bad literal and raised ValueError at launch.

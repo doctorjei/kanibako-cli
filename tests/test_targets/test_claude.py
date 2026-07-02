@@ -588,7 +588,7 @@ class TestDescriptor:
 
     def test_settings_model(self):
         d = ClaudeTarget().descriptor
-        # model (FLAG) + endpoint (ENV) — the rider endpoint is a sibling of model.
+        # model (FLAG) + endpoint (ENV) — the persona endpoint is a sibling of model.
         assert len(d.settings) == 2
         by_key = {s.setting_key: s for s in d.settings}
         model = by_key["model"]

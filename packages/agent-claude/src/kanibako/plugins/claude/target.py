@@ -409,7 +409,7 @@ class ClaudeTarget(Target):
 
         - ``model``: freeform (Claude adds models regularly).
         - ``access``: constrained to permissive/restricted.
-        - ``endpoint``: alternate base-URL (rider); unset = bare/harness-default.
+        - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
         """
         return [
             TargetSetting(
@@ -419,7 +419,7 @@ class ClaudeTarget(Target):
             ),
             TargetSetting(
                 key="endpoint",
-                description="Alternate base-URL endpoint (rider); "
+                description="Alternate base-URL endpoint (persona); "
                 "unset uses the harness default and syncs the OAuth login",
                 default="",
             ),

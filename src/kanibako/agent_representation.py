@@ -100,11 +100,11 @@ def agent_default_partial(
     override and NO existence check (S26). See the module docstring for the full
     rules and the None-origin OMIT contract.
 
-    RIDER threading (Block E fix 2a): the read side (``_agent_pick_node``) walks
+    PERSONA threading (Block E fix 2a): the read side (``_agent_pick_node``) walks
     ``agent.default`` ∪ ``agent.<active_agent>``, where ``<active_agent>`` is the
-    resolved NODE-name (``navigator℘claude`` for a rider). The descriptor's
+    resolved NODE-name (``navigator℘claude`` for a persona). The descriptor's
     ``install.name`` is the HARNESS (``"claude"``, hardcoded in claude's ``detect()``),
-    so rooting the binds under ``install.name`` ORPHANS a rider's AGENT_CRITICAL
+    so rooting the binds under ``install.name`` ORPHANS a persona's AGENT_CRITICAL
     delivery binds at ``agent.claude.*`` (never read → the ``claude`` binary is never
     mounted → the container exits immediately). So the partial roots under the ACTIVE
     node-name (*node_name*). For a BARE agent node==harness=="claude", so the binds
@@ -147,7 +147,7 @@ def agent_default_partial(
         bindings["rw"] = rw_binds
 
     # Root under the ACTIVE node-name (§2d ``agent.<agent>.*``): for a BARE agent the
-    # node-name IS the harness (``agent.claude.bindings.*``); for a RIDER it is the
+    # node-name IS the harness (``agent.claude.bindings.*``); for a PERSONA it is the
     # composite node (``agent.navigator℘claude.bindings.*``) the read side actually
     # walks (fix 2a). The agent NAME is part of the KEY PATH (NOT a bare ``agent``
     # token, §0 L21) — so this partial merges BY NAME with 2a's discriminated

@@ -684,12 +684,12 @@ class TestNoHostRootEscape:
 
 
 # ---------------------------------------------------------------------------
-# Rider endpoint cred fork (block B, 2026-07-01c) — suppress_oauth
+# Persona endpoint cred fork (block B, 2026-07-01c) — suppress_oauth
 # ---------------------------------------------------------------------------
 
 
 class TestEndpointCredFork:
-    """The fail-safe half of the rider cred fork: when the active agent resolves a
+    """The fail-safe half of the persona cred fork: when the active agent resolves a
     non-<None> ``agent.<node>.endpoint`` (``suppress_oauth=True``), the box's
     host-login OAuth (the SYNC-cadence cred_files) is DROPPED so the Anthropic token
     is never delivered to a box pointed at a third-party endpoint. SEED_ONCE specs

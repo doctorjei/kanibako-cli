@@ -495,7 +495,7 @@ class TestRunReauth:
     def test_reauth_suppresses_oauth_when_endpoint_set(
         self, config_file, tmp_home, capsys
     ):
-        """Block B (LEAK-PATH fix): reauth on an ENDPOINT-riding box must SUPPRESS
+        """Block B (LEAK-PATH fix): reauth on a CUSTOM-endpoint box must SUPPRESS
         the OAuth cred sync — else it would push the Anthropic token into a box
         pointed at a third-party endpoint. The resolved endpoint (non-None) →
         ``suppress_oauth=True`` on the credsync refresh.
@@ -512,7 +512,7 @@ class TestRunReauth:
             patch(
                 "kanibako.targets.credsync.refresh_box_credentials"
             ) as mock_refresh,
-            # SHARING box, but with a resolved rider endpoint → the fork fires.
+            # SHARING box, but with a resolved persona endpoint → the fork fires.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 return_value=(_SHARED_AUTH, "http://localhost:8080"),
