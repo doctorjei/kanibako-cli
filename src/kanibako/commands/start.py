@@ -1307,6 +1307,31 @@ def _run_container(
                     extra_args=all_extra,
                     available_modes=desc.mode.keys(),
                 )
+                # First-launch death-race fix: the DEFAULT continue mode on a
+                # box whose agent positively has nothing to resume is DOOMED
+                # (goose `session --resume` -> "no session found to resume" ->
+                # fast container death racing the attach into a raw podman
+                # error before the retry below recovers).  Ask the target
+                # (host-side read of the box home only); when it reports no
+                # resumable session, build the new-session command directly —
+                # same as new_session=True.  The base hook defaults True, so
+                # claude/codex/no_agent are byte-identical, and the
+                # should_retry_new_session retry stays as the net for every
+                # other fail mode.  Only the DEFAULT continue path is
+                # affected: an explicit -R (which resolves to "continue" for
+                # a picker-less agent like goose) is left alone per the
+                # brief — `not resume_mode` short-circuits before the hook.
+                if (
+                    mode_key == "continue"
+                    and not resume_mode
+                    and not target.has_resumable_session(proj.shell_path)
+                ):
+                    logger.debug(
+                        "%s reports no resumable session under %s; launching "
+                        "a new session instead of a doomed continue",
+                        target.name, proj.shell_path,
+                    )
+                    mode_key = "start"
                 cli_args = assembly.assemble_argv(
                     desc,
                     mode_key=mode_key,

@@ -389,6 +389,29 @@ class Target(ABC):
         """Check if agent output indicates ``--continue`` failed and a new session should be started."""
         return False
 
+    def has_resumable_session(self, home: Path) -> bool:
+        """Report whether this agent has a session to resume under *home*.
+
+        *home* is the box home directory as seen from the HOST (the home bind
+        source — the same seam :meth:`credential_check_path` and the credsync
+        hooks receive as ``proj.shell_path``).  ``start.py`` consults this at
+        the continue-vs-new seam: when the DEFAULT continue mode was selected
+        but the target positively reports nothing to resume, it builds the
+        new-session command directly instead of ATTEMPTING a doomed resume
+        (whose fast-dying container races the attach path into a raw runtime
+        error before the ``should_retry_new_session`` retry recovers).
+
+        Implementations read HOST-side state only — no container exec.  This
+        hook is a UX optimization, not a gate: return ``False`` only on a
+        positive determination that no resumable session exists; when unsure
+        or unreadable, return ``True`` (fail-safe — the
+        :meth:`should_retry_new_session` retry remains the net for a resume
+        that fails anyway, while a wrong ``False`` would silently drop a real
+        conversation).  Default ``True``: an agent that does not override
+        keeps the existing always-attempt-continue behavior byte-identical.
+        """
+        return True
+
     def should_run_setup(self, output: str) -> bool:
         """Check if a launched session's output proves the config did NOT take.
 

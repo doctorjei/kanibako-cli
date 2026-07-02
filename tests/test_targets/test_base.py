@@ -178,6 +178,47 @@ class TestTargetABC:
             IncompleteTarget()  # type: ignore[abstract]
 
 
+class TestHasResumableSession:
+    """Base hook default: True — always attempt continue (byte-identical
+    behavior for every target that does not override)."""
+
+    def _minimal_target(self) -> Target:
+        class MinimalTarget(Target):
+            @property
+            def name(self) -> str:
+                return "minimal"
+
+            @property
+            def display_name(self) -> str:
+                return "Minimal"
+
+            def detect(self):
+                return None
+
+        return MinimalTarget()
+
+    def test_default_true(self, tmp_path):
+        assert self._minimal_target().has_resumable_session(tmp_path) is True
+
+    def test_default_true_even_for_missing_home(self, tmp_path):
+        # The base default never inspects the path — True regardless.
+        missing = tmp_path / "does-not-exist"
+        assert self._minimal_target().has_resumable_session(missing) is True
+
+    def test_claude_codex_no_agent_do_not_override(self):
+        """Brief constraint: NO behavior change for claude/codex/no_agent —
+        they must inherit the base default-True hook, not override it."""
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.plugins.codex.target import CodexTarget
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        for target in (ClaudeTarget(), CodexTarget(), NoAgentTarget()):
+            assert (
+                target.has_resumable_session.__func__
+                is Target.has_resumable_session
+            ), f"{target.name} must not override has_resumable_session"
+
+
 class TestGenerateAgentConfig:
     """Tests for Target.generate_agent_config() default implementation."""
 
