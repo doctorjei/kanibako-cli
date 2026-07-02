@@ -1433,7 +1433,7 @@ class TestReattachAgentSourcing:
             assert "kanibako stop testproject" in msg
 
     def test_reattach_mismatch_error_renders_plus_not_pomo(self, start_mocks):
-        """A RIDER mismatch must render the user-facing ``+`` separator, never the
+        """A PERSONA mismatch must render the user-facing ``+`` separator, never the
         canonical ``℘`` (display-swap rule): the stored stamp is a NODE-name with
         ``℘``; the error text shows ``navigator+claude`` / ``pilot+goose``."""
         from kanibako.errors import KanibakoError

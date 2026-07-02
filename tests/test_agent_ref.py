@@ -1,4 +1,4 @@
-"""Unit tests for kanibako.agent_ref — the persona+harness parse grammar (rider MVP)."""
+"""Unit tests for kanibako.agent_ref — the persona+harness parse grammar (persona MVP)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ assert PLUS_SEP == "+"
 
 
 def test_parse_bare_node_equals_harness():
-    # Bare name: node == harness == the whole name (byte-identical to pre-rider).
+    # Bare name: node == harness == the whole name (byte-identical to pre-persona).
     assert parse_agent_ref("claude") == ("claude", "claude")
 
 
@@ -180,13 +180,13 @@ def test_with_harness_bare_fallback():
     assert with_harness("claude", "no_agent") == "no_agent"
 
 
-def test_with_harness_rider_as_requested():
-    # Rider node, target resolved as requested -> node unchanged.
+def test_with_harness_persona_as_requested():
+    # Persona node, target resolved as requested -> node unchanged.
     assert with_harness("navigator℘claude", "claude") == "navigator℘claude"
 
 
-def test_with_harness_rider_fallback_keeps_persona():
-    # Rider node, target fell back -> persona kept, harness swapped.
+def test_with_harness_persona_fallback_keeps_persona_name():
+    # Persona node, target fell back -> persona name kept, harness swapped.
     assert with_harness("navigator℘claude", "no_agent") == "navigator℘no_agent"
 
 

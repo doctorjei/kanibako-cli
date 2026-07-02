@@ -193,7 +193,7 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # The positional may be a rider ref with the typable ``+``; canonicalise to
+    # The positional may be a persona ref with the typable ``+``; canonicalise to
     # the ``℘`` node-name to locate the on-disk dir, but DISPLAY the ``+`` form.
     agent_id = canonicalize_agent_ref(args.agent_id)
     agent_display = display_agent_ref(agent_id)
@@ -298,7 +298,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Canonicalise the (possibly ``+``) rider ref to the ``℘`` node to locate the
+    # Canonicalise the (possibly ``+``) persona ref to the ``℘`` node to locate the
     # on-disk dir; DISPLAY the ``+`` form.
     agent_id = canonicalize_agent_ref(args.agent_id)
     agent_display = display_agent_ref(agent_id)
@@ -529,7 +529,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         system_default_path=std.settings,
         project_path=proj.project_path,
     )
-    # ``agent_name`` is the NODE-name (rider identity); the target/plugin is keyed
+    # ``agent_name`` is the NODE-name (persona identity); the target/plugin is keyed
     # by the HARNESS. ``agent_settings_path`` above keeps the node (keyspace slot).
     target = resolve_target(harness_of(agent_name), proj.project_path)
 
@@ -537,11 +537,11 @@ def run_reauth(args: argparse.Namespace) -> int:
         print("No agent target configured.", file=sys.stderr)
         return 1
 
-    # Auth 3-tier SHARING + rider endpoint: resolve BOTH per-box decisions off ONE
+    # Auth 3-tier SHARING + persona endpoint: resolve BOTH per-box decisions off ONE
     # launch snapshot (single-route — the same pipeline ``start`` uses), for the
     # resolved agent. The auth display below gates on whether the box shares; the
-    # endpoint drives the OAuth-suppress cred fork (block B) so a reauth on an
-    # endpoint-riding box never syncs the Anthropic token into a box pointed at a
+    # endpoint drives the OAuth-suppress cred fork (block B) so a reauth on a
+    # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
     from kanibako.agent_config import agent_settings_path, load_agent_config
     from kanibako.commands.start import _resolve_box_launch_decisions

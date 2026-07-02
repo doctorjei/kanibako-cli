@@ -65,7 +65,7 @@ descriptor:
     - setting_key: model
       channel: flag
       flag: ["--model"]
-    # endpoint (rider): the alternate harness base-URL.  ENV channel -> the
+    # endpoint (persona): the alternate harness base-URL.  ENV channel -> the
     # harness-specific ANTHROPIC_BASE_URL (env-var name is HARNESS-specific, so it
     # lives in the descriptor).  Unset (<None>) emits nothing (bare/harness-default);
     # set = point claude at a third-party endpoint (paired with the OAuth-suppress

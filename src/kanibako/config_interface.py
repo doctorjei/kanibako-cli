@@ -61,7 +61,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "start_mode",
     "autonomous",
     "model",
-    # endpoint (rider): alternate harness base-URL, a sibling of model (block B).
+    # endpoint (persona): alternate harness base-URL, a sibling of model (block B).
     "endpoint",
     # Box
     "box.image",

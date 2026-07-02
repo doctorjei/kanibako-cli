@@ -47,7 +47,7 @@ class TestAgentConfigEnvFile:
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'agent:\n'
-            '  name: "rider"\n'
+            '  name: "persona"\n'
             'env_file:\n'
             '  ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
         )
@@ -63,7 +63,7 @@ class TestAgentConfigEnvFile:
     def test_round_trip_env_file(self, tmp_path):
         path = tmp_path / "test.yaml"
         original = AgentConfig(
-            name="rider",
+            name="persona",
             env_file={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
         )
         write_agent_config(path, original)

@@ -339,14 +339,14 @@ def test_does_not_mutate_inputs() -> None:
     assert INSTALL.binary == Path("/nope/bin/claude")
 
 
-# --------------------------------------------------------------------------- #
-# RIDER node-name rooting (Block E fix 2a) — binds root under the ACTIVE node, #
-# NOT install.name (the harness); bare (node==harness) stays byte-identical.   #
-# --------------------------------------------------------------------------- #
+# ----------------------------------------------------------------------------- #
+# PERSONA node-name rooting (Block E fix 2a) — binds root under the ACTIVE node, #
+# NOT install.name (the harness); bare (node==harness) stays byte-identical.     #
+# ----------------------------------------------------------------------------- #
 
 
-def test_rider_node_name_roots_binds_under_node_not_harness() -> None:
-    # A rider's active node is ``navigator℘claude``; install.name is the HARNESS
+def test_persona_node_name_roots_binds_under_node_not_harness() -> None:
+    # A persona's active node is ``navigator℘claude``; install.name is the HARNESS
     # ``claude`` (hardcoded in claude's detect()). The binds MUST land under the
     # node the read side (_agent_pick_node walks agent.<active_agent>) can see.
     node = "navigator℘claude"
@@ -361,7 +361,7 @@ def test_rider_node_name_roots_binds_under_node_not_harness() -> None:
     assert isinstance(launcher, Bind) and launcher.host == str(INSTALL.launcher)
     assert isinstance(share, Bind) and share.host == str(INSTALL.install_dir)
     # ... and NOT orphaned at agent.claude.* (the harness = install.name), which
-    # the rider read path never walks (the e2e-observed defect).
+    # the persona read path never walks (the e2e-observed defect).
     assert _get(partial, "agent", "claude") is _MISSING
 
 

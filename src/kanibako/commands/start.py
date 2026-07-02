@@ -51,10 +51,10 @@ from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
 
 
-def ensure_rider_share_symlinks(std, agent_id, target) -> None:
-    """Point a rider's agent-scope share dirs at the harness's (symlink shim).
+def ensure_persona_share_symlinks(std, agent_id, target) -> None:
+    """Point a persona's agent-scope share dirs at the harness's (symlink shim).
 
-    A rider is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
+    A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
     dir is its own store, but whose plugins/cache SHOULD be shared with the bare
     harness (``agents/claude/``) rather than starting empty.  Rather than re-root
     the resolver, we lay a SYMLINK shim: for every agent-scope share the target
@@ -65,18 +65,18 @@ def ensure_rider_share_symlinks(std, agent_id, target) -> None:
     existing-dir, so the harness dir is the real writeback target.
 
     Driven by the descriptor's declared shares (generic over harnesses; NO
-    per-plugin code).  Call at rider-dir MATERIALIZATION, BEFORE mount assembly /
+    per-plugin code).  Call at persona-dir MATERIALIZATION, BEFORE mount assembly /
     share source resolution, so the symlink pre-dates any real-dir guarantee-create.
 
     Edge cases (idempotent + fail-safe, NEVER clobber):
       * BARE (``agent_id == harness``) -> return immediately, do nothing.  Every
-        existing (non-rider) agent path is byte-for-byte unchanged: no symlink,
+        existing (non-persona) agent path is byte-for-byte unchanged: no symlink,
         no new dir.
       * harness dir made FIRST (``mkdir parents``) so the link never dangles.
       * node path already the CORRECT symlink -> no-op.
       * node path ABSENT -> create the symlink.
       * node path EXISTS as a real dir OR a WRONG-target symlink -> LEAVE it +
-        debug-log (a rider that legitimately has its own dir wins).
+        debug-log (a persona that legitimately has its own dir wins).
     """
     harness = harness_of(agent_id)
     if agent_id == harness:
@@ -97,7 +97,7 @@ def ensure_rider_share_symlinks(std, agent_id, target) -> None:
 
         if node_link.is_symlink():
             # An existing symlink: no-op if it already points at the harness dir,
-            # otherwise LEAVE it (a rider that repointed its own share wins).
+            # otherwise LEAVE it (a persona that repointed its own share wins).
             try:
                 correct = node_link.readlink() == harness_dir
             except OSError:
@@ -105,22 +105,22 @@ def ensure_rider_share_symlinks(std, agent_id, target) -> None:
             if correct:
                 continue
             logger.debug(
-                "rider share %s: node link %s -> %s (not the harness dir %s); "
+                "persona share %s: node link %s -> %s (not the harness dir %s); "
                 "leaving as-is",
                 host_src, node_link, os.readlink(node_link), harness_dir,
             )
             continue
         if node_link.exists():
-            # A real dir/file already at the node path: the rider owns it; leave.
+            # A real dir/file already at the node path: the persona owns it; leave.
             logger.debug(
-                "rider share %s: node path %s is a real dir; leaving as-is "
+                "persona share %s: node path %s is a real dir; leaving as-is "
                 "(not sharing the harness dir)",
                 host_src, node_link,
             )
             continue
         node_link.symlink_to(harness_dir)
         logger.debug(
-            "rider share %s: linked %s -> %s", host_src, node_link, harness_dir,
+            "persona share %s: linked %s -> %s", host_src, node_link, harness_dir,
         )
 
 
@@ -833,7 +833,7 @@ def _run_container(
             system_default_path=system_settings_path,
             project_path=proj.project_path,
         )
-        # ``agent_name`` is the NODE-name (rider identity); the TARGET/plugin is
+        # ``agent_name`` is the NODE-name (persona identity); the TARGET/plugin is
         # keyed by the HARNESS (right of ``℘``; the whole name when bare).
         target = resolve_target(harness_of(agent_name), proj.project_path)
         logger.debug("Resolved target: %s", target.display_name)
@@ -918,11 +918,11 @@ def _run_container(
         ) is _BOOTSTRAP_MISSING:
             return 1
 
-    # Load agent config.  ``agent_id`` is the NODE-name (rider identity), NOT the
+    # Load agent config.  ``agent_id`` is the NODE-name (persona identity), NOT the
     # bare harness: it keys the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*``
     # keyspace slot, and the active-agent snapshot discriminator.  ``with_harness``
     # swaps in the ACTUALLY-resolved target name (so a NoAgent/other fallback is
-    # reflected while the rider persona is preserved).  For a bare agent whose
+    # reflected while the persona name is preserved).  For a bare agent whose
     # target resolved as requested, node == harness == target.name -> byte-identical.
     agent_id = with_harness(agent_name, target.name) if target else "general"
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
@@ -932,16 +932,16 @@ def _run_container(
         write_agent_config(agent_cfg_path, agent_cfg)
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
-    # Rider share shim: point agents/<node>/{plugins,cache} at the harness's dirs
+    # Persona share shim: point agents/<node>/{plugins,cache} at the harness's dirs
     # BEFORE mount assembly / share-source guarantee-create resolves them.  A bare
     # agent (node == harness) is a no-op.
-    ensure_rider_share_symlinks(std, agent_id, target)
+    ensure_persona_share_symlinks(std, agent_id, target)
 
-    # Auth 3-tier SHARING chain + rider endpoint: resolve BOTH per-box decisions ONCE
+    # Auth 3-tier SHARING chain + persona endpoint: resolve BOTH per-box decisions ONCE
     # here off a SINGLE launch snapshot (single-route), BEFORE the first consumer (the
     # reattach refresh below + the seed/refresh/reconcile/auto-auth/writeback sites).
     # Yields the AuthSource (tier/source + enables) threaded to every credsync/gate
-    # consumer, AND the active-node ``agent.<node>.endpoint`` (block B rider cred
+    # consumer, AND the active-node ``agent.<node>.endpoint`` (block B persona cred
     # fork). The active agent is known here (``agent_id``), so the chain's
     # meta.box.agent.auth.share_support mirror resolves to the right capability.
     # Private/no-share = box.auth.{global,workset}_enabled=false. ``endpoint is None``
@@ -980,7 +980,7 @@ def _run_container(
         if runtime.is_running(container_name):
             # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
             # stream we're about to attach to).
-            # Show the NODE-name (rider identity) in user-facing ``+`` form; a
+            # Show the NODE-name (persona identity) in user-facing ``+`` form; a
             # bare node == harness == target.name, so the label is byte-identical.
             agent_label = display_agent_ref(agent_id) if target else (
                 display_agent_ref(stored_agent)
@@ -1480,7 +1480,7 @@ def _run_container(
         container_env.update(
             {e.box_dest: e.options for e in reconciled.envs}
         )
-        # env-from-file (spec §2d): the ACTIVE rider's ``env_file`` pointers —
+        # env-from-file (spec §2d): the ACTIVE persona's ``env_file`` pointers —
         # VAR -> host token PATH — are read HERE (the env-emission seam), the file
         # CONTENTS become the env VALUE (one trailing newline stripped). The SECRET
         # (e.g. the bearer ANTHROPIC_AUTH_TOKEN) reaches the container ENV only;
@@ -1511,7 +1511,7 @@ def _run_container(
         # stamped for a real agent launch; no-agent/shell launches (target is
         # None) carry no agent, so the var is left unset.
         if target is not None:
-            # Stamp the NODE-name (full rider identity), NOT the harness
+            # Stamp the NODE-name (full persona identity), NOT the harness
             # (``target.name``): the reattach fast-source + stop writeback read
             # this back and derive the harness via ``harness_of`` where a target
             # is needed. Bare node == harness == target.name (byte-identical).
@@ -2168,19 +2168,19 @@ def _resolve_env_files(
 
     Each entry maps an env VAR to a HOST PATH (the token file — spec §2d). This
     reads each file and returns the var VALUE = the file's contents with a SINGLE
-    trailing newline stripped. This is the env-from-file mechanism (the rider's
+    trailing newline stripped. This is the env-from-file mechanism (the persona's
     ``ANTHROPIC_AUTH_TOKEN`` bearer token): the SECRET lives only in the host file
     (0600) and reaches the container as an ENV var — it is NEVER stored in the
     keystore/snapshot as a value nor written to any box file.
 
     ``~`` and ``$VAR`` in the path are expanded (a user writes
     ``~/.config/claude/navigator/token``). The map is already per-node: only the
-    ACTIVE agent's ``agents/<node>/settings.yaml`` is loaded (a sibling rider's
+    ACTIVE agent's ``agents/<node>/settings.yaml`` is loaded (a sibling persona's
     ``env_file`` never reaches here).
 
     FAIL-SOFT: a missing / unreadable / empty file is WARNED (loudly, to stderr
     via the WARNING logger) and the var is left UNSET — never a crash/traceback.
-    A rider then fails auth with a clear symptom, which is the right UX. Every log
+    A persona then fails auth with a clear symptom, which is the right UX. Every log
     line references the VAR name + source PATH only — the token VALUE is NEVER
     logged.
     """
@@ -2196,7 +2196,7 @@ def _resolve_env_files(
         except FileNotFoundError:
             logger.warning(
                 "env_file: token file not found at %s; %s unset "
-                "(rider will fail auth)", expanded, var,
+                "(persona will fail auth)", expanded, var,
             )
             continue
         except OSError as e:
@@ -2204,14 +2204,14 @@ def _resolve_env_files(
             # only — never the file contents.
             logger.warning(
                 "env_file: cannot read token file at %s (%s); %s unset "
-                "(rider will fail auth)", expanded, e.strerror or "unreadable", var,
+                "(persona will fail auth)", expanded, e.strerror or "unreadable", var,
             )
             continue
         value = contents[:-1] if contents.endswith("\n") else contents
         if not value:
             logger.warning(
                 "env_file: token file at %s is empty; %s unset "
-                "(rider will fail auth)", expanded, var,
+                "(persona will fail auth)", expanded, var,
             )
             continue
         resolved[var] = value
@@ -2260,11 +2260,11 @@ def _effective_behavior_for_display(
     behavior_floor = {d.key: d.default for d in descriptors}
     agent_state = dict(agent_cfg.state)
 
-    # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a rider
+    # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
     # (``navigator℘claude``) the per-node ``agents/<node>/settings.yaml`` state and
     # the ``agent.<node>.*`` cascade slot key on the node, NOT the harness
     # (``target.name``) — else ``config --effective`` shows the bare-harness view
-    # for a rider. Bare: node==harness==target.name → byte-identical. Falls back to
+    # for a persona. Bare: node==harness==target.name → byte-identical. Falls back to
     # ``target.name`` when a caller omits the node (legacy / test convenience).
     active = node_name if node_name is not None else target.name
 
@@ -2365,7 +2365,7 @@ def _resolve_box_launch_decisions(
     workset_path,
     agent_cfg_path,
 ) -> "tuple[AuthSource, str | None]":
-    """Resolve the launch's per-box decisions (auth SOURCE + rider endpoint) off ONE
+    """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint) off ONE
     snapshot — the single-source consolidation of the auth resolve and the endpoint
     resolve.
 
@@ -2378,13 +2378,13 @@ def _resolve_box_launch_decisions(
 
     * *auth_src* — the credential-SHARING SOURCE (tier/source + enables), threaded to
       every credsync/gate consumer, exactly as :func:`_resolve_box_auth_source`.
-    * *endpoint* — the resolved RIDER endpoint URL, or ``None`` when unset
+    * *endpoint* — the resolved PERSONA endpoint URL, or ``None`` when unset
       (``<None>`` / empty / no descriptors / no target) — the cred-fork signal
       (non-None ⇒ suppress the OAuth cred). ``None`` is byte-identical to today.
 
     The behavior floor folds in as ``agent.default.<key>`` (OS1) and the per-agent
     FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
-    yields the endpoint for the NODE (rider identity). A target with no declared
+    yields the endpoint for the NODE (persona identity). A target with no declared
     settings contributes no floor → endpoint ``None`` (bare).
     """
     from kanibako import settings_launch
@@ -2986,7 +2986,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         logger.debug("seed_new_box: no agent resolved; template-only seed", exc_info=True)
         target = None
 
-    # NODE-name (rider identity) keys the agents/<node>/ dir + agent.<node>.*
+    # NODE-name (persona identity) keys the agents/<node>/ dir + agent.<node>.*
     # slot; with_harness swaps in the actually-resolved target name (fallback-safe),
     # persona preserved. Bare + as-requested -> node == harness == target.name.
     agent_id = with_harness(agent_name, target.name) if target else "general"
@@ -2995,15 +2995,15 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         # First-use: generate the default agent config so the seed reconcile
         # reads a real agent-config file (mirrors the launch path).
         write_agent_config(agent_cfg_path, target.generate_agent_config())
-    # Rider share shim (mirrors the launch path): link agents/<node>/{plugins,cache}
+    # Persona share shim (mirrors the launch path): link agents/<node>/{plugins,cache}
     # to the harness's dirs BEFORE the seed reconcile resolves share sources.  Bare
     # agent (node == harness) is a no-op.
-    ensure_rider_share_symlinks(std, agent_id, target)
+    ensure_persona_share_symlinks(std, agent_id, target)
     if target is not None:
         desc = target.descriptor
 
-    # Auth SOURCE + rider endpoint off ONE snapshot (single-source). At CREATE, a
-    # fresh endpoint-riding box is seeded WITHOUT the host OAuth cred (fail-safe;
+    # Auth SOURCE + persona endpoint off ONE snapshot (single-source). At CREATE, a
+    # fresh custom-endpoint box is seeded WITHOUT the host OAuth cred (fail-safe;
     # <None>/no-target = bare, byte-identical to today).
     seed_agent_cfg = load_agent_config(agent_cfg_path) if target is not None else None
     auth_src, active_endpoint = _resolve_box_launch_decisions(

@@ -197,7 +197,7 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, overrides=None, node_name
 
     *node_name* (Block E fix 2a) is the ACTIVE node the read path (active_agent)
     walks; defaults to *agent* (the harness == install.name for a bare agent). For
-    a RIDER (node ≠ harness) the partial MUST root under the node, else the binds
+    a PERSONA (node ≠ harness) the partial MUST root under the node, else the binds
     orphan at agent.<harness>.* and vanish from the emit."""
     from kanibako.agent_representation import agent_default_partial
     from kanibako.settings_launch import agent_delivery_mounts
@@ -265,15 +265,15 @@ def test_delivery_override_bridge_matches(agent, tmp_path):
     assert str(repoint) in {str(m.source) for m in new}  # the repoint took.
 
 
-# --------------------------------------------------------------------------- #
-# RIDER FULL-LAUNCH delivery (Block E fix 2a) — the test that WOULD have caught #
-# the e2e defect: a ℘ NODE resolves through the FULL snapshot → reconcile →     #
-# agent_delivery_mounts path with the descriptor's install.name = HARNESS.      #
-# --------------------------------------------------------------------------- #
+# ----------------------------------------------------------------------------- #
+# PERSONA FULL-LAUNCH delivery (Block E fix 2a) — the test that WOULD have caught #
+# the e2e defect: a ℘ NODE resolves through the FULL snapshot → reconcile →       #
+# agent_delivery_mounts path with the descriptor's install.name = HARNESS.        #
+# ----------------------------------------------------------------------------- #
 
 
-def test_rider_node_delivery_binds_emitted_under_node(tmp_path):
-    # A rider: the CLAUDE harness (install.name == "claude", claude's share +
+def test_persona_node_delivery_binds_emitted_under_node(tmp_path):
+    # A persona: the CLAUDE harness (install.name == "claude", claude's share +
     # launcher descriptor) driven at the active NODE "navigator℘claude". The read
     # side (snapshot_category_entries active_agent=node) walks agent.default ∪
     # agent.<node>, so the 7a partial MUST root under the NODE — else the launcher
@@ -293,7 +293,7 @@ def test_rider_node_delivery_binds_emitted_under_node(tmp_path):
 
     # The launcher + install-dir (share) binds ARE emitted (not orphaned/vanished).
     sources = {str(m.source) for m in new}
-    assert new, "rider delivery binds must NOT vanish (fix 2a)"
+    assert new, "persona delivery binds must NOT vanish (fix 2a)"
     assert str(install.launcher) in sources
     assert str(install.install_dir) in sources
     # Byte-identical to what the SAME descriptor emits — the node keys the slot,

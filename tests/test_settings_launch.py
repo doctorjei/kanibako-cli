@@ -297,17 +297,17 @@ def test_effective_behavior_discovers_all_keys_when_keys_none():
 
 
 def test_effective_behavior_endpoint_resolves_per_active_node():
-    # Block B (rider): endpoint is a per-node scalar read by the SAME §2d pick as
+    # Block B (persona): endpoint is a per-node scalar read by the SAME §2d pick as
     # model. The active NODE slot wins; a sibling node's endpoint does NOT leak.
     snap = KeyStore({"agent": {
         "default": {"endpoint": ""},  # <None> floor (empty)
         "navigator℘claude": {"endpoint": "http://gemma:9000"},
         "claude": {"endpoint": ""},   # bare node stays unset
     }})
-    eff_rider = effective_behavior(snap, active_agent="navigator℘claude")
-    assert eff_rider["endpoint"] == "http://gemma:9000"
+    eff_persona = effective_behavior(snap, active_agent="navigator℘claude")
+    assert eff_persona["endpoint"] == "http://gemma:9000"
     # Bare node: the empty floor/slot yields NO usable endpoint (falsy) → the
-    # assembler emits no ANTHROPIC_BASE_URL. Non-vacuous vs the rider above.
+    # assembler emits no ANTHROPIC_BASE_URL. Non-vacuous vs the persona above.
     eff_bare = effective_behavior(snap, active_agent="claude")
     assert eff_bare.get("endpoint", "") == ""
 

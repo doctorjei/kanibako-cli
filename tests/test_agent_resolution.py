@@ -244,12 +244,12 @@ def test_resolved_name_not_installed(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 5a. Rider refs (persona+harness) — Block A: validate the HARNESS, return NODE
+# 5a. Persona refs (persona+harness) — Block A: validate the HARNESS, return NODE
 # ---------------------------------------------------------------------------
 
 
-def test_rider_explicit_returns_node_name(monkeypatch):
-    # A rider ref validates the HARNESS (claude) ∈ installed, and RETURNS the
+def test_persona_explicit_returns_node_name(monkeypatch):
+    # A persona ref validates the HARNESS (claude) ∈ installed, and RETURNS the
     # canonical node-name (persona℘harness), NOT the composite or the harness.
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
@@ -264,7 +264,7 @@ def test_rider_explicit_returns_node_name(monkeypatch):
     )
 
 
-def test_rider_canonical_separator_accepted(monkeypatch):
+def test_persona_canonical_separator_accepted(monkeypatch):
     # The ℘ literal is accepted on input too and returns the same node.
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
@@ -279,7 +279,7 @@ def test_rider_canonical_separator_accepted(monkeypatch):
     )
 
 
-def test_rider_harness_not_installed_errors_on_harness(monkeypatch):
+def test_persona_harness_not_installed_errors_on_harness(monkeypatch):
     # The composite persona is free-form; the error must name the HARNESS, not
     # the whole ref (the harness is what needs installing).
     _patch_targets(monkeypatch, ["goose"])  # claude NOT installed
@@ -304,7 +304,7 @@ def test_rider_harness_not_installed_errors_on_harness(monkeypatch):
     assert "navigator" not in msg
 
 
-def test_bare_claude_unchanged_with_rider_support(monkeypatch):
+def test_bare_claude_unchanged_with_persona_support(monkeypatch):
     # BACKWARD-COMPAT: a bare ref still returns the bare name byte-for-byte.
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
@@ -319,8 +319,8 @@ def test_bare_claude_unchanged_with_rider_support(monkeypatch):
     )
 
 
-def test_rider_box_tier_canonicalized(monkeypatch):
-    # A rider ref supplied at the BOX tier (not just explicit) is canonicalised.
+def test_persona_box_tier_canonicalized(monkeypatch):
+    # A persona ref supplied at the BOX tier (not just explicit) is canonicalised.
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (
