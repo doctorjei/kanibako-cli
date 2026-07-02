@@ -417,44 +417,46 @@ def test_behavior_floor_and_per_agent_state(agent, tmp_path):
 
 
 def test_behavior_box_override_beats_agent_file(tmp_path):
-    # A box file's agent.<active>.model (more-specific scope) beats the per-agent
-    # file's model — standard cascade.
+    # A box's downward agent tweak (the box.agent.<key> mirror, §2b) beats the
+    # per-agent file's model — the box overrides its active agent's behavior. (The
+    # box sets box.agent.model, NOT agent.claude.model directly — the latter is an
+    # upward write dropped at RESOLVE, spec §0; the box.agent.* mirror is the
+    # spec-legal same-scope box write that carries the tweak.)
     agent = "claude"
     floor = {"model": None}
     state = {"model": "opus"}
     box = _write_yaml(
-        tmp_path / "box.yaml", {"agent": {"claude": {"model": "haiku"}}},
+        tmp_path / "box.yaml", {"box": {"agent": {"model": "haiku"}}},
     )
 
     snap = _behavior_snapshot(
         agent, floor=floor, agent_state=state, box_path=box, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
-    assert eff.get("model") == "haiku"  # box's agent.<active>.model wins.
+    assert eff.get("model") == "haiku"  # box.agent.model (the §2b tweak) wins.
 
 
 def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
     # ⚑ The Jei-NOTED spec-CORRECTION edge (§2d L368): an AGENT-file
-    # agent.<active>.model vs a BOX-file agent.DEFAULT.model. The spec model =
+    # agent.<active>.model vs the agent.DEFAULT.model layer. The spec model =
     # cascade THEN active-over-default → the agent file's agent.<active>.model WINS
-    # (active beats default regardless of scope). The retired OLD reader did
-    # per-file-active-over-default THEN cascade → it would have picked the box's
+    # (active beats default regardless of level). The retired OLD reader did
+    # per-file-active-over-default THEN cascade → it would have picked
     # agent.default.model ("haiku"); this PINS the spec-correct NEW result.
+    # (The default layer rides the FLOOR — behavior_floor maps to agent.default.*,
+    # settings_launch OS1 — NOT a box file: a box may not set agent.default.* per
+    # spec §0, that is an upward write dropped at RESOLVE.)
     agent = "claude"
-    floor = {"model": None}
+    floor = {"model": "haiku"}  # → agent.default.model (the all-agents default)
     state = {"model": "opus"}  # the per-agent file = agent.<active>.model = opus
-    # A box file that sets only agent.DEFAULT.model (NOT agent.claude.model).
-    box = _write_yaml(
-        tmp_path / "box.yaml", {"agent": {"default": {"model": "haiku"}}},
-    )
 
     snap = _behavior_snapshot(
-        agent, floor=floor, agent_state=state, box_path=box, system_path=None,
+        agent, floor=floor, agent_state=state, box_path=None, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
-    # The agent file's agent.<active>.model (opus) wins the §2d L368
-    # active-over-default pick over the box's agent.default.model ("haiku") — the
-    # CORRECTION the old per-file-then-cascade reader did NOT do.
+    # agent.<active>.model (opus) wins the §2d L368 active-over-default pick over
+    # agent.default.model ("haiku") — the CORRECTION the old per-file-then-cascade
+    # reader did NOT do.
     assert eff.get("model") == "opus"
 
 
@@ -493,18 +495,23 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     + per-file-active-over-default-THEN-cascade order) was retired. Since 7b CUT
     the machine tier at launch (S14), the old display could MISREPRESENT the
     launch; this pins that the display and the launch now agree. The §2d
-    active-over-default edge (agent-file active beats box agent.default) is the
-    sharpest case — the display must show the launch-correct ``opus``."""
+    active-over-default edge (agent-file active beats the agent.default layer) is
+    the sharpest case — the display must show the launch-correct ``opus``. The
+    default layer rides the FLOOR (descriptors → agent.default.*, OS1) — NOT a box
+    file: a box may not set agent.default.* per spec §0 (upward, dropped at
+    RESOLVE). The box file carries only a legal box.* key here."""
     from types import SimpleNamespace
 
     from kanibako.commands.start import _effective_behavior_for_display
 
     agent = "claude"
-    floor = {"model": None, "auto_approve": "true"}
+    # agent.default.model rides the floor ("haiku") — the all-agents default the
+    # §2d active-over-default pick must be beaten by the active "opus".
+    floor = {"model": "haiku", "auto_approve": "true"}
     state = {"model": "opus", "access": "permissive"}
-    # A box file exercising the §2d edge: agent.default.model set, NOT agent.claude.
+    # A box settings file with only a legal box.* key (no upward agent.* table).
     box = _write_yaml(
-        tmp_path / "settings.yaml", {"agent": {"default": {"model": "haiku"}}},
+        tmp_path / "settings.yaml", {"box": {"image": "img"}},
     )
 
     # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does.

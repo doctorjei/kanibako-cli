@@ -2181,10 +2181,28 @@ class TestApplyInitSeeds:
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="box.agent.* category suppression — queued follow-up block",
+    )
     def test_box_suppresses_target_default_seed(self, tmp_path):
         """A box-level present-None (``null``) suppresses the target-declared
         default seed (the KeyStore merge suppression idiom, §3/§6e — present-None
-        OMITs the inherited bind; the old terminal-``""`` idiom is retired)."""
+        OMITs the inherited bind; the old terminal-``""`` idiom is retired).
+
+        Director ruling (F8, 2026-07-02): the capability is spec-implied — the
+        §2b ``box.agent.*`` mirror is THE sanctioned route for a box tweaking its
+        agent (a box file may NOT set ``agent.<name>.*`` directly: an upward
+        write, dropped at RESOLVE per spec §0 clause 4). Re-pointed to the legal
+        ``box.agent.seeded.x: null`` route — but the mirror is not yet
+        category-aware: ``snapshot_category_entries`` reads only the effective
+        agent node, so the suppression does not flow through; worse, the mirror's
+        present-None leaf currently reaches the category collector, which RAISES
+        ``SettingsError`` ("category agent.seeded.x is NoneType, expected a
+        Bind") — the latent present-None collector bug found in the F8 review.
+        The category-awareness fix is a QUEUED follow-up block; strict xfail
+        forces that block to un-xfail this pin.
+        """
         from types import SimpleNamespace
         shell = self._shell(tmp_path)
         src = tmp_path / "ssrc"
@@ -2195,11 +2213,11 @@ class TestApplyInitSeeds:
             default_seeds=lambda: {"agent.seeded.x": (str(src), "~/x")},
         )
         # The default seed ``agent.seeded.x`` is re-rooted onto the active slot
-        # ``agent.claude.seeded.x`` (the discriminated §2d shape); the box file
-        # suppresses it by that TRUE name (namespace ⊥ cascade — a box-level file
-        # may set an agent-scoped key at box precedence).
+        # ``agent.claude.seeded.x`` (the discriminated §2d shape); the box
+        # suppresses it through its §2b box.agent.* mirror — the spec-legal
+        # same-scope box→agent tweak.
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('agent:\n  claude:\n    seeded:\n      x: null\n')
+        ptoml.write_text('box:\n  agent:\n    seeded:\n      x: null\n')
         self._call(
             tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
         )

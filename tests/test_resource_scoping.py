@@ -107,20 +107,35 @@ class TestBuildEffectiveState:
         return global_toml
 
     def _make_workset_config(self, tmp_path, settings=None):
-        """Create a minimal workset config.yaml, optionally with [agent]."""
-        from kanibako.config import write_agent_setting
+        """Create a minimal workset config.yaml, optionally with a box→agent tweak.
+
+        A workset-scope per-agent behavior override rides the box.agent.* mirror
+        as a spec-legal DEFAULTS-DOWN write (§2b): the workset file sets
+        box.agent.<key>, which flows into the box scope it CONTAINS. (A workset
+        file may NOT set agent.<name>.* directly — that is an upward write dropped
+        at RESOLVE, spec §0; workset ⊂ agent.)
+        """
+        from kanibako.config_io import dump_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         ws_toml = tmp_path / "config.yaml"
-        ws_toml.write_text("")
         if settings:
-            for k, v in settings.items():
-                write_agent_setting(ws_toml, k, v, "claude")
+            dump_doc(ws_toml, {"box": {"agent": dict(settings)}})
+        else:
+            ws_toml.write_text("")
         return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None):
-        """Create a minimal settings.yaml, optionally with [agent] overrides."""
-        from kanibako.config import write_project_meta, write_agent_setting
+        """Create a minimal box settings.yaml, optionally with a box→agent tweak.
+
+        A per-agent behavior override at the BOX scope rides the box.agent.*
+        mirror (§2b B5) — the spec-legal same-scope box write. (A box file may NOT
+        set agent.<name>.* directly: that is an upward write dropped at RESOLVE,
+        spec §0.) The mirror targets the ACTIVE agent; per-agent discrimination
+        for a NON-active agent must ride a legal downward source (the system file).
+        """
+        from kanibako.config import write_project_meta
+        from kanibako.config_io import dump_doc, load_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         project_toml = tmp_path / "settings.yaml"
@@ -130,8 +145,11 @@ class TestBuildEffectiveState:
             workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
         )
         if settings:
-            for k, v in settings.items():
-                write_agent_setting(project_toml, k, v, "claude")
+            doc = load_doc(project_toml)
+            box = doc.setdefault("box", {})
+            agent = box.setdefault("agent", {})
+            agent.update(settings)
+            dump_doc(project_toml, doc)
         return project_toml
 
     def test_target_defaults_only(self, tmp_path):
@@ -236,7 +254,13 @@ class TestBuildEffectiveState:
         """Precedence is box > workset > crab > system; system beats the floor.
 
         Levels are most-specific-first ``[box, workset, crab, system]``, so a
-        value set at the workset level beats one set in crab state.
+        value set at the workset level beats one set in crab state. The box- and
+        workset-scope per-agent overrides ride the box.agent.* mirror (§2b): the
+        box sets it same-scope, the workset sets it defaults-down (workset ⊂ box);
+        effective_behavior reads box.agent first, so a box-file box.agent still
+        beats a workset-file box.agent, which still beats the crab (agent-state)
+        default. (Neither a box nor a workset file may set agent.<name>.* directly
+        — upward, dropped at RESOLVE, spec §0; the mirror is the legal path.)
         """
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
@@ -305,70 +329,66 @@ class TestBuildEffectiveState:
         assert result["model"] == ""
 
     def test_box_override_does_not_bleed_across_agents(self, tmp_path):
-        """B3 regression: a box override set under agent.claude must NOT apply
-        when the effective state is resolved for agent goose (and vice-versa)."""
+        """B3 regression: an agent.claude override must NOT apply when the
+        effective state is resolved for agent goose (and vice-versa).
+
+        The per-agent override rides the SYSTEM file — a spec-legal downward
+        source that carries a non-active agent's table (system ⊃ agent). (A box
+        file may NOT set agent.<name>.* — upward, dropped at RESOLVE, spec §0 — and
+        the box.agent.* mirror only targets the ACTIVE agent, so it cannot express
+        the claude-vs-goose discrimination this test pins.)"""
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.config import write_agent_setting, write_project_meta
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
         ]
-        # An override written while the box was on claude.
-        proj_dir = tmp_path / "proj"
-        proj_dir.mkdir()
-        project_toml = proj_dir / "settings.yaml"
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
-        write_agent_setting(project_toml, "model", "sonnet", "claude")
+        # An override for claude, carried by the (legal) system file.
+        global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
+        project_toml = self._make_project_toml(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
         # claude sees its override.
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, system_settings_path=None
+            claude, agent_cfg, project_toml, system_settings_path=global_toml
         )
         assert res_claude["model"] == "sonnet"
 
         # goose does NOT — it falls back to its declared default floor.
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, system_settings_path=None
+            goose, agent_cfg, project_toml, system_settings_path=global_toml
         )
         assert res_goose["model"] == "opus"
 
     def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
-        """agent.default applies to every agent; agent.<name> overrides it."""
+        """agent.default applies to every agent; agent.<name> overrides it.
+
+        Both the any-agent default and the claude-specific override ride the
+        SYSTEM file — the legal downward source that carries per-agent /
+        agent.default tables (system ⊃ agent). (A box file may not set agent.*;
+        see test_box_override_does_not_bleed_across_agents.)"""
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.config import write_agent_setting, write_project_meta
+        from kanibako.config import write_agent_setting
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
         ]
-        proj_dir = tmp_path / "proj"
-        proj_dir.mkdir()
-        project_toml = proj_dir / "settings.yaml"
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
-        # Any-agent default, plus a claude-specific override.
-        write_agent_setting(project_toml, "model", "haiku", "default")
-        write_agent_setting(project_toml, "model", "sonnet", "claude")
+        # Any-agent default + a claude-specific override, both on the system file.
+        global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
+        write_agent_setting(global_toml, "model", "haiku", "default")
+        project_toml = self._make_project_toml(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, system_settings_path=None
+            claude, agent_cfg, project_toml, system_settings_path=global_toml
         )
         assert res_claude["model"] == "sonnet"  # agent-specific wins
 
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, system_settings_path=None
+            goose, agent_cfg, project_toml, system_settings_path=global_toml
         )
         assert res_goose["model"] == "haiku"  # default tier applies
 

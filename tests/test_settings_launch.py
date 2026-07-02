@@ -398,12 +398,18 @@ def _auth_snapshot(
     agent_name: str = "claude",
     support: bool = True,
     box_file: dict | None = None,
+    system_file: dict | None = None,
+    workset_file: dict | None = None,
 ):
     """Build a focused snapshot carrying the auth chain + the agent capability.
 
     The capability ``meta.agent.<agent>.auth.share_support`` rides the meta
-    identity floor (as it does in the real launch); *box_file* is written to a
-    temp settings file to exercise a box-scope override of the settable enables.
+    identity floor (as it does in the real launch). Each of *box_file*,
+    *workset_file*, *system_file* is written to a temp settings file at ITS OWN
+    scope path — a settable key must be injected at the scope that OWNS it (spec
+    §0 directional enforcement drops a containing-scope key from a lower file, so
+    a ``system.*`` gate must ride the SYSTEM file, a ``workset.*`` opt-out the
+    WORKSET file; only genuine ``box.*`` settings ride *box_file*).
     """
     import tempfile
     from kanibako.config_io import dump_doc
@@ -417,13 +423,18 @@ def _auth_snapshot(
     mr = _mr_floor(
         mode=mode, ws_root_literal=("/ws" if mode != "primary" else None)
     )
-    bp = None
-    if box_file is not None:
-        bp = Path(tempfile.mktemp(suffix=".yaml"))
-        dump_doc(bp, box_file)
+
+    def _to_path(data: dict | None) -> Path | None:
+        if data is None:
+            return None
+        p = Path(tempfile.mktemp(suffix=".yaml"))
+        dump_doc(p, data)
+        return p
+
     return build_launch_snapshot(
         agent_name=agent_name, ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=bp,
+        system_path=_to_path(system_file), agent_path=None,
+        workset_path=_to_path(workset_file), box_path=_to_path(box_file),
         auth_chain=chain, meta_runtime=mr, meta_identity=meta_id,
     )
 
@@ -490,10 +501,12 @@ def test_auth_standalone_global_only():
 
 def test_auth_system_disallow_is_private():
     """system.auth.share_allowed=false → the global gate is off; the workset allow
-    defaults to @system so it is off too → private everywhere."""
+    defaults to @system so it is off too → private everywhere. The gate is set at
+    the SYSTEM scope (spec §0: system.* is settable ONLY from the system file —
+    injecting it via a box file would be an upward write and be dropped)."""
     a = resolve_auth_source(
         _auth_snapshot(
-            "primary", box_file={"system": {"auth": {"share_allowed": False}}}
+            "primary", system_file={"system": {"auth": {"share_allowed": False}}}
         ),
         mode="primary",
     )
@@ -502,10 +515,11 @@ def test_auth_system_disallow_is_private():
 
 def test_auth_workset_allow_off_falls_to_global():
     """workset.auth.share_allowed=false (workset opts out) but the global gate is on
-    → the box uses the global tier."""
+    → the box uses the global tier. The opt-out is set at the WORKSET scope (spec
+    §0: workset.* is settable from the workset file, not a lower box file)."""
     a = resolve_auth_source(
         _auth_snapshot(
-            "primary", box_file={"workset": {"auth": {"share_allowed": False}}}
+            "primary", workset_file={"workset": {"auth": {"share_allowed": False}}}
         ),
         mode="primary",
     )
