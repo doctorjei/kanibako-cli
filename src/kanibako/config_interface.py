@@ -411,19 +411,35 @@ _SCOPE_NAMESPACES: frozenset[str] = frozenset({
     "system", "agent", "workset", "box", "config", "meta",
 })
 
-# Which key-scope namespaces a COMMAND scope is allowed to WRITE (spec §0:
-# a scope writes ONLY its OWN namespace; ``meta.*`` is RO everywhere). ``config.*``
-# is NOT writable from ANY command scope (block B2 — it is bootstrap/file-only and
-# is refused BEFORE this guard, so it appears in no allow-set; the older JC-B4-1
-# "system owns config.*" rule is superseded). ``box.agent.*`` (the §2b B5
-# downward-tweak mirror) is the BOX namespace — the guard keys on the TOP-LEVEL
-# token (``box``), so ``box set box.agent.X`` is a legal SAME-scope write.
+# The CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT
+# levels", repaired 2026-07-02): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST
+# first. The single source the write-allow sets derive from.
+_SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
+
+# Which key-scope namespaces a COMMAND scope is allowed to WRITE (spec §0 + §2a
+# "Scope-direction guard": command-scope ≥ key-scope). A scope writes its OWN
+# namespace AND that of every scope it CONTAINS — the write lands in the COMMAND
+# scope's file as an overridable default (the contained scope always wins per the
+# cascade); writing UPWARD is refused. Derived as each scope's TAIL-SLICE of the
+# containment order (one source, no per-scope hand list). ``meta.*`` is RO
+# everywhere. ``config.*`` is NOT writable from ANY command scope (block B2 — it
+# is bootstrap/file-only and is refused BEFORE this guard, so it appears in no
+# allow-set; the older JC-B4-1 "system owns config.*" rule is superseded).
+# ``box.agent.*`` (the §2b B5 downward-tweak mirror) is the BOX namespace — the
+# guard keys on the TOP-LEVEL token (``box``), so ``box set box.agent.X`` is a
+# legal SAME-scope write.
 _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
-    ConfigLevel.system: frozenset({"system"}),
-    ConfigLevel.agent: frozenset({"agent"}),
-    ConfigLevel.workset: frozenset({"workset"}),
-    ConfigLevel.box: frozenset({"box"}),
+    level: frozenset(_SCOPE_CONTAINMENT[_SCOPE_CONTAINMENT.index(level.value):])
+    for level in ConfigLevel
 }
+
+# The scope tokens whose prefixed keys are SETTINGS keys stored in a SETTINGS
+# file (a downward write keeps the key's scope token, nested in the COMMAND
+# scope's settings file — spec §0; the form ``assemble_levels`` mirrors).
+# ``system`` is excluded: its regular keys keep the legacy ``[system]``-table
+# routing into the config file (the F2/F3 system-file split — a separate fix),
+# and no other scope can write them anyway (upward is refused).
+_SETTINGS_SCOPE_TOKENS: frozenset[str] = frozenset(_SCOPE_CONTAINMENT) - {"system"}
 
 
 def _scope_direction_error(
@@ -431,10 +447,12 @@ def _scope_direction_error(
 ) -> str | None:
     """Enforce the §0 directional-WRITE rule for ``config set`` (block B4).
 
-    A ``config set`` writes ONLY keys in the command scope's OWN namespace;
-    writing a CONTAINING (or any other) scope's key is REFUSED (spec §0
-    "Directional view/set" + §2a "Scope-direction guard"). ``meta.*`` is a
-    TOP-LEVEL read-only namespace — refused from EVERY scope.
+    A ``config set`` writes keys of the command scope's OWN namespace AND of any
+    scope it CONTAINS (command-scope ≥ key-scope over ``system ⊃ agent ⊃ workset
+    ⊃ box`` — a downward write is an overridable DEFAULT stored in the command
+    scope's file); writing UPWARD (a CONTAINING scope's key) is REFUSED (spec §0
+    "Directional view/set" + §2a "Scope-direction guard", repaired 2026-07-02).
+    ``meta.*`` is a TOP-LEVEL read-only namespace — refused from EVERY scope.
 
     Returns an ``Error: …`` string when the write is REFUSED, or ``None`` when it
     is permitted (so the caller proceeds to dispatch).
@@ -465,8 +483,9 @@ def _scope_direction_error(
         return None
     return (
         f"Error: '{canonical}' (scope '{key_scope}') cannot be set from the "
-        f"{command_scope.value} scope. A config set writes only keys in its own "
-        f"scope's namespace (spec §0). Set it at the {key_scope} scope instead."
+        f"{command_scope.value} scope. A config set writes keys of its own scope "
+        f"and of scopes it contains (system ⊃ agent ⊃ workset ⊃ box, spec §0); "
+        f"writing upward is refused. Set it at the {key_scope} scope instead."
     )
 
 
@@ -903,8 +922,10 @@ def set_config_value(
 
     *command_scope* is the scope the ``config set`` was issued at (block B4). It
     drives the §0 directional-write guard (``_scope_direction_error``): a write is
-    permitted ONLY for a key in the command scope's OWN namespace; a cross-scope
-    write (and any ``meta.*`` write) is REFUSED. When ``None`` the guard is skipped.
+    permitted for a key of the command scope's OWN namespace or of any scope it
+    CONTAINS (``system ⊃ agent ⊃ workset ⊃ box`` — a downward write lands in the
+    command scope's file as an overridable default); an UPWARD write (and any
+    ``meta.*`` write) is REFUSED. When ``None`` the guard is skipped.
     """
     canonical = _resolve_key(key)
 
@@ -971,7 +992,10 @@ def set_config_value(
         tail = canonical.split(".")  # ["box", "agent", <key...>, leaf]
         sections = tuple(tail[:-1])  # ("box", "agent", ...)
         leaf = tail[-1]
-        _write_nested_toml_key(config_path, sections, leaf, value)
+        # A BOX-namespace settings key: lands in the command scope's SETTINGS
+        # file (== config_path at box/workset; the system settings file at
+        # SYSTEM — a downward write never lands in the Layer-1 config file).
+        _write_nested_toml_key(settings_dest, sections, leaf, value)
         return f"Set {canonical}={value}"
 
     # Path-TUPLE category keys (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
@@ -1019,10 +1043,24 @@ def set_config_value(
         # _coerce_value signalled a parse error (it only returns a str for a
         # typed key when coercion failed).
         return typed
+    # A scope-prefixed SETTINGS key ({agent,workset,box}.* — including a DOWNWARD
+    # write at a containing command scope, spec §0) lands in the COMMAND scope's
+    # SETTINGS file with the key's scope token kept (the nested form
+    # ``assemble_levels`` mirrors — never remapped to the key-scope's own file).
+    # settings_dest == config_path at box/workset; at SYSTEM it is the system
+    # settings file (``@config.settings``) — settings keys never land in the
+    # Layer-1 kanibako_config.yaml (spec §1). Non-scope keys (vault.*,
+    # allow_helpers) and system.* regular keys keep their historical
+    # config_path slot.
+    dest = (
+        settings_dest
+        if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
+        else config_path
+    )
     if sections:
-        _write_nested_toml_key(config_path, sections, leaf, typed)
+        _write_nested_toml_key(dest, sections, leaf, typed)
     else:
-        _write_toml_key_root(config_path, leaf, typed)
+        _write_toml_key_root(dest, leaf, typed)
     return f"Set {_dot_to_flat(routed)}={value}"
 
 
@@ -1044,8 +1082,9 @@ def reset_config_value(
     *command_scope* is the scope the ``config --reset`` was issued at (block B2,
     RESET-GUARD). It drives the §0 directional-write guard
     (``_scope_direction_error``) symmetrically with ``set_config_value``: a reset
-    is permitted ONLY for a key in the command scope's OWN namespace; a cross-scope
-    reset (and any ``meta.*`` reset) is REFUSED. When ``None`` the guard is skipped.
+    is permitted for a key of the command scope's OWN namespace or of any scope
+    it CONTAINS (containment order, spec §0); an UPWARD reset (and any ``meta.*``
+    reset) is REFUSED. When ``None`` the guard is skipped.
     """
     canonical = _resolve_key(key)
 
@@ -1097,7 +1136,8 @@ def reset_config_value(
         tail = canonical.split(".")
         sections = tuple(tail[:-1])
         leaf = tail[-1]
-        if _remove_nested_toml_key(config_path, sections, leaf):
+        # Symmetric with set: the command scope's SETTINGS file.
+        if _remove_nested_toml_key(settings_dest, sections, leaf):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
@@ -1114,10 +1154,18 @@ def reset_config_value(
     if route is None:
         return f"Error: unknown config key: {key}"
     sections, leaf = route
+    # Symmetric with set_config_value: a scope-prefixed SETTINGS key is removed
+    # from the COMMAND scope's settings file (== config_path at box/workset;
+    # the system settings file at SYSTEM).
+    dest = (
+        settings_dest
+        if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
+        else config_path
+    )
     removed = (
-        _remove_nested_toml_key(config_path, sections, leaf)
+        _remove_nested_toml_key(dest, sections, leaf)
         if sections
-        else _remove_toml_key_root(config_path, leaf)
+        else _remove_toml_key_root(dest, leaf)
     )
     flat = _dot_to_flat(routed)
     if removed:
