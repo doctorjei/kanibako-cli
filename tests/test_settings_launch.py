@@ -1103,10 +1103,16 @@ def test_no_agent_box_has_no_box_agent_mirror():
     assert "agent" not in box
 
 
-def test_box_agent_mirror_deep_override_keeps_sibling_defaults(tmp_path: Path):
-    # A box override of ONE deep category leaf coexists with the mirrored siblings
-    # (the gap-fill recurses per-name; the box override of one leaf does not
-    # suppress the mirrored sibling leaf at the same depth).
+def test_box_agent_category_tweak_merges_into_active_agent_slot(tmp_path: Path):
+    # A box.agent.* CATEGORY tweak MERGES INTO the active agent slot at box
+    # precedence (the pre-merge fold, _box_agent_category_fold — spec §2b L411: the
+    # box's ORDINARY same-scope write of its agent's subtree rides the ONE cascade
+    # merge). This is the SEAM-1 design: the snapshot is the launch-local, per-box
+    # EFFECTIVE view, and merge-time None suppression structurally requires the box
+    # tweak to join the agent NAME in the one merge (the old "pristine agent subtree"
+    # assert pinned the retired post-expand-overlay design, not spec text). A box
+    # override of ONE deep leaf still coexists with the sibling default (per-name
+    # merge).
     box = _yaml(
         tmp_path / "box.yaml",
         {"box": {"agent": {"shared": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
@@ -1120,11 +1126,124 @@ def test_box_agent_mirror_deep_override_keeps_sibling_defaults(tmp_path: Path):
             "agent.shared.cache": ("/store/cache", "~/.claude/cache"),
         },
     )
-    # The box-overridden leaf wins; the sibling default leaf still mirrors.
+    # The box-overridden leaf wins in the box.agent mirror; the sibling default leaf
+    # still mirrors (per-name gap-fill).
     assert snap.box.agent.shared.plugins.host == "/box/plugins"
     assert snap.box.agent.shared.cache.host == "/store/cache"
-    # No leak to the shared agent subtree.
-    assert snap.agent.claude.shared.plugins.host == "/store/plugins"
+    # SEAM-1 invariant: the box CATEGORY tweak IS in the merged active agent slot
+    # (the fold at box precedence); the un-tweaked sibling keeps its default.
+    assert snap.agent.claude.shared.plugins.host == "/box/plugins"
+    assert snap.agent.claude.shared.cache.host == "/store/cache"
+
+
+def test_box_agent_category_present_none_suppresses_through_adapter(tmp_path: Path):
+    # A box.agent CATEGORY present-None (``null``) SUPPRESSES the inherited default
+    # bind AT MERGE (the fold at box precedence + the §3 type-split), so it never
+    # reaches the category adapter — no ``seeded`` entry emitted, and NO
+    # ``SettingsError`` raise (the F8 latent present-None collector crash, fixed).
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"box": {"agent": {"seeded": {"x": None}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+    )
+    # Merge-time OMIT: suppressed name absent from BOTH the agent slot and the mirror.
+    assert "x" not in snap.agent.claude.seeded
+    assert "agent" not in snap.box or "seeded" not in snap.box.agent \
+        or "x" not in snap.box.agent.seeded
+    # The adapter runs cleanly (no raise) and emits NO seeded entry for x.
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    assert not [e for e in entries if e.category == "seeded" and e.name == "x"]
+
+
+def test_box_agent_category_positive_tweak_delivers_through_adapter(tmp_path: Path):
+    # A POSITIVE box.agent category entry for the active agent DELIVERS: the fold
+    # carries it into agent.<active> at box precedence, so the adapter emits it as an
+    # agent-scope entry (the box's downward tweak takes EFFECT in delivery).
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"box": {"agent": {"seeded": {"bx": ["/box/src", "~/bx"]}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    seeded = {e.name: e for e in entries if e.category == "seeded"}
+    assert seeded["bx"].scope == "agent"  # box tweak delivers as an AGENT entry.
+    assert seeded["bx"].host_src == "/box/src"
+    assert seeded["x"].host_src == "/store/x"  # the default sibling still delivers.
+
+
+def test_box_agent_category_from_workset_file_delivers_and_suppresses(tmp_path: Path):
+    # DEFAULTS-DOWN (spec §0): a CONTAINING (workset) file may set box.agent.* as a
+    # default for the box. The fold sources EVERY file-backed level's box.agent (box,
+    # workset, system, base), not just the box FILE — so a workset-sourced box.agent
+    # category entry DELIVERS and a workset-sourced null SUPPRESSES (the old overlay
+    # read the merged box.agent, which included container-sourced leaves; the fold
+    # must match that or a spec-legal config regresses delivered→dropped).
+    ws_pos = _yaml(
+        tmp_path / "ws_pos.yaml",
+        {"box": {"agent": {"seeded": {"wy": ["/ws/src", "~/wy"]}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=ws_pos, box_path=None,
+        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+    )
+    seeded = {
+        e.name: e.host_src
+        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+        if e.category == "seeded"
+    }
+    assert seeded == {"wy": "/ws/src", "x": "/store/x"}  # workset tweak DELIVERS.
+
+    ws_null = _yaml(
+        tmp_path / "ws_null.yaml",
+        {"box": {"agent": {"seeded": {"x": None}}}},
+    )
+    snap2 = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=ws_null, box_path=None,
+        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+    )
+    names = {
+        e.name
+        for e in snapshot_category_entries(snap2, active_agent="claude", box_ctx=_ctx())
+        if e.category == "seeded"
+    }
+    assert "x" not in names  # workset-sourced null SUPPRESSES the default seed.
+
+
+def test_box_agent_category_box_file_beats_workset_default(tmp_path: Path):
+    # The fold preserves cascade precedence AMONG box.agent sources: a box-FILE
+    # box.agent tweak beats a workset-FILE box.agent default at the same name (box is
+    # more specific — the winner applies at box precedence).
+    ws = _yaml(
+        tmp_path / "ws.yaml",
+        {"box": {"agent": {"seeded": {"k": ["/ws/k", "~/k"]}}}},
+    )
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"box": {"agent": {"seeded": {"k": ["/box/k", "~/k"]}}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=ws, box_path=box,
+        default_categories={},
+    )
+    seeded = {
+        e.name: e.host_src
+        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+        if e.category == "seeded"
+    }
+    assert seeded == {"k": "/box/k"}  # box file wins the box.agent cascade.
 
 
 # --------------------------------------------------------------------------- #

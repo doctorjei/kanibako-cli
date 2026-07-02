@@ -883,8 +883,22 @@ def build_launch_snapshot(
         agent_name, binding_overrides, descriptor_bindings
     )
     state_partial = _agent_state_partial(agent_name, agent_state)
+    # box.agent.* CATEGORY fold (spec §2b L411 / §0 L32-42): the box's same-scope
+    # tweak of its active agent's category tables, re-rooted to agent.<active> at BOX
+    # precedence so it rides the ORDINARY cascade merge — a box present-None category
+    # leaf OMITs the inherited bind AT MERGE (§3), no post-expand overlay. ``box.*`` is
+    # DEFAULTS-DOWN (spec §0), so a CONTAINING file (workset/system/base) may set
+    # box.agent.* too; the fold sources each file-backed level's RAW box.agent SEPAR-
+    # ATELY, MOST-SPECIFIC-FIRST (box, workset, system, base — the agent partials
+    # carry no ``box`` node), and splices them as a GROUP ABOVE the override bridge so
+    # the cascade settles box.agent.<key> among its sources with the winner at BOX
+    # precedence (matching the old overlay). NO-AGENT box → [].
+    box_agent_folds = _box_agent_category_fold(
+        [base_levels[0], base_levels[1], base_levels[4], base_levels[5]], agent_name
+    )
 
     levels: list[KeyStore] = []
+    levels.extend(box_agent_folds)                      # box.agent categories (top)
     levels.append(base_levels[0])                       # box
     if bridge is not None:
         levels.append(bridge)                           # override bridge (below box)
@@ -923,7 +937,7 @@ def build_launch_snapshot(
 # MECHANISM (JC-B5-1 — COPY, materialized on the current engine, no resolver
 # inversion). The resolved active-agent subtree only EXISTS post-merge/expand
 # (the cascade keeps ``agent.default`` and ``agent.<active>`` DISCRIMINATED and the
-# active-over-default value-pick is a CONSUMER step — :func:`_effective_agent_node`).
+# active-over-default value-pick is a CONSUMER step — :func:`_agent_pick_node`).
 # So box.agent.* is materialized AFTER ``expand`` as a deep COPY of that resolved
 # effective-agent node into ``snapshot["box"]["agent"]``, filling ONLY names the
 # box did not already set. This satisfies the three requirements:
@@ -981,9 +995,13 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
         # absent; do NOT fall back to agent.default (that is the all-agents backstop,
         # not an ACTIVE agent the box runs).
         return
-    # The PURE pick (agent.default ⊕ agent.<active>) — NOT _effective_agent_node,
-    # which would overlay box.agent.* and double-count (chicken-and-egg). The mirror
-    # IS this pick gap-filled under the box's own box.agent overrides.
+    # The PURE pick (agent.default ⊕ agent.<active>). This ALREADY reflects the box's
+    # box.agent.* CATEGORY tweaks — they merged INTO agent.<active> at box precedence
+    # via the pre-merge fold (``_box_agent_category_fold``) — so the mirror gap-fills
+    # box.agent.* FROM the box-tweaked pick (a suppressed name is absent here too, so
+    # there is nothing to refill; a positive tweak round-trips). Behavior scalars are
+    # NOT folded, so the box's own box.agent behavior overrides (merged at box scope
+    # under ``box.agent``) still gap-fill correctly below.
     effective = _agent_pick_node(snapshot, active_agent)
     if not dict.__len__(effective):
         # The active agent set NO category/behavior leaves (and no default backstop
@@ -1063,6 +1081,82 @@ def _agent_state_partial(
     partial = KeyStore()
     partial["agent"] = agent_node
     return partial
+
+
+# The §2a category tokens carried by the box.agent.* → agent.<active> fold: the
+# same set ``_emit_scope_node`` walks (``bindings`` holds ro/rw; the bind-leaf
+# maps; the keyed ``masks``; the scalar ``env``). Behavior scalar leaves (model /
+# auto_approve / …) are NOT folded — they stay on the box.agent mirror overlay,
+# read directly by :func:`effective_behavior` (byte-identical behavior path).
+_FOLD_CATEGORY_TOKENS: frozenset[str] = frozenset(
+    {"bindings", *_BIND_LEAF_CATEGORIES, "masks", "env"}
+)
+
+
+def _box_agent_category_fold(
+    file_levels: "list[KeyStore]", agent_name: str
+) -> "list[KeyStore]":
+    """Re-root each file-backed level's ``box.agent.<category>.*`` CATEGORY subtrees
+    to ``agent.<agent_name>.<category>.*``, as a GROUP of box-precedence merge
+    partials (one per source level, in the SAME most-specific-first order).
+
+    The §2b ``box.agent.*`` mirror is the box's ORDINARY same-scope (box) write of
+    its active agent's WHOLE subtree (spec §2b L411 / §0 L32-42). Folding its
+    CATEGORY leaves into the active agent's discriminated slot at BOX precedence
+    makes that write ride the ORDINARY cascade merge — so a box present-``None``
+    category leaf OMITs the inherited bind AT MERGE (the §3 type-split,
+    :func:`~kanibako.settings_merge._resolve_present_none`), exactly like a
+    same-scope category ``None``. This is the single-route replacement for the old
+    post-expand ``box.agent`` overlay in the category adapter (no post-expand patch).
+
+    ``box.agent.<key>`` is a ``box``-scope key, and a CONTAINING scope file may hold
+    it as a DEFAULTS-DOWN default (spec §0: a workset/system/base file may set
+    ``box.*``). The old overlay read the MERGED ``box.agent`` node, which already
+    included those container-sourced leaves; to preserve that (and NOT lose the §3
+    present-``None`` via a pre-fold merge), the fold sources each file-backed level's
+    RAW ``box.agent`` partial SEPARATELY and returns them in the input order — so the
+    normal cascade settles ``box.agent.<key>`` AMONG its sources (box file beats
+    workset file beats system/base), with the winner applied at BOX precedence.
+
+    *file_levels* are the file-backed partials MOST-SPECIFIC-FIRST (``assemble_levels``
+    idx 0/1/4/5 = box / workset / system / base; the agent partials carry no ``box``
+    node). Each is sourced PRE-merge so an un-classified present-``None`` leaf is
+    folded verbatim and the merge does the OMIT. Only the seven §2a category subtrees
+    (:data:`_FOLD_CATEGORY_TOKENS`) are folded; behavior scalars stay on the mirror.
+    A NO-AGENT box (blank *agent_name*) has no active slot to fold into → ``[]``.
+    Reads via the UNBOUND ``dict`` protocol (S3); each returned partial is a FRESH
+    tree (subtrees deep-copied, never aliased). A level with no ``box.agent`` category
+    subtree contributes no partial.
+    """
+    from kanibako.settings_merge import _deep_copy_store
+
+    if not agent_name or not agent_name.strip():
+        return []
+    folded: "list[KeyStore]" = []
+    for level in file_levels:
+        box_node = dict.get(level, "box", _MISSING)
+        if not isinstance(box_node, KeyStore):
+            continue
+        box_agent = dict.get(box_node, "agent", _MISSING)
+        if not isinstance(box_agent, KeyStore):
+            continue
+        active_node = KeyStore()
+        for token in dict.keys(box_agent):
+            if token not in _FOLD_CATEGORY_TOKENS:
+                continue  # behavior scalar leaf → stays on the mirror, not folded.
+            sub = dict.__getitem__(box_agent, token)
+            if isinstance(sub, KeyStore):
+                active_node[token] = _deep_copy_store(sub)
+            else:
+                active_node[token] = sub  # a present-None whole-category reset.
+        if not dict.__len__(active_node):
+            continue
+        agent_node = KeyStore()
+        agent_node[agent_name] = active_node
+        partial = KeyStore()
+        partial["agent"] = agent_node
+        folded.append(partial)
+    return folded
 
 
 def _override_bridge_partial(
@@ -1337,9 +1431,13 @@ def snapshot_category_entries(
 
     for scope in _SCOPES:
         if scope == "agent":
-            # §2d active-over-default: effective agent node = default overlaid by
-            # active. The emitted scope/group are the BARE ``agent`` token.
-            scope_node = _effective_agent_node(snapshot, active_agent)
+            # §2d active-over-default pick: effective agent node = agent.default
+            # overlaid by agent.<active> (the emitted scope/group are the BARE
+            # ``agent`` token). The box's box.agent.* CATEGORY tweaks already merged
+            # INTO agent.<active> at box precedence (the pre-merge fold,
+            # ``_box_agent_category_fold``), so the PURE pick already carries them —
+            # NO separate post-expand box.agent overlay (single-route, §2b L411 / §0).
+            scope_node = _agent_pick_node(snapshot, active_agent)
         else:
             scope_node = dict.get(snapshot, scope, _MISSING)
         if not isinstance(scope_node, KeyStore):
@@ -1369,9 +1467,13 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
 
     This is the subtree the box.agent.* mirror is MATERIALIZED from (block B5,
     ``_materialize_box_agent_mirror``) — it must NOT itself read box.agent.* (no
-    chicken-and-egg). The CONSUMER-facing :func:`_effective_agent_node` then overlays
-    box.agent.* on top of this (box WINS). Reads via the UNBOUND ``dict`` protocol
-    (S3); never mutates the snapshot.
+    chicken-and-egg). It is ALSO the effective agent node the category adapter
+    (:func:`snapshot_category_entries`) walks: the box's box.agent.* CATEGORY tweaks
+    already merged INTO ``agent.<active>`` at box precedence (the pre-merge fold
+    :func:`_box_agent_category_fold`), so this PURE pick already carries them — the
+    box's downward tweak is live in category resolution with NO separate post-expand
+    overlay (single-route, §2b L411 / §0 L32-42). Reads via the UNBOUND ``dict``
+    protocol (S3); never mutates the snapshot.
     """
     agent_node = dict.get(snapshot, "agent", _MISSING)
     if not isinstance(agent_node, KeyStore):
@@ -1383,36 +1485,6 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
         _overlay_into(out, default_node)
     if isinstance(active_node, KeyStore):
         _overlay_into(out, active_node)
-    return out
-
-
-def _effective_agent_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
-    """The effective AGENT-scope category node the box's resolution USES = the
-    active-over-default pick (:func:`_agent_pick_node`) overlaid by the box's
-    box-scoped ``box.agent.*`` mirror (box WINS — block B5, spec §2b L380 / §0).
-
-    The box.agent.* overlay is what makes the box's downward-tweak TAKE EFFECT
-    (§0 L38-40: the box tweaks its one thing — its agent — through box.agent.*; an
-    ordinary same-scope box write). The mirror node (``snapshot["box"]["agent"]``)
-    is the gap-filled ``agent.default ⊕ agent.<active>`` with any box-file override
-    on top, so:
-
-    * **with a box.agent override** the override leaf WINS over the pick (the box's
-      downward tweak is live in category resolution);
-    * **with NO override** the mirror leaf EQUALS the pick leaf, so the overlay is a
-      NO-OP — the effective node is byte-identical to today's pick (the EQUIVALENCE
-      guard: default boxes are unchanged).
-
-    A NO-AGENT box has no ``box.agent`` mirror (the materializer skipped it), so the
-    overlay is absent and this reduces to the pick. Reads via the UNBOUND ``dict``
-    protocol (S3); never mutates the snapshot.
-    """
-    out = _agent_pick_node(snapshot, active_agent)
-    box_node = dict.get(snapshot, "box", _MISSING)
-    if isinstance(box_node, KeyStore):
-        box_agent = dict.get(box_node, "agent", _MISSING)
-        if isinstance(box_agent, KeyStore):
-            _overlay_into(out, box_agent)  # box.agent WINS (per-name deep overlay).
     return out
 
 
