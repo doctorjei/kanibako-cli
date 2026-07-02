@@ -45,16 +45,25 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 * **S14** — no ``machine`` tier; floor → ``base``; cascade ends at ``box`` (no
   ``required`` cap).
 
-Keyspace convention — scope token KEPT (namespace orthogonal to cascade, §0)
----------------------------------------------------------------------------
+Keyspace convention — scope token KEPT; DOWNWARD/same-scope only (§0)
+--------------------------------------------------------------------
 Settings files are scope-ROOTED on disk (``config.py:_flatten_categories`` —
 ``{system: {bindings: {rw: {foo: …}}}}`` → ``system.bindings.rw.foo``). The scope
 token is LOAD-BEARING (it picks the source-root + mount mode via ``scope_roots``)
-and namespace is ORTHOGONAL to cascade level (§0): a ``box``-LEVEL file may set a
-``system.*``-scoped key. So a level partial mirrors its file's WHOLE nested
-content with the SCOPE TOKEN KEPT (``box.image``, ``system.caches.x``,
-``agent.bindings.rw.x``) — the LEVEL identity is the FILE, not a lifted sub-table.
-Block 2b then merges by the scope-qualified name across levels.
+and namespace is ORTHOGONAL to cascade level (§0). A file may hold keys of its OWN
+scope AND of scopes it CONTAINS (``system ⊃ agent ⊃ workset ⊃ box``) as
+OVERRIDABLE defaults-down — e.g. a workset file may set ``box.*`` and it flows.
+But **directional enforcement at RESOLVE** (spec §0, Jei-blessed 2026-07-02)
+DROPS a top-level table of a CONTAINING scope found in a lower file (e.g.
+``system:`` / ``workset:`` / ``agent:`` in a box file) at assembly, with a warning
+naming the file + token — it never enters the merge (see
+:func:`_drop_upward_scopes`). So a level partial mirrors its file's WHOLE nested
+content MINUS any upward table, SCOPE TOKEN KEPT (``box.image``,
+``box.caches.x`` at box; a workset file keeps ``workset.*`` + its ``box.*``
+defaults) — the LEVEL identity is the FILE, not a lifted sub-table. Block 2b then
+merges by the scope-qualified name across levels. The ``base`` code floor is
+EXEMPT (the system-scope floor). ``@``-refs still view UP read-only; ``meta.*``
+stays RO everywhere.
 
 The AGENT tier yields TWO separate cascade levels from the one agent file (spec
 §2 L138–142): the file nests ``agent.default.<key>`` (the all-agents fallback
@@ -68,19 +77,24 @@ L139–142 "explicit in the cascade … no nested mini-cascade"). The thin
 active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
 §2d L368) is an effective-agent READ deferred to the block-7 consumer, NOT a
 name collapse here. Keeping the discriminator preserves §0 L21 per-agent
-independence: ``agent.<other>.*`` set at any scope survives the merge by its own
-name.
+independence: ``agent.<other>.*`` set within the AGENT scope (or higher) survives
+the merge by its own name — but a box file may NOT set ``agent.<other>.*`` (that
+is an upward write, dropped above; a box tweaks its agent via the ``box.agent.*``
+mirror, §2b).
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from kanibako.config import settings_base_path
 from kanibako.config_io import load_doc
 from kanibako.settings_resolve import unpack_bind
-from kanibako.settings_store import Bind, KeyStore
+from kanibako.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
+
+_log = logging.getLogger(__name__)
 
 # The bind-shaped categories whose leaf value is a structured pair/tuple
 # ``[host_src, box_dest[, options]]`` (spec §2a "REPRESENTATION") — each is parsed
@@ -94,6 +108,55 @@ _BIND_CATEGORIES: frozenset[str] = frozenset(
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
 _AGENT_DEFAULT_SUB = "default"
+
+
+def _containing_scopes(file_scope: str) -> frozenset[str]:
+    """The scope tokens that CONTAIN *file_scope* (spec §0, the drop-set).
+
+    A settings file contributes keys of its OWN scope and of scopes it CONTAINS
+    (defaults-down); a top-level key naming a CONTAINING scope is an UPWARD write
+    that :func:`_drop_upward_scopes` drops at assembly. Containment is
+    ``system ⊃ agent ⊃ workset ⊃ box`` (:data:`SCOPE_CONTAINMENT`, single source),
+    so the containing set is the HEAD-slice strictly BEFORE *file_scope*. The
+    outermost scope (``system``) has an empty set — nothing contains it.
+    """
+    idx = SCOPE_CONTAINMENT.index(file_scope)
+    return frozenset(SCOPE_CONTAINMENT[:idx])
+
+
+def _drop_upward_scopes(
+    raw: dict, *, file_scope: str, path: Path | None
+) -> dict:
+    """Return *raw* with any CONTAINING-scope top-level table removed (spec §0).
+
+    Directional enforcement at RESOLVE: a settings file may set keys of its own
+    scope and of scopes it CONTAINS, but a top-level key of a CONTAINING scope
+    (e.g. ``system:`` / ``workset:`` in a box file) is an UPWARD write — DROPPED
+    here before it enters the partial, with ONE ``logger.warning`` per dropped
+    token naming the file path and the token. Downward and same-scope tables are
+    untouched (a workset file's ``box:`` defaults-down table still flows — the
+    Jei-ruled defaults-down mechanism). ``meta.*`` is not a cascade scope and is
+    left to the RO floor (out of this drop; see the F8 meta-flow follow-up).
+
+    Returns a shallow copy with the dropped keys removed (never mutates *raw*);
+    a non-dict *raw* is returned unchanged. Warning-only side effect (no raise) —
+    a mis-scoped key is a config mistake, not a hard error.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    containing = _containing_scopes(file_scope)
+    dropped = [str(k) for k in raw if str(k) in containing]
+    if not dropped:
+        return raw
+    where = str(path) if path is not None else "<settings>"
+    for token in dropped:
+        _log.warning(
+            "Dropping upward-scope key %r from %s settings file %s: a file at "
+            "the %s scope may not set a containing (%s) scope's keys (spec §0 "
+            "directional enforcement); the key is ignored.",
+            token, file_scope, where, file_scope, token,
+        )
+    return {k: v for k, v in raw.items() if str(k) not in containing}
 
 
 def _parse_node(value: Any, *, in_binds: bool) -> Any:
@@ -272,6 +335,26 @@ def assemble_levels(
     raw_agent = load_doc(agent_path)
     raw_workset = load_doc(workset_path)
     raw_box = load_doc(box_path)
+
+    # Directional enforcement at RESOLVE (spec §0). Each USER settings file may set
+    # keys of its OWN scope and of scopes it CONTAINS (defaults-down), but NOT of a
+    # CONTAINING scope: drop those upward top-level tables here (warn-once each) so
+    # they never enter the merge. Done on the RAW file view BEFORE building the
+    # partial — the agent tier never mirrors a non-``agent:`` table, so a
+    # post-partial filter could not see (or warn) a ``system:`` table in the agent
+    # file; the raw view catches it. The ``system`` file's containing-set is empty
+    # (outermost — nothing contains it), so its pass is a no-op. The ``base`` level
+    # (floor dict + ``/etc`` base file) is a CODE FLOOR, NOT a user scope file, and
+    # is EXEMPT — it is the system-scope floor from which the auth gate is set.
+    raw_box = _drop_upward_scopes(raw_box, file_scope="box", path=box_path)
+    raw_workset = _drop_upward_scopes(
+        raw_workset, file_scope="workset", path=workset_path
+    )
+    # The ONE agent file builds TWO levels; drop+warn ONCE on the shared raw view.
+    raw_agent = _drop_upward_scopes(raw_agent, file_scope="agent", path=agent_path)
+    raw_system = _drop_upward_scopes(
+        raw_system, file_scope="system", path=system_path
+    )
 
     # The base partial carries the declared-default floor UNDER any base-file
     # content: a base-FILE set-value beats the floor at the same key (the floor is

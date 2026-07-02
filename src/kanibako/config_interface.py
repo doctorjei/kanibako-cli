@@ -29,6 +29,7 @@ from kanibako.config import (
 )
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import UserCancelled
+from kanibako.settings_store import SCOPE_CONTAINMENT
 from kanibako.shellenv import (
     merge_env,
     read_env_file,
@@ -437,8 +438,11 @@ _SCOPE_NAMESPACES: frozenset[str] = frozenset({
 
 # The CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT
 # levels", repaired 2026-07-02): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST
-# first. The single source the write-allow sets derive from.
-_SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
+# first. The single source the write-allow sets derive from — it lives in
+# ``settings_store`` (the stack leaf) so the RESOLVE-time drop
+# (``settings_assemble``) shares the SAME tuple without an import cycle; this is
+# the module-local alias.
+_SCOPE_CONTAINMENT: tuple[str, ...] = SCOPE_CONTAINMENT
 
 # Which key-scope namespaces a COMMAND scope is allowed to WRITE (spec §0 + §2a
 # "Scope-direction guard": command-scope ≥ key-scope). A scope writes its OWN

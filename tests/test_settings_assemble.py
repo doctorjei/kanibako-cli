@@ -99,17 +99,134 @@ def test_scope_token_kept_not_stripped(tmp_path: Path) -> None:
     assert dict.get(box_level, "image", _MISSING) is _MISSING
 
 
-def test_cross_scope_key_in_box_file_preserved(tmp_path: Path) -> None:
-    # §0: namespace is orthogonal to cascade — a box-LEVEL file may set a
-    # system.*-scoped key. The partial must preserve it under its own scope.
+def test_upward_scope_key_in_box_file_dropped_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # §0 "Directional enforcement at RESOLVE" (Jei 2026-07-02, clause 4): a box
+    # file may NOT set a CONTAINING scope's key — a top-level system: table is an
+    # upward write, DROPPED at assembly with a warning naming the file + token; it
+    # never enters the partial. (Supersedes the old "namespace orthogonal so a box
+    # file MAY set system.*" pin — that upward direction is now forbidden.)
     box = _write(
         tmp_path / "box.yaml",
         {"box": {"image": "img"}, "system": {"masks": {"/x": None}}},
     )
-    box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+    with caplog.at_level("WARNING"):
+        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+    # The box's OWN-scope key survives; the upward system: table is GONE.
     assert dict.get(box_level["box"], "image", _MISSING) == "img"
-    assert isinstance(dict.get(box_level, "system"), KeyStore)
-    assert dict.get(box_level["system"]["masks"], "/x", _MISSING) is None
+    assert dict.get(box_level, "system", _MISSING) is _MISSING
+    # The drop is announced (file path + dropped token), unconditionally.
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("system" in m and str(box) in m for m in warnings), warnings
+
+
+def test_downward_scope_key_in_workset_file_preserved(tmp_path: Path) -> None:
+    # §0 defaults-down: a workset file MAY set the box.* scope it CONTAINS — the
+    # partial preserves it (the drop must NOT eat downward contributions). This
+    # pins the direction the drop leaves untouched.
+    ws = _write(
+        tmp_path / "ws.yaml",
+        {"workset": {"marker": "w"}, "box": {"masks": {"/x": None}}},
+    )
+    ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+    assert dict.get(ws_level["workset"], "marker", _MISSING) == "w"
+    assert isinstance(dict.get(ws_level, "box"), KeyStore)
+    assert dict.get(ws_level["box"]["masks"], "/x", _MISSING) is None
+
+
+# Every UPWARD (containing-scope-in-a-lower-file) direction the drop must kill.
+# (path_kw, level_index, upward_token) — the file at `path_kw` carries a
+# top-level `upward_token:` table naming a scope that CONTAINS the file's scope.
+_UPWARD_CASES = [
+    ("box_path", BOX, "system"),
+    ("box_path", BOX, "workset"),
+    ("box_path", BOX, "agent"),
+    ("workset_path", WORKSET, "system"),
+    ("workset_path", WORKSET, "agent"),
+]
+
+
+@pytest.mark.parametrize(("path_kw", "level_idx", "token"), _UPWARD_CASES)
+def test_upward_scope_dropped_and_warned(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    path_kw: str,
+    level_idx: int,
+    token: str,
+) -> None:
+    # §0 clause 4: baseline-RED at 3e0eb9e (the upward key SURVIVED and could flip
+    # the snapshot); GREEN here = the containing-scope table is DROPPED AND the
+    # warning fired. BOTH asserted UNCONDITIONALLY (no vacuous pass): the own-scope
+    # key must survive, the upward token must be absent, the warn must name it.
+    own_scope = "box" if path_kw == "box_path" else "workset"
+    f = _write(
+        tmp_path / "f.yaml",
+        {own_scope: {"marker": "keep"}, token: {"auth": {"share_allowed": False}}},
+    )
+    with caplog.at_level("WARNING"):
+        level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
+    # The own-scope contribution survives; the upward table is gone.
+    assert dict.get(level[own_scope], "marker", _MISSING) == "keep"
+    assert dict.get(level, token, _MISSING) is _MISSING
+    # The drop is announced, naming the file and the dropped token.
+    msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(token in m and str(f) in m for m in msgs), msgs
+
+
+def test_upward_drop_warns_once_per_agent_file(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The ONE agent file builds TWO cascade levels (agent.<active> + agent.default)
+    # but a `system:` upward table is dropped+warned exactly ONCE (the drop runs on
+    # the shared raw view before both levels are built). Also: the `system:` table
+    # never reaches EITHER agent partial (baseline it was silently ignored — now
+    # it warns).
+    agent = _write(
+        tmp_path / "agent.yaml",
+        {
+            "agent": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
+            "system": {"auth": {"share_allowed": False}},
+        },
+    )
+    with caplog.at_level("WARNING"):
+        levels = assemble_levels(agent_name="claude", agent_path=agent)
+    # The two agent levels are intact and carry NO system node.
+    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", _MISSING) == "cm"
+    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", _MISSING) == "dm"
+    assert dict.get(levels[AGENT_ACTIVE], "system", _MISSING) is _MISSING
+    assert dict.get(levels[AGENT_DEFAULT], "system", _MISSING) is _MISSING
+    # Exactly ONE warning for the dropped system token (not one-per-level).
+    sys_warns = [
+        r for r in caplog.records
+        if r.levelname == "WARNING" and "system" in r.getMessage()
+        and str(agent) in r.getMessage()
+    ]
+    assert len(sys_warns) == 1, [r.getMessage() for r in sys_warns]
+
+
+def test_base_floor_is_exempt_from_upward_drop(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The BASE level (declared floor + /etc base file) is a CODE FLOOR, NOT a user
+    # scope file — it is EXEMPT: a base file's system.* is the system-scope floor
+    # (spec §0: the auth gate is set "from the system-scope file/floor"), so it
+    # must SURVIVE and emit NO drop warning. (Base uses the same scoped keyspace.)
+    base = _write(
+        tmp_path / "base.yaml", {"system": {"auth": {"share_allowed": True}}}
+    )
+    with caplog.at_level("WARNING"):
+        base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
+    # The base file's system.* survived (NOT dropped).
+    assert isinstance(dict.get(base_level, "system"), KeyStore)
+    assert (
+        dict.get(base_level["system"]["auth"], "share_allowed", _MISSING) is True
+    )
+    # No drop warning fired for the exempt floor.
+    assert not [
+        r for r in caplog.records
+        if r.levelname == "WARNING" and "upward-scope" in r.getMessage()
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -443,33 +560,49 @@ def test_present_none_scalar_preserved(tmp_path: Path) -> None:
 
 # --------------------------------------------------------------------------- #
 # assemble→merge: the capabilities the bare-`agent` collapse DESTROYED          #
-# (spec §0 L21 per-agent independence + §2d discriminated keys)                 #
+# (§0 per-agent independence + §2d discriminated keys). Per-agent tables ride a #
+# SYSTEM file — a spec-legal downward source (system ⊃ agent); a box file may    #
+# NOT set agent.<agent>.* (upward, dropped at RESOLVE — spec §0 directional).    #
 # --------------------------------------------------------------------------- #
 
 
-def _merged(tmp_path: Path, *, agent_name: str, agent: dict, box: dict) -> KeyStore:
-    """Assemble the agent + box files and run the block-2b merge — the real path
-    a per-agent override or two-agent coexistence travels (cascade by name)."""
+def _merged(
+    tmp_path: Path, *, agent_name: str, agent: dict, system: dict
+) -> KeyStore:
+    """Assemble the agent + SYSTEM files and run the block-2b merge — the real path
+    a per-agent override or two-agent coexistence travels (cascade by name).
+
+    The per-agent tables ride the SYSTEM file, which is a spec-LEGAL downward
+    source for ``agent.*`` (``system ⊃ agent``, defaults-down); a box file may NOT
+    carry ``agent.<agent>.*`` — that is an upward write dropped at RESOLVE (spec §0
+    directional enforcement). ``_file_partial`` mirrors the system file's whole
+    tree, so ``agent.<name>.*`` / ``agent.default.*`` flow under their TRUE
+    discriminated names at the system level (below the agent-active/default
+    levels in precedence).
+    """
     agent_p = _write(tmp_path / "agent.yaml", agent)
-    box_p = _write(tmp_path / "box.yaml", box)
-    levels = assemble_levels(agent_name=agent_name, agent_path=agent_p, box_path=box_p)
+    system_p = _write(tmp_path / "system.yaml", system)
+    levels = assemble_levels(
+        agent_name=agent_name, agent_path=agent_p, system_path=system_p
+    )
     snap = merge(levels)
     return snap
 
 
-def test_box_scope_agent_override_survives_and_wins_by_name(tmp_path: Path) -> None:
-    # §0 L21: "a box file MAY set an agent.<agent>.* key — that's how a box
-    # overrides a specific agent." With the discriminated form, a box-scope
-    # agent.claude.model overrides the agent-level agent.claude.model BY NAME
-    # (box > agent.<active>) — the capability the bare-`agent` collapse destroyed.
+def test_agent_active_override_survives_and_wins_by_name(tmp_path: Path) -> None:
+    # §2d discriminated keys survive the merge distinctly (no bare-`agent`
+    # collapse). The agent-file agent.claude.model (the ACTIVE level, more
+    # specific) wins BY NAME over a system-file agent.claude.model default; the
+    # system's agent.default.model survives under its own true name.
     snap = _merged(
         tmp_path,
         agent_name="claude",
-        agent={"agent": {"default": {"model": "dm"}, "claude": {"model": "cm"}}},
-        box={"agent": {"claude": {"model": "boxm"}}},
+        agent={"agent": {"claude": {"model": "cm"}}},
+        # System file = a legal downward source for agent.* defaults.
+        system={"agent": {"default": {"model": "dm"}, "claude": {"model": "sysm"}}},
     )
-    # The box override wins for claude, under the §2d key agent.claude.model.
-    assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "boxm"
+    # The more-specific agent-active level wins for claude (over system default).
+    assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "cm"
     # agent.default.* survives by its own true name (NOT erased / collapsed).
     assert dict.get(snap["agent"]["default"], "model", _MISSING) == "dm"
     # No bare agent.model leaked (a §0 L21 violation).
@@ -477,22 +610,25 @@ def test_box_scope_agent_override_survives_and_wins_by_name(tmp_path: Path) -> N
 
 
 def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
-    # A box (or any scope) may carry settings for MULTIPLE agents independently;
-    # the bare collapse made agent.claude.* and agent.goose.* indistinguishable.
-    # With discriminated keys they coexist under their own §2d names through merge.
+    # A scope may carry settings for MULTIPLE agents independently; the bare
+    # collapse made agent.claude.* and agent.goose.* indistinguishable. With
+    # discriminated keys they coexist under their own §2d names through merge. The
+    # per-agent tables ride the SYSTEM file (legal downward source, system ⊃ agent).
     snap = _merged(
         tmp_path,
         agent_name="claude",
-        agent={"agent": {"default": {"model": "dm"}, "claude": {"model": "cm"}}},
-        box={
+        agent={"agent": {"claude": {"model": "cm"}}},
+        system={
             "agent": {
-                "claude": {"model": "box_claude"},
-                "goose": {"model": "box_goose"},
+                "default": {"model": "dm"},
+                "claude": {"model": "sys_claude"},
+                "goose": {"model": "sys_goose"},
             }
         },
     )
-    # Both per-agent overrides land, each under its own discriminated name.
-    assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "box_claude"
-    assert dict.get(snap["agent"]["goose"], "model", _MISSING) == "box_goose"
+    # claude resolves to the more-specific agent-active level ("cm"); goose and
+    # default coexist by name from the system level, distinct from claude.
+    assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "cm"
+    assert dict.get(snap["agent"]["goose"], "model", _MISSING) == "sys_goose"
     # agent.default.* also coexists, distinct from both.
     assert dict.get(snap["agent"]["default"], "model", _MISSING) == "dm"

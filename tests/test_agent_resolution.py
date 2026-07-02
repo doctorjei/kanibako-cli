@@ -453,19 +453,24 @@ def _two_pass_behavior(*, agent_state, box_path=None):
 
 
 def test_two_pass_box_beats_agent(tmp_home, config_file, monkeypatch):
+    from kanibako.config_io import dump_doc
+
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
 
-    # Box settings file supplies model under agent.<name> (read_agent_settings shape).
+    # A box tweaks its active agent through the box-scoped box.agent.* mirror
+    # (§2b B5) — a same-scope box write. (A box file may NOT set agent.<name>.*
+    # directly: that is an upward write dropped at RESOLVE, spec §0 directional
+    # enforcement; the mirror is the spec-legal box→agent tweak.)
     box_path = tmp_home / "box_settings.yaml"
-    write_agent_setting(box_path, "model", "box-wins", "claude")
+    dump_doc(box_path, {"box": {"agent": {"model": "box-wins"}}})
 
     name, eff = _two_pass_behavior(
         agent_state={"model": "agent-default"},  # the agent tier
         box_path=box_path,
     )
     assert name == "claude"
-    # Box (more specific) wins over the agent-state default.
+    # The box.agent tweak (more specific) wins over the agent-state default.
     assert eff["model"] == "box-wins"
 
 
