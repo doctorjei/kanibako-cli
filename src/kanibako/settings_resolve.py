@@ -44,6 +44,14 @@ from kanibako.errors import KanibakoError
 # including the agent plugin packages — without circular-import risk.  Every
 # box-side ``/home/agent`` literal in the tree derives from this constant.
 GUEST_HOME = "/home/agent"
+# The image agent-user contract, alongside GUEST_HOME (the same contract's home
+# half): every kanibako image creates the ``agent`` user with uid/gid 1000 and
+# home ``/home/agent``.  Pure machinery, NOT a settings key — the images
+# hardwire agent=1000, so no configuration could meaningfully differ.  The
+# ``--userns=keep-id:uid=…,gid=…`` mapping in ``container.py`` derives from
+# these so the calling host user always lands on the in-box agent user.
+GUEST_UID = 1000
+GUEST_GID = 1000
 MAX_REF_DEPTH = 64
 
 _VAR_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

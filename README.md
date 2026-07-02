@@ -60,7 +60,7 @@ by the `kanibako` meta-package); other agents can be added as plugins.
 ## Prerequisites
 
 - Python 3.11+
-- [Podman](https://podman.io/) (recommended) or Docker -- just needs to be
+- [Podman](https://podman.io/) 4.3+ (recommended) or Docker -- just needs to be
   installed; Kanibako manages all container operations automatically
 - An AI coding agent installed on the host (e.g.
   [Claude Code](https://docs.anthropic.com/en/docs/claude-code))

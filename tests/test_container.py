@@ -275,6 +275,11 @@ class TestDetachMode:
             assert "-dt" in cmd
             assert "-it" not in cmd
             assert "--rm" not in cmd
+            # The persistent (detached) path maps the caller onto the image
+            # agent user too — same contract as the ephemeral path; literal
+            # oracle on purpose (see test_container_extended.test_base_flags).
+            assert "--userns=keep-id:uid=1000,gid=1000" in cmd
+            assert "--userns=keep-id" not in cmd  # plain form must be gone
 
     def test_interactive_uses_it_and_rm(self):
         from unittest.mock import MagicMock

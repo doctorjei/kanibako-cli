@@ -12,9 +12,22 @@ from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
 
 logger = get_logger("container")
+
+# User-namespace mapping for every box launch.  Plain ``keep-id`` maps the
+# CALLING host user to the same numeric uid inside the container, so a host
+# user whose uid != 1000 lands beside — not on — the image's ``agent`` user
+# (uid/gid 1000, the GUEST_UID/GUEST_GID image contract), and the ``:U`` bind
+# option then recursively chowns the box home AND the user's project tree to
+# an unrelated subuid, bricking both.  ``keep-id:uid=…,gid=…`` pins the caller
+# onto the agent user regardless of host uid: in-box files are caller-owned,
+# ``:U`` chowns resolve to the caller's own uid (a no-op on caller-owned
+# trees), and the host-uid==1000 case is unchanged.  Requires podman >= 4.3
+# (the ``uid=``/``gid=`` options, 2022-10).  ``keep-id`` is podman-only;
+# Docker support is future backlog work with its own userns handling.
+KEEP_ID_USERNS = f"--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}"
 
 
 class ContainerRuntime:
@@ -269,10 +282,10 @@ class ContainerRuntime:
         )
 
         if detach:
-            run_flags = ["-dt", "--userns=keep-id"]
+            run_flags = ["-dt", KEEP_ID_USERNS]
         else:
             tty_flag = "-it" if sys.stdin.isatty() else "-i"
-            run_flags = [tty_flag, "--rm", "--userns=keep-id"]
+            run_flags = [tty_flag, "--rm", KEEP_ID_USERNS]
         cmd: list[str] = [
             self.cmd, "run", *run_flags,
             # Working directory inside the box.  The home + workspace + vault binds

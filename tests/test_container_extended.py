@@ -334,7 +334,13 @@ class TestRunCommandAssembly:
             # -it when TTY available, -i when not (e.g. CI)
             assert "-it" in cmd or "-i" in cmd
             assert "--rm" in cmd
-            assert "--userns=keep-id" in cmd
+            # The caller must be mapped onto the image agent user (uid/gid
+            # 1000) regardless of host uid: plain keep-id put a host-uid!=1000
+            # caller BESIDE the agent user, and the ``:U`` binds then chowned
+            # the box home + project tree to a subuid.  Literal oracle on
+            # purpose — asserting via the constant would be tautological.
+            assert "--userns=keep-id:uid=1000,gid=1000" in cmd
+            assert "--userns=keep-id" not in cmd  # plain form must be gone
 
 
 # ---------------------------------------------------------------------------
