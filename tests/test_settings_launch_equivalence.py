@@ -520,7 +520,7 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
     agent_cfg = SimpleNamespace(state=dict(state))
     display = _effective_behavior_for_display(
-        target, agent_cfg, box, global_config_path=None, workset_config_path=None,
+        target, agent_cfg, box, system_settings_path=None, workset_config_path=None,
     )
 
     # The display equals an INDEPENDENT spec-correct expected dict (NOT merely
