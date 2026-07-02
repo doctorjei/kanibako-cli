@@ -1186,7 +1186,7 @@ class TestCrossScopeCascadeConfigSet:
             },
         })
         # Reference BOTH the system.* floor and a sibling workset key. The system.*
-        # floor is folded in by _category_resolves regardless of cascade files.
+        # floor is folded in by _category_set_lookups regardless of cascade files.
         msg = set_config_value(
             "workset.shared.x", "@workset.vault_ro/sub",
             config_path=ws_f,
@@ -1194,6 +1194,135 @@ class TestCrossScopeCascadeConfigSet:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(ws_f)["workset"]["shared"]["x"][0] == "@workset.vault_ro/sub"
+
+
+# ---------------------------------------------------------------------------
+# F10 — category repoint must-exist checks the CASCADE (Jei ruling 2026-07-02d,
+# reconfirming the 2026-06-27 walkthrough model). Spec §2a: "The key MUST
+# ALREADY EXIST in the cascade — the CLI can only REPOINT an existing bind,
+# never CREATE one." The baseline checked the COMMAND-scope FILE only.
+# ---------------------------------------------------------------------------
+
+class TestRepointFromCascade:
+    """`config set` repoints a bind set ANYWHERE in the set-time cascade; only a
+    key NO scope sets is refused. The write still lands in the COMMAND-scope
+    file (full raw tuple: user's host_src VERBATIM + cascade dest/opts RAW)."""
+
+    def _seed_system(self, tmp_path):
+        """A system-scope settings file holding the only vault bind tuple."""
+        f = tmp_path / "global-settings.yaml"
+        dump_doc(f, {"box": {"bindings": {"rw": {"vault": [
+            "@config.data/vault", "$XDG_DATA_HOME/vault", "z"]}}}})
+        return f
+
+    def test_box_set_repoints_bind_from_higher_scope(self, tmp_path):
+        """The F10 probe: the bind is set ONLY at the system scope; `box set`
+        repoints it. FAILED on baseline ("must already exist at this scope").
+        dest + opts preserved BYTE-RAW from the cascade tuple; the new host_src
+        stored VERBATIM (unresolved, §0); the write lands in the BOX file; the
+        system file is untouched."""
+        sys_f = self._seed_system(tmp_path)
+        box_f = tmp_path / "box-settings.yaml"  # does not exist yet
+        msg = set_config_value(
+            "box.bindings.rw.vault", "$XDG_DATA_HOME/mine",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_system_path=sys_f, cascade_box_path=box_f,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(box_f)["box"]["bindings"]["rw"]["vault"] == [
+            "$XDG_DATA_HOME/mine", "$XDG_DATA_HOME/vault", "z",
+        ]
+        assert load_doc(sys_f)["box"]["bindings"]["rw"]["vault"] == [
+            "@config.data/vault", "$XDG_DATA_HOME/vault", "z",
+        ]
+
+    def test_workset_downward_repoint_from_cascade(self, tmp_path):
+        """`workset set box.bindings.rw.<name>` with the bind set only at the
+        system scope writes the full raw tuple into the WORKSET file (the
+        downward path the containment relaxation made user-visible)."""
+        sys_f = self._seed_system(tmp_path)
+        ws_f = tmp_path / "ws-settings.yaml"
+        dump_doc(ws_f, {"workset": {"foo": "bar"}})
+        msg = set_config_value(
+            "box.bindings.rw.vault", "$XDG_DATA_HOME/team",
+            config_path=ws_f, command_scope=ConfigLevel.workset,
+            cascade_system_path=sys_f, cascade_workset_path=ws_f,
+        )
+        assert not msg.startswith("Error:"), msg
+        doc = load_doc(ws_f)
+        assert doc["box"]["bindings"]["rw"]["vault"] == [
+            "$XDG_DATA_HOME/team", "$XDG_DATA_HOME/vault", "z",
+        ]
+        assert doc["workset"]["foo"] == "bar"  # sibling content untouched
+
+    def test_nowhere_in_cascade_still_refused(self, tmp_path):
+        """A key NO scope sets is still refused, and nothing is written."""
+        sys_f = self._seed_system(tmp_path)
+        box_f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.bindings.rw.absent", "$XDG_DATA_HOME/x",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_system_path=sys_f, cascade_box_path=box_f,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "must already exist" in msg
+        assert not box_f.exists()  # nothing created by the refused write
+
+    def test_command_file_tuple_still_wins_over_cascade(self, tmp_path):
+        """Same-scope repoint unchanged: when the command file sets the key its
+        OWN dest/opts are preserved, not a higher scope's."""
+        sys_f = self._seed_system(tmp_path)
+        box_f = tmp_path / "box-settings.yaml"
+        dump_doc(box_f, {"box": {"bindings": {"rw": {"vault": [
+            "/old", "/box-own-dest"]}}}})
+        msg = set_config_value(
+            "box.bindings.rw.vault", "/tmp",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_system_path=sys_f, cascade_box_path=box_f,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(box_f)["box"]["bindings"]["rw"]["vault"] == [
+            "/tmp", "/box-own-dest",
+        ]
+
+    # --- reset symmetry (F10 step 3) ----------------------------------------
+
+    def test_reset_category_key_removes_command_scope_tuple(self, tmp_path):
+        """Reset removes the command-scope tuple (pruning emptied tables) so the
+        cascade's tuple resurfaces. FAILED on baseline ("unknown config key")."""
+        sys_f = self._seed_system(tmp_path)
+        box_f = tmp_path / "box-settings.yaml"
+        set_config_value(
+            "box.bindings.rw.vault", "/tmp",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_system_path=sys_f, cascade_box_path=box_f,
+        )
+        msg = reset_config_value(
+            "box.bindings.rw.vault",
+            config_path=box_f, command_scope=ConfigLevel.box,
+        )
+        assert msg == "Reset box.bindings.rw.vault"
+        doc = load_doc(box_f)
+        assert "vault" not in doc.get("box", {}).get("bindings", {}).get("rw", {})
+        # ROUNDTRIP: with the override gone the cascade tuple is the base again —
+        # a fresh repoint sources dest/opts from the SYSTEM tuple once more.
+        msg2 = set_config_value(
+            "box.bindings.rw.vault", "$XDG_DATA_HOME/again",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_system_path=sys_f, cascade_box_path=box_f,
+        )
+        assert not msg2.startswith("Error:"), msg2
+        assert load_doc(box_f)["box"]["bindings"]["rw"]["vault"] == [
+            "$XDG_DATA_HOME/again", "$XDG_DATA_HOME/vault", "z",
+        ]
+
+    def test_reset_category_key_without_override_reports_none(self, tmp_path):
+        box_f = tmp_path / "box-settings.yaml"
+        msg = reset_config_value(
+            "box.bindings.rw.vault",
+            config_path=box_f, command_scope=ConfigLevel.box,
+        )
+        assert msg == "No override for box.bindings.rw.vault"
 
 
 # ---------------------------------------------------------------------------
@@ -1515,11 +1644,10 @@ class TestScopeDirectionGuard:
     def test_downward_category_key_still_must_exist(self, tmp_path):
         """A downward category repoint (``workset set box.bindings.rw.X``) now
         passes the direction guard, but the source-only MUST-EXIST rule is
-        unrelaxed: the key absent from the COMMAND-scope file refuses via
-        ConfigSetError and writes NOTHING. (NOTE, not fixed here: the
-        containment relaxation makes the F10 divergence — code checks
-        exists-in-COMMAND-FILE, spec §2a says exists-in-CASCADE — reachable
-        on the downward path; that is the separately-queued F10 fix.)"""
+        unrelaxed: a key NO scope in the cascade sets refuses via
+        ConfigSetError and writes NOTHING. (The F10 fix broadened the lookup
+        from exists-in-COMMAND-FILE to exists-in-CASCADE per spec §2a —
+        TestRepointFromCascade covers the hit cases; this pins the miss.)"""
         f = tmp_path / "ws-settings.yaml"
         dump_doc(f, {"workset": {"foo": "bar"}})  # file exists, key absent
         msg = set_config_value(

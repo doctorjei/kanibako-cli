@@ -524,7 +524,7 @@ def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     )
 
 
-def _category_resolves(
+def _category_set_lookups(
     config_path: Path,
     *,
     canonical: str,
@@ -534,16 +534,27 @@ def _category_resolves(
     box_path: Path | None = None,
     agent_name: str = "",
 ):
-    """Build the E3 RESOLUTION probe (Q9, spec §2a) for a category ``config set`` at
-    *config_path* (the COMMAND-scope file).
+    """Build the set-time lookups for a category ``config set`` at *config_path*
+    (the COMMAND-scope file): the E3 RESOLUTION probe (Q9, spec §2a) AND the
+    raw-cascade Bind lookup (F10 — the must-exist-in-the-CASCADE check), both over
+    the SAME single merged snapshot (E3 single-snapshot; no second assembly).
 
     Builds the FULL merged cascade snapshot for the command's TARGET ONCE via the
     committed pipeline (``assemble_levels`` → ``merge`` — single-source, NOT
-    re-implemented), then returns ``resolves(key, value)``: it applies the candidate
-    RAW *value* (the new ``host_src``) at *key* into a FRESH copy of the merged
-    snapshot, lenient-``expand``s it (collect-not-raise), and returns the edited
-    key's defect reason (BLOCK) or ``None`` (ALLOW) — the E3 test "does the edited
-    value resolve cleanly post-edit?".
+    re-implemented), then returns ``(resolves, raw_bind)``:
+
+    * ``resolves(key, value)`` applies the candidate RAW *value* (the new
+      ``host_src``) at *key* into a FRESH copy of the merged snapshot,
+      lenient-``expand``s it (collect-not-raise), and returns the edited key's
+      defect reason (BLOCK) or ``None`` (ALLOW) — the E3 test "does the edited
+      value resolve cleanly post-edit?".
+    * ``raw_bind(key)`` returns the key's effective RAW pre-expansion
+      :class:`~kanibako.settings_store.Bind` from the merged snapshot — the tuple
+      the resolver would pick (merge precedence) — or ``None`` when no scope in
+      the set-time cascade sets a bind there (absent / suppressed / not
+      bind-shaped). NOTE: the set-time cascade covers every scope's settings
+      FILE plus the resolved ``system.*`` floor; the runtime-gathered default
+      binds (core/kani/channel/target tables, launch-only floor) are NOT in it.
 
     FULL CASCADE at set-time (Jei ruling 2026-06-29 — (b)). The visible keyspace is
     the SAME resolved cascade the launch would see (spec §2a "layer the target's
@@ -645,7 +656,22 @@ def _category_resolves(
             return None
         return errors[key]
 
-    return resolves
+    def raw_bind(key: str) -> "Any | None":
+        # The key's effective RAW tuple in the SAME merged snapshot (F10): walk
+        # the pre-expansion store with unbound dict ops (S3) and yield the leaf
+        # iff it is a Bind — the merge already picked the precedence winner.
+        from kanibako.settings_store import Bind, KeyStore
+
+        node: "Any" = base_snapshot
+        for seg in key.split("."):
+            if not isinstance(node, KeyStore):
+                return None
+            node = dict.get(node, seg)
+            if node is None:
+                return None
+        return node if isinstance(node, Bind) else None
+
+    return resolves, raw_bind
 
 
 def _clone_keystore(store: "Any") -> "Any":
@@ -692,14 +718,18 @@ def _set_category_value(
 
     Runs ``validate_config_set`` (Error refuses, Warn proceeds-with-message, OK
     silent) BEFORE the write, then ``repoint_host_src`` (swaps host_src, preserves
-    box_dest+opts RAW, key-MUST-exist). The WARN message is surfaced to the user
-    AND the set proceeds. A ``ConfigSetError`` (key absent / non-tuple value) is
-    returned as an ``Error:`` string (the CLI prints it to stderr + exit 1).
+    box_dest+opts RAW, key-MUST-exist-in-the-CASCADE — F10: the effective raw
+    cascade tuple from the SAME set-time merged snapshot the E3 probe uses backs
+    a repoint whose key the command's own file does not set yet; refused only
+    when NO scope sets it). The WARN message is surfaced to the user AND the set
+    proceeds. A ``ConfigSetError`` (key nowhere in the cascade / non-tuple value)
+    is returned as an ``Error:`` string (the CLI prints it to stderr + exit 1).
 
     The cascade kwargs (*system_path* / *agent_path* / *workset_path* / *box_path* /
-    *agent_name*) are plumbed straight to :func:`_category_resolves` so the E3 probe
-    resolves the edited value against the FULL launch cascade (Jei (b), 2026-06-29) —
-    a cross-scope ``@``-ref no longer false-blocks.
+    *agent_name*) are plumbed straight to :func:`_category_set_lookups` so the E3
+    probe resolves the edited value against the FULL launch cascade (Jei (b),
+    2026-06-29) — a cross-scope ``@``-ref no longer false-blocks — and the F10
+    must-exist lookup sees the same full cascade.
     """
     from kanibako.settings_configset import (
         ConfigSetError,
@@ -716,26 +746,39 @@ def _set_category_value(
         from pathlib import Path as _Path
         return _Path(raw).expanduser().exists()
 
+    resolves, raw_bind = _category_set_lookups(
+        config_path,
+        canonical=canonical,
+        system_path=system_path,
+        agent_path=agent_path,
+        workset_path=workset_path,
+        box_path=box_path,
+        agent_name=agent_name,
+    )
     verdict = validate_config_set(
         canonical,
         value,
         is_category=True,
-        resolves=_category_resolves(
-            config_path,
-            canonical=canonical,
-            system_path=system_path,
-            agent_path=agent_path,
-            workset_path=workset_path,
-            box_path=box_path,
-            agent_name=agent_name,
-        ),
+        resolves=resolves,
         host_exists=_host_exists,
     )
     if isinstance(verdict, Error):
         return f"Error: {verdict.message}"
 
+    # F10: the effective RAW cascade tuple (merge-precedence winner), normalized
+    # to the plain 2-/3-element list shape the writer stores — a 2-tuple bind has
+    # opts=None, which is ABSENT in the file form, never a stored null.
+    bind = raw_bind(canonical)
+    cascade_tuple: "list[str] | None" = None
+    if bind is not None:
+        cascade_tuple = (
+            [bind.host, bind.box]
+            if bind.opts is None
+            else [bind.host, bind.box, bind.opts]
+        )
+
     try:
-        repoint_host_src(config_path, canonical, value)
+        repoint_host_src(config_path, canonical, value, cascade_bind=cascade_tuple)
     except ConfigSetError as exc:
         return f"Error: {exc}"
 
@@ -1138,6 +1181,18 @@ def reset_config_value(
         leaf = tail[-1]
         # Symmetric with set: the command scope's SETTINGS file.
         if _remove_nested_toml_key(settings_dest, sections, leaf):
+            return f"Reset {canonical}"
+        return f"No override for {canonical}"
+
+    # Path-TUPLE category keys — reset symmetry with the category SET branch
+    # (F10, spec §2a): remove the COMMAND-scope override tuple from the SAME file
+    # the set wrote (config_path), pruning emptied tables, so the cascade's own
+    # tuple (a higher scope's or the launch floor's) resurfaces at the next
+    # assemble. Before this branch a category key fell through to the routing
+    # table and mis-reported "unknown config key".
+    if _is_path_category_key(canonical):
+        tail = canonical.split(".")
+        if _remove_nested_toml_key(config_path, tuple(tail[:-1]), tail[-1]):
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 

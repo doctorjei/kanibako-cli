@@ -18,11 +18,16 @@ THIS — this module does NOT touch ``cli.py`` or the live setter):
    (unresolved) form — resolution is for the CHECK only (§0 "files store
    UNRESOLVED").
 2. :func:`repoint_host_src` — the RAW category write. On a category key it reads
-   the EXISTING raw tuple at the COMMAND's scope file (key-MUST-exist, else a hard
-   error), swaps element 0 (``host_src``) for the user's VERBATIM raw input,
-   PRESERVES ``box_dest`` + any options (elements 1/2), and writes the FULL raw
-   tuple back via the existing YAML I/O (``config_io``). The stored form is RAW —
-   ``@``-refs / ``$XDG`` / ``~`` are NEVER expanded to a literal (S12/S24).
+   the EXISTING raw tuple — the COMMAND-scope file's own tuple when the file sets
+   the key, else the effective CASCADE tuple supplied by the caller from the
+   set-time merged snapshot (*cascade_bind* — F10: the key must exist in the
+   CASCADE, not necessarily in the command's own file; spec §2a "the key MUST
+   ALREADY EXIST in the cascade") — swaps element 0 (``host_src``) for the user's
+   VERBATIM raw input, PRESERVES ``box_dest`` + any options (elements 1/2), and
+   writes the FULL raw tuple to the COMMAND-scope file via the existing YAML I/O
+   (``config_io``). It refuses ONLY when the key exists NOWHERE in the cascade.
+   The stored form is RAW — ``@``-refs / ``$XDG`` / ``~`` are NEVER expanded to a
+   literal (S12/S24).
 
 B5 severity split (design §6d, RATIFIED by Jei 2026-06-27):
 
@@ -51,8 +56,10 @@ Authority
 Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 -------------------------------------------------------
 * **S24** — ``config set`` writes the FULL RAW tuple at the COMMAND's scope,
-  key-must-exist, source-only; never creates a key, never writes an expanded
-  literal, no ``:`` notation.
+  key-must-exist-in-the-CASCADE (F10 — the ruled §2a reading: the CLI can only
+  REPOINT a bind that already has a guest mount somewhere in the cascade),
+  source-only; never creates a NEW bind name, never writes an expanded literal,
+  no ``:`` notation.
 * **S25** — validation REUSES the resolver parse + the key registry (one
   validator). The hard-error vs warn split is exactly B5; NO ``@``-ref-repoint
   warning (B4).
@@ -66,7 +73,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Union
+from typing import Callable, Sequence, Union
 
 from kanibako.config_interface import KEY_TYPES, _coerce_value
 from kanibako.config_io import dump_doc, load_doc
@@ -147,12 +154,13 @@ HostExists = Callable[[str], bool]
 class ConfigSetError(Exception):
     """Raised by :func:`repoint_host_src` when the write cannot proceed.
 
-    The write-path counterpart to an :class:`Error` verdict: a key that does not
-    already exist at the command scope (source-only repoints, never creates — S24)
-    or a stored value that is not a category tuple. Validation (:func:`validate_
-    config_set`) returns a verdict; the write raises, because reaching the write
-    with an un-creatable / non-category key is a caller contract breach, not user
-    input to soft-report.
+    The write-path counterpart to an :class:`Error` verdict: a key that exists
+    NOWHERE in the cascade (source-only repoints an existing bind, never creates
+    one — S24/F10), a stored value that is not a category tuple, or a file
+    intermediate that is not a mapping. Validation (:func:`validate_config_set`)
+    returns a verdict; the write raises, because reaching the write with an
+    un-creatable / non-category key is a caller contract breach, not user input
+    to soft-report.
     """
 
 
@@ -342,16 +350,23 @@ def repoint_host_src(
     scope_path: Path,
     key: str,
     new_host_src: str,
+    *,
+    cascade_bind: "Sequence[str] | None" = None,
 ) -> None:
     """Repoint a category key's ``host_src`` in the COMMAND-scope file, RAW (S24).
 
-    Reads the EXISTING raw tuple at dotted *key* in *scope_path* (the command's
-    scope file — ``box set`` → box file, ``workset set`` → workset file, …),
-    replaces ONLY element 0 (``host_src``) with *new_host_src* VERBATIM, PRESERVES
-    ``box_dest`` + any options string (elements 1/2) in their RAW form, and writes
-    the FULL tuple back via the existing YAML I/O. The key MUST ALREADY EXIST in
-    that file (source-only repoints, never creates — there is no way for a
-    source-only edit to name a dest); an absent key raises :class:`ConfigSetError`.
+    Finds the EXISTING raw tuple for dotted *key*: the tuple in *scope_path* (the
+    command's scope file — ``box set`` → box file, ``workset set`` → workset
+    file, …) when that file sets the key, else *cascade_bind* — the key's
+    effective RAW tuple from the set-time merged cascade snapshot, supplied by
+    the caller (F10; spec §2a: "the key MUST ALREADY EXIST in the cascade" — the
+    CLI can only REPOINT a bind that already has a guest mount SOMEWHERE in the
+    cascade, never CREATE one). It then replaces ONLY element 0 (``host_src``)
+    with *new_host_src* VERBATIM, PRESERVES ``box_dest`` + any options string
+    (elements 1/2) in their RAW form, and writes the FULL tuple to the
+    COMMAND-scope file via the existing YAML I/O (creating the file's intermediate
+    tables when the tuple comes from the cascade). A key that exists NOWHERE —
+    absent from the file AND no *cascade_bind* — raises :class:`ConfigSetError`.
 
     The stored value is RAW — ``@``-refs / ``$XDG`` / ``~`` in *new_host_src* AND in
     the preserved ``box_dest`` / options are written verbatim, never expanded to a
@@ -360,41 +375,67 @@ def repoint_host_src(
 
     *new_host_src* is the user's already-validated raw input
     (:func:`validate_config_set` ran first); this function performs the file edit
-    only, and does NOT re-validate.
+    only, and does NOT re-validate. *cascade_bind* is the caller's cascade lookup
+    result, already normalized to a plain 2-/3-element sequence of RAW strings
+    (pre-expansion — the merge stores files' tuples verbatim).
     """
     data = load_doc(scope_path)
     parts = key.split(".")
+    leaf_name = parts[-1]
 
-    # Walk to the leaf, requiring every intermediate table AND the leaf to already
-    # exist (key-must-exist, S24). A plain ``dict`` walk on the loaded YAML — these
-    # are raw mappings, not a KeyStore — so no collision-bypass is needed here.
+    # Walk the command-scope file toward the leaf WITHOUT requiring it: the
+    # must-exist check is against the CASCADE (F10). The file's own tuple, when
+    # present, is the base (it IS the cascade winner at the command's scope);
+    # otherwise *cascade_bind* supplies the raw box_dest/options. A plain ``dict``
+    # walk on the loaded YAML — raw mappings, not a KeyStore — so no
+    # collision-bypass is needed here.
     node: object = data
     for seg in parts[:-1]:
         if not isinstance(node, dict) or seg not in node:
-            raise ConfigSetError(
-                f"config set cannot create key '{key}': it must already exist at "
-                f"this scope ({scope_path}). config set is source-only and repoints "
-                f"an existing bind; it never creates one."
-            )
+            node = None
+            break
         node = node[seg]
-    leaf_name = parts[-1]
-    if not isinstance(node, dict) or leaf_name not in node:
-        raise ConfigSetError(
-            f"config set cannot create key '{key}': it must already exist at this "
-            f"scope ({scope_path}). config set is source-only and repoints an "
-            f"existing bind; it never creates one."
-        )
 
-    existing = node[leaf_name]
-    if not isinstance(existing, (list, tuple)) or not (2 <= len(existing) <= 3):
+    if isinstance(node, dict) and leaf_name in node:
+        existing = node[leaf_name]
+        if not isinstance(existing, (list, tuple)) or not (2 <= len(existing) <= 3):
+            raise ConfigSetError(
+                f"config set cannot repoint '{key}': its stored value is not a "
+                f"category tuple [host_src, box_dest[, options]] "
+                f"(got {type(existing).__name__}: {existing!r})."
+            )
+        base: "Sequence[str]" = list(existing)
+    elif cascade_bind is not None:
+        if not (2 <= len(cascade_bind) <= 3):
+            raise ConfigSetError(
+                f"config set cannot repoint '{key}': the cascade tuple is not a "
+                f"category tuple [host_src, box_dest[, options]] "
+                f"(got {list(cascade_bind)!r})."
+            )
+        base = list(cascade_bind)
+    else:
         raise ConfigSetError(
-            f"config set cannot repoint '{key}': its stored value is not a category "
-            f"tuple [host_src, box_dest[, options]] "
-            f"(got {type(existing).__name__}: {existing!r})."
+            f"config set cannot create key '{key}': it must already exist in "
+            f"the cascade, and no configured settings scope sets it. config set "
+            f"is source-only and repoints an existing bind; it never creates one."
         )
 
     # Swap element 0 (host_src), PRESERVE box_dest + any options RAW. Store as a
-    # plain list (the §2a YAML representation; round-trips through config_io).
-    new_tuple = [new_host_src, *list(existing[1:])]
-    node[leaf_name] = new_tuple
+    # plain list (the §2a YAML representation; round-trips through config_io),
+    # creating the file's intermediate tables as needed (a cascade-sourced tuple
+    # lands in a file that may not have them yet). An intermediate that exists but
+    # is NOT a mapping is refused — overwriting it would clobber user data.
+    wnode: dict = data
+    for seg in parts[:-1]:
+        nxt = wnode.get(seg)
+        if nxt is None:
+            nxt = {}
+            wnode[seg] = nxt
+        elif not isinstance(nxt, dict):
+            raise ConfigSetError(
+                f"config set cannot repoint '{key}': '{seg}' in {scope_path} is "
+                f"not a mapping (got {type(nxt).__name__}: {nxt!r})."
+            )
+        wnode = nxt
+    wnode[leaf_name] = [new_host_src, *list(base[1:])]
     dump_doc(scope_path, data)
