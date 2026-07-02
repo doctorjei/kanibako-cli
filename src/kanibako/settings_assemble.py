@@ -62,8 +62,14 @@ content MINUS any upward table, SCOPE TOKEN KEPT (``box.image``,
 ``box.caches.x`` at box; a workset file keeps ``workset.*`` + its ``box.*``
 defaults) — the LEVEL identity is the FILE, not a lifted sub-table. Block 2b then
 merges by the scope-qualified name across levels. The ``base`` code floor is
-EXEMPT (the system-scope floor). ``@``-refs still view UP read-only; ``meta.*``
-stays RO everywhere.
+EXEMPT for SCOPE keys (the system-scope floor). ``@``-refs still view UP
+read-only. A top-level ``meta:`` table is ALWAYS dropped from EVERY file
+(``base`` included) — ``meta.*`` is a TOP-LEVEL protected namespace set by the
+construct-time/bootstrap layer and stays RO everywhere (spec §0 / clause 4). The
+sole sanctioned meta source is the runtime/identity FLOOR (``_floor_partial``),
+which is never dropped, and a NESTED ``<scope>.meta`` bootstrap table (e.g.
+``workset.meta`` from ``workset.py``) is UNTOUCHED — only the top-level ``meta:``
+key is stripped (see :func:`_drop_upward_scopes`).
 
 The AGENT tier yields TWO separate cascade levels from the one agent file (spec
 §2 L138–142): the file nests ``agent.default.<key>`` (the all-agents fallback
@@ -127,7 +133,8 @@ def _containing_scopes(file_scope: str) -> frozenset[str]:
 def _drop_upward_scopes(
     raw: dict, *, file_scope: str, path: Path | None
 ) -> dict:
-    """Return *raw* with any CONTAINING-scope top-level table removed (spec §0).
+    """Return *raw* with any CONTAINING-scope top-level table AND a top-level
+    ``meta:`` table removed (spec §0).
 
     Directional enforcement at RESOLVE: a settings file may set keys of its own
     scope and of scopes it CONTAINS, but a top-level key of a CONTAINING scope
@@ -135,8 +142,22 @@ def _drop_upward_scopes(
     here before it enters the partial, with ONE ``logger.warning`` per dropped
     token naming the file path and the token. Downward and same-scope tables are
     untouched (a workset file's ``box:`` defaults-down table still flows — the
-    Jei-ruled defaults-down mechanism). ``meta.*`` is not a cascade scope and is
-    left to the RO floor (out of this drop; see the F8 meta-flow follow-up).
+    Jei-ruled defaults-down mechanism).
+
+    ``meta`` is ALSO dropped, for EVERY file (``base`` included) — ``meta.*`` is a
+    TOP-LEVEL protected read-only namespace set by the construct-time/bootstrap
+    layer, RO everywhere (spec §0 / clause 4 "meta.* remains RO everywhere"); a
+    settings file may not set it. ``meta`` is NOT a containing scope, so it earns a
+    DISTINCT warning. This drop is TOP-LEVEL ONLY: a NESTED ``<scope>.meta``
+    bootstrap table (e.g. ``workset.meta`` written by ``workset.py`` and read by
+    ``read_workset_meta``) rides under its scope table and is UNTOUCHED — this
+    function iterates only top-level keys of *raw* and never descends. The sole
+    sanctioned meta source is the FLOOR (``_floor_partial``), inserted separately
+    and never routed through this drop.
+
+    ``base`` is EXEMPT for SCOPE keys (its containing set is empty — it is the
+    system-scope floor) but NOT for ``meta``: a base-file top-level ``meta:`` table
+    would clobber the floor's materialized identity anchors, so it drops too.
 
     Returns a shallow copy with the dropped keys removed (never mutates *raw*);
     a non-dict *raw* is returned unchanged. Warning-only side effect (no raise) —
@@ -144,19 +165,39 @@ def _drop_upward_scopes(
     """
     if not isinstance(raw, dict):
         return raw
-    containing = _containing_scopes(file_scope)
-    dropped = [str(k) for k in raw if str(k) in containing]
+    # ONE drop-set = the containing scopes (defensive: ``base`` is not in
+    # SCOPE_CONTAINMENT so ``.index`` would raise — an unknown/base scope has an
+    # empty containing set) UNION the always-dropped top-level ``meta`` token.
+    containing = (
+        _containing_scopes(file_scope)
+        if file_scope in SCOPE_CONTAINMENT
+        else frozenset()
+    )
+    drop_set = containing | frozenset({"meta"})
+    dropped = [str(k) for k in raw if str(k) in drop_set]
     if not dropped:
         return raw
     where = str(path) if path is not None else "<settings>"
     for token in dropped:
-        _log.warning(
-            "Dropping upward-scope key %r from %s settings file %s: a file at "
-            "the %s scope may not set a containing (%s) scope's keys (spec §0 "
-            "directional enforcement); the key is ignored.",
-            token, file_scope, where, file_scope, token,
-        )
-    return {k: v for k, v in raw.items() if str(k) not in containing}
+        if token == "meta":
+            # meta is NOT a containing scope — distinct rationale (spec §0 meta-RO /
+            # clause 4): meta.* is a top-level RO namespace owned by the bootstrap
+            # layer, never settable from a settings file.
+            _log.warning(
+                "Dropping top-level 'meta' table from %s settings file %s: "
+                "meta.* is a read-only namespace set by the "
+                "construct-time/bootstrap layer and remains RO everywhere (spec "
+                "§0 meta-RO / clause 4); the key is ignored.",
+                file_scope, where,
+            )
+        else:
+            _log.warning(
+                "Dropping upward-scope key %r from %s settings file %s: a file at "
+                "the %s scope may not set a containing (%s) scope's keys (spec §0 "
+                "directional enforcement); the key is ignored.",
+                token, file_scope, where, file_scope, token,
+            )
+    return {k: v for k, v in raw.items() if str(k) not in drop_set}
 
 
 def _parse_node(value: Any, *, in_binds: bool) -> Any:
@@ -322,7 +363,11 @@ def assemble_levels(
       synthetic ``base:`` wrapper).
     * *floor* (declared defaults + default-categories) is folded UNDER the base
       file's content into the ``base`` level — a base-FILE set-value beats the
-      floor at the same key; the floor is the ultimate fallback.
+      floor at the same key; the floor is the ultimate fallback. The floor is also
+      the SOLE sanctioned ``meta.*`` source: a top-level ``meta:`` table is dropped
+      from every FILE view (base included, spec §0 / clause 4 — RO everywhere)
+      BEFORE it is built, so it can never clobber the floor's identity anchors; the
+      floor itself is inserted separately and never dropped.
 
     Binds are parsed to :class:`Bind`; ``@``-ref / ``$var`` / ``~`` tokens stay RAW
     (S9 / spec §0). Absent / unreadable files → an empty :class:`KeyStore` partial
@@ -343,9 +388,16 @@ def assemble_levels(
     # partial — the agent tier never mirrors a non-``agent:`` table, so a
     # post-partial filter could not see (or warn) a ``system:`` table in the agent
     # file; the raw view catches it. The ``system`` file's containing-set is empty
-    # (outermost — nothing contains it), so its pass is a no-op. The ``base`` level
-    # (floor dict + ``/etc`` base file) is a CODE FLOOR, NOT a user scope file, and
-    # is EXEMPT — it is the system-scope floor from which the auth gate is set.
+    # (outermost — nothing contains it), so its scope-key pass is a no-op. The
+    # ``base`` level (floor dict + ``/etc`` base file) is a CODE FLOOR and is EXEMPT
+    # for SCOPE keys — it is the system-scope floor from which the auth gate is set.
+    # BUT a top-level ``meta:`` table is dropped from EVERY file (base included):
+    # ``meta.*`` is a top-level RO namespace owned by the bootstrap layer (spec §0 /
+    # clause 4), so a base-FILE meta table must not clobber the floor's identity
+    # anchors. ``file_scope="base"`` yields an empty containing set, so this drops
+    # ONLY meta from base — its ``system.*`` scope floor stays exempt. (A nested
+    # ``<scope>.meta`` bootstrap table is TOP-LEVEL-untouched — see the drop fn.)
+    raw_base = _drop_upward_scopes(raw_base, file_scope="base", path=base_p)
     raw_box = _drop_upward_scopes(raw_box, file_scope="box", path=box_path)
     raw_workset = _drop_upward_scopes(
         raw_workset, file_scope="workset", path=workset_path
