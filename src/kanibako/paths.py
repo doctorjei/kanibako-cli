@@ -469,20 +469,35 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
 }
 
 
-def _xdg_var_set(data_home: Path) -> dict[str, str]:
-    """Build the full ``$XDG_*`` map for the flat foundation/system resolver.
+def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
+    """Build the canonical HOST-side ``$XDG_*`` map for a ``ResolveCtx``.
 
-    *data_home* is passed in already-resolved (it anchors the default tree); the
-    rest resolve via the hardened resolver (honor-iff-absolute; runtime-dir
-    fallback+warn).
+    THE single builder for the ``xdg=`` argument of every host-side
+    :class:`~kanibako.settings_resolve.ResolveCtx` (Jei ruling 2026-07-02: XDG
+    vars must have fallbacks).  Hand-rolled partial maps caused stored values
+    like ``$XDG_CACHE_HOME/kanibako`` (the setup-materialized ``system.cache``)
+    to raise ``Variable $XDG_CACHE_HOME is not set in this context`` at expand
+    time — the resolver reads ONLY this map, never the environment, so a
+    missing key is unrecoverable at the call site.
+
+    Every var in :data:`_XDG_SPEC_DEFAULTS` resolves via the hardened
+    :func:`resolve_xdg` (env honored iff set AND absolute; unset/empty/relative
+    → the XDG-spec default under ``$HOME``), plus ``XDG_RUNTIME_DIR`` (no spec
+    default: fallback + warn).  *data_home* is an optional already-resolved
+    ``$XDG_DATA_HOME`` anchoring the default tree (the flat foundation/system
+    resolver passes it); when None it resolves from the environment like the
+    rest.
     """
-    return {
-        "XDG_DATA_HOME": str(data_home),
-        "XDG_CONFIG_HOME": str(resolve_xdg("XDG_CONFIG_HOME", ".config")),
-        "XDG_STATE_HOME": str(resolve_xdg("XDG_STATE_HOME", ".local/state")),
-        "XDG_CACHE_HOME": str(resolve_xdg("XDG_CACHE_HOME", ".cache")),
-        "XDG_RUNTIME_DIR": str(resolve_xdg("XDG_RUNTIME_DIR", None)),
-    }
+    xdg_map: dict[str, str] = {}
+    for name, suffix in _XDG_SPEC_DEFAULTS.items():
+        if name == "XDG_DATA_HOME" and data_home is not None:
+            # Already resolved by the caller — don't re-read the env (a
+            # relative env value would re-warn on every call).
+            xdg_map[name] = str(data_home)
+        else:
+            xdg_map[name] = str(resolve_xdg(name, suffix))
+    xdg_map["XDG_RUNTIME_DIR"] = str(resolve_xdg("XDG_RUNTIME_DIR", None))
+    return xdg_map
 
 
 def resolve_config_paths(
@@ -498,7 +513,7 @@ def resolve_config_paths(
     keyspace pipeline needs these resolved to find its own input files, so they
     resolve OUTSIDE it, with ``@config.*`` refs chained within this set only.
     """
-    xdg_vars = _xdg_var_set(data_home)
+    xdg_vars = host_xdg_map(data_home)
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None,
@@ -550,7 +565,7 @@ def resolve_system_paths(
     ``@config.primary_workset``).  The ``system.*`` defaults ``@``-ref a Layer-1
     config key, resolved against the foundation injected into ``ctx.config``.
     """
-    xdg_vars = _xdg_var_set(data_home)
+    xdg_vars = host_xdg_map(data_home)
 
     # Split the merged set-values by layer prefix.
     config_set = {k: v for k, v in set_values.items() if k.startswith("config.")}

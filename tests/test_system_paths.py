@@ -31,6 +31,7 @@ from kanibako.paths import (
     CONFIG_PATH_DEFAULTS,
     SYSTEM_PATH_DEFAULTS,
     box_state_home,
+    host_xdg_map,
     load_system_config,
     resolve_config_paths,
     resolve_system_paths,
@@ -367,6 +368,74 @@ class TestResolveXdg:
         first = resolve_xdg("XDG_RUNTIME_DIR", None)
         second = resolve_xdg("XDG_RUNTIME_DIR", None)
         assert first == second
+
+
+class TestHostXdgMap:
+    """``host_xdg_map`` — THE canonical host-side ``$XDG_*`` map for every
+    host-side ``ResolveCtx`` (Jei ruling 2026-07-02: XDG vars must have
+    fallbacks).  Every var must be PRESENT in the map regardless of the
+    environment: the resolver reads only the ctx map, never the env, so a
+    missing key raises at expand time (the 2026-07-02 dogfood bug)."""
+
+    # The freedesktop Base Directory spec defaults (the oracle — pinned
+    # independently of the code's own defaults table).
+    _SPEC_VARS = {
+        "XDG_DATA_HOME": ".local/share",
+        "XDG_CONFIG_HOME": ".config",
+        "XDG_STATE_HOME": ".local/state",
+        "XDG_CACHE_HOME": ".cache",
+    }
+
+    def _pin_runtime_dir(self, tmp_path, monkeypatch):
+        """Pin XDG_RUNTIME_DIR to an absolute dir (avoids the fallback+warn)."""
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+
+    def test_returns_all_five_vars(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        self._pin_runtime_dir(tmp_path, monkeypatch)
+        assert set(host_xdg_map()) == set(self._SPEC_VARS) | {"XDG_RUNTIME_DIR"}
+
+    def test_unset_vars_fall_back_to_spec_defaults(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        self._pin_runtime_dir(tmp_path, monkeypatch)
+        for var in self._SPEC_VARS:
+            monkeypatch.delenv(var, raising=False)
+        xdg_map = host_xdg_map()
+        for var, suffix in self._SPEC_VARS.items():
+            assert xdg_map[var] == str(tmp_path / suffix)
+
+    def test_empty_vars_fall_back_to_spec_defaults(self, tmp_path, monkeypatch):
+        """An EMPTY env value is as good as unset (per the spec) → default."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        self._pin_runtime_dir(tmp_path, monkeypatch)
+        for var in self._SPEC_VARS:
+            monkeypatch.setenv(var, "")
+        xdg_map = host_xdg_map()
+        for var, suffix in self._SPEC_VARS.items():
+            assert xdg_map[var] == str(tmp_path / suffix)
+
+    def test_set_absolute_vars_win(self, tmp_path, monkeypatch):
+        """A SET (absolute) env var is honored over the spec default."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        for var in self._SPEC_VARS:
+            monkeypatch.setenv(var, str(tmp_path / var.lower()))
+        self._pin_runtime_dir(tmp_path, monkeypatch)
+        xdg_map = host_xdg_map()
+        for var in self._SPEC_VARS:
+            assert xdg_map[var] == str((tmp_path / var.lower()).resolve())
+
+    def test_data_home_param_overrides_env(self, tmp_path, monkeypatch):
+        """An explicit *data_home* anchors XDG_DATA_HOME (the flat resolver's
+        already-resolved anchor), beating even a set env var; the other vars
+        still resolve from the environment."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "env_data"))
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        self._pin_runtime_dir(tmp_path, monkeypatch)
+        anchor = tmp_path / "anchor"
+        xdg_map = host_xdg_map(anchor)
+        assert xdg_map["XDG_DATA_HOME"] == str(anchor)
+        assert xdg_map["XDG_CACHE_HOME"] == str(tmp_path / ".cache")
 
 
 class TestBoxStateHome:
