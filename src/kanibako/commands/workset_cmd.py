@@ -654,16 +654,22 @@ def _run_workset_config(args: argparse.Namespace) -> int:
                 config_path=ws_config,
                 env_path=ws_env,
                 force=args.force,
+                command_scope=ConfigLevel.workset,
             )
             print(msg)
             return 0
 
         reset_key = args.reset
+        # Full launch cascade so the honest cleared-message can name the
+        # now-effective value + source tier (item 1) — mirrors the workset SET
+        # handler (system settings file + this workset file; no box scope here).
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
             env_path=ws_env,
             command_scope=ConfigLevel.workset,
+            cascade_system_path=std.settings,
+            cascade_workset_path=ws_config,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

@@ -333,6 +333,23 @@ class TestSystemStructuralFileOnly:
         assert rc == 1
         assert "structural config key" in capsys.readouterr().err
 
+    def test_get_structural_key_matches_set_refusal(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Residuals item 4: `system get system.setup_completed` /
+        `system.channels.*` said "unknown config key" while `set` gave the
+        truthful structural refusal. Make get's message MATCH set's truth."""
+        for key in ("system.setup_completed", "system.channels.commons"):
+            capsys.readouterr()  # drain
+            rc = _get(key)
+            assert rc == 1, key
+            err = capsys.readouterr().err
+            # Mutation guard: the old lie is GONE, the structural truth PRESENT,
+            # and the message names the real config file (as set's does).
+            assert "unknown config key" not in err, (key, err)
+            assert "structural config key" in err, (key, err)
+            assert str(config_file) in err, (key, err)
+
     def test_get_config_path_key_reads_kanibako_config_yaml(
         self, config_file, tmp_home, capsys,
     ):
@@ -351,3 +368,26 @@ class TestSystemStructuralFileOnly:
         assert rc == 0
         std = _std(config_file)
         assert load_doc(std.settings)["agent"]["default"]["model"] == "gpt-5"
+
+    def test_reset_all_never_touches_structural_config_table(
+        self, config_file, tmp_home,
+    ):
+        """Residuals item 3, Editor condition (i): reset --all at the SYSTEM
+        scope clears the settings file's ``system.auth`` SETTINGS table but NEVER
+        the kanibako_config.yaml ``[system]`` STRUCTURAL path table (cache etc.)
+        — those are file-only, not overrides."""
+        std = _std(config_file)
+        # A structural path value hand-written into the config file's [system].
+        _write_nested_toml_key(config_file, ("system",), "cache", "/custom/cache")
+        # A settings-tier system.auth override in the SETTINGS file (ssp).
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        _write_nested_toml_key(
+            std.settings, ("system", "auth"), "share_allowed", False,
+        )
+        rc = _reset(all_keys=True)
+        assert rc == 0
+        # The SETTINGS system.auth table was cleared (item 3).
+        settings_doc = load_doc(std.settings)
+        assert "auth" not in settings_doc.get("system", {}), settings_doc
+        # The CONFIG file's structural [system] cache is INTACT (condition i).
+        assert load_doc(config_file)["system"]["cache"] == "/custom/cache"

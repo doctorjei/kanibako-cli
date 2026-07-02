@@ -879,11 +879,11 @@ def get_config_value(
     so those scopes keep their own ``settings.yaml`` behavior.  CONFIG
     (``system.*`` layout) reads always use ``global_config_path``.
 
-    GET SEMANTICS (spec §2a is SILENT on read semantics; director's model,
-    2026-07-02): a plain ``get <key>`` returns the value STORED AT THIS NOUN'S
-    settings file (including a downward key it stored), else ``None`` (rendered
-    "(not set)").  It NEVER fabricates a built-in default and NEVER returns
-    another tier's value — that is the ``--effective`` cascade view (the
+    GET SEMANTICS (spec §2a "Read verbs" clause, folded 2026-07-02 — Jei clause 5,
+    impl ``3e0eb9e``): a plain ``get <key>`` returns the value STORED AT THIS
+    NOUN'S settings file (including a downward key it stored), else ``None``
+    (rendered "(not set)").  It NEVER fabricates a built-in default and NEVER
+    returns another tier's value — that is the ``--effective`` cascade view (the
     ``show`` path), which is unchanged.  So a settings read here reads the
     NOUN'S file (``settings_dest`` = ``system_settings_path`` at SYSTEM, else
     ``project_toml``) — get reads exactly where ``set`` wrote (F5/F6 + the
@@ -931,20 +931,20 @@ def get_config_value(
         return None
 
     # system.default_agent — the SETTING (not a config path).  Read it from the
-    # system settings tier: ``@config.settings`` = ``global/settings.yaml``
-    # (system_settings_path) for the SYSTEM scope, else the project/global paths.
+    # NOUN's settings file ONLY (spec §2a "Read verbs", clause 5): the system
+    # settings tier (``@config.settings`` = ``global/settings.yaml``,
+    # ``system_settings_path``) at the SYSTEM scope, else this noun's own settings
+    # file (``project_toml``).  The OLD box/workset path also fell back to
+    # ``global_config_path`` — reading the CONTAINING (global) tier's value from a
+    # lower noun, the clause-5 violation ("never another tier's value"; that is the
+    # ``--effective`` cascade view).  ``noun_file`` is exactly where ``set``/
+    # ``reset`` write this key, so get now reads where set wrote (residuals item 2).
     if _is_default_agent_key(canonical):
-        sources = (
-            (project_toml, system_settings_path)
-            if system_settings_path is not None
-            else (project_toml, global_config_path)
-        )
-        for src in sources:
-            if src is None or not src.exists():
-                continue
-            settings = read_agent_settings(src, "default")
-            if _DEFAULT_AGENT_LEAF in settings:
-                return settings[_DEFAULT_AGENT_LEAF] or None
+        if noun_file is None or not noun_file.exists():
+            return None
+        settings = read_agent_settings(noun_file, "default")
+        if _DEFAULT_AGENT_LEAF in settings:
+            return settings[_DEFAULT_AGENT_LEAF] or None
         return None
 
     # box.agent.<key> — the box-scoped agent mirror (F5, block B5, spec §2b
@@ -1225,6 +1225,11 @@ def reset_config_value(
     env_path: Path | None = None,
     system_settings_path: Path | None = None,
     command_scope: ConfigLevel | None = None,
+    cascade_system_path: Path | None = None,
+    cascade_agent_path: Path | None = None,
+    cascade_workset_path: Path | None = None,
+    cascade_box_path: Path | None = None,
+    cascade_agent_name: str = "",
 ) -> str:
     """Remove an override for a single key.  Returns confirmation message.
 
@@ -1239,6 +1244,13 @@ def reset_config_value(
     is permitted for a key of the command scope's OWN namespace or of any scope
     it CONTAINS (containment order, spec §0); an UPWARD reset (and any ``meta.*``
     reset) is REFUSED. When ``None`` the guard is skipped.
+
+    The ``cascade_*`` kwargs supply the FULL launch cascade (every scope's
+    settings file + the active agent name) — the SAME context
+    ``set_config_value`` receives — so the honest cleared-message can append the
+    now-effective value + its source tier AFTER the removal (residuals item 1,
+    F7 "where cheap"). They are additive and consulted ONLY for that message; a
+    caller that omits them still gets the correct cleared-only form.
     """
     canonical = _resolve_key(key)
 
@@ -1290,9 +1302,12 @@ def reset_config_value(
         tail = canonical.split(".")
         sections = tuple(tail[:-1])
         leaf = tail[-1]
-        # Symmetric with set: the command scope's SETTINGS file.
+        # Symmetric with set: the command scope's SETTINGS file. The honest
+        # cleared-message form (F7) — same as every other reset branch — replaces
+        # the older plain "Reset <key>" so the box.agent mirror reset reads
+        # consistently with the rest (residuals item 5).
         if _remove_nested_toml_key(settings_dest, sections, leaf):
-            return f"Reset {canonical}"
+            return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
     # Path-TUPLE category keys — reset symmetry with the category SET branch
@@ -1345,12 +1360,40 @@ def reset_config_value(
     )
     flat = _dot_to_flat(routed)
     if removed:
-        return _honest_reset_message(flat, command_scope)
+        # Compute the now-effective value + source tier from the POST-RESET
+        # cascade (item 1) — the file is already written, so the assembled
+        # snapshot reflects the removal. Threads the SAME cascade files/agent the
+        # 3 handlers hold; None (no inputs / unresolved) → cleared-only form.
+        #
+        # GATE (Editor F1): ONLY a scope-prefixed SETTINGS key
+        # ({system,agent,workset,box}.*) actually READS through the
+        # assemble/merge cascade — so only for those is the assembled snapshot the
+        # key's real read path. A SCOPELESS key (``vault.*``, ``allow_helpers``,
+        # ``model``/``start_mode``/``autonomous``) is read by ``read_project_meta``
+        # / the flat ``KanibakoConfig`` (a SINGLE file, NOT the cascade), so a
+        # cascade-derived "effective" would name a value from a tier NOTHING reads
+        # — a wrong claim. Those keep the cleared-only form. This is the SAME token
+        # test that picks ``dest`` above (the write path and the read path agree).
+        effective = (
+            _effective_after_reset(
+                routed, sections, leaf,
+                agent_name=cascade_agent_name,
+                system_path=cascade_system_path,
+                agent_path=cascade_agent_path,
+                workset_path=cascade_workset_path,
+                box_path=cascade_box_path,
+            )
+            if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
+            else None
+        )
+        return _honest_reset_message(flat, command_scope, effective)
     return f"No override for {flat}"
 
 
 def _honest_reset_message(
-    flat: str, command_scope: "ConfigLevel | None",
+    flat: str,
+    command_scope: "ConfigLevel | None",
+    effective: "tuple[str, str] | None" = None,
 ) -> str:
     """The HONEST ``reset`` confirmation (F7, Jei-ruled 2026-07-02d).
 
@@ -1362,22 +1405,143 @@ def _honest_reset_message(
     hardcoded "box"), and — "where cheap" — show the now-effective value + its
     source tier.
 
-    Here it is NOT cheap: ``reset_config_value`` is not threaded the resolved
-    cascade, so the now-effective value/source is not available without a fresh
-    assembly this seam does not own.  Per the ruling ("where cheap") and
-    evidence honesty, we OMIT the effective value rather than guess a wrong one
-    (the old built-in guess is exactly the lie being fixed).  A caller that
-    holds the cascade can surface the effective value separately.
+    *effective*, when supplied (residuals item 1 — the caller threads the same
+    resolved cascade ``set_config_value`` receives, so it IS cheap now), is the
+    ``(value, tier)`` the POST-RESET cascade resolves for this key, computed by
+    the SAME assemble/merge/expand path the launch uses (no bespoke re-derivation,
+    no built-in guess).  When ``None`` — no cascade inputs supplied, OR the key
+    does not resolve cleanly post-reset — we keep the cleared-only form (evidence
+    honesty: omit rather than guess a wrong value, the exact lie being fixed).
     """
     scope_phrase = (
         f"the {command_scope.value} scope"
         if command_scope is not None
         else "this scope"
     )
-    return (
-        f"Cleared {flat} set on {scope_phrase}; it now falls back through the "
-        f"cascade."
+    base = f"Cleared {flat} set on {scope_phrase}; "
+    if effective is not None:
+        value, tier = effective
+        return f"{base}effective is now {value} ({tier})."
+    return f"{base}it now falls back through the cascade."
+
+
+def _effective_after_reset(
+    routed: str,
+    sections: tuple[str, ...],
+    leaf: str,
+    *,
+    agent_name: str,
+    system_path: Path | None,
+    agent_path: Path | None,
+    workset_path: Path | None,
+    box_path: Path | None,
+) -> "tuple[str, str] | None":
+    """The now-effective ``(value, source_tier)`` for *routed* AFTER a reset has
+    removed the command-scope override (residuals item 1, F7 "where cheap").
+
+    Reuses the SAME committed pipeline the launch + set-time probe use
+    (``assemble_levels`` → ``merge`` → lenient ``expand``, single-source — NOT a
+    re-implementation), so the tier is the one the cascade ACTUALLY resolves. The
+    reset already wrote the file, so the assembled snapshot is the POST-RESET
+    state (the Editor's condition: build AFTER removal, not stale).
+
+    Returns ``None`` — so the caller keeps the cleared-only form — when: no
+    cascade files are supplied (a caller that does not thread them), the key is
+    absent from the post-reset snapshot, it is not a plain scalar (a Bind/list
+    has no single "effective value" to print here), or it does not expand cleanly
+    (an unresolved ``@``-ref / cycle — no built-in guess).
+    """
+    if all(
+        p is None for p in (system_path, agent_path, workset_path, box_path)
+    ):
+        return None
+    from kanibako.config import config_file_path
+    from kanibako.paths import load_system_config, xdg
+    from kanibako.settings_assemble import assemble_levels
+    from kanibako.settings_expand import expand
+    from kanibako.settings_merge import merge
+    from kanibako.settings_store import Bind, KeyStore
+
+    # The path tier (Layer-1 config.* foundation into ctx.config, Layer-2 system.*
+    # into the base FLOOR) — identical to _category_set_lookups; a resolution
+    # failure must not break a reset (fall back to empty → keep cleared-only form).
+    floor: dict[str, object] = {}
+    config_foundation: dict[str, str] = {}
+    try:
+        user_config = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        data_home = xdg("XDG_DATA_HOME", ".local/share")
+        for dotted, path in load_system_config(
+            user_config, data_home=data_home, home=Path.home(),
+        ).items():
+            if dotted.startswith("config."):
+                config_foundation[dotted] = str(path)
+            elif dotted.startswith("system."):
+                floor[dotted] = str(path)
+    except Exception:
+        return None
+
+    ctx = _set_time_ctx(config=config_foundation)
+    levels = assemble_levels(
+        agent_name=agent_name,
+        system_path=system_path,
+        agent_path=agent_path,
+        workset_path=workset_path,
+        box_path=box_path,
+        floor=floor,
     )
+    # The tier NAMES parallel assemble_levels' order (MOST-SPECIFIC-FIRST):
+    # [box, workset, agent.<active>, agent.default, system, base]. The SOURCE tier
+    # is the first level that SETS the key (the merge's precedence winner) — read
+    # with the UNBOUND dict ops (S3, collision-safe), NEVER the bound .get.
+    tier_names = ("box", "workset", "agent", "agent.default", "system", "base")
+    key_path = (*sections, leaf)
+
+    def _reads(level: KeyStore, segs: tuple[str, ...]) -> "tuple[bool, object]":
+        node: object = level
+        for seg in segs:
+            if not isinstance(node, KeyStore):
+                return (False, None)
+            if dict.get(node, seg, _NO_KEY) is _NO_KEY:
+                return (False, None)
+            node = dict.get(node, seg)
+        return (True, node)
+
+    source_tier: str | None = None
+    for idx, level in enumerate(levels):
+        found, _val = _reads(level, key_path)
+        if found:
+            source_tier = tier_names[idx] if idx < len(tier_names) else "base"
+            break
+    if source_tier is None:
+        return None  # absent post-reset → nothing effective to name.
+
+    # Read the winning RAW value from the merged snapshot and lenient-expand it.
+    snapshot = merge(levels)
+    found, raw = _reads(snapshot, key_path)
+    if not found or isinstance(raw, (Bind, KeyStore, list)) or raw is None:
+        # A bind/subtree/list/present-None has no single scalar to print here.
+        return None
+    result = expand(snapshot, ctx, collect_errors=True)
+    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
+    resolved_snap, errors = result
+    if routed in errors:
+        return None  # unresolved post-reset (dangling ref / cycle) — no guess.
+    found, eff = _reads(resolved_snap, key_path)
+    if not found or isinstance(eff, (Bind, KeyStore, list)) or eff is None:
+        return None
+    # A stored/resolved empty string has no value to name (Editor NIT-a): render
+    # to None → the caller keeps the cleared-only form, never "effective is now
+    # <blank>". (``_render_stored_scalar`` already maps "" → None.)
+    rendered = _render_stored_scalar(eff)
+    if rendered is None:
+        return None
+    return (rendered, source_tier)
+
+
+# A private sentinel for _effective_after_reset's unbound-dict presence probe
+# (S3): distinct from ``None`` (a present-None leaf is still SET) and from any
+# real value. Kept module-local so it is a stable identity across calls.
+_NO_KEY: object = object()
 
 
 def write_system_value(config_path: Path, leaf: str, value: object) -> None:
@@ -1397,20 +1561,86 @@ def write_system_value(config_path: Path, leaf: str, value: object) -> None:
     _write_nested_toml_key(config_path, ("system",), leaf, value)
 
 
+def _count_leaves(node: object) -> int:
+    """Count the scalar/leaf entries under a nested-dict *node* (a scope table).
+
+    A ``dict`` recurses; anything else (scalar / list / Bind) is ONE leaf. Used
+    so ``reset_all`` reports the real number of overrides it removed when it
+    clears a whole nested scope table (residuals item 3).
+    """
+    if isinstance(node, dict):
+        return sum(_count_leaves(v) for v in node.values())
+    return 1
+
+
+def _clear_writable_scope_tables(
+    path: Path, command_scope: "ConfigLevel | None",
+) -> int:
+    """Drop the top-level SCOPE tables *command_scope* is permitted to write from
+    *path*, returning the number of leaves removed (residuals item 3).
+
+    ``reset --all`` mirrors a per-key reset over the WHOLE file: a nested scope
+    table (``box:`` in a workset file, ``system: auth:`` / ``workset: auth:`` /
+    ``box: bindings:`` …) is cleared IFF a single reset of a key in it at this
+    command scope would PASS the §0 scope-direction guard — i.e. the table's
+    top-level token is in ``_SCOPE_WRITE_ALLOWED[command_scope]`` (the command
+    scope's OWN namespace + those it CONTAINS). An UPWARD table (e.g. a hostile
+    ``system:`` hand-edited into a box file) is LEFT INTACT — a single reset of
+    such a key is refused, so ``--all`` must not clear it either.
+
+    NEVER touched here: ``agent`` (agent-keyed; cleared by the caller's dedicated
+    pass, which holds the scopeless ``model``/``start_mode`` settings),
+    ``resource_overrides`` (its own surface), ``meta`` (RO identity, §0), and
+    non-scope keys (top-level scalars like ``allow_helpers`` — the flat
+    ``load_project_overrides`` pass owns those). When *command_scope* is ``None``
+    (no scope context) NOTHING is cleared here — the guard cannot be evaluated.
+    """
+    if command_scope is None or not path.exists():
+        return 0
+    allowed = _SCOPE_WRITE_ALLOWED.get(command_scope, frozenset())
+    data = load_doc(path)
+    if not isinstance(data, dict):
+        return 0
+    removed = 0
+    # Iterate a snapshot of the top-level tables. Only SCOPE tokens the command
+    # scope may write are candidates; ``agent``/``resource_overrides``/``meta``
+    # are excluded by construction (agent/resource are handled elsewhere; meta is
+    # never in ``_SCOPE_WRITE_ALLOWED`` — it is not a containment scope).
+    for token in list(data):
+        if token not in allowed or token in ("agent", "resource_overrides"):
+            continue
+        table = data.get(token)
+        if not isinstance(table, dict):
+            continue
+        removed += _count_leaves(table)
+        data.pop(token, None)
+    if removed:
+        dump_doc(path, data)
+    return removed
+
+
 def reset_all(
     *,
     config_path: Path,
     env_path: Path | None = None,
     force: bool = False,
     system_settings_path: Path | None = None,
+    command_scope: "ConfigLevel | None" = None,
 ) -> str:
     """Remove all overrides at this config level.  Confirms unless *force*.
 
     *system_settings_path*, when supplied (SYSTEM scope), is where the SETTINGS
-    (the ``agent`` table + ``resource_overrides``) are cleared from
-    (``@config.settings`` = ``global/settings.yaml``), while CONFIG overrides are
-    cleared from ``config_path``.  When None (box/workset) everything is cleared
-    from ``config_path`` as before.
+    (the ``agent`` table + ``resource_overrides`` + nested SCOPE tables) are
+    cleared from (``@config.settings`` = ``global/settings.yaml``), while CONFIG
+    overrides are cleared from ``config_path``.  When None (box/workset)
+    everything is cleared from ``config_path`` as before.
+
+    *command_scope* drives the §0 scope-direction guard for the nested SCOPE
+    tables (residuals item 3): ``--all`` clears a nested table iff a single reset
+    of a key in it at this scope would pass ``_scope_direction_error`` — the
+    command scope's OWN namespace + those it CONTAINS; an UPWARD table is left
+    intact. When ``None`` the flat/agent/resource/env clears still run (backward
+    compatible) but no nested SCOPE table is touched.
     """
     if not force:
         try:
@@ -1421,10 +1651,18 @@ def reset_all(
     count = 0
 
     # Clear project-level config overrides (always from config_path).
+    # Count ONLY what was actually removed (Editor F2): load_project_overrides
+    # can report a phantom ``config_paths`` field for any file carrying a
+    # [system]/[config] table (KanibakoConfig folds those), and
+    # unset_project_config_key returns False when the flat key names no real
+    # top-level entry — so an unconditional ``count += 1`` over-reported (a file
+    # with only a [system] table said "Reset 1" while removing nothing, and
+    # SYSTEM-scope --all could never say "No overrides"). Gate the count on the
+    # real removal.
     overrides = load_project_overrides(config_path)
     for key in overrides:
-        unset_project_config_key(config_path, key)
-        count += 1
+        if unset_project_config_key(config_path, key):
+            count += 1
 
     # Clear target settings + resource overrides.  SYSTEM scope keeps these in
     # the system settings file (settings_dest); box/workset use config_path.
@@ -1446,6 +1684,15 @@ def reset_all(
             for k in list(data["resource_overrides"]):
                 _remove_toml_key(settings_dest, "resource_overrides", k)
                 count += 1
+
+    # Clear the nested SCOPE tables the command scope is permitted to write
+    # (residuals item 3): the flat ``load_project_overrides`` pass only reaches
+    # the ``KanibakoConfig`` dataclass fields, leaving nested scope tables
+    # (``<scope>.auth`` / ``box.bindings`` / a downward ``box:`` table in a
+    # workset file …) intact. Same file the settings live in (settings_dest —
+    # config_path at box/workset, the system settings file at SYSTEM); gated by
+    # the §0 containment guard.
+    count += _clear_writable_scope_tables(settings_dest, command_scope)
 
     # Clear env file
     if env_path and env_path.is_file():

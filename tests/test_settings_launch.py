@@ -395,6 +395,7 @@ from kanibako.settings_launch import (  # noqa: E402
 def _auth_snapshot(
     mode: str,
     *,
+    tmp_path: Path,
     agent_name: str = "claude",
     support: bool = True,
     box_file: dict | None = None,
@@ -411,7 +412,8 @@ def _auth_snapshot(
     a ``system.*`` gate must ride the SYSTEM file, a ``workset.*`` opt-out the
     WORKSET file; only genuine ``box.*`` settings ride *box_file*).
     """
-    import tempfile
+    from itertools import count
+
     from kanibako.config_io import dump_doc
 
     chain = auth_chain_floor(mode=mode, agent_name=agent_name)
@@ -424,10 +426,12 @@ def _auth_snapshot(
         mode=mode, ws_root_literal=("/ws" if mode != "primary" else None)
     )
 
+    counter = count()
+
     def _to_path(data: dict | None) -> Path | None:
         if data is None:
             return None
-        p = Path(tempfile.mktemp(suffix=".yaml"))
+        p = tmp_path / f"settings-{next(counter)}.yaml"
         dump_doc(p, data)
         return p
 
@@ -439,10 +443,10 @@ def _auth_snapshot(
     )
 
 
-def test_auth_primary_default_workset_tier():
+def test_auth_primary_default_workset_tier(tmp_path):
     """PRIMARY, capable, all-default: both enables true → WORKSET wins
     (precedence workset>global) and global_sync is on."""
-    a = resolve_auth_source(_auth_snapshot("primary"), mode="primary")
+    a = resolve_auth_source(_auth_snapshot("primary", tmp_path=tmp_path), mode="primary")
     assert a.tier == "workset"
     assert a.global_enabled and a.workset_enabled
     assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
@@ -450,38 +454,43 @@ def test_auth_primary_default_workset_tier():
     assert a.shares is True
 
 
-def test_auth_named_default_workset_tier():
+def test_auth_named_default_workset_tier(tmp_path):
     """NAMED resolves the same as primary (all-default → workset tier)."""
-    a = resolve_auth_source(_auth_snapshot("named"), mode="named")
+    a = resolve_auth_source(_auth_snapshot("named", tmp_path=tmp_path), mode="named")
     assert a.tier == "workset"
 
 
-def test_auth_capability_gating_no_share_support():
+def test_auth_capability_gating_no_share_support(tmp_path):
     """share_support=False (a non-capable agent) → NO sharing at any tier
     (tier box), regardless of the allow flags (the hard capability floor)."""
-    a = resolve_auth_source(_auth_snapshot("primary", support=False), mode="primary")
+    a = resolve_auth_source(
+        _auth_snapshot("primary", tmp_path=tmp_path, support=False), mode="primary"
+    )
     assert a.tier == "box"
     assert not a.global_enabled and not a.workset_enabled
     assert a.shares is False
 
 
-def test_auth_box_opts_out_of_workset_falls_to_global():
+def test_auth_box_opts_out_of_workset_falls_to_global(tmp_path):
     """box.auth.workset_enabled=false → global tier (precedence still workset>global
     but workset is disabled, so global wins)."""
     a = resolve_auth_source(
-        _auth_snapshot("primary", box_file={"box": {"auth": {"workset_enabled": False}}}),
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            box_file={"box": {"auth": {"workset_enabled": False}}},
+        ),
         mode="primary",
     )
     assert a.tier == "global"
     assert a.global_enabled and not a.workset_enabled
 
 
-def test_auth_box_opts_out_of_both_is_private():
+def test_auth_box_opts_out_of_both_is_private(tmp_path):
     """A box disabling BOTH enables → private (tier box), the distinct-auth
     replacement (no flag, just the settable knobs)."""
     a = resolve_auth_source(
         _auth_snapshot(
-            "primary",
+            "primary", tmp_path=tmp_path,
             box_file={"box": {"auth": {"workset_enabled": False, "global_enabled": False}}},
         ),
         mode="primary",
@@ -490,36 +499,40 @@ def test_auth_box_opts_out_of_both_is_private():
     assert a.shares is False
 
 
-def test_auth_standalone_global_only():
+def test_auth_standalone_global_only(tmp_path):
     """STANDALONE (deliberate behavior change): the workset tier degenerates false
     (no workset group), but the GLOBAL tier still applies — a standalone box CAN
     use global/host creds."""
-    a = resolve_auth_source(_auth_snapshot("standalone"), mode="standalone")
+    a = resolve_auth_source(
+        _auth_snapshot("standalone", tmp_path=tmp_path), mode="standalone"
+    )
     assert a.tier == "global"
     assert a.global_enabled and not a.workset_enabled
 
 
-def test_auth_system_disallow_is_private():
+def test_auth_system_disallow_is_private(tmp_path):
     """system.auth.share_allowed=false → the global gate is off; the workset allow
     defaults to @system so it is off too → private everywhere. The gate is set at
     the SYSTEM scope (spec §0: system.* is settable ONLY from the system file —
     injecting it via a box file would be an upward write and be dropped)."""
     a = resolve_auth_source(
         _auth_snapshot(
-            "primary", system_file={"system": {"auth": {"share_allowed": False}}}
+            "primary", tmp_path=tmp_path,
+            system_file={"system": {"auth": {"share_allowed": False}}},
         ),
         mode="primary",
     )
     assert a.tier == "box"
 
 
-def test_auth_workset_allow_off_falls_to_global():
+def test_auth_workset_allow_off_falls_to_global(tmp_path):
     """workset.auth.share_allowed=false (workset opts out) but the global gate is on
     → the box uses the global tier. The opt-out is set at the WORKSET scope (spec
     §0: workset.* is settable from the workset file, not a lower box file)."""
     a = resolve_auth_source(
         _auth_snapshot(
-            "primary", workset_file={"workset": {"auth": {"share_allowed": False}}}
+            "primary", tmp_path=tmp_path,
+            workset_file={"workset": {"auth": {"share_allowed": False}}},
         ),
         mode="primary",
     )
@@ -685,6 +698,7 @@ def test_meta_box_mode_equals_project_type_all_modes():
 
 def test_hostile_box_file_meta_table_cannot_override_snapshot_anchors(
     caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
 ) -> None:
     """END-TO-END (spec §0 / clause 4 — the brief's snapshot-level gate): a
     hostile box settings file carrying a TOP-LEVEL ``meta:`` table
@@ -702,12 +716,10 @@ def test_hostile_box_file_meta_table_cannot_override_snapshot_anchors(
     removed). This pins the anchors against a hostile FILE end-to-end, which the
     assembly-level pins (no snapshot) do not reach.
     """
-    import tempfile
-
     from kanibako.config_io import dump_doc
 
     # A box file that tries to forge the identity anchors via a top-level meta:.
-    hostile = Path(tempfile.mktemp(suffix=".yaml"))
+    hostile = tmp_path / "hostile.yaml"
     dump_doc(
         hostile,
         {
