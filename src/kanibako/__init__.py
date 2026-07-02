@@ -22,4 +22,4 @@ __version__ = "1.7.0"
 # releases change setup in no way → bump NEITHER → existing configs land
 # ``>= FCV`` → silent.
 SETUP_BCV = "1.6.0"
-SETUP_FCV = "1.6.0"
+SETUP_FCV = "1.7.0"

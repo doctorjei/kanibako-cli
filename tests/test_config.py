@@ -100,8 +100,9 @@ class TestSetupVersionConstant:
 
         from kanibako import SETUP_BCV, SETUP_FCV, __version__
 
-        assert SETUP_BCV == "1.6.0"
-        assert SETUP_FCV == "1.6.0"
+        # Present and PEP-440 parseable (Version() raises on garbage); exact
+        # values move per release, so assert the invariant, not the literals.
+        assert Version(SETUP_BCV) and Version(SETUP_FCV)
         # Invariant: BCV <= FCV <= CurrentVer (compared by base version so a
         # dev/rc build of the same base counts as the released base).
         bcv = Version(Version(SETUP_BCV).base_version)
@@ -209,19 +210,35 @@ class TestSetupCompatGate:
 
     # --- band: ConfigVer == CurrentVer (no-op) -----------------------------
     def test_current_marker_no_op(self, tmp_path):
-        cf = self._marker(tmp_path, "1.6.0")
+        from packaging.version import Version
+
+        import kanibako
+
+        # Marker == the current build's base version → == band → no-op.
+        cf = self._marker(tmp_path, Version(kanibako.__version__).base_version)
         assert self._gate()(cf) is None
 
     def test_dev_marker_of_current_base_no_op(self, tmp_path):
         """A dev build of the current base reads as == (base-version compare)."""
-        cf = self._marker(tmp_path, "1.6.0.dev26")
+        from packaging.version import Version
+
+        import kanibako
+
+        base = Version(kanibako.__version__).base_version
+        cf = self._marker(tmp_path, f"{base}.dev26")
         assert self._gate()(cf) is None
 
     # --- band: ConfigVer > CurrentVer (ERROR) ------------------------------
     def test_newer_than_build_raises(self, tmp_path):
+        from packaging.version import Version
+
+        import kanibako
         from kanibako.errors import ConfigError
 
-        cf = self._marker(tmp_path, "1.7.0")  # base > 1.6.0 build
+        # A version strictly greater than the build base → "from the future".
+        newer = f"{Version(kanibako.__version__).major + 1}.0.0"
+        assert Version(newer) > Version(Version(kanibako.__version__).base_version)
+        cf = self._marker(tmp_path, newer)
         with pytest.raises(ConfigError) as exc:
             self._gate()(cf)
         assert "newer kanibako" in str(exc.value)
@@ -304,11 +321,25 @@ class TestSetupCompatGate:
                 p.stop()
 
     # --- band: ConfigVer < BCV (ERROR) -------------------------------------
+    @staticmethod
+    def _below_bcv():
+        """A version string strictly below the live SETUP_BCV base version."""
+        from packaging.version import Version
+
+        import kanibako
+
+        bcv = Version(kanibako.SETUP_BCV)
+        below = f"{bcv.major - 1}.0.0" if bcv.major >= 1 else f"0.0.{bcv.micro}"
+        if not Version(below) < Version(bcv.base_version):
+            below = "0.0.1"
+        assert Version(below) < Version(bcv.base_version)
+        return below
+
     def test_older_than_bcv_raises(self, tmp_path):
         from kanibako.errors import ConfigError
 
-        cf = self._marker(tmp_path, "1.5.0")
-        # With the shipped 1.6.0 constants, 1.5.0 < BCV → too old → ERROR.
+        # A version strictly below the live BCV → too old → ERROR.
+        cf = self._marker(tmp_path, self._below_bcv())
         with pytest.raises(ConfigError) as exc:
             self._gate()(cf)
         assert "too old to auto-update" in str(exc.value)
@@ -317,7 +348,7 @@ class TestSetupCompatGate:
         """A dev build of a genuinely older base is still < BCV → ERROR."""
         from kanibako.errors import ConfigError
 
-        cf = self._marker(tmp_path, "1.5.0.dev1")  # base 1.5.0 < BCV 1.6.0
+        cf = self._marker(tmp_path, f"{self._below_bcv()}.dev1")  # base < BCV
         with pytest.raises(ConfigError):
             self._gate()(cf)
 

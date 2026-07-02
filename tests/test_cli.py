@@ -1102,8 +1102,15 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
         from kanibako.config_interface import write_system_value
 
+        from packaging.version import Version
+
+        import kanibako
+
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.6.0")
+        # Marker == the current build's base version → == band → no nudge.
+        write_system_value(
+            cf, "setup_completed", Version(kanibako.__version__).base_version
+        )
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("start"))
@@ -1156,6 +1163,20 @@ class TestSetupNudge:
             _setup_nudge(self._ns("agent", agent_command="list"))
         assert capsys.readouterr().err == ""
 
+    @staticmethod
+    def _below_bcv():
+        """A version string strictly below the live SETUP_BCV base version."""
+        from packaging.version import Version
+
+        import kanibako
+
+        bcv = Version(kanibako.SETUP_BCV)
+        below = f"{bcv.major - 1}.0.0" if bcv.major >= 1 else f"0.0.{bcv.micro}"
+        if not Version(below) < Version(bcv.base_version):
+            below = "0.0.1"
+        assert Version(below) < Version(bcv.base_version)
+        return below
+
     def test_too_old_marker_propagates_error(self, tmp_path):
         """ERROR band (ConfigVer < BCV) → KanibakoError propagates (rc1)."""
         from unittest.mock import patch
@@ -1165,7 +1186,7 @@ class TestSetupNudge:
         from kanibako.errors import KanibakoError
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.5.0")  # < BCV (1.6.0)
+        write_system_value(cf, "setup_completed", self._below_bcv())  # < BCV
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
@@ -1176,12 +1197,18 @@ class TestSetupNudge:
         """ERROR band (ConfigVer > CurrentVer) → KanibakoError propagates (rc1)."""
         from unittest.mock import patch
 
+        from packaging.version import Version
+
+        import kanibako
         from kanibako.cli import _setup_nudge
         from kanibako.config_interface import write_system_value
         from kanibako.errors import KanibakoError
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.7.0")  # > build (1.6.0)
+        # A version strictly greater than the build base → "from the future".
+        newer = f"{Version(kanibako.__version__).major + 1}.0.0"
+        assert Version(newer) > Version(Version(kanibako.__version__).base_version)
+        write_system_value(cf, "setup_completed", newer)  # > build
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
@@ -1219,7 +1246,8 @@ class TestSetupNudge:
         from kanibako.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.5.0")  # < BCV → ERROR band
+        # < BCV → ERROR band.
+        write_system_value(cf, "setup_completed", self._below_bcv())
         with patch("kanibako.config.config_file_path", return_value=cf), \
              patch("kanibako.paths.xdg", return_value=tmp_path), \
              patch("kanibako.cli._ensure_initialized"):
