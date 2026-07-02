@@ -275,6 +275,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         msg = reset_all(
             config_path=cf, env_path=env_sys, force=args.force,
             system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
         )
         print(msg)
         return 0
@@ -289,9 +290,14 @@ def _run_system_config(args: argparse.Namespace) -> int:
             return 1
         # Ensure the system settings dir exists for SETTINGS removals.
         ssp.parent.mkdir(parents=True, exist_ok=True)
+        # Thread the system SETTINGS file as the cascade's system tier so the
+        # honest cleared-message can name the now-effective value + source tier
+        # (item 1). A system-scope regular settings key was removed FROM ssp, so
+        # ssp is the tier the post-reset snapshot must read.
         msg = reset_config_value(
             key, config_path=cf, env_path=env_sys, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
+            cascade_system_path=ssp,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
@@ -315,6 +321,19 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # get
     if action == ConfigAction.get:
         if not is_known_key(key):
+            # Residuals item 4: a STRUCTURAL file-only key (system.setup_completed,
+            # system.channels.*) is not in the settable known-key set, so the plain
+            # is_known_key gate rejected it as "unknown config key" — while `set`
+            # gives the truthful structural refusal (naming the config file). Make
+            # get's message MATCH set's truth for these keys instead of pretending
+            # they do not exist.
+            from kanibako.config_interface import (
+                _is_system_path_key,
+                _system_key_refusal,
+            )
+            if _is_system_path_key(key):
+                print(_system_key_refusal(key), file=sys.stderr)
+                return 1
             print(f"Error: unknown config key: {key}", file=sys.stderr)
             return 1
         val = get_config_value(

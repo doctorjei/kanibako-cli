@@ -543,6 +543,81 @@ class TestResetAll:
         msg = reset_all(config_path=project_toml, force=True)
         assert "No overrides" in msg
 
+    def test_reset_all_clears_nested_scope_tables(self, tmp_path):
+        # Residuals item 3: --all clears NESTED scope tables (box.auth /
+        # box.bindings), not only the flat KanibakoConfig fields. Baseline-RED at
+        # 6340dad: these tables survived reset --all.
+        box_file = tmp_path / "box-settings.yaml"
+        dump_doc(box_file, {
+            "box": {
+                "image": "custom",  # a flat field (already handled)
+                "auth": {"global_enabled": False, "workset_enabled": True},
+                "bindings": {"ro": {"vault": ["/h", "~/vault/ro"]}},
+            },
+        })
+        msg = reset_all(
+            config_path=box_file, force=True, command_scope=ConfigLevel.box,
+        )
+        assert "Reset" in msg and "No overrides" not in msg, msg
+        # The WHOLE box table is gone (flat + nested).
+        assert "box" not in load_doc(box_file), load_doc(box_file)
+
+    def test_reset_all_preserves_upward_table(self, tmp_path):
+        # Residuals item 3 guard (Editor's yardstick): a table whose single reset
+        # would be REFUSED as upward (a hostile ``system:`` hand-edited into a
+        # BOX file) must NOT be cleared by --all either. The downward/own table
+        # IS cleared; the upward one is left intact.
+        box_file = tmp_path / "box-settings.yaml"
+        dump_doc(box_file, {
+            "box": {"auth": {"global_enabled": False}},   # own scope → cleared
+            "system": {"auth": {"share_allowed": False}},  # UPWARD → preserved
+        })
+        reset_all(config_path=box_file, force=True, command_scope=ConfigLevel.box)
+        doc = load_doc(box_file)
+        assert "box" not in doc, doc          # own table cleared
+        assert doc.get("system", {}).get("auth", {}).get("share_allowed") is False
+
+    def test_reset_all_workset_clears_downward_box_defaults(self, tmp_path):
+        # A workset file may hold DOWNWARD box.* defaults (spec §0). --all at the
+        # workset scope clears them (workset contains box), plus its own
+        # workset.auth table.
+        ws_file = tmp_path / "workset-settings.yaml"
+        dump_doc(ws_file, {
+            "workset": {"auth": {"share_allowed": False}},
+            "box": {"image": "ws-default:img"},  # downward default
+        })
+        reset_all(
+            config_path=ws_file, force=True, command_scope=ConfigLevel.workset,
+        )
+        doc = load_doc(ws_file)
+        assert "workset" not in doc, doc
+        assert "box" not in doc, doc
+
+    def test_reset_all_count_is_real_removals_not_phantom(self, tmp_path):
+        # Editor F2: load_project_overrides reports a phantom ``config_paths``
+        # field for any file carrying a [system]/[config] table, and
+        # unset_project_config_key returns False for a flat key naming no real
+        # top-level entry. The flat pass must count ONLY real removals — a file
+        # with ONLY a structural [system] table (no overrides) says
+        # "No overrides to reset.", not "Reset N".
+        f = tmp_path / "settings.yaml"
+        dump_doc(f, {"system": {"cache": "/x"}})  # structural-ish, no override
+        msg = reset_all(config_path=f, force=True)  # no command_scope
+        assert "No overrides to reset." in msg, msg
+        # And with ONE real flat override alongside the [system] table, count is 1.
+        dump_doc(f, {"system": {"cache": "/x"}, "box": {"image": "img"}})
+        msg2 = reset_all(config_path=f, force=True)
+        assert "Reset 1 override(s)." in msg2, msg2
+
+    def test_reset_all_without_scope_leaves_nested_tables(self, tmp_path):
+        # Backward-compat: command_scope=None (no scope context) does NOT touch a
+        # nested scope table (the guard can't be evaluated) — flat/agent/env
+        # clears still run. This pins the None fall-through as deliberate.
+        box_file = tmp_path / "box-settings.yaml"
+        dump_doc(box_file, {"box": {"auth": {"global_enabled": False}}})
+        reset_all(config_path=box_file, force=True)  # no command_scope
+        assert load_doc(box_file)["box"]["auth"]["global_enabled"] is False
+
 
 # ---------------------------------------------------------------------------
 # ConfigLevel enum
@@ -752,18 +827,54 @@ class TestSystemDefaultAgent:
     def test_get_reads_programmatic_write(self, tmp_path):
         from kanibako.config import read_default_agent
 
+        # Residuals item 2: default_agent lives in the system SETTINGS file
+        # (@config.settings, where read_default_agent + set/reset all agree), so
+        # a system-scope get reads it via ``system_settings_path`` — NOT the
+        # kanibako_config.yaml CONFIG file. The old test seeded/read it through
+        # ``global_config_path``, the exact clause-5 leak this item closes: no
+        # real caller stores default_agent in the config file.
         cf = tmp_path / "kanibako_config.yaml"
-        _seed_default_agent(cf, "goose")
-        # The interface getter and the launch-time reader agree.
+        ssp = tmp_path / "global" / "settings.yaml"
+        _seed_default_agent(ssp, "goose")
+        # The interface getter and the launch-time reader agree on the settings file.
         assert get_config_value(
-            "system.default_agent", global_config_path=cf,
+            "system.default_agent", global_config_path=cf, system_settings_path=ssp,
         ) == "goose"
-        assert read_default_agent(cf) == "goose"
+        assert read_default_agent(ssp) == "goose"
 
     def test_get_unset_returns_none(self, tmp_path):
         cf = tmp_path / "kanibako_config.yaml"
         cf.touch()
         assert get_config_value("system.default_agent", global_config_path=cf) is None
+
+    def test_box_get_does_not_leak_global_default_agent(self, tmp_path):
+        # Residuals item 2 (spec §2a Read verbs, clause 5): a plain get at a
+        # box/workset noun must NOT surface the GLOBAL default_agent — that is
+        # another (containing) tier's value, reserved for --effective. Baseline-RED
+        # at 6340dad: the (project_toml, global_config_path) fallback returned the
+        # global value; GREEN here → "(not set)" (None) since the box file is empty.
+        cf = tmp_path / "kanibako_config.yaml"
+        _seed_default_agent(cf, "claude")  # a global default exists
+        box_file = tmp_path / "box-settings.yaml"
+        box_file.touch()  # the box noun stores nothing
+        assert (
+            get_config_value(
+                "system.default_agent",
+                global_config_path=cf,
+                project_toml=box_file,
+            )
+            is None
+        )
+        # But when the box file DOES store it, plain get returns the box value.
+        _seed_default_agent(box_file, "goose")
+        assert (
+            get_config_value(
+                "system.default_agent",
+                global_config_path=cf,
+                project_toml=box_file,
+            )
+            == "goose"
+        )
 
 
 class TestSystemConfigFileOnly:
@@ -1813,8 +1924,15 @@ class TestBoxAgentMirrorConfigSet:
     def test_reset_box_agent_key_removes_override(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
         dump_doc(f, {"box": {"agent": {"model": "sonnet"}}})
-        msg = reset_config_value("box.agent.model", config_path=f)
-        assert msg.startswith("Reset"), msg
+        msg = reset_config_value(
+            "box.agent.model", config_path=f, command_scope=ConfigLevel.box,
+        )
+        # Residuals item 5: the box.agent reset uses the standard HONEST
+        # cleared-message form (consistency), not the old plain "Reset <key>".
+        # Mutation guard: the old prefix must be GONE; the honest phrase PRESENT.
+        assert not msg.startswith("Reset "), msg
+        assert "cleared" in msg.lower(), msg
+        assert "box.agent.model" in msg, msg
         # The override is gone (and the now-empty box.agent table pruned).
         doc = load_doc(f)
         assert "agent" not in doc.get("box", {})
@@ -2025,6 +2143,95 @@ class TestF7HonestResetMessage:
         assert "cleared" in msg.lower()
         assert "workset" in msg.lower()
         assert "reverts to default" not in msg
+
+    def test_reset_message_shows_effective_value_and_source_tier(self, tmp_path):
+        # Residuals item 1: threading the cascade lets the honest message APPEND
+        # the now-effective value + its source tier. workset holds a downward
+        # box.image default; box overrides it; resetting the box override falls
+        # back to the WORKSET value. Baseline-RED at 6340dad: reset_config_value
+        # had no cascade kwargs, so the message could never name the tier.
+        ws = tmp_path / "ws.yaml"
+        box = tmp_path / "box.yaml"
+        set_config_value(
+            "box.image", "ws-img", config_path=ws,
+            command_scope=ConfigLevel.workset,
+        )
+        set_config_value(
+            "box.image", "box-img", config_path=box,
+            command_scope=ConfigLevel.box,
+        )
+        msg = reset_config_value(
+            "box.image", config_path=box, command_scope=ConfigLevel.box,
+            cascade_workset_path=ws, cascade_box_path=box,
+        )
+        # The effective value + its source tier are named (the F7 "where cheap").
+        assert "cleared" in msg.lower(), msg
+        assert "ws-img" in msg, msg
+        assert "workset" in msg.lower(), msg
+        # Mutation guard: the old lie is absent AND the bare cleared-only tail is
+        # NOT used when the effective value IS available.
+        assert "reverts to default" not in msg, msg
+        assert "falls back through the cascade" not in msg, msg
+
+    def test_reset_without_cascade_keeps_cleared_only_form(self, tmp_path):
+        # Item 1 evidence-honesty: with NO cascade inputs supplied, keep the
+        # cleared-only form (do not guess an effective value).
+        ws = tmp_path / "ws.yaml"
+        box = tmp_path / "box.yaml"
+        set_config_value(
+            "box.image", "ws-img", config_path=ws,
+            command_scope=ConfigLevel.workset,
+        )
+        set_config_value(
+            "box.image", "box-img", config_path=box,
+            command_scope=ConfigLevel.box,
+        )
+        msg = reset_config_value(
+            "box.image", config_path=box, command_scope=ConfigLevel.box,
+        )
+        assert "cleared" in msg.lower(), msg
+        assert "falls back through the cascade" in msg, msg
+        # No effective value guessed.
+        assert "effective is now" not in msg, msg
+
+    def test_reset_absent_below_keeps_cleared_only_form(self, tmp_path):
+        # Item 1: even WITH cascade inputs, a key with no lower-tier setter (so it
+        # is absent from the post-reset cascade) keeps the cleared-only form — no
+        # fabricated built-in default (the Editor's "no built-in guess").
+        box = tmp_path / "box.yaml"
+        set_config_value(
+            "box.image", "box-only", config_path=box,
+            command_scope=ConfigLevel.box,
+        )
+        msg = reset_config_value(
+            "box.image", config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box,
+        )
+        assert "cleared" in msg.lower(), msg
+        assert "effective is now" not in msg, msg
+        assert "falls back through the cascade" in msg, msg
+
+    def test_scopeless_key_never_claims_cascade_effective(self, tmp_path):
+        # Editor F1: a SCOPELESS key (vault.enabled) is read by read_project_meta
+        # / the flat KanibakoConfig from a SINGLE file — NOT the settings cascade.
+        # So even with cascade inputs holding a lower-tier project.enable_vault,
+        # the reset must NOT claim a cascade-derived "effective" (a value from a
+        # tier nothing reads). It keeps the cleared-only form.
+        ws = tmp_path / "ws.yaml"
+        box = tmp_path / "box.yaml"
+        dump_doc(ws, {"project": {"enable_vault": False}})  # a lower-tier value
+        set_config_value(
+            "vault.enabled", "true", config_path=box,
+            command_scope=ConfigLevel.box,
+        )
+        msg = reset_config_value(
+            "vault.enabled", config_path=box, command_scope=ConfigLevel.box,
+            cascade_workset_path=ws, cascade_box_path=box,
+        )
+        assert "cleared" in msg.lower(), msg
+        # The wrong claim MUST be absent (mutation guard) — cleared-only stands.
+        assert "effective is now" not in msg, msg
+        assert "falls back through the cascade" in msg, msg
 
 
 class TestSiblingDownwardKeyGetAtNoun:

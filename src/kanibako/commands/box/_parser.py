@@ -1336,6 +1336,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 config_path=project_toml,
                 env_path=env_path,
                 force=args.force,
+                command_scope=ConfigLevel.box,
             )
             print(msg)
             return 0
@@ -1349,11 +1350,36 @@ def _run_box_config(args: argparse.Namespace) -> int:
             return 1
         project_toml = proj.metadata_path / BOX_META_FILE
         env_path = proj.metadata_path / "env"
+        # Full launch cascade so the honest cleared-message can name the
+        # now-effective value + source tier (item 1) — the SAME context the box
+        # SET handler threads. A resolution failure just leaves the agent name
+        # empty → the message degrades to the cleared-only form.
+        reset_ws_path = workset_settings_path(proj.group)
+        reset_agent_name = ""
+        try:
+            from kanibako.config import load_merged_config, resolve_agent
+            _merged = load_merged_config(
+                config_file, project_toml if project_toml.exists() else None,
+                workset_path=reset_ws_path,
+            )
+            reset_agent_name = resolve_agent(
+                explicit_agent=None,
+                box_agent_name=_merged.box_agent_name,
+                workset_agent=None,
+                system_default_path=std.settings,
+                project_path=proj.project_path,
+            )
+        except Exception:
+            reset_agent_name = ""
         msg = reset_config_value(
             reset_key,
             config_path=project_toml,
             env_path=env_path,
             command_scope=ConfigLevel.box,
+            cascade_system_path=std.settings,
+            cascade_workset_path=reset_ws_path,
+            cascade_box_path=project_toml,
+            cascade_agent_name=reset_agent_name,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
