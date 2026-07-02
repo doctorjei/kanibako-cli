@@ -8,7 +8,12 @@ import sys
 from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
-from kanibako.paths import xdg, load_std_paths, resolve_box_target
+from kanibako.paths import (
+    xdg,
+    load_std_paths,
+    resolve_box_target,
+    workset_settings_path,
+)
 from kanibako.utils import container_name_for
 
 
@@ -91,10 +96,7 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
             agent_name=agent,
             system_settings_path=std.settings,
             project_toml=proj.metadata_path / BOX_META_FILE,
-            workset_path=(
-                (proj.group.root / "settings.yaml")
-                if proj.group is not None else None
-            ),
+            workset_path=workset_settings_path(proj.group),
             agent_cfg_path=agent_settings_path(std.agents, agent),
         )
         writeback_session_credentials(target, proj, auth_src=auth_src)

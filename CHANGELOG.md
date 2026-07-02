@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`workset set default <key>` was a silent dead write — the primary workset's
+  settings now live at `@config.primary_workset/settings.yaml` (spec §2c).**
+  Since 1.6.0 the CLI wrote the default (primary) workset's values to
+  `<data>/config.yaml` while the launch cascade read `<data>/settings.yaml`, so
+  nothing set via `workset set default` (or `workset share add default`) ever
+  took effect. Both the write path and every reader now converge on the one
+  spec location, `<data>/primary_workset/settings.yaml`. **No automatic
+  migration (clean break, covered by the 1.7.0 setup nudge):** values in the
+  legacy `<data>/config.yaml` have been inert since 1.6.0 and stay ignored; a
+  hand-made `<data>/settings.yaml` is no longer read (kanibako warns at
+  resolve time while it exists without the spec file) — move wanted values
+  into `primary_workset/settings.yaml` by hand or re-set them via
+  `kanibako workset set default <key>=<value>`.
+- **`workset config set env.<VAR>` now works (named and primary worksets).**
+  The workset handler never threaded its env-file destination into the config
+  engine, so every workset-scope `env.*` set/reset failed with "no env file
+  path". The workset env tier lives at `<workset root>/env` (primary:
+  `<data>/primary_workset/env`), mirroring the box tier's `<box>/env`, and a
+  primary-workset box's launch env now includes the primary workset's env tier
+  (precedence unchanged: system < agent < workset < box).
+
 ## [1.7.0] - 2026-07-02
 
 This release lands the **persona agents** feature (experimental) — running a named

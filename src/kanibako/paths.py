@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from collections.abc import Mapping, Sequence
-from typing import NamedTuple, Protocol
+from typing import NamedTuple, Protocol, overload
 
 import yaml
 
@@ -159,9 +159,10 @@ class ProjectGroup:
 
     Captures the default-vs-workset difference as *data* rather than control
     flow.  The implicit default group is the *default workset* (``is_default``
-    is True); a named workset forms a non-default group rooted at the workset
-    root.  Standalone projects belong to no group (``ProjectPaths.group`` is
-    None).
+    is True), rooted at ``@config.primary_workset`` (spec §2c: PRIMARY
+    ``meta.workset.path``); a named workset forms a non-default group rooted at
+    the workset root.  Standalone projects belong to no group
+    (``ProjectPaths.group`` is None).
 
     *local_shared_base* is the root under which the local-shared path lives
     (``base / "shared"``): the standard data path for the default
@@ -172,6 +173,103 @@ class ProjectGroup:
     root: Path
     is_default: bool
     local_shared_base: Path
+
+
+class _WorksetRooted(Protocol):
+    """Structural type for "anything rooted at ``@meta.workset.path``".
+
+    Satisfied by both :class:`ProjectGroup` (the launch-side view) and
+    ``kanibako.workset.Workset`` (the workset-command view), so the workset
+    file derivations below serve every caller through ONE expression.
+    """
+
+    @property
+    def root(self) -> Path: ...
+
+
+@overload
+def workset_settings_path(group: _WorksetRooted) -> Path: ...
+@overload
+def workset_settings_path(group: None) -> None: ...
+
+
+def workset_settings_path(group: _WorksetRooted | None) -> Path | None:
+    """THE workset-tier settings-file derivation (spec §2c ALL WORKSETS:
+    ``meta.workset.settings`` = ``@meta.workset.path/settings.yaml``).
+
+    ``group.root`` carries ``@meta.workset.path`` for both modes — the PRIMARY
+    workset roots at ``@config.primary_workset``, a NAMED workset at its own
+    root — so the one expression serves every caller (launch cascade, config
+    verbs, ``--effective`` displays).  ``None`` (no group = standalone) has no
+    workset tier file.
+    """
+    return group.root / "settings.yaml" if group is not None else None
+
+
+def _default_project_group(std: StandardPaths) -> ProjectGroup:
+    """The PRIMARY (default) workset's :class:`ProjectGroup`.
+
+    Spec §2c: the PRIMARY workset roots at ``@config.primary_workset`` — the
+    workset-tier settings/env files derive from this root (F4).
+    ``local_shared_base`` stays the data path (the legacy ``shared/``
+    location).  Also emits the one-shot legacy-settings warning (see
+    :func:`warn_legacy_primary_settings`).
+    """
+    warn_legacy_primary_settings(std)
+    return ProjectGroup(
+        name="default",
+        root=std.primary_workset,
+        is_default=True,
+        local_shared_base=std.data_path,
+    )
+
+
+_legacy_primary_settings_warned = False
+
+
+def warn_legacy_primary_settings(std: StandardPaths) -> None:
+    """One-shot warning for a leftover legacy ``<data>/settings.yaml``.
+
+    1.6.0's launch cascade read the primary workset's settings from
+    ``@config.data/settings.yaml`` (a location no shipped code ever wrote);
+    the spec §2c file is ``@config.primary_workset/settings.yaml``.  Migration
+    ruling (2026-07-02, option (c) drop + document): the legacy file is NOT
+    read and NOT touched — warn while it exists without the spec file so a
+    hand-migrated 1.6.0 install notices, then fall silent once the spec file
+    exists.
+    """
+    global _legacy_primary_settings_warned
+    if _legacy_primary_settings_warned:
+        return
+    legacy = std.data_path / "settings.yaml"
+    spec_file = std.primary_workset / "settings.yaml"
+    if legacy.is_file() and not spec_file.is_file():
+        import sys
+
+        _legacy_primary_settings_warned = True
+        print(
+            f"warning: {legacy} is no longer read — 1.7.0 moved the primary "
+            f"workset's settings to {spec_file}. Move wanted values there, or "
+            "re-set them via 'kanibako workset set default <key>=<value>'.",
+            file=sys.stderr,
+        )
+
+
+@overload
+def workset_env_path(group: _WorksetRooted) -> Path: ...
+@overload
+def workset_env_path(group: None) -> None: ...
+
+
+def workset_env_path(group: _WorksetRooted | None) -> Path | None:
+    """The workset-tier env FILE for *group* (``<workset root>/env``).
+
+    Mirrors the box tier's ``<metadata>/env`` and the system tier's
+    ``@config.data/env``.  The PRIMARY workset roots at
+    ``@config.primary_workset``, so its env tier is distinct from the system
+    file.  ``None`` (standalone) has no workset env tier.
+    """
+    return group.root / "env" if group is not None else None
 
 
 @dataclass
@@ -933,12 +1031,7 @@ def resolve_project(
         mode=BoxMode.primary,
         enable_vault=actual_vault_enabled,
         name=project_name,
-        group=ProjectGroup(
-            name="default",
-            root=std.data_path,
-            is_default=True,
-            local_shared_base=std.data_path,
-        ),
+        group=_default_project_group(std),
     )
 
 

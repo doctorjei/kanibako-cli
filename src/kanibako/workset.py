@@ -464,11 +464,17 @@ def default_workset(std: StandardPaths) -> Workset:
     """Synthesize the default workset (the group of default-mode projects).
 
     The default workset is virtual: its members are the default-mode projects
-    in ``names.yaml [projects]``.  Credential sharing is now a normal settable
-    cascade key (``workset.auth.share_allowed``), resolved through the settings
-    pipeline — NOT a workset field.  This object is NEVER persisted to disk (no
-    root settings.yaml / registry write).
+    in ``names.yaml [projects]``.  It roots at ``@config.primary_workset``
+    (spec §2c: PRIMARY ``meta.workset.path``), so its settings/env files derive
+    from ``root`` exactly like a named workset's (F4).  Credential sharing is
+    now a normal settable cascade key (``workset.auth.share_allowed``),
+    resolved through the settings pipeline — NOT a workset field.  This object
+    is NEVER persisted to disk (no registry write; the root settings.yaml
+    carries only cascade keys, never a ``workset.meta`` identity).
     """
+    from kanibako.paths import warn_legacy_primary_settings
+
+    warn_legacy_primary_settings(std)
     projects_map = read_names(std.registry).get("projects", {})
     projects = [
         WorksetProject(name=name, source_path=Path(path))
@@ -477,7 +483,7 @@ def default_workset(std: StandardPaths) -> Workset:
 
     return Workset(
         name=DEFAULT_WORKSET_ID,
-        root=std.data_path,
+        root=std.primary_workset,
         created="",
         projects=projects,
         is_default=True,

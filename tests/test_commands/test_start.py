@@ -1398,24 +1398,27 @@ class TestContainerEnvPrecedence:
 
 
 class TestContainerEnvWorksetGating:
-    """Verify the workset env file is consulted only for named worksets.
+    """Verify the workset env tier is read for named AND primary worksets.
 
-    Exercises the real ``_run_container`` flow: when ``proj.group`` is None
-    or ``is_default`` is True, no workset env path is built, so a workset
-    ``env`` file must never leak into the container env.
+    Exercises the real ``_run_container`` flow.  F9: the PRIMARY (default)
+    workset has its own env tier at ``<group.root>/env`` (rooted at
+    ``@config.primary_workset``, distinct from the system tier's
+    ``@config.data/env`` — pre-F4 the two roots aliased, so the default group
+    used to be skipped here).  ``proj.group`` is None (standalone) still means
+    no workset env path.
     """
 
-    def test_no_workset_env_for_default_group(self, start_mocks, tmp_path):
-        """Default (local) group → workset env file is not read."""
+    def test_primary_workset_env_is_read(self, start_mocks, tmp_path):
+        """Default (primary) group → its workset env tier IS injected (F9)."""
         with start_mocks() as m:
             # Fixture default: proj.group.is_default is True.
             assert m.proj.group.is_default is True
-            # Point the workset root at a dir with an env file that MUST NOT
+            # Point the workset root at a dir with an env file that must now
             # be read.  group is frozen-ish dataclass; rebuild with a real root.
             from kanibako.paths import ProjectGroup
             ws_root = tmp_path / "ws"
             ws_root.mkdir()
-            (ws_root / "env").write_text("LEAKED=yes\n")
+            (ws_root / "env").write_text("PRIMARY_WS_VAR=present\n")
             m.proj.group = ProjectGroup(
                 name="default",
                 root=ws_root,
@@ -1428,7 +1431,7 @@ class TestContainerEnvWorksetGating:
                 extra_args=[],
             )
             env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert "LEAKED" not in env
+            assert env.get("PRIMARY_WS_VAR") == "present"
 
     def test_no_workset_env_when_group_none(self, start_mocks, tmp_path):
         """proj.group is None → workset env path is None (no crash)."""

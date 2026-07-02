@@ -119,7 +119,9 @@ class TestDefaultWorkset:
         ws = default_workset(std)
         assert ws.is_default is True
         assert ws.name == DEFAULT_WORKSET_ID
-        assert ws.root == std.data_path
+        # F4 (spec §2c): the PRIMARY workset roots at @config.primary_workset,
+        # so its settings/env files derive from root like any named workset's.
+        assert ws.root == std.primary_workset
 
     def test_mirrors_names_projects(self, std, tmp_home):
         proj_a = tmp_home / "proj_a"
