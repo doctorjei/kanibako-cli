@@ -18,8 +18,10 @@ resolution; the full multi-scope seam build is tested in test_config_interface.
 
 Write-back (:func:`repoint_host_src`, S24): repoints ``host_src`` keeping
 ``box_dest`` + options, writes the FULL tuple as a structured list, refuses a
-non-existent key / a non-category value, and stores the RAW (UNEXPANDED) form —
-``@``-refs / ``$XDG`` / ``~`` preserved verbatim, NEVER an expanded literal (S12).
+key that exists NOWHERE in the cascade (F10 — the command file's own tuple is
+used when present, else the caller-supplied *cascade_bind*) / a non-category
+value, and stores the RAW (UNEXPANDED) form — ``@``-refs / ``$XDG`` / ``~``
+preserved verbatim, NEVER an expanded literal (S12).
 """
 
 from __future__ import annotations
@@ -401,6 +403,91 @@ def test_repoint_writes_a_list_not_a_colon_string(tmp_path: Path) -> None:
     leaf = yaml.safe_load(f.read_text())["box"]["bindings"]["rw"]["home"]
     assert isinstance(leaf, list)
     assert ":" not in str(leaf[0]) or leaf[0] == "/new"  # no colon-join
+
+
+# --------------------------------------------------------------------------- #
+# repoint_host_src — the F10 cascade fallback (key-must-exist-in-the-CASCADE)  #
+# --------------------------------------------------------------------------- #
+
+
+def test_repoint_cascade_fallback_writes_full_tuple_creating_tables(
+    tmp_path: Path,
+) -> None:
+    # Key absent from the command-scope file: the caller-supplied effective
+    # cascade tuple backs the repoint — dest + opts preserved BYTE-RAW from it,
+    # the file's intermediate tables created (F10, spec §2a must-exist-in-the-
+    # CASCADE). This test FAILS if the lookup reverts to scope-file-only
+    # (mutation proof: without cascade_bind support this raises).
+    f = _write_scope(tmp_path / "box.yaml", {"box": {"image": "x"}})
+    repoint_host_src(
+        f,
+        "box.bindings.rw.vault",
+        "~/mine",
+        cascade_bind=["@config.data/vault", "$XDG_DATA_HOME/vault", "z"],
+    )
+    out = yaml.safe_load(f.read_text())
+    assert out["box"]["bindings"]["rw"]["vault"] == [
+        "~/mine", "$XDG_DATA_HOME/vault", "z",
+    ]
+    assert out["box"]["image"] == "x"  # sibling content untouched
+
+
+def test_repoint_cascade_fallback_2tuple_stays_2list(tmp_path: Path) -> None:
+    # A 2-element cascade tuple writes a 2-list — no null 3rd (options) slot.
+    f = _write_scope(tmp_path / "box.yaml", {})
+    repoint_host_src(
+        f, "box.caches.x", "/new", cascade_bind=["/old", "~/.cache/x"],
+    )
+    assert yaml.safe_load(f.read_text())["box"]["caches"]["x"] == [
+        "/new", "~/.cache/x",
+    ]
+
+
+def test_repoint_cascade_fallback_into_missing_file(tmp_path: Path) -> None:
+    # The command-scope file need not exist yet: a cascade-backed repoint
+    # CREATES it holding just the override tuple (the downward-default shape).
+    f = tmp_path / "absent.yaml"
+    repoint_host_src(f, "box.bindings.ro.v", "/new", cascade_bind=["/o", "/d"])
+    assert yaml.safe_load(f.read_text())["box"]["bindings"]["ro"]["v"] == [
+        "/new", "/d",
+    ]
+
+
+def test_repoint_file_tuple_preferred_over_cascade(tmp_path: Path) -> None:
+    # The command file's own tuple (== the merge winner at that scope) supplies
+    # dest/opts when present — cascade_bind is only the fallback.
+    f = _write_scope(
+        tmp_path / "box.yaml",
+        {"box": {"bindings": {"rw": {"h": ["/f-old", "/file-dest"]}}}},
+    )
+    repoint_host_src(
+        f,
+        "box.bindings.rw.h",
+        "/new",
+        cascade_bind=["/c-old", "/cascade-dest", "z"],
+    )
+    assert yaml.safe_load(f.read_text())["box"]["bindings"]["rw"]["h"] == [
+        "/new", "/file-dest",
+    ]
+
+
+def test_repoint_cascade_bad_arity_raises(tmp_path: Path) -> None:
+    f = _write_scope(tmp_path / "box.yaml", {})
+    with pytest.raises(ConfigSetError, match="not a category tuple"):
+        repoint_host_src(
+            f, "box.bindings.rw.h", "/new", cascade_bind=["only-one"],
+        )
+    assert yaml.safe_load(f.read_text()) == {}  # nothing written
+
+
+def test_repoint_non_mapping_intermediate_refuses(tmp_path: Path) -> None:
+    # A file intermediate that exists but is NOT a mapping is never clobbered.
+    f = _write_scope(tmp_path / "box.yaml", {"box": {"bindings": "oops"}})
+    with pytest.raises(ConfigSetError, match="not a mapping"):
+        repoint_host_src(
+            f, "box.bindings.rw.h", "/new", cascade_bind=["/o", "/d"],
+        )
+    assert yaml.safe_load(f.read_text()) == {"box": {"bindings": "oops"}}
 
 
 # --------------------------------------------------------------------------- #
