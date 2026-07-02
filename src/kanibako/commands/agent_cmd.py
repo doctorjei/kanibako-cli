@@ -491,7 +491,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         resolve_agent,
     )
     from kanibako.agent_ref import harness_of
-    from kanibako.paths import xdg, load_std_paths
+    from kanibako.paths import xdg, load_std_paths, workset_settings_path
     from kanibako.targets import resolve_target
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -514,9 +514,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     # AgentResolutionError that the top-level cli.py handler surfaces verbatim
     # (Gate-2a/2b) with a non-zero exit — never a silent fall-through.
     project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = (
-        (proj.group.root / "settings.yaml") if proj.group is not None else None
-    )
+    workset_path = workset_settings_path(proj.group)
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,

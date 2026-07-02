@@ -714,13 +714,16 @@ class TestDefaultWorksetCli:
         config = load_config(config_file)
         return load_std_paths(config)
 
-    def test_config_set_regular_key_writes_config_toml(
+    def test_config_set_regular_key_writes_spec_settings_file(
         self, config_file, tmp_home, capsys,
     ):
         # vault.enabled = a SCOPELESS own-file regular key, legal at the workset
         # scope under the B4 scope-direction guard (it lands in [project], its
         # real stored key being enable_vault). ``box.image`` (a box.* key) would
         # be REFUSED here — see TestWorksetScopeDirection.
+        # F4: the write lands in the spec §2c file
+        # ``@config.primary_workset/settings.yaml`` (the old
+        # ``@config.data/config.yaml`` target was a launch-invisible dead write).
         from kanibako.commands.workset_cmd import run_set
         std = self._std(config_file)
 
@@ -731,9 +734,10 @@ class TestDefaultWorksetCli:
         rc = run_set(args)
         assert rc == 0
         import yaml
-        with open(std.data_path / "config.yaml") as f:
+        with open(std.primary_workset / "settings.yaml") as f:
             data = yaml.safe_load(f)
         assert data["project"]["enable_vault"] is False
+        assert not (std.data_path / "config.yaml").exists()
         assert not (std.data_path / "workset.yaml").exists()
 
     def test_info_default(self, config_file, tmp_home, capsys):
@@ -788,3 +792,304 @@ class TestWorksetParser:
 
         args = parser.parse_args(["workset", "delete", "myws", "--force"])
         assert hasattr(args, "func")
+
+
+class TestPrimaryWorksetSpecConvergence:
+    """F4: the PRIMARY workset's settings write path AND every launch reader
+    converge on the spec location ``@config.primary_workset/settings.yaml``
+    (spec §2c: PRIMARY ``meta.workset.path`` = ``@config.primary_workset``;
+    ALL-WORKSETS ``meta.workset.settings`` = ``@meta.workset.path/settings.yaml``).
+
+    Pins the fix for the 1.6.0 three-file split: the CLI wrote
+    ``@config.data/config.yaml`` (a silent dead write) while the cascade read
+    ``@config.data/settings.yaml`` — neither the spec file.
+    """
+
+    def _set_default(self, key_value: str) -> int:
+        from kanibako.commands.workset_cmd import run_set
+
+        args = argparse.Namespace(
+            workset="default", key_value=key_value, force=False, local=False,
+        )
+        return run_set(args)
+
+    def test_set_default_writes_spec_file(self, config_file, tmp_home, capsys):
+        """``workset set default <key>`` lands in the §2c spec file."""
+        import yaml
+
+        std = load_std_paths(load_config(config_file))
+        rc = self._set_default("box.shell=/bin/zsh")
+        assert rc == 0
+        spec_file = std.primary_workset / "settings.yaml"
+        assert spec_file.is_file()
+        with open(spec_file) as f:
+            data = yaml.safe_load(f)
+        assert data["box"]["shell"] == "/bin/zsh"
+
+    def test_set_default_no_longer_writes_legacy_file(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The legacy dead-write target ``@config.data/config.yaml`` stays absent."""
+        std = load_std_paths(load_config(config_file))
+        rc = self._set_default("box.shell=/bin/zsh")
+        assert rc == 0
+        assert not (std.data_path / "config.yaml").exists()
+
+    def test_set_default_resolves_in_primary_box_snapshot(
+        self, config_file, tmp_home, capsys,
+    ):
+        """End-to-end (the audit's probe shape): a ``workset set default`` value
+        must reach a primary-mode box's REAL launch snapshot — CLI write, then
+        the launch's own workset-tier file derivation, then the committed
+        ``build_launch_snapshot`` pipeline.
+        """
+        from kanibako.paths import host_xdg_map, resolve_project
+        from kanibako.settings_launch import build_launch_snapshot
+        from kanibako.settings_resolve import ResolveCtx
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        rc = self._set_default("box.shell=/bin/zsh")
+        assert rc == 0
+        capsys.readouterr()
+
+        (tmp_home / "proj").mkdir()
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "proj"), initialize=True,
+        )
+        assert proj.group is not None and proj.group.is_default
+        # The launch's workset-tier settings-file derivation (start.py).
+        from kanibako.paths import workset_settings_path
+        workset_path = workset_settings_path(proj.group)
+        ctx = ResolveCtx(
+            agent_name=None,
+            workset_name=None,
+            host_home=str(tmp_home),
+            xdg=host_xdg_map(std.data_home),
+        )
+        snap = build_launch_snapshot(
+            agent_name="general",
+            ctx=ctx,
+            system_path=std.settings,
+            agent_path=None,
+            workset_path=workset_path,
+            box_path=None,
+        )
+        assert snap.box.shell == "/bin/zsh"
+
+    def test_get_default_roundtrips_spec_file(self, config_file, tmp_home, capsys):
+        """``workset get default <key>`` reads back what set wrote."""
+        from kanibako.commands.workset_cmd import run_get
+
+        rc = self._set_default("vault.enabled=false")
+        assert rc == 0
+        capsys.readouterr()
+        args = argparse.Namespace(workset="default", key="vault.enabled")
+        rc = run_get(args)
+        assert rc == 0
+        assert "false" in capsys.readouterr().out.lower()
+
+    def test_named_workset_settings_file_unchanged(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A NAMED workset keeps its single ``<root>/settings.yaml`` file."""
+        import yaml
+        from kanibako.commands.workset_cmd import run_set
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("namedcfg", tmp_home / "ws_namedcfg", std)
+        args = argparse.Namespace(
+            workset="namedcfg", key_value="vault.enabled=false",
+            force=False, local=False,
+        )
+        rc = run_set(args)
+        assert rc == 0
+        with open(ws.root / "settings.yaml") as f:
+            data = yaml.safe_load(f)
+        assert data["project"]["enable_vault"] is False
+
+
+class TestWorksetEnv:
+    """F9: ``workset config set env.<VAR>`` threads the workset env file into
+    the config engine (mirroring the box handler's ``env_path`` threading),
+    for BOTH named and primary worksets."""
+
+    def test_set_env_named_workset(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_set
+        from kanibako.shellenv import read_env_file
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("envws", tmp_home / "ws_env", std)
+        args = argparse.Namespace(
+            workset="envws", key_value="env.EDITOR=vim", force=False, local=False,
+        )
+        rc = run_set(args)
+        assert rc == 0
+        assert "Set EDITOR=vim" in capsys.readouterr().out
+        assert read_env_file(ws.root / "env").get("EDITOR") == "vim"
+
+    def test_set_env_default_workset(self, config_file, tmp_home, capsys):
+        """PRIMARY: the env file lands under ``@config.primary_workset``."""
+        from kanibako.commands.workset_cmd import run_set
+        from kanibako.shellenv import read_env_file
+
+        std = load_std_paths(load_config(config_file))
+        args = argparse.Namespace(
+            workset="default", key_value="env.EDITOR=vim", force=False, local=False,
+        )
+        rc = run_set(args)
+        assert rc == 0
+        assert "Set EDITOR=vim" in capsys.readouterr().out
+        assert read_env_file(std.primary_workset / "env").get("EDITOR") == "vim"
+
+    def test_get_env_workset(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_get, run_set
+
+        std = load_std_paths(load_config(config_file))
+        create_workset("envget", tmp_home / "ws_envget", std)
+        args = argparse.Namespace(
+            workset="envget", key_value="env.MY_VAR=hello", force=False, local=False,
+        )
+        assert run_set(args) == 0
+        capsys.readouterr()
+        get_args = argparse.Namespace(workset="envget", key="env.MY_VAR")
+        rc = run_get(get_args)
+        assert rc == 0
+        assert "hello" in capsys.readouterr().out
+
+    def test_reset_env_workset(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_reset, run_set
+        from kanibako.shellenv import read_env_file
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("envreset", tmp_home / "ws_envreset", std)
+        args = argparse.Namespace(
+            workset="envreset", key_value="env.MY_VAR=hello", force=False, local=False,
+        )
+        assert run_set(args) == 0
+        reset_args = argparse.Namespace(
+            workset="envreset", key="env.MY_VAR", reset_all=False, force=False,
+        )
+        rc = run_reset(reset_args)
+        assert rc == 0
+        capsys.readouterr()
+        assert "MY_VAR" not in read_env_file(ws.root / "env")
+
+    def test_primary_workset_env_reaches_launch_env(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A primary-workset env var reaches the launch env accumulation and
+        overrides the system tier (precedence system < workset)."""
+        from kanibako.commands.start import _build_config_env
+        from kanibako.commands.workset_cmd import run_set
+        from kanibako.paths import resolve_project, workset_env_path
+        from kanibako.shellenv import write_env_file
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        write_env_file(std.data_path / "env", {"EDITOR": "nano", "PAGER": "less"})
+        args = argparse.Namespace(
+            workset="default", key_value="env.EDITOR=vim", force=False, local=False,
+        )
+        assert run_set(args) == 0
+        capsys.readouterr()
+
+        (tmp_home / "envproj").mkdir()
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "envproj"), initialize=True,
+        )
+        assert proj.group is not None and proj.group.is_default
+        # The launch's workset env-file derivation (start.py) — post-F9 the
+        # PRIMARY workset has its own env tier (no longer skipped).
+        env = _build_config_env(
+            std.data_path / "env",
+            {},
+            workset_env_path(proj.group),
+            proj.metadata_path / "env",
+        )
+        assert env["EDITOR"] == "vim"   # workset overrides system
+        assert env["PAGER"] == "less"   # system tier still present
+
+class TestPrimaryWorksetMigration:
+    """The approved F4 migration behavior (director ruling (c), 2026-07-02):
+    DROP the legacy locations + document; a read-only one-shot warning while a
+    legacy ``@config.data/settings.yaml`` exists without the spec file."""
+
+    def _set_default(self, key_value: str) -> int:
+        from kanibako.commands.workset_cmd import run_set
+
+        args = argparse.Namespace(
+            workset="default", key_value=key_value, force=False, local=False,
+        )
+        return run_set(args)
+
+    def test_legacy_data_settings_yaml_dropped_with_warning(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """Approved migration behavior (ruling (c) 2026-07-02: drop + document).
+
+        The legacy 1.6.0 read location ``@config.data/settings.yaml`` is
+        DROPPED — never read into the cascade, never touched on disk — with a
+        one-shot stderr warning while it exists without the spec file.
+        """
+        import kanibako.paths as paths_mod
+        from kanibako.paths import (
+            host_xdg_map,
+            resolve_project,
+            workset_settings_path,
+        )
+        from kanibako.settings_launch import build_launch_snapshot
+        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings_store import KeyStore
+
+        monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        legacy = std.data_path / "settings.yaml"
+        legacy_text = "box:\n  shell: /bin/legacy\n"
+        legacy.write_text(legacy_text)
+
+        (tmp_home / "migproj").mkdir()
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "migproj"), initialize=True,
+        )
+        err = capsys.readouterr().err
+        assert "no longer read" in err
+
+        ctx = ResolveCtx(
+            agent_name=None,
+            workset_name=None,
+            host_home=str(tmp_home),
+            xdg=host_xdg_map(std.data_home),
+        )
+        snap = build_launch_snapshot(
+            agent_name="general",
+            ctx=ctx,
+            system_path=std.settings,
+            agent_path=None,
+            workset_path=workset_settings_path(proj.group),
+            box_path=None,
+        )
+        box = snap.box if "box" in snap else KeyStore()
+        assert "shell" not in box       # the legacy value must NOT resolve
+        assert legacy.read_text() == legacy_text  # and the file is untouched
+
+    def test_legacy_warning_silent_once_spec_file_exists(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """The warning falls silent once the spec file exists (migrated)."""
+        import kanibako.paths as paths_mod
+        from kanibako.paths import resolve_project
+
+        monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        (std.data_path / "settings.yaml").write_text("box:\n  shell: /bin/legacy\n")
+        assert self._set_default("box.shell=/bin/zsh") == 0  # creates spec file
+        capsys.readouterr()
+
+        (tmp_home / "migproj2").mkdir()
+        resolve_project(
+            std, config, project_dir=str(tmp_home / "migproj2"), initialize=True,
+        )
+        assert "no longer read" not in capsys.readouterr().err

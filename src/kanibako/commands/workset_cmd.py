@@ -9,7 +9,12 @@ from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
 from kanibako.errors import WorksetError
-from kanibako.paths import xdg, load_std_paths
+from kanibako.paths import (
+    load_std_paths,
+    workset_env_path,
+    workset_settings_path,
+    xdg,
+)
 from kanibako.utils import confirm_prompt
 from kanibako.workset import (
     DEFAULT_WORKSET_ALIAS,
@@ -309,15 +314,15 @@ def _load_std():
 def _workset_config_path(ws) -> Path:
     """Return the path to the workset-level settings file.
 
-    For a NAMED workset this is the single ``<root>/settings.yaml`` that also
-    carries the workset identity (``workset.meta``); the cascade-settings tables
-    (box/agent/workset.bindings) coexist there without colliding.  For the
-    synthesized default workset (no on-disk root) it is the data-path
-    ``config.yaml`` (the system/default-workset config file, unchanged).
+    ONE derivation for every mode (spec §2c: ``meta.workset.settings`` =
+    ``@meta.workset.path/settings.yaml``): ``<root>/settings.yaml``.  A NAMED
+    workset's file also carries the workset identity (``workset.meta``); the
+    cascade-settings tables (box/agent/workset.bindings) coexist there without
+    colliding.  The PRIMARY ("default") workset roots at
+    ``@config.primary_workset`` (F4 — its old ``@config.data/config.yaml``
+    write target was a dead write: the launch cascade never read it).
     """
-    if getattr(ws, "is_default", False):
-        return ws.root / "config.yaml"
-    return ws.root / "settings.yaml"
+    return workset_settings_path(ws)
 
 
 def run_create(args: argparse.Namespace) -> int:
@@ -634,6 +639,11 @@ def _run_workset_config(args: argparse.Namespace) -> int:
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     ws_config = _workset_config_path(ws)
+    # The workset-tier env FILE (F9): threaded into the engine exactly like the
+    # box handler threads its ``<metadata>/env`` — named AND primary worksets
+    # (the primary's lives under ``@config.primary_workset``, distinct from the
+    # system tier's ``@config.data/env``).
+    ws_env = workset_env_path(ws)
 
     key_value = getattr(args, "key_value", None)
 
@@ -642,6 +652,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         if args.reset_all or args.reset == "__ALL__":
             msg = reset_all(
                 config_path=ws_config,
+                env_path=ws_env,
                 force=args.force,
             )
             print(msg)
@@ -651,6 +662,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
+            env_path=ws_env,
             command_scope=ConfigLevel.workset,
         )
         if msg.startswith("Error:"):
@@ -670,6 +682,8 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return show_config(
             global_config_path=config_file,
             config_path=ws_config,
+            env_global=std.data_path / "env",
+            env_project=ws_env,
             effective=args.effective,
         )
 
@@ -678,6 +692,8 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             key,
             global_config_path=config_file,
             project_toml=ws_config,
+            env_global=std.data_path / "env",
+            env_project=ws_env,
         )
         if val is not None:
             print(val)
@@ -703,6 +719,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         msg = set_config_value(
             key, value,
             config_path=ws_config,
+            env_path=ws_env,
             cascade_system_path=std.settings,
             cascade_workset_path=ws_config,
             command_scope=ConfigLevel.workset,

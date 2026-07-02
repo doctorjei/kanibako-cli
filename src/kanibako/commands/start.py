@@ -39,6 +39,8 @@ from kanibako.paths import (
     xdg,
     load_std_paths,
     resolve_box_target,
+    workset_env_path,
+    workset_settings_path,
 )
 from kanibako.agent_ref import (
     canonicalize_agent_ref,
@@ -733,7 +735,7 @@ def _run_container(
 
     # Load merged config (global + workset + project)
     project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = (proj.group.root / "settings.yaml") if proj.group is not None else None
+    workset_path = workset_settings_path(proj.group)
     merged = load_merged_config(
         config_file,
         project_toml,
@@ -1484,15 +1486,13 @@ def _run_container(
         # above all config levels.
         global_env_path = std.data_path / "env"
         project_env_path = proj.metadata_path / "env"
-        # Workset-level env applies only for a named (non-default) workset
-        # group; the default group's tier is already the system env.
-        workset_env_path = (
-            proj.group.root / "env"
-            if (proj.group is not None and not proj.group.is_default)
-            else None
-        )
+        # Workset-level env for named AND primary worksets (F9): the primary's
+        # tier file lives under @config.primary_workset, distinct from the
+        # system tier's @config.data/env (pre-F4 the two aliased, so the
+        # default group was skipped here).
+        ws_env_path = workset_env_path(proj.group)
         container_env = _build_config_env(
-            global_env_path, agent_cfg.env, workset_env_path, project_env_path,
+            global_env_path, agent_cfg.env, ws_env_path, project_env_path,
         )
         # Settings-framework env (the `<scope>.env.<VAR>` category) supersedes
         # the retired `.env` files (Phase 2 decision E).  reconcile (the single
@@ -2992,9 +2992,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     logger = get_logger("start")
     system_settings_path = std.settings
     project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = (
-        (proj.group.root / "settings.yaml") if proj.group is not None else None
-    )
+    workset_path = workset_settings_path(proj.group)
     merged = load_merged_config(
         config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
         project_toml,

@@ -27,6 +27,8 @@ from kanibako.paths import (
     resolve_box_target,
     resolve_project,
     resolve_standalone_project,
+    workset_env_path,
+    workset_settings_path,
 )
 from kanibako.agent_ref import harness_of, with_harness
 from kanibako.targets import resolve_target
@@ -1132,7 +1134,7 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Load merged config for image info.
     project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = (proj.group.root / "settings.yaml") if proj.group is not None else None
+    workset_path = workset_settings_path(proj.group)
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
@@ -1378,9 +1380,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
     env_project = proj.metadata_path / "env"
 
     if action == ConfigAction.show:
-        workset_path = (
-            (proj.group.root / "settings.yaml") if proj.group is not None else None
-        )
+        workset_path = workset_settings_path(proj.group)
         agent_state = None
         env_resolved = None
         if args.effective:
@@ -1432,15 +1432,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     workset_config_path=workset_path,
                     node_name=agent_id,
                 )
-            workset_env_path = (
-                proj.group.root / "env"
-                if (proj.group is not None and not proj.group.is_default)
-                else None
-            )
+            # Workset env for named AND primary worksets (F9) — the primary's
+            # tier file lives under @config.primary_workset.
+            ws_env_path = workset_env_path(proj.group)
             env_resolved = _build_config_env(
                 std.data_path / "env",
                 agent_cfg.env if agent_cfg is not None else {},
-                workset_env_path,
+                ws_env_path,
                 proj.metadata_path / "env",
             )
         return show_config(
@@ -1489,9 +1487,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # which likewise passes agent_path=None — the per-agent file stores behavior
         # FLAT, so assemble_levels reads no category subtree from it). A resolution
         # failure just leaves the agent name empty.
-        cascade_workset_path = (
-            (proj.group.root / "settings.yaml") if proj.group is not None else None
-        )
+        cascade_workset_path = workset_settings_path(proj.group)
         cascade_agent_name = ""
         try:
             from kanibako.config import load_merged_config, resolve_agent
