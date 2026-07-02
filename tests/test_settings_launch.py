@@ -683,6 +683,72 @@ def test_meta_box_mode_equals_project_type_all_modes():
         )
 
 
+def test_hostile_box_file_meta_table_cannot_override_snapshot_anchors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """END-TO-END (spec §0 / clause 4 — the brief's snapshot-level gate): a
+    hostile box settings file carrying a TOP-LEVEL ``meta:`` table
+    (``meta.box.mode`` / ``meta.workset.path``) must NOT reach the resolved
+    launch snapshot — the drop at assembly strips it, so the snapshot's meta
+    anchors are the FLOOR values (byte-identical), and a RO warning fires.
+
+    Baseline-RED at 4b3083b: the top-level ``meta:`` table was NOT dropped, so
+    the box file's ``meta.box.mode`` flowed into the snapshot and OVERRODE the
+    ``meta.runtime.project_type`` identity anchor. GREEN here — the floor's
+    ``standalone`` mode + ``/scratch/myproj`` workset path stand; the hostile
+    ``named`` / ``/evil`` values are gone. Both directions asserted
+    unconditionally (the meta table is a real present top-level table, so the
+    "anchor == floor value" assert is NON-vacuous — it fails if the drop is
+    removed). This pins the anchors against a hostile FILE end-to-end, which the
+    assembly-level pins (no snapshot) do not reach.
+    """
+    import tempfile
+
+    from kanibako.config_io import dump_doc
+
+    # A box file that tries to forge the identity anchors via a top-level meta:.
+    hostile = Path(tempfile.mktemp(suffix=".yaml"))
+    dump_doc(
+        hostile,
+        {
+            "box": {"image": "img"},  # a legitimate same-scope key — must survive
+            "meta": {
+                "box": {"mode": "named"},          # forge the RO mode anchor
+                "workset": {"path": "/evil"},      # forge the RO workset path
+            },
+        },
+    )
+    meta = meta_runtime_floor(mode="standalone", ws_root_literal="/scratch/myproj")
+    with caplog.at_level("WARNING"):
+        snap = build_launch_snapshot(
+            agent_name="claude",
+            ctx=_ctx(),
+            system_path=None,
+            agent_path=None,
+            workset_path=None,
+            box_path=hostile,
+            meta_runtime=meta,
+        )
+    # The FLOOR anchors stand byte-identical — the hostile values never landed.
+    assert dict.get(_meta_node(snap, "meta", "box"), "mode") == "standalone"
+    assert dict.get(_meta_node(snap, "meta", "workset"), "path") == "/scratch/myproj"
+    assert (
+        dict.get(_meta_node(snap, "meta", "box"), "mode")
+        == dict.get(_meta_node(snap, "meta", "runtime"), "project_type")
+    )
+    # The box's legitimate same-scope key still flows (the drop is surgical).
+    assert dict.get(_meta_node(snap, "box"), "image") == "img"
+    # The RO-drop warning fired, naming the hostile file + the meta token.
+    meta_warns = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING"
+        and "meta" in r.getMessage()
+        and str(hostile) in r.getMessage()
+    ]
+    assert meta_warns, [r.getMessage() for r in caplog.records]
+
+
 def test_meta_views_read_runtime_typed():
     """MetaRuntimeView / MetaBoxView / MetaWorksetView read the materialized keys
     at their EXACT types (Path / Path|None / str)."""

@@ -85,7 +85,7 @@ from kanibako.settings_categories import (
 from kanibako.settings_expand import expand
 from kanibako.settings_merge import merge
 from kanibako.settings_resolve import ResolveCtx, SettingsError, expand_expr
-from kanibako.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
 
 if TYPE_CHECKING:
     from kanibako.targets.base import Binding
@@ -97,7 +97,11 @@ if TYPE_CHECKING:
 _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
     {"caches", "seeded", "shared", "synced"}
 )
-_SCOPES: tuple[str, ...] = ("system", "agent", "workset", "box")
+# Aliases the single-source scope-containment tuple (settings_store) so this
+# consumer never re-declares the scope set — the old byte-identical literal was a
+# drift foot-gun. Order is NOT load-bearing here: the L1334 emit loop re-sorts by
+# its own ``scope_order`` map, so the containment order is safe to reuse verbatim.
+_SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 
 
 # --------------------------------------------------------------------------- #

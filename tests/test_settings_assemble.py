@@ -230,6 +230,159 @@ def test_base_floor_is_exempt_from_upward_drop(
 
 
 # --------------------------------------------------------------------------- #
+# meta.* is RO everywhere — top-level meta: table dropped from EVERY file (§0)  #
+# --------------------------------------------------------------------------- #
+
+
+def _meta_warns(caplog: pytest.LogCaptureFixture, path: Path) -> list[str]:
+    """Warnings that announce a top-level ``meta`` drop naming *path*."""
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING"
+        and "meta" in r.getMessage()
+        and str(path) in r.getMessage()
+    ]
+
+
+def test_top_level_meta_in_box_file_dropped_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # §0 / clause 4 "meta.* remains RO everywhere": a box file's TOP-LEVEL meta:
+    # table is set by the bootstrap layer only — a settings file may NOT set it, so
+    # it is DROPPED at assembly with a distinct warning naming the file + `meta`.
+    # Baseline-RED at 4b3083b (meta: was left OUT of the drop and SURVIVED into the
+    # partial, able to override identity anchors); GREEN here. Both directions are
+    # asserted UNCONDITIONALLY (the meta: table is a real, present top-level table,
+    # so the "meta absent" assert is NON-vacuous — it fails if the drop is removed).
+    box = _write(
+        tmp_path / "box.yaml",
+        {"box": {"image": "img"}, "meta": {"box": {"mode": "standalone"}}},
+    )
+    with caplog.at_level("WARNING"):
+        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+    # The box's own-scope key survives; the top-level meta table is GONE.
+    assert dict.get(box_level["box"], "image", _MISSING) == "img"
+    assert dict.get(box_level, "meta", _MISSING) is _MISSING
+    # A distinct meta-RO warning fired, naming the file and the meta token.
+    assert _meta_warns(caplog, box), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+# meta is RO at EVERY scope — a top-level meta: table drops from each file view.
+# (path_kw, level_index, own_scope) — the file carries its own-scope marker PLUS a
+# top-level meta: table that must be dropped+warned regardless of the file's scope.
+_META_CASES = [
+    ("box_path", BOX, "box"),
+    ("workset_path", WORKSET, "workset"),
+    ("system_path", SYSTEM, "system"),
+]
+
+
+@pytest.mark.parametrize(("path_kw", "level_idx", "own_scope"), _META_CASES)
+def test_top_level_meta_dropped_across_scopes(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    path_kw: str,
+    level_idx: int,
+    own_scope: str,
+) -> None:
+    # meta.* is RO at EVERY scope (spec §0 / clause 4) — box, workset AND system
+    # files each drop a top-level meta: table (system is the outermost cascade scope
+    # yet still may not set meta). Own-scope key survives; meta absent; warn fired.
+    f = _write(
+        tmp_path / "f.yaml",
+        {own_scope: {"marker": "keep"}, "meta": {"box": {"mode": "x"}}},
+    )
+    with caplog.at_level("WARNING"):
+        level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
+    assert dict.get(level[own_scope], "marker", _MISSING) == "keep"
+    assert dict.get(level, "meta", _MISSING) is _MISSING
+    assert _meta_warns(caplog, f), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_top_level_meta_in_base_file_drops_but_system_scope_survives(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The base file has a DIFFERENT profile: it is EXEMPT for SCOPE keys (its
+    # system.* is the system-scope floor and survives) but a top-level meta: table
+    # STILL drops — meta.* is RO everywhere (spec §0 / clause 4), and a base-file
+    # meta table would clobber the floor's materialized identity anchors. Both
+    # directions asserted: system.* survives, meta is gone + warned.
+    base = _write(
+        tmp_path / "base.yaml",
+        {
+            "system": {"auth": {"share_allowed": True}},
+            "meta": {"workset": {"name": "should-not-flow"}},
+        },
+    )
+    with caplog.at_level("WARNING"):
+        base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
+    # SCOPE key exempt: the base file's system.* floor survives.
+    assert isinstance(dict.get(base_level, "system"), KeyStore)
+    assert (
+        dict.get(base_level["system"]["auth"], "share_allowed", _MISSING) is True
+    )
+    # meta NOT exempt: the top-level meta table dropped, with a warning.
+    assert dict.get(base_level, "meta", _MISSING) is _MISSING
+    assert _meta_warns(caplog, base), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_nested_scope_meta_is_untouched(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The drop is TOP-LEVEL ONLY. A NESTED workset.meta table (the bootstrap workset
+    # identity written by workset.py:write_workset_meta / read by read_workset_meta)
+    # rides UNDER the workset scope table and must SURVIVE untouched — no descent,
+    # no warning. This proves the top-level-only guarantee (bootstrap identity is
+    # preserved while a settings file still cannot set the top-level meta.* anchor).
+    ws = _write(
+        tmp_path / "ws.yaml",
+        {"workset": {"meta": {"name": "foo"}, "marker": "keep"}},
+    )
+    with caplog.at_level("WARNING"):
+        ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+    # The nested workset.meta.name survives verbatim; sibling own-scope key too.
+    assert dict.get(ws_level["workset"], "marker", _MISSING) == "keep"
+    assert isinstance(dict.get(ws_level["workset"], "meta"), KeyStore)
+    assert dict.get(ws_level["workset"]["meta"], "name", _MISSING) == "foo"
+    # No meta-drop warning fired (nothing top-level was dropped).
+    assert not _meta_warns(caplog, ws), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_top_level_meta_drop_warns_once_per_agent_file(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The ONE agent file builds TWO cascade levels but a top-level meta: table is
+    # dropped+warned exactly ONCE (the drop runs on the shared raw view before both
+    # levels build) — mirrors test_upward_drop_warns_once_per_agent_file. The meta
+    # table reaches NEITHER agent partial.
+    agent = _write(
+        tmp_path / "agent.yaml",
+        {
+            "agent": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
+            "meta": {"box": {"mode": "x"}},
+        },
+    )
+    with caplog.at_level("WARNING"):
+        levels = assemble_levels(agent_name="claude", agent_path=agent)
+    # The two agent levels are intact and carry NO meta node.
+    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", _MISSING) == "cm"
+    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", _MISSING) == "dm"
+    assert dict.get(levels[AGENT_ACTIVE], "meta", _MISSING) is _MISSING
+    assert dict.get(levels[AGENT_DEFAULT], "meta", _MISSING) is _MISSING
+    # Exactly ONE meta-drop warning (not one-per-level).
+    assert len(_meta_warns(caplog, agent)) == 1, _meta_warns(caplog, agent)
+
+
+# --------------------------------------------------------------------------- #
 # agent.default vs agent.<active> split — TRUE discriminated keys (§2 L138–142) #
 # --------------------------------------------------------------------------- #
 
