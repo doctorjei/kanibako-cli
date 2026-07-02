@@ -12,7 +12,8 @@ so the child's podman can find the shared layers.
 
 - UID mapping: if host and child rootless podman use different subuid ranges,
   layer files may be inaccessible.  Works best when the child container runs
-  with ``--userns=keep-id`` (which kanibako already uses).
+  in keep-id mode (kanibako uses ``--userns=keep-id:uid=…,gid=…``, mapping the
+  caller onto the in-box agent user, so caller-owned layer files stay readable).
 - The shared store is read-only; the child can pull new images on top but
   cannot modify or delete shared layers.
 - Only overlay storage driver is supported (the default for rootless podman).
