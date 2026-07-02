@@ -92,6 +92,50 @@ class GooseTarget(Target):
         # (the secure default is conservative — only this specific phrase fires).
         return "no session found to resume" in output.lower()
 
+    def has_resumable_session(self, home: Path) -> bool:
+        """Report whether goose has a session to resume under the box home.
+
+        ``continue`` builds ``goose session --resume``, which resumes the most
+        recent session in goose's data-dir session store —
+        ``~/.local/share/goose/sessions`` in the box (pre-created EMPTY by the
+        descriptor's ``init_dirs``).  Goose 1.37 keeps sessions in a sqlite db
+        INSIDE that dir (``sessions/sessions.db`` + ``-wal``/``-shm``), and a
+        FAILED resume attempt itself creates the db — so the dir-entry check
+        splits exactly right: a FRESH box (init_dirs only, dir empty) reads
+        ``False`` (the fix), while a box whose earlier doomed attempt left an
+        empty db reads ``True`` and falls through to the old
+        ``should_retry_new_session`` net — fail-safe either way.  *home* is
+        the box home as seen from the HOST (the home bind source), so the
+        store is readable without touching the container.
+
+        KNOWN LIMIT: ``GOOSE_PATH_ROOT`` is user-settable (the env category /
+        ``-e``) and would redirect goose's store; this hook's fixed signature
+        (*home* only) cannot see that, so it checks the DEFAULT store
+        location the descriptor lays down.  Kanibako itself never sets
+        ``GOOSE_PATH_ROOT`` (the descriptor's ``container_env`` is only
+        GOOSE_DISABLE_KEYRING).
+
+        On a box's FIRST agent launch the store is empty and the resume is
+        DOOMED ("no session found to resume" -> fast container death -> raw
+        attach-race error); returning ``False`` lets start.py go straight to a
+        new session.  FAIL-SAFE: ``False`` only when the store positively
+        contains no entry (missing dir or empty dir); ANY entry — or any read
+        error — returns ``True`` so a real resume is never wrongly denied
+        (the ``should_retry_new_session`` retry stays the net).
+        """
+        sessions = home / ".local" / "share" / "goose" / "sessions"
+        try:
+            if not sessions.is_dir():
+                return False
+            return next(iter(sessions.iterdir()), None) is not None
+        except OSError as exc:
+            logger.debug(
+                "cannot inspect goose session store %s (%s); "
+                "assuming a resumable session exists (fail-safe)",
+                sessions, exc,
+            )
+            return True
+
     def should_run_setup(self, output: str) -> bool:
         # Launch-time ground truth that goose configure did NOT produce a bootable
         # config: goose's verbatim line is "Goose is not configured. Run 'goose

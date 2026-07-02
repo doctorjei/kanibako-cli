@@ -128,6 +128,72 @@ class TestFlagCombinations:
             assert "--continue" not in cli_args
             assert "--resume" in cli_args
 
+    def test_continue_skipped_when_no_resumable_session(self, start_mocks):
+        """First-launch death-race fix: when the target positively reports no
+        resumable session, the DOOMED continue is never ATTEMPTED — the built
+        command is the new-session form on the one and only launch.
+        (Mutation-proof: removing the has_resumable_session consult in
+        start.py re-adds --continue and fails this test.)"""
+        with start_mocks() as m:
+            m.proj.is_new = False
+            m.target.has_resumable_session.return_value = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" not in cli_args
+            # No doomed attempt: exactly ONE launch, already new-session.
+            assert m.runtime.run.call_count == 1
+            # The hook reads the HOST-side box home (the home bind source).
+            m.target.has_resumable_session.assert_called_once_with(
+                m.proj.shell_path
+            )
+
+    def test_continue_kept_when_session_resumable(self, start_mocks):
+        with start_mocks() as m:
+            m.proj.is_new = False
+            m.target.has_resumable_session.return_value = True
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" in cli_args
+
+    def test_hook_not_consulted_when_new_session_forced(self, start_mocks):
+        """Explicit -N never selects continue, so the hook is not consulted
+        (the explicit-new path is byte-identical, per the brief)."""
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=True, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            m.target.has_resumable_session.assert_not_called()
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" not in cli_args
+
+    def test_explicit_resume_unaffected_by_hook(self, start_mocks):
+        """Brief constraint: explicit resume flags are UNAFFECTED.  For a
+        picker-less agent -R resolves to "continue" (continue-last), and the
+        skip guard must leave that alone — `not resume_mode` short-circuits
+        BEFORE the hook, so even a False hook cannot flip an explicit -R."""
+        with start_mocks() as m:
+            m.proj.is_new = False
+            m.target.has_resumable_session.return_value = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=True,
+                extra_args=[],
+            )
+            m.target.has_resumable_session.assert_not_called()
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" in cli_args
+
     def test_entrypoint_disables_claude_mode(self, start_mocks):
         with start_mocks() as m:
             _run_container(

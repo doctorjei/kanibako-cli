@@ -61,6 +61,56 @@ class TestShouldRetryNewSession:
         assert not GooseTarget().should_retry_new_session("")
 
 
+class TestHasResumableSession:
+    """First-launch death-race fix: goose positively reports whether its
+    session store (``<home>/.local/share/goose/sessions``, pre-created empty
+    by the descriptor's init_dirs) holds anything to resume, so start.py can
+    skip the DOOMED default ``session --resume`` on a fresh box."""
+
+    def _store(self, home: Path) -> Path:
+        sessions = home / ".local" / "share" / "goose" / "sessions"
+        sessions.mkdir(parents=True)
+        return sessions
+
+    def test_false_when_store_missing(self, tmp_path: Path):
+        # No session store at all -> positively nothing to resume.
+        assert GooseTarget().has_resumable_session(tmp_path) is False
+
+    def test_false_when_store_empty(self, tmp_path: Path):
+        # The first-launch shape: init_dirs pre-created the dir, goose has
+        # never written a session -> positively nothing to resume.  (goose
+        # 1.37 creates sessions.db only when it RUNS — including on a failed
+        # resume — so a truly untouched box is exactly the empty dir.)
+        self._store(tmp_path)
+        assert GooseTarget().has_resumable_session(tmp_path) is False
+
+    def test_true_when_session_db_present(self, tmp_path: Path):
+        # goose 1.37 store layout: a sqlite db inside the sessions dir.  Any
+        # db — even one an earlier FAILED resume created empty — reads True;
+        # the doomed-resume net (should_retry_new_session) still covers that.
+        sessions = self._store(tmp_path)
+        (sessions / "sessions.db").write_bytes(b"SQLite format 3\x00")
+        assert GooseTarget().has_resumable_session(tmp_path) is True
+
+    def test_true_on_any_entry_fail_safe(self, tmp_path: Path):
+        # ANY entry counts (not just *.jsonl): a future goose storage-format
+        # change must err toward attempting the resume, never denying it.
+        sessions = self._store(tmp_path)
+        (sessions / "some-subdir").mkdir()
+        assert GooseTarget().has_resumable_session(tmp_path) is True
+
+    def test_true_when_store_unreadable_fail_safe(self, tmp_path: Path, monkeypatch):
+        # Unreadable store -> unsure -> True (never wrongly deny a real
+        # resume; the should_retry_new_session net still catches a doomed one).
+        self._store(tmp_path)
+
+        def _raise(self):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "iterdir", _raise)
+        assert GooseTarget().has_resumable_session(tmp_path) is True
+
+
 class TestSetupCommand:
     """In-box setup command (``goose configure``) declared via the base hooks.
 
