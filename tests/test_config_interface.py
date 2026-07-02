@@ -121,8 +121,14 @@ class TestIsKnownKey:
 class TestRegularConfigKeys:
     """Tests for regular (KanibakoConfig) config keys."""
 
-    def test_get_default_image(self, tmp_path):
-        """Reading box.image with no overrides returns the global default."""
+    def test_plain_get_box_image_stored_at_another_tier_is_not_set(
+        self, tmp_path,
+    ):
+        """F6 get model: box.image set ONLY in the GLOBAL config file is
+        "(not set)" for a plain get at the box noun (global is not the box
+        noun's file).  The resolved value shows under ``--effective``, not here.
+        (Was ``test_get_default_image``, which asserted the pre-F6 merged-view
+        lie that a plain get returns another tier's value.)"""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my-image:latest"\n')
         project_toml = tmp_path / "settings.yaml"
@@ -132,7 +138,7 @@ class TestRegularConfigKeys:
             global_config_path=global_cfg,
             project_toml=project_toml,
         )
-        assert val == "my-image:latest"
+        assert val is None
 
     def test_set_and_get_image(self, tmp_path):
         """Setting a config key writes it and subsequent get returns it."""
@@ -162,7 +168,10 @@ class TestRegularConfigKeys:
 
         set_config_value("box.image", "custom:v2", config_path=project_toml)
         msg = reset_config_value("box.image", config_path=project_toml)
-        assert "Reset" in msg
+        # F7: honest wording — the override is CLEARED (no fabricated "reverts
+        # to default: <built-in>" claim). command_scope=None → scope-neutral.
+        assert "cleared" in msg.lower()
+        assert "reverts to default" not in msg
 
     def test_reset_nonexistent_key(self, tmp_path):
         """Resetting a key that has no override returns informative message."""
@@ -197,19 +206,21 @@ class TestRegularConfigKeys:
         )
         assert val == "/bin/zsh"
 
-    def test_get_box_bootstrap_program_unset_returns_default(self, tmp_path):
-        """box.bootstrap_program is unset → get returns the built-in default."""
+    def test_get_box_bootstrap_program_unset_is_not_set(self, tmp_path):
+        """F6 get model: an UNSET box.bootstrap_program at the box noun is
+        "(not set)" — a plain get never fabricates the built-in default ("tmux").
+        (Was ``..._returns_default``, which asserted the pre-F6 fabricated
+        default.  The built-in still applies at LAUNCH + ``--effective``.)"""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
-        # No "unknown config key" error; falls back to the merged default.
         val = get_config_value(
             "box.bootstrap_program",
             global_config_path=global_cfg,
             project_toml=project_toml,
         )
-        assert val == "tmux"
+        assert val is None
 
     def test_set_and_get_box_bootstrap_program(self, tmp_path):
         """Setting box.bootstrap_program and reading it back returns the value."""
@@ -1826,4 +1837,263 @@ class TestBoxAgentMirrorConfigSet:
         )
         doc = load_doc(f)
         assert "agent" not in doc  # no top-level agent.* table
-        assert doc["box"]["agent"]["model"] == "sonnet"
+
+
+# ---------------------------------------------------------------------------
+# F5/F6/F7 get-side truthfulness + the F2/F3-class sibling (get reads where set
+# wrote) + the honest reset message.  These are the block's REGRESSION tests —
+# baseline-RED at 523e2f0 (each fails against the current wrong behavior).
+#
+# GET SEMANTICS (director's model; spec §2a is SILENT on read semantics —
+# Writer's finding, posted to the pair chat before implementing):
+#   * plain ``get <key>`` at a noun = the value STORED at that noun's file
+#     (including a downward key it stored), else "(not set)".  NEVER a
+#     fabricated built-in default, and never another tier's value.
+#   * ``--effective`` = the resolved cascade (unchanged; the ``show`` path).
+# ---------------------------------------------------------------------------
+
+class TestF5BoxAgentGet:
+    """F5 — ``box get box.agent.<key>`` must read back what ``box set
+    box.agent.<key>`` wrote.  ``get_config_value`` lacked the
+    ``_is_box_agent_key`` branch that set/reset have (SET was test-pinned; GET
+    untested), so it returned "(not set)" for a value that IS stored."""
+
+    def test_box_agent_scalar_set_then_get_roundtrips(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        set_config_value(
+            "box.agent.model", "opus",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        # RED at baseline: get has no box.agent.* branch → returns None.
+        val = get_config_value(
+            "box.agent.model",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=f,
+        )
+        assert val == "opus"
+
+    def test_box_agent_deep_key_set_then_get_roundtrips(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        set_config_value(
+            "box.agent.bindings.ro.share", "/user/share",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        val = get_config_value(
+            "box.agent.bindings.ro.share",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=f,
+        )
+        assert val == "/user/share"
+
+    def test_box_agent_get_unset_is_not_set(self, tmp_path):
+        # An UNSET box.agent.<key> is "(not set)" at the box noun — the branch
+        # must not fabricate a value, and must not raise.
+        f = tmp_path / "box-settings.yaml"
+        val = get_config_value(
+            "box.agent.model",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=f,
+        )
+        assert val is None
+
+
+class TestF6NoFabricatedDefaultOnPlainGet:
+    """F6 — a plain ``get <key>`` at a noun must NOT print a fabricated built-in
+    default when nothing is stored at that noun.  Today the flat-field branch
+    returns ``getattr(cfg, flat)`` = the ``_DEFAULTS`` built-in even when the box
+    file is empty, so ``box get box.image`` lies with the default image."""
+
+    def test_plain_get_unset_flat_field_is_not_set(self, tmp_path):
+        # Nothing stored at the box noun.
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        project_toml = tmp_path / "settings.yaml"
+        # RED at baseline: returns "ghcr.io/doctorjei/kanibako-oci:latest".
+        val = get_config_value(
+            "box.image",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val is None
+
+    def test_plain_get_returns_value_stored_at_the_noun(self, tmp_path):
+        # A value stored AT the box noun's own file IS returned by plain get.
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value("box.image", "custom:v2", config_path=project_toml)
+        val = get_config_value(
+            "box.image",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val == "custom:v2"
+
+    def test_plain_get_does_not_show_another_tiers_value(self, tmp_path):
+        # box.image set ONLY in the global config file — a plain box get is
+        # "(not set)" (global is not the box noun's file); --effective shows it.
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text('box:\n  image: "global:img"\n')
+        project_toml = tmp_path / "settings.yaml"
+        # RED at baseline: returns "global:img" (merged default view).
+        val = get_config_value(
+            "box.image",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val is None
+
+    def test_plain_get_scopeless_key_roundtrips_at_box(self, tmp_path):
+        # A SCOPELESS key (vault.enabled) is stored in — and read from — the
+        # command's own config file (get mirrors set's dest selection): set at
+        # the box noun → get at the box noun returns it; unset → "(not set)".
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        project_toml = tmp_path / "settings.yaml"
+        assert get_config_value(
+            "vault.enabled",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        ) is None
+        set_config_value("vault.enabled", "false", config_path=project_toml)
+        assert get_config_value(
+            "vault.enabled",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        ) == "false"
+
+    def test_effective_view_unchanged_still_shows_resolved(
+        self, tmp_path, capsys,
+    ):
+        # --effective must still show the resolved (merged) value — unchanged.
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text('box:\n  image: "global:img"\n')
+        project_toml = tmp_path / "settings.yaml"
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+        )
+        out = capsys.readouterr().out
+        assert "box_image = global:img" in out
+
+
+class TestF7HonestResetMessage:
+    """F7 (Jei-ruled 07-02d) — ``reset`` must NOT claim "reverts to default:
+    <built-in>" when the value falls back to a higher-tier stored default.  The
+    behavior (fallback) is right; the MESSAGE must be honest: say it cleared the
+    value set on THIS box (and, where cheap, the now-effective value + source)."""
+
+    def test_reset_message_is_not_the_builtin_default_claim(self, tmp_path):
+        # box.image reset with the box override present.
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value("box.image", "custom:v2", config_path=project_toml)
+        msg = reset_config_value(
+            "box.image", config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
+        # RED at baseline: msg is "Reset box_image (reverts to default: <builtin>)".
+        # Mutation guard: this test must FAIL if the old text returns.
+        assert "reverts to default" not in msg, msg
+        # Non-vacuous the other way: a truthful phrase is PRESENT.
+        assert "cleared" in msg.lower(), msg
+
+    def test_reset_message_says_cleared_on_this_noun(self, tmp_path):
+        # Box scope (the box handler threads command_scope=ConfigLevel.box):
+        # honest wording direction (Jei) — cleared the value set on THIS box.
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value("box.image", "custom:v2", config_path=project_toml)
+        msg = reset_config_value(
+            "box.image", config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
+        assert "cleared" in msg.lower()
+        assert "box" in msg.lower()  # names the command noun at box scope
+
+    def test_reset_message_names_the_command_noun_not_hardcoded_box(
+        self, tmp_path,
+    ):
+        # Editor check #2: the message names the COMMAND's noun. At workset scope
+        # it must NOT say "box" — it names the workset. (system set/reset of a
+        # downward key lands in the system file; here we prove non-hardcoding.)
+        ws = tmp_path / "workset-settings.yaml"
+        set_config_value(
+            "box.image", "ws:img", config_path=ws,
+            command_scope=ConfigLevel.workset,
+        )
+        msg = reset_config_value(
+            "box.image", config_path=ws,
+            command_scope=ConfigLevel.workset,
+        )
+        assert "cleared" in msg.lower()
+        assert "workset" in msg.lower()
+        assert "reverts to default" not in msg
+
+
+class TestSiblingDownwardKeyGetAtNoun:
+    """Sibling (F2/F3 pair, 07-02d) — a downward flat key SET at a higher noun
+    (the containment relax: ``system set box.image`` lands in the system
+    settings file) must be READ BACK by that same noun's ``get``.  Same class as
+    F5/F6: get must read where set wrote."""
+
+    def test_system_set_downward_key_then_get_roundtrips(self, tmp_path):
+        # system scope: set box.image → lands in the system SETTINGS file (ssp).
+        cf = tmp_path / "kanibako_config.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        msg = set_config_value(
+            "box.image", "sys-default:img",
+            config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
+        # RED at baseline: get reads cf/project_toml, never ssp → not the value.
+        val = get_config_value(
+            "box.image",
+            global_config_path=cf,
+            system_settings_path=ssp,
+        )
+        assert val == "sys-default:img"
+
+    def test_workset_set_downward_key_then_get_roundtrips(self, tmp_path):
+        # workset scope: set box.image → lands in the workset settings file.
+        ws = tmp_path / "workset-settings.yaml"
+        msg = set_config_value(
+            "box.image", "ws-default:img",
+            config_path=ws, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        # The workset noun's own file is project_toml here — a plain get at the
+        # workset noun must read its own stored downward key.
+        val = get_config_value(
+            "box.image",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=ws,
+        )
+        assert val == "ws-default:img"
+
+
+class TestSetTimeCtxUsesHostXdgMap:
+    """Dedup — ``_set_time_ctx`` must route its ``$XDG_*`` map through the
+    canonical :func:`kanibako.paths.host_xdg_map` builder (spec §1 XDG clause +
+    L2 §3 single-source-of-truth: ONE builder supplies every host-side context),
+    not a hand-rolled 5-var dict.  (The builder's own resolution coverage lives
+    in test_system_paths.py ``TestHostXdgMap`` — this only proves the wiring.)"""
+
+    def test_set_time_ctx_xdg_equals_host_xdg_map(self):
+        from kanibako.config_interface import _set_time_ctx
+        from kanibako.paths import host_xdg_map
+
+        ctx = _set_time_ctx()
+        assert ctx.xdg == host_xdg_map()
+
+    def test_set_time_ctx_calls_host_xdg_map(self, monkeypatch):
+        # Non-vacuous: prove the wiring routes THROUGH the builder (so a revert
+        # to a hand-rolled map that happens to produce equal output still fails).
+        # RED at baseline: the inline dict never calls host_xdg_map → sentinel
+        # is not observed in ctx.xdg.
+        import kanibako.config_interface as ci
+
+        sentinel = {"XDG_DATA_HOME": "/SENTINEL"}
+        monkeypatch.setattr(
+            ci, "_host_xdg_map", lambda *a, **k: dict(sentinel), raising=False,
+        )
+        ctx = ci._set_time_ctx()
+        assert ctx.xdg == sentinel

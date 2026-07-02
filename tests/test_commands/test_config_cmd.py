@@ -153,7 +153,11 @@ class TestBoxConfigGet:
         rc = run_get(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "ghcr.io/doctorjei/kanibako-oci:latest" in captured.out
+        # F6 get model: a fresh box stores nothing at box.image → plain get is
+        # "(not set)" (stderr), NOT the fabricated built-in default. The default
+        # image still applies at launch + under ``show --effective``.
+        assert "ghcr.io/doctorjei/kanibako-oci:latest" not in captured.out
+        assert "(not set)" in captured.err
 
     def test_get_known_key_without_project(self, config_file, tmp_home, credentials_dir, capsys):
         """``box get image`` (no project arg) should use cwd."""
@@ -292,7 +296,11 @@ class TestBoxConfigReset:
         rc = run_reset(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Reset" in captured.out
+        # F7 honest message: the box override is CLEARED (no fabricated
+        # "reverts to default: <built-in>"); the noun is named from the scope.
+        assert "cleared" in captured.out.lower()
+        assert "box" in captured.out.lower()
+        assert "reverts to default" not in captured.out
 
     def test_reset_all(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_reset
