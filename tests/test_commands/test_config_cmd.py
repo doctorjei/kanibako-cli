@@ -105,6 +105,39 @@ class TestBoxConfigShow:
         assert "box_image" in captured.out
         assert "ws-tier-img:1" in captured.out
 
+    def test_show_effective_reflects_system_settings_file(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """DISPLAY == LAUNCH file (F2/F3 sibling): a behavior value stored
+        ONLY in the system SETTINGS file (``@config.settings`` — the exact
+        ``system_path`` the launch snapshot reads, ``std.settings``) shows in
+        ``box show --effective``.  Pins the display ctx's system tier to the
+        launch derivation — NEVER the kanibako_config.yaml CONFIG file (which
+        the launch cascade does not read for settings)."""
+        from kanibako.commands.box._parser import run_show
+        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # System settings tier: select claude, and set a behavior key the
+        # per-agent file does NOT set (endpoint) so the system-tier value is
+        # the effective one at launch — the display must show the same.
+        _write_nested_toml_key(
+            std.settings, ("agent", "default"), "default_agent", "claude",
+        )
+        _write_nested_toml_key(
+            std.settings, ("agent", "default"), "endpoint", "https://ssp.example",
+        )
+
+        args = argparse.Namespace(args=[project_dir], effective=True)
+        rc = run_show(args)
+        assert rc == 0
+        assert "https://ssp.example" in capsys.readouterr().out
+
 
 class TestBoxConfigGet:
     def test_get_image(self, config_file, tmp_home, credentials_dir, capsys):

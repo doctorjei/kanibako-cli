@@ -2248,7 +2248,7 @@ def _effective_behavior_for_display(
     agent_cfg,
     project_toml,
     *,
-    global_config_path,
+    system_settings_path,
     workset_config_path=None,
     node_name=None,
 ) -> dict[str, str]:
@@ -2312,7 +2312,14 @@ def _effective_behavior_for_display(
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=active,
         ctx=ctx,
-        system_path=global_config_path,
+        # The system SETTINGS file (@config.settings = global/settings.yaml) —
+        # the SAME system-tier file derivation the launch snapshot uses
+        # (std.settings, see _run_container), NEVER the kanibako_config.yaml
+        # CONFIG file: a system-level settings value that is live at launch
+        # must be equally visible to `show --effective` (F2/F3 sibling; the
+        # parameter was formerly named global_config_path, which invited
+        # exactly that wrong-file confusion).
+        system_path=system_settings_path,
         agent_path=None,
         workset_path=workset_config_path,
         box_path=project_toml,

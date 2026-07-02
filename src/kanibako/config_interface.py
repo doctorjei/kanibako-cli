@@ -308,39 +308,73 @@ def _is_system_path_key(key: str) -> bool:
     """Keys that belong in the bootstrap config file's PATH tables (file-only).
 
     Covers BOTH the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1)
-    and the Layer-2 ``[system]`` path settings (``system.*``, spec §2g) — both
-    live in ``kanibako_config.yaml`` and are structural (file-only).
+    and the STRUCTURAL Layer-2 ``system.*`` path-tier family — the exact
+    :data:`~kanibako.paths.SYSTEM_PATH_DEFAULTS` set that
+    ``resolve_system_paths`` materializes from ``kanibako_config.yaml``'s
+    ``[system]`` table — both live in ``kanibako_config.yaml`` and are
+    structural (file-only).
 
-    ``system.default_agent`` is EXCLUDED — it is a SETTING, not a config path,
-    and is handled by :func:`_is_default_agent_key` before this check.
+    The F2/F3 fix: this is a PRECISE family membership check, NOT a
+    ``system.*``-wide catch-all.  A ``system.*`` SETTINGS key (the auth chain
+    ``system.auth.share_allowed``, ``system.default_agent``, categories, env)
+    is NOT this family — ``resolve_system_paths`` drops unknown ``[system]``
+    entries, so routing such a key to the config file was a write-only no-op;
+    the launch reads them from the system SETTINGS file (``@config.settings``).
+    Those keys now fall through to their settings-tier routing.
 
-    A ``system``-scope CATEGORY key (``system.caches.x`` / ``system.bindings.*`` /
-    ``system.seeded.*`` / …) is ALSO excluded: categories exist at every scope
-    INCLUDING system (spec §2a — e.g. global ``system.caches``), so a system-scope
-    category repoint must reach the source-only ``config set`` path, NOT the
-    structural file-only refusal. (Their dotted shape only LOOKS like a
-    ``system.*`` config key.)
+    ``system.setup_completed`` IS kept in this family: its shipped reader
+    (``config.read_setup_completed``) reads the ``[system]`` table of
+    ``kanibako_config.yaml`` (where ``setup`` writes it), so the config-file
+    routing/advice is TRUE for it.  (Spec §2g lists it as a settings key —
+    flagged as a spec-vs-code divergence; relocating the reader is out of
+    scope here.)
     """
     if key.startswith("config."):
         # Still consulted on the READ/show path. The set/reset paths now
         # short-circuit config.* earlier with the ruled refusal (block B2), so this
         # branch no longer reaches _system_key_refusal for a config.* set/reset.
         return True
-    if not key.startswith("system.") or _is_default_agent_key(key):
+    if not key.startswith("system."):
         return False
-    return not _is_path_category_key(key)
+    if key == "system.setup_completed":
+        return True
+    # Lazy import (config_interface ↔ paths would cycle at module load).
+    from kanibako.paths import SYSTEM_PATH_DEFAULTS
+
+    return key in SYSTEM_PATH_DEFAULTS
 
 
-def _system_key_refusal(key: str, config_path: Path) -> str:
+def _user_config_file_str() -> "Path | str":
+    """The RESOLVED user bootstrap config file, for refusal messages.
+
+    Rendered (JC-B2-1) so a non-default ``$XDG_CONFIG_HOME`` shows the user's
+    real file.  This is an ERROR path — it must never itself raise: if
+    XDG/``$HOME`` resolution fails (``xdg`` falls back to ``Path.home()``, which
+    raises when ``$HOME`` is unset), fall back to the documented literal default
+    rather than turning a clean refusal into a traceback.
+    """
+    from kanibako.config import config_file_path
+    from kanibako.paths import xdg
+
+    try:
+        return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    except Exception:
+        return "~/.config/kanibako_config.yaml"
+
+
+def _system_key_refusal(key: str) -> str:
     """Error string refusing a CLI write to a FILE-ONLY ``system.*`` config key.
 
-    ``system.*`` keys are STRUCTURAL config (layout), not behavior settings, so
-    they are file-only: editable in the config file (or via ``kanibako setup``)
-    but never via ``config set``/``--reset``.  Points the user at the file.
-    """
+    STRUCTURAL ``system.*`` path-tier keys (the ``SYSTEM_PATH_DEFAULTS`` family,
+    see :func:`_is_system_path_key`) are layout config, not behavior settings,
+    so they are file-only: editable in the config file (or via ``kanibako
+    setup``) but never via ``config set``/``--reset``.  Points the user at the
+    REAL resolved config file — the ``kanibako_config.yaml`` ``[system]`` table
+    that ``resolve_system_paths`` actually reads — never the command scope's
+    settings file (which would be wrong-file advice: the F2 lesson)."""
     return (
         f"Error: '{key}' is a structural config key and is not settable from "
-        f"the CLI. Edit the config file directly:\n  {config_path}\n"
+        f"the CLI. Edit the config file directly:\n  {_user_config_file_str()}\n"
         f"(or re-run 'kanibako setup')."
     )
 
@@ -362,19 +396,10 @@ def _config_key_refusal(canonical: str, *, action: str) -> str:
     done by editing the file; a ``reset`` is a change, so it says "changed") while
     pointing at the SAME resolved config file.
 
-    The path is RENDERED (JC-B2-1) so a non-default ``$XDG_CONFIG_HOME`` shows the
-    user's real file. But this is an ERROR path — it must never itself raise: if
-    XDG/``$HOME`` resolution fails (``xdg`` falls back to ``Path.home()``, which
-    raises when ``$HOME`` is unset), fall back to the documented literal default
-    rather than turning a clean refusal into a traceback.
+    The path is RENDERED via :func:`_user_config_file_str` (JC-B2-1: the user's
+    real resolved file, with a raise-proof fallback — see that helper).
     """
-    from kanibako.config import config_file_path
-    from kanibako.paths import xdg
-
-    try:
-        config_file: Path | str = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    except Exception:
-        config_file = "~/.config/kanibako_config.yaml"
+    config_file = _user_config_file_str()
     verb = "changed" if action == "reset" else "set"
     return (
         f"Error: config.* keys can only be {verb} by editing the configuration "
@@ -436,10 +461,12 @@ _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
 # The scope tokens whose prefixed keys are SETTINGS keys stored in a SETTINGS
 # file (a downward write keeps the key's scope token, nested in the COMMAND
 # scope's settings file — spec §0; the form ``assemble_levels`` mirrors).
-# ``system`` is excluded: its regular keys keep the legacy ``[system]``-table
-# routing into the config file (the F2/F3 system-file split — a separate fix),
-# and no other scope can write them anyway (upward is refused).
-_SETTINGS_SCOPE_TOKENS: frozenset[str] = frozenset(_SCOPE_CONTAINMENT) - {"system"}
+# ``system`` is INCLUDED (F2 fix): a routed ``system.*`` SETTINGS key (the auth
+# chain ``system.auth.share_allowed``) lands in the system SETTINGS file
+# (``@config.settings``) — the file the launch cascade's system tier reads —
+# NOT the Layer-1 kanibako_config.yaml.  The STRUCTURAL ``system.*`` path-tier
+# family never reaches this routing (refused by ``_is_system_path_key`` first).
+_SETTINGS_SCOPE_TOKENS: frozenset[str] = frozenset(_SCOPE_CONTAINMENT)
 
 
 def _scope_direction_error(
@@ -913,8 +940,18 @@ def get_config_value(
     # Keys with no flat field (vault.*, *.auth.*) land in [project]/nested — read
     # the raw set-value from the routed location. (``mode`` is no longer a settable
     # key — it is the RO identity anchor meta.box.mode, block B1.)
+    # At the SYSTEM scope (system_settings_path supplied) the nested-settings
+    # source is the system SETTINGS file — the file the set path (settings_dest)
+    # writes and the launch cascade's system tier reads (F2: get/set/launch
+    # agree; e.g. ``system.auth.share_allowed``, and downward nested writes).
+    # Box/workset scopes keep their (project_toml, global_config_path) sources.
     sections, leaf = route
-    for src in (project_toml, global_config_path):
+    nested_fallback = (
+        system_settings_path
+        if system_settings_path is not None
+        else global_config_path
+    )
+    for src in (project_toml, nested_fallback):
         if src is None or not src.exists():
             continue
         node: object = load_doc(src)
@@ -1062,16 +1099,27 @@ def set_config_value(
             agent_name=cascade_agent_name,
         )
 
-    # system.* keys (INCLUDING system.default_agent) — FILE-ONLY host-global
-    # config (W1, option (a) narrow scope).  The CLI reads/shows them but
-    # refuses to SET them: edit the config file directly, or run
-    # ``kanibako setup`` (which writes ``default_agent`` programmatically via
-    # write_system_value, bypassing this guard).  ``default_agent`` joins this
-    # rule per §Design 1 — it is the host-global default and stays in system.*.
-    # (A system-scope CATEGORY key was already routed above — ``_is_system_path_
-    # key`` excludes it — so this refusal applies only to true structural keys.)
-    if _is_default_agent_key(canonical) or _is_system_path_key(canonical):
-        return _system_key_refusal(canonical, config_path)
+    # system.default_agent — a SETTING (F3): lands in the settings tier's
+    # reserved any-agent ``agent.default`` table, leaf ``default_agent`` —
+    # EXACTLY where the shipped reader (``config.read_default_agent``) reads it
+    # back and where ``setup`` writes it.  settings_dest is the system settings
+    # file (``@config.settings``) at the SYSTEM scope; set/get/launch all agree
+    # on that one location.
+    if _is_default_agent_key(canonical):
+        _write_nested_toml_key(
+            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF, value,
+        )
+        return f"Set {canonical}={value}"
+
+    # STRUCTURAL system.* path-tier keys (the SYSTEM_PATH_DEFAULTS family) —
+    # FILE-ONLY: they live in kanibako_config.yaml's [system] table (the file
+    # ``resolve_system_paths`` reads), editable there or via ``kanibako setup``
+    # (write_system_value bypasses this guard).  The refusal names THAT file.
+    # This is a precise family check (F2): a system.* SETTINGS key (auth chain /
+    # default_agent / categories / env) was routed above or falls through to the
+    # routing table below — it is never refused here.
+    if _is_system_path_key(canonical):
+        return _system_key_refusal(canonical)
 
     # Regular config keys — route via the single known-key table (the H1 fix:
     # an unknown key returns an error string and NEVER raises).  Accept either
@@ -1196,11 +1244,21 @@ def reset_config_value(
             return f"Reset {canonical}"
         return f"No override for {canonical}"
 
-    # system.* keys (INCLUDING system.default_agent) — FILE-ONLY host-global
-    # config (see set_config_value).  The CLI refuses to RESET them too (for
-    # symmetry); edit the config file directly or re-run ``kanibako setup``.
-    if _is_default_agent_key(canonical) or _is_system_path_key(canonical):
-        return _system_key_refusal(canonical, config_path)
+    # system.default_agent — a SETTING (F3), symmetric with set: remove it from
+    # the settings tier's ``agent.default`` table (where ``read_default_agent``
+    # reads), reverting to "no system default" (agent auto-detect).
+    if _is_default_agent_key(canonical):
+        if _remove_nested_toml_key(
+            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
+        ):
+            return f"Reset {canonical}"
+        return f"No override for {canonical}"
+
+    # STRUCTURAL system.* path-tier keys — FILE-ONLY (see set_config_value).
+    # The CLI refuses to RESET them too (for symmetry); edit the config file
+    # directly or re-run ``kanibako setup``.
+    if _is_system_path_key(canonical):
+        return _system_key_refusal(canonical)
 
     # Regular config keys — route via the same known-key table as set/get
     # (no get-validated/set-unguarded asymmetry).
@@ -1234,7 +1292,8 @@ def write_system_value(config_path: Path, leaf: str, value: object) -> None:
 
     This is the PROGRAM editing the config file on the user's behalf — it
     bypasses the file-only CLI guard in :func:`set_config_value` (which refuses
-    ``system.*`` keys).  Used by ``kanibako setup`` to record host-global values
+    the STRUCTURAL ``system.*`` path-tier family).  Used by ``kanibako setup``
+    to record host-global values
     (e.g. ``system.setup_completed`` → ``[system] setup_completed``) that the CLI
     deliberately will not let a user SET directly.
 
@@ -1305,6 +1364,40 @@ def reset_all(
     return f"Reset {count} override(s)." if count else "No overrides to reset."
 
 
+def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
+    """Flatten a settings file's nested SCOPE tables to ``dotted.key → value``.
+
+    The display companion of the ``_SETTINGS_SCOPE_TOKENS`` routing (F2): a
+    ``config set`` at the SYSTEM scope nests scope-token settings (e.g.
+    ``system.auth.share_allowed``, downward ``workset.*``/``box.*`` defaults)
+    in the system SETTINGS file — entries the flat ``KanibakoConfig`` override
+    view cannot see.  Flattens every top-level scope table EXCEPT ``agent``
+    (rendered by the agent-settings view) and ``resource_overrides`` (its own
+    surface).  Bools render lowercase, matching ``get``.
+    """
+    if path is None or not path.exists():
+        return {}
+    data = load_doc(path)
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, str] = {}
+
+    def _walk(node: dict, prefix: str) -> None:
+        for k, v in node.items():
+            if isinstance(v, dict):
+                _walk(v, f"{prefix}{k}.")
+            elif isinstance(v, bool):
+                out[f"{prefix}{k}"] = str(v).lower()
+            else:
+                out[f"{prefix}{k}"] = str(v)
+
+    for key, val in data.items():
+        if key in ("agent", "resource_overrides") or not isinstance(val, dict):
+            continue
+        _walk(val, f"{key}.")
+    return out
+
+
 def show_config(
     *,
     global_config_path: Path,
@@ -1368,6 +1461,17 @@ def show_config(
                 for k, v in sorted(settings.items()):
                     print(f"  {k} = {v} (override)", file=out)
 
+        # SYSTEM scope: nested settings-tier entries in the system settings
+        # file (``system.auth.share_allowed``, downward scope defaults) — the
+        # values a system-scope ``set`` stores and the launch cascade reads
+        # (F2: the effective view must show what set wrote).
+        if system_settings_path is not None:
+            nested = _nested_settings_overrides(system_settings_path)
+            if nested:
+                print("", file=out)
+                for k in sorted(nested):
+                    print(f"  {k} = {nested[k]}", file=out)
+
         # Env vars.  Prefer the fully-resolved env (box view) when supplied.
         merged = (
             env_resolved
@@ -1391,6 +1495,15 @@ def show_config(
         if settings_src and settings_src.exists():
             settings = read_agent_settings(settings_src, "default")
             for k, v in sorted(settings.items()):
+                print(f"  {k} = {v}", file=out)
+                has_output = True
+
+        # SYSTEM scope: nested settings-tier overrides (see the effective
+        # branch) — they ARE overrides at this level, so the plain view shows
+        # them too.
+        if system_settings_path is not None:
+            nested = _nested_settings_overrides(system_settings_path)
+            for k, v in sorted(nested.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True
 

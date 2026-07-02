@@ -147,7 +147,7 @@ class TestBuildEffectiveState:
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=None
+            target, agent_cfg, project_toml, system_settings_path=None
         )
         assert result == {"model": "opus", "access": "permissive"}
 
@@ -163,7 +163,7 @@ class TestBuildEffectiveState:
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=None
+            target, agent_cfg, project_toml, system_settings_path=None
         )
         assert result["model"] == "sonnet"
 
@@ -179,7 +179,7 @@ class TestBuildEffectiveState:
         project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=None
+            target, agent_cfg, project_toml, system_settings_path=None
         )
         assert result["model"] == "haiku"
 
@@ -195,7 +195,7 @@ class TestBuildEffectiveState:
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=None
+            target, agent_cfg, project_toml, system_settings_path=None
         )
         assert result["model"] == "sonnet"
         assert result["custom_key"] == "custom_value"
@@ -209,7 +209,7 @@ class TestBuildEffectiveState:
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=None
+            target, agent_cfg, project_toml, system_settings_path=None
         )
         assert result == {"model": "opus", "access": "permissive"}
 
@@ -227,7 +227,7 @@ class TestBuildEffectiveState:
         global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=global_toml
         )
         # System set value beats the target-default floor.
         assert result["model"] == "sonnet"
@@ -264,7 +264,7 @@ class TestBuildEffectiveState:
             target,
             agent_cfg,
             project_toml,
-            global_config_path=global_toml,
+            system_settings_path=global_toml,
             workset_config_path=ws_toml,
         )
         # model: box unset → workset (more specific than crab/system) wins.
@@ -281,7 +281,7 @@ class TestBuildEffectiveState:
             target,
             agent_cfg,
             box_toml,
-            global_config_path=global_toml,
+            system_settings_path=global_toml,
             workset_config_path=ws_toml,
         )
         assert result2["model"] == "box-model"
@@ -299,7 +299,7 @@ class TestBuildEffectiveState:
         project_toml = self._make_project_toml(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, global_config_path=None
+            target, agent_cfg, project_toml, system_settings_path=None
         )
         # Terminal "" — does not fall back to the "opus" floor.
         assert result["model"] == ""
@@ -328,14 +328,14 @@ class TestBuildEffectiveState:
         # claude sees its override.
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, global_config_path=None
+            claude, agent_cfg, project_toml, system_settings_path=None
         )
         assert res_claude["model"] == "sonnet"
 
         # goose does NOT — it falls back to its declared default floor.
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, global_config_path=None
+            goose, agent_cfg, project_toml, system_settings_path=None
         )
         assert res_goose["model"] == "opus"
 
@@ -362,13 +362,13 @@ class TestBuildEffectiveState:
 
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, global_config_path=None
+            claude, agent_cfg, project_toml, system_settings_path=None
         )
         assert res_claude["model"] == "sonnet"  # agent-specific wins
 
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, global_config_path=None
+            goose, agent_cfg, project_toml, system_settings_path=None
         )
         assert res_goose["model"] == "haiku"  # default tier applies
 
@@ -436,7 +436,7 @@ class TestXdgFallbackRegression:
         target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, global_config_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=global_toml
         )
         assert result["cache_probe"] == "/custom/cache/kanibako/probe"
 
@@ -451,7 +451,7 @@ class TestXdgFallbackRegression:
         target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, global_config_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=global_toml
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
         assert result["cache_probe"] == expected
@@ -466,7 +466,7 @@ class TestXdgFallbackRegression:
         target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, global_config_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=global_toml
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
         assert result["cache_probe"] == expected
