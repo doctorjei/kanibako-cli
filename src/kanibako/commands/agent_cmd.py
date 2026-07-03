@@ -289,7 +289,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     from kanibako.agent_config import (
         agent_settings_path,
         load_agent_config,
-        write_agent_config,
+    )
+    from kanibako.config_interface import (
+        _remove_nested_toml_key,
+        _write_nested_toml_key,
     )
 
     try:
@@ -309,7 +312,6 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         )
         return 1
 
-    cfg = load_agent_config(path)
     key_value = getattr(args, "key_value", None)
 
     # Handle --reset
@@ -326,12 +328,25 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                 except UserCancelled:
                     print("Aborted.")
                     return 0
-            # Reset to defaults
-            cfg.state.clear()
-            cfg.env.clear()
-            cfg.env_file.clear()
-            cfg.run_args.clear()
-            write_agent_config(path, cfg)
+            # Sparse "remove all user overrides": drop the env / env_file
+            # tables entirely and, from [agent], every key EXCEPT ``name``
+            # (this removes run_args + all state keys), then prune the now-empty
+            # [agent] table. PRESERVES name + tweakcc — behavior-parity with the
+            # old de-sparse reset, which cleared state/env/env_file/run_args but
+            # left name and tweakcc intact. Sparse write: no default keys are
+            # re-materialized (spec [[settings-must-map-to-keystore-key]]).
+            from kanibako.config_io import dump_doc, load_doc
+
+            data = load_doc(path)
+            data.pop("env", None)
+            data.pop("env_file", None)
+            agent_sec = data.get("agent")
+            if isinstance(agent_sec, dict):
+                for k in [k for k in agent_sec if k != "name"]:
+                    del agent_sec[k]
+                if not agent_sec:
+                    del data["agent"]
+            dump_doc(path, data)
             print("Reset all agent config overrides.")
             return 0
 
@@ -342,14 +357,14 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             return 1
 
         key = reset_key.strip()
-        changed = _reset_agent_key(cfg, key)
+        sections, leaf = _agent_key_route(key)
+        changed = _remove_nested_toml_key(path, sections, leaf)
         if changed:
-            write_agent_config(path, cfg)
             # Honest cleared-form (F7), same contract as every other noun's
-            # reset. This engine edits the flat AgentConfig, NOT the
-            # assemble/merge cascade, so it has no resolved cascade inputs to
-            # thread — the cleared-only fallback (effective=None) is the correct
-            # honest form here (no new plumbing for this micro-block).
+            # reset. This engine edits the sparse settings file directly, NOT
+            # the assemble/merge cascade, so it has no resolved cascade inputs
+            # to thread — the cleared-only fallback (effective=None) is the
+            # correct honest form here (no new plumbing for this micro-block).
             from kanibako.config_interface import (
                 ConfigLevel,
                 _honest_reset_message,
@@ -362,20 +377,25 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
     # Parse key/value argument
     if key_value is None:
-        # Show mode
+        # Show mode — read the config only where the READ paths need it.
+        cfg = load_agent_config(path)
         return _show_agent_config(cfg, agent_display, effective=args.effective)
 
     if "=" in key_value:
         key, _, value = key_value.partition("=")
         key = key.strip()
         value = value.strip()
-        _set_agent_key(cfg, key, value)
-        write_agent_config(path, cfg)
+        sections, leaf = _agent_key_route(key)
+        # run_args is stored as a LIST (space-split); everything else is the
+        # raw string. Sparse write — only the touched key is materialized.
+        stored: object = value.split() if key == "run_args" else value
+        _write_nested_toml_key(path, sections, leaf, stored)
         print(f"Set {key}={value}")
         return 0
 
     # Get mode
     key = key_value.strip()
+    cfg = load_agent_config(path)
     val = _get_agent_key(cfg, key)
     if val is not None:
         print(val)
@@ -403,53 +423,23 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     return cfg.state.get(key)
 
 
-def _set_agent_key(cfg: AgentConfig, key: str, value: str) -> None:
-    """Set a single key in agent config."""
-    # env_file.<VAR> = <host-path>: store the POINTER only. The secret (the
-    # token) stays in the host file; only the PATH is persisted here (spec §2d).
-    # Checked before ``env.`` so ``env_file.X`` routes correctly.
-    if key.startswith("env_file."):
-        var = key[len("env_file."):]
-        cfg.env_file[var] = value
-    elif key.startswith("env."):
-        env_name = key[4:]
-        cfg.env[env_name] = value
-    elif key == "name":
-        cfg.name = value
-    elif key == "run_args":
-        cfg.run_args = value.split()
-    else:
-        # State section (model, start_mode, autonomous, etc.)
-        cfg.state[key] = value
+def _agent_key_route(key: str) -> tuple[tuple[str, ...], str]:
+    """Map an agent config *key* to its ``(sections, leaf)`` file path.
 
-
-def _reset_agent_key(cfg: AgentConfig, key: str) -> bool:
-    """Remove a single key from agent config.  Returns True if found."""
-    # env_file.<VAR> — drop the pointer (checked before ``env.``).
+    Single source of truth for the SPARSE set/reset routing (mirrors the read
+    routing in :func:`_get_agent_key`). ``env_file.`` is tested BEFORE ``env.``
+    so ``env_file.X`` is a pointer named ``X`` — never mis-split as ``env.`` +
+    ``file.X``. ``name``, ``run_args``, and every other (state) key live under
+    the ``[agent]`` table with the key as the leaf.
+    """
+    # env_file.<VAR> — the env-from-file POINTER (host path). The secret (the
+    # token) stays in the host file; only the PATH is persisted (spec §2d).
     if key.startswith("env_file."):
-        var = key[len("env_file."):]
-        if var in cfg.env_file:
-            del cfg.env_file[var]
-            return True
-        return False
+        return ("env_file",), key[len("env_file."):]
     if key.startswith("env."):
-        env_name = key[4:]
-        if env_name in cfg.env:
-            del cfg.env[env_name]
-            return True
-        return False
-    if key == "name":
-        cfg.name = ""
-        return True
-    if key == "run_args":
-        if cfg.run_args:
-            cfg.run_args.clear()
-            return True
-        return False
-    if key in cfg.state:
-        del cfg.state[key]
-        return True
-    return False
+        return ("env",), key[len("env."):]
+    # name / run_args / state (model, start_mode, autonomous, …).
+    return ("agent",), key
 
 
 def _show_agent_config(
