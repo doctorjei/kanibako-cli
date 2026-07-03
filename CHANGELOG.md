@@ -10,8 +10,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A higher scope can now set defaults for the scopes it contains.** The
+  config-verb scope guard follows containment (`system ⊃ agent ⊃ workset ⊃
+  box`): `kanibako workset set box.image=X` stores `box.image` in the
+  *workset's* settings file as an overridable default for that workset's
+  boxes; a box-level set overrides it, and a box reset falls back to it.
+  Writing *upward* (a box setting a `workset.*`/`system.*` key) remains
+  refused. This restores the originally-ruled cascade model; the previous
+  own-namespace-only refusal was a spec drift.
+- **The directional rule is now enforced at the resolver, not only the CLI.**
+  A hand-edited settings file contributes only keys of its own scope and of
+  scopes it contains; a containing scope's table found in a lower file (e.g.
+  `system:` in a box file) is dropped at assembly with a warning naming the
+  file and key. A user file's top-level `meta:` table is likewise dropped —
+  the identity anchors are bootstrap-materialized and read-only everywhere.
+- **`get` and `reset` now tell the truth.** Plain `get <key>` returns the
+  value stored at that command scope's file (including downward defaults it
+  stores) or "(not set)" — it no longer fabricates a built-in default or
+  leaks another tier's value; `--effective` remains the resolved cascade.
+  `reset` says what it did ("Cleared <key> set on the box scope; …") instead
+  of claiming a "default" that wasn't what launch resolves, and appends the
+  now-effective value and its source tier when the cascade can truthfully
+  supply them. `reset --all` clears nested scope tables per the same
+  containment rules and reports the real removal count.
+- **System settings keys are settable from the CLI.** The `system.*`
+  catch-all refused every system key as "structural," pointing at a file the
+  resolver never reads for them. The genuinely structural path-tier family
+  keeps the file-only refusal (now naming the right file); real settings keys
+  — the auth sharing gate, `default_agent`, `env.*` — route to the system
+  settings file that launch actually reads, with set/get/show/launch agreeing.
+- **`box.agent.*` carries categories.** A box can now supply or suppress its
+  active agent's category entries (seeds, binds, caches, masks) through the
+  §2b mirror as ordinary box-scope writes — including `null` suppression —
+  resolved through the one cascade merge rather than a post-expansion overlay.
+
 ### Fixed
 
+- **Host users other than uid 1000 no longer lose ownership of their project
+  tree.** Plain `--userns=keep-id` mapped the calling user beside — not onto —
+  the image's `agent` user, and the `:U` bind option then recursively chowned
+  the box home *and the user's project directory* to an unrelated subuid,
+  breaking every subsequent kanibako command. Boxes now run with
+  `--userns=keep-id:uid=1000,gid=1000`, pinning the caller onto the container
+  user regardless of host uid (podman ≥ 4.3; uid-1000 hosts are unchanged).
+- **`$XDG_CACHE_HOME`-style variables always resolve.** Stored values naming
+  an XDG variable crashed resolution ("Variable $XDG_CACHE_HOME is not set in
+  this context") on hosts that don't export it — and exporting it didn't
+  help, because several resolution contexts were built with partial variable
+  maps. One canonical builder now supplies every context, applying the XDG
+  Base Directory spec defaults when a variable is unset, empty, or relative.
+- **Goose no longer flashes a raw podman error on a box's first launch.** The
+  default continue mode attempted a doomed `session --resume` on a fresh box;
+  the fast-dying container raced the attach into a raw "container state
+  improper" error before the retry recovered. Targets now report whether a
+  resumable session exists, and the first launch goes straight to a new
+  session.
+- **Category-key `config set` finds its bind anywhere in the cascade.**
+  Repointing a bind's host source (e.g. `box set box.bindings.rw.vault=~/x`)
+  required the tuple to exist in the command scope's own file; it now
+  resolves against the effective cascade, preserving the guest destination —
+  and category-key `reset`, which was rejected outright as an unknown key,
+  now removes the command-scope tuple so the cascade value resurfaces.
+- **A lone-setter category `null` behaves as suppression everywhere.** A
+  present-`null` category leaf that only one level set could crash the
+  collector or, for `masks`, be emitted as a real mask entry instead of an
+  unmask; the merge now applies the type-split to lone subtrees too.
 - **`workset set default <key>` was a silent dead write — the primary workset's
   settings now live at `@config.primary_workset/settings.yaml` (spec §2c).**
   Since 1.6.0 the CLI wrote the default (primary) workset's values to
