@@ -345,7 +345,17 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         changed = _reset_agent_key(cfg, key)
         if changed:
             write_agent_config(path, cfg)
-            print(f"Reset {key}")
+            # Honest cleared-form (F7), same contract as every other noun's
+            # reset. This engine edits the flat AgentConfig, NOT the
+            # assemble/merge cascade, so it has no resolved cascade inputs to
+            # thread — the cleared-only fallback (effective=None) is the correct
+            # honest form here (no new plumbing for this micro-block).
+            from kanibako.config_interface import (
+                ConfigLevel,
+                _honest_reset_message,
+            )
+
+            print(_honest_reset_message(key, ConfigLevel.agent))
         else:
             print(f"No override for {key}")
         return 0
