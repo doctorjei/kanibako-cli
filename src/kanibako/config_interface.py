@@ -27,8 +27,13 @@ from kanibako.config import (
     read_agent_settings,
     unset_project_config_key,
 )
+from kanibako.agent_ref import (
+    canonicalize_agent_ref,
+    display_agent_ref,
+    parse_agent_ref,
+)
 from kanibako.config_io import dump_doc, load_doc
-from kanibako.errors import UserCancelled
+from kanibako.errors import ConfigError, UserCancelled
 from kanibako.settings_store import SCOPE_CONTAINMENT
 from kanibako.shellenv import (
     merge_env,
@@ -115,6 +120,11 @@ def is_known_key(arg: str) -> bool:
     if arg in KNOWN_CONFIG_KEYS:
         return True
     if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
+        return True
+    # agent.<node>.<key> — the per-persona agent key (block B1): a settable key
+    # (recognised on the +form too, before canonicalization) so get/show + the
+    # project-name heuristic treat it as a KEY, never a project name.
+    if _is_persona_agent_key(arg):
         return True
     # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380): a
     # settable box-scope key (so the get/show paths + the project-name heuristic
@@ -250,11 +260,144 @@ def parse_config_arg(arg: str | None) -> tuple[ConfigAction, str, str]:
 def _resolve_key(raw: str) -> str:
     """Return the canonical config key for a user-supplied key name.
 
-    Config keys are already canonical (dot-notation like ``box.image`` or
-    ``vault.enabled``, or a raw flat key); this is the single canonicalization
-    seam every get/set/reset path routes through.
+    Most config keys are already canonical (dot-notation like ``box.image`` or
+    ``vault.enabled``, or a raw flat key) and pass through unchanged; this is the
+    single canonicalization seam every get/set/reset path routes through.
+
+    The ONE canonicalization it performs (block B1): for a per-persona agent key
+    ``agent.<node>.<key>`` it canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘``
+    (``agent.navigator+claude.endpoint`` -> ``agent.navigator℘claude.endpoint``),
+    so the write/get/reset all target the canonical ``agents/<node>/`` slot the
+    resolver reads.  The node segment is canonicalized as a WHOLE via
+    :func:`canonicalize_agent_ref` (agent_ref design law: never re-split a ref on
+    the raw separator); the tail (``endpoint`` / ``env.<VAR>`` / ``env_file.<VAR>``)
+    is preserved verbatim.  A malformed node is left RAW here — the set/reset
+    persona branch surfaces the parse error (and a bad node never silently swaps).
+    Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.
     """
-    return raw
+    parsed = _parse_persona_agent_key(raw)
+    if parsed is None:
+        return raw
+    node_raw, tail = parsed
+    try:
+        node = canonicalize_agent_ref(node_raw)
+    except ConfigError:
+        return raw
+    return f"agent.{node}.{tail}"
+
+
+# ---------------------------------------------------------------------------
+# Per-persona agent keys (block B1) — ``agent.<node>.<key>`` set on the agent's
+# OWN settings file ``agents/<node>/settings.yaml``.
+# ---------------------------------------------------------------------------
+
+# The settable per-persona agent leaves: the FLAT agent-state knobs (``_is_agent_
+# setting`` set) plus the ``env.``/``env_file.`` sections — the EXACT shape
+# ``agent_config.load_agent_config`` reads back (``AgentConfig.state`` / ``.env`` /
+# ``.env_file``), so a value ``set`` here is what the launch snapshot resolves for
+# the persona (endpoint via ``effective_behavior``; token via ``env_file``).
+_PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
+    {"endpoint", "model", "start_mode", "autonomous", "access"}
+)
+_PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env", "env_file"})
+
+# The RESERVED any-agent tier name (mirrors ``settings_assemble._AGENT_DEFAULT_SUB``
+# / ``config.read_agent_settings``: "no real agent may be named default"). It is
+# NOT a persona node — an ``agent.default.<key>`` write is refused (the any-agent
+# default is the BARE key), so nothing lands at a never-read ``agents/default/``.
+_AGENT_DEFAULT_SUB = "default"
+
+
+def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
+    """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
+
+    Returns ``None`` when *key* is not a settable per-persona agent key. The
+    settable *tail* forms are a FLAT state leaf (``endpoint`` / ``model`` /
+    ``start_mode`` / ``autonomous`` / ``access``) or a sectioned ``env.<VAR>`` /
+    ``env_file.<VAR>`` pointer.  The node segment is returned VERBATIM (possibly
+    a ``+`` form, possibly itself dotted — a persona/harness segment may contain
+    ``.``) for :func:`canonicalize_agent_ref` to canonicalize as a WHOLE.
+
+    Parsed from the RIGHT: the closed set of settable tails is unambiguous, so
+    everything left of a recognised tail is the node.  ``env``/``env_file`` are
+    matched BEFORE the flat leaves so ``agent.<node>.env_file.MODEL`` is a token
+    pointer named ``MODEL``, never mis-split as the state leaf ``model``.
+    """
+    if not key.startswith("agent."):
+        return None
+    rest = key[len("agent."):]
+    parts = rest.split(".")
+    # env.<VAR> / env_file.<VAR> — the section is the 2nd-from-last segment.
+    if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
+        return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
+    # Flat state leaf — the last segment.
+    if len(parts) >= 2 and parts[-1] in _PERSONA_STATE_LEAVES:
+        return (".".join(parts[:-1]), parts[-1])
+    return None
+
+
+def _is_persona_agent_key(key: str) -> bool:
+    """True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1)."""
+    return _parse_persona_agent_key(key) is not None
+
+
+def _persona_display_key(canonical: str) -> str:
+    """Render a canonical persona key for USER-FACING output (``℘`` -> ``+``)."""
+    parsed = _parse_persona_agent_key(canonical)
+    if parsed is None:
+        return canonical
+    node, tail = parsed
+    return f"agent.{display_agent_ref(node)}.{tail}"
+
+
+def _persona_agent_target(
+    canonical: str, agents_root: "Path | None",
+) -> "tuple[Path, tuple[str, ...], str] | str | None":
+    """Resolve a canonical persona key to its FILE write/read location.
+
+    Returns one of:
+
+    * ``(path, sections, leaf)`` — the route into ``agents/<node>/settings.yaml``
+      (``path``), the nested file table (``("agent",)`` for a flat state leaf,
+      ``("env",)`` / ``("env_file",)`` for a pointer), and the leaf name;
+    * an ``"Error: ..."`` string — a MALFORMED node ref (validated, never routed);
+    * ``None`` — not a persona key, OR *agents_root* was not supplied (the per-
+      persona store is global under ``config.agents`` and is only reachable when
+      the caller threads its root — the system scope).
+
+    The node is taken VERBATIM from *canonical* (already ``℘``-canonicalized by
+    :func:`_resolve_key`) and used AS-IS for the dir — it is only VALIDATED here
+    (via :func:`parse_agent_ref`), never re-swapped.  So breaking the
+    :func:`_resolve_key` swap routes a ``+`` key to a ``agents/<node-with-+>/``
+    dir the resolver never reads (the canonicalization mutation the gate proves).
+    """
+    parsed = _parse_persona_agent_key(canonical)
+    if parsed is None or agents_root is None:
+        return None
+    node, tail = parsed
+    # ``default`` is the RESERVED any-agent tier name (read_agent_settings: "no
+    # real agent may be named default") — the launch NEVER reads an
+    # ``agents/default/`` dir as a node, so writing one would breach the
+    # keystore-maps-to-a-real-key rule + foot-gun a user who wants the any-agent
+    # default (that is the BARE key, e.g. ``system set model=…``). Refuse it.
+    if node == _AGENT_DEFAULT_SUB:
+        return (
+            f"Error: 'default' is the reserved any-agent tier, not a persona "
+            f"node; set the any-agent default with the bare key "
+            f"(e.g. '{tail}') instead."
+        )
+    from kanibako.agent_config import agent_settings_path
+
+    try:
+        parse_agent_ref(node)  # validate only (raises on a malformed ref)
+    except ConfigError as exc:
+        return f"Error: {exc}"
+    path = agent_settings_path(agents_root, node)
+    if tail.startswith("env_file."):
+        return path, ("env_file",), tail[len("env_file."):]
+    if tail.startswith("env."):
+        return path, ("env",), tail[len("env."):]
+    return path, ("agent",), tail
 
 
 def _is_env_key(key: str) -> bool:
@@ -866,6 +1009,7 @@ def get_config_value(
     env_global: Path | None = None,
     env_project: Path | None = None,
     system_settings_path: Path | None = None,
+    agents_root: Path | None = None,
 ) -> str | None:
     """Read a single config value from the appropriate store.
 
@@ -912,6 +1056,19 @@ def get_config_value(
             data = load_doc(project_toml)
             overrides = data.get("resource_overrides", {})
             return str(overrides.get(resource_name, "")) or None
+        return None
+
+    # agent.<node>.<key> — the PER-PERSONA agent key (block B1): read the value
+    # STORED at the flat slot in the agent's OWN settings file
+    # ``agents/<node>/settings.yaml`` (symmetric with the set/reset branches; the
+    # get model's stored-at-noun read — the cascade/effective view is ``show
+    # --effective`` / ``agent show``, not this).  A missing agents_root or a
+    # malformed node → ``None`` ("(not set)").
+    if _is_persona_agent_key(canonical):
+        target = _persona_agent_target(canonical, agents_root)
+        if isinstance(target, tuple):
+            path, sections, leaf = target
+            return _read_stored_leaf(path, sections, leaf)
         return None
 
     # target settings (model, start_mode, autonomous)
@@ -1045,6 +1202,7 @@ def set_config_value(
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
     command_scope: ConfigLevel | None = None,
+    agents_root: Path | None = None,
 ) -> str:
     """Write a config value to the appropriate store.
 
@@ -1109,6 +1267,32 @@ def set_config_value(
         resource_name = canonical[9:]
         _write_toml_key(config_path, "resource_overrides", resource_name, value)
         return f"Set resource.{resource_name}={value}"
+
+    # agent.<node>.<key> — the PER-PERSONA agent key (block B1): write to the
+    # agent's OWN settings file ``agents/<node>/settings.yaml`` (NOT the command
+    # scope's settings file), at the FLAT slot ``load_agent_config`` reads back
+    # (state leaf under ``agent:``; ``env.<VAR>`` under ``env:``; ``env_file.<VAR>``
+    # under ``env_file:``).  The node was ``℘``-canonicalized by ``_resolve_key``.
+    # Sparse by construction: ``_write_nested_toml_key`` is read-modify-write, so
+    # only the key the user set is materialised — a default-only persona file
+    # stays empty of everything else.  The value is written VERBATIM (like every
+    # other agent-setting write) — the persona-critical trio (endpoint,
+    # env_file.ANTHROPIC_AUTH_TOKEN, model) are strings.  ``agents_root`` is
+    # supplied only by the system scope (the global ``config.agents`` store);
+    # absent it, the write is refused (the directional guard already refuses this
+    # key from box/workset — an UPWARD agent-scope write).
+    if _is_persona_agent_key(canonical):
+        target = _persona_agent_target(canonical, agents_root)
+        if isinstance(target, str):
+            return target  # malformed node ref
+        if target is None:
+            return (
+                f"Error: '{key}' is a per-persona agent setting and is only "
+                f"settable at the system scope."
+            )
+        path, sections, leaf = target
+        _write_nested_toml_key(path, sections, leaf, value)
+        return f"Set {_persona_display_key(canonical)}={value}"
 
     # target settings — the agent-agnostic CLI writes the any-agent
     # ``agent.default`` tier (per-agent overrides live under ``agent.<name>``).
@@ -1230,6 +1414,7 @@ def reset_config_value(
     cascade_workset_path: Path | None = None,
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
+    agents_root: Path | None = None,
 ) -> str:
     """Remove an override for a single key.  Returns confirmation message.
 
@@ -1286,6 +1471,25 @@ def reset_config_value(
         if _remove_toml_key(config_path, "resource_overrides", resource_name):
             return f"Reset resource.{resource_name}"
         return f"No override for resource.{resource_name}"
+
+    # agent.<node>.<key> — the PER-PERSONA agent key (block B1): remove the stored
+    # override from the agent's OWN settings file ``agents/<node>/settings.yaml``
+    # (symmetric with set/get; ``_remove_nested_toml_key`` prunes now-empty
+    # ``agent:``/``env:``/``env_file:`` tables, keeping the file sparse).
+    if _is_persona_agent_key(canonical):
+        target = _persona_agent_target(canonical, agents_root)
+        if isinstance(target, str):
+            return target  # malformed node ref
+        if target is None:
+            return (
+                f"Error: '{key}' is a per-persona agent setting and is only "
+                f"resettable at the system scope."
+            )
+        path, sections, leaf = target
+        display = _persona_display_key(canonical)
+        if _remove_nested_toml_key(path, sections, leaf):
+            return f"Reset {display}"
+        return f"No override for {display}"
 
     # target settings — reset the any-agent ``agent.default`` tier (SYSTEM scope
     # routes to the system settings file).
