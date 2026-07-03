@@ -276,13 +276,55 @@ def run_start(args: argparse.Namespace) -> int:
     share_images = getattr(args, "share_images", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
+    bootstrap_program = _resolve_bootstrap_program()
+    no_bootstrap = _is_no_bootstrap(bootstrap_program)
     if explicit_persistent:
+        # An explicit reattach request needs a working bootstrap program on the
+        # HOST (reattach shells out to it).  Two distinct failures, both clean
+        # here rather than a downstream crash:
+        #   * `none` = opt-out — persistent is a contradiction.
+        #   * a real program absent on the host (host-missing, NOT image-missing:
+        #     don't conflate with the tier-1 in-image hard-stop).
+        if no_bootstrap:
+            print(
+                "Error: --persistent requires a bootstrap program, but "
+                "box.bootstrap_program=none (foreground opt-out). Unset it or "
+                "set an installed program (e.g. tmux) for persistent sessions.",
+                file=sys.stderr,
+            )
+            return 1
+        if not _bootstrap_available(bootstrap_program):
+            print(
+                f"Error: --persistent needs '{bootstrap_program}' on this host "
+                f"(reattach runs it), but it is not installed. Install "
+                f"'{bootstrap_program}', or run without --persistent for "
+                f"foreground single-use mode.",
+                file=sys.stderr,
+            )
+            return 1
         persistent = True
     elif explicit_ephemeral:
         persistent = False
+    elif no_bootstrap:
+        # Explicit `none` opt-out: foreground single-use, no note, and no
+        # host probe (the user chose this on purpose).
+        persistent = False
+    elif _bootstrap_available(bootstrap_program):
+        # Default: persistent when the configured bootstrap program is present.
+        persistent = True
     else:
-        # Default: persistent when the configured bootstrap program is available
-        persistent = _bootstrap_available(_resolve_bootstrap_program())
+        # Configured program absent on the host: fall back to foreground
+        # single-use (today's silent behavior) but CLUE THE USER IN once — name
+        # the program, the consequence, and both remedies (install it, or make
+        # foreground explicit with box.bootstrap_program=none to silence this).
+        persistent = False
+        print(
+            f"Note: '{bootstrap_program}' not found on this host; running in "
+            f"the foreground (single-use, no reattach). Install "
+            f"'{bootstrap_program}' for persistent sessions, or set "
+            f"box.bootstrap_program=none to make foreground mode explicit.",
+            file=sys.stderr,
+        )
     env_vars = getattr(args, "env", None) or []
     # Reconcile the positional subject with the blanket --box flag (same → warn,
     # differ → error).  The winner is the path-or-name routed through
@@ -381,6 +423,24 @@ def run_shell(args: argparse.Namespace) -> int:
     )
 
 
+# Exact-string sentinel for box.bootstrap_program meaning "no bootstrap wrapper,
+# on purpose": launch runs foreground single-use (today's absent-tmux fallback),
+# with NO host-absent note and NO image baseline probe for a bootstrap exe.  It
+# is a CONSUMER-side interpretation only (start.py) — the resolver/keyspace treat
+# it as a plain box-scope string value; nothing here changes the key's semantics.
+_BOOTSTRAP_NONE = "none"
+
+
+def _is_no_bootstrap(program: str | None) -> bool:
+    """True when *program* is the explicit ``none`` opt-out sentinel.
+
+    Exact lowercase match only — an image, path, or program literally named
+    ``none`` would collide, but that is not a real bootstrap program, so the
+    sentinel wins deliberately.
+    """
+    return program == _BOOTSTRAP_NONE
+
+
 def _resolve_bootstrap_program() -> str:
     """Resolve the configured bootstrap program for the host-side default-mode
     heuristic (machine + user global, no project).
@@ -428,10 +488,13 @@ def _check_launch_baseline(runtime, image, bootstrap_program, container_name, st
 
     * Tier 1 — if the bootstrap program is missing, prints a hard-stop message
       (noting a shell is still reachable to investigate) and returns
-      :data:`_BOOTSTRAP_MISSING`.
+      :data:`_BOOTSTRAP_MISSING`.  SKIPPED entirely when *bootstrap_program* is
+      the ``none`` opt-out sentinel: no bootstrap exe is probed and no hard stop
+      can fire (there is no bootstrap program to be missing).
     * Tier 2 — returns the list of ``(package, executable)`` pairs whose
       executable is missing.  These are WARN-only: they are persisted to the
       box's launch-issues state file and surfaced after the session closes.
+      Tier 2 runs regardless of the ``none`` sentinel.
     """
     from kanibako import baseline as baseline_mod
 
@@ -439,15 +502,20 @@ def _check_launch_baseline(runtime, image, bootstrap_program, container_name, st
     baseline_exes = [exe for _pkg, exe in pairs]
     exe_to_pkg = {exe: pkg for pkg, exe in pairs}
 
-    # One probe for bootstrap + all baseline exes (dedup, bootstrap first).
-    probe_exes: list[str] = [bootstrap_program]
+    # `none` opt-out: no bootstrap exe to probe, no tier-1 hard stop — only the
+    # tier-2 baseline sweep runs.
+    probe_bootstrap = not _is_no_bootstrap(bootstrap_program)
+
+    # One probe for bootstrap (unless `none`) + all baseline exes (dedup,
+    # bootstrap first).
+    probe_exes: list[str] = [bootstrap_program] if probe_bootstrap else []
     for exe in baseline_exes:
         if exe not in probe_exes:
             probe_exes.append(exe)
     missing = set(probe_missing_executables(runtime, image, probe_exes))
 
-    # TIER 1: bootstrap program.
-    if bootstrap_program in missing:
+    # TIER 1: bootstrap program (skipped for the `none` opt-out).
+    if probe_bootstrap and bootstrap_program in missing:
         print(
             f"Error: the bootstrap program '{bootstrap_program}' is not "
             f"installed in image '{image}'.\n"
@@ -744,7 +812,26 @@ def _run_container(
     )
 
     image = merged.box_image
+    # Empty/unset (YAML null/"") coerces to the default tmux; the explicit `none`
+    # opt-out sentinel is a non-empty value and MUST survive this coercion (it is
+    # interpreted below — no bootstrap wrap, no image baseline probe).
     bootstrap_program = merged.box_bootstrap_program or "tmux"
+    no_bootstrap = _is_no_bootstrap(bootstrap_program)
+
+    # `none` opt-out is fundamentally incompatible with persistence (there is no
+    # bootstrap program to wrap or reattach to).  run_start already turns this
+    # into a clean pre-flight error, but guard here too so no other caller (e.g.
+    # `kanibako shell --persistent` on a box configured `none`) can reach the
+    # bootstrap-wrap with `none` as the program — foreground single-use is the
+    # only meaning of `none`.
+    if persistent and no_bootstrap:
+        print(
+            "Error: box.bootstrap_program=none (foreground opt-out) cannot run "
+            "a persistent session. Unset it or set an installed bootstrap "
+            "program (e.g. tmux) for persistent/reattachable sessions.",
+            file=sys.stderr,
+        )
+        return 1
 
     # Persist image override for new projects so it becomes the default
     if proj.is_new and image_override:
