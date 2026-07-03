@@ -244,6 +244,68 @@ def _create_args(path, **over):
     return ns
 
 
+class TestRunCreatePersonaGate:
+    """`box create` for an UNLOADABLE persona: a TRUE PRE-FLIGHT (F5, Director
+    ruling 2026-07-03).  The load-or-error gate runs on a NON-materialising probe
+    BEFORE the box dir is created (and before the write-ahead journal entry, ruling
+    #3), so a failed create leaves NOTHING behind: no box dir / settings.yaml, no
+    journal entry, no seed, and the registry untouched.  Real filesystem — these
+    are fs-level, not mock-level, assertions.
+
+    UNMASKED: nothing patches ``_resolve_box_launch_decisions``.  The verdict runs
+    the REAL launch-decision resolve on the pick_name()'d probe; reverting the
+    probe naming (``_name_new_box_probe``) makes ``box_channel_addresses`` raise
+    "box has no name" BEFORE the verdict → this test would ERROR instead of rc==1
+    (the F5/F7 mutation proof)."""
+
+    def test_unloadable_persona_create_no_box_no_entry_no_seed(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.box._parser import run_create
+        from kanibako.config import load_config
+        from kanibako.names import read_names
+        from kanibako.paths import load_std_paths
+        from kanibako import journal
+
+        # No persona host dir under XDG_CONFIG_HOME (tmp_home/config) → the
+        # explicit persona 'navigator+claude' is unrecognised AND unadoptable, so
+        # the create verdict is a hard error.  claude IS an installed harness in
+        # the test env, so the gate is genuinely reached (not skipped as no-agent).
+        seed_called = {"v": False}
+
+        def spy_seed(std, config, proj, **kw):  # must NEVER run.
+            seed_called["v"] = True
+
+        monkeypatch.setattr("kanibako.commands.start.seed_new_box", spy_seed)
+        # The journal write-entry must be UNREACHED (guard precedes it, ruling #3).
+        m_write_entry = MagicMock()
+        monkeypatch.setattr(
+            "kanibako.commands.start._write_create_entry", m_write_entry
+        )
+
+        rc = run_create(
+            _create_args(tmp_home / "project", agent="navigator+claude")
+        )
+        assert rc == 1
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        # TRUE PRE-FLIGHT: the box was NEVER materialised — no box dir /
+        # settings.yaml (the workspace dir tmp_home/project the user asked to
+        # create in is theirs; the BOX under std.boxes is what must be absent).
+        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+        # Guard ran BEFORE the journal entry: no entry written, nothing seeded,
+        # registry untouched (fs-level).
+        m_write_entry.assert_not_called()
+        assert seed_called["v"] is False
+        assert journal.read_journal(std.journal) == {}
+        assert read_names(std.registry)["projects"] == {}
+        # No agent-store artifact was materialised for the persona node.
+        assert not (std.agents / "navigator℘claude").exists()
+
+
 class TestRunCreateJournalLifecycle:
     def test_clean_create_leaves_no_entry_and_registers(
         self, config_file, tmp_home, credentials_dir, monkeypatch

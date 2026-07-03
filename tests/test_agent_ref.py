@@ -11,6 +11,7 @@ from kanibako.agent_ref import (
     display_agent_ref,
     harness_of,
     parse_agent_ref,
+    persona_of,
     with_harness,
 )
 from kanibako.errors import ConfigError
@@ -209,3 +210,33 @@ def test_display_round_trips_with_canonicalize():
     assert display_agent_ref(node) == "navigator+claude"
     # And back: display -> canonicalize returns the node.
     assert canonicalize_agent_ref(display_agent_ref(node)) == node
+
+
+# ---------------------------------------------------------------------------
+# persona_of  (inverse of harness_of; the segment LEFT of ℘)
+# ---------------------------------------------------------------------------
+
+
+def test_persona_of_node():
+    assert persona_of("navigator℘claude") == "navigator"
+
+
+def test_persona_of_bare_returns_node():
+    # A bare node has no distinct persona segment.
+    assert persona_of("claude") == "claude"
+
+
+def test_persona_of_other_harness():
+    assert persona_of("navigator℘goose") == "navigator"
+
+
+def test_persona_of_only_splits_canonical():
+    # Like harness_of, persona_of operates on canonical NODE-names; a stray '+'
+    # is NOT a separator here (node-names are canonicalised before reaching it).
+    assert persona_of("navigator+claude") == "navigator+claude"
+
+
+def test_persona_of_inverse_of_harness_of():
+    # persona_of / harness_of partition a persona node either side of ℘.
+    node = "navigator℘claude"
+    assert f"{persona_of(node)}{CANONICAL_SEP}{harness_of(node)}" == node

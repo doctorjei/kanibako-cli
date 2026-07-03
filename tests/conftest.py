@@ -302,6 +302,13 @@ def start_mocks():
                 _clear_create_entry=DEFAULT,
                 _pending_create_entry=DEFAULT,
                 _register_new_box=DEFAULT,
+                # The load-or-error pre-flight resolves the box-INDEPENDENT agent
+                # (explicit --agent OR the system default) to decide whether to
+                # DEFER box materialisation.  With a MagicMock ``std.settings`` the
+                # real reader would feed a MagicMock to yaml (>10 GB balloon risk),
+                # so default it to "no system default" (bare — today's behavior).
+                # Tests exercising a system-default persona override its return.
+                read_default_agent=DEFAULT,
             ) as m_launch_mount_stubs,
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
@@ -363,6 +370,9 @@ def start_mocks():
             # auto-create-at-launch set proj.is_new = True (or override this).
             m_launch_mount_stubs["_pending_create_entry"].return_value = None
             m_launch_mount_stubs["_register_new_box"].return_value = None
+            # Default: no system-default agent → non-explicit launches are NOT
+            # deferred (byte-identical to today's single materialising resolve).
+            m_launch_mount_stubs["read_default_agent"].return_value = None
 
             proj = MagicMock()
             proj.is_new = False
@@ -588,6 +598,7 @@ def start_mocks():
                 credsync=m_credsync,
                 resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
                 seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
+                read_default_agent=m_launch_mount_stubs["read_default_agent"],
                 virtiofs_check=m_virtiofs_check,
             )
 

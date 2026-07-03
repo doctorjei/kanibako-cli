@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -3456,3 +3457,700 @@ class TestResolveEnvFiles:
             "MISSING": str(tmp_path / "absent"),
         })
         assert out == {"GOOD": "good-tok"}
+
+
+# ===========================================================================
+# Persona LOAD-OR-ERROR (A + B3) — the safety fix (Jei dogfood 2026-07-03).
+# ===========================================================================
+
+
+class TestPersonaAdoptFromHostDir:
+    """Unit tests for ``_adopt_persona_from_host_dir`` (the B3 host-dir reader)."""
+
+    def _write_host(self, tmp_path, monkeypatch, env, *, token="sk-bearer\n"):
+        """Point XDG_CONFIG_HOME at *tmp_path* and lay a persona host dir."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        import json
+        (pdir / "settings.json").write_text(json.dumps({"env": env}))
+        if token is not None:
+            (pdir / "token").write_text(token)
+        return pdir
+
+    def test_adopts_base_url_and_model_map(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import _adopt_persona_from_host_dir
+
+        self._write_host(
+            tmp_path, monkeypatch,
+            {
+                "ANTHROPIC_BASE_URL": "https://persona.example",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "gemma-big",
+                "ANTHROPIC_AUTH_TOKEN": "LEAK-should-not-appear",
+            },
+        )
+        res = _adopt_persona_from_host_dir("navigator")
+        assert res is not None
+        base_url, extra_env, token_path = res
+        assert base_url == "https://persona.example"
+        # The model map is carried; BASE_URL and the bearer token are EXCLUDED
+        # (each has its own single-source channel).
+        assert extra_env == {"ANTHROPIC_DEFAULT_OPUS_MODEL": "gemma-big"}
+        assert token_path.endswith("/claude/navigator/token")
+
+    def test_missing_dir_returns_none(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import _adopt_persona_from_host_dir
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        assert _adopt_persona_from_host_dir("ghost") is None
+
+    def test_no_base_url_returns_none(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import _adopt_persona_from_host_dir
+
+        self._write_host(tmp_path, monkeypatch, {"SOMETHING": "else"})
+        assert _adopt_persona_from_host_dir("navigator") is None
+
+    def test_malformed_json_returns_none(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import _adopt_persona_from_host_dir
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        (pdir / "settings.json").write_text("{not json")
+        assert _adopt_persona_from_host_dir("navigator") is None
+
+    def test_non_string_env_values_skipped(self, tmp_path, monkeypatch):
+        # N3: JSON number/bool env values are SKIPPED (not str()'d into a Python
+        # repr and delivered as a bogus env value).
+        from kanibako.commands.start import _adopt_persona_from_host_dir
+
+        self._write_host(
+            tmp_path, monkeypatch,
+            {
+                "ANTHROPIC_BASE_URL": "https://persona.example",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "gemma-big",
+                "MAX_TOKENS": 4096,   # non-string → skipped
+                "STREAM": True,       # non-string → skipped
+                "NOTHING": None,      # non-string → skipped
+            },
+        )
+        res = _adopt_persona_from_host_dir("navigator")
+        assert res is not None
+        _base, extra_env, _tok = res
+        # Only the string model-map var survives; no repr'd values leak in.
+        assert extra_env == {"ANTHROPIC_DEFAULT_OPUS_MODEL": "gemma-big"}
+
+
+class TestPreflightPersonaLoad:
+    """Unit tests for ``_preflight_persona_load`` (the load-or-error decision)."""
+
+    def _cfg(self):
+        from kanibako.agent_config import AgentConfig
+        return AgentConfig()
+
+    def _logger(self):
+        return MagicMock()
+
+    def _host(self, tmp_path, monkeypatch, *, base_url, token="sk-bearer\n"):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        import json
+        (pdir / "settings.json").write_text(
+            json.dumps({"env": {"ANTHROPIC_BASE_URL": base_url}})
+        )
+        if token is not None:
+            (pdir / "token").write_text(token)
+        return pdir
+
+    def test_keyspace_endpoint_with_token_no_mutation(self, tmp_path):
+        from kanibako.commands.start import _preflight_persona_load
+
+        cfg = self._cfg()
+        tok = tmp_path / "tok"
+        tok.write_text("sk-key\n")
+        cfg.env_file = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, "https://key.example", self._logger(),
+        )
+        assert (endpoint, err, adopted) == ("https://key.example", None, False)
+        # A recognised persona is NOT re-adopted: state untouched.
+        assert "endpoint" not in cfg.state
+
+    def test_b3_adopts_endpoint_token_and_suppress_signal(
+        self, tmp_path, monkeypatch,
+    ):
+        from kanibako.commands.start import _preflight_persona_load
+
+        self._host(tmp_path, monkeypatch, base_url="https://b3.example")
+        cfg = self._cfg()
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, None, self._logger(),
+        )
+        assert err is None
+        assert endpoint == "https://b3.example"
+        assert adopted is True
+        # B3 mutates the in-memory config: endpoint (→ suppress + BASE_URL) and
+        # the bearer token pointer (→ env_file) are populated.
+        assert cfg.state["endpoint"] == "https://b3.example"
+        assert cfg.env_file["ANTHROPIC_AUTH_TOKEN"].endswith(
+            "/claude/navigator/token"
+        )
+        # The resolved endpoint is the suppress signal: non-None ⇒ suppress fires.
+        assert endpoint is not None
+
+    def test_unrecognised_no_host_dir_hard_errors(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = self._cfg()
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, None, self._logger(),
+        )
+        assert endpoint is None
+        assert err is not None and "cannot be loaded" in err
+        assert "navigator+claude" in err  # user-facing '+' form
+        assert cfg.state == {}  # nothing adopted
+
+    def test_endpoint_but_no_token_hard_errors(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import _preflight_persona_load
+
+        # Host dir has settings.json (BASE_URL) but NO token file.
+        self._host(tmp_path, monkeypatch, base_url="https://b3.example", token=None)
+        cfg = self._cfg()
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, None, self._logger(),
+        )
+        assert endpoint is None
+        assert err is not None and "no auth token" in err
+
+    def test_keyspace_endpoint_falls_back_to_host_token(
+        self, tmp_path, monkeypatch,
+    ):
+        # F4: a KEYSPACE-recognised persona (endpoint from the keyspace) whose
+        # env_file carries no token FALLS BACK to the host-dir token file.
+        from kanibako.commands.start import _preflight_persona_load
+
+        self._host(tmp_path, monkeypatch, base_url="https://ignored", token="sk-host\n")
+        cfg = self._cfg()  # empty env_file → the fallback must supply the token.
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, "https://key.example", self._logger(),
+        )
+        assert err is None
+        assert endpoint == "https://key.example"  # keyspace endpoint wins.
+        # The host-dir token pointer is adopted into env_file → caller persists.
+        assert cfg.env_file["ANTHROPIC_AUTH_TOKEN"].endswith(
+            "/claude/navigator/token"
+        )
+        assert adopted is True
+
+    def test_keyspace_endpoint_no_token_anywhere_errors(
+        self, tmp_path, monkeypatch,
+    ):
+        # F4: keyspace endpoint, NO env_file token, NO host token → hard error.
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir/token.
+        cfg = self._cfg()
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, "https://key.example", self._logger(),
+        )
+        assert endpoint is None
+        assert err is not None and "no auth token" in err
+
+    def test_token_gate_requires_the_token_var_specifically(
+        self, tmp_path, monkeypatch,
+    ):
+        # N1: some OTHER env_file var resolving does NOT satisfy the token gate —
+        # only a resolvable ANTHROPIC_AUTH_TOKEN counts.
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host token.
+        other = tmp_path / "other"
+        other.write_text("value\n")
+        cfg = self._cfg()
+        cfg.env_file = {"SOME_OTHER_VAR": str(other)}
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, "https://key.example", self._logger(),
+        )
+        assert endpoint is None
+        assert err is not None and "no auth token" in err
+
+    def test_settings_present_without_base_url_message(
+        self, tmp_path, monkeypatch,
+    ):
+        # N2: settings.json PRESENT but with no BASE_URL → 'not usable', NOT the
+        # 'no host config was found' wording (which implies an absent dir).
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        import json
+        (pdir / "settings.json").write_text(json.dumps({"env": {"FOO": "bar"}}))
+        cfg = self._cfg()
+        endpoint, err, adopted = _preflight_persona_load(
+            "navigator℘claude", cfg, None, self._logger(),
+        )
+        assert endpoint is None
+        assert err is not None and "cannot be loaded" in err
+        assert "not usable" in err
+        assert "no host config was found" not in err
+
+
+class TestPersonaCreateVerdict:
+    """`persona_create_verdict` — the `box create` guard (runs BEFORE the journal)."""
+
+    def _target(self, name="claude"):
+        from kanibako.agent_config import AgentConfig
+        t = MagicMock()
+        t.name = name
+        t.generate_agent_config.return_value = AgentConfig()
+        return t
+
+    def _ctx(self, tmp_path, agent):
+        proj = MagicMock()
+        proj.project_path = tmp_path
+        return MagicMock(), MagicMock(), proj  # std, config, proj
+
+    def test_unloadable_explicit_persona_returns_error(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import persona_create_verdict
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir
+        std, config, proj = self._ctx(tmp_path, "navigator+claude")
+        with (
+            patch("kanibako.commands.start.load_merged_config"),
+            patch("kanibako.config.resolve_agent", return_value="navigator℘claude"),
+            patch(
+                "kanibako.commands.start.resolve_target",
+                return_value=self._target(),
+            ),
+            patch(
+                "kanibako.commands.start.agent_settings_path",
+                return_value=tmp_path / "absent" / "settings.yaml",
+            ),
+            patch(
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None),
+            ),
+        ):
+            err = persona_create_verdict(
+                std, config, proj, explicit_agent="navigator+claude",
+            )
+        assert err is not None and "cannot be loaded" in err
+
+    def test_bare_agent_returns_none(self, tmp_path):
+        from kanibako.commands.start import persona_create_verdict
+
+        std, config, proj = self._ctx(tmp_path, "claude")
+        with (
+            patch("kanibako.commands.start.load_merged_config"),
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.commands.start.resolve_target",
+                return_value=self._target(),
+            ),
+        ):
+            # A bare agent has no persona gate → None (no error).
+            assert persona_create_verdict(std, config, proj) is None
+
+
+class TestPersonaLoadOrErrorIntegration:
+    """`_run_container` integration: the persona load-or-error gate end-to-end."""
+
+    _NODE = "navigator℘claude"
+
+    def _drive_persona(self, m):
+        """Resolve the active agent as the persona node ``navigator℘claude``."""
+        from kanibako.agent_config import AgentConfig
+        from kanibako.plugins.claude.target import ClaudeTarget, _CLAUDE_DESCRIPTOR
+        m.resolve_agent.return_value = self._NODE
+        m.target.name = "claude"
+        m.target.descriptor = _CLAUDE_DESCRIPTOR
+        # Real descriptors so the launch-snapshot stub builds the endpoint floor
+        # and assembly emits ANTHROPIC_BASE_URL for a resolved endpoint.
+        m.target.setting_descriptors.return_value = (
+            ClaudeTarget().setting_descriptors()
+        )
+        cfg = AgentConfig()
+        cfg.state = {}
+        m.agent_cfg = cfg
+        m.load_agent_config.return_value = cfg
+        return cfg
+
+    def _host_persona(self, tmp_path, monkeypatch, *, base_url, token="sk-bearer\n",
+                      model=None):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        env = {"ANTHROPIC_BASE_URL": base_url}
+        if model is not None:
+            env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = model
+        import json
+        (pdir / "settings.json").write_text(json.dumps({"env": env}))
+        if token is not None:
+            (pdir / "token").write_text(token)
+        return pdir
+
+    # ---- (a) unconfigured EXPLICIT persona → hard error, NO artifacts,
+    #          and the box is NEVER materialised (true pre-flight) -----------
+
+    def test_unconfigured_persona_errors_no_artifacts(
+        self, start_mocks, tmp_path, monkeypatch, capsys,
+    ):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
+        # DRIVE THE FIRST-USE PATH (round-1 F3 fix): start_mocks defaults the agent
+        # config path's ``.exists()`` truthy, which would take the "config already
+        # present" branch and never queue a write — making ``m_write`` vacuous.
+        # Point the config path at a REAL, ABSENT file so ``agent_cfg_exists`` is
+        # False and the generate/write branch (Jei's exact dogfood first-use case)
+        # is live: on a LOADABLE persona the config WOULD be written, so
+        # ``m_write.assert_not_called()`` genuinely proves the gate short-circuits
+        # BEFORE the write (mutation-proven: move the write pre-gate → this reddens).
+        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "settings.yaml"
+        with start_mocks() as m:
+            self._drive_persona(m)
+            with (
+                patch(
+                    "kanibako.commands.start.agent_settings_path",
+                    return_value=absent_cfg,
+                ),
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, None),  # endpoint unresolved
+                ),
+                patch(
+                    "kanibako.commands.start.write_agent_config"
+                ) as m_write,
+                patch(
+                    "kanibako.commands.start.ensure_persona_share_symlinks"
+                ) as m_symlink,
+                patch(
+                    "kanibako.commands.start._seed_box_home"
+                ) as m_seed,
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                    explicit_agent="navigator+claude",  # explicit → deferred box
+                )
+            assert rc == 1
+            # First-use branch is LIVE (config path absent) yet NOTHING persona-
+            # scoped is created, and NO launch happens.
+            assert not absent_cfg.exists()  # fs-level: no settings.yaml written
+            m_write.assert_not_called()
+            m_symlink.assert_not_called()
+            m_seed.assert_not_called()
+            m.runtime.run.assert_not_called()  # no KANIBAKO_AGENT stamp / launch
+            # TRUE PRE-FLIGHT: the box was resolved paths-only (initialize=False)
+            # and NEVER materialised (no initialize=True call) → no box dir.
+            inits = [
+                c.kwargs.get("initialize")
+                for c in m.resolve_any_project.call_args_list
+            ]
+            assert inits and all(i is not True for i in inits)
+            err = capsys.readouterr().err
+            assert "cannot be loaded" in err
+            assert "navigator+claude" in err
+
+    # ---- (b)+(e) B3 adopt → launch, endpoint/token wired, suppress TRUE ----
+
+    def test_b3_adopt_launches_wires_env_and_suppresses(
+        self, start_mocks, tmp_path, monkeypatch,
+    ):
+        self._host_persona(
+            tmp_path, monkeypatch, base_url="https://b3.example",
+            token="sk-b3-bearer\n", model="gemma-big",
+        )
+        with start_mocks() as m:
+            self._drive_persona(m)
+            with (
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, None),  # unrecognised keyspace
+                ),
+                # The adopted config IS persisted (dirty ⇒ write); the write is
+                # covered by the unit test — patch it here so the real dump against
+                # the MagicMock agent path cannot leak a CWD entry.
+                patch("kanibako.commands.start.write_agent_config"),
+                patch("kanibako.commands.start.credsync") as m_credsync,
+            ):
+                m_credsync.selected_source_root = (
+                    m.credsync.selected_source_root
+                )
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            # endpoint (BASE_URL, descriptor channel), token (env_file), and the
+            # model-map (agent env channel) all reach the container.
+            assert env.get("ANTHROPIC_BASE_URL") == "https://b3.example"
+            assert env.get("ANTHROPIC_AUTH_TOKEN") == "sk-b3-bearer"
+            assert env.get("ANTHROPIC_DEFAULT_OPUS_MODEL") == "gemma-big"
+            # THE LEAK GUARD: a B3-adopted persona suppresses the OAuth cred sync.
+            m_credsync.refresh_box_credentials.assert_called()
+            assert (
+                m_credsync.refresh_box_credentials.call_args.kwargs["suppress_oauth"]
+                is True
+            )
+
+    # ---- (c) endpoint but no token → hard error ---------------------------
+
+    def test_endpoint_without_token_errors(
+        self, start_mocks, tmp_path, monkeypatch, capsys,
+    ):
+        # Host settings.json has BASE_URL but there is NO token file.
+        self._host_persona(
+            tmp_path, monkeypatch, base_url="https://b3.example", token=None,
+        )
+        with start_mocks() as m:
+            self._drive_persona(m)
+            with (
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, None),
+                ),
+                patch("kanibako.commands.start.write_agent_config") as m_write,
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+            m_write.assert_not_called()
+            assert "no auth token" in capsys.readouterr().err
+
+    # ---- (d) BARE claude: byte-identical, NO host-dir lookup --------------
+
+    def test_bare_claude_never_looks_up_host_dir(self, start_mocks):
+        with start_mocks() as m:
+            # Default resolve_agent → "claude" (bare; node == harness).
+            with patch(
+                "kanibako.commands.start._adopt_persona_from_host_dir"
+            ) as m_adopt:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            # A bare agent NEVER enters the persona path → no host-dir probe,
+            # no new error surface, byte-identical launch.
+            m_adopt.assert_not_called()
+            m.runtime.run.assert_called_once()
+
+    # ---- (residual ruling) SYSTEM-DEFAULT persona ALSO defers the box --------
+
+    def test_system_default_persona_defers_box(
+        self, start_mocks, tmp_path, monkeypatch, capsys,
+    ):
+        # No explicit --agent, but the SYSTEM DEFAULT is a persona (Director
+        # RESIDUAL ruling, 2026-07-03): the box-independent source must ALSO defer
+        # box materialisation, so an unloadable system-default persona on a
+        # brand-new box leaves NO empty unregistered box dir.
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
+        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "settings.yaml"
+        with start_mocks() as m:
+            self._drive_persona(m)
+            m.read_default_agent.return_value = "navigator+claude"  # system default
+            with (
+                patch(
+                    "kanibako.commands.start.agent_settings_path",
+                    return_value=absent_cfg,
+                ),
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, None),  # endpoint unresolved
+                ),
+                patch("kanibako.commands.start.write_agent_config") as m_write,
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],  # NO explicit_agent → system default drives it.
+                )
+            assert rc == 1
+            m_write.assert_not_called()
+            m.runtime.run.assert_not_called()
+            # TRUE PRE-FLIGHT via the system-default source: box never materialised.
+            inits = [
+                c.kwargs.get("initialize")
+                for c in m.resolve_any_project.call_args_list
+            ]
+            assert inits and all(i is not True for i in inits)
+            assert "cannot be loaded" in capsys.readouterr().err
+
+    # ---- (ADD-c) deferred NEW box: proj-derived locals rebind post-materialize -
+
+    def test_deferred_new_box_rebinds_project_toml(
+        self, start_mocks, tmp_path, monkeypatch,
+    ):
+        # A brand-new DEFERRED (persona) box resolves the probe against the
+        # placeholder metadata_path (boxes/__unregistered__), then materialises the
+        # real one.  The image-override persist + every downstream box-tier
+        # read/write MUST use the REAL box settings file, never __unregistered__/
+        # (Editor round-1 ADD-c).  Mutation-proven: drop the post-materialize
+        # rebind and the write lands in __unregistered__/ → this reddens.
+        self._host_persona(
+            tmp_path, monkeypatch, base_url="https://b3.example",
+            token="sk-b3-bearer\n",
+        )
+        unreg = tmp_path / "boxes" / "__unregistered__"
+        real = tmp_path / "boxes" / "navigator-box"
+        real.mkdir(parents=True)
+        with start_mocks() as m:
+            self._drive_persona(m)
+
+            def _resolve(*a, **kw):
+                # Probe (initialize=False) → placeholder; materialise
+                # (initialize=True) → the real, named box dir (is_new set here).
+                if kw.get("initialize") is True:
+                    m.proj.metadata_path = real
+                    m.proj.is_new = True
+                else:
+                    m.proj.metadata_path = unreg
+                    m.proj.is_new = False
+                return m.proj
+
+            m.resolve_any_project.side_effect = _resolve
+            with (
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, None),  # unrecognised keyspace → B3
+                ),
+                patch("kanibako.commands.start.write_agent_config"),
+                patch("kanibako.config.write_project_config") as m_write_toml,
+                patch("kanibako.commands.start.credsync") as m_credsync,
+            ):
+                m_credsync.selected_source_root = m.credsync.selected_source_root
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override="custom:img",
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], explicit_agent="navigator+claude",
+                )
+            assert rc == 0
+            # The image override persisted to the REAL box settings file, NOT the
+            # placeholder — proving project_toml was rebound after materialise.
+            m_write_toml.assert_called_once()
+            written_path = m_write_toml.call_args.args[0]
+            assert written_path == real / "settings.yaml"
+            assert "__unregistered__" not in str(written_path)
+
+
+class TestPersonaLoadOrErrorUnmasked:
+    """UNMASKED real-path regression for F5/F7 (Director F5+F7 ruling, 2026-07-03).
+
+    These drive a brand-NEW box persona START through the REAL resolver + the REAL
+    ``_resolve_box_launch_decisions`` (NO ``_resolve_box_launch_decisions`` patch,
+    real ``std``/``proj``), so the deferred probe's ``proj.name`` is genuinely ''.
+    Only the container-execution boundary (runtime / rig / image) is stubbed — just
+    enough to REACH the persona gate on a real filesystem.
+
+    F7 was: the inherited option-b probe fed a NAMELESS brand-new box to
+    ``box_channel_addresses`` → ``ValueError('box has no name')`` BEFORE the gate,
+    crashing Jei's dogfood flow (loadable OR not).  The fix carries a
+    ``pick_name()``'d name onto the probe (``_name_new_box_probe``).  MUTATION
+    PROOF: revert that naming → these tests ERROR with the ValueError (loadable and
+    unloadable both hit ``box_channel_addresses``) instead of the clean rc==1 /
+    gate-pass.
+    """
+
+    @contextmanager
+    def _preamble(self):
+        """Stub ONLY the container/rig/image boundary so a real-path
+        ``_run_container`` reaches the persona gate; everything from the resolver
+        through ``_resolve_box_launch_decisions`` stays REAL."""
+        from types import SimpleNamespace
+
+        runtime = MagicMock()
+        runtime.is_running.return_value = False
+        runtime.container_exists.return_value = False
+        runtime.image_exists.return_value = True
+        runtime.ensure_image.return_value = None
+        rig = SimpleNamespace(kind="prefab", image="test:latest", containerfile=None)
+        with (
+            patch("kanibako.commands.start.ContainerRuntime", return_value=runtime),
+            patch("kanibako.commands.start.resolve_rig", return_value=rig),
+            patch("kanibako.commands.start.load_registry", return_value={}),
+            patch("kanibako.shells.capture_image_shell"),
+            patch("kanibako.freshness.check_image_freshness"),
+        ):
+            yield runtime
+
+    def test_unloadable_persona_start_errors_no_box_real_path(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        # cwd is tmp_home/project (a brand-new box → real resolver yields name='').
+        # XDG_CONFIG_HOME (tmp_home/config) has NO persona host dir → unloadable.
+        from kanibako.config import load_config
+        from kanibako.names import read_names
+        from kanibako.paths import load_std_paths
+
+        with self._preamble():
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], explicit_agent="navigator+claude",
+            )
+        # (1) the persona ERROR (rc==1), NOT a ValueError/traceback — the named
+        #     probe let ``box_channel_addresses`` resolve so the gate could verdict.
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "cannot be loaded" in err
+        assert "navigator+claude" in err
+
+        std = load_std_paths(load_config(config_file))
+        # (3) TRUE PRE-FLIGHT: the box was NEVER materialised (deferred probe only)
+        #     → no box dir / settings.yaml, registry untouched, no agent store.
+        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+        assert read_names(std.registry)["projects"] == {}
+        assert not (std.agents / "navigator℘claude").exists()
+
+    def test_loadable_persona_start_passes_gate_real_path(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        # Lay a real, LOADABLE persona host dir (B3 adopt): settings.json BASE_URL
+        # + a token file under XDG_CONFIG_HOME/claude/navigator/.
+        import json
+
+        pdir = tmp_home / "config" / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        (pdir / "settings.json").write_text(
+            json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://b3.example"}})
+        )
+        (pdir / "token").write_text("sk-bearer\n")
+
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+
+        class _PastGate(Exception):
+            pass
+
+        # ``ensure_persona_share_symlinks`` is the first artifact step AFTER the
+        # gate + the deferred materialise; raise a sentinel there to observe that a
+        # LOADABLE persona (2) got PAST the gate cleanly (no ValueError) and the box
+        # materialised — without spinning a real container for the full launch.
+        with self._preamble():
+            with (
+                patch("kanibako.commands.start.write_agent_config"),
+                patch(
+                    "kanibako.commands.start.ensure_persona_share_symlinks",
+                    side_effect=_PastGate,
+                ),
+            ):
+                with pytest.raises(_PastGate):
+                    _run_container(
+                        project_dir=None, entrypoint=None, image_override=None,
+                        new_session=False, safe_mode=False, resume_mode=False,
+                        extra_args=[], explicit_agent="navigator+claude",
+                    )
+        # The loadable persona proceeded to launch: the deferred box materialised
+        # (real box dir) — proving the gate passed and F7's pre-gate crash is gone.
+        std = load_std_paths(load_config(config_file))
+        assert (std.boxes / "project").is_dir()
