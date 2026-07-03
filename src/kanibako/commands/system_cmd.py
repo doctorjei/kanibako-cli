@@ -298,6 +298,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             key, config_path=cf, env_path=env_sys, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
+            agents_root=std.agents,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
@@ -339,6 +340,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         val = get_config_value(
             key, global_config_path=cf, env_global=env_sys,
             system_settings_path=ssp,
+            agents_root=std.agents,
         )
         if val is None:
             print(f"{key}: (not set)")
@@ -360,6 +362,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             system_settings_path=ssp,
             cascade_system_path=cf,
             command_scope=ConfigLevel.system,
+            agents_root=std.agents,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

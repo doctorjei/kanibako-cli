@@ -1604,18 +1604,23 @@ class TestScopeDirectionGuard:
 
     def test_system_scope_passes_guard_for_agent_key(self, tmp_path):
         """DOWNWARD (system ⊃ agent): the direction guard PERMITS an agent.*
-        key from the system scope. No agent.* scalar is registered in
-        _KEY_ROUTES, so the write still fails — but at the REGISTRY (unknown
-        key), never at the direction guard. (The ``agent`` NOUN's engine
-        bypass in commands/agent_cmd.py is a separate, noted gap.)"""
+        key from the system scope. Block B1 makes ``agent.<node>.<key>`` a real
+        PER-PERSONA setting routed to the agent's OWN
+        ``agents/<node>/settings.yaml`` — so a system-scope write now SUCCEEDS
+        (past the guard) when the agents root is threaded, landing sparsely at
+        the flat ``agent:`` slot the launch reads."""
         cf = tmp_path / "kanibako_config.yaml"
+        agents_root = tmp_path / "agents"
         msg = set_config_value(
             "agent.claude.model", "opus",
             config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            agents_root=agents_root,
         )
         assert "cannot be set from the system scope" not in msg
-        # The registry (not the guard) is what rejects it today.
-        assert msg.startswith("Error: unknown config key"), msg
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+            "agent": {"model": "opus"},
+        }
 
     def test_downward_unknown_key_still_rejected_by_registry(self, tmp_path):
         """A downward write of an UNREGISTERED key passes the guard but is

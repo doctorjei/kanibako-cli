@@ -391,3 +391,55 @@ class TestSystemStructuralFileOnly:
         assert "auth" not in settings_doc.get("system", {}), settings_doc
         # The CONFIG file's structural [system] cache is INTACT (condition i).
         assert load_doc(config_file)["system"]["cache"] == "/custom/cache"
+
+
+class TestSystemPersonaAgentKeys:
+    """B1: ``system set agent.<persona+harness>.<key>`` — CLI-configurable
+    personas routed to the agent's OWN ``agents/<node>/settings.yaml`` (the
+    global ``config.agents`` store), end-to-end through the ``system`` verbs.
+    """
+
+    def _file(self, std, node="navigator℘claude"):
+        return std.agents / node / "settings.yaml"
+
+    def test_set_endpoint_writes_canonical_dir(self, config_file, tmp_home):
+        rc = _set("agent.navigator+claude.endpoint=https://ep")
+        assert rc == 0
+        std = _std(config_file)
+        assert load_doc(self._file(std)) == {"agent": {"endpoint": "https://ep"}}
+        # The +form dir must NOT exist (the ℘ canonicalization really happened).
+        assert not (std.agents / "navigator+claude").exists()
+
+    def test_get_reads_back_via_plus_and_script_p(
+        self, config_file, tmp_home, capsys,
+    ):
+        _set("agent.navigator+claude.model=gemma-4-31b-it")
+        capsys.readouterr()
+        # get with the ℘form hits the SAME store the +form set wrote.
+        rc = _get("agent.navigator℘claude.model")
+        assert rc == 0
+        assert "agent.navigator℘claude.model=gemma-4-31b-it" in (
+            capsys.readouterr().out
+        )
+
+    def test_reset_removes_and_prunes_sparse(self, config_file, tmp_home):
+        _set("agent.navigator+claude.endpoint=https://ep")
+        rc = _reset("agent.navigator+claude.endpoint")
+        assert rc == 0
+        std = _std(config_file)
+        # The now-empty agent table is pruned → the file stays sparse (empty doc).
+        assert load_doc(self._file(std)) == {}
+
+    def test_env_file_token_lands_in_env_file_section(self, config_file, tmp_home):
+        rc = _set("agent.navigator+claude.env_file.ANTHROPIC_AUTH_TOKEN=/t/tok")
+        assert rc == 0
+        std = _std(config_file)
+        assert load_doc(self._file(std)) == {
+            "env_file": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
+        }
+
+    def test_default_only_persona_file_stays_sparse(self, config_file, tmp_home):
+        _set("agent.navigator+claude.endpoint=https://ep")
+        std = _std(config_file)
+        data = load_doc(self._file(std))
+        assert data == {"agent": {"endpoint": "https://ep"}}
