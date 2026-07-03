@@ -271,7 +271,10 @@ class TestRunConfig:
             agent_id="claude", key="env_file.TOKEN", all_keys=False, force=False,
         ))
         assert rc == 0
-        assert "Reset env_file.TOKEN" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "Cleared env_file.TOKEN set on the agent scope" in out
+        assert "falls back through the cascade" in out
+        assert "Reset env_file.TOKEN" not in out
         cfg = load_agent_config(agent_config_path(agent_env, "claude"))
         assert "TOKEN" not in cfg.env_file
 
@@ -300,7 +303,12 @@ class TestRunConfig:
         )
         rc = run_reset(args)
         assert rc == 0
-        assert "Reset model" in capsys.readouterr().out
+        # Honest cleared-form (F7): names the CLEAR + the agent scope + the
+        # cascade fallback; the old plain "Reset <key>" must be gone.
+        out = capsys.readouterr().out
+        assert "Cleared model set on the agent scope" in out
+        assert "falls back through the cascade" in out
+        assert "Reset model" not in out
 
         path = agent_config_path(agent_env, "claude")
         cfg = load_agent_config(path)
@@ -315,7 +323,10 @@ class TestRunConfig:
         )
         rc = run_reset(args)
         assert rc == 0
-        assert "Reset env.EDITOR" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "Cleared env.EDITOR set on the agent scope" in out
+        assert "falls back through the cascade" in out
+        assert "Reset env.EDITOR" not in out
 
         path = agent_config_path(agent_env, "claude")
         cfg = load_agent_config(path)
