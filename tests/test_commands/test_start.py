@@ -183,6 +183,67 @@ class TestResolveBeforeImage:
             m.resolve_agent.assert_not_called()
 
 
+class TestBootstrapNoneInRunContainer:
+    """`none` opt-out at the _run_container consumer: it survives the merged-config
+    coercion (:818 seam) and forces a clean error under persistent mode, so no
+    caller can reach the bootstrap-wrap with `none`."""
+
+    def _kwargs(self, **over):
+        base = dict(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+        )
+        base.update(over)
+        return base
+
+    def test_none_survives_coercion_and_blocks_persistent(self, start_mocks, capsys):
+        """merged box.bootstrap_program='none' must NOT coerce to tmux; under
+        persistent it is a clean error (rc=1) BEFORE the baseline probe/launch.
+
+        This pins the :818 `or "tmux"` seam: if `none` were swallowed to tmux,
+        no_bootstrap would be False, the guard would not fire, and the launch
+        would proceed (launch_check called) — so this test goes red on a
+        re-swallow."""
+        with start_mocks() as m:
+            m.merged.box_bootstrap_program = "none"
+            rc = _run_container(**self._kwargs(persistent=True))
+        assert rc == 1
+        # Guard fires before the image baseline probe and before any launch.
+        m.launch_check.assert_not_called()
+        m.runtime.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "box.bootstrap_program=none" in err
+        assert "cannot run a persistent session" in err
+
+    def test_empty_bootstrap_still_coerces_to_tmux(self, start_mocks):
+        """An EMPTY/unset value keeps coercing to tmux (default): the none-guard
+        does NOT fire, and a persistent launch proceeds to the baseline probe.
+
+        Complement to the seam test above — proves the coercion still applies to
+        empty, so only the exact `none` sentinel is preserved."""
+        with start_mocks() as m:
+            m.merged.box_bootstrap_program = ""
+            rc = _run_container(**self._kwargs(persistent=True))
+        assert rc == 0
+        # Empty coerced to tmux → not the none-guard → baseline probe ran.
+        m.launch_check.assert_called_once()
+
+    def test_none_non_persistent_skips_bootstrap_probe(self, start_mocks):
+        """Non-persistent `none` launch proceeds (foreground) and the persistent
+        baseline probe is skipped entirely (persistent=False path)."""
+        with start_mocks() as m:
+            m.merged.box_bootstrap_program = "none"
+            rc = _run_container(**self._kwargs(persistent=False))
+        assert rc == 0
+        # Non-persistent path never runs the (persistent-only) baseline probe.
+        m.launch_check.assert_not_called()
+
+
 class TestImageReferenceResolution:
     """Verify a bare configured image is resolved before ensure_image (#81)."""
 

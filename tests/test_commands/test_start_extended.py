@@ -1427,6 +1427,57 @@ class TestCheckLaunchBaselineUnit:
         assert probed.count("tmux") == 1
         assert "rg" in probed
 
+    def test_none_skips_bootstrap_tier_but_runs_tier2(
+        self, tmp_path, monkeypatch
+    ):
+        """`none` opt-out: the bootstrap exe is NOT probed and tier-1 cannot
+        hard-stop, but tier-2 (baseline) still runs and reports missing exes."""
+        from kanibako.commands import start as start_mod
+        from kanibako import baseline as baseline_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        monkeypatch.setattr(
+            baseline_mod, "load_baseline",
+            lambda: {"tmux": ["tmux"], "ripgrep": ["rg"]},
+        )
+        # Even if a program literally named 'none' were "missing", no hard stop.
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=["none", "rg"]
+        ) as mock_probe:
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "none", "box1", self._std(tmp_path),
+            )
+        # Not a tier-1 hard stop; tier-2 still surfaces the missing baseline exe.
+        assert result == [("ripgrep", "rg")]
+        # 'none' was NOT included in the probe (no bootstrap exe to check).
+        probed = mock_probe.call_args[0][2]
+        assert "none" not in probed
+        assert "rg" in probed
+
+    def test_none_never_returns_bootstrap_missing_sentinel(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Under `none`, the tier-1 hard-stop path is unreachable even if the
+        probe reports 'none' missing — no _BOOTSTRAP_MISSING, no error print."""
+        from kanibako.commands import start as start_mod
+        from kanibako import baseline as baseline_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        monkeypatch.setattr(baseline_mod, "load_baseline", lambda: {"tmux": ["tmux"]})
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=["none"]
+        ):
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "none", "box1", self._std(tmp_path),
+            )
+        assert result is not start_mod._BOOTSTRAP_MISSING
+        assert result == []  # tier-2 clean
+        assert capsys.readouterr().err == ""
+
 
 # ---------------------------------------------------------------------------
 # Reattach: source the agent from the running container (no Gate-2a)
