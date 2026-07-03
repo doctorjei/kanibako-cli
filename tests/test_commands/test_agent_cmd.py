@@ -379,6 +379,184 @@ class TestRunConfig:
 
 
 # ---------------------------------------------------------------------------
+# Sparse write engine (agent set/reset re-plumbed onto the nested-key
+# primitives — a set/reset must NOT re-materialize default keys, matching the
+# B1 `system set agent.*` route: absolute rule [[settings-must-map-to-keystore-key]]).
+# ---------------------------------------------------------------------------
+
+
+def _write_sparse(data_path: Path, agent: str, doc: dict) -> Path:
+    """Write *doc* verbatim as ``agents/<agent>/settings.yaml`` and return path.
+
+    Bypasses the whole-object ``write_agent_config`` so the starting file holds
+    ONLY the keys under test (a genuinely sparse file, as B1 leaves them).
+    """
+    from kanibako.agent_config import agent_config_path
+    from kanibako.config_io import dump_doc
+
+    path = agent_config_path(data_path, agent)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    dump_doc(path, doc)
+    return path
+
+
+class TestSparseWrites:
+    def test_set_is_sparse_no_default_keys(self, agent_env):
+        """Core sparsity guard: a single ``set`` on a sparse file adds exactly
+        ONE key and re-materializes NO defaults (name/run_args/env/env_file/
+        tweakcc). Mutation check: reverting to ``write_agent_config`` makes this
+        fail — it always emits those default tables.
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.config_io import load_doc
+
+        path = _write_sparse(
+            agent_env, "claude", {"agent": {"endpoint": "https://x"}},
+        )
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value="model=gemma"))
+        assert rc == 0
+
+        data = load_doc(path)
+        assert data == {"agent": {"endpoint": "https://x", "model": "gemma"}}
+        # Explicit: none of the whole-object dump's default keys appear.
+        assert "env" not in data
+        assert "env_file" not in data
+        assert "tweakcc" not in data
+        assert "name" not in data["agent"]
+        assert "run_args" not in data["agent"]
+
+    def test_set_routing_lands_at_nested_paths(self, agent_env):
+        """Each key form lands at its correct nested (sections, leaf) path."""
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", {"agent": {"endpoint": "x"}})
+        for kv in (
+            "model=opus",
+            "env.FOO=bar",
+            "env_file.TOK=/p/token",
+            "name=Custom",
+        ):
+            assert run_set(
+                argparse.Namespace(agent_id="claude", key_value=kv)
+            ) == 0
+
+        data = load_doc(path)
+        assert data["agent"]["endpoint"] == "x"
+        assert data["agent"]["model"] == "opus"
+        assert data["agent"]["name"] == "Custom"
+        assert data["env"] == {"FOO": "bar"}
+        assert data["env_file"] == {"TOK": "/p/token"}
+        # env_file.<VAR> must NOT leak into the plain env table.
+        assert "TOK" not in data["env"]
+
+    def test_set_run_args_stored_as_list(self, agent_env):
+        """run_args is space-split into a LIST (not a bare string)."""
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", {"agent": {"endpoint": "x"}})
+        rc = run_set(
+            argparse.Namespace(agent_id="claude", key_value="run_args=--a --b"),
+        )
+        assert rc == 0
+        data = load_doc(path)
+        assert data["agent"]["run_args"] == ["--a", "--b"]
+
+    def test_reset_key_prunes_empty_table_leaves_siblings(self, agent_env):
+        """reset removes the one entry, prunes the now-empty table, and leaves
+        sibling tables/keys untouched."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.config_io import load_doc
+
+        path = _write_sparse(
+            agent_env, "claude",
+            {"agent": {"endpoint": "x"}, "env": {"ONLY": "v"}},
+        )
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key="env.ONLY", all_keys=False, force=False,
+        ))
+        assert rc == 0
+        data = load_doc(path)
+        assert "env" not in data          # pruned (was the only env key)
+        assert data["agent"] == {"endpoint": "x"}  # sibling intact
+
+    def test_reset_unset_key_is_honest_and_leaves_file(self, agent_env, capsys):
+        """Resetting a key not present says ``No override`` and does not rewrite
+        the file (so no de-sparsifying side effect)."""
+        from kanibako.commands.agent_cmd import run_reset
+
+        path = _write_sparse(agent_env, "claude", {"agent": {"endpoint": "x"}})
+        before = path.read_text()
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key="model", all_keys=False, force=False,
+        ))
+        assert rc == 0
+        assert "No override for model" in capsys.readouterr().out
+        assert path.read_text() == before
+
+    def test_reset_unset_name_now_honest(self, agent_env, capsys):
+        """ACCEPTED DELTA: the old reset always reported ``name`` cleared;
+        sparse reset honestly reports ``No override for name`` when name is not
+        in the file (consistent with the F7 honest-reset theme)."""
+        from kanibako.commands.agent_cmd import run_reset
+
+        _write_sparse(agent_env, "claude", {"agent": {"endpoint": "x"}})
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key="name", all_keys=False, force=False,
+        ))
+        assert rc == 0
+        assert "No override for name" in capsys.readouterr().out
+
+    def test_reset_all_preserves_name_and_tweakcc(self, agent_env, capsys):
+        """reset --all drops state/env/env_file/run_args but PRESERVES name and
+        tweakcc (behavior-parity with the old de-sparse reset)."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", {
+            "agent": {
+                "name": "Custom", "endpoint": "x", "model": "opus",
+                "run_args": ["--a"],
+            },
+            "env": {"FOO": "bar"},
+            "env_file": {"TOK": "/p"},
+            "tweakcc": {"theme": "dark"},
+        })
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key=None, all_keys=True, force=True,
+        ))
+        assert rc == 0
+        assert "Reset all" in capsys.readouterr().out
+
+        data = load_doc(path)
+        assert data["agent"] == {"name": "Custom"}  # state/run_args/endpoint gone
+        assert "env" not in data
+        assert "env_file" not in data
+        assert data["tweakcc"] == {"theme": "dark"}  # preserved
+
+    def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
+        """Without --force, a declined confirm aborts and leaves the file
+        untouched (the confirm prompt gates the destructive clear)."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.errors import UserCancelled
+
+        path = _write_sparse(
+            agent_env, "claude", {"agent": {"endpoint": "x", "model": "o"}},
+        )
+        before = path.read_text()
+        with patch(
+            "kanibako.utils.confirm_prompt", side_effect=UserCancelled(),
+        ):
+            rc = run_reset(argparse.Namespace(
+                agent_id="claude", key=None, all_keys=True, force=False,
+            ))
+        assert rc == 0
+        assert "Aborted" in capsys.readouterr().out
+        assert path.read_text() == before
+
+
+# ---------------------------------------------------------------------------
 # agent reauth
 # ---------------------------------------------------------------------------
 
