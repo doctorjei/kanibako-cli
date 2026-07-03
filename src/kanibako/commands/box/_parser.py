@@ -498,14 +498,57 @@ def run_create(args: argparse.Namespace) -> int:
         if not target.exists():
             target.mkdir(parents=True)
 
+    from kanibako.commands.start import (
+        _clear_create_entry,
+        _name_new_box_probe,
+        _pending_create_entry,
+        _register_new_box,
+        _write_create_entry,
+        persona_create_verdict,
+        seed_new_box,
+    )
+
+    # PERSONA LOAD-OR-ERROR — TRUE PRE-FLIGHT (F5, Director ruling 2026-07-03):
+    # resolve a NON-materialising PROBE (``initialize=False`` → NO mkdir) and run
+    # the persona load-or-error gate BEFORE any box dir / meta is created, applying
+    # the SAME probe(named) → gate → initialize pattern the launch path uses.  An
+    # unloadable persona `create` then refuses HERE with NOTHING left on disk (no
+    # box dir, no meta, no journal entry, no seed) — mirroring the ordering clause
+    # for the create path.  The probe carries the deterministic name it WILL
+    # materialise under (:func:`_name_new_box_probe`) so the gate's channel-address
+    # derivation resolves instead of raising "box has no name".
+    if args.standalone:
+        _probe = resolve_standalone_project(
+            std, config, project_dir, initialize=False,
+            enable_vault=enable_vault,
+            name=getattr(args, "name", None) or "",
+            register=False,
+        )
+    else:
+        _probe = resolve_project(
+            std, config, project_dir=project_dir, initialize=False,
+            enable_vault=enable_vault if not enable_vault else None,
+            name_override=getattr(args, "name", None),
+            register=False,
+        )
+    _name_new_box_probe(std, _probe)
+    _persona_err = persona_create_verdict(
+        std, config, _probe, explicit_agent=getattr(args, "agent", None)
+    )
+    if _persona_err is not None:
+        print(_persona_err, file=sys.stderr)
+        return 1
+
+    # Loadability resolved → MATERIALISE the box for real.
+    #
     # J1 lifecycle journal: resolve with register=False so registration is
     # DEFERRED past the home seed (write-entry -> seed -> register -> clear-entry
     # below), giving the invariant "registered ==> fully seeded".  The resolver
-    # still creates the box dir + meta and sets is_new; only the registry write
-    # is held back to the caller.  On a RE-CREATE of an interrupted box the
-    # register=False import HONORS the flag (resolves the box name from on-disk
-    # meta without registering), so the box resolves with is_new False BUT a
-    # pending create journal entry — the recovery signal handled below.
+    # creates the box dir + meta and sets is_new; only the registry write is held
+    # back to the caller.  On a RE-CREATE of an interrupted box the register=False
+    # import HONORS the flag (resolves the box name from on-disk meta without
+    # registering), so the box resolves with is_new False BUT a pending create
+    # journal entry — the recovery signal handled below.
     if args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
@@ -520,14 +563,6 @@ def run_create(args: argparse.Namespace) -> int:
             name_override=getattr(args, "name", None),
             register=False,
         )
-
-    from kanibako.commands.start import (
-        _clear_create_entry,
-        _pending_create_entry,
-        _register_new_box,
-        _write_create_entry,
-        seed_new_box,
-    )
 
     # J1 interrupted-create RECOVERY: a box that resolves NOT-new but carries a
     # pending create journal entry is a half-completed create (crash between
@@ -575,6 +610,11 @@ def run_create(args: argparse.Namespace) -> int:
     # already-registered box (register -> clear-entry window crash) is a no-op
     # + entry clear.  If register raises a genuine collision the entry is
     # intentionally LEFT (the box is incomplete) and propagates.
+    # PERSONA LOAD-OR-ERROR ran as a TRUE PRE-FLIGHT above (before box-dir
+    # creation), so by here the persona is known loadable — proceed to seed +
+    # register.  The guard still precedes the write-ahead journal entry (Director
+    # ruling #3): an abort after the entry would leave a pending entry whose
+    # recovery replays the seed.
     _write_create_entry(std, proj)
     seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
     _register_new_box(std, proj)

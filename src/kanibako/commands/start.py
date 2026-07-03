@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import json
 import os
 import shutil
 import subprocess
@@ -26,10 +27,11 @@ from kanibako.config import (
     config_file_path,
     load_config,
     load_merged_config,
+    read_default_agent,
 )
 from kanibako import core_defaults
 from kanibako.container import ContainerRuntime, detect_shadowed_mounts
-from kanibako.errors import ContainerError, KanibakoError
+from kanibako.errors import ConfigError, ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
@@ -42,10 +44,13 @@ from kanibako.paths import (
     workset_env_path,
     workset_settings_path,
 )
+from kanibako.names import pick_name
 from kanibako.agent_ref import (
     canonicalize_agent_ref,
     display_agent_ref,
     harness_of,
+    parse_agent_ref,
+    persona_of,
     with_harness,
 )
 from kanibako.targets import assembly, credsync, resolve_target
@@ -786,20 +791,58 @@ def _run_container(
     # B3: register=False defers a NEW box's registration past the home seed — the
     # seed gate below runs marker -> seed -> register -> remove-marker so an
     # interrupted auto-create is forward-recoverable (registered ==> seeded).
-    proj = resolve_box_target(std, config, project_dir, initialize=True, register=False)
+    #
+    # TRUE PRE-FLIGHT for a BOX-INDEPENDENT persona (Director rulings, Jei
+    # 2026-07-03): when the effective agent is a persona resolvable WITHOUT the box
+    # we DEFER box materialisation — resolve the box's PATHS only (``initialize=
+    # False`` → NO mkdir, ``warn=False`` so the name flag is not doubled by the
+    # later materialising resolve), run the persona load-or-error gate below, and
+    # mkdir the box ONLY once it is known loadable.  An unloadable persona then
+    # leaves NO box dir behind (no rmtree).
+    #
+    # A brand-new box derives its agent ONLY from the two box-INDEPENDENT sources —
+    # explicit ``--agent`` OR the system default (``read_default_agent``); the
+    # box-scoped ``box_agent_name`` can only shadow an ALREADY-existing box (never a
+    # brand-new one), so those two are exactly the sources that could otherwise
+    # leave an empty unregistered box dir for a system-default persona (Director
+    # RESIDUAL ruling).  A bare / non-persona launch materialises immediately,
+    # exactly as before (single resolve, byte-identical).
+    _defer_box = False
+    _box_indep_ref = explicit_agent or read_default_agent(system_settings_path)
+    if _box_indep_ref:
+        try:
+            _node, _harness = parse_agent_ref(_box_indep_ref)
+            _defer_box = _node != _harness
+        except ConfigError:
+            _defer_box = False  # malformed ref: surfaced by resolve_agent below.
+    proj = resolve_box_target(
+        std, config, project_dir,
+        initialize=not _defer_box, register=False, warn=not _defer_box,
+    )
+    if _defer_box:
+        # The deferred probe did NOT materialise the box, so a brand-new box is
+        # still nameless (name assigned only inside ``initialize=True``).  Carry the
+        # deterministic name it WILL materialise under onto the probe so the persona
+        # load-or-error gate below (``_resolve_box_launch_decisions`` →
+        # ``box_channel_addresses``) resolves instead of raising "box has no name"
+        # BEFORE it can verdict (F7).  An already-named (existing) box is untouched.
+        _name_new_box_probe(std, proj)
 
-    # Hint about orphaned project data when initializing a new project
-    if proj.is_new and proj.group is not None and proj.group.is_default:
-        from kanibako.paths import iter_projects
-        for _settings, _ppath in iter_projects(std, config):
-            if _ppath is not None and not _ppath.is_dir():
-                print(
-                    "hint: orphaned project data detected — "
-                    "run 'kanibako box list' or use 'kanibako box remap' "
-                    "if you moved a project.",
-                    file=sys.stderr,
-                )
-                break
+    def _orphan_hint() -> None:
+        # Hint about orphaned project data when initializing a new project.
+        if proj.is_new and proj.group is not None and proj.group.is_default:
+            from kanibako.paths import iter_projects
+            for _settings, _ppath in iter_projects(std, config):
+                if _ppath is not None and not _ppath.is_dir():
+                    print(
+                        "hint: orphaned project data detected — "
+                        "run 'kanibako box list' or use 'kanibako box remap' "
+                        "if you moved a project.",
+                        file=sys.stderr,
+                    )
+                    break
+
+    _orphan_hint()
 
     # Load merged config (global + workset + project)
     project_toml = proj.metadata_path / BOX_META_FILE
@@ -834,9 +877,12 @@ def _run_container(
         return 1
 
     # Persist image override for new projects so it becomes the default
-    if proj.is_new and image_override:
-        from kanibako.config import write_project_config
-        write_project_config(project_toml, image_override)
+    def _persist_image_override() -> None:
+        if proj.is_new and image_override:
+            from kanibako.config import write_project_config
+            write_project_config(project_toml, image_override)
+
+    _persist_image_override()
 
     # Resolve target (agent plugin) and detect installation.
     #
@@ -1015,28 +1061,30 @@ def _run_container(
     # target resolved as requested, node == harness == target.name -> byte-identical.
     agent_id = with_harness(agent_name, target.name) if target else "general"
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
-    if target and not agent_cfg_path.exists():
-        # First-use: generate default agent config from target plugin
+    # Load or GENERATE the agent config IN MEMORY — do NOT write it yet.  The
+    # persona load-or-error pre-flight below MUST resolve loadability BEFORE any
+    # artifact for the persona is created (JEI-CRITICAL ordering, dogfood
+    # 2026-07-03): an unconfigured persona that cannot be loaded errors out here
+    # with NOTHING left behind — no ``agents/<node>/`` store, no ``settings.yaml``,
+    # no share symlinks, no box seed/registration, no ``KANIBAKO_AGENT`` stamp.
+    agent_cfg_exists = bool(target) and agent_cfg_path.exists()
+    if target and not agent_cfg_exists:
+        # First-use: generate default agent config from the target plugin
+        # (the WRITE is deferred until after the pre-flight passes).
         agent_cfg = target.generate_agent_config()
-        write_agent_config(agent_cfg_path, agent_cfg)
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
-    # Persona share shim: point agents/<node>/{plugins,cache} at the harness's dirs
-    # BEFORE mount assembly / share-source guarantee-create resolves them.  A bare
-    # agent (node == harness) is a no-op.
-    ensure_persona_share_symlinks(std, agent_id, target)
 
-    # Auth 3-tier SHARING chain + persona endpoint: resolve BOTH per-box decisions ONCE
-    # here off a SINGLE launch snapshot (single-route), BEFORE the first consumer (the
-    # reattach refresh below + the seed/refresh/reconcile/auto-auth/writeback sites).
-    # Yields the AuthSource (tier/source + enables) threaded to every credsync/gate
-    # consumer, AND the active-node ``agent.<node>.endpoint`` (block B persona cred
-    # fork). The active agent is known here (``agent_id``), so the chain's
-    # meta.box.agent.auth.share_support mirror resolves to the right capability.
-    # Private/no-share = box.auth.{global,workset}_enabled=false. ``endpoint is None``
-    # = <None>/unset = BARE (byte-identical to today); a set endpoint is the cred fork
-    # signal → ``suppress_oauth`` drops the host OAuth cred sync so the Anthropic token
-    # never reaches a box pointed at a third-party endpoint.
+    # Auth 3-tier SHARING chain + persona endpoint: resolve BOTH per-box decisions
+    # ONCE off a SINGLE launch snapshot (single-route) — MOVED AHEAD of every
+    # persona artifact so the load-or-error gate below is a TRUE pre-flight.  Reads
+    # the cascade + the in-memory ``agent_cfg`` and tolerates a not-yet-written
+    # ``agent_cfg_path`` (an absent file = empty agent tier).  Yields the AuthSource
+    # (tier/source + enables) threaded to every credsync/gate consumer, AND the
+    # active-node ``agent.<node>.endpoint``.  ``endpoint is None`` = <None>/unset =
+    # BARE (byte-identical to today); a set endpoint is the cred-fork signal →
+    # ``suppress_oauth`` drops the host OAuth cred sync so the Anthropic token never
+    # reaches a box pointed at a third-party endpoint.
     auth_src, active_endpoint = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
@@ -1048,7 +1096,65 @@ def _run_container(
         workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
+
+    # PERSONA LOAD-OR-ERROR (A + B3): a persona (node != harness) that cannot
+    # resolve a loadable endpoint MUST error out here — never silently degrade to
+    # bare host claude on the user's real account.  The pre-flight may B3-adopt the
+    # persona's config from ``~/.config/claude/<persona>/`` (mutating the in-memory
+    # ``agent_cfg``).  On a hard error we return BEFORE creating any artifact; for a
+    # DEFERRED explicit persona (``_defer_box``) the box was never materialised, so
+    # NOTHING is left behind — a true pre-flight, not a rollback.
+    agent_cfg_dirty = target is not None and not agent_cfg_exists
+    if target is not None and harness_of(agent_id) != agent_id:
+        active_endpoint, persona_error, persona_adopted = _preflight_persona_load(
+            agent_id, agent_cfg, active_endpoint, logger,
+        )
+        if persona_error is not None:
+            print(persona_error, file=sys.stderr)
+            return 1
+        agent_cfg_dirty = agent_cfg_dirty or persona_adopted
+
+    # Loadability resolved → materialise the DEFERRED box now (the explicit-persona
+    # path resolved paths only above; mkdir the box + set ``is_new`` here, then
+    # replay the two ``is_new``-gated steps the deferred probe skipped).  A non-
+    # deferred launch already materialised at 791 — this is a no-op for it.
+    if _defer_box:
+        proj = resolve_box_target(
+            std, config, project_dir, initialize=True, register=False,
+        )
+        _orphan_hint()
+        # REBIND every proj-derived local (Editor ADD-c): the deferred probe
+        # resolved paths against the placeholder ``boxes/__unregistered__``
+        # metadata_path (a brand-NEW box has no name/dir yet), so ``project_toml``/
+        # ``workset_path``/``merged`` were bound to that placeholder.  Now that the
+        # box is materialised its REAL metadata_path is known — recompute them so
+        # the image-override persist AND every downstream box-tier read/write hit
+        # the real ``box.toml``, never ``__unregistered__/``.  (For a deferred
+        # EXISTING box the probe already had the real path; this recomputes the
+        # same values — a harmless no-op.)
+        project_toml = proj.metadata_path / BOX_META_FILE
+        workset_path = workset_settings_path(proj.group)
+        merged = load_merged_config(
+            config_file,
+            project_toml,
+            workset_path=workset_path,
+            cli_overrides={"box_image": image_override} if image_override else None,
+        )
+        _persist_image_override()
+
+    # ``suppress_oauth`` and the persona endpoint are now settled; a persona ALWAYS
+    # suppresses the host OAuth cred sync (guard + suppress move together — a
+    # B3-adopted persona suppresses exactly as a keyspace-configured one does).
     suppress_oauth = active_endpoint is not None
+
+    # Loadability resolved → NOW materialise the persona artifacts.  Persist the
+    # agent config (freshly generated OR B3-adopted); the share shim points
+    # ``agents/<node>/{plugins,cache}`` at the harness's dirs BEFORE mount assembly
+    # resolves them.  A bare agent (node == harness) is a no-op for the shim, and
+    # writes only when the config is new — byte-identical to before this pre-flight.
+    if target and agent_cfg_dirty:
+        write_agent_config(agent_cfg_path, agent_cfg)
+    ensure_persona_share_symlinks(std, agent_id, target)
 
     # Deterministic container name for stop/cleanup
     container_name = container_name_for(proj)
@@ -2330,6 +2436,220 @@ def _resolve_env_files(
     return resolved
 
 
+# --------------------------------------------------------------------------- #
+# Persona LOAD-OR-ERROR pre-flight (A + B3, Jei dogfood 2026-07-03).            #
+# --------------------------------------------------------------------------- #
+#
+# A persona (node != harness, e.g. ``navigator℘claude``) that CANNOT resolve a
+# loadable endpoint must ERROR before any launch or artifact — never silently
+# degrade to bare host claude on the user's real Anthropic account.  "Loadable" =
+# a resolvable endpoint from EITHER the keyspace (``agent.<node>.endpoint``) OR —
+# when the persona is not recognised — auto-adopted (B3) from the host dir the
+# class setup script writes, ``~/.config/claude/<persona>/``.
+#
+# The host-login OAuth env var (BASE_URL) and the bearer token reach the box
+# through the EXISTING single-route channels (no bespoke copy): the endpoint via
+# the descriptor's ``endpoint``->``ANTHROPIC_BASE_URL`` env (populated into
+# ``agent_cfg.state``), the token via ``env_file`` (``_resolve_env_files``), and
+# any other non-secret settings.json env (the model-map ``ANTHROPIC_DEFAULT_*_
+# MODEL``) via the agent ``env`` channel (``_build_config_env``).  BASE_URL and
+# the token are carried by their dedicated channels and excluded from the env
+# overlay so each var has exactly ONE source.
+
+#: The persona's bearer token env var (harness-agnostic here: the persona MVP
+#: bearer channel).  Excluded from the model-map env overlay (delivered via
+#: ``env_file`` so the secret lives only in the host file).
+_PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
+#: The base-URL env var carried by the ``endpoint`` descriptor (its single
+#: source); excluded from the model-map env overlay so it is never double-sourced.
+_PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
+
+
+def _persona_host_dir(persona: str) -> Path:
+    """The host config dir the class setup script writes for *persona*.
+
+    ``$XDG_CONFIG_HOME/claude/<persona>/`` (``~/.config/claude/<persona>/`` by
+    default) — the same convention ``_resolve_env_files`` expands for a hand-set
+    ``env_file`` pointer.
+    """
+    return xdg("XDG_CONFIG_HOME", ".config") / "claude" / persona
+
+
+def _adopt_persona_from_host_dir(
+    persona: str,
+) -> "tuple[str, dict[str, str], str] | None":
+    """B3 auto-adopt: read a persona's config from its host dir.
+
+    Reads ``~/.config/claude/<persona>/settings.json`` and returns
+    ``(base_url, extra_env, token_path)`` when it yields an ``env.ANTHROPIC_BASE_URL``:
+
+    * *base_url* — the alternate endpoint (drives ``agent.<node>.endpoint`` and,
+      through it, the OAuth-suppress cred fork + the ``ANTHROPIC_BASE_URL`` env);
+    * *extra_env* — the rest of the settings.json ``env`` block (the model-map
+      ``ANTHROPIC_DEFAULT_*_MODEL``), MINUS the base-URL and bearer-token vars
+      (each of those has its own single-source channel);
+    * *token_path* — the ``token`` file path (delivered via ``env_file`` →
+      ``_resolve_env_files``; returned even when absent so the caller emits the
+      token-missing error).
+
+    Returns ``None`` when the dir / settings.json is absent, unreadable, not a
+    JSON object, or carries no ``ANTHROPIC_BASE_URL`` (→ the caller hard-errors:
+    an unrecognised, unadoptable persona is unloadable).  NEVER logs the token.
+    """
+    host_dir = _persona_host_dir(persona)
+    settings = host_dir / "settings.json"
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    env = data.get("env")
+    if not isinstance(env, dict):
+        return None
+    base_url = env.get(_PERSONA_BASE_URL_VAR)
+    if not isinstance(base_url, str) or not base_url:
+        return None
+    # Skip non-string env values (a JSON number/bool/null would otherwise be
+    # str()'d into a Python repr and delivered as a bogus env value); the
+    # base-URL and bearer token are carried by their own single-source channels.
+    extra_env = {
+        k: v
+        for k, v in env.items()
+        if isinstance(v, str) and k not in (_PERSONA_BASE_URL_VAR, _PERSONA_TOKEN_VAR)
+    }
+    token_path = host_dir / "token"
+    return base_url, extra_env, str(token_path)
+
+
+def _name_new_box_probe(std, proj) -> None:
+    """Carry a deterministic gate-name onto a brand-NEW box PROBE (F5/F7 fix).
+
+    A NON-materialising resolve (``initialize=False``) of a BRAND-NEW box yields
+    ``proj.name == ''`` — the name is assigned only inside the ``initialize=True``
+    branch, coupled to dir creation.  The persona load-or-error gate resolves the
+    box's channel partition addresses via ``box_channel_addresses``, which RAISES
+    for a nameless box (``channels.py``) — so without a name the gate crashes
+    BEFORE it can verdict (F7 on the launch path, F5 on the create path).  Give the
+    probe the name it WILL be materialised under so the gate resolves cleanly:
+
+    * PRIMARY — :func:`~kanibako.names.pick_name` (DETERMINISTIC: the workspace
+      basename plus a collision check against the SAME registry/boxes state the
+      later ``initialize=True`` resolve reads, so the probe name == the
+      ``assign_name`` the materialise assigns — gate → materialise happen in ONE
+      invocation with no intervening registry/dir writes; single-source guard met).
+    * STANDALONE / other — the standalone identity is a RANDOM ``<random24>_<leaf>``
+      assigned at materialise, so it cannot be predicted; but a standalone box's
+      config lives at ``<root>/settings.yaml`` (name-INDEPENDENT) and is empty for a
+      brand-new box, so the box NAME never influences the persona endpoint verdict.
+      A stable placeholder (``short_hash`` of the project hash) unblocks the address
+      derivation without selecting any config (no divergent-config hazard).
+
+    A probe that already resolved a real name (an existing / registered box) is left
+    untouched.  Performs NO filesystem or registry mutation.
+    """
+    if proj.name:
+        return
+    from kanibako.paths import BoxMode
+
+    if proj.mode is BoxMode.primary:
+        proj.name = pick_name(
+            std.registry, str(proj.project_path), boxes_dir=std.boxes,
+        )
+    else:
+        proj.name = short_hash(proj.project_hash)
+
+
+def _preflight_persona_load(
+    agent_id: str,
+    agent_cfg,
+    keyspace_endpoint: str | None,
+    logger,
+) -> "tuple[str | None, str | None, bool]":
+    """Resolve a persona's LOADABILITY (A + B3) — a TRUE pre-flight.
+
+    Called ONLY for a persona (``harness_of(agent_id) != agent_id``), BEFORE any
+    persona artifact is created.  Returns ``(endpoint, error, adopted)``:
+
+    * *endpoint* — the resolved endpoint URL on success (``error`` None); ``None``
+      when unloadable;
+    * *error* — an actionable message when the persona cannot be loaded (unresolved
+      endpoint, or endpoint-but-no-token); ``None`` on success.  The caller prints
+      it (start) or raises it (create) and refuses to launch.
+    * *adopted* — True iff B3 mutated *agent_cfg* in place (so the caller persists
+      the adopted config).
+
+    ``keyspace_endpoint`` is the endpoint the launch snapshot already resolved from
+    ``agent.<node>.endpoint`` (explicit config wins).  When it is ``None`` the
+    persona is not recognised → B3 adopts from ``~/.config/claude/<persona>/``,
+    populating ``agent_cfg.state['endpoint']`` (endpoint), ``agent_cfg.env_file``
+    (bearer token pointer) and ``agent_cfg.env`` (model-map).  A resolved endpoint
+    with NO usable token (neither a keyspace ``env_file`` nor the host ``token``)
+    is ALSO a hard error (a bearer endpoint with no token 401s inside the box).
+    """
+    persona = persona_of(agent_id)
+    endpoint = keyspace_endpoint
+    adopted = False
+    if endpoint is None:
+        adoption = _adopt_persona_from_host_dir(persona)
+        if adoption is not None:
+            base_url, extra_env, token_path = adoption
+            agent_cfg.state["endpoint"] = base_url
+            # Deliver the bearer token via the env-from-file mechanism (secret
+            # stays in the host file); do not clobber a pre-set keyspace pointer.
+            agent_cfg.env_file.setdefault(_PERSONA_TOKEN_VAR, token_path)
+            # Deliver the model-map (and any other non-secret settings.json env)
+            # via the agent env channel; keyspace env wins (do not clobber).
+            for var, val in extra_env.items():
+                agent_cfg.env.setdefault(var, val)
+            endpoint = base_url
+            adopted = True
+
+    display = display_agent_ref(agent_id)
+    host_dir = _persona_host_dir(persona)
+    if endpoint is None:
+        # Distinguish "no host config at all" from "host config present but with
+        # no usable endpoint" (N2): a settings.json that lacks ANTHROPIC_BASE_URL
+        # is a PRESENT-but-unusable config, not an absent one.
+        if (host_dir / "settings.json").exists():
+            detail = (
+                f"the host config at {host_dir}/ is not usable "
+                f"(settings.json has no env.ANTHROPIC_BASE_URL)"
+            )
+        else:
+            detail = f"no host config was found at {host_dir}/"
+        return None, (
+            f"Error: persona '{display}' cannot be loaded — no endpoint is "
+            f"configured for it and {detail}.\n"
+            f"  Kanibako will not launch a persona as bare host claude on your "
+            f"real account.\n"
+            f"  Run the class setup script to create {host_dir}/ (settings.json + "
+            f"token), or set the endpoint for this persona, then retry."
+        ), False
+
+    # Endpoint resolved — require a usable BEARER token.  A KEYSPACE-recognised
+    # persona whose ``env_file`` carries no token FALLS BACK to the host-dir
+    # ``token`` file (F4): the endpoint may come from the keyspace while the class
+    # setup script supplies the token on disk.  Only when NEITHER a resolvable
+    # ``env_file`` token NOR the host token exists is it an error.
+    host_token = host_dir / "token"
+    if not agent_cfg.env_file.get(_PERSONA_TOKEN_VAR) and host_token.exists():
+        agent_cfg.env_file[_PERSONA_TOKEN_VAR] = str(host_token)
+        adopted = True  # env_file mutated in place → caller persists it.
+    # Check the TOKEN var SPECIFICALLY (N1): a non-empty resolver result for some
+    # OTHER env_file var does not mean a bearer token is present.
+    resolved = _resolve_env_files(agent_cfg.env_file, logger)
+    if not resolved.get(_PERSONA_TOKEN_VAR):
+        return None, (
+            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+            f"auth token.\n"
+            f"  A custom-endpoint persona needs a bearer token; none was found "
+            f"(neither a configured env_file nor {host_token}).\n"
+            f"  Run the class setup script to write {host_token}, then retry."
+        ), adopted
+    return endpoint, None, adopted
+
+
 def _effective_behavior_for_display(
     target,
     agent_cfg,
@@ -3069,6 +3389,66 @@ def _seed_box_home(
     )
 
 
+def persona_create_verdict(
+    std, config, proj, *, explicit_agent: str | None = None
+) -> str | None:
+    """The persona LOAD-OR-ERROR verdict for the `box create` path — a read-only
+    pre-check the caller runs BEFORE the lifecycle-journal write-entry.
+
+    Director ruling (2026-07-03): the create guard MUST precede the journal entry
+    (an abort after the entry would leave a pending entry whose recovery replays
+    the seed).  So `run_create` calls this FIRST; a non-``None`` return is the
+    actionable error message → the caller prints it and refuses to create, with NO
+    journal entry / seed.  Returns ``None`` for a bare / non-persona / no-agent box
+    (nothing to gate).
+
+    Read-only: resolves the agent → endpoint against a THROWAWAY config copy and
+    runs the same :func:`_preflight_persona_load` the launch uses; it never writes
+    (the real adoption + persist happens inside :func:`seed_new_box`).
+    """
+    logger = get_logger("start")
+    system_settings_path = std.settings
+    project_toml = proj.metadata_path / BOX_META_FILE
+    workset_path = workset_settings_path(proj.group)
+    merged = load_merged_config(
+        config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
+        project_toml, workset_path=workset_path,
+    )
+    try:
+        from kanibako.config import resolve_agent
+        agent_name = resolve_agent(
+            explicit_agent=explicit_agent,
+            box_agent_name=merged.box_agent_name,
+            workset_agent=None,
+            system_default_path=system_settings_path,
+            project_path=proj.project_path,
+        )
+        target = resolve_target(harness_of(agent_name), proj.project_path)
+    except Exception:  # no-agent / unresolved → nothing persona to gate.
+        return None
+    if target is None:
+        return None
+    agent_id = with_harness(agent_name, target.name)
+    if harness_of(agent_id) == agent_id:
+        return None  # bare — no persona gate.
+    agent_cfg_path = agent_settings_path(std.agents, agent_id)
+    probe_cfg = (
+        load_agent_config(agent_cfg_path)
+        if agent_cfg_path.exists()
+        else target.generate_agent_config()
+    )
+    _auth, endpoint = _resolve_box_launch_decisions(
+        std=std, proj=proj, target=target, agent_name=agent_id,
+        agent_cfg=probe_cfg, system_settings_path=system_settings_path,
+        project_toml=project_toml, workset_path=workset_path,
+        agent_cfg_path=agent_cfg_path,
+    )
+    _ep, error, _adopted = _preflight_persona_load(
+        agent_id, probe_cfg, endpoint, logger,
+    )
+    return error
+
+
 def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> None:
     """Seed a freshly-created box's home at CREATE time (`box create` entry).
 
@@ -3116,28 +3496,52 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # persona preserved. Bare + as-requested -> node == harness == target.name.
     agent_id = with_harness(agent_name, target.name) if target else "general"
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
-    if target and not agent_cfg_path.exists():
-        # First-use: generate the default agent config so the seed reconcile
-        # reads a real agent-config file (mirrors the launch path).
-        write_agent_config(agent_cfg_path, target.generate_agent_config())
-    # Persona share shim (mirrors the launch path): link agents/<node>/{plugins,cache}
-    # to the harness's dirs BEFORE the seed reconcile resolves share sources.  Bare
-    # agent (node == harness) is a no-op.
-    ensure_persona_share_symlinks(std, agent_id, target)
+    # Load or GENERATE the agent config IN MEMORY (mirrors the launch path) — the
+    # WRITE + share shim are deferred until after the persona load-or-error
+    # pre-flight passes, so an unloadable persona `box create` seeds NOTHING.
+    agent_cfg_exists = bool(target) and agent_cfg_path.exists()
+    if target is not None:
+        seed_agent_cfg = (
+            load_agent_config(agent_cfg_path)
+            if agent_cfg_exists
+            else target.generate_agent_config()
+        )
+    else:
+        seed_agent_cfg = None
     if target is not None:
         desc = target.descriptor
 
     # Auth SOURCE + persona endpoint off ONE snapshot (single-source). At CREATE, a
     # fresh custom-endpoint box is seeded WITHOUT the host OAuth cred (fail-safe;
     # <None>/no-target = bare, byte-identical to today).
-    seed_agent_cfg = load_agent_config(agent_cfg_path) if target is not None else None
     auth_src, active_endpoint = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
         project_toml=project_toml, workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
+
+    # PERSONA LOAD-OR-ERROR (A + B3) — the SAME gate the launch path runs, before
+    # any seed/artifact.  An unloadable persona raises (surfaced by cli.py with a
+    # non-zero exit); the create journal keeps the half-built box forward-
+    # recoverable (a cleanup command is a separate follow-up).
+    agent_cfg_dirty = target is not None and not agent_cfg_exists
+    if target is not None and harness_of(agent_id) != agent_id:
+        active_endpoint, persona_error, persona_adopted = _preflight_persona_load(
+            agent_id, seed_agent_cfg, active_endpoint, logger,
+        )
+        if persona_error is not None:
+            raise KanibakoError(persona_error)
+        agent_cfg_dirty = agent_cfg_dirty or persona_adopted
+
     suppress_oauth = active_endpoint is not None
+
+    # Loadability resolved → materialise the persona artifacts (write the fresh /
+    # B3-adopted config, then the share shim) BEFORE the seed reconcile reads them.
+    if target is not None and agent_cfg_dirty:
+        assert seed_agent_cfg is not None  # target set ⇒ config built above.
+        write_agent_config(agent_cfg_path, seed_agent_cfg)
+    ensure_persona_share_symlinks(std, agent_id, target)
 
     _seed_box_home(
         std=std, proj=proj, target=target, desc=desc,

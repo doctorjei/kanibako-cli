@@ -1829,6 +1829,7 @@ def resolve_box_target(
     *,
     initialize: bool = False,
     register: bool = True,
+    warn: bool = True,
 ) -> ProjectPaths:
     """Resolve a ``--box`` value (a box NAME or a path) to its :class:`ProjectPaths`.
 
@@ -1867,10 +1868,18 @@ def resolve_box_target(
     *register* (B3) is forwarded to the PRIMARY/STANDALONE resolvers; ``start``
     passes ``register=False`` so an auto-created box defers registration until
     after its home seed (marker → seed → register → remove).  Defaults True.
+
+    *warn* gates the non-conforming-name FLAG (:func:`_flag_nonconforming`).  A
+    NON-materialising PROBE (``initialize=False``) run purely to read a box's paths
+    ahead of a second materialising resolve passes ``warn=False`` so the name flag
+    fires exactly ONCE (on the real resolve), never doubled.  Defaults True.
     """
+    def _flag(proj: ProjectPaths) -> ProjectPaths:
+        return _flag_nonconforming(proj) if warn else proj
+
     # Empty / None -> cwd resolution (same as a bare positional default).
     if not value:
-        return _flag_nonconforming(
+        return _flag(
             resolve_any_project(
                 std, config, value, initialize=initialize, register=register,
             )
@@ -1887,7 +1896,7 @@ def resolve_box_target(
         # Box names are lowercase (R2); fold the query for the lookup.
         root_str = standalone.get(value.lower())
         if root_str is not None:
-            return _flag_nonconforming(
+            return _flag(
                 resolve_standalone_project(
                     std, config, root_str, initialize=initialize,
                     register=register,
@@ -1896,7 +1905,7 @@ def resolve_box_target(
 
     # Else: NAME (projects/worksets/qualified) or PATH, both via the existing
     # resolver (name-precedence for bare tokens is already handled there).
-    return _flag_nonconforming(
+    return _flag(
         resolve_any_project(
             std, config, value, initialize=initialize, register=register,
         )
