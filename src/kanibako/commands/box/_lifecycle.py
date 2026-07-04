@@ -1132,14 +1132,14 @@ def _to_standalone(
 ) -> ProjectState:
     """Convert/relocate the project so it becomes standalone (in-tree metadata).
 
-    A standalone box's identity is the canonical opaque ``<random24>_<leaf>``
+    A standalone box's identity is the canonical opaque ``<kuid>_<leaf>``
     (matching ``create --standalone`` / ``duplicate --standalone``); standalone
     boxes are NOT named via ``names.yaml`` but registered in
     ``registry.standalone``.  Convert ESTABLISHES the box uniformly via
     :func:`establish_standalone`, which now HONORS an explicit ``--name``
     (``new_name``) through :func:`box_identity.resolve_standalone_name`: a
     verbatim canonical id is used if free (else refused), a non-canonical
-    ``--name`` becomes a fresh ``<random24>_<sanitized name>``, and NO ``--name``
+    ``--name`` becomes a fresh ``<kuid>_<sanitized name>``, and NO ``--name``
     generates a fresh canonical id from the root basename.  It writes
     ``mode=standalone`` with that identity and registers it in
     ``registry.standalone`` (with an unwind to drop the registration on

@@ -116,6 +116,14 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.channels.commons",
     "workset.channels.chat",
     "workset.channels.share",
+    # Workset kuid + advisory-check toggle (settings-conformance P6d). ``workset.
+    # kuid`` is the workset's stable id (Crockford-base32; sentinel ``"00000"``
+    # for primary/named unless set — a STANDALONE box GENERATES a real one at
+    # creation, stored here); ``workset.skip_kuid_check`` (bool, default TRUE)
+    # gates the advisory ``Warning: invalid KUID``. Both settable workset.* keys
+    # routed to the ``workset:`` nested slot (same pattern as ``workset.registry``).
+    "workset.kuid",
+    "workset.skip_kuid_check",
     # Layer-1 CONFIG-key foundation (bootstrap paths; ``[config]`` table, spec §1)
     "config.data",
     "config.settings",
@@ -229,6 +237,13 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "workset.channels.commons": (("workset", "channels"), "commons"),
     "workset.channels.chat": (("workset", "channels"), "chat"),
     "workset.channels.share": (("workset", "channels"), "share"),
+    # Workset kuid + advisory-check toggle (P6d): the same nested-settings pattern
+    # as ``workset.registry`` — routed to the ``workset:`` table slot. ``workset.
+    # kuid`` is a STRING (no KEY_TYPES entry); ``workset.skip_kuid_check`` is a bool
+    # (see KEY_TYPES). A standalone box's kuid is written here sparsely at create
+    # (paths.establish_standalone); primary/named default to the sentinel/true.
+    "workset.kuid": (("workset",), "kuid"),
+    "workset.skip_kuid_check": (("workset",), "skip_kuid_check"),
     # Top-level scalar fields (flat KanibakoConfig fields).
     "allow_helpers": ((), "allow_helpers"),
 }
@@ -249,6 +264,8 @@ KEY_TYPES: dict[str, str] = {
     "box.auth.global_enabled": "bool",
     "box.auth.workset_enabled": "bool",
     "box.enable_vault": "bool",
+    # P6d: gates the advisory invalid-KUID warning (default true, set via config).
+    "workset.skip_kuid_check": "bool",
 }
 
 

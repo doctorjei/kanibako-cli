@@ -257,21 +257,23 @@ class TestStandaloneFixedPaths:
 
 
 # ---------------------------------------------------------------------------
-# TestStandaloneIdentity (5d: <random24>_<leaf> + registry.standalone)
+# TestStandaloneIdentity (P6d: <kuid>_<leaf> + registry.standalone)
 # ---------------------------------------------------------------------------
 
 class TestStandaloneIdentity:
-    def test_create_assigns_random_leaf_name(
+    def test_create_assigns_kuid_leaf_name(
         self, std, config, project_dir, credentials_dir,
     ):
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
-        # name = <random24>_<leaf>; leaf is the project dir basename.
+        # name = <kuid>_<leaf>; leaf is the project dir basename, prefix a kuid.
         assert proj.name
         prefix, _, leaf = proj.name.partition("_")
         assert leaf == project_dir.resolve().name
-        assert len(prefix) == 5  # 24 bits → 5 base32 chars
+        assert len(prefix) == 5  # 25-bit kuid → 5 Crockford base32 chars
+        from kanibako import kuid
+        assert kuid.is_valid(prefix)
 
     def test_create_registers_in_standalone_section(
         self, std, config, project_dir, credentials_dir,
@@ -301,6 +303,112 @@ class TestStandaloneIdentity:
             std, config, str(project_dir), initialize=False,
         )
         assert proj.name == ""
+
+
+# ---------------------------------------------------------------------------
+# TestStandaloneKuid (P6d1: workset.kuid gen/store + LIVE <kuid>_<leaf> naming +
+# the advisory invalid-KUID warning). The kuid module is consumed here; the
+# codec's own parity/round-trip contract is in tests/test_kuid.py.
+# ---------------------------------------------------------------------------
+
+class TestStandaloneKuid:
+    def _read_stored_kuid(self, project_dir):
+        """Read the sparsely-stored ``workset.kuid`` from the box settings.yaml."""
+        from kanibako.config_io import load_doc
+        data = load_doc(project_dir.resolve() / "settings.yaml")
+        return (data.get("workset") or {}).get("kuid")
+
+    def test_create_generates_valid_kuid_stored_and_named(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """#1 — create GENERATES a valid kuid, STORES it as workset.kuid (sparse),
+        and names the box <kuid>_<leaf>."""
+        from kanibako import kuid
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        stored = self._read_stored_kuid(project_dir)
+        # STORED (mutation: drop the establish_standalone sparse write → None here).
+        assert stored is not None
+        assert kuid.is_valid(stored)
+        assert stored != kuid.SENTINEL
+        # Named <kuid>_<leaf>, and the stored kuid IS the name's prefix.
+        prefix, _, leaf = proj.name.partition("_")
+        assert prefix == stored
+        assert leaf == project_dir.resolve().name
+
+    def test_meta_name_composed_live_leaf_tracks_move(
+        self, std, config, tmp_home, credentials_dir,
+    ):
+        """#2 — the box name is composed LIVE as <stored kuid>_<live leaf>: moving
+        the dir (new basename) changes the LEAF but keeps the kuid prefix."""
+        from kanibako import kuid
+        src = tmp_home / "origdir"
+        src.mkdir()
+        proj1 = resolve_standalone_project(
+            std, config, str(src), initialize=True,
+        )
+        orig_kuid = self._read_stored_kuid(src)
+        assert proj1.name == f"{orig_kuid}_origdir"
+
+        # Simulate a directory MOVE (rename): the stored kuid travels with the
+        # tree; the leaf must re-derive from the new basename.
+        dst = tmp_home / "moveddir"
+        src.rename(dst)
+        proj2 = resolve_standalone_project(
+            std, config, str(dst), initialize=True,
+        )
+        # Mutation: read the stored full `name` instead of live-composing → the
+        # leaf would stay "origdir" and this assertion goes RED.
+        assert proj2.name == f"{orig_kuid}_moveddir"
+        prefix2 = proj2.name.partition("_")[0]
+        assert prefix2 == orig_kuid          # kuid prefix is STABLE across the move
+        assert kuid.is_valid(prefix2)
+
+    def test_advisory_warns_only_when_invalid_nonsentinel_and_check_on(
+        self, std, config, project_dir, credentials_dir, caplog,
+    ):
+        """#5 — the advisory fires iff (non-sentinel AND invalid AND check ON);
+        a valid kuid, the sentinel, or skip_kuid_check=true (default) → SILENT."""
+        import logging
+        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.paths import resolve_box_target
+
+        settings = project_dir.resolve() / "settings.yaml"
+        # Materialize a real standalone box first (valid kuid, default skip=true).
+        resolve_standalone_project(std, config, str(project_dir), initialize=True)
+
+        def _set(kuid_val, skip):
+            data = load_doc(settings)
+            ws = data.setdefault("workset", {})
+            ws["kuid"] = kuid_val
+            if skip is None:
+                ws.pop("skip_kuid_check", None)
+            else:
+                ws["skip_kuid_check"] = skip
+            dump_doc(settings, data)
+
+        def _warned():
+            caplog.clear()
+            with caplog.at_level(logging.WARNING, logger="kanibako"):
+                resolve_box_target(std, config, str(project_dir))
+            return any("invalid KUID" in r.getMessage() for r in caplog.records)
+
+        # Invalid + check ON (skip=false) → WARNS.
+        _set("aaaaa", skip=False)   # aaaaa: in-alphabet, even parity → invalid
+        assert _warned()
+        # Same invalid value but skip=true (the DEFAULT) → SILENT.
+        _set("aaaaa", skip=True)
+        assert not _warned()
+        # Default (no skip key stored ⇒ true) → SILENT even though invalid.
+        _set("aaaaa", skip=None)
+        assert not _warned()
+        # A VALID kuid with check ON → SILENT (nothing to warn about).
+        _set("abcde", skip=False)
+        assert not _warned()
+        # The SENTINEL is EXEMPT even with check ON (is_valid("00000") is False).
+        _set("00000", skip=False)
+        assert not _warned()
 
 
 # ---------------------------------------------------------------------------

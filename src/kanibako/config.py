@@ -380,6 +380,41 @@ def read_box_enable_vault(path: Path) -> bool:
     return (data.get("box") or {}).get("enable_vault", True)
 
 
+def read_workset_kuid(path: Path) -> str:
+    """Return the stored ``workset.kuid`` value at *path* (default the SENTINEL).
+
+    The reader for the settable ``workset.kuid`` key (settings-conformance P6d):
+    it sources the kuid DIRECTLY from the ``workset:`` table of a box's
+    ``settings.yaml`` (for a STANDALONE box that single file plays the WORKSET
+    tier). An absent file / ``workset:`` table / key yields the reserved
+    :data:`kanibako.kuid.SENTINEL` (``"00000"``) — the primary/named default and
+    the "no real kuid yet" marker. Mirrors :func:`read_box_enable_vault` (the P2
+    reader-default pattern): the DEFAULT lives here, not in a cascade floor.
+    """
+    from kanibako import kuid
+
+    if not path.exists():
+        return kuid.SENTINEL
+    data = load_doc(path)
+    value = (data.get("workset") or {}).get("kuid", kuid.SENTINEL)
+    return str(value)
+
+
+def read_workset_skip_kuid_check(path: Path) -> bool:
+    """Return the stored ``workset.skip_kuid_check`` bool at *path* (default True).
+
+    The reader for the settable ``workset.skip_kuid_check`` key (P6d; spec default
+    ``true`` — the advisory "invalid KUID" warning is OPT-IN strictness, INVERTING
+    the old D9). Sourced from the ``workset:`` table of a box's ``settings.yaml``.
+    An absent file / table / key yields ``True`` (checking OFF). Mirrors
+    :func:`read_box_enable_vault` — the DEFAULT lives here, not a cascade floor.
+    """
+    if not path.exists():
+        return True
+    data = load_doc(path)
+    return bool((data.get("workset") or {}).get("skip_kuid_check", True))
+
+
 def _split_config_key(flat_key: str) -> tuple[str, str]:
     """Split a flat config key into (section, key).
 

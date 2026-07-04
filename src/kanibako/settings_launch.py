@@ -390,7 +390,7 @@ def meta_runtime_floor(
 #
 # The keys (spec §2c/§2d):
 #   meta.box.name           | the box name (proj.name; primary/named=box name,
-#                             standalone=<random24>_%leaf% — already computed and
+#                             standalone=<kuid>_%leaf% — already composed LIVE and
 #                             carried on proj.name, JC-B2-2: reuse, do not regen)
 #   meta.box.workspace      | the resolved in-box workspace SOURCE (str(proj.
 #                             project_path)) — routed to box.bindings.rw.workspace
@@ -466,8 +466,9 @@ def meta_identity_floor(
     """
     floor: dict[str, object] = {
         # Box identity (spec §2c). The box name is carried on ``proj.name``
-        # (JC-B2-2: reuse — standalone's <random24>_%leaf% is generated at
-        # creation and stored on proj.name; B2 does NOT regenerate it).
+        # (JC-B2-2: reuse — standalone's <kuid>_%leaf% is composed LIVE in
+        # ``resolve_standalone_project`` from the stored ``workset.kuid`` + the
+        # current-dir leaf, P6d; B2 does NOT re-compose or regenerate it).
         "meta.box.name": box_name,
         # The in-box workspace SOURCE literal (routed to box.bindings.rw.workspace).
         "meta.box.workspace": project_path,

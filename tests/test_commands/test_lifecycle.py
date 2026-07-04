@@ -220,7 +220,7 @@ class TestConvertInPlace:
     def test_convert_primary_to_standalone_registers_canonical(self, env):
         """BUG#4: converting a PRIMARY box --standalone must ESTABLISH the box
         uniformly with create/duplicate — detected as standalone, REGISTERED in
-        registry.standalone with a fresh canonical <random24>_<leaf> identity,
+        registry.standalone with a fresh canonical <kuid>_<leaf> identity,
         and the OLD primary names.yaml entry must be gone (no dangle)."""
         from kanibako.registry_store import load_standalone
 
@@ -249,7 +249,7 @@ class TestConvertInPlace:
         new_name = meta["name"]
         assert new_name != src_name
         prefix, _, leaf = new_name.partition("_")
-        assert len(prefix) == 5  # <random24> base32 prefix
+        assert len(prefix) == 5  # <kuid> Crockford base32 prefix
         assert leaf == "proj"
         assert new.name == new_name
 
@@ -289,15 +289,15 @@ class TestConvertInPlace:
         src_state = resolve_lifecycle_target(str(pdir), std, config)
         new = execute_lifecycle(
             src_state,
-            TargetSpec(location=INPLACE, ownership="standalone", name="ab2c3_proj"),
+            TargetSpec(location=INPLACE, ownership="standalone", name="abcde_proj"),
             std, config, confirm=_conf_yes(),
         )
         assert new.mode is BoxMode.standalone
-        assert new.name == "ab2c3_proj"
+        assert new.name == "abcde_proj"
         meta = read_project_meta(pdir / "settings.yaml")
-        assert meta["name"] == "ab2c3_proj"
+        assert meta["name"] == "abcde_proj"
         standalone = load_standalone(std.registry)
-        assert standalone["ab2c3_proj"] == str(pdir)
+        assert standalone["abcde_proj"] == str(pdir)
 
     def test_convert_standalone_noncanonical_name_becomes_leaf(self, env):
         """A non-canonical --name becomes the leaf with a FRESH random prefix
@@ -641,7 +641,7 @@ class TestChannelPartitionRelocation:
         )
 
         # BUG#4: convert --standalone now generates a FRESH canonical
-        # <random24>_<leaf> identity, so the NEW channel partition is keyed by
+        # <kuid>_<leaf> identity, so the NEW channel partition is keyed by
         # that name (not the source's "proj"). Pin the generated name so we can
         # pre-occupy the destination partition under it.
         canonical = "abcde_proj"

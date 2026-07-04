@@ -19,6 +19,8 @@ from kanibako.config import (
     load_config,
     read_box_enable_vault,
     read_project_meta,
+    read_workset_kuid,
+    read_workset_skip_kuid_check,
     write_project_meta,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
@@ -1972,7 +1974,10 @@ def resolve_box_target(
     fires exactly ONCE (on the real resolve), never doubled.  Defaults True.
     """
     def _flag(proj: ProjectPaths) -> ProjectPaths:
-        return _flag_nonconforming(proj) if warn else proj
+        if warn:
+            _flag_nonconforming(proj)
+            _flag_invalid_kuid(proj)
+        return proj
 
     # Empty / None -> cwd resolution (same as a bare positional default).
     if not value:
@@ -2031,6 +2036,43 @@ def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths:
     return proj
 
 
+def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
+    """Advisory (never fatal): flag a standalone box whose stored ``workset.kuid``
+    is a NON-sentinel value that fails the kuid parity/charset check.
+
+    Fires ONLY when ALL hold (spec D9, INVERTED 2026-07-04):
+      * the box is STANDALONE (only standalone stores a real kuid);
+      * ``workset.kuid`` is NON-sentinel (``!= kuid.SENTINEL``) — the sentinel
+        ``"00000"`` is the DEFAULT, EXEMPT even though ``kuid.is_valid("00000")``
+        is False by parity (the exemption is EXPLICIT, never inside is_valid);
+      * ``workset.skip_kuid_check`` is OFF (its DEFAULT is TRUE, so the warning is
+        OPT-IN strictness);
+      * ``kuid.is_valid`` rejects the stored value.
+
+    The kuid is USER-EDITABLE, so a bad value is FLAGGED (``Warning: invalid KUID``),
+    NEVER rejected. Returns *proj* unchanged.
+    """
+    if proj.mode is not BoxMode.standalone:
+        return proj
+    from kanibako import kuid
+
+    settings_file = proj.metadata_path / BOX_META_FILE
+    value = read_workset_kuid(settings_file)
+    if (
+        value != kuid.SENTINEL
+        and not read_workset_skip_kuid_check(settings_file)
+        and not kuid.is_valid(value)
+    ):
+        get_logger(__name__).warning(
+            "Warning: invalid KUID '%s' for standalone box '%s' (not a valid "
+            "kuid); it still resolves — fix workset.kuid or set "
+            "workset.skip_kuid_check=true to silence this.",
+            value,
+            proj.name,
+        )
+    return proj
+
+
 def establish_standalone(
     std: StandardPaths,
     root: Path,
@@ -2045,7 +2087,7 @@ def establish_standalone(
     --standalone``, ``convert --standalone``, ``duplicate --standalone``).  It
 
     1. derives the box identity via :func:`box_identity.resolve_standalone_name`
-       — a fresh canonical ``<random24>_<leaf>`` (whole-name collision regen vs
+       — a fresh canonical ``<kuid>_<leaf>`` (whole-name collision regen vs
        ``registry.standalone``) when *name* is empty, otherwise honoring the
        supplied (lowercased) ``--name``: a verbatim canonical id if free (else
        refuse), or a fresh prefix over the supplied string as the leaf;
@@ -2082,8 +2124,9 @@ def establish_standalone(
     existing = registry_store.standalone_box_names(std.registry)
     box_name = box_identity.resolve_standalone_name(root, name, existing)
 
+    settings_file = root / BOX_META_FILE
     write_project_meta(
-        root / BOX_META_FILE,
+        settings_file,
         mode="standalone",
         workspace=str(workspace),
         shell=str(shell_path),
@@ -2093,6 +2136,18 @@ def establish_standalone(
         metadata=str(box_data),
         project_hash=phash,
         name=box_name,
+    )
+    # Persist the GENERATED kuid as the settable ``workset.kuid`` key (P6d), sparsely
+    # (read-modify-write, preserving the ``project:`` meta above) via the SAME keystore
+    # sparse-write engine ``config set`` uses — [[settings-must-map-to-keystore-key]].
+    # The kuid IS the name's prefix (``box_identity.standalone_kuid``); storing it
+    # makes it the STABLE cross-move handle (the launch re-composes the name as
+    # ``<stored kuid>_<live leaf>`` so a moved box keeps its identity).
+    from kanibako.config_interface import _write_nested_toml_key
+
+    _write_nested_toml_key(
+        settings_file, ("workset",), "kuid",
+        box_identity.standalone_kuid(box_name),
     )
     if register:
         registry_store.register_standalone(std.registry, box_name, root)
@@ -2120,7 +2175,7 @@ def resolve_standalone_project(
     ``workspace/`` subdir (the live workspace → ``~/workspace`` — the
     ``project_path``), a ``box_data/`` marker dir holding ``home/`` + the
     ``<box>.jsonl`` helper log, and ``vault/{ro,rw}/``.  The box identity is
-    ``<random24>_<sanitized leaf>`` (generated + registered in
+    ``<kuid>_<sanitized leaf>`` (generated + registered in
     ``registry.standalone`` at create time; reused from the stored meta after).
 
     *register* (B3 interrupted-create marker): forwarded to
@@ -2158,18 +2213,25 @@ def resolve_standalone_project(
         else read_box_enable_vault(project_toml)
     )
 
-    # Box identity name (transitional): the standalone name is authoritative in
-    # the box's OWN ``settings.yaml`` (design D6 — generated + stored at create,
-    # kuid-prefixed in P6).  box_resolve does NOT yet source the stored name for
-    # an UNREGISTERED standalone — it returns the dir leaf, and an interrupted
-    # create is exactly the unregistered case — so that gap (P6) means the name
-    # must be read from settings.yaml here, not derived via box_resolve.  A
-    # not-yet-materialized root (no ``box_data/``) yields "" (the create block
-    # below assigns it authoritatively via establish_standalone).
+    # Box identity name: the standalone name is composed LIVE (P6d) as
+    # ``<stored workset.kuid>_<live leaf>`` — the kuid is the STABLE stored prefix
+    # (from the box's OWN ``settings.yaml``, design D6) and the leaf is re-derived
+    # from the CURRENT root basename, so a moved standalone tree keeps its kuid
+    # identity while the leaf tracks the new dir (spec 2026-07-04). box_resolve does
+    # NOT source the name for an UNREGISTERED standalone (an interrupted create is
+    # exactly that case), so the name is composed from settings.yaml here, not via
+    # box_resolve. Pre-kuid boxes (no ``workset.kuid`` ⇒ SENTINEL) fall back to the
+    # stored full ``name``. A not-yet-materialized root (no ``box_data/``) yields ""
+    # (the create block below assigns it authoritatively via establish_standalone).
     meta = None
     if box_data.is_dir() and project_toml.is_file():
         meta = read_project_meta(project_toml)
     box_name = meta.get("name", "") if meta else ""
+    if meta:
+        from kanibako import box_identity, kuid
+        stored_kuid = read_workset_kuid(project_toml)
+        if stored_kuid != kuid.SENTINEL:
+            box_name = box_identity.compose_standalone_name(stored_kuid, root)
     # The user's explicit --name (only meaningful when establishing a new box;
     # ignored once the box exists since the stored identity is authoritative).
     requested_name = name

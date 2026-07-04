@@ -101,7 +101,7 @@ class TestStandaloneImport:
         capsys.readouterr()
 
         name = import_reconcile.import_standalone(std.registry, project_dir)
-        assert name  # a fresh <random24>_<leaf> name was minted
+        assert name  # a fresh <kuid>_<leaf> name was minted
         # Persisted back into the metadata (project.name).
         assert read_project_meta(meta_file)["name"] == name
         # Registered + alerted.

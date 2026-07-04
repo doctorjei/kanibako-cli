@@ -775,7 +775,7 @@ class TestBoxDuplicateCrossMode:
         """BUG#3: duplicating a PRIMARY box --standalone must ESTABLISH a real
         standalone box — detected as standalone, registered in
         ``registry.standalone``, ``mode=standalone``, with a FRESH
-        ``<random24>_<leaf>`` name distinct from the source (which is unregistered
+        ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
         as a standalone, since primary boxes use ``names.yaml``)."""
         from kanibako.commands.box import run_duplicate
         from kanibako.config import BOX_META_FILE, read_project_meta
@@ -801,14 +801,14 @@ class TestBoxDuplicateCrossMode:
         result = detect_project_mode(dst_dir, std, config)
         assert result.mode == BoxMode.standalone
 
-        # (2) Metadata declares mode=standalone with a fresh <random24>_<leaf>
+        # (2) Metadata declares mode=standalone with a fresh <kuid>_<leaf>
         #     name; settings.yaml lives at the ROOT (drift I).
         meta = read_project_meta(dst_dir / BOX_META_FILE)
         assert meta is not None
         assert meta["mode"] == "standalone"
         new_name = meta["name"]
         assert new_name != src_name
-        # <random24>_<leaf>: 5-char base32 prefix + "_" + sanitized leaf.
+        # <kuid>_<leaf>: 5-char Crockford base32 prefix + "_" + sanitized leaf.
         prefix, _, leaf = new_name.partition("_")
         assert len(prefix) == 5
         assert leaf == "b3_dst"

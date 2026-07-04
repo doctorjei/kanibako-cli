@@ -254,6 +254,24 @@ class TestResolveBoxIdentity:
         assert identity["name"] == project_dir.resolve().name  # dir leaf
         assert identity["registered"] is False
 
+    def test_standalone_name_composed_live_from_stored_kuid(
+        self, std, config, project_dir
+    ):
+        # P6d: a stored ``workset.kuid`` composes the name LIVE as
+        # ``<kuid>_<current-dir leaf>`` — OVERRIDING even a stale registered name
+        # (the leaf tracks the dir; the kuid is the stable prefix). Mutation:
+        # revert box_resolve to ``registered_name or box_root.name`` → this goes RED.
+        (project_dir / _STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
+        (project_dir / BOX_META_FILE).write_text("workset:\n  kuid: abcde\n")
+        registry_store.register_standalone(
+            std.registry, "abcde_oldleaf", project_dir.resolve()
+        )
+        identity = box_resolve.resolve_box_identity(project_dir, std, config)
+        assert identity is not None
+        assert identity["mode"] is BoxMode.standalone
+        assert identity["name"] == f"abcde_{project_dir.resolve().name}"
+        assert identity["registered"] is True  # still a registry member
+
     def test_registered_flag_reflects_membership(self, std, config, tmp_home):
         # A workset box: registry membership present → registered True.
         ws_root = tmp_home / "ws"

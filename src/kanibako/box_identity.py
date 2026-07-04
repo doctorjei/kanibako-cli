@@ -1,30 +1,36 @@
-"""STANDALONE box identity generation (``<random24>_<sanitized,capped leaf>``).
+"""STANDALONE box identity generation (``<kuid>_<sanitized,capped leaf>``).
 
-A standalone box is named ``<random24>_<leaf>`` where:
+A standalone box is named ``<kuid>_<leaf>`` where:
 
-* ``random24`` is 24 bits of randomness (``os.urandom(3)``) encoded as a
-  fixed-width, lowercased base32 token (no padding) — always 5 characters.
+* ``kuid`` is the box's stable :mod:`kanibako.kuid` id — a 25-bit Crockford
+  base32 token (24 data + 1 parity → always 5 lowercased chars). It REPLACES the
+  former ``<random24>`` slot (settings-conformance P6d): the kuid is GENERATED at
+  creation and STORED as the settable ``workset.kuid`` key, so it is the STABLE
+  cross-move identity prefix.
 * ``leaf`` is the project-root basename, sanitized so only portable filename
   characters survive (``[^A-Za-z0-9._-]`` → ``_``), capped at 32 characters,
-  with an empty leaf falling back to ``"box"``.
+  with an empty leaf falling back to ``"box"``. The leaf tracks dir MOVES (it is
+  re-derived live from the current root basename), so only the kuid is stable.
 
-The pieces are joined with ``_``.  Because the random prefix can collide with
-an already-registered standalone box name (design-review D-M13), the generator
-regenerates the random component (bounded retries) until the *whole* name is
-unique within a caller-supplied ``existing`` set.
+The pieces are joined with ``_``.  Because the kuid prefix can collide with an
+already-registered standalone box name (design-review D-M13), the generator
+regenerates the kuid (bounded retries) until the *whole* name is unique within a
+caller-supplied ``existing`` set.
 
-This module is pure (modulo ``os.urandom``) and side-effect free so the
-sanitize/cap/collision-regen logic is directly unit-testable.
+This module is pure (modulo ``os.urandom``/clock via :mod:`kanibako.kuid`) and
+side-effect free so the sanitize/cap/collision-regen logic is directly
+unit-testable.  The kuid CODEC lives in the break-off-ready :mod:`kanibako.kuid`;
+the ``<kuid>_<leaf>`` NAME composition + the ``workset.kuid`` key wiring live
+here / in the settings layer (D6a — nothing kanibako-specific in ``kuid``).
 """
 
 from __future__ import annotations
 
-import base64
-import os
 import re
 import string
 from pathlib import Path
 
+from kanibako import kuid
 from kanibako.errors import ProjectError
 
 # Maximum length of the sanitized leaf component.
@@ -36,12 +42,13 @@ _SAFE_CHAR_RE = re.compile(r"[^A-Za-z0-9._-]")
 # Bound on collision-regeneration attempts before giving up.
 _MAX_REGEN_ATTEMPTS = 1000
 
-# A canonical standalone box name is ``<random24>_<leaf>`` where the random
-# prefix is exactly 5 lowercase base32 chars and the leaf is 1-32 chars drawn
-# from the sanitized, *lowercased* alphabet (see :func:`sanitize_cap`).  This
-# is the verbatim shape the generator emits, so it is also what a user may
-# assert by passing a fully-formed ``--name``.
-_CANONICAL_NAME_RE = re.compile(r"^[a-z2-7]{5}_[a-z0-9._-]{1,32}$")
+# A canonical standalone box name is ``<kuid>_<leaf>`` where the prefix is a
+# VALID kuid (5 Crockford base32 chars with odd parity — see :func:`kanibako.
+# kuid.is_valid`) and the leaf is 1-32 chars drawn from the sanitized, *lowercased*
+# alphabet (see :func:`sanitize_cap`).  This is the verbatim shape the generator
+# emits, so it is also what a user may assert by passing a fully-formed ``--name``.
+# (The prefix ALPHABET is now the kuid's Crockford set, NOT RFC-4648 ``[a-z2-7]``.)
+_LEAF_RE = re.compile(r"^[a-z0-9._-]{1,32}$")
 
 # ---------------------------------------------------------------------------
 # Box-name BLOCKLIST validation (W1 Phase D, §Design 8).
@@ -144,17 +151,6 @@ def validate_box_name(name: str) -> None:
         raise ProjectError(f"Invalid box name '{name}': {reason}")
 
 
-def random24() -> str:
-    """Return a 24-bit random token as a fixed-width lowercase base32 string.
-
-    24 bits encode to exactly 5 base32 characters (with the trailing ``=``
-    padding stripped), so every token is the same width.  Lowercased for
-    container/path friendliness.
-    """
-    raw = os.urandom(3)  # 3 bytes == 24 bits
-    return base64.b32encode(raw).decode("ascii").rstrip("=").lower()
-
-
 def sanitize_cap(leaf: str) -> str:
     """Sanitize, lowercase, and cap a project-basename *leaf* for a box name.
 
@@ -168,21 +164,49 @@ def sanitize_cap(leaf: str) -> str:
 
 
 def is_canonical_standalone_name(name: str) -> bool:
-    """True when *name* matches the canonical ``<random24>_<leaf>`` shape.
+    """True when *name* matches the canonical ``<kuid>_<leaf>`` shape.
 
-    The prefix must be exactly 5 lowercase base32 chars (``[a-z2-7]``) and the
-    leaf 1-32 chars of ``[a-z0-9._-]`` (lowercase, matching :func:`sanitize_cap`).
-    An over-long or illegal-char leaf, or a wrong-width prefix, fails the match.
-    The check is case-sensitive: callers lowercase a supplied name first.
+    The prefix (up to the FIRST ``_``) must be a VALID kuid (:func:`kanibako.
+    kuid.is_valid` — 5 Crockford base32 chars with odd parity) and the leaf 1-32
+    chars of ``[a-z0-9._-]`` (lowercase, matching :func:`sanitize_cap`).  An
+    over-long or illegal-char leaf, or a non-kuid prefix, fails the match.  The
+    check is case-sensitive: callers lowercase a supplied name first.
     """
-    return _CANONICAL_NAME_RE.match(name) is not None
+    prefix, sep, leaf = name.partition("_")
+    if not sep:
+        return False
+    return kuid.is_valid(prefix) and _LEAF_RE.match(leaf) is not None
+
+
+def standalone_kuid(name: str) -> str:
+    """Return the kuid PREFIX of a standalone box *name* (``<kuid>_<leaf>``).
+
+    The kuid is everything up to the FIRST ``_`` (the kuid alphabet never
+    contains ``_``, so this is unambiguous even when the leaf itself holds one).
+    Exposes the generated/stored kuid so the create path can persist it as the
+    ``workset.kuid`` key WITHOUT re-deriving it — the name is composed FROM the
+    kuid, so this is the inverse.
+    """
+    return name.partition("_")[0]
+
+
+def compose_standalone_name(box_kuid: str, root: Path) -> str:
+    """Compose the LIVE standalone box name ``<box_kuid>_<leaf>`` for *root*.
+
+    *box_kuid* is the STABLE stored ``workset.kuid`` prefix; the leaf is derived
+    LIVE from the current *root* basename (``sanitize_cap(root.name)``) so it
+    TRACKS directory moves (the kuid stays put, the leaf follows the dir — spec
+    2026-07-04).  The single source for re-composing a moved box's name from its
+    stored kuid; mirrors the join in :func:`_generate_with_leaf`.
+    """
+    return f"{box_kuid}_{sanitize_cap(root.name)}"
 
 
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
-    """Build ``<random24>_<leaf>`` with whole-name collision regen.
+    """Build ``<kuid>_<leaf>`` with whole-name collision regen.
 
     *leaf* must already be sanitized (see :func:`sanitize_cap`).  Regenerates
-    the random prefix (bounded retries) until the whole name is unique within
+    the kuid prefix (bounded retries) until the whole name is unique within
     *existing*.  Shared by :func:`make_standalone_box_name` (leaf from the root
     basename) and :func:`resolve_standalone_name` (leaf from a supplied string).
 
@@ -190,7 +214,7 @@ def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
     :data:`_MAX_REGEN_ATTEMPTS` attempts.
     """
     for _ in range(_MAX_REGEN_ATTEMPTS):
-        name = f"{random24()}_{leaf}"
+        name = f"{kuid.generate()}_{leaf}"
         if name not in existing:
             return name
     raise RuntimeError(
@@ -202,8 +226,8 @@ def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
 def make_standalone_box_name(root: Path, existing: set[str]) -> str:
     """Generate a unique standalone box name for project *root*.
 
-    Builds ``<random24>_<sanitize_cap(root.name)>`` and, if that whole name is
-    already in *existing*, regenerates the random prefix (bounded retries) until
+    Builds ``<kuid>_<sanitize_cap(root.name)>`` and, if that whole name is
+    already in *existing*, regenerates the kuid prefix (bounded retries) until
     the name is unique.  *existing* is the set of standalone box names currently
     registered (see ``registry.standalone``).
 
@@ -220,9 +244,9 @@ def validate_standalone_name(supplied: str, existing: set[str]) -> None:
     Pure and side-effect free.  Raises the SAME
     :class:`~kanibako.errors.ProjectError` that :func:`resolve_standalone_name`
     would on the one refusable case — a *supplied* name that is a verbatim
-    canonical ``<random24>_<leaf>`` id already present in *existing*.  Every other
+    canonical ``<kuid>_<leaf>`` id already present in *existing*.  Every other
     input (empty, or a non-canonical string that becomes a fresh
-    ``<random24>_<leaf>``) is always satisfiable, so this is a no-op for them.
+    ``<kuid>_<leaf>``) is always satisfiable, so this is a no-op for them.
 
     Callers run this BEFORE any filesystem mutation so a doomed standalone
     ``create`` refuses up front instead of leaving a half-created tree (BUG-A).
@@ -245,15 +269,15 @@ def resolve_standalone_name(
 ) -> str:
     """Resolve the standalone box name for *root* given a user *supplied* name.
 
-    Pure (modulo ``os.urandom``) so it is directly unit-testable.  Branches:
+    Pure (modulo the kuid generator) so it is directly unit-testable.  Branches:
 
-    1. *supplied* empty → :func:`make_standalone_box_name` (fresh prefix +
+    1. *supplied* empty → :func:`make_standalone_box_name` (fresh kuid prefix +
        sanitized ``root.name`` leaf, whole-name collision regen).
     2. Otherwise lowercase *supplied*, then:
 
-       * If it does NOT match the canonical ``<random24>_<leaf>`` shape (see
+       * If it does NOT match the canonical ``<kuid>_<leaf>`` shape (see
          :func:`is_canonical_standalone_name`) → treat the WHOLE supplied string
-         as a raw leaf: ``<fresh-random>_<sanitize_cap(supplied)>`` with
+         as a raw leaf: ``<fresh-kuid>_<sanitize_cap(supplied)>`` with
          collision regen.  (An over-long / illegal name lands here.)
        * If it DOES match → the user is asserting a full canonical id verbatim.
          If it is free in *existing* → return it as-is; if taken → raise
