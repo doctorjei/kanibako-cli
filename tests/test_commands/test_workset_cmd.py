@@ -13,6 +13,17 @@ from kanibako.workset import (
 )
 
 
+def _workset_boxes(ws):
+    """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws.root, load_doc(ws.root / "settings.yaml"),
+    )
+    return workset_registry.load_workset_boxes(registry_path)
+
+
 class TestWorksetCreate:
     def test_create_success(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
@@ -379,11 +390,11 @@ class TestWorksetConnect:
     def test_connect_external_writes_override_and_symlink(
         self, config_file, tmp_home, capsys
     ):
-        """connect to an EXTERNAL dir → workspace override in settings.yaml,
-        connected.yaml entry, and a workspaces/{name} symlink to the dir."""
+        """connect to an EXTERNAL dir → workspace override in settings.yaml, a
+        per-workset boxes: connection record (D10), and a workspaces/{name}
+        symlink to the dir."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.config import read_project_meta
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -405,10 +416,9 @@ class TestWorksetConnect:
         assert meta is not None
         assert meta["workspace"] == str(external)
 
-        # connected.yaml has the redirect entry.
-        connected = _load_connected(std)
-        assert str(external) in connected
-        assert connected[str(external)] == {"workset": "extws", "project": "ext"}
+        # The per-workset registry has the connection record: box name → external
+        # path (the D10 replacement for the global connected: index).
+        assert _workset_boxes(ws).get("ext") == str(external)
 
         # workspaces/ext is a SYMLINK to the external dir, not a real dir.
         link = ws.workspaces_dir / "ext"
@@ -419,10 +429,9 @@ class TestWorksetConnect:
         self, config_file, tmp_home, capsys
     ):
         """connect to a dir INSIDE the workset root → normal behavior: a real
-        workspaces/{name} dir, no override, no connected.yaml entry."""
+        workspaces/{name} dir, no override, no external connection record."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.config import read_project_meta
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -443,9 +452,10 @@ class TestWorksetConnect:
         meta = read_project_meta(project_toml)
         assert meta is None
 
-        # No connected.yaml entry for an internal source.
-        connected = _load_connected(std)
-        assert str(internal.resolve()) not in connected
+        # No external connection record for an internal source (the per-workset
+        # registry only records EXTERNAL connects; an internal source keeps the
+        # normal real-dir behavior).
+        assert "int" not in _workset_boxes(ws)
 
         # workspaces/int is a real directory, not a symlink.
         wsdir = ws.workspaces_dir / "int"

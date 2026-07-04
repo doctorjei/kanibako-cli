@@ -27,7 +27,6 @@ def test_fresh_tree_empty_sections(reg: Path) -> None:
     assert loaded == {
         "projects": {},
         "worksets": {},
-        "connected": {},
         "standalone": {},
         "rigs": {},
         "image_shells": {},
@@ -39,7 +38,6 @@ def test_sections_round_trip(reg: Path) -> None:
     sections = {
         "projects": {"myapp": "/home/user/myapp"},
         "worksets": {"ws": "/home/user/ws"},
-        "connected": {"/abs/ext": {"workset": "ws", "project": "foo"}},
         "standalone": {"abc_box": "/abs/proj"},
         "rigs": {"corp/base:1.0": {"kind": "prefab"}},
         "image_shells": {"sha256:abc": "/bin/bash"},
@@ -71,14 +69,14 @@ def test_save_section_preserves_other_sections(reg: Path) -> None:
         reg,
         {
             "projects": {"keep": "/keep"},
-            "connected": {"/ext": {"workset": "w", "project": "p"}},
+            "rigs": {"corp/base:1.0": {"kind": "prefab"}},
         },
     )
     registry_store.save_section(reg, "standalone", {"box1": "/proj"})
 
     loaded = registry_store.load_registry(reg)
     assert loaded["projects"] == {"keep": "/keep"}
-    assert loaded["connected"] == {"/ext": {"workset": "w", "project": "p"}}
+    assert loaded["rigs"] == {"corp/base:1.0": {"kind": "prefab"}}
     assert loaded["standalone"] == {"box1": "/proj"}
 
 

@@ -1393,9 +1393,11 @@ def detect_project_mode(
         return ws_result
 
     # 1b. Connected-external check: the path (or an ancestor) is an external
-    # directory connected to a workset.  Resolves before the default scan.
-    from kanibako.workset import _find_connected_project
-    if _find_connected_project(resolved, std) is not None:
+    # directory connected to a workset.  Resolves before the default scan.  D10:
+    # the per-workset registries collectively form the reverse index, scanned by
+    # box_resolve (replaces the deleted global connected: index).
+    from kanibako import box_resolve
+    if box_resolve.find_connected_external_box(resolved, std) is not None:
         return DetectionResult(BoxMode.named, resolved)
 
     # 2. Name-based default-mode check (one-pass scan, deepest match wins).
@@ -1505,6 +1507,25 @@ def _register_workset_box_membership(
     workset_registry.register_workset_box(registry_path, box_name, workspace)
 
 
+def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
+    """Drop *box_name* from *ws_root*'s per-workset registry (compensating action).
+
+    The inverse of :func:`_register_workset_box_membership`: resolves the
+    workset's ``workset.registry`` path (honoring a repoint via its
+    ``settings.yaml``) and removes the box's ``boxes:`` membership.  Idempotent —
+    ``unregister_workset_box`` is a no-op when the file/entry is absent.  Used to
+    unwind a connect register and to drop a disconnected external box's D10
+    connection record.
+    """
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws_root, load_doc(ws_root / "settings.yaml"),
+    )
+    workset_registry.unregister_workset_box(registry_path, box_name)
+
+
 def resolve_workset_project(
     ws: WorksetSpec,
     project_name: str,
@@ -1536,16 +1557,20 @@ def resolve_workset_project(
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
-    # Workspace override (transitional).  A box connected to an EXTERNAL dir
-    # stores that dir as its live workspace in ``resolved.workspace``.  connect
-    # (workset.py) is UNTOUCHED in P5a and still writes ONLY settings.yaml — the
-    # per-workset-registry home for this record is D10/P7 — so the override is
-    # read from settings.yaml here, NOT from box_resolve (which would return the
-    # layout path).  Mirrors the describe path (iter_projects).
+    # Workspace override (P7/D10).  A box connected to an EXTERNAL dir has that
+    # dir recorded as its workspace in the workset's per-workset registry
+    # (``boxes:`` name → external path, written by ``connect``).  Source it from
+    # box_resolve: its ``workspace`` field == the registered box path — the
+    # EXTERNAL dir for a connected box, ``workspaces/<name>`` for an in-tree box
+    # (a no-op override).  Replaces the transitional ``read_project_meta``
+    # ``resolved.workspace`` read (P7 drops that consumer).  *project_path* (the
+    # ``workspaces/<name>`` symlink for a connect) resolves through the symlink,
+    # so it path-matches the registered external entry.
     project_toml = metadata_path / BOX_META_FILE
-    meta = read_project_meta(project_toml)
-    if meta and meta.get("workspace"):
-        project_path = Path(meta["workspace"])
+    from kanibako import box_resolve
+    identity = box_resolve.resolve_box_identity(project_path, std, config)
+    if identity is not None:
+        project_path = Path(identity["workspace"])
     # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
     # OVERRIDE is DROPPED (mirrors the PRIMARY path) — home/vault are SOLELY the
     # spec-derived default location, customized via the box.bindings cascade. The
@@ -1825,12 +1850,16 @@ def _resolve_workset_or_connected(
         ws, proj_name = None, None
     if ws is None or proj_name is None:
         # Tree-based lookup missed (or hit the workset root without a project):
-        # try the connected-external redirect index.  Lazy import avoids a
-        # paths <-> workset import cycle (mirrors resolve_any_project).
-        from kanibako.workset import _find_connected_project
-        hit = _find_connected_project(project_dir.resolve(), std)
-        if hit is not None:
-            ws, proj_name = hit
+        # try the connected-external boxes (D10 enumerate-and-scan over the
+        # per-workset registries).  Lazy import avoids a paths <-> box_resolve
+        # import cycle.
+        from kanibako import box_resolve
+        from kanibako.workset import load_workset
+        owned = box_resolve.find_connected_external_box(
+            project_dir.resolve(), std,
+        )
+        if owned is not None:
+            ws, proj_name = load_workset(owned.workset_root), owned.box_name
     if ws is None:
         raise WorksetError(f"No workset found for path: {project_dir}")
     return ws, proj_name

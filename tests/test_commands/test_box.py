@@ -847,6 +847,39 @@ def _make_workset(tmp_home, std, ws_name="testws"):
     return ws, ws_root
 
 
+def _connected_index(std):
+    """Reconstruct the ``{external_path: {workset, project}}`` connection view.
+
+    The D10 replacement for the retired global ``connected:`` index: a connected
+    box is a NAMED workset's per-workset ``boxes:`` entry whose path is EXTERNAL
+    (outside that workset root).  Mirrors the old ``_load_connected`` return shape
+    so equivalence assertions stay legible.
+    """
+    from pathlib import Path
+
+    from kanibako import registry_store, workset_registry
+    from kanibako.config_io import load_doc
+
+    out: dict[str, dict] = {}
+    for name, root_str in registry_store.load_section(
+        std.registry, "worksets"
+    ).items():
+        root = Path(root_str)
+        registry_path = workset_registry.resolve_workset_registry_path(
+            root, load_doc(root / "settings.yaml"),
+        )
+        for box_name, box_path in workset_registry.load_workset_boxes(
+            registry_path
+        ).items():
+            resolved = Path(box_path).resolve()
+            try:
+                resolved.relative_to(root.resolve())
+                continue  # in-tree box: not an external connection
+            except ValueError:
+                out[str(resolved)] = {"workset": name, "project": box_name}
+    return out
+
+
 def _make_local_project(tmp_home, std, config, name="myproj"):
     """Create a default-mode project with a marker file, return (proj, project_dir)."""
     project_dir = tmp_home / name
@@ -1092,7 +1125,6 @@ class TestBoxDuplicateExternal:
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
         from kanibako.paths import BoxMode
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1114,7 +1146,7 @@ class TestBoxDuplicateExternal:
         assert (ws.projects_dir / "int_src" / "marker.txt").read_text() == "ac-marker"
         assert (ws.projects_dir / "int_src" / "home" / "custom.sh").exists()
         # No external wiring — duplicate is a copy, not a connection.
-        assert _load_connected(std) == {}
+        assert _connected_index(std) == {}
 
     def test_copy_into_workset_copy_failure_leaves_no_orphan(
         self, config_file, tmp_home, credentials_dir,
@@ -1210,14 +1242,13 @@ class TestBoxDuplicateExternal:
         1:1 refusal gives the clearer, earlier error and never touches state.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
             tmp_home, std, config, ws_name="ext-ws2", proj_name="ext-proj2",
         )
-        before = _load_connected(std)
+        before = _connected_index(std)
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
@@ -1228,7 +1259,7 @@ class TestBoxDuplicateExternal:
         assert rc == 1
         assert "external-connected" in capsys.readouterr().err
         # No state changed by the refusal.
-        assert _load_connected(std) == before
+        assert _connected_index(std) == before
         assert (ext_dir / "code.py").read_text() == "print('external')"
 
     def test_non_bare_duplicate_local_to_workset_internal(
@@ -1241,7 +1272,6 @@ class TestBoxDuplicateExternal:
         source, with no connected.yaml entry.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1261,7 +1291,7 @@ class TestBoxDuplicateExternal:
         assert not dup_ws.is_symlink()
         assert (dup_ws / "code.py").read_text() == "print('hello')"
         # No external wiring for an internal (copied) workspace.
-        assert _load_connected(std) == {}
+        assert _connected_index(std) == {}
 
     def test_duplicate_external_to_default(
         self, config_file, tmp_home, credentials_dir,
@@ -1274,14 +1304,13 @@ class TestBoxDuplicateExternal:
         escapes.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
             tmp_home, std, config, ws_name="ext2def-ws", proj_name="e2d",
         )
-        before = _load_connected(std)
+        before = _connected_index(std)
         dest = tmp_home / "e2d_dst"
 
         args = argparse.Namespace(
@@ -1298,7 +1327,7 @@ class TestBoxDuplicateExternal:
         assert ac_project.is_dir()
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
-        assert _load_connected(std) == before
+        assert _connected_index(std) == before
         assert (ws.projects_dir / proj_name).is_dir()
 
     def test_duplicate_external_to_standalone(
@@ -1306,14 +1335,13 @@ class TestBoxDuplicateExternal:
     ):
         """``--to standalone`` of an external-connected source succeeds."""
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
             tmp_home, std, config, ws_name="ext2sa-ws", proj_name="e2s",
         )
-        before = _load_connected(std)
+        before = _connected_index(std)
         dest = tmp_home / "e2s_dst"
 
         args = argparse.Namespace(
@@ -1329,7 +1357,7 @@ class TestBoxDuplicateExternal:
         assert (dest / "code.py").read_text() == "print('external')"
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
-        assert _load_connected(std) == before
+        assert _connected_index(std) == before
 
     def test_bare_duplicate_external_to_default_allowed(
         self, config_file, tmp_home, credentials_dir,
@@ -1341,14 +1369,13 @@ class TestBoxDuplicateExternal:
         WorksetError.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
             tmp_home, std, config, ws_name="extbare-ws", proj_name="eb",
         )
-        before = _load_connected(std)
+        before = _connected_index(std)
         dest = tmp_home / "eb_dst"
 
         args = argparse.Namespace(
@@ -1364,21 +1391,20 @@ class TestBoxDuplicateExternal:
         assert not (dest / "code.py").exists()
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
-        assert _load_connected(std) == before
+        assert _connected_index(std) == before
 
     def test_bare_duplicate_external_to_workset_still_refused(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """The narrowed guard still refuses ``--bare --to workset`` (aliasing case)."""
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import _load_connected
 
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
             tmp_home, std, config, ws_name="extbarews-ws", proj_name="ebw",
         )
-        before = _load_connected(std)
+        before = _connected_index(std)
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
@@ -1388,7 +1414,7 @@ class TestBoxDuplicateExternal:
         rc = run_duplicate(args)
         assert rc == 1
         assert "external-connected" in capsys.readouterr().err
-        assert _load_connected(std) == before
+        assert _connected_index(std) == before
 
 
 # ---------------------------------------------------------------------------

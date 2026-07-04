@@ -494,52 +494,59 @@ class TestRemoveProject:
             remove_project(ws, "nonexistent")
 
 
+def _workset_boxes(ws):
+    """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws.root, load_doc(ws.root / "settings.yaml"),
+    )
+    return workset_registry.load_workset_boxes(registry_path)
+
+
 class TestRemoveExternalProject:
     """disconnect symmetric cleanup for external-connected projects.
 
     Regression guard for the connect-external work: removing an external project
-    must drop its connected.yaml entry and the workspaces/{name} symlink, and
-    must NEVER delete the user's external source directory.
+    must drop its per-workset ``boxes:`` connection record (D10) and the
+    workspaces/{name} symlink, and must NEVER delete the user's external source
+    directory.
     """
 
     def _connect_external(self, std, tmp_home):
-        from kanibako.workset import _load_connected
-
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         (external / "file.txt").write_text("keep me")
         add_project(ws, "extproj", external, std)
 
-        # Sanity: markers exist after connect.
+        # Sanity: markers exist after connect — the per-workset boxes: entry maps
+        # the box name to the EXTERNAL path (the connection record).
         assert (ws.workspaces_dir / "extproj").is_symlink()
-        assert str(external) in _load_connected(std)
+        assert _workset_boxes(ws).get("extproj") == str(external)
         return ws, external
 
     def test_disconnect_clears_markers_keeps_source(self, std, tmp_home):
-        from kanibako.workset import _load_connected
-
         ws, external = self._connect_external(std, tmp_home)
 
         remove_project(ws, "extproj", std=std)
 
-        # connected.yaml entry gone, symlink gone, external source intact.
-        assert str(external) not in _load_connected(std)
+        # boxes: connection record gone, symlink gone, external source intact.
+        assert "extproj" not in _workset_boxes(ws)
         assert not (ws.workspaces_dir / "extproj").is_symlink()
         assert not (ws.workspaces_dir / "extproj").exists()
         assert external.is_dir()
         assert (external / "file.txt").read_text() == "keep me"
 
     def test_disconnect_remove_files_keeps_source(self, std, tmp_home):
-        from kanibako.workset import _load_connected
-
         ws, external = self._connect_external(std, tmp_home)
 
         # Must not crash on the symlink (rmtree refuses symlinks) and must not
         # delete the external source.
         remove_project(ws, "extproj", remove_files=True, std=std)
 
-        assert str(external) not in _load_connected(std)
+        assert "extproj" not in _workset_boxes(ws)
         assert not (ws.workspaces_dir / "extproj").exists()
         assert not (ws.projects_dir / "extproj").exists()
         assert not (ws.vault_dir / "extproj").exists()
@@ -632,9 +639,9 @@ class TestWorksetSettingsFile:
 #
 # Each test injects a failure at a mid-sequence write/operation and asserts the
 # op either fully applied or fully rolled back (no orphan dirs, no dangling
-# connected.yaml redirect / symlink, no registry-vs-index mismatch, external
-# path never locked out).  Mirrors the lifecycle family's failure-injection
-# style (patch a forward step to raise; assert consistent state).
+# per-workset connection record / symlink, no registry-vs-index mismatch,
+# external path never locked out).  Mirrors the lifecycle family's
+# failure-injection style (patch a forward step to raise; assert consistent state).
 # ---------------------------------------------------------------------------
 
 class _Boom(Exception):
@@ -712,16 +719,15 @@ class TestAddProjectFailConsistent:
         self, std, tmp_home, monkeypatch
     ):
         import kanibako.workset as ws_mod
-        from kanibako.workset import _load_connected
 
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         (external / "keep.txt").write_text("keep me")
 
-        # The connected.yaml redirect is written BEFORE the final workset.yaml
-        # write.  If that final write fails, the redirect + symlink must be
-        # rolled back so the external path is NOT locked out.
+        # The per-workset boxes: connection record is written BEFORE the final
+        # workset.yaml write.  If that final write fails, the record + symlink
+        # must be rolled back so the external path is NOT locked out.
         def boom(*a, **k):
             raise _Boom("workset.yaml write failed")
 
@@ -729,8 +735,9 @@ class TestAddProjectFailConsistent:
         with pytest.raises(_Boom):
             add_project(ws, "extproj", external, std)
 
-        # No dangling redirect, no orphan symlink, external source untouched.
-        assert str(external) not in _load_connected(std)
+        # No dangling connection record, no orphan symlink, external source
+        # untouched.
+        assert "extproj" not in _workset_boxes(ws)
         assert not (ws.workspaces_dir / "extproj").is_symlink()
         assert not (ws.workspaces_dir / "extproj").exists()
         assert all(p.name != "extproj" for p in ws.projects)
@@ -740,25 +747,26 @@ class TestAddProjectFailConsistent:
     def test_external_connected_write_failure_unwinds_symlink(
         self, std, tmp_home, monkeypatch
     ):
-        import kanibako.workset as ws_mod
-        from kanibako.workset import _load_connected
+        import kanibako.paths as paths_mod
 
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
 
-        # Fail the connected.yaml write (after the symlink is created).  The
-        # symlink must be rolled back so no orphan link survives.
+        # Fail the per-workset boxes: registration (after the symlink is created).
+        # The symlink must be rolled back so no orphan link survives.
         def boom(*a, **k):
-            raise _Boom("connected.yaml write failed")
+            raise _Boom("boxes: registration failed")
 
-        monkeypatch.setattr(ws_mod, "_write_connected", boom)
+        monkeypatch.setattr(
+            paths_mod, "_register_workset_box_membership", boom,
+        )
         with pytest.raises(_Boom):
             add_project(ws, "extproj", external, std)
 
         assert not (ws.workspaces_dir / "extproj").is_symlink()
         assert not (ws.workspaces_dir / "extproj").exists()
-        assert str(external) not in _load_connected(std)
+        assert "extproj" not in _workset_boxes(ws)
         assert all(p.name != "extproj" for p in ws.projects)
         assert external.is_dir()
 
@@ -767,15 +775,15 @@ class TestRemoveProjectFailConsistent:
     def test_registry_removal_is_last_durable_step(self, std, tmp_home, monkeypatch):
         # If the final workset.yaml write fails during removal, the project must
         # remain registered (re-runnable) rather than being dropped from the
-        # registry while leaving a dangling connected.yaml redirect.
+        # registry while leaving a dangling per-workset connection record.
         import kanibako.workset as ws_mod
-        from kanibako.workset import _load_connected, remove_project
+        from kanibako.workset import remove_project
 
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         add_project(ws, "extproj", external, std)
-        assert str(external) in _load_connected(std)
+        assert _workset_boxes(ws).get("extproj") == str(external)
 
         def boom(*a, **k):
             raise _Boom("workset.yaml write failed")
@@ -784,11 +792,11 @@ class TestRemoveProjectFailConsistent:
         with pytest.raises(_Boom):
             remove_project(ws, "extproj", std=std)
 
-        # connected.yaml + symlink were cleaned (idempotent re-run safe), but the
-        # registry still lists the project — so it is NOT half-gone with a
-        # dangling redirect (the external path is never locked out).
+        # The boxes: record + symlink were cleaned (idempotent re-run safe), but
+        # the registry still lists the project — so it is NOT half-gone with a
+        # dangling record (the external path is never locked out).
         assert "extproj" in {p.name for p in load_workset(ws.root).projects}
-        # The redirect was cleared before the failed registry write; a re-run of
-        # remove_project will complete the removal cleanly.
-        assert str(external) not in _load_connected(std)
+        # The connection record was cleared before the failed registry write; a
+        # re-run of remove_project will complete the removal cleanly.
+        assert "extproj" not in _workset_boxes(ws)
         assert external.is_dir()

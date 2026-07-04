@@ -55,7 +55,6 @@ from kanibako.paths import (
 from kanibako.utils import project_hash, write_project_gitignore
 from kanibako.workset import (
     Workset,
-    _find_connected_project,
     add_project,
     list_worksets,
     load_workset,
@@ -311,9 +310,10 @@ def _resolve_workset_state(
     except WorksetError:
         ws, proj_name = None, None
     if ws is None or proj_name is None:
-        hit = _find_connected_project(raw_path, std)
-        if hit is not None:
-            ws, proj_name = hit
+        from kanibako import box_resolve
+        owned = box_resolve.find_connected_external_box(raw_path, std)
+        if owned is not None:
+            ws, proj_name = load_workset(owned.workset_root), owned.box_name
     if ws is None or proj_name is None:
         raise WorksetError(f"No workset project found for path: {raw_path}")
 
@@ -375,7 +375,7 @@ def copy_into_workset(
     The duplicate is always an INTERNAL workset project: it gets a real
     ``workspaces/<name>`` directory, never an external symlink/redirect back to
     the source.  Duplicate makes a *copy*, not a *connection*; an external
-    connection (1:1 in ``connected.yaml``) is what ``connect`` is for, and a bare
+    connection (1:1 in the per-workset registry) is what ``connect`` is for, and a bare
     duplicate of an already-connected source is refused up front in
     ``run_duplicate``.
 
@@ -884,8 +884,8 @@ def _remove_old_metadata(
     Primary source: unregisters the name, removes the boxes metadata dir and
     the PRIMARY-workset vault dir (which Phase 5 moved out of the workspace).
     Workset source: removes the workset registration (std-aware) so external
-    markers/connected.yaml are cleaned; the external source dir is never
-    deleted.
+    markers / the per-workset connection record are cleaned; the external source
+    dir is never deleted.
 
     (Phase 5 / A7: layouts are gone and the vault is never "hidden" inside the
     workspace, so the human-vault / project-vault discovery symlinks were
@@ -1250,11 +1250,12 @@ def _to_workset(
         copy_workspace = not already_in_place
 
     # workset -> workset re-root: the source workset must release the project
-    # BEFORE the target registers it.  The connected.yaml redirect is 1:1, so an
+    # BEFORE the target registers it.  The connection record is 1:1, so an
     # external source still mapped to the OLD workset would collide with
     # add_project's "already connected" guard.  We therefore drop the source
-    # registration first (clears connected.yaml + the discoverability symlink;
-    # NEVER touches the user's external dir), capture a snapshot of the source
+    # registration first (clears the per-workset connection record + the
+    # discoverability symlink; NEVER touches the user's external dir), capture a
+    # snapshot of the source
     # metadata for unwind, then register with the target.  For an internal
     # ws->ws move the workspace tree was already relocated in STEP 2, so removing
     # the source project (remove_files) only sweeps the leftover skeleton dirs.

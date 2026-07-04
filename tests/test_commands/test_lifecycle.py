@@ -39,6 +39,37 @@ from kanibako.workset import (
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
+def _connected_index(std):
+    """Reconstruct the ``{external_path: {workset, project}}`` connection view.
+
+    D10 replacement for the retired global ``connected:`` index: a connected box
+    is a NAMED workset's per-workset ``boxes:`` entry whose path is EXTERNAL
+    (outside that workset root).  Mirrors the old ``_load_connected`` shape.
+    """
+    from pathlib import Path
+
+    from kanibako import registry_store, workset_registry
+    from kanibako.config_io import load_doc
+
+    out = {}
+    for name, root_str in registry_store.load_section(
+        std.registry, "worksets"
+    ).items():
+        root = Path(root_str)
+        registry_path = workset_registry.resolve_workset_registry_path(
+            root, load_doc(root / "settings.yaml"),
+        )
+        for box_name, box_path in workset_registry.load_workset_boxes(
+            registry_path
+        ).items():
+            resolved = Path(box_path).resolve()
+            try:
+                resolved.relative_to(root.resolve())
+                continue
+            except ValueError:
+                out[str(resolved)] = {"workset": name, "project": box_name}
+    return out
+
 @pytest.fixture
 def env(config_file, tmp_home, credentials_dir):
     """Loaded config + std + temp home."""
@@ -429,8 +460,7 @@ class TestConvertInPlace:
         ws2 = load_workset(ws.root)
         assert not any(p.name == "ep" for p in ws2.projects)
         # connected.yaml cleared.
-        from kanibako.workset import _load_connected
-        assert str(external.resolve()) not in _load_connected(std)
+        assert str(external.resolve()) not in _connected_index(std)
 
     def test_workset_to_standalone(self, env):
         config, std, tmp_home = env
@@ -477,8 +507,7 @@ class TestWorksetToWorkset:
         assert not any(p.name == "p" for p in load_workset(ws_a.root).projects)
         assert any(p.name == "p" for p in load_workset(tmp_home / "wsb_root").projects)
         # connected.yaml points at wsb now.
-        from kanibako.workset import _load_connected
-        entry = _load_connected(std)[str(external.resolve())]
+        entry = _connected_index(std)[str(external.resolve())]
         assert entry["workset"] == "wsb"
 
     def test_internal_inplace_refused(self, env):

@@ -145,6 +145,70 @@ def find_owning_workset(
     return (owned.workset_name, owned.workset_root, owned.mode)
 
 
+def find_connected_external_box(
+    project_dir: Path,
+    std: StandardPaths,
+) -> _OwnedBox | None:
+    """Resolve *project_dir* (or an ancestor) to an EXTERNAL-connected box.
+
+    The per-workset registries collectively ARE the reverse index (D10): a
+    connected box is a NAMED workset's ``boxes:`` entry whose registered PATH is
+    an EXTERNAL directory (outside that workset's root).  This enumerates every
+    NAMED workset (the global ``worksets:`` discovery section), scans its
+    per-workset ``boxes:`` membership (honoring a ``workset.registry`` repoint),
+    and returns the entry whose registered path is *project_dir* OR a proper
+    ANCESTOR of it — DEEPEST wins, the same ancestor semantics the legacy
+    ``connected:`` index used so a launch from a SUBDIR of a connected dir still
+    resolves.  In-tree boxes (path under the workset root) are skipped — they are
+    resolved by ordinary location detection.  The PRIMARY workset is skipped:
+    default-mode external boxes were never in ``connected:`` and resolve by their
+    own name index.  ``None`` when no connected box owns *project_dir*.
+
+    This REPLACES the global ``connected:`` index + ``workset._find_connected_project``
+    (D10 enumerate-and-scan; no marker in the user's repo).
+    """
+    target = project_dir.resolve()
+    best: _OwnedBox | None = None
+    best_depth = -1
+    for name, root_str in registry_store.load_section(
+        std.registry, "worksets"
+    ).items():
+        root = Path(root_str)
+        root_resolved = root.resolve()
+        settings: Any = load_doc(root / "settings.yaml")
+        registry_path = workset_registry.resolve_workset_registry_path(
+            root, settings
+        )
+        boxes = workset_registry.load_workset_boxes(registry_path)
+        for box_name, box_path_str in boxes.items():
+            box_path = Path(box_path_str).resolve()
+            # EXTERNAL only: an in-tree box (path under the workset root) is a
+            # normal membership entry, never a connected-external record.
+            try:
+                box_path.relative_to(root_resolved)
+                continue
+            except ValueError:
+                pass
+            # Ancestor match: the registered external path IS *target* or an
+            # ancestor of it (deepest registered path wins — the connected:
+            # ancestor-walk semantics, so a subdir launch still resolves).
+            try:
+                target.relative_to(box_path)
+            except ValueError:
+                continue
+            depth = len(box_path.parts)
+            if depth > best_depth:
+                best = _OwnedBox(
+                    workset_name=name,
+                    workset_root=root,
+                    mode=BoxMode.named,
+                    box_name=box_name,
+                    box_path=box_path,
+                )
+                best_depth = depth
+    return best
+
+
 def detect_box_mode(
     project_dir: Path,
     std: StandardPaths,

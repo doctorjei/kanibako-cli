@@ -2,9 +2,10 @@
 
 A single file at ``@config.registry`` (``@config.data/global/registry.yaml`` ==
 ``{data_path}/global/registry.yaml``) backs every kanibako *name* store.  It replaces the former separate files
-``names.yaml`` (projects + worksets), ``worksets.yaml`` (workset name → root)
-and ``connected.yaml`` (external-connect redirects), which are no longer read
-or written.
+``names.yaml`` (projects + worksets) and ``worksets.yaml`` (workset name →
+root), which are no longer read or written.  (The former global ``connected:``
+external-connect index is GONE — connections now live in each workset's
+per-workset registry as a ``boxes:`` entry, design D10.)
 
 The file has these top-level sections::
 
@@ -13,9 +14,6 @@ The file has these top-level sections::
 
     worksets:
       clientwork: /home/user/worksets/client
-
-    connected:
-      /abs/external/repo: {workset: myws, project: foo}
 
     standalone:
       # box.name → root, populated by sub-step 5d; empty for now.
@@ -37,9 +35,8 @@ The file has these top-level sections::
 ``worksets`` carries the workset name → root registry used both for name-based
 lookups AND to discover/list worksets (the former separate ``worksets.yaml`` and
 its ``workset_roots`` duplicate were collapsed onto this single section,
-2026-06-29f).  ``connected`` carries the former
-``connected.yaml`` payload verbatim.  ``standalone`` is reserved for the
-standalone-box identity work in a later sub-step and stays empty here.
+2026-06-29f).  ``standalone`` maps a registered standalone box's
+``<kuid>_<leaf>`` name → root path.
 ``rigs`` carries the former ``rigs.yaml`` payload (added-rig records keyed by
 rig name; the ``rig_registry`` module owns its shape).  ``image_shells`` carries
 the former ``image-shells.yaml`` map (image store key → captured login shell;
@@ -70,7 +67,6 @@ from kanibako.config_io import dump_doc, load_doc
 _SECTIONS: tuple[str, ...] = (
     "projects",
     "worksets",
-    "connected",
     "standalone",
     "rigs",
     "image_shells",
@@ -102,7 +98,6 @@ def load_registry(registry: Path) -> dict[str, dict]:
         "worksets": {
             k: str(v) for k, v in dict(data.get("worksets", {})).items()
         },
-        "connected": dict(data.get("connected", {})),
         "standalone": dict(data.get("standalone", {})),
         "rigs": dict(data.get("rigs", {})),
         "image_shells": dict(data.get("image_shells", {})),
