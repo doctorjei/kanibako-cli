@@ -90,10 +90,14 @@ def _launch_auth_source(std, *, agent_name="claude", mode="primary"):
         system_path=std.settings, agent_path=None,
         workset_path=None, box_path=None,
         auth_chain=auth_chain_floor(mode=mode, agent_name=agent_name),
-        meta_runtime=meta_runtime_floor(mode=mode, ws_root_literal=None),
+        meta_runtime=meta_runtime_floor(
+            mode=mode,
+            ws_name=("__PRIMARY__" if mode == "primary" else "__STANDALONE__"),
+            ws_root_literal=None,
+        ),
         meta_identity=meta_identity_floor(
             box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-            share_workset=None, workset_name="__PRIMARY__",
+            share_workset=None,
             agent_name=agent_name, agent_real_name=agent_name,
             agent_auth_share_support=True,
         ),

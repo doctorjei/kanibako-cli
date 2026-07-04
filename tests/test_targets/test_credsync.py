@@ -609,11 +609,13 @@ def _real_auth_source(mode: str, *, agent_name: str = "goose"):
     chain = auth_chain_floor(mode=mode, agent_name=agent_name)
     meta_id = meta_identity_floor(
         box_name="b", project_path="/p", inbox="/i", share_global="/s",
-        share_workset=None, workset_name="__STANDALONE__", agent_name=agent_name,
+        share_workset=None, agent_name=agent_name,
         agent_real_name=agent_name, agent_auth_share_support=True,
     )
     mr = meta_runtime_floor(
-        mode=mode, ws_root_literal=("/ws" if mode != "primary" else None)
+        mode=mode,
+        ws_name=("__PRIMARY__" if mode == "primary" else "__STANDALONE__"),
+        ws_root_literal=("/ws" if mode != "primary" else None),
     )
     snap = build_launch_snapshot(
         agent_name=agent_name, ctx=ctx, system_path=None, agent_path=None,

@@ -501,8 +501,9 @@ class MetaWorksetView(FiniteView):
     Exposes the single-source-re-rooted ``path`` (= ``@meta.runtime.ws_root``, a
     resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_settings``, a
     ``Path`` for primary/named, ``None`` for STANDALONE — spec §2c L415), plus the
-    construct-set ``name`` (B2 — the partition token ``__PRIMARY__`` / ``<named>`` /
-    ``__STANDALONE__``, spec §2c). Read-only; wraps ``store.meta.workset``.
+    ``name`` partition token (``__PRIMARY__`` / ``<named>`` / ``__STANDALONE__``) —
+    now the ``@meta.runtime.ws_name`` anchor (block B1, single source, spec §1A/§2c
+    2026-07-04; was a direct B2 literal). Read-only; wraps ``store.meta.workset``.
     """
 
     path: Path = typed_field(as_path)  # type: ignore[assignment]

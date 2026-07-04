@@ -468,11 +468,15 @@ def _auth_snapshot(
     chain = auth_chain_floor(mode=mode, agent_name=agent_name)
     meta_id = _mid_floor(
         box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-        share_workset=None, workset_name="__PRIMARY__", agent_name=agent_name,
+        share_workset=None, agent_name=agent_name,
         agent_real_name=agent_name, agent_auth_share_support=support,
     )
     mr = _mr_floor(
-        mode=mode, ws_root_literal=("/ws" if mode != "primary" else None)
+        mode=mode,
+        ws_name={
+            "primary": "__PRIMARY__", "standalone": "__STANDALONE__",
+        }.get(mode, "ws"),
+        ws_root_literal=("/ws" if mode != "primary" else None),
     )
 
     counter = count()
@@ -645,9 +649,24 @@ def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveC
     )
 
 
-def _meta_snapshot(mode: str, *, ws_root_literal: str | None = None, ctx=None):
-    """Build a focused snapshot carrying ONLY the meta.runtime floor."""
-    meta = meta_runtime_floor(mode=mode, ws_root_literal=ws_root_literal)
+_WS_TOKEN_BY_MODE = {"primary": "__PRIMARY__", "standalone": "__STANDALONE__"}
+
+
+def _meta_snapshot(
+    mode: str, *, ws_root_literal: str | None = None, ws_name: str | None = None,
+    ctx=None,
+):
+    """Build a focused snapshot carrying ONLY the meta.runtime floor.
+
+    *ws_name* defaults to the reserved token for primary/standalone, or the
+    named-workset stand-in ``"kento"`` for named — the partition token threaded
+    into ``meta_runtime_floor`` (spec §1A ws_name).
+    """
+    if ws_name is None:
+        ws_name = _WS_TOKEN_BY_MODE.get(mode, "kento")
+    meta = meta_runtime_floor(
+        mode=mode, ws_name=ws_name, ws_root_literal=ws_root_literal,
+    )
     return build_launch_snapshot(
         agent_name="claude",
         ctx=ctx if ctx is not None else _ctx(),
@@ -729,6 +748,58 @@ def test_meta_workset_settings_single_sources_and_none_for_standalone():
     assert dict.get(_meta_node(snap_s, "meta", "workset"), "settings") is None
 
 
+def test_meta_runtime_ws_name_per_mode():
+    """meta.runtime.ws_name holds the workset partition TOKEN per mode (spec §1A,
+    2026-07-04): primary=__PRIMARY__ · named=<detected name> · standalone=
+    __STANDALONE__ (P6b — the token threaded in by the caller)."""
+    snap_p = _meta_snapshot(
+        "primary", ws_name="__PRIMARY__", ctx=_ctx_with_config()
+    )
+    assert dict.get(_meta_node(snap_p, "meta", "runtime"), "ws_name") == "__PRIMARY__"
+    snap_n = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
+    assert dict.get(_meta_node(snap_n, "meta", "runtime"), "ws_name") == "kento"
+    snap_s = _meta_snapshot(
+        "standalone", ws_root_literal="/scratch/myproj", ws_name="__STANDALONE__"
+    )
+    assert (
+        dict.get(_meta_node(snap_s, "meta", "runtime"), "ws_name")
+        == "__STANDALONE__"
+    )
+
+
+def test_meta_workset_name_single_sources_from_ws_name_all_modes():
+    """meta.workset.name resolves VIA the @meta.runtime.ws_name anchor (spec §2c
+    L442/449/457, 2026-07-04) — the SAME token per mode B2 formerly set directly.
+    Proving it is the ANCHOR: the resolved meta.workset.name EQUALS the resolved
+    meta.runtime.ws_name for every mode (would go RED if the anchor were absent /
+    the key reverted to a direct literal that could drift)."""
+    for mode, kw in (
+        ("primary", {"ws_name": "__PRIMARY__", "ctx": _ctx_with_config()}),
+        ("named", {"ws_root_literal": "/code/kento", "ws_name": "kento"}),
+        (
+            "standalone",
+            {"ws_root_literal": "/scratch/myproj", "ws_name": "__STANDALONE__"},
+        ),
+    ):
+        snap = _meta_snapshot(mode, **kw)
+        ws_name_resolved = dict.get(_meta_node(snap, "meta", "runtime"), "ws_name")
+        name = dict.get(_meta_node(snap, "meta", "workset"), "name")
+        # The anchor resolved to the runtime token (single source) …
+        assert name == ws_name_resolved
+        # … and to the exact expected literal for this mode.
+        assert name == kw["ws_name"]
+
+
+def test_meta_workset_name_view_typed():
+    """MetaWorksetView.name reads the anchored partition token (str) — the anchor
+    surfaces at the view layer for every mode."""
+    import kanibako.settings_views as views
+
+    snap = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
+    ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
+    assert ws.name == "kento"
+
+
 def test_meta_box_mode_equals_project_type_all_modes():
     """meta.box.mode == meta.runtime.project_type (the RO identity anchor, spec
     §2b L486)."""
@@ -779,7 +850,10 @@ def test_hostile_box_file_meta_table_cannot_override_snapshot_anchors(
             },
         },
     )
-    meta = meta_runtime_floor(mode="standalone", ws_root_literal="/scratch/myproj")
+    meta = meta_runtime_floor(
+        mode="standalone", ws_name="__STANDALONE__",
+        ws_root_literal="/scratch/myproj",
+    )
     with caplog.at_level("WARNING"):
         snap = build_launch_snapshot(
             agent_name="claude",
@@ -842,22 +916,22 @@ def test_meta_runtime_floor_requires_literal_for_non_primary():
     """A named/standalone floor needs the resolved ws_root literal (only primary
     uses the @config.primary_workset @-ref)."""
     with pytest.raises(_SettingsError):
-        meta_runtime_floor(mode="named")
+        meta_runtime_floor(mode="named", ws_name="kento")
     with pytest.raises(_SettingsError):
-        meta_runtime_floor(mode="standalone")
+        meta_runtime_floor(mode="standalone", ws_name="__STANDALONE__")
     # primary ignores the literal.
-    floor = meta_runtime_floor(mode="primary")
+    floor = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
     assert floor["meta.runtime.ws_root"] == "@config.primary_workset"
 
 
 def test_meta_runtime_coexists_with_auth_chain():
     """The B1 meta.runtime floor + the auth chain BOTH inject under meta.box.* —
     distinct leaves, no collision (the main launch path passes both)."""
-    meta = meta_runtime_floor(mode="primary")
+    meta = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
     chain = auth_chain_floor(mode="primary", agent_name="claude")
     meta_id = _mid_floor(
         box_name="b", project_path="/p", inbox="/i", share_global="/sg",
-        share_workset=None, workset_name="__PRIMARY__", agent_name="claude",
+        share_workset=None, agent_name="claude",
         agent_real_name="claude", agent_auth_share_support=True,
     )
     snap = build_launch_snapshot(
@@ -889,7 +963,6 @@ def _identity_snapshot(
     inbox="/data/channels/mailboxes/__PRIMARY__/droste",
     share_global="/data/channels/share/__PRIMARY__/droste",
     share_workset="/code/kento/channels/share/droste",
-    workset_name="__PRIMARY__",
     agent_name="claude",
     default_categories=None,
     ctx=None,
@@ -902,7 +975,6 @@ def _identity_snapshot(
         inbox=inbox,
         share_global=share_global,
         share_workset=share_workset,
-        workset_name=workset_name,
         agent_name=agent_name,
         agent_real_name=agent_name,
     )
@@ -916,8 +988,9 @@ def _identity_snapshot(
 
 
 def test_meta_identity_box_keys_materialized():
-    """meta.box.{name,workspace,inbox,share_global,share_workset} + meta.workset.name
-    are REAL keys holding the resolved literals (spec §2c)."""
+    """meta.box.{name,workspace,inbox,share_global,share_workset} are REAL keys
+    holding the resolved literals (spec §2c). (meta.workset.name is now a
+    meta_runtime_floor anchor — covered in the B1 block.)"""
     snap = _identity_snapshot()
     mb = _meta_node(snap, "meta", "box")
     assert dict.get(mb, "name") == "droste"
@@ -925,7 +998,11 @@ def test_meta_identity_box_keys_materialized():
     assert dict.get(mb, "inbox") == "/data/channels/mailboxes/__PRIMARY__/droste"
     assert dict.get(mb, "share_global") == "/data/channels/share/__PRIMARY__/droste"
     assert dict.get(mb, "share_workset") == "/code/kento/channels/share/droste"
-    assert dict.get(_meta_node(snap, "meta", "workset"), "name") == "__PRIMARY__"
+    # B2 no longer sets meta.workset.name (it anchors into meta.runtime.ws_name,
+    # which this identity-only snapshot does not carry) — so there is no
+    # meta.workset.name in an identity-only snapshot.
+    workset_node = dict.get(_meta_node(snap, "meta"), "workset")
+    assert workset_node is None or not dict.__contains__(workset_node, "name")
 
 
 def test_meta_identity_agent_name_under_discriminated_slot():
@@ -940,16 +1017,18 @@ def test_meta_identity_no_agent_omits_agent_key():
     """A NO-AGENT box (agent_name=None) materializes NO meta.agent.* key."""
     floor = meta_identity_floor(
         box_name="x", project_path="/p", inbox="/i", share_global="/s",
-        share_workset=None, workset_name="__STANDALONE__", agent_name=None,
+        share_workset=None, agent_name=None,
     )
     assert not any(k.startswith("meta.agent.") for k in floor)
+    # And B2 no longer emits meta.workset.name at all.
+    assert "meta.workset.name" not in floor
 
 
 def test_meta_identity_standalone_share_workset_none_terminal():
     """STANDALONE: share_workset is a whole-value None terminal — PRESENT with
     value None (spec §2c L469), not dropped (mirrors meta.runtime.ws_settings)."""
     snap = _identity_snapshot(
-        share_workset=None, workset_name="__STANDALONE__",
+        share_workset=None,
     )
     mb = _meta_node(snap, "meta", "box")
     assert dict.__contains__(mb, "share_workset")
@@ -1005,15 +1084,15 @@ def test_meta_box_view_reads_b2_fields_typed():
     assert mb.share_workset == Path("/code/kento/channels/share/droste")
     ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
     assert ma.name == "claude"
-    ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
-    assert ws.name == "__PRIMARY__"
+    # meta.workset.name is now a meta_runtime_floor anchor (B1) — not part of this
+    # identity-only snapshot; MetaWorksetView.name coverage lives in the B1 block.
 
 
 def test_meta_box_view_standalone_share_workset_none():
     """MetaBoxView.share_workset is None (typed Path|None) for standalone."""
     import kanibako.settings_views as views
 
-    snap = _identity_snapshot(share_workset=None, workset_name="__STANDALONE__")
+    snap = _identity_snapshot(share_workset=None)
     mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
     assert mb.share_workset is None
 

@@ -3032,8 +3032,17 @@ def _launch_snapshot_inputs(
         ws_root_literal = str(proj.metadata_path)
     else:
         ws_root_literal = None  # primary uses the @config.primary_workset @-ref
+    # The workset partition TOKEN (spec §1A meta.runtime.ws_name, 2026-07-04) —
+    # SINGLE-SOURCED on channels.workset_name_token (primary=__PRIMARY__ ·
+    # named=<detected name> · standalone=__STANDALONE__). Threaded into
+    # meta_runtime_floor so the snapshot's meta.runtime.ws_name holds it and
+    # meta.workset.name anchors into it (§2c); the SAME token drives the channel
+    # partition (channels.box_channel_addresses below), so the two cannot drift.
+    from kanibako import channels as _channels
+
+    ws_token = _channels.workset_name_token(proj)
     meta_runtime = settings_launch_module.meta_runtime_floor(
-        mode=mode, ws_root_literal=ws_root_literal,
+        mode=mode, ws_name=ws_token, ws_root_literal=ws_root_literal,
     )
 
     # meta.* IDENTITY-anchor materialization (block B2, spec §2c/§2d). The remaining
@@ -3041,13 +3050,10 @@ def _launch_snapshot_inputs(
     # reference. Every value is the RESOLVED LITERAL the launch already computes —
     # the box name (proj.name; JC-B2-2 reuse), the workspace source
     # (str(proj.project_path)), the channel partition ADDRESSES
-    # (channels.box_channel_addresses), the workset partition token
-    # (channels.workset_name_token), and the plugin-set agent name — so an
+    # (channels.box_channel_addresses), and the plugin-set agent name — so an
     # @meta.box.workspace / @meta.box.inbox bind expands byte-identically (JC-B2-4).
-    from kanibako import channels as _channels
-
+    # (The workset partition token now lives on meta.runtime.ws_name — set above.)
     addr = _channels.box_channel_addresses(proj, std)
-    ws_token = _channels.workset_name_token(proj)
     # The agent's credential-SHARING CAPABILITY (spec §2d; auth-level design step 2):
     # the plugin-set RO ``meta.agent.<agent>.auth.share_support`` the box's mirror
     # views up. Read off the descriptor for the ACTIVE agent (single-source: the
@@ -3084,7 +3090,6 @@ def _launch_snapshot_inputs(
         share_workset=(
             str(addr.share_workset) if addr.share_workset is not None else None
         ),
-        workset_name=ws_token,
         # The agent identity key (spec §2d L514): the cascade discriminator AND the
         # value are the resolved agent name (install.name). Omitted for a NO-AGENT
         # box (empty name) — it has no agent identity.

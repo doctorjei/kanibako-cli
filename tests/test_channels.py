@@ -72,6 +72,48 @@ class TestWorksetNameToken:
 
 
 # ---------------------------------------------------------------------------
+# ws_name single-source drift guard (P6b, spec §1A meta.runtime.ws_name)
+# ---------------------------------------------------------------------------
+
+class TestWsNameSingleSourceDriftGuard:
+    """P6b: the channel partition token and the runtime-layer ``meta.runtime.
+    ws_name`` are SINGLE-SOURCED — ``start.py`` threads
+    ``channels.workset_name_token(proj)`` straight into ``meta_runtime_floor`` as
+    ``ws_name`` (the SAME token also keys the channel partition, so the two cannot
+    drift). This pins the channels derivation to the meta-runtime definition +
+    the ``meta.workset.name`` anchor, so a change to either without the other goes
+    RED. NON-vacuous: it exercises the real per-mode ``workset_name_token``
+    derivation off ``proj`` and asserts the exact expected token per mode.
+    """
+
+    def _guard(self, proj, std):
+        from kanibako.settings_launch import meta_runtime_floor
+
+        token = channels.workset_name_token(proj)
+        mode = proj.mode.value
+        ws_root = (
+            None if mode == "primary" else str(channels.workset_root(proj, std))
+        )
+        floor = meta_runtime_floor(
+            mode=mode, ws_name=token, ws_root_literal=ws_root,
+        )
+        # The token channels derived IS meta.runtime.ws_name (single source) …
+        assert floor["meta.runtime.ws_name"] == token
+        # … and meta.workset.name anchors into it (not a divergeable literal).
+        assert floor["meta.workset.name"] == "@meta.runtime.ws_name"
+        return token
+
+    def test_primary(self, primary_proj, std):
+        assert self._guard(primary_proj, std) == WS_TOKEN_PRIMARY
+
+    def test_named(self, named_proj, std):
+        assert self._guard(named_proj, std) == "my-set"
+
+    def test_standalone(self, standalone_proj, std):
+        assert self._guard(standalone_proj, std) == WS_TOKEN_STANDALONE
+
+
+# ---------------------------------------------------------------------------
 # workset_root
 # ---------------------------------------------------------------------------
 
