@@ -706,17 +706,20 @@ def test_meta_runtime_named_ws_root_is_detected_root_literal():
     assert dict.get(runtime, "ws_settings") == "/code/kento/settings.yaml"
 
 
-def test_meta_runtime_standalone_ws_root_dir_and_ws_settings_none():
-    """STANDALONE: ws_root = the project dir literal; ws_settings = None — a
-    whole-value None terminal (spec §1A L235-236 / §2c L415)."""
+def test_meta_runtime_standalone_ws_root_dir_and_ws_settings_uniform():
+    """STANDALONE: ws_root = the project dir literal; ws_settings is now UNIFORM
+    (P6c 2026-07-04) — @meta.runtime.ws_root/settings.yaml resolves to
+    <root>/settings.yaml (the standalone file plays the WORKSET tier), NOT the old
+    <None> terminal (spec §1A L261-262)."""
     snap = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
     runtime = _meta_node(snap, "meta", "runtime")
     assert dict.get(runtime, "ws_root") == "/scratch/myproj"
     assert dict.get(runtime, "project_type") == "standalone"
-    # None propagates as a real None terminal (the key is PRESENT with value None,
-    # not dropped — a whole-value None ref).
+    # UNIFORM: the embedded @-ref resolves against ws_root (NOT None). Mutation-
+    # guard: reverting to the standalone→None branch makes this /scratch/myproj vs
+    # None → RED.
     assert dict.__contains__(runtime, "ws_settings")
-    assert dict.get(runtime, "ws_settings") is None
+    assert dict.get(runtime, "ws_settings") == "/scratch/myproj/settings.yaml"
 
 
 def test_meta_workset_path_single_sources_from_ws_root_all_modes():
@@ -736,16 +739,19 @@ def test_meta_workset_path_single_sources_from_ws_root_all_modes():
     assert dict.get(_meta_node(snap_s, "meta", "workset"), "path") == "/scratch/myproj"
 
 
-def test_meta_workset_settings_single_sources_and_none_for_standalone():
-    """meta.workset.settings == meta.runtime.ws_settings (spec §1A L240); None for
-    standalone."""
+def test_meta_workset_settings_single_sources_all_modes():
+    """meta.workset.settings == meta.runtime.ws_settings (spec §1A L240); UNIFORM
+    across ALL modes incl. standalone (P6c 2026-07-04 — no longer None)."""
     snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
     assert (
         dict.get(_meta_node(snap_n, "meta", "workset"), "settings")
         == "/code/kento/settings.yaml"
     )
     snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
-    assert dict.get(_meta_node(snap_s, "meta", "workset"), "settings") is None
+    assert (
+        dict.get(_meta_node(snap_s, "meta", "workset"), "settings")
+        == "/scratch/myproj/settings.yaml"
+    )
 
 
 def test_meta_runtime_ws_name_per_mode():
@@ -903,13 +909,14 @@ def test_meta_views_read_runtime_typed():
     assert ws.path == _Path("/code/kento")
     assert ws.settings == _Path("/code/kento/settings.yaml")
 
-    # standalone: ws_settings / workset.settings are None (typed Path|None).
+    # standalone: ws_settings / workset.settings are now UNIFORM (P6c) — the
+    # <root>/settings.yaml the standalone file plays as the WORKSET tier, NOT None.
     snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
     rt_s = views.MetaRuntimeView(_meta_node(snap_s, "meta", "runtime"))
-    assert rt_s.ws_settings is None
+    assert rt_s.ws_settings == _Path("/scratch/myproj/settings.yaml")
     assert rt_s.ws_root == _Path("/scratch/myproj")
     ws_s = views.MetaWorksetView(_meta_node(snap_s, "meta", "workset"))
-    assert ws_s.settings is None
+    assert ws_s.settings == _Path("/scratch/myproj/settings.yaml")
 
 
 def test_meta_runtime_floor_requires_literal_for_non_primary():
@@ -1026,13 +1033,42 @@ def test_meta_identity_no_agent_omits_agent_key():
 
 def test_meta_identity_standalone_share_workset_none_terminal():
     """STANDALONE: share_workset is a whole-value None terminal — PRESENT with
-    value None (spec §2c L469), not dropped (mirrors meta.runtime.ws_settings)."""
+    value None (spec §2c L469), not dropped. (Distinct rationale from
+    meta.runtime.ws_settings, which is now uniform-non-None after P6c — share_workset
+    is None because a lone box has no workset-LOCAL channel dir.)"""
     snap = _identity_snapshot(
         share_workset=None,
     )
     mb = _meta_node(snap, "meta", "box")
     assert dict.__contains__(mb, "share_workset")
     assert dict.get(mb, "share_workset") is None
+
+
+def test_meta_box_settings_anchor_primary_named_and_standalone():
+    """meta.box.settings (P6c, spec §2c L493/L472) is the RO box-TIER file anchor:
+    the resolved box-tier path STRING for primary/named; a PRESENT-key None terminal
+    for standalone (box tier EMPTY). Mutation-guard: dropping the floor dict entry →
+    the primary/named path assert (non-None) → RED; and the standalone present-key
+    assert → RED."""
+    # primary/named: the box's own settings.yaml path is materialized verbatim.
+    floor_pn = meta_identity_floor(
+        box_name="droste", project_path="/code/droste", inbox="/i",
+        share_global="/s", share_workset=None,
+        box_settings="/data/pw/boxes/droste/settings.yaml",
+    )
+    assert floor_pn["meta.box.settings"] == "/data/pw/boxes/droste/settings.yaml"
+    # standalone: box tier EMPTY → a PRESENT key with value None (not dropped).
+    floor_std = meta_identity_floor(
+        box_name="x", project_path="/p", inbox="/i", share_global="/s",
+        share_workset=None, box_settings=None,
+    )
+    assert "meta.box.settings" in floor_std
+    assert floor_std["meta.box.settings"] is None
+    # And it survives into the resolved snapshot as a real meta.box leaf.
+    snap_std = _identity_snapshot(share_workset=None)  # box_settings defaults None
+    mb = _meta_node(snap_std, "meta", "box")
+    assert dict.__contains__(mb, "settings")
+    assert dict.get(mb, "settings") is None
 
 
 def test_workspace_bind_routes_through_meta_box_workspace():

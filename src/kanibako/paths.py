@@ -288,6 +288,37 @@ class ProjectPaths:
     group: ProjectGroup | None = field(default=None)
 
 
+def box_workset_settings_paths(
+    proj: ProjectPaths,
+) -> tuple[Path | None, Path | None]:
+    """THE mode-aware launch-cascade ``(box_tier, workset_tier)`` settings-file pair
+    (P6c standalone TIER MODEL, spec §2c L472/L493).
+
+    The SINGLE SOURCE for which files the launch cascade mounts as the box tier and
+    the workset tier — used by ``start.py``'s snapshot resolvers AND to materialize
+    the ``meta.box.settings`` anchor, so the two cannot drift:
+
+    * **primary / named** — box tier = the box's own ``<metadata_path>/settings.yaml``
+      (``BOX_META_FILE``); workset tier = ``workset_settings_path(proj.group)`` (the
+      workset root's ``settings.yaml``). UNCHANGED from pre-P6c.
+    * **standalone** — box tier = ``None`` (EMPTY: a lone box is a one-box workset, so
+      it has no distinct box-tier file); workset tier = the box's single
+      ``<metadata_path>/settings.yaml``, which now plays the WORKSET tier. A
+      ``box.*`` key set in that file still resolves for box scope via R2
+      downward-defaults (``box`` ⊂ ``workset`` in ``SCOPE_CONTAINMENT`` — the
+      workset-tier read KEEPS ``box.*``).
+
+    This is the LAUNCH-CASCADE view ONLY: a standalone ``config set`` still WRITES
+    to ``<metadata_path>/settings.yaml`` (the write target is unchanged); P6c only
+    mounts that file as the workset tier at launch.
+    """
+    box_meta = proj.metadata_path / BOX_META_FILE
+    if proj.mode is BoxMode.standalone:
+        # Box tier EMPTY; the single <root>/settings.yaml plays the workset tier.
+        return None, box_meta
+    return box_meta, workset_settings_path(proj.group)
+
+
 class _WorksetLike(Protocol):
     """Structural type for the attributes :meth:`WorksetSpec.from_workset` reads.
 

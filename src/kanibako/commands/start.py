@@ -1092,8 +1092,6 @@ def _run_container(
         agent_name=agent_id,
         agent_cfg=agent_cfg,
         system_settings_path=system_settings_path,
-        project_toml=project_toml,
-        workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
 
@@ -1304,7 +1302,6 @@ def _run_container(
                 std=std, proj=proj, target=target, desc=desc,
                 agent_id=agent_id, agent_cfg_path=agent_cfg_path,
                 system_settings_path=system_settings_path,
-                project_toml=project_toml, workset_path=workset_path,
                 auth_src=auth_src, logger=logger,
                 suppress_oauth=suppress_oauth,
             )
@@ -1320,8 +1317,8 @@ def _run_container(
         # (D-M4) suppresses every synced entry for a PRIVATE box (shares False).
         _apply_synced_copies(
             std=std, proj=proj, agent_name=agent_id, target=target,
-            global_config_path=system_settings_path, project_toml=project_toml,
-            workset_config_path=workset_path, agent_config_path=agent_cfg_path,
+            global_config_path=system_settings_path,
+            agent_config_path=agent_cfg_path,
             logger=logger, shares=auth_src.shares,
         )
 
@@ -1445,8 +1442,6 @@ def _run_container(
             proj=proj,
             agent_name=agent_id,
             system_settings_path=system_settings_path,
-            project_toml=project_toml,
-            workset_path=workset_path,
             agent_cfg_path=agent_cfg_path,
             desc=desc,
             install=install,
@@ -1646,8 +1641,6 @@ def _run_container(
                     proj=proj,
                     agent_name=agent_id,
                     system_settings_path=system_settings_path,
-                    project_toml=project_toml,
-                    workset_path=workset_path,
                     agent_cfg_path=agent_cfg_path,
                     desc=None,
                     install=None,
@@ -1861,8 +1854,6 @@ def _run_container(
                 proj=proj,
                 agent_name=agent_id,
                 system_settings_path=system_settings_path,
-                project_toml=project_toml,
-                workset_path=workset_path,
                 agent_cfg_path=agent_cfg_path,
                 desc=None,
                 install=None,
@@ -2742,8 +2733,6 @@ def _resolve_box_auth_source(
     proj,
     agent_name: str,
     system_settings_path,
-    project_toml,
-    workset_path,
     agent_cfg_path,
 ):
     """Resolve the box's credential-SHARING SOURCE through the auth 3-tier chain.
@@ -2770,9 +2759,10 @@ def _resolve_box_auth_source(
     """
     from kanibako import settings_launch
 
-    ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
-        _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
-    )
+    (
+        ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        cascade_box_path, cascade_workset_path,
+    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     chain = settings_launch.auth_chain_floor(
         mode=proj.mode.value,
         agent_name=agent_name,
@@ -2780,14 +2770,16 @@ def _resolve_box_auth_source(
     # The resolved system.* tier is folded into the floor (default_categories
     # here carries ONLY system.* — no category families) so any @-ref in the
     # chain that reaches system.* resolves; this keeps the focused snapshot
-    # consistent with the main one.
+    # consistent with the main one. The cascade box/workset tier file paths are the
+    # mode-aware single source (P6c) — standalone reads <root>/settings.yaml as the
+    # WORKSET tier, box tier empty.
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_name,
         ctx=ctx,
         system_path=system_settings_path,
         agent_path=agent_cfg_path,
-        workset_path=workset_path,
-        box_path=project_toml,
+        workset_path=cascade_workset_path,
+        box_path=cascade_box_path,
         default_categories=dict(resolved_sys),
         auth_chain=chain,
         meta_runtime=meta_runtime,
@@ -2805,8 +2797,6 @@ def _resolve_box_launch_decisions(
     agent_name: str,
     agent_cfg,
     system_settings_path,
-    project_toml,
-    workset_path,
     agent_cfg_path,
 ) -> "tuple[AuthSource, str | None]":
     """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint) off ONE
@@ -2833,9 +2823,10 @@ def _resolve_box_launch_decisions(
     """
     from kanibako import settings_launch
 
-    ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
-        _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
-    )
+    (
+        ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        cascade_box_path, cascade_workset_path,
+    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     chain = settings_launch.auth_chain_floor(
         mode=proj.mode.value,
         agent_name=agent_name,
@@ -2854,8 +2845,8 @@ def _resolve_box_launch_decisions(
         ctx=ctx,
         system_path=system_settings_path,
         agent_path=agent_cfg_path,
-        workset_path=workset_path,
-        box_path=project_toml,
+        workset_path=cascade_workset_path,
+        box_path=cascade_box_path,
         behavior_floor=behavior_floor or None,
         # agent_state (the active-node slot) is only needed when we actually read
         # behavior; gated on behavior_floor so a no-descriptor / mock target never
@@ -2924,7 +2915,8 @@ def _launch_snapshot_inputs(
     proj,
     agent_name: str,
 ):
-    """Build the (ctx, scope_roots, resolved_sys, meta_runtime) the launch SNAPSHOT
+    """Build the (ctx, scope_roots, resolved_sys, meta_runtime, meta_identity,
+    workset_anchor, cascade_box_path, cascade_workset_path) the launch SNAPSHOT
     path needs.
 
     Constructs the host_home / xdg / workset name / per-scope source roots /
@@ -2942,6 +2934,14 @@ def _launch_snapshot_inputs(
     detected workset root literal (``str(proj.group.root)``); STANDALONE uses the
     runtime project dir literal (``str(proj.project_path)``). Folded into the
     snapshot floor so ``expand`` resolves the @-ref chain ONCE (single-route).
+
+    *cascade_box_path* / *cascade_workset_path* (P6c) are the mode-aware box-tier /
+    workset-tier settings-file paths the cascade mounts (``box_workset_settings_
+    paths``): the SINGLE SOURCE the snapshot resolvers pass as
+    ``build_launch_snapshot(box_path=…, workset_path=…)``, and the SAME box-tier path
+    that materializes ``meta.box.settings`` — so the anchor and the cascade cannot
+    drift. STANDALONE = ``(None, <root>/settings.yaml)`` (box tier EMPTY; its single
+    file plays the workset tier); primary/named unchanged.
     """
     agent_share_root = str(std.agents / agent_name / "share")
     agent_store_root = str(std.agents / agent_name)
@@ -3082,6 +3082,16 @@ def _launch_snapshot_inputs(
                 agent_name,
             )
             agent_auth_support = False
+    # The SINGLE-SOURCE launch-cascade (box_tier, workset_tier) settings-file pair
+    # (P6c standalone TIER MODEL). primary/named = (box's settings.yaml,
+    # workset_settings_path); standalone = (None, <root>/settings.yaml — its single
+    # file plays the WORKSET tier, box tier EMPTY). The SAME pair feeds BOTH the
+    # meta.box.settings anchor (box tier path, below) AND the cascade box_path/
+    # workset_path the snapshot resolvers pass to build_launch_snapshot (returned
+    # last) — so the anchor and the cascade cannot drift.
+    from kanibako.paths import box_workset_settings_paths
+
+    cascade_box_path, cascade_workset_path = box_workset_settings_paths(proj)
     meta_identity = settings_launch_module.meta_identity_floor(
         box_name=proj.name,
         project_path=str(proj.project_path),
@@ -3089,6 +3099,11 @@ def _launch_snapshot_inputs(
         share_global=str(addr.share_global),
         share_workset=(
             str(addr.share_workset) if addr.share_workset is not None else None
+        ),
+        # meta.box.settings — the box-TIER file path (str) for primary/named; None
+        # (box tier EMPTY) for standalone. SAME value as cascade_box_path (P6c).
+        box_settings=(
+            str(cascade_box_path) if cascade_box_path is not None else None
         ),
         # The agent identity key (spec §2d L514): the cascade discriminator AND the
         # value are the resolved agent name (install.name). Omitted for a NO-AGENT
@@ -3144,6 +3159,7 @@ def _launch_snapshot_inputs(
     )
     return (
         ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        cascade_box_path, cascade_workset_path,
     )
 
 
@@ -3153,8 +3169,6 @@ def _resolve_launch_snapshot(
     proj,
     agent_name: str,
     system_settings_path,
-    project_toml,
-    workset_path,
     agent_cfg_path,
     desc,
     install,
@@ -3203,9 +3217,10 @@ def _resolve_launch_snapshot(
     from kanibako.agent_representation import agent_default_partial
     from kanibako.settings_categories import reconcile_categories
 
-    ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor = (
-        _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
-    )
+    (
+        ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        cascade_box_path, cascade_workset_path,
+    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
 
     # Aggregate every runtime default-categories table into ONE dict.  Keys are
     # disjoint across families (each uses its own ``<scope>.<category>.<key>``
@@ -3276,8 +3291,8 @@ def _resolve_launch_snapshot(
         ctx=ctx,
         system_path=system_settings_path,
         agent_path=agent_cfg_path,
-        workset_path=workset_path,
-        box_path=project_toml,
+        workset_path=cascade_workset_path,
+        box_path=cascade_box_path,
         behavior_floor=behavior_floor,
         default_categories=default_categories,
         agent_partial=agent_partial,
@@ -3349,8 +3364,6 @@ def _seed_box_home(
     agent_id: str,
     agent_cfg_path,
     system_settings_path,
-    project_toml,
-    workset_path,
     auth_src,
     logger,
     suppress_oauth: bool = False,
@@ -3388,8 +3401,7 @@ def _seed_box_home(
         )
     _apply_init_seeds(
         std=std, proj=proj, agent_name=agent_id, target=target,
-        global_config_path=system_settings_path, project_toml=project_toml,
-        workset_config_path=workset_path, agent_config_path=agent_cfg_path,
+        global_config_path=system_settings_path, agent_config_path=agent_cfg_path,
         logger=logger, shares=auth_src.shares,
     )
 
@@ -3445,7 +3457,6 @@ def persona_create_verdict(
     _auth, endpoint = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=probe_cfg, system_settings_path=system_settings_path,
-        project_toml=project_toml, workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
     _ep, error, _adopted = _preflight_persona_load(
@@ -3522,7 +3533,6 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     auth_src, active_endpoint = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
-        project_toml=project_toml, workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
 
@@ -3552,7 +3562,6 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         std=std, proj=proj, target=target, desc=desc,
         agent_id=agent_id, agent_cfg_path=agent_cfg_path,
         system_settings_path=system_settings_path,
-        project_toml=project_toml, workset_path=workset_path,
         auth_src=auth_src, logger=logger,
         suppress_oauth=suppress_oauth,
     )
@@ -3657,8 +3666,6 @@ def _apply_init_seeds(
     agent_name: str,
     target=None,
     global_config_path,
-    project_toml,
-    workset_config_path,
     agent_config_path,
     logger,
     shares: bool = True,
@@ -3698,8 +3705,6 @@ def _apply_init_seeds(
         proj=proj,
         agent_name=agent_name,
         system_settings_path=global_config_path,
-        project_toml=project_toml,
-        workset_path=workset_config_path,
         agent_cfg_path=agent_config_path,
         desc=None,
         install=None,
@@ -3751,8 +3756,6 @@ def _apply_synced_copies(
     agent_name: str,
     target=None,
     global_config_path,
-    project_toml,
-    workset_config_path,
     agent_config_path,
     logger,
     shares: bool = True,
@@ -3795,8 +3798,6 @@ def _apply_synced_copies(
         proj=proj,
         agent_name=agent_name,
         system_settings_path=global_config_path,
-        project_toml=project_toml,
-        workset_path=workset_config_path,
         agent_cfg_path=agent_config_path,
         desc=None,
         install=None,
