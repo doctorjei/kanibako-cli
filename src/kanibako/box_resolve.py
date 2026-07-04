@@ -200,9 +200,11 @@ def resolve_box_identity(
     - ``mode`` — the :class:`~kanibako.paths.BoxMode` from
       :func:`detect_box_mode`.
     - ``name`` — the registry entry KEY (D1b: the ``name: path`` KEY *is* the
-      box name).  Workset box → the per-workset ``boxes:`` key; registered
-      standalone → the global ``standalone:`` key; otherwise the on-disk dir
-      leaf (kuid wiring is P6).
+      box name).  Workset box → the per-workset ``boxes:`` key; STANDALONE →
+      composed LIVE as ``<stored workset.kuid>_<live leaf>`` (P6d: the kuid is the
+      STABLE stored prefix, the leaf tracks the current dir); a pre-kuid box (no
+      ``workset.kuid``) falls back to the ``standalone:`` registry key or the dir
+      leaf.
     - ``workspace`` — the registry entry PATH (workset box) or the layout dir
       (standalone / orphan).
     - ``registered`` — membership present (D3-auth): the per-workset ``boxes:``
@@ -226,11 +228,24 @@ def resolve_box_identity(
         registered_name = registry_store.standalone_name_for_root(
             std.registry, box_root
         )
+        # LIVE name (P6d): the stored ``workset.kuid`` prefixes the CURRENT-leaf
+        # basename, so a MOVED standalone keeps its stable kuid identity while the
+        # leaf tracks the new dir. Read the kuid from the box's own settings.yaml
+        # (the workset tier for a standalone). A pre-kuid box (SENTINEL — no stored
+        # kuid) falls back to the registered ``standalone:`` KEY, else the dir leaf.
+        from kanibako import box_identity, kuid
+        from kanibako.config import read_workset_kuid
+
+        stored_kuid = read_workset_kuid(box_root / BOX_META_FILE)
+        if stored_kuid != kuid.SENTINEL:
+            name = box_identity.compose_standalone_name(stored_kuid, box_root)
+        elif registered_name is not None:
+            name = registered_name
+        else:
+            name = box_root.name
         return {
             "mode": result.mode,
-            # Registered → the global ``standalone:`` KEY; else the box-root dir
-            # leaf (a real kuid-prefixed name is wired in P6).
-            "name": registered_name if registered_name is not None else box_root.name,
+            "name": name,
             "workspace": box_root,
             "registered": registered_name is not None,
         }

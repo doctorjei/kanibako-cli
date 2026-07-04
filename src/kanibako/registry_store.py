@@ -149,7 +149,7 @@ def save_section(registry: Path, section: str, entries: dict) -> None:
 #
 # Standalone boxes are self-describing on disk (``box_data/`` marker under the
 # project root); ``registry.standalone`` is a derived index keyed by the box's
-# ``<random24>_<leaf>`` name → root path string.  It backs the whole-name
+# ``<kuid>_<leaf>`` name → root path string.  It backs the whole-name
 # collision check (D-M13) and the drop-in import work in the next sub-step.
 
 

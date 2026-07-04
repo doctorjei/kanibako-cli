@@ -2529,7 +2529,7 @@ def _name_new_box_probe(std, proj) -> None:
       later ``initialize=True`` resolve reads, so the probe name == the
       ``assign_name`` the materialise assigns — gate → materialise happen in ONE
       invocation with no intervening registry/dir writes; single-source guard met).
-    * STANDALONE / other — the standalone identity is a RANDOM ``<random24>_<leaf>``
+    * STANDALONE / other — the standalone identity is a ``<kuid>_<leaf>``
       assigned at materialise, so it cannot be predicted; but a standalone box's
       config lives at ``<root>/settings.yaml`` (name-INDEPENDENT) and is empty for a
       brand-new box, so the box NAME never influences the persona endpoint verdict.

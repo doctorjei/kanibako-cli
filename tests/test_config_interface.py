@@ -97,6 +97,9 @@ class TestIsKnownKey:
             "workset.channels.share",
         ):
             assert is_known_key(k) is True, k
+        # P6d: the workset kuid + advisory-check toggle are known settable keys.
+        assert is_known_key("workset.kuid") is True
+        assert is_known_key("workset.skip_kuid_check") is True
 
     def test_dead_keys_no_longer_known(self):
         """W4: paths.shell/paths.vault, layout, persistence were deleted.
@@ -253,6 +256,53 @@ class TestRegularConfigKeys:
             project_toml=project_toml,
         )
         assert val == "screen"
+
+
+# ---------------------------------------------------------------------------
+# workset.kuid / workset.skip_kuid_check (P6d)
+# ---------------------------------------------------------------------------
+
+class TestWorksetKuidKeys:
+    """The kuid + advisory-check keys are settable workset.* keys routed to the
+    ``workset:`` table of the command-scope (workset-tier) settings file."""
+
+    def test_set_kuid_routes_to_workset_slot(self, tmp_path):
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.kuid", "abcde", config_path=project_toml,
+        )
+        assert "Set" in msg and "abcde" in msg
+        # Landed in the nested workset.kuid slot (mutation: unregister the key
+        # from _KEY_ROUTES → set_config_value returns an "unknown key" error
+        # instead of writing → this assertion goes RED).
+        data = load_doc(project_toml)
+        assert data["workset"]["kuid"] == "abcde"
+        # And the reader sees it.
+        from kanibako.config import read_workset_kuid
+        assert read_workset_kuid(project_toml) == "abcde"
+
+    def test_set_skip_kuid_check_coerces_bool(self, tmp_path):
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value(
+            "workset.skip_kuid_check", "false", config_path=project_toml,
+        )
+        data = load_doc(project_toml)
+        # KEY_TYPES bool coercion: stored as a real False, not the string "false".
+        assert data["workset"]["skip_kuid_check"] is False
+        from kanibako.config import read_workset_skip_kuid_check
+        assert read_workset_skip_kuid_check(project_toml) is False
+
+    def test_kuid_default_is_sentinel_for_absent_file(self, tmp_path):
+        # #3: primary/named (and any unset box) default workset.kuid = "00000".
+        from kanibako import kuid
+        from kanibako.config import (
+            read_workset_kuid,
+            read_workset_skip_kuid_check,
+        )
+        absent = tmp_path / "nope.yaml"
+        assert read_workset_kuid(absent) == kuid.SENTINEL == "00000"
+        # And skip_kuid_check defaults TRUE (advisory is opt-in strictness).
+        assert read_workset_skip_kuid_check(absent) is True
 
 
 # ---------------------------------------------------------------------------

@@ -189,7 +189,7 @@ def import_standalone(
     * Already registered to *root* (by ``standalone_name_for_root``) → silent
       no-op, returns the registered name.
     * The box's persisted ``name`` (from ``<root>/settings.yaml``) is missing
-      or empty (a hand-created tree) → generate a fresh ``<random24>_<leaf>``
+      or empty (a hand-created tree) → generate a fresh ``<kuid>_<leaf>``
       name, persist it back into the metadata, register, alert, return it.
     * Otherwise the persisted name is registered to *root* + alerted, UNLESS it
       already maps to a DIFFERENT root → :class:`ImportConflictError` (refuse,

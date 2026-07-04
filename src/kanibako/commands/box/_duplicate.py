@@ -148,7 +148,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     ``box_data/home``, and its ``settings.yaml`` to the destination ROOT (drift
     I — settings live at ``<root>/settings.yaml``, NOT in ``box_data/``), then
     that root ``settings.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
-    generated ``<random24>_<leaf>`` identity (never the source's name), and the
+    generated ``<kuid>_<leaf>`` identity (never the source's name), and the
     standalone path table — and the box is registered in ``registry.standalone``.
     Without this the dest would keep the source's ``mode`` (e.g. ``primary``) and
     name, so standalone detection (``_is_standalone_meta_dir`` requires
@@ -192,7 +192,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
             shutil.copy2(src_settings, dst_settings)
 
     # Establish the canonical standalone shape (mode=standalone, a FRESH
-    # <random24>_<leaf> identity even from a standalone source, the standalone
+    # <kuid>_<leaf> identity even from a standalone source, the standalone
     # path table) + register it, via the shared core.  The root settings.yaml
     # was just copied above; establish overwrites its meta in place, preserving
     # any other sections copied from the source.

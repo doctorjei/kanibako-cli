@@ -133,8 +133,8 @@ class TestBoundedSocketName:
         assert primary != named
 
     def test_worst_case_standalone_name_under_limit(self):
-        """A ``<random24>_<32-char-leaf>`` name in a deep runtime dir fits."""
-        # 5-char base32 random24 + "_" + 32-char leaf = 38-char box name.
+        """A ``<kuid>_<32-char-leaf>`` name in a deep runtime dir fits."""
+        # 5-char kuid + "_" + 32-char leaf = 38-char box name.
         box_name = "abcde_" + "x" * 32
         assert len(box_name) == 38
         # A plausibly deep XDG_RUNTIME_DIR.
