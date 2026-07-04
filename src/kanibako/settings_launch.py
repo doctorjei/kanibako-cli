@@ -281,6 +281,7 @@ def auth_chain_floor(
 def meta_runtime_floor(
     *,
     mode: str,
+    ws_name: str,
     ws_root_literal: str | None = None,
 ) -> dict[str, object]:
     """Build the ``meta.runtime.*`` + re-rooted ``meta.*`` floor keys (block B1).
@@ -292,6 +293,14 @@ def meta_runtime_floor(
     :class:`~kanibako.paths.BoxMode` value (``"primary"`` / ``"named"`` /
     ``"standalone"``), passed as a plain string to avoid a paths import.
 
+    *ws_name* is the workset partition TOKEN (spec §1A ``meta.runtime.ws_name``,
+    2026-07-04): ``__PRIMARY__`` for primary, ``__STANDALONE__`` for standalone,
+    the detected workset name for named. It is SINGLE-SOURCED on
+    :func:`kanibako.channels.workset_name_token` and threaded in by the caller (the
+    SAME token that drives the channel partition, so the two cannot drift). It is
+    surfaced as ``meta.runtime.ws_name`` and ``meta.workset.name`` anchors into it
+    (see below), replacing the direct ``meta.workset.name`` literal block B2 set.
+
     *ws_root_literal* is the resolved workset-root path STRING for the NAMED and
     STANDALONE modes (``str(proj.group.root)`` / ``str(project dir)`` — a runtime
     treewalk result, no key form, JC-B1-2: an in-memory floor literal, NOT a
@@ -301,8 +310,9 @@ def meta_runtime_floor(
     Layer-1 foundation, spec §1A L233).
 
     The re-rooted keys (``meta.workset.path`` / ``meta.workset.settings`` /
-    ``meta.box.mode``) are UNIFORM across modes — each is the SAME @-ref into
-    ``meta.runtime.*`` (the single-source, spec §1A L239-241). A scope FILE cannot
+    ``meta.workset.name`` / ``meta.box.mode``) are UNIFORM across modes — each is
+    the SAME @-ref into ``meta.runtime.*`` (the single-source, spec §1A L239-241).
+    A scope FILE cannot
     set them (they are construct-set RO per §0 — and ``meta.*`` is not in the
     config-set settable known-key list); the floor is their sole source here.
     """
@@ -310,6 +320,12 @@ def meta_runtime_floor(
 
     # meta.runtime.project_type — the resolved mode token (spec §1A L237).
     floor["meta.runtime.project_type"] = mode
+
+    # meta.runtime.ws_name — the workset partition TOKEN (spec §1A, 2026-07-04):
+    #   primary → __PRIMARY__ · named → <detected name> · standalone → __STANDALONE__.
+    # SINGLE-SOURCED on channels.workset_name_token (threaded in by the caller — the
+    # same token that keys the channel partition, so the two cannot drift).
+    floor["meta.runtime.ws_name"] = ws_name
 
     # meta.runtime.ws_root (spec §1A L233):
     #   primary    → the @config.primary_workset @-ref STRING (foundation, #3a);
@@ -336,6 +352,10 @@ def meta_runtime_floor(
     # Single-source re-root (spec §1A L239-241; §2c) — UNIFORM all modes.
     floor["meta.workset.path"] = "@meta.runtime.ws_root"
     floor["meta.workset.settings"] = "@meta.runtime.ws_settings"
+    # meta.workset.name anchors into meta.runtime.ws_name (spec §2c L442/449/457,
+    # 2026-07-04) — the SINGLE SOURCE for the partition token; block B2 no longer
+    # sets it directly.
+    floor["meta.workset.name"] = "@meta.runtime.ws_name"
     # meta.box.mode — the RO identity anchor surfacing the runtime mode (spec §2b
     # L486; was the settable box.mode config-set key, dropped this block).
     floor["meta.box.mode"] = "@meta.runtime.project_type"
@@ -375,13 +395,15 @@ def meta_runtime_floor(
 #                             routed to box.bindings.rw.inbox
 #   meta.box.share_global   | this box's system-scope share dir (str(addr.share_global))
 #   meta.box.share_workset  | this box's workset-local share dir (str | None standalone)
-#   meta.workset.name       | __PRIMARY__ | <named> | __STANDALONE__ (the partition token)
 #   meta.agent.<a>.name     | the plugin-set agent name (REQUIRED when an agent exists)
+# (meta.workset.name is now a meta_runtime_floor anchor into meta.runtime.ws_name —
+#  the single source for the partition token, spec §2c 2026-07-04 — NOT a B2 key.)
 #
 # meta.box.{settings,workspace(named),container_name,helper_num} per the spec are
 # either deeper @workset.*-chained values (settings) or non-bind RENDER targets
 # (container_name from name+helper_num); B2 materializes the IDENTITY leaves the
-# eligible BINDS reference + meta.workset.name + the agent name. The container_name
+# eligible BINDS reference + the agent name (meta.workset.name moved to
+# meta_runtime_floor as an anchor). The container_name
 # / helper_num RENDER and the home/vault binds stay on attrs / @workset.* (JC-B2-3
 # / JC-B2-4 — see the return docstring), a tracked follow-up.
 
@@ -393,7 +415,6 @@ def meta_identity_floor(
     inbox: str,
     share_global: str,
     share_workset: str | None,
-    workset_name: str,
     agent_name: str | None = None,
     agent_real_name: str | None = None,
     agent_auth_share_support: bool = False,
@@ -436,9 +457,9 @@ def meta_identity_floor(
         "meta.box.inbox": inbox,
         "meta.box.share_global": share_global,
         "meta.box.share_workset": share_workset,
-        # The workset partition token (spec §2c — __PRIMARY__ | <named> |
-        # __STANDALONE__).
-        "meta.workset.name": workset_name,
+        # NOTE: meta.workset.name is NO LONGER set here — it anchors into
+        # meta.runtime.ws_name (the single source, spec §2c 2026-07-04), set by
+        # :func:`meta_runtime_floor`.
     }
     # The agent identity key (spec §2d L514) — REQUIRED when an agent exists, under
     # the agent's discriminated slot. A NO-AGENT box omits it.
@@ -762,7 +783,7 @@ def build_launch_snapshot(
 
     *meta_identity* is the construct-time IDENTITY-anchor floor fragment (block B2)
     built by :func:`meta_identity_floor` — the remaining ``meta.box.*`` /
-    ``meta.workset.name`` / ``meta.agent.<a>.name`` keys that the @meta.*-routed
+    ``meta.agent.<a>.name`` keys that the @meta.*-routed
     core binds (workspace / inbox) reference (spec §2c/§2d). Folded into the SAME
     floor so ``expand`` resolves the @meta.* binds ONCE (single-route). ``None`` for
     a narrow resolve.

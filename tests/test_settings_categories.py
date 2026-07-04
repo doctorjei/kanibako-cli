@@ -1049,7 +1049,7 @@ class TestB2bHomeVaultByteIdentity:
         ))
         floor.update(meta_identity_floor(
             box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw", workset_name="__PRIMARY__",
+            share_global="/sg", share_workset="/sw",
         ))
         by_dest = _resolve_home_vault(floor, mode="primary")
         # Byte-identical to proj.shell_path = boxes/<name>/home, vault/{ro,rw}/<name>.
@@ -1081,7 +1081,9 @@ class TestB2bHomeVaultByteIdentity:
         }
         # meta.workset.path = @meta.runtime.ws_root = <root> (the B2b fix passes
         # str(proj.metadata_path) = the project ROOT as ws_root_literal).
-        floor.update(meta_runtime_floor(mode="standalone", ws_root_literal="/proj"))
+        floor.update(meta_runtime_floor(
+            mode="standalone", ws_name="__STANDALONE__", ws_root_literal="/proj",
+        ))
         floor.update(workset_anchor_floor(
             mode="standalone",
             boxes=None, vault_ro=None, vault_rw=None, logs=None,
@@ -1115,7 +1117,7 @@ class TestB2bHomeVaultByteIdentity:
         ))
         floor.update(meta_identity_floor(
             box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw", workset_name="__PRIMARY__",
+            share_global="/sg", share_workset="/sw",
         ))
         ctx = make_ctx(workset_name=None)
         # A box settings FILE setting box.bindings.rw.home to a custom host path.
