@@ -412,6 +412,93 @@ class TestStandaloneKuid:
 
 
 # ---------------------------------------------------------------------------
+# TestMissingVaultAdvisory (P6d3 D5: NON-CRITICAL vault tier — warn, continue)
+# ---------------------------------------------------------------------------
+
+class TestMissingVaultAdvisory:
+    """The D5 vault tier: ``enable_vault`` ON + vault dir absent → WARN and
+    CONTINUE (resolve returns proj unchanged); ``enable_vault`` OFF → SILENT."""
+
+    def _proj(self, tmp_path, *, enable_vault, make_vault):
+        from kanibako.paths import BoxMode, ProjectPaths
+        from kanibako.utils import project_hash
+
+        root = tmp_path / "box"
+        root.mkdir()
+        vault_rw = root / "vault" / "rw"
+        vault_ro = root / "vault" / "ro"
+        if make_vault:
+            vault_rw.mkdir(parents=True)
+            vault_ro.mkdir(parents=True)
+        return ProjectPaths(
+            project_path=root,
+            project_hash=project_hash(str(root)),
+            metadata_path=root,
+            shell_path=root,
+            vault_ro_path=vault_ro,
+            vault_rw_path=vault_rw,
+            mode=BoxMode.standalone,
+            enable_vault=enable_vault,
+            name="aaaaa_box",
+        )
+
+    def _warned(self, caplog, proj):
+        import logging
+
+        from kanibako.paths import _flag_missing_vault
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            out = _flag_missing_vault(proj)
+        # ALWAYS returns proj unchanged (advisory, never fatal).
+        assert out is proj
+        return any("cannot find vault" in r.getMessage() for r in caplog.records)
+
+    def test_enabled_and_absent_warns_and_continues(self, tmp_path, caplog):
+        proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
+        assert self._warned(caplog, proj)
+
+    def test_enabled_and_present_silent(self, tmp_path, caplog):
+        proj = self._proj(tmp_path, enable_vault=True, make_vault=True)
+        assert not self._warned(caplog, proj)
+
+    def test_disabled_and_absent_silent(self, tmp_path, caplog):
+        # Mutation: drop the ``enable_vault`` guard in _flag_missing_vault → a
+        # vault-disabled box with no vault dir would WARN → this goes RED.
+        proj = self._proj(tmp_path, enable_vault=False, make_vault=False)
+        assert not self._warned(caplog, proj)
+
+    def test_wired_into_resolve_box_target(
+        self, std, config, project_dir, credentials_dir, caplog,
+    ):
+        """The advisory fires through the real ``resolve_box_target`` ``_flag``
+        chain (resolve-time), and a HEALTHY box is silent (regression guard)."""
+        import logging
+        import shutil
+
+        from kanibako.paths import resolve_box_target
+
+        # Materialize a real (vault-enabled) standalone box → vault created.
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+
+        def _resolve_warned():
+            caplog.clear()
+            with caplog.at_level(logging.WARNING, logger="kanibako"):
+                resolve_box_target(std, config, str(project_dir))
+            return any(
+                "cannot find vault" in r.getMessage() for r in caplog.records
+            )
+
+        # Healthy box (vault present) → SILENT.
+        assert not _resolve_warned()
+        # Delete the vault → resolve now WARNS (and still returns a proj).
+        shutil.rmtree(proj.vault_rw_path.parent)
+        assert _resolve_warned()
+
+
+# ---------------------------------------------------------------------------
 # TestStandaloneAtomicCreate (BUG-A: name-collision pre-flight before FS init)
 # ---------------------------------------------------------------------------
 

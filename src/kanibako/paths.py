@@ -1977,6 +1977,7 @@ def resolve_box_target(
         if warn:
             _flag_nonconforming(proj)
             _flag_invalid_kuid(proj)
+            _flag_missing_vault(proj)
         return proj
 
     # Empty / None -> cwd resolution (same as a bare positional default).
@@ -2069,6 +2070,29 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
             "workset.skip_kuid_check=true to silence this.",
             value,
             proj.name,
+        )
+    return proj
+
+
+def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
+    """Advisory (never fatal): warn when a box that EXPECTS a vault has none on
+    disk (spec D5, the NON-CRITICAL integrity tier).
+
+    A vault is OPTIONAL storage, not a launch prerequisite — so a box whose
+    ``enable_vault`` is on but whose vault directory is absent still resolves and
+    launches; the missing vault is merely FLAGGED (``warning: cannot find
+    vault``).  A box with ``enable_vault`` OFF expects no vault, so nothing is
+    warned (the ``enable_vault`` guard is load-bearing: without it every
+    vault-disabled box would warn).  Fires at resolve time alongside the other
+    ``_flag`` advisories.  Returns *proj* unchanged.
+    """
+    if proj.enable_vault and not proj.vault_rw_path.is_dir():
+        get_logger(__name__).warning(
+            "warning: cannot find vault for box '%s' (expected at %s); it still "
+            "launches without a vault — recreate the directory or set "
+            "box.enable_vault=false to silence this.",
+            proj.name or str(proj.project_path),
+            proj.vault_rw_path.parent,
         )
     return proj
 
