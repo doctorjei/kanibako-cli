@@ -1259,3 +1259,71 @@ class TestP5aStandalonePresenceSwitch:
         dump_doc(root / BOX_META_FILE, {"box": {"image": "x"}})
         # settings.yaml present but NO box_data/ → not a standalone marker.
         assert _is_standalone_meta_dir(root) is False
+
+
+class TestBoxWorksetSettingsPaths:
+    """P6c: the mode-aware (box_tier, workset_tier) launch-cascade file pair
+    (``box_workset_settings_paths``) — the SINGLE SOURCE the snapshot resolvers
+    and the ``meta.box.settings`` anchor both derive from."""
+
+    def _proj(self, tmp_path: Path, *, mode: "BoxMode", group):
+        from kanibako.paths import ProjectPaths
+
+        meta = tmp_path / "meta"
+        return ProjectPaths(
+            project_path=meta / "workspace",
+            project_hash="h",
+            metadata_path=meta,
+            shell_path=meta / "boxes" / "b" / "home",
+            vault_ro_path=meta / "vault" / "ro" / "b",
+            vault_rw_path=meta / "vault" / "rw" / "b",
+            mode=mode,
+            group=group,
+        )
+
+    def test_standalone_box_tier_empty_file_is_workset_tier(self, tmp_path: Path):
+        from kanibako.paths import BoxMode, box_workset_settings_paths
+
+        proj = self._proj(tmp_path, mode=BoxMode.standalone, group=None)
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        # Box tier EMPTY; the single <root>/settings.yaml plays the WORKSET tier.
+        assert box_tier is None
+        assert ws_tier == proj.metadata_path / "settings.yaml"
+
+    def test_primary_named_pair_unchanged_vs_pre_p6c(self, tmp_path: Path):
+        # BYTE-IDENTITY (equivalence bar): for primary/named the pair MUST equal the
+        # pre-P6c computation (box's own settings.yaml, workset_settings_path(group)).
+        from kanibako.paths import (
+            BOX_META_FILE,
+            BoxMode,
+            ProjectGroup,
+            box_workset_settings_paths,
+            workset_settings_path,
+        )
+
+        # PRIMARY (default group).
+        primary_group = ProjectGroup(
+            name="default",
+            root=tmp_path / "primary_workset",
+            is_default=True,
+            local_shared_base=tmp_path / "data",
+        )
+        proj_p = self._proj(tmp_path, mode=BoxMode.primary, group=primary_group)
+        box_p, ws_p = box_workset_settings_paths(proj_p)
+        assert box_p == proj_p.metadata_path / BOX_META_FILE
+        assert ws_p == workset_settings_path(primary_group)
+
+        # NAMED (non-default group).
+        named_group = ProjectGroup(
+            name="kento",
+            root=tmp_path / "kento",
+            is_default=False,
+            local_shared_base=tmp_path / "kento",
+        )
+        proj_n = self._proj(tmp_path, mode=BoxMode.named, group=named_group)
+        box_n, ws_n = box_workset_settings_paths(proj_n)
+        assert box_n == proj_n.metadata_path / BOX_META_FILE
+        assert ws_n == workset_settings_path(named_group)
+        # Mutation-guard: box tier is a REAL file (not None) for primary/named —
+        # swapping the standalone branch to cover these modes would make box_p None.
+        assert box_p is not None and box_n is not None

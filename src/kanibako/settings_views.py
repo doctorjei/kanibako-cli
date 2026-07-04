@@ -345,8 +345,9 @@ def as_opt_path(value: Any) -> Path | None:
 
     The optional-path variant of :func:`as_path` for a finite-view field whose
     spec value is a path OR ``<None>`` (a whole-value ``@``-ref None terminal that
-    survived as a real ``None`` leaf — e.g. ``meta.runtime.ws_settings`` /
-    ``meta.workset.settings`` for STANDALONE, spec §1A L235-236 / §2c L415). A
+    survived as a real ``None`` leaf — e.g. ``meta.box.settings`` /
+    ``meta.box.share_workset`` for STANDALONE, spec §2c L472/L469; note
+    ``meta.runtime.ws_settings`` is UNIFORM-non-None since P6c 2026-07-04). A
     present ``None`` is honest and returned as-is; a non-str / non-None leaf is
     rejected (never laundered).
     """
@@ -455,8 +456,9 @@ class MetaRuntimeView(FiniteView):
 
     Surfaces the runtime-resolved identity anchors at their EXACT types: the
     workset root (``ws_root`` — a resolved ``Path``), the workset settings file
-    (``ws_settings`` — a ``Path`` for primary/named, ``None`` for STANDALONE,
-    spec §1A L235-236), and the resolved mode token (``project_type`` — a ``str``,
+    (``ws_settings`` — a ``Path`` for ALL modes since P6c 2026-07-04, incl.
+    standalone whose ``<root>/settings.yaml`` plays the workset tier; spec §1A
+    L261-262), and the resolved mode token (``project_type`` — a ``str``,
     one of ``"primary"`` / ``"named"`` / ``"standalone"``). Read-only; wraps
     ``store.meta.runtime``. ADDITIVE — no consumer reads it yet (B1).
     """
@@ -482,6 +484,8 @@ class MetaBoxView(FiniteView):
     * ``share_global`` (B2) — this box's system-scope share dir (spec §2c L468).
     * ``share_workset`` (B2) — this box's workset-local share dir, ``None`` for
       STANDALONE (spec §2c L469).
+    * ``settings`` (P6c) — the RO box-TIER settings-file path (spec §2c L493), or
+      ``None`` for STANDALONE (box tier EMPTY, spec §2c L472).
 
     Read-only; wraps ``store.meta.box``. (``container_name`` / ``helper_num`` are
     a non-bind RENDER, not materialized here — JC-B2-3.)
@@ -493,6 +497,7 @@ class MetaBoxView(FiniteView):
     inbox: Path = typed_field(as_path)  # type: ignore[assignment]
     share_global: Path = typed_field(as_path)  # type: ignore[assignment]
     share_workset: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
+    settings: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
 
 
 class MetaWorksetView(FiniteView):
@@ -500,7 +505,8 @@ class MetaWorksetView(FiniteView):
 
     Exposes the single-source-re-rooted ``path`` (= ``@meta.runtime.ws_root``, a
     resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_settings``, a
-    ``Path`` for primary/named, ``None`` for STANDALONE — spec §2c L415), plus the
+    ``Path`` for ALL modes since P6c 2026-07-04 incl. standalone — spec §1A
+    L261-262), plus the
     ``name`` partition token (``__PRIMARY__`` / ``<named>`` / ``__STANDALONE__``) —
     now the ``@meta.runtime.ws_name`` anchor (block B1, single source, spec §1A/§2c
     2026-07-04; was a direct B2 literal). Read-only; wraps ``store.meta.workset``.

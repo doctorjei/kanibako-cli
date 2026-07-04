@@ -259,8 +259,9 @@ def auth_chain_floor(
 #                             | named      = str(proj.group.root)        (resolved literal)
 #                             | standalone = str(proj.metadata_path)     (the project ROOT <root>;
 #                                            B2b fixed this from the B1 <root>/workspace defect)
-#   meta.runtime.ws_settings  | primary/named = "@meta.runtime.ws_root/settings.yaml" (@-ref)
-#                             | standalone    = None                      (whole-value None terminal)
+#   meta.runtime.ws_settings  | ALL modes = "@meta.runtime.ws_root/settings.yaml" (@-ref;
+#                             |   UNIFORM 2026-07-04/P6c — standalone no longer <None>: its
+#                             |   single <ws_root>/settings.yaml plays the WORKSET tier)
 #   meta.runtime.project_type | proj.mode.value  ("primary"|"named"|"standalone")
 #
 # Then the SINGLE-SOURCE re-root (spec §1A L239-241; §2c L397/406/414/432):
@@ -270,7 +271,8 @@ def auth_chain_floor(
 #
 # These resolve transitively in the ONE expand pass (e.g. primary:
 # meta.workset.path → @meta.runtime.ws_root → @config.primary_workset → foundation;
-# standalone: meta.workset.settings → @meta.runtime.ws_settings → None terminal).
+# standalone: meta.workset.settings → @meta.runtime.ws_settings →
+# @meta.runtime.ws_root/settings.yaml → <root>/settings.yaml, the workset tier).
 #
 # This block is ADDITIVE (B1): the keys appear in the snapshot but NO consumer
 # reads them yet (binds move to @meta.* in a later block). The only behavioral
@@ -341,13 +343,14 @@ def meta_runtime_floor(
             )
         floor["meta.runtime.ws_root"] = ws_root_literal
 
-    # meta.runtime.ws_settings (spec §1A L235-236):
-    #   primary/named → @meta.runtime.ws_root/settings.yaml (embedded @-ref);
-    #   standalone    → None (a whole-value None terminal — spec §2c L415).
-    if mode == "standalone":
-        floor["meta.runtime.ws_settings"] = None
-    else:
-        floor["meta.runtime.ws_settings"] = "@meta.runtime.ws_root/settings.yaml"
+    # meta.runtime.ws_settings (spec §1A L235-236, UNIFORM 2026-07-04 / P6c):
+    #   ALL modes → @meta.runtime.ws_root/settings.yaml (embedded @-ref).
+    # Standalone is NO LONGER a <None> terminal: the standalone unification makes a
+    # lone box a one-box WORKSET, so its single <ws_root>/settings.yaml plays the
+    # WORKSET tier (box tier empty — see meta_identity_floor's meta.box.settings).
+    # The embedded @-ref resolves against ws_root per mode (standalone: the runtime
+    # project dir literal → <root>/settings.yaml).
+    floor["meta.runtime.ws_settings"] = "@meta.runtime.ws_root/settings.yaml"
 
     # Single-source re-root (spec §1A L239-241; §2c) — UNIFORM all modes.
     floor["meta.workset.path"] = "@meta.runtime.ws_root"
@@ -399,13 +402,18 @@ def meta_runtime_floor(
 # (meta.workset.name is now a meta_runtime_floor anchor into meta.runtime.ws_name —
 #  the single source for the partition token, spec §2c 2026-07-04 — NOT a B2 key.)
 #
-# meta.box.{settings,workspace(named),container_name,helper_num} per the spec are
-# either deeper @workset.*-chained values (settings) or non-bind RENDER targets
-# (container_name from name+helper_num); B2 materializes the IDENTITY leaves the
-# eligible BINDS reference + the agent name (meta.workset.name moved to
-# meta_runtime_floor as an anchor). The container_name
-# / helper_num RENDER and the home/vault binds stay on attrs / @workset.* (JC-B2-3
-# / JC-B2-4 — see the return docstring), a tracked follow-up.
+# meta.box.settings (P6c, 2026-07-04) is the RO box-TIER settings-file anchor (spec
+# §2c L493 primary/named = @workset.boxes/@meta.box.name/settings.yaml; §2c L472
+# standalone = <None>, box tier EMPTY). Materialized here as the RESOLVED LITERAL
+# the launch computes (the box's own <metadata_path>/settings.yaml for primary/
+# named; None for standalone) — the SAME value the cascade uses as its box-tier
+# file path (single-sourced in start.py's _launch_snapshot_inputs), so the anchor
+# and the cascade cannot drift. meta.box.{workspace(named),container_name,
+# helper_num} per the spec are non-bind RENDER targets (container_name from
+# name+helper_num); B2 materializes the IDENTITY leaves the eligible BINDS reference
+# + the agent name (meta.workset.name moved to meta_runtime_floor as an anchor). The
+# container_name / helper_num RENDER and the home/vault binds stay on attrs /
+# @workset.* (JC-B2-3 / JC-B2-4 — see the return docstring), a tracked follow-up.
 
 
 def meta_identity_floor(
@@ -415,6 +423,7 @@ def meta_identity_floor(
     inbox: str,
     share_global: str,
     share_workset: str | None,
+    box_settings: str | None = None,
     agent_name: str | None = None,
     agent_real_name: str | None = None,
     agent_auth_share_support: bool = False,
@@ -436,7 +445,18 @@ def meta_identity_floor(
 
     *share_workset* is ``None`` for STANDALONE (no workset-local channels, spec
     §2c L469) → materialized as a whole-value ``None`` terminal (the key is PRESENT
-    with value ``None``, matching ``meta.runtime.ws_settings`` for standalone).
+    with value ``None``). (This is a DIFFERENT rationale from ``meta.box.settings``'s
+    standalone ``None`` — share_workset is None because a lone box has no
+    workset-LOCAL channel dir; ws_settings itself is now uniform-non-None, P6c.)
+
+    *box_settings* (P6c) is the RO box-TIER settings-file anchor ``meta.box.settings``
+    (spec §2c L493/L472): the box's own ``<metadata_path>/settings.yaml`` path STRING
+    for primary/named, or ``None`` for STANDALONE (box tier EMPTY — box-scope values
+    resolve from the workset tier ``@meta.workset.settings`` as R2 downward-defaults).
+    The key is ALWAYS PRESENT (a present-key ``None`` terminal for standalone, like
+    ``meta.box.share_workset``). It is single-sourced with the cascade's box-tier file
+    path (both derive from one mode-aware computation in ``_launch_snapshot_inputs``),
+    so the anchor and the cascade cannot drift.
 
     *agent_name* / *agent_real_name*: when an agent exists, ``meta.agent.<a>.name``
     is the plugin-set agent name (spec §2d L514, REQUIRED). ``agent_name`` is the
@@ -457,6 +477,11 @@ def meta_identity_floor(
         "meta.box.inbox": inbox,
         "meta.box.share_global": share_global,
         "meta.box.share_workset": share_workset,
+        # The RO box-TIER settings-file anchor (spec §2c L493/L472, P6c). The box's
+        # own <metadata_path>/settings.yaml for primary/named; None (box tier EMPTY)
+        # for standalone — a present-key None terminal (like share_workset above).
+        # Single-sourced with the cascade box-tier path in _launch_snapshot_inputs.
+        "meta.box.settings": box_settings,
         # NOTE: meta.workset.name is NO LONGER set here — it anchors into
         # meta.runtime.ws_name (the single source, spec §2c 2026-07-04), set by
         # :func:`meta_runtime_floor`.

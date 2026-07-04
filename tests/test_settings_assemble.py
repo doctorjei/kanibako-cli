@@ -785,3 +785,62 @@ def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
     assert dict.get(snap["agent"]["goose"], "model", _MISSING) == "sys_goose"
     # agent.default.* also coexists, distinct from both.
     assert dict.get(snap["agent"]["default"], "model", _MISSING) == "dm"
+
+
+# --------------------------------------------------------------------------- #
+# P6c — standalone TIER MODEL: box tier EMPTY, single file plays the WORKSET   #
+# tier; a box.* key resolves for box scope via R2 downward-defaults.           #
+# --------------------------------------------------------------------------- #
+
+
+def _box_enable_vault(snap: KeyStore) -> object:
+    box = dict.get(snap, "box", _MISSING)
+    return dict.get(box, "enable_vault", _MISSING) if isinstance(box, KeyStore) else _MISSING
+
+
+def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> None:
+    # STANDALONE TIER MODEL (P6c, spec §2c L472): a lone box's single settings.yaml
+    # now plays the WORKSET tier (box tier EMPTY). A box.* key set in it still
+    # resolves for box scope via R2 downward-defaults (box ⊂ workset — the
+    # workset-tier read KEEPS box.*). File carries a box-scope override.
+    f = _write(tmp_path / "settings.yaml", {"box": {"enable_vault": False}})
+
+    # P6c pair: box tier EMPTY (None), the file as the WORKSET tier.
+    snap_p6c = merge(
+        assemble_levels(agent_name="claude", box_path=None, workset_path=f)
+    )
+    assert _box_enable_vault(snap_p6c) is False
+
+    # RESULT-EQUIVALENCE vs the pre-P6c read (file as the BOX tier): a lone box has
+    # exactly ONE file, so box-vs-workset tier picks the same resolved box scope.
+    snap_old = merge(
+        assemble_levels(agent_name="claude", box_path=f, workset_path=None)
+    )
+    assert _box_enable_vault(snap_old) == _box_enable_vault(snap_p6c)
+
+    # MUTATION-GUARD (non-vacuous): the workset-tier read is LOAD-BEARING. Dropping
+    # it (both tiers empty) loses the override entirely → the key is absent (falls
+    # to the floor/default downstream), NOT False. Proves the assert above is not
+    # vacuously satisfied by some other source.
+    snap_dropped = merge(
+        assemble_levels(agent_name="claude", box_path=None, workset_path=None)
+    )
+    assert _box_enable_vault(snap_dropped) is _MISSING
+
+
+def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
+    # The unification's strict gain: a workset.* key set in the standalone file
+    # (previously DROPPED as an upward write when the file was the BOX tier) now
+    # survives, because the file is the WORKSET tier and workset.* is its own scope.
+    f = _write(
+        tmp_path / "settings.yaml",
+        {"box": {"enable_vault": False}, "workset": {"marker": "w"}},
+    )
+    snap = merge(
+        assemble_levels(agent_name="claude", box_path=None, workset_path=f)
+    )
+    ws = dict.get(snap, "workset", _MISSING)
+    assert isinstance(ws, KeyStore)
+    assert dict.get(ws, "marker", _MISSING) == "w"
+    # box.* still resolves too (both scopes coexist at the workset tier).
+    assert _box_enable_vault(snap) is False

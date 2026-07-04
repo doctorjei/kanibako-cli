@@ -12,7 +12,6 @@ from kanibako.paths import (
     xdg,
     load_std_paths,
     resolve_box_target,
-    workset_settings_path,
 )
 from kanibako.utils import container_name_for
 
@@ -84,19 +83,18 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
             writeback_session_credentials,
         )
         from kanibako.agent_config import agent_settings_path
-        from kanibako.config import BOX_META_FILE
         from kanibako.agent_ref import harness_of
         from kanibako.targets import resolve_target
         # KANIBAKO_AGENT stamps the NODE-name; the target/plugin is keyed by the
         # HARNESS. ``agent_name=agent`` below keeps the node (keyspace slot).
         target = resolve_target(harness_of(agent), proj.project_path)
+        # The cascade box/workset tier files are single-sourced mode-aware inside
+        # the resolver (P6c) — standalone reads its file as the WORKSET tier.
         auth_src = _resolve_box_auth_source(
             std=std,
             proj=proj,
             agent_name=agent,
             system_settings_path=std.settings,
-            project_toml=proj.metadata_path / BOX_META_FILE,
-            workset_path=workset_settings_path(proj.group),
             agent_cfg_path=agent_settings_path(std.agents, agent),
         )
         writeback_session_credentials(target, proj, auth_src=auth_src)

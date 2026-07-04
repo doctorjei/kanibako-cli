@@ -851,8 +851,6 @@ class TestPluginsAndCacheShares:
             proj=self._proj(std),
             agent_name="claude",
             system_settings_path=None,
-            project_toml=None,
-            workset_path=None,
             agent_cfg_path=None,
             desc=None,
             install=None,
@@ -2168,6 +2166,9 @@ class TestApplyInitSeeds:
         return SimpleNamespace(
             shell_path=shell_path, group=group, name="seedbox",
             mode=BoxMode.primary, project_path=shell_path,
+            # P6c: the cascade box/workset tier files are single-sourced off
+            # proj.metadata_path (box_workset_settings_paths).
+            metadata_path=shell_path.parent,
             vault_ro_path=shell_path.parent / "vault" / "ro" / "seedbox",
             vault_rw_path=shell_path.parent / "vault" / "rw" / "seedbox",
         )
@@ -2182,18 +2183,17 @@ class TestApplyInitSeeds:
         return shell
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
-              global_config_path=None, project_toml=None,
-              workset_config_path=None, agent_config_path=None,
+              global_config_path=None, agent_config_path=None,
               shares=True):
         from kanibako.commands.start import _apply_init_seeds
+        # P6c: the box-tier seed config is single-sourced off proj.metadata_path/
+        # settings.yaml (box_workset_settings_paths); tests place it there directly.
         _apply_init_seeds(
             std=std or self._std(tmp_path),
             proj=proj,
             agent_name="claude",
             target=target,
             global_config_path=global_config_path,
-            project_toml=project_toml,
-            workset_config_path=workset_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
             shares=shares,
@@ -2274,7 +2274,7 @@ class TestApplyInitSeeds:
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text('box:\n  agent:\n    seeded:\n      x: null\n')
         self._call(
-            tmp_path, proj=self._proj(shell), target=target, project_toml=ptoml,
+            tmp_path, proj=self._proj(shell), target=target,
         )
         assert not (shell / "x").exists()
 
@@ -2408,6 +2408,9 @@ class TestApplySyncedCopies:
         return SimpleNamespace(
             shell_path=shell_path, group=group, name="seedbox",
             mode=BoxMode.primary, project_path=shell_path,
+            # P6c: the cascade box/workset tier files are single-sourced off
+            # proj.metadata_path (box_workset_settings_paths).
+            metadata_path=shell_path.parent,
             vault_ro_path=shell_path.parent / "vault" / "ro" / "seedbox",
             vault_rw_path=shell_path.parent / "vault" / "rw" / "seedbox",
         )
@@ -2422,18 +2425,17 @@ class TestApplySyncedCopies:
         return shell
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
-              global_config_path=None, project_toml=None,
-              workset_config_path=None, agent_config_path=None,
+              global_config_path=None, agent_config_path=None,
               shares=True):
         from kanibako.commands.start import _apply_synced_copies
+        # P6c: the box-tier synced config is single-sourced off proj.metadata_path/
+        # settings.yaml (box_workset_settings_paths); tests place it there directly.
         _apply_synced_copies(
             std=std or self._std(tmp_path),
             proj=proj,
             agent_name="claude",
             target=target,
             global_config_path=global_config_path,
-            project_toml=project_toml,
-            workset_config_path=workset_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
             shares=shares,
@@ -2452,7 +2454,7 @@ class TestApplySyncedCopies:
         src.write_text("token")
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
-        self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
+        self._call(tmp_path, proj=self._proj(shell))
         assert (shell / "cred.txt").read_text() == "token"
 
     def test_synced_suppressed_when_not_sharing(self, tmp_path):
@@ -2463,7 +2465,7 @@ class TestApplySyncedCopies:
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
         self._call(
-            tmp_path, proj=self._proj(shell), project_toml=ptoml,
+            tmp_path, proj=self._proj(shell),
             shares=False,
         )
         assert not (shell / "cred.txt").exists()
@@ -2481,7 +2483,7 @@ class TestApplySyncedCopies:
         # Make dest strictly newer than src.
         os.utime(src, (1000, 1000))
         os.utime(dest, (2000, 2000))
-        self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
+        self._call(tmp_path, proj=self._proj(shell))
         # mtime gate: dest is newer, so it is NOT overwritten.
         assert dest.read_text() == "newer"
 
@@ -2491,7 +2493,7 @@ class TestApplySyncedCopies:
         missing = tmp_path / "nope"
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(f'box:\n  synced:\n    gone: ["{missing}", "~/gone"]\n')
-        self._call(tmp_path, proj=self._proj(shell), project_toml=ptoml)
+        self._call(tmp_path, proj=self._proj(shell))
         assert list(shell.iterdir()) == []
 
 

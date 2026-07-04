@@ -84,8 +84,6 @@ def _build(std, proj):
         proj=proj,
         agent_name="general",
         system_settings_path=None,
-        project_toml=None,
-        workset_path=None,
         agent_cfg_path=None,
         desc=None,
         install=None,
