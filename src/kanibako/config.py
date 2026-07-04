@@ -360,6 +360,26 @@ def read_project_meta(path: Path) -> dict | None:
     }
 
 
+def read_box_enable_vault(path: Path) -> bool:
+    """Return the box-scope ``box.enable_vault`` value stored at *path*.
+
+    The single reader for the settable box-scope ``box.enable_vault`` key (P2
+    clean break): it sources the flag DIRECTLY from the ``box:`` table of the
+    box ``settings.yaml``, independent of any ``project:`` identity section.
+    An absent file, an absent ``box:`` table, or an absent key all yield the
+    default ``True`` (vault on).
+
+    This is the P5a replacement for reading ``enable_vault`` off the identity
+    dict returned by :func:`read_project_meta`: box identity now derives from
+    the registries (``box_resolve``) while ``enable_vault`` stays a plain
+    box-settings read — the two concerns are decoupled.
+    """
+    if not path.exists():
+        return True
+    data = load_doc(path)
+    return (data.get("box") or {}).get("enable_vault", True)
+
+
 def _split_config_key(flat_key: str) -> tuple[str, str]:
     """Split a flat config key into (section, key).
 

@@ -1043,3 +1043,219 @@ class TestConnectedExternal:
         assert proj.group.is_default is False
         assert proj.group.name == "ext-set"
         assert proj.project_path == external
+
+
+# ---------------------------------------------------------------------------
+# P5a — create-then-resolve round-trip + create dual-register (new registries)
+# ---------------------------------------------------------------------------
+
+class TestP5aCreateThenResolve:
+    """The core P5a contract: box create dual-registers into the new registries,
+    and the new-model identity derivation (``box_resolve``) reads mode / name /
+    workspace / registered back correctly for primary / named / standalone."""
+
+    @staticmethod
+    def _primary_registry(std):
+        from kanibako import workset_registry
+        from kanibako.config_io import load_doc
+        return workset_registry.resolve_workset_registry_path(
+            std.primary_workset,
+            load_doc(std.primary_workset / "settings.yaml"),
+        )
+
+    def test_primary_create_registers_and_resolves(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        from kanibako import box_resolve, workset_registry
+        from kanibako.paths import resolve_standalone_project  # noqa: F401
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+
+        proj = resolve_project(
+            std, config, project_dir=project_dir, initialize=True,
+        )
+
+        # CREATE dual-register: the box lands in the PRIMARY per-workset registry
+        # as name -> external workspace.  (Mutation target: drop the
+        # register_workset_box call in resolve_project → this assert fails.)
+        boxes = workset_registry.load_workset_boxes(self._primary_registry(std))
+        assert proj.name in boxes
+        assert Path(boxes[proj.name]).resolve() == proj.project_path.resolve()
+
+        # READ: box_resolve derives the identity back from the registry.
+        identity = box_resolve.resolve_box_identity(
+            proj.project_path, std, config,
+        )
+        assert identity is not None
+        assert identity["mode"] is BoxMode.primary
+        assert identity["name"] == proj.name
+        assert identity["workspace"].resolve() == proj.project_path.resolve()
+        assert identity["registered"] is True
+
+    def test_named_create_registers_and_resolves(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        from kanibako import box_resolve, workset_registry
+        from kanibako.config_io import load_doc
+        from kanibako.paths import WorksetSpec, resolve_workset_project
+        from kanibako.workset import add_project, create_workset
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws_root = tmp_home / "worksets" / "ws1"
+        ws = create_workset("ws1", ws_root, std)
+        add_project(ws, "boxa", tmp_home / "src")
+
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), "boxa", std, config, initialize=True,
+        )
+
+        # CREATE dual-register: the box lands in the WORKSET's per-workset
+        # registry as name -> workspace.  (Mutation target: drop the
+        # register_workset_box call in resolve_workset_project → fails.)
+        reg = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "settings.yaml"),
+        )
+        boxes = workset_registry.load_workset_boxes(reg)
+        assert "boxa" in boxes
+        assert Path(boxes["boxa"]).resolve() == proj.project_path.resolve()
+
+        # READ: box_resolve derives named identity from the workset registry.
+        identity = box_resolve.resolve_box_identity(
+            proj.project_path, std, config,
+        )
+        assert identity is not None
+        assert identity["mode"] is BoxMode.named
+        assert identity["name"] == "boxa"
+        assert identity["workspace"].resolve() == proj.project_path.resolve()
+        assert identity["registered"] is True
+
+    def test_standalone_create_registers_and_resolves(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        from kanibako import box_resolve, registry_store
+        from kanibako.paths import resolve_standalone_project
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        sabox = tmp_home / "sabox"
+        sabox.mkdir()
+        project_dir = str(sabox)
+
+        proj = resolve_standalone_project(
+            std, config, project_dir=project_dir, initialize=True,
+        )
+
+        # The resolved name is the full ``<kuid>_<leaf>`` handle (used for the
+        # container name + helper log), NOT the bare dir leaf — the prefix must
+        # survive.  (The resolver sources this from the box's own settings.yaml,
+        # authoritative even for an unregistered standalone — see 2053.)
+        assert proj.name.endswith("_sabox")
+        assert proj.name != "sabox"
+
+        # Standalone stays on the GLOBAL standalone registry (no per-workset
+        # registry — per the brief).  (Mutation target: skip register_standalone
+        # in establish_standalone → not in registry AND box_resolve name falls
+        # back to the dir leaf ≠ proj.name → both asserts below go RED.)
+        assert proj.name in registry_store.load_standalone(std.registry)
+
+        # READ: box_resolve detects standalone by in-place-settings PRESENCE and
+        # sources the registered name (the ``standalone:`` KEY) back.
+        identity = box_resolve.resolve_box_identity(
+            proj.metadata_path, std, config,
+        )
+        assert identity is not None
+        assert identity["mode"] is BoxMode.standalone
+        assert identity["name"] == proj.name
+        assert identity["registered"] is True
+
+    def test_primary_enable_vault_false_round_trips_without_project_mode(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """enable_vault is a box-scope read decoupled from the project: identity
+        (P2/P5a).  A settings.yaml with box.enable_vault=False but NO project.mode
+        still yields enable_vault=False on resolve — proving the read no longer
+        goes through read_project_meta's project.mode gate."""
+        from kanibako.config import BOX_META_FILE, dump_doc
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(
+            std, config, project_dir=project_dir, initialize=True,
+        )
+        # Rewrite the box settings to hold ONLY box.enable_vault=False (no
+        # project: section at all).
+        toml = proj.metadata_path / BOX_META_FILE
+        dump_doc(toml, {"box": {"enable_vault": False}})
+
+        proj2 = resolve_project(
+            std, config, project_dir=project_dir, initialize=False,
+        )
+        assert proj2.enable_vault is False
+
+    def test_iter_projects_prefers_registry_over_settings(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """iter_projects sources a box's workspace from the PRIMARY per-workset
+        registry FIRST (the new-model source), only falling back to settings.yaml.
+        (Mutation target: neuter the registry read → this returns the settings
+        workspace instead → RED.  Covers the otherwise-vacuous new branch.)"""
+        from kanibako import workset_registry
+        from kanibako.config import BOX_META_FILE, write_project_meta
+        from kanibako.config_io import load_doc
+        from kanibako.paths import iter_projects
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # A primary box dir whose settings.yaml workspace is path A.
+        box_dir = std.boxes / "mybox"
+        box_dir.mkdir(parents=True)
+        settings_ws = tmp_home / "settings_ws"
+        write_project_meta(
+            box_dir / BOX_META_FILE, mode="primary",
+            workspace=str(settings_ws), shell="", vault_ro="", vault_rw="",
+            name="mybox",
+        )
+        # Register a DIFFERENT path B in the PRIMARY per-workset registry.
+        registry_ws = tmp_home / "registry_ws"
+        reg_path = workset_registry.resolve_workset_registry_path(
+            std.primary_workset,
+            load_doc(std.primary_workset / "settings.yaml"),
+        )
+        workset_registry.register_workset_box(reg_path, "mybox", registry_ws)
+
+        results = dict(iter_projects(std, config))
+        # The registry value WINS over the settings.yaml workspace.
+        assert results[box_dir] == registry_ws
+        assert results[box_dir] != settings_ws
+
+
+class TestP5aStandalonePresenceSwitch:
+    """Mutation proof for the _is_standalone_meta_dir presence switch (site
+    1306): detection is now by box_data/ + settings.yaml PRESENCE, no longer by
+    a stored box.mode == "standalone" field."""
+
+    def test_presence_detects_without_mode_field(self, tmp_home):
+        from kanibako.config import BOX_META_FILE, dump_doc
+        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        root = tmp_home / "box"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        # A settings.yaml with NO project.mode = "standalone" declaration.  The
+        # OLD field-reading impl returned False here; the presence impl → True.
+        dump_doc(root / BOX_META_FILE, {"box": {"image": "x"}})
+        assert _is_standalone_meta_dir(root) is True
+
+    def test_missing_settings_is_not_standalone(self, tmp_home):
+        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        root = tmp_home / "box"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        # box_data/ present but NO settings.yaml → not a standalone marker.
+        assert _is_standalone_meta_dir(root) is False
+
+    def test_missing_box_data_is_not_standalone(self, tmp_home):
+        from kanibako.config import BOX_META_FILE, dump_doc
+        from kanibako.paths import _is_standalone_meta_dir
+        root = tmp_home / "box"
+        root.mkdir()
+        dump_doc(root / BOX_META_FILE, {"box": {"image": "x"}})
+        # settings.yaml present but NO box_data/ → not a standalone marker.
+        assert _is_standalone_meta_dir(root) is False
