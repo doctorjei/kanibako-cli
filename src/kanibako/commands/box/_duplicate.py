@@ -31,10 +31,10 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
     """True when the duplicate's source resolves to an external-connected project.
 
     An external-connected project is one whose live workspace lives outside its
-    owning workset (recorded in ``connected.yaml``).  Used to refuse a bare
-    duplicate of such a source (the connection is 1:1).
+    owning workset (a per-workset ``boxes:`` entry whose path is EXTERNAL, D10).
+    Used to refuse a bare duplicate of such a source (the connection is 1:1).
     """
-    from kanibako.workset import _find_connected_project
+    from kanibako import box_resolve
 
     raw = getattr(args, "source_path", None)
     if not raw:
@@ -43,7 +43,7 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
         source_path = Path(raw).resolve()
     except (OSError, ValueError):
         return False
-    return _find_connected_project(source_path, std) is not None
+    return box_resolve.find_connected_external_box(source_path, std) is not None
 
 
 # -- Cross-mode duplicate helpers --

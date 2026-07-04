@@ -47,10 +47,10 @@ WORKSET_META_FILE = "settings.yaml"
 #
 # Several public mutators below touch more than one file (a root settings.yaml plus
 # the global worksets.yaml/names.yaml registries, or a symlink + settings.yaml +
-# connected.yaml redirect).  Individual writes are torn-file-safe (atomic temp +
-# os.replace via config_io.dump_doc), but a crash *between* steps could strand a
-# half-applied cross-file state: registry says X while disk says Y, an orphan
-# symlink, or an external path locked out by a dangling connected.yaml redirect.
+# a per-workset ``boxes:`` connection record).  Individual writes are torn-file-safe
+# (atomic temp + os.replace via config_io.dump_doc), but a crash *between* steps
+# could strand a half-applied cross-file state: registry says X while disk says Y,
+# an orphan symlink, or an external path locked out by a dangling connection record.
 #
 # The unwind stack mirrors the lifecycle family's pattern (_lifecycle._Unwind):
 # each forward step pushes a compensating action; on any exception we run them
@@ -295,67 +295,15 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 
 
 # ---------------------------------------------------------------------------
-# Connected (external) redirect index: the ``connected`` section of
-# ``system.registry``.
+# Connected (external) boxes — D10 per-workset registry (no global index).
 #
-# Maps a resolved EXTERNAL source path to its owning workset+project so that
-# launching from the external directory (or a subdir of it) resolves to the
-# workset.  Only external connects are recorded here; sources inside a workset
-# tree are resolved by ordinary location detection.  Schema:
-#
-#     connected:
-#       /abs/external/repo: {workset: myws, project: foo}
+# An externally-connected box is a NAMED workset's per-workset ``boxes:`` entry
+# whose registered PATH is the EXTERNAL directory.  The per-workset registries
+# collectively ARE the reverse index (D10 enumerate-and-scan) — resolution goes
+# through ``box_resolve.find_connected_external_box``.  The former global
+# ``connected:`` section (and ``_find_connected_project``/``_load_connected``/
+# ``_write_connected``) are GONE.
 # ---------------------------------------------------------------------------
-
-def _load_connected(std: StandardPaths) -> dict[str, dict]:
-    """Return ``{abs_path: {"workset": ..., "project": ...}}`` from the index."""
-    return dict(registry_store.load_section(std.registry, "connected"))
-
-
-def _write_connected(std: StandardPaths, mapping: dict[str, dict]) -> None:
-    """Overwrite the connected-external redirect index."""
-    entries = {key: mapping[key] for key in sorted(mapping)}
-    registry_store.save_section(std.registry, "connected", entries)
-
-
-def _find_connected_project(
-    path: Path, std: StandardPaths,
-) -> tuple[Workset, str] | None:
-    """Resolve *path* (or an ancestor) to its connected workset+project.
-
-    Walks *path* and its ancestors (same ancestor semantics as
-    ``_find_local_ancestor`` in paths.py): the deepest registered external
-    source path that is *path* or an ancestor of it wins.  Returns
-    ``(load_workset(root), project_name)`` on a hit, else ``None``.
-    """
-    mapping = _load_connected(std)
-    if not mapping:
-        return None
-    resolved = path.resolve()
-    best_key: str | None = None
-    best_depth = -1
-    for key in mapping:
-        registered = Path(key)
-        try:
-            resolved.relative_to(registered)
-        except ValueError:
-            continue
-        depth = len(registered.parts)
-        if depth > best_depth:
-            best_key = key
-            best_depth = depth
-    if best_key is None:
-        return None
-    entry = mapping[best_key]
-    ws_name = entry.get("workset")
-    project_name = entry.get("project")
-    if not ws_name or not project_name:
-        return None
-    registry = _load_registry(std)
-    root = registry.get(ws_name)
-    if root is None:
-        return None
-    return load_workset(root), project_name
 
 
 # ---------------------------------------------------------------------------
@@ -543,10 +491,11 @@ def add_project(
     the project is connected to that external directory: the external dir
     becomes the live workspace.  In that case ``workspaces/{name}`` is created
     as a SYMLINK to the external dir (discoverability only — never mounted), a
-    ``workspace`` override is written into the project's ``settings.yaml``, and a
-    redirect entry is recorded in ``connected.yaml`` so launches from the
-    external path resolve back to this workset.  Sources inside the workset
-    tree keep the normal behavior (a real ``workspaces/{name}`` directory).
+    ``workspace`` override is written into the project's ``settings.yaml``, and
+    the box is registered in the workset's per-workset registry (``boxes: {name →
+    external path}`` — the D10 connection record) so launches from the external
+    path resolve back to this workset.  Sources inside the workset tree keep the
+    normal behavior (a real ``workspaces/{name}`` directory).
 
     Raises ``WorksetError`` if a project with *name* already exists.
     """
@@ -589,22 +538,23 @@ def add_project(
                 "workset, or connect it to that workset instead."
             )
 
-        existing = _find_connected_project(resolved_source, std)
+        from kanibako import box_resolve
+
+        existing = box_resolve.find_connected_external_box(resolved_source, std)
         if existing is not None:
-            other_ws, other_proj = existing
             raise WorksetError(
                 f"Cannot connect '{resolved_source}': it is already connected "
-                f"as project '{other_proj}' in workset '{other_ws.name}'. "
-                "Disconnect it first."
+                f"as project '{existing.box_name}' in workset "
+                f"'{existing.workset_name}'. Disconnect it first."
             )
 
-    # Multi-step mutation (external case touches a symlink + settings.yaml +
-    # connected.yaml redirect + the durable root settings.yaml registry write).  A
-    # crash between steps could strand a symlink/redirect with no settings.yaml
-    # entry (external path locked out by a dangling connected.yaml redirect) or
-    # vice-versa.  Track forward effects on an unwind stack; on any failure undo
-    # in reverse + re-raise so the connect is all-or-nothing.  Success behavior
-    # is identical to before (same final state).
+    # Multi-step mutation (external case touches a symlink + settings.yaml + the
+    # per-workset ``boxes:`` connection record + the durable root settings.yaml
+    # registry write).  A crash between steps could strand a symlink/record with
+    # no settings.yaml entry (external path locked out by a dangling connection
+    # record) or vice-versa.  Track forward effects on an unwind stack; on any
+    # failure undo in reverse + re-raise so the connect is all-or-nothing.
+    # Success behavior is identical to before (same final state).
     import shutil
 
     unwind = _Unwind()
@@ -659,11 +609,19 @@ def add_project(
                 name=name,
             )
 
-            mapping = _load_connected(std)
-            mapping[str(resolved_source)] = {"workset": ws.name, "project": name}
-            _write_connected(std, mapping)
+            # P7/D10: record the connection in the TARGET workset's per-workset
+            # registry — ``boxes: {name → EXTERNAL path}``.  The per-workset
+            # ``boxes:`` entry IS the connection record (the reverse index is the
+            # collection of per-workset registries); the former global
+            # ``connected:`` index is gone.  Idempotent (overwrites a moved box).
+            from kanibako.paths import (
+                _register_workset_box_membership,
+                _unregister_workset_box_membership,
+            )
+
+            _register_workset_box_membership(ws.root, name, resolved_source)
             unwind.push(
-                lambda: _drop_connected(std, str(resolved_source))
+                lambda: _unregister_workset_box_membership(ws.root, name)
             )
         else:
             # Internal (or no std): a real workspace directory.
@@ -674,7 +632,8 @@ def add_project(
                 unwind.push(lambda: shutil.rmtree(ws_dir, ignore_errors=True))
 
         # Durable registry write LAST.  If it fails the unwind removes the
-        # symlink/redirect/dirs above, leaving no orphaned connected.yaml entry.
+        # symlink + the per-workset ``boxes:`` registration + dirs above, leaving
+        # no orphaned connection record.
         #
         # J2 lifecycle journal: the write-ahead ``op: connect`` entry that
         # brackets this durable membership write lives in the CONNECT COMMAND
@@ -697,14 +656,6 @@ def add_project(
     return proj
 
 
-def _drop_connected(std: StandardPaths, key: str) -> None:
-    """Drop a connected.yaml redirect entry by source path (compensating action)."""
-    mapping = _load_connected(std)
-    if key in mapping:
-        del mapping[key]
-        _write_connected(std, mapping)
-
-
 def _detach_project(ws: Workset, name: str) -> None:
     """Drop *name* from the in-memory project list (compensating action)."""
     ws.projects[:] = [p for p in ws.projects if p.name != name]
@@ -717,12 +668,13 @@ def remove_project(
     """Remove a project from a workset.
 
     When *std* is provided, the external-connect markers written by
-    :func:`add_project` are undone regardless of *remove_files*: any
-    ``connected.yaml`` entry pointing at this workset+project is dropped and the
-    ``workspaces/{name}`` symlink (external projects) is unlinked.  Unlinking a
-    symlink removes ONLY the link — never the user's external source directory.
-    With *remove_files* the workset-side per-project directories are removed too
-    (symlinks unlinked, real dirs rmtree'd); the external source is left intact.
+    :func:`add_project` are undone regardless of *remove_files*: the box's
+    per-workset ``boxes:`` connection record (D10 — present only when its path is
+    EXTERNAL) is dropped and the ``workspaces/{name}`` symlink (external projects)
+    is unlinked.  Unlinking a symlink removes ONLY the link — never the user's
+    external source directory.  With *remove_files* the workset-side per-project
+    directories are removed too (symlinks unlinked, real dirs rmtree'd); the
+    external source is left intact.
 
     Raises ``WorksetError`` if no project with *name* exists.
     """
@@ -736,29 +688,36 @@ def remove_project(
             f"Project '{name}' not found in workset '{ws.name}'."
         )
 
-    # Failure-consistency ordering: clean the connected.yaml redirect + the
+    # Failure-consistency ordering: clean the per-workset connection record + the
     # discoverability symlink BEFORE the durable root settings.yaml registry write, so
     # the registry removal (which makes the project "gone") is the LAST durable
     # step.  A crash mid-cleanup then leaves the project still in settings.yaml —
     # a re-runnable state — instead of removing it from the registry while the
-    # connected.yaml redirect still points at it (which would lock out the
+    # ``boxes:`` connection record still points at it (which would lock out the
     # external path).  The cleanups are idempotent: a re-run finds nothing to do.
     import shutil
 
-    # Always undo the external-connect markers when we have std, so the
-    # connected.yaml redirect never outlives the project (regression from the
-    # connect-external work).
+    # Always undo the external-connect record when we have std, so the per-workset
+    # ``boxes:`` entry never outlives the project.  D10: the connection record is
+    # the per-workset registry entry whose path is EXTERNAL (outside the workset
+    # root); an in-tree box's membership entry is left untouched (as before —
+    # only external connects were ever cleaned here).
     if std is not None:
-        mapping = _load_connected(std)
-        stale = [
-            key
-            for key, entry in mapping.items()
-            if entry.get("workset") == ws.name and entry.get("project") == name
-        ]
-        if stale:
-            for key in stale:
-                del mapping[key]
-            _write_connected(std, mapping)
+        from kanibako import workset_registry
+        from kanibako.paths import _unregister_workset_box_membership
+
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / WORKSET_META_FILE),
+        )
+        box_path = workset_registry.workset_box_path(registry_path, name)
+        if box_path is not None:
+            try:
+                Path(box_path).resolve().relative_to(ws.root.resolve())
+                is_external_record = False
+            except ValueError:
+                is_external_record = True
+            if is_external_record:
+                _unregister_workset_box_membership(ws.root, name)
 
     # The workspaces/{name} marker is a SYMLINK for external projects; unlink it
     # (removes only the link, never the external target).  Do this regardless of

@@ -11,6 +11,7 @@ from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.paths import (
     DetectionResult,
     BoxMode,
+    WorksetSpec,
     _bootstrap_shell,
     _find_local_ancestor,
     _find_workset_for_path,
@@ -20,6 +21,7 @@ from kanibako.paths import (
     load_std_paths,
     resolve_any_project,
     resolve_project,
+    resolve_workset_project,
 )
 from kanibako.names import register_name
 from kanibako.utils import project_hash
@@ -986,11 +988,12 @@ class TestUpgradeShell:
 
 
 class TestConnectedExternal:
-    """Resolution of EXTERNAL dirs connected to a workset (connected.yaml).
+    """Resolution of EXTERNAL dirs connected to a workset (D10 per-workset registry).
 
-    `add_project(ws, name, external, std)` records the redirect; launching from
-    the external path (or a subdir, or the discoverability symlink) must resolve
-    to the named workset with the external dir as the live workspace.
+    `add_project(ws, name, external, std)` records the connection in the
+    workset's per-workset ``boxes:`` registry; launching from the external path
+    (or a subdir, or the discoverability symlink) must resolve to the named
+    workset with the external dir as the live workspace.
     """
 
     def _setup(self, config_file, tmp_home):
@@ -1043,6 +1046,132 @@ class TestConnectedExternal:
         assert proj.group.is_default is False
         assert proj.group.name == "ext-set"
         assert proj.project_path == external
+
+
+class TestP7ConnectRegistry:
+    """P7/D10: connect registers into the per-workset registry; the global
+    ``connected:`` index is GONE; resolution + the workspace override run purely
+    off the per-workset ``boxes:`` scan (via box_resolve).
+    """
+
+    def _setup(self, config_file, tmp_home):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        from kanibako.workset import add_project, create_workset
+        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+        add_project(ws, "extproj", external, std)
+        return config, std, ws, external
+
+    def _boxes(self, ws):
+        from kanibako import workset_registry
+        from kanibako.config_io import load_doc
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "settings.yaml"),
+        )
+        return workset_registry.load_workset_boxes(registry_path)
+
+    def test_connect_registers_external_in_per_workset_boxes(
+        self, config_file, tmp_home
+    ):
+        """Test 1 — connect records the box in the workset's ``boxes:`` with the
+        EXTERNAL path.  Mutation: skip the per-workset registration in add_project
+        → this assert goes RED."""
+        _config, _std, ws, external = self._setup(config_file, tmp_home)
+        assert self._boxes(ws).get("extproj") == str(external)
+
+    def test_connect_round_trip_resolves_to_external_workspace(
+        self, config_file, tmp_home
+    ):
+        """Test 1 (cont.) — resolving FROM the external dir yields the named
+        workset with the external dir as the live workspace, sourced ENTIRELY
+        from the per-workset scan (no connected: index exists)."""
+        config, std, _ws, external = self._setup(config_file, tmp_home)
+        result = detect_project_mode(external, std, config)
+        assert result.mode is BoxMode.named
+        proj = resolve_any_project(std, config, project_dir=str(external))
+        assert proj.group is not None and proj.group.name == "ext-set"
+        assert proj.project_path == external
+
+    def test_no_global_connected_section_after_connect(
+        self, config_file, tmp_home
+    ):
+        """Test 2 — the global registry carries NO ``connected:`` section after a
+        connect; resolution consults only the per-workset registries."""
+        from kanibako import registry_store
+        from kanibako.config_io import load_doc
+        _config, std, _ws, _external = self._setup(config_file, tmp_home)
+        # The section is not part of the registry model at all.
+        assert "connected" not in registry_store.load_registry(std.registry)
+        # And nothing wrote a literal connected: key to the file.
+        if std.registry.is_file():
+            raw = load_doc(std.registry)
+            assert "connected" not in (raw or {})
+
+    def test_workspace_override_sourced_from_box_resolve(
+        self, config_file, tmp_home
+    ):
+        """Test 3 — resolve_workset_project for a connected box returns
+        project_path == the external dir, sourced from box_resolve (not
+        read_project_meta).  Mutation: break the box_resolve source (item 2) →
+        project_path falls back to workspaces/<name> → RED."""
+        config, std, ws, external = self._setup(config_file, tmp_home)
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), "extproj", std, config,
+            initialize=False,
+        )
+        assert proj.project_path == external
+        # Prove it is NOT the in-tree layout path.
+        assert proj.project_path != ws.workspaces_dir / "extproj"
+
+    def test_already_connected_guard_still_errors(self, config_file, tmp_home):
+        """Test 4 — connecting a dir already connected still errors, detected via
+        the per-workset scan."""
+        _config, std, _ws, external = self._setup(config_file, tmp_home)
+        from kanibako.workset import add_project, create_workset
+        ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
+        with pytest.raises(WorksetError, match="already connected"):
+            add_project(ws_b, "dup", external, std)
+
+    def test_find_connected_external_skips_in_tree_boxes(
+        self, config_file, tmp_home
+    ):
+        """Test 5/6 — find_connected_external_box returns None for an IN-TREE box
+        (registered in ``boxes:`` with an INTERNAL path), so an in-tree box is
+        never mistaken for an external connection (e.g. duplicate's
+        ``_source_is_external``).  Mutation: drop the external-only filter →
+        this matches the in-tree box → RED."""
+        from kanibako import box_resolve, workset_registry
+        from kanibako.config_io import load_doc
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        from kanibako.workset import create_workset
+        ws = create_workset("mix", tmp_home / "worksets" / "mix", std)
+        internal = ws.workspaces_dir / "inbox"
+        internal.mkdir(parents=True)
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "settings.yaml"),
+        )
+        workset_registry.register_workset_box(registry_path, "inbox", internal)
+        assert box_resolve.find_connected_external_box(internal, std) is None
+
+    def test_in_tree_box_unaffected(self, config_file, tmp_home):
+        """Test 6 — a normal INTERNAL workset box resolves to its layout
+        workspace (regression guard: the per-workset scan does not hijack it)."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        from kanibako.workset import add_project, create_workset
+        ws = create_workset("in-set", tmp_home / "worksets" / "in-set", std)
+        # Internal source (inside the workset root) → a real workspace dir, never
+        # an external connection.
+        internal = ws.root.resolve() / "workspaces" / "inproj"
+        add_project(ws, "inproj", internal, std)
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), "inproj", std, config,
+            initialize=False,
+        )
+        assert proj.project_path == ws.workspaces_dir / "inproj"
 
 
 # ---------------------------------------------------------------------------

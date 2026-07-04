@@ -32,6 +32,37 @@ from kanibako.workset import add_project, create_workset, load_workset
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
+def _connected_index(std):
+    """Reconstruct the ``{external_path: {workset, project}}`` connection view.
+
+    D10 replacement for the retired global ``connected:`` index: a connected box
+    is a NAMED workset's per-workset ``boxes:`` entry whose path is EXTERNAL
+    (outside that workset root).  Mirrors the old ``_load_connected`` shape.
+    """
+    from pathlib import Path
+
+    from kanibako import registry_store, workset_registry
+    from kanibako.config_io import load_doc
+
+    out = {}
+    for name, root_str in registry_store.load_section(
+        std.registry, "worksets"
+    ).items():
+        root = Path(root_str)
+        registry_path = workset_registry.resolve_workset_registry_path(
+            root, load_doc(root / "settings.yaml"),
+        )
+        for box_name, box_path in workset_registry.load_workset_boxes(
+            registry_path
+        ).items():
+            resolved = Path(box_path).resolve()
+            try:
+                resolved.relative_to(root.resolve())
+                continue
+            except ValueError:
+                out[str(resolved)] = {"workset": name, "project": box_name}
+    return out
+
 @pytest.fixture
 def env(config_file, tmp_home, credentials_dir):
     config = load_config(config_file)
@@ -130,8 +161,7 @@ class TestRemap:
         # Files preserved (never moved/deleted by remap).
         assert (new_ext / "f.txt").read_text() == "ext"
         # connected.yaml now points at the new external path.
-        from kanibako.workset import _load_connected
-        connected = _load_connected(std)
+        connected = _connected_index(std)
         assert str(new_ext.resolve()) in connected
 
     def test_remap_missing_project(self, env):
