@@ -226,7 +226,7 @@ def writeback_cred_files(
 #
 #   * GLOBAL tier  → source_root = the host home (host_rel). One hop.
 #   * WORKSET tier → source_root = the box's per-agent workset source dir
-#     (box.auth.workset_path; layout mirrors home_rel). PLUS, when global_sync is
+#     (meta.box.auth.workset_path; layout mirrors home_rel). PLUS, when global_sync is
 #     on, the SAME primitive runs a SECOND hop between the workset dir and global —
 #     the workset dir is just another sync client of global (design SYNC). Natural
 #     ordering: refresh TOP-DOWN (global → workset → box), writeback BOTTOM-UP
@@ -246,7 +246,7 @@ def selected_source_root(
     Per the resolved tier (precedence workset>global): the workset per-agent
     source dir for ``"workset"``, the host home for ``"global"``, ``None`` for the
     private ``"box"`` tier (the primitives no-op). The workset source is
-    ``auth.workset_source`` (``box.auth.workset_path`` — already resolved).
+    ``auth.workset_source`` (``meta.box.auth.workset_path`` — already resolved).
     """
     if auth.tier == "workset" and auth.workset_source is not None:
         return Path(auth.workset_source)
@@ -315,7 +315,7 @@ def _create_workset_source_dirs(
 
     Because the plugin OWNS the in-guest cred LAYOUT (``home_rel`` / ``init_dirs``),
     it also creates the matching WORKSET sync-source directories in that layout:
-    the per-agent workset auth dir (``box.auth.workset_path`` = the source root),
+    the per-agent workset auth dir (``meta.box.auth.workset_path`` = the source root),
     its ``init_dirs`` substructure, and each cred file's parent dir. The GLOBAL
     source is NOT created (it is the user's real host login location). No-op unless
     the WORKSET tier is actually selected.

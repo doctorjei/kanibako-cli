@@ -129,8 +129,11 @@ _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 #                                           (mirror, materialized when box.agent_name set)
 #   box.auth.global_enabled  = %@meta.box.agent.auth.share_support && @system.auth.share_allowed%
 #   box.auth.workset_enabled = %@meta.box.agent.auth.share_support && @workset.auth.share_allowed%
-#   workset.auth.path        = @meta.workset.path/auth        (workset auth dir, per workset)
-#   box.auth.workset_path    = @workset.auth.path/@box.agent_name  (this box's per-agent source root)
+#   workset.auth.path        = @meta.workset.path/auth        (workset auth dir, per workset; SETTABLE)
+#   meta.box.auth.workset_path = @workset.auth.path/@box.agent_name  (this box's per-agent source
+#                                           root — RO DERIVED meta anchor, change 8: NOT settable, so a
+#                                           user can't repoint it to garbage; the ONLY settable auth-
+#                                           location surface is ``workset.auth.path``)
 #
 # STORES: GLOBAL = host home (host_rel, NOT managed) · WORKSET = @workset.auth.path/<agent>/
 # (layout MIRRORS the in-guest mount = home_rel) · BOX = private (no source).
@@ -178,9 +181,12 @@ def auth_chain_floor(
     materializes the ``meta.box.agent.auth.share_support`` MIRROR
     (=``@meta.agent.<agent>.auth.share_support``, the 29g box.agent mirror pattern
     made concrete for the @-ref's literal-path resolution), the system/workset
-    allow knobs, the two settable box ENABLE knobs (per-tier opt-out defaults), and
-    the workset store path anchors. :func:`resolve_auth_source` computes the
-    effective enable = ``support && allow && knob`` in Python (see the module note).
+    allow knobs, the two settable box ENABLE knobs (per-tier opt-out defaults), the
+    settable ``workset.auth.path`` store anchor, and the RO DERIVED per-box source
+    root ``meta.box.auth.workset_path`` (change 8 — a ``meta.*`` anchor, NOT settable:
+    a scope FILE cannot repoint it, so the ONLY settable auth-location surface is
+    ``workset.auth.path``). :func:`resolve_auth_source` computes the effective enable
+    = ``support && allow && knob`` in Python (see the module note).
 
     PRIMARY / NAMED use the @-ref forms. STANDALONE pins the two workset keys
     (``workset.auth.share_allowed`` / ``workset.auth.global_sync``) to the LITERAL
@@ -209,8 +215,17 @@ def auth_chain_floor(
         "box.auth.workset_enabled": True,
         # This box's per-agent WORKSET source root (@workset.auth.path/<agent>).
         # The workset auth dir mirrors the in-guest layout (home_rel); this is the
-        # box's own root within it, keyed by the active agent name.
-        "box.auth.workset_path": f"@workset.auth.path/{agent_name}",
+        # box's own root within it, keyed by the active agent name. RECLASSIFIED
+        # (change 8) to the RO DERIVED ``meta.box.auth.workset_path`` anchor — DIRECTLY
+        # under ``meta.box.auth.*`` (NOT ``meta.box.agent.auth.*``: the agent sub-
+        # namespace is the capability MIRROR, each key @-refs a
+        # ``meta.agent.<agent>.*`` source; this is a per-box LOCATION, not an agent
+        # capability). Being ``meta.*`` it is dropped from every settings FILE in
+        # assembly, so a user CANNOT repoint it to a dangling @-ref / garbage — the
+        # only settable auth-location surface is ``workset.auth.path``. The literal-
+        # interpolated ``{agent_name}`` resolves IDENTICALLY to the spec
+        # ``@workset.auth.path/@box.agent_name`` form (equivalence bar).
+        "meta.box.auth.workset_path": f"@workset.auth.path/{agent_name}",
     }
     if mode == "standalone":
         # STANDALONE: a lone box has no workset group → the workset allow keys are
@@ -221,7 +236,7 @@ def auth_chain_floor(
         floor["workset.auth.global_sync"] = False
         # No workset store for a lone box — the workset auth dir path anchor is
         # absent (present-None), and the box's per-agent source root is pinned None
-        # too (defensive root-cause fix): otherwise ``box.auth.workset_path`` =
+        # too (defensive root-cause fix): otherwise ``meta.box.auth.workset_path`` =
         # ``@workset.auth.path/<agent>`` would resolve against the absent
         # ``workset.auth.path`` and expand to the literal ``/<agent>`` (an @-ref to
         # an absent key renders ``""``, not a drop) — garbage the credsync
@@ -229,7 +244,10 @@ def auth_chain_floor(
         # false anyway, so this source is never consulted; pinning None makes that
         # explicit at the floor, belt-and-braces with the resolver's scrub.
         floor["workset.auth.path"] = None
-        floor["box.auth.workset_path"] = None
+        # The RO DERIVED per-box source root (change 8: was ``box.auth.workset_path``)
+        # — a ``meta.*`` anchor pinned None for standalone, the established meta-anchor-
+        # is-None-for-standalone pattern; resolve_auth_source reads this meta node.
+        floor["meta.box.auth.workset_path"] = None
     else:
         # PRIMARY / NAMED (ALL WORKSETS): workset allow defaults to the system
         # gate; the workset dir syncs UP to global by default.
@@ -616,8 +634,9 @@ class AuthSource:
       true and the box syncs the WORKSET tier, the workset store is first refreshed
       from / written back to global (the uniform primitive at the second level).
     * *workset_source* — the resolved workset per-agent source root
-      (``box.auth.workset_path``), or ``None`` for standalone / when absent. The
-      GLOBAL source is the host home (``host_rel``), not carried here (implicit).
+      (``meta.box.auth.workset_path`` — the RO DERIVED meta anchor, change 8), or
+      ``None`` for standalone / when absent. The GLOBAL source is the host home
+      (``host_rel``), not carried here (implicit).
     """
 
     tier: AuthTier
@@ -650,7 +669,7 @@ def resolve_auth_source(
     * GLOBAL:  ``meta.box.agent.auth.share_support && system.auth.share_allowed &&
       box.auth.global_enabled``
     * WORKSET: ``meta.box.agent.auth.share_support && workset.auth.share_allowed &&
-      box.auth.workset_enabled`` (AND a present ``box.auth.workset_path`` store)
+      box.auth.workset_enabled`` (AND a present ``meta.box.auth.workset_path`` store)
 
     Selection (design PRECEDENCE workset>global):
 
@@ -659,9 +678,9 @@ def resolve_auth_source(
     * else tier ``"box"`` (private, no source — distinct auth).
 
     Each input is resolved to a real ``bool`` terminal by ``expand``;
-    :func:`as_bool` does not launder. ``box.auth.workset_path`` is a resolved string
-    (or ``None`` for standalone). ``workset.auth.global_sync`` is the workset↔global
-    up-sync flag.
+    :func:`as_bool` does not launder. ``meta.box.auth.workset_path`` is a resolved
+    string (or ``None`` for standalone). ``workset.auth.global_sync`` is the
+    workset↔global up-sync flag.
 
     An absent ``box`` node means the floor was not injected → fail CLOSED (tier
     ``"box"``, no sharing) rather than launder.
@@ -678,9 +697,13 @@ def resolve_auth_source(
             workset_source=None,
         )
 
-    # The box-scoped capability mirror (RO): meta.box.agent.auth.share_support.
+    # The box-scoped RO meta anchors under ``meta.box``: the capability MIRROR
+    # ``meta.box.agent.auth.share_support`` AND the DERIVED per-box source root
+    # ``meta.box.auth.workset_path`` (change 8 — reclassified from the old settable
+    # ``box.auth.workset_path``; being ``meta.*`` a scope FILE cannot repoint it).
     meta_node = dict.get(snapshot, "meta", _MISSING)
     support = False
+    workset_source: str | None = None
     if isinstance(meta_node, KeyStore):
         meta_box = dict.get(meta_node, "box", _MISSING)
         if isinstance(meta_box, KeyStore):
@@ -691,6 +714,14 @@ def resolve_auth_source(
                     support = as_bool(
                         dict.get(mba_auth, "share_support", False)
                     )
+            # meta.box.auth.workset_path (sibling of meta.box.agent) — the RO
+            # DERIVED per-box workset source root. A resolved string (or None /
+            # absent for standalone); absent/None/"" all coerce to None below.
+            meta_box_auth = dict.get(meta_box, "auth", _MISSING)
+            if isinstance(meta_box_auth, KeyStore):
+                wp = dict.get(meta_box_auth, "workset_path", _MISSING)
+                if isinstance(wp, str) and wp:
+                    workset_source = wp
 
     # The system + workset allow flags.
     system_node = dict.get(snapshot, "system", _MISSING)
@@ -712,17 +743,15 @@ def resolve_auth_source(
         workset_allow = as_bool(dict.get(workset_auth, "share_allowed", False))
         global_sync = as_bool(dict.get(workset_auth, "global_sync", False))
 
-    # The two settable box ENABLE knobs + the workset source path.
+    # The two settable box ENABLE knobs (per-tier opt-out; STAY in ``box.auth``).
+    # The workset SOURCE path is read above from the RO ``meta.box.auth`` node
+    # (change 8), NOT here — only the settable knobs remain in ``box.auth``.
     box_auth = dict.get(box_node, "auth", _MISSING)
     global_knob = True
     workset_knob = True
-    workset_source: str | None = None
     if isinstance(box_auth, KeyStore):
         global_knob = as_bool(dict.get(box_auth, "global_enabled", True))
         workset_knob = as_bool(dict.get(box_auth, "workset_enabled", True))
-        wp = dict.get(box_auth, "workset_path", _MISSING)
-        if isinstance(wp, str) and wp:
-            workset_source = wp
 
     # Effective enables (the Python AND standing in for the spec's %… && …%).
     global_enabled = bool(support and system_allow and global_knob)
@@ -739,7 +768,7 @@ def resolve_auth_source(
         tier = "box"
 
     # Null out the workset source UNLESS the workset tier was selected. Otherwise a
-    # standalone/global/private box carries the resolved ``box.auth.workset_path``,
+    # standalone/global/private box carries the resolved ``meta.box.auth.workset_path``,
     # which — for standalone — is the GARBAGE ``@workset.auth.path/<agent>`` with
     # ``workset.auth.path=None``: expand renders an @-ref to an absent/None key as
     # ``""`` (NOT a drop), so it collapses to the literal ``/<agent>``. Leaving that

@@ -612,8 +612,11 @@ def test_auth_clean_break_no_group_auth_keys():
     assert "system.auth.share_allowed" in chain
     assert "box.auth.global_enabled" in chain
     assert "box.auth.workset_enabled" in chain
-    assert "box.auth.workset_path" in chain
-    assert chain["box.auth.workset_path"] == "@workset.auth.path/claude"
+    # change 8: the per-box source root moved to the RO meta anchor; the settable
+    # box.auth node keeps ONLY the two enable knobs (no workset_path leaks back).
+    assert "box.auth.workset_path" not in chain
+    assert "meta.box.auth.workset_path" in chain
+    assert chain["meta.box.auth.workset_path"] == "@workset.auth.path/claude"
 
 
 def test_auth_capability_mirror_is_ref_to_agent_slot():
@@ -624,6 +627,119 @@ def test_auth_capability_mirror_is_ref_to_agent_slot():
         chain["meta.box.agent.auth.share_support"]
         == "@meta.agent.goose.auth.share_support"
     )
+
+
+# --------------------------------------------------------------------------- #
+# change 8 (P6d2): box.auth.workset_path → RO meta.box.auth.workset_path        #
+# --------------------------------------------------------------------------- #
+
+
+def _snap_meta_box_auth_workset_path(snap):
+    """Navigate snapshot → meta → box → auth → workset_path, or None if absent."""
+    meta = snap.meta if "meta" in snap else None
+    if meta is None or "box" not in meta:
+        return None
+    mbox = meta.box
+    if "auth" not in mbox:
+        return None
+    mauth = mbox.auth
+    return mauth.workset_path if "workset_path" in mauth else None
+
+
+def test_p6d2_meta_anchor_resolves_and_box_auth_has_no_workset_path(tmp_path):
+    """change 8: meta.box.auth.workset_path resolves to @workset.auth.path/<agent>
+    in the snapshot; the settable box.auth node carries ONLY the enable knobs (the
+    source path no longer lives under box.auth)."""
+    snap = _auth_snapshot("primary", tmp_path=tmp_path)
+    wp = _snap_meta_box_auth_workset_path(snap)
+    assert isinstance(wp, str) and wp.endswith("/auth/claude")
+    # The settable box.auth node has the two knobs but NOT workset_path (moved to meta).
+    box_auth = snap.box.auth
+    assert "global_enabled" in box_auth and "workset_enabled" in box_auth
+    assert "workset_path" not in box_auth
+
+
+def test_p6d2_resolved_workset_source_reads_meta_node(tmp_path):
+    """EQUIVALENCE BAR: the resolved workset_source is byte-identical to the meta
+    anchor's resolved value (the consumer reads the meta node, not box.auth).
+    Mutation: pointing the consumer at box.auth (which no longer holds the key)
+    would yield None → tier global, breaking this."""
+    snap = _auth_snapshot("primary", tmp_path=tmp_path)
+    a = resolve_auth_source(snap, mode="primary")
+    assert a.tier == "workset"
+    assert a.workset_source == _snap_meta_box_auth_workset_path(snap)
+    assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
+
+
+def test_p6d2_meta_anchor_none_for_standalone(tmp_path):
+    """change 7/8: standalone pins meta.box.auth.workset_path = None (the meta-
+    anchor-is-None-for-standalone pattern). Mutation: dropping the None pin would
+    let @workset.auth.path/<agent> resolve to garbage /<agent>."""
+    snap = _auth_snapshot("standalone", tmp_path=tmp_path)
+    assert _snap_meta_box_auth_workset_path(snap) is None
+
+
+def test_p6d2_safety_meta_anchor_dropped_from_settings_file(tmp_path):
+    """SAFETY WIN: meta.box.auth.workset_path is meta.* → a box/workset FILE trying
+    to set it is DROPPED in assembly (never reaches the resolved source). Mutation:
+    if the meta drop leaked, workset_source would become the /evil garbage."""
+    # A box file trying to plant a top-level meta table (the only way to reach the
+    # dotted key) — dropped by assemble's meta-RO guard.
+    snap = _auth_snapshot(
+        "primary", tmp_path=tmp_path,
+        box_file={"meta": {"box": {"auth": {"workset_path": "/evil"}}}},
+    )
+    wp = _snap_meta_box_auth_workset_path(snap)
+    # The floor's resolved value survives; the /evil injection did NOT.
+    assert wp is not None and wp.endswith("/auth/claude")
+    assert wp != "/evil"
+    a = resolve_auth_source(snap, mode="primary")
+    assert a.workset_source is not None and not a.workset_source.startswith("/evil")
+
+
+def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
+    """change 8: workset.auth.path is the ONLY settable auth-location surface. A
+    workset FILE value OVERRIDES the @meta.workset.path/auth floor default, and the
+    derived meta.box.auth.workset_path re-resolves against it. Mutation: unregister
+    the route / drop the override handling → the custom root is not honored."""
+    from kanibako.config_interface import KNOWN_CONFIG_KEYS, _KEY_ROUTES
+    # (a) it IS registered settable (P6a) and routes to the workset:auth nested slot.
+    assert "workset.auth.path" in KNOWN_CONFIG_KEYS
+    assert _KEY_ROUTES["workset.auth.path"] == (("workset", "auth"), "path")
+    # (b) a workset-file override is honored end-to-end (out-precedes the base floor).
+    snap = _auth_snapshot(
+        "primary", tmp_path=tmp_path,
+        workset_file={"workset": {"auth": {"path": "/custom/store"}}},
+    )
+    a = resolve_auth_source(snap, mode="primary")
+    assert a.tier == "workset"
+    assert a.workset_source == "/custom/store/claude"
+
+
+def test_p6d2_standalone_scrub_no_agent_garbage(tmp_path):
+    """change 7: standalone → workset.auth.path None + meta.box.auth.workset_path
+    None + workset tier disabled → workset_source None (NO /<agent> garbage that
+    credsync would mkdir against host root). The None pins + resolver scrub are
+    belt-and-braces; both are load-bearing."""
+    a = resolve_auth_source(
+        _auth_snapshot("standalone", tmp_path=tmp_path), mode="standalone"
+    )
+    assert a.workset_source is None
+    assert a.tier != "workset"
+    # SCRUB isolation (independent of the standalone None pin): a PRIMARY box that
+    # opts OUT of the workset tier resolves the meta anchor to a REAL /auth/claude
+    # root, but — tier != "workset" — the resolver MUST scrub workset_source to None
+    # so no non-workset AuthSource carries a stray source. Mutation: dropping the
+    # ``if tier != "workset": workset_source = None`` scrub surfaces /auth/claude here.
+    g = resolve_auth_source(
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            box_file={"box": {"auth": {"workset_enabled": False}}},
+        ),
+        mode="primary",
+    )
+    assert g.tier == "global"
+    assert g.workset_source is None
 
 
 # --------------------------------------------------------------------------- #
