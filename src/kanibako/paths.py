@@ -18,7 +18,6 @@ from kanibako.config import (
     config_file_path,
     load_config,
     read_box_enable_vault,
-    read_project_meta,
     read_workset_kuid,
     read_workset_skip_kuid_check,
     write_project_meta,
@@ -1690,18 +1689,24 @@ def _init_workset_project(
 def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project.
 
-    *project_path* is read from ``settings.yaml`` (``workspace`` field) when
-    available, falling back to ``project-path.txt`` for backward compat.
+    *project_path* is the box's workspace, sourced from the PRIMARY per-workset
+    registry (``name → workspace``).  A box with no registry entry yields
+    ``None`` (an un-registered / half-created box has no resolvable workspace).
     """
     projects_dir = std.boxes
     if not projects_dir.is_dir():
         return []
-    # P5a: box → workspace comes from the PRIMARY per-workset registry
+    # P8a: box → workspace comes SOLELY from the PRIMARY per-workset registry
     # (name → workspace), the new-model source seeded at create
-    # (``_register_new_box``).  Un-migrated boxes are absent there → fall back to
-    # the transitional settings.yaml ``resolved.workspace``, then the legacy
-    # ``project-path.txt`` breadcrumb.  (These are PRIMARY boxes: ``std.boxes``
-    # == ``@config.primary_workset/boxes``, so the PRIMARY registry is the home.)
+    # (``_register_new_box``) — the SAME source ``box_resolve`` reads.  A box
+    # cannot be resolved from its box DIR via ``box_resolve.resolve_box_identity``
+    # (the registry is keyed by workspace PATH, not the box dir), so we read the
+    # PRIMARY registry here directly (identical data).  The transitional
+    # ``read_project_meta`` (settings.yaml ``resolved.workspace``) + legacy
+    # ``project-path.txt`` breadcrumb fallbacks are DROPPED (P8a): a box absent
+    # from the registry has no workspace → ``None``.  (These are PRIMARY boxes:
+    # ``std.boxes`` == ``@config.primary_workset/boxes``, so the PRIMARY registry
+    # is the home.)
     from kanibako import workset_registry
     from kanibako.config_io import load_doc
 
@@ -1713,21 +1718,8 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     for entry in sorted(projects_dir.iterdir()):
         if not entry.is_dir():
             continue
-        project_path: Path | None = None
         registered_ws = registered.get(entry.name)
-        if registered_ws:
-            project_path = Path(registered_ws)
-        else:
-            # Transitional fallback: settings.yaml workspace, then breadcrumb.
-            meta = read_project_meta(entry / BOX_META_FILE)
-            if meta and meta.get("workspace"):
-                project_path = Path(meta["workspace"])
-            else:
-                breadcrumb = entry / "project-path.txt"
-                if breadcrumb.is_file():
-                    text = breadcrumb.read_text().strip()
-                    if text:
-                        project_path = Path(text)
+        project_path: Path | None = Path(registered_ws) if registered_ws else None
         results.append((entry, project_path))
     return results
 
@@ -2266,25 +2258,23 @@ def resolve_standalone_project(
         else read_box_enable_vault(project_toml)
     )
 
-    # Box identity name: the standalone name is composed LIVE (P6d) as
-    # ``<stored workset.kuid>_<live leaf>`` — the kuid is the STABLE stored prefix
-    # (from the box's OWN ``settings.yaml``, design D6) and the leaf is re-derived
-    # from the CURRENT root basename, so a moved standalone tree keeps its kuid
-    # identity while the leaf tracks the new dir (spec 2026-07-04). box_resolve does
-    # NOT source the name for an UNREGISTERED standalone (an interrupted create is
-    # exactly that case), so the name is composed from settings.yaml here, not via
-    # box_resolve. Pre-kuid boxes (no ``workset.kuid`` ⇒ SENTINEL) fall back to the
-    # stored full ``name``. A not-yet-materialized root (no ``box_data/``) yields ""
-    # (the create block below assigns it authoritatively via establish_standalone).
-    meta = None
+    # Box identity name (P8a): sourced from ``box_resolve`` for a MATERIALIZED
+    # standalone (``box_data/`` + ``settings.yaml`` present — the same gate
+    # ``standalone_settings_present`` uses).  box_resolve composes the name LIVE
+    # (P6d) as ``<stored workset.kuid>_<live leaf>`` — the kuid is the STABLE
+    # stored prefix (from the box's OWN ``settings.yaml``, design D6) and the leaf
+    # is re-derived from the CURRENT root basename, so a moved standalone tree
+    # keeps its kuid identity while the leaf tracks the new dir (spec 2026-07-04);
+    # a pre-kuid box (no ``workset.kuid`` ⇒ SENTINEL) falls back to the registered
+    # ``standalone:`` key, else the dir leaf.  A not-yet-materialized root (no
+    # ``box_data/``) yields "" (the create block below assigns it authoritatively
+    # via establish_standalone).  Replaces the transitional ``read_project_meta``
+    # ``project.name`` read.
+    box_name = ""
     if box_data.is_dir() and project_toml.is_file():
-        meta = read_project_meta(project_toml)
-    box_name = meta.get("name", "") if meta else ""
-    if meta:
-        from kanibako import box_identity, kuid
-        stored_kuid = read_workset_kuid(project_toml)
-        if stored_kuid != kuid.SENTINEL:
-            box_name = box_identity.compose_standalone_name(stored_kuid, root)
+        from kanibako import box_resolve
+        identity = box_resolve.resolve_box_identity(root, std, config)
+        box_name = identity["name"] if identity is not None else ""
     # The user's explicit --name (only meaningful when establishing a new box;
     # ignored once the box exists since the stored identity is authoritative).
     requested_name = name

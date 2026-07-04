@@ -170,9 +170,9 @@ def _archive_all(std, config, args) -> int:
                     std, config, project_dir=str(project_path), initialize=False
                 )
             except Exception:
-                proj = _stub_project(metadata_path, project_path, config)
+                proj = _stub_project(metadata_path, project_path, std, config)
         else:
-            proj = _stub_project(metadata_path, None, config)
+            proj = _stub_project(metadata_path, None, std, config)
 
         rc = _archive_one(std, config, proj, output_file=None, args=args)
         if rc == 0:
@@ -205,15 +205,26 @@ def _archive_all(std, config, args) -> int:
     return 1 if failed else 0
 
 
-def _stub_project(metadata_path, project_path, config):
+def _stub_project(metadata_path, project_path, std, config):
     """Create a minimal ProjectPaths stand-in for projects whose path is gone."""
-    from kanibako.config import BOX_META_FILE, read_project_meta
-    from kanibako.paths import ProjectPaths
+    from kanibako import box_resolve
+    from kanibako.paths import ProjectPaths, project_hash
 
-    # Read hash and name from settings.yaml when available.
-    meta = read_project_meta(metadata_path / BOX_META_FILE)
-    phash = (meta.get("project_hash") or metadata_path.name) if meta else metadata_path.name
-    name = (meta.get("name") or "") if meta else ""
+    # P8a: name from box_resolve's identity (registry KEY / composed standalone
+    # name).  A gone-path box that is STILL registered resolves by its (now
+    # missing) workspace path — ``resolve_box_identity`` matches the persisted
+    # registry entry.  Fall back to the box-dir leaf (the primary box name IS its
+    # dir) when nothing resolves.  ``project_hash`` is a DEAD ``resolved:`` field
+    # — recompute it from the (known) workspace, else the leaf fallback (as
+    # before).  Replaces the transitional ``read_project_meta`` read.
+    lookup = project_path if project_path is not None else metadata_path
+    identity = box_resolve.resolve_box_identity(lookup, std, config)
+    name = identity["name"] if identity is not None else metadata_path.name
+
+    if project_path is not None:
+        phash = project_hash(str(Path(project_path).resolve()))
+    else:
+        phash = metadata_path.name
 
     effective_path = project_path or Path(f"(unknown-{name or metadata_path.name})")
     return ProjectPaths(

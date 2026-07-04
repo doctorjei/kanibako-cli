@@ -342,12 +342,7 @@ def run_system_diagnose(args: object) -> int:
 
 def run_box_diagnose(args: object) -> int:
     """Run diagnostics for a specific project box."""
-    from kanibako.config import (
-        BOX_META_FILE,
-        config_file_path,
-        load_config,
-        read_project_meta,
-    )
+    from kanibako.config import config_file_path, load_config
     from kanibako.paths import load_std_paths, resolve_any_project, xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
@@ -368,12 +363,19 @@ def run_box_diagnose(args: object) -> int:
 
     # `resolve_any_project` fabricates a default-mode resolution for ANY
     # existing directory, so a successful return does NOT mean a kanibako
-    # project is actually registered at the target.  A real, registered
-    # project always has persisted metadata (settings.yaml) at its
-    # metadata_path; a fabricated one does not.  Without this guard, diagnose
-    # would report a meaningless `[ok] Project directory` followed by a false
-    # `[!!] Shell directory: missing` for moved/copied/plain directories.
-    is_registered = read_project_meta(proj.metadata_path / BOX_META_FILE) is not None
+    # project is actually registered at the target.  A real box has a
+    # box_resolve identity (registry membership / an in-place standalone
+    # settings file); a fabricated default-mode resolution of a plain dir does
+    # NOT.  Without this guard, diagnose would report a meaningless
+    # `[ok] Project directory` followed by a false `[!!] Shell directory:
+    # missing` for moved/copied/plain directories.  (P8a: replaces the
+    # transitional `read_project_meta(...) is not None` registration signal.)
+    from kanibako import box_resolve
+    is_registered = (
+        proj.project_path is not None
+        and box_resolve.resolve_box_identity(proj.project_path, std, config)
+        is not None
+    )
     if not is_registered:
         target = proj.project_path if proj.project_path else project_dir
         print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))

@@ -1357,6 +1357,34 @@ class TestP5aCreateThenResolve:
         assert results[box_dir] == registry_ws
         assert results[box_dir] != settings_ws
 
+    def test_iter_projects_unregistered_box_yields_none(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """P8a: a box dir absent from the PRIMARY registry yields ``None`` — the
+        transitional settings.yaml ``resolved.workspace`` + ``project-path.txt``
+        breadcrumb fallbacks are DROPPED.  (Mutation target: re-add a
+        settings.yaml-workspace fallback → this box would list ``settings_ws``
+        instead of ``None`` → RED.)"""
+        from kanibako.config import BOX_META_FILE, write_project_meta
+        from kanibako.paths import iter_projects
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # A primary box dir with a settings.yaml workspace but NO registry entry.
+        box_dir = std.boxes / "unregbox"
+        box_dir.mkdir(parents=True)
+        settings_ws = tmp_home / "settings_ws"
+        write_project_meta(
+            box_dir / BOX_META_FILE, mode="primary",
+            workspace=str(settings_ws), shell="", vault_ro="", vault_rw="",
+            name="unregbox",
+        )
+
+        results = dict(iter_projects(std, config))
+        # No registry membership → no resolvable workspace → None (NOT settings_ws).
+        assert box_dir in results
+        assert results[box_dir] is None
+
 
 class TestP5aStandalonePresenceSwitch:
     """Mutation proof for the _is_standalone_meta_dir presence switch (site

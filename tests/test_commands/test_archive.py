@@ -228,6 +228,57 @@ class TestArchiveExtended:
             assert any("data.txt" in n for n in names)
 
 
+class TestStubProject:
+    """P8a: ``_stub_project`` sources a gone-path box's NAME from box_resolve's
+    identity (registry KEY / composed standalone name), replacing the
+    transitional ``read_project_meta`` ``project.name`` read."""
+
+    def test_name_from_box_resolve_registry_key(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """A gone-path primary box (workspace missing, still registered) stubs
+        with its registry KEY as the name — even when the box-dir leaf differs.
+
+        Mutation proof: break the box_resolve identity read (fall straight to
+        ``metadata_path.name``) → the name becomes the dir leaf 'dirleaf'
+        instead of the registry key 'regkey' → RED.
+        """
+        from kanibako import workset_registry
+        from kanibako.commands.archive import _stub_project
+        from kanibako.config_io import load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        # Registry KEY 'regkey' deliberately differs from the box-dir leaf, and
+        # the box's workspace never exists on disk (a gone path).
+        box_dir = std.boxes / "dirleaf"
+        box_dir.mkdir(parents=True)
+        gone_ws = tmp_home / "gone_workspace"
+        reg = workset_registry.resolve_workset_registry_path(
+            std.primary_workset,
+            load_doc(std.primary_workset / "settings.yaml"),
+        )
+        workset_registry.register_workset_box(reg, "regkey", gone_ws)
+
+        stub = _stub_project(box_dir, gone_ws, std, config)
+        assert stub.name == "regkey"
+
+    def test_name_falls_back_to_dir_leaf_when_unresolvable(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """A truly-absent box (no registry entry, no path) degrades gracefully
+        to the box-dir leaf name (the primary box name IS its dir)."""
+        from kanibako.commands.archive import _stub_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        box_dir = std.boxes / "orphanbox"
+        box_dir.mkdir(parents=True)
+
+        stub = _stub_project(box_dir, None, std, config)
+        assert stub.name == "orphanbox"
+
+
 class TestArchiveWorkset:
     def test_archive_all_includes_workset_projects(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.archive import run

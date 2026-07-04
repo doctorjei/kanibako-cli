@@ -789,6 +789,44 @@ class TestRunBoxDiagnose:
         # Project directory still meaningfully [ok].
         assert "[ok] Project directory" in out
 
+    def test_registration_verdict_from_box_resolve_not_meta_file(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """P8a: the registration verdict is the box_resolve IDENTITY (registry
+        membership), NOT the on-disk settings.yaml FILE.  Removing the box's
+        registry entry (identity gone) makes diagnose report 'no project' even
+        though the box metadata still exists on disk.
+
+        Mutation proof: revert diagnose to
+        ``read_project_meta(...) is not None`` (the old file-present signal) →
+        the still-on-disk box wrongly reports REGISTERED and this goes RED.
+        """
+        from kanibako import workset_registry
+        from kanibako.config import load_config
+        from kanibako.config_io import load_doc
+        from kanibako.paths import load_std_paths
+
+        proj = self._register_default_project(
+            config_file, tmp_home, credentials_dir
+        )
+        # The on-disk box metadata remains; only its registry membership (the
+        # box_resolve identity source) is removed.
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        reg = workset_registry.resolve_workset_registry_path(
+            std.primary_workset,
+            load_doc(std.primary_workset / "settings.yaml"),
+        )
+        workset_registry.unregister_workset_box(reg, proj.name)
+
+        args = argparse.Namespace(project=None, path=None)
+        rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+        assert "[ok] Project directory" not in out
+
 
 class TestProbeMissingExecutables:
     """probe_missing_executables: one ephemeral run, partition the result."""
