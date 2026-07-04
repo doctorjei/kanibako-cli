@@ -92,6 +92,12 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "box.enable_vault",
     "vault.ro",
     "vault.rw",
+    # Per-workset registry location (settings-conformance P3). A NORMAL settable
+    # STRING-path key (default ``@meta.workset.path/registry.yaml``), NOT a
+    # config-locate key — routes to the ``workset:`` table nested slot
+    # ``registry`` (the same nested-settings pattern as ``box.image``). ADDITIVE:
+    # nothing consumes it yet (the launch/create cutover is P4/P5).
+    "workset.registry",
     # Layer-1 CONFIG-key foundation (bootstrap paths; ``[config]`` table, spec §1)
     "config.data",
     "config.settings",
@@ -185,6 +191,12 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "box.enable_vault": (("box",), "enable_vault"),
     "vault.ro": (("project",), "vault_ro"),
     "vault.rw": (("project",), "vault_rw"),
+    # ``workset.registry`` (settings-conformance P3): the per-workset registry
+    # file location, routed to the ``workset:`` table nested slot ``registry``
+    # (same nested-settings pattern as ``box.image``). A STRING path — NO
+    # KEY_TYPES entry (no bool coercion); written sparsely on set. ADDITIVE: no
+    # consumer wiring yet (P4/P5).
+    "workset.registry": (("workset",), "registry"),
     # Top-level scalar fields (flat KanibakoConfig fields).
     "allow_helpers": ((), "allow_helpers"),
 }

@@ -83,6 +83,8 @@ class TestIsKnownKey:
         assert is_known_key("config.data") is True
         assert is_known_key("config.agents") is True
         assert is_known_key("system.default_agent") is True
+        # P3: the per-workset registry key is a known settable key.
+        assert is_known_key("workset.registry") is True
 
     def test_dead_keys_no_longer_known(self):
         """W4: paths.shell/paths.vault, layout, persistence were deleted.
@@ -709,6 +711,45 @@ class TestH1NoCrashOnAdvertisedKeys:
             command_scope=ConfigLevel.box,
         )
         assert "enable_vault" not in load_doc(project_toml).get("box", {})
+
+    def test_set_workset_registry_lands_in_workset_table_as_string(self, tmp_path):
+        """P3: ``workset.registry`` routes to the ``workset:`` table nested slot
+        ``registry`` as a real STRING path (NOT bool-coerced, NOT [project])."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.registry", "/custom/reg.yaml", config_path=project_toml
+        )
+        assert msg.startswith("Set")
+        data = load_doc(project_toml)
+        assert data["workset"]["registry"] == "/custom/reg.yaml"
+        # A real string path — NOT coerced to a bool (no KEY_TYPES entry).
+        assert isinstance(data["workset"]["registry"], str)
+        # Sparse: nothing lands in [project] or elsewhere.
+        assert "registry" not in data.get("project", {})
+
+    def test_set_workset_registry_preserves_other_workset_keys(self, tmp_path):
+        """The nested write merges — a pre-existing ``workset:`` key survives."""
+        project_toml = tmp_path / "settings.yaml"
+        dump_doc(project_toml, {"workset": {"auth": {"share_allowed": True}}})
+        set_config_value(
+            "workset.registry", "/custom/reg.yaml", config_path=project_toml
+        )
+        data = load_doc(project_toml)
+        assert data["workset"]["auth"]["share_allowed"] is True
+        assert data["workset"]["registry"] == "/custom/reg.yaml"
+
+    def test_reset_workset_registry_removes_it(self, tmp_path):
+        """Reset clears the workset-scope override (sparse store)."""
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value(
+            "workset.registry", "/custom/reg.yaml", config_path=project_toml
+        )
+        assert load_doc(project_toml)["workset"]["registry"] == "/custom/reg.yaml"
+        reset_config_value(
+            "workset.registry", config_path=project_toml,
+            command_scope=ConfigLevel.workset,
+        )
+        assert "registry" not in load_doc(project_toml).get("workset", {})
 
     def test_set_mode_rejected_not_settable(self, tmp_path):
         """``mode`` is no longer settable via config set (block B1, spec §2b L486 /
