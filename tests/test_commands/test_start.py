@@ -11,6 +11,7 @@ import pytest
 
 from kanibako.commands.start import (
     _apply_tweakcc,
+    _check_box_components,
     _run_container,
     run_start,
 )
@@ -42,6 +43,100 @@ _PRIVATE_AUTH = AuthSource(
     global_sync=False,
     workset_source=None,
 )
+
+
+class TestCheckBoxComponents:
+    """P6d3 D5 CRITICAL integrity tier: a resolved box's required host-side
+    components (workspace + home) must exist before launch — else an error
+    message aborts the launch.  The settings-file marker is NOT re-checked here
+    (covered by resolution/detection); the vault is NON-CRITICAL (warn only)."""
+
+    def _proj(self, tmp_path, *, make_workspace=True, make_home=True):
+        from kanibako.paths import BoxMode, ProjectPaths
+        from kanibako.utils import project_hash
+
+        root = tmp_path / "box"
+        root.mkdir()
+        workspace = root / "workspace"
+        home = root / "box_data" / "home"
+        if make_workspace:
+            workspace.mkdir(parents=True)
+        if make_home:
+            home.mkdir(parents=True)
+        return ProjectPaths(
+            project_path=workspace,
+            project_hash=project_hash(str(root)),
+            metadata_path=root,
+            shell_path=home,
+            vault_ro_path=root / "vault" / "ro",
+            vault_rw_path=root / "vault" / "rw",
+            mode=BoxMode.standalone,
+            name="aaaaa_box",
+        )
+
+    def test_healthy_box_returns_none(self, tmp_path):
+        # Regression guard: all components present → no error.
+        assert _check_box_components(self._proj(tmp_path)) is None
+
+    def test_missing_workspace_errors(self, tmp_path):
+        # Mutation: drop the workspace branch → this returns None → RED here.
+        proj = self._proj(tmp_path, make_workspace=False)
+        msg = _check_box_components(proj)
+        assert msg is not None
+        assert "workspace" in msg
+        assert str(proj.project_path) in msg
+
+    def test_missing_home_errors(self, tmp_path):
+        # Mutation: drop the home branch → this returns None → RED here.
+        proj = self._proj(tmp_path, make_home=False)
+        msg = _check_box_components(proj)
+        assert msg is not None
+        assert "home" in msg
+        assert str(proj.shell_path) in msg
+
+    def test_missing_settings_file_not_double_checked(self, tmp_path):
+        """#3 — the settings-file marker is NOT re-checked at launch: a proj
+        whose workspace + home exist passes even with no settings.yaml (the
+        marker's absence is handled at resolution/detection, not double-fired
+        here — see box_resolve.standalone_settings_present below)."""
+        proj = self._proj(tmp_path)  # no settings.yaml written anywhere
+        assert not (proj.metadata_path / "settings.yaml").exists()
+        assert _check_box_components(proj) is None
+
+    def test_marker_absence_is_a_resolution_concern(self, tmp_path):
+        """#3 (cont.) — the settings-file marker IS the box signal at the
+        RESOLUTION layer: a standalone root is only recognised as a box when its
+        settings.yaml is present, so a missing marker → 'not a box' there (never
+        double-checked at launch)."""
+        from kanibako import box_resolve
+
+        root = tmp_path / "sbox"
+        (root / "box_data").mkdir(parents=True)
+        # box_data present but NO settings.yaml → not recognised as a box.
+        assert not box_resolve.standalone_settings_present(root)
+        (root / "settings.yaml").write_text("project: {mode: standalone}\n")
+        assert box_resolve.standalone_settings_present(root)
+
+    def test_wired_into_run_container(self, start_mocks, tmp_path, capsys):
+        """The gate is wired into ``_run_container``: a resolved box whose
+        workspace is missing aborts the launch (rc=1) BEFORE the container runs
+        and BEFORE the baseline probe."""
+        missing_ws = tmp_path / "gone" / "workspace"  # never created
+        with start_mocks() as m:
+            m.proj.project_path = missing_ws
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+        assert rc == 1
+        assert "workspace" in capsys.readouterr().err
+        m.runtime.run.assert_not_called()
+        m.launch_check.assert_not_called()
 
 
 class TestTargetWarnings:

@@ -470,6 +470,54 @@ def _bootstrap_available(program: str = "tmux") -> bool:
     return shutil.which(program) is not None
 
 
+def _check_box_components(proj) -> str | None:
+    """D5 CRITICAL integrity gate: verify a resolved box's REQUIRED host-side
+    components exist before launch.  Returns an error message when one is
+    missing (the caller aborts with a non-zero exit), else ``None``.
+
+    Two components are checked here, at LAUNCH:
+
+    * **workspace** (``proj.project_path``) — the load-bearing check.  For a
+      registered / externally-connected box the workspace is a dir recorded in a
+      registry, so it can go stale independently of the box tree (the box was
+      moved) and MUST be verified to exist.  (For a PRIMARY box the resolver's
+      own create-time guard already rejects a missing workspace before this
+      point; this is the uniform launch backstop that also catches the external
+      case the resolver does not.)
+    * **home** (``proj.shell_path``) — the ``/home/agent`` mount source; a box
+      cannot run without it.
+
+    This is a LAUNCH-time gate (NOT the shared ``resolve_box_target``
+    chokepoint) so a ``box list`` / ``archive`` / ``diagnose`` of a MOVED box
+    never hard-crashes — only an actual launch, which is about to mount these
+    dirs, refuses.
+
+    The **settings-file marker** (the third CRITICAL component per D5) is NOT
+    re-checked here: its absence is already handled at resolution/detection time
+    (``box_resolve.standalone_settings_present`` requires the box
+    ``settings.yaml`` for a standalone to be recognised as a box at all; the
+    read-side ``box_resolve`` returns ``None`` = "not a box").  A launch resolve
+    (``initialize=True``) would recreate a fresh marker, so a marker check here
+    would be dead.  The **vault** (NON-CRITICAL) only WARNS, at resolve time,
+    via ``paths._flag_missing_vault`` — never here.
+    """
+    if not proj.project_path.is_dir():
+        return (
+            f"Error: the workspace for box '{proj.name or proj.project_path}' is "
+            f"missing ({proj.project_path}).\n"
+            "  Kanibako will not launch a box with no workspace.\n"
+            "  If you moved it, re-create or remap the box."
+        )
+    if not proj.shell_path.is_dir():
+        return (
+            f"Error: the home directory for box "
+            f"'{proj.name or proj.project_path}' is missing "
+            f"({proj.shell_path}).\n"
+            "  Kanibako cannot launch the box without it."
+        )
+    return None
+
+
 # Sentinel returned by _check_launch_baseline when the launch-critical bootstrap
 # program is missing from the image (tier-1 hard-stop).
 _BOOTSTRAP_MISSING = object()
@@ -1139,6 +1187,16 @@ def _run_container(
             cli_overrides={"box_image": image_override} if image_override else None,
         )
         _persist_image_override()
+
+    # D5 CRITICAL integrity gate (host components).  ``proj`` is now fully
+    # materialised in BOTH the deferred and non-deferred paths, so its required
+    # host-side dirs (workspace + home) can be verified before committing to a
+    # launch.  Runs HERE (launch time), not the shared resolve chokepoint, so a
+    # `box list` / `archive` / `diagnose` of a MOVED box never hard-crashes.
+    _component_error = _check_box_components(proj)
+    if _component_error is not None:
+        print(_component_error, file=sys.stderr)
+        return 1
 
     # ``suppress_oauth`` and the persona endpoint are now settled; a persona ALWAYS
     # suppresses the host OAuth cred sync (guard + suppress move together — a
