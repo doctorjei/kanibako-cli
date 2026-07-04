@@ -585,10 +585,9 @@ class TestWorksetConfig:
     def test_config_set_regular_key(self, config_file, tmp_home, capsys):
         """Setting a regular config key writes to config.yaml.
 
-        Uses ``vault.enabled`` — a SCOPELESS regular key (own-file write) that is
-        legal at the workset scope under the §0 scope-direction guard (block B4).
-        ``box.image`` (a box.* key) would now be REFUSED at the workset scope —
-        see ``TestWorksetScopeDirection`` for that refusal.
+        Uses ``vault.ro`` — a SCOPELESS project-section regular key (own-file
+        write) that is legal at the workset scope by construction (it stays a
+        [project] key until P5).
         """
         from kanibako.commands.workset_cmd import run_set
 
@@ -597,7 +596,7 @@ class TestWorksetConfig:
         create_workset("regcfg", tmp_home / "ws_regcfg", std)
 
         args = argparse.Namespace(
-            workset="regcfg", key_value="vault.enabled=false",
+            workset="regcfg", key_value="vault.ro=/ro",
             force=False, local=False,
         )
         rc = run_set(args)
@@ -614,10 +613,10 @@ class TestWorksetConfig:
         std = load_std_paths(config)
         create_workset("resetcfg", tmp_home / "ws_resetcfg", std)
 
-        # First set a value (vault.enabled = scopeless own-file key, legal at
-        # the workset scope under the B4 scope-direction guard).
+        # First set a value (vault.ro = scopeless project-section own-file key,
+        # legal at the workset scope by construction).
         set_args = argparse.Namespace(
-            workset="resetcfg", key_value="vault.enabled=false",
+            workset="resetcfg", key_value="vault.ro=/ro",
             force=False, local=False,
         )
         run_set(set_args)
@@ -625,7 +624,7 @@ class TestWorksetConfig:
 
         # Then reset it.
         reset_args = argparse.Namespace(
-            workset="resetcfg", key="vault.enabled", reset_all=False, force=False,
+            workset="resetcfg", key="vault.ro", reset_all=False, force=False,
         )
         rc = run_reset(reset_args)
         assert rc == 0
@@ -671,10 +670,10 @@ class TestWorksetConfig:
         std = load_std_paths(config)
         create_workset("resetall", tmp_home / "ws_resetall", std)
 
-        # Set a value first (vault.enabled = scopeless own-file key, legal at
-        # the workset scope under the B4 scope-direction guard).
+        # Set a value first (vault.ro = scopeless project-section own-file key,
+        # legal at the workset scope by construction).
         set_args = argparse.Namespace(
-            workset="resetall", key_value="vault.enabled=false",
+            workset="resetall", key_value="vault.ro=/ro",
             force=False, local=False,
         )
         run_set(set_args)
@@ -721,10 +720,9 @@ class TestDefaultWorksetCli:
     def test_config_set_regular_key_writes_spec_settings_file(
         self, config_file, tmp_home, capsys,
     ):
-        # vault.enabled = a SCOPELESS own-file regular key, legal at the workset
-        # scope under the B4 scope-direction guard (it lands in [project], its
-        # real stored key being enable_vault). ``box.image`` (a box.* key) would
-        # be REFUSED here — see TestWorksetScopeDirection.
+        # vault.ro = a SCOPELESS project-section own-file regular key, legal at
+        # the workset scope by construction (it lands in [project]; stays there
+        # until P5).
         # F4: the write lands in the spec §2c file
         # ``@config.primary_workset/settings.yaml`` (the old
         # ``@config.data/config.yaml`` target was a launch-invisible dead write).
@@ -732,7 +730,7 @@ class TestDefaultWorksetCli:
         std = self._std(config_file)
 
         args = argparse.Namespace(
-            workset="default", key_value="vault.enabled=false",
+            workset="default", key_value="vault.ro=/ro",
             force=False, local=False,
         )
         rc = run_set(args)
@@ -740,7 +738,7 @@ class TestDefaultWorksetCli:
         import yaml
         with open(std.primary_workset / "settings.yaml") as f:
             data = yaml.safe_load(f)
-        assert data["project"]["enable_vault"] is False
+        assert data["project"]["vault_ro"] == "/ro"
         assert not (std.data_path / "config.yaml").exists()
         assert not (std.data_path / "workset.yaml").exists()
 
@@ -885,13 +883,13 @@ class TestPrimaryWorksetSpecConvergence:
         """``workset get default <key>`` reads back what set wrote."""
         from kanibako.commands.workset_cmd import run_get
 
-        rc = self._set_default("vault.enabled=false")
+        rc = self._set_default("vault.ro=/ro")
         assert rc == 0
         capsys.readouterr()
-        args = argparse.Namespace(workset="default", key="vault.enabled")
+        args = argparse.Namespace(workset="default", key="vault.ro")
         rc = run_get(args)
         assert rc == 0
-        assert "false" in capsys.readouterr().out.lower()
+        assert "/ro" in capsys.readouterr().out.lower()
 
     def test_named_workset_settings_file_unchanged(
         self, config_file, tmp_home, capsys,
@@ -903,14 +901,14 @@ class TestPrimaryWorksetSpecConvergence:
         std = load_std_paths(load_config(config_file))
         ws = create_workset("namedcfg", tmp_home / "ws_namedcfg", std)
         args = argparse.Namespace(
-            workset="namedcfg", key_value="vault.enabled=false",
+            workset="namedcfg", key_value="vault.ro=/ro",
             force=False, local=False,
         )
         rc = run_set(args)
         assert rc == 0
         with open(ws.root / "settings.yaml") as f:
             data = yaml.safe_load(f)
-        assert data["project"]["enable_vault"] is False
+        assert data["project"]["vault_ro"] == "/ro"
 
 
 class TestWorksetEnv:
