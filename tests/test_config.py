@@ -646,6 +646,87 @@ class TestProjectMeta:
         meta = read_project_meta(toml_path)
         assert meta is None
 
+    # --- P2: enable_vault migrated to the box-scope key box.enable_vault -----
+
+    def test_enable_vault_false_written_sparsely_to_box(self, tmp_path):
+        """enable_vault=False → box:{enable_vault: False} (a real bool), and
+        NOTHING in [project]."""
+        from kanibako.config import load_doc
+        toml_path = tmp_path / "settings.yaml"
+        write_project_meta(
+            toml_path, mode="primary", workspace="/w", shell="/s",
+            vault_ro="/ro", vault_rw="/rw", enable_vault=False,
+        )
+        data = load_doc(toml_path)
+        assert data["box"]["enable_vault"] is False
+        assert isinstance(data["box"]["enable_vault"], bool)
+        assert "enable_vault" not in data.get("project", {})
+
+    def test_enable_vault_default_writes_no_key(self, tmp_path):
+        """Default (True) writes NO enable_vault key anywhere — sparse."""
+        from kanibako.config import load_doc
+        toml_path = tmp_path / "settings.yaml"
+        write_project_meta(
+            toml_path, mode="primary", workspace="/w", shell="/s",
+            vault_ro="/ro", vault_rw="/rw",  # enable_vault defaults True
+        )
+        data = load_doc(toml_path)
+        assert "enable_vault" not in data.get("box", {})
+        assert "enable_vault" not in data.get("project", {})
+
+    def test_enable_vault_write_preserves_other_box_keys(self, tmp_path):
+        """The sparse box write MERGES — a pre-existing box.image survives."""
+        from kanibako.config import load_doc
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text('box:\n  image: "custom:v1"\n')
+        write_project_meta(
+            toml_path, mode="primary", workspace="/w", shell="/s",
+            vault_ro="/ro", vault_rw="/rw", enable_vault=False,
+        )
+        data = load_doc(toml_path)
+        assert data["box"]["image"] == "custom:v1"
+        assert data["box"]["enable_vault"] is False
+
+    def test_enable_vault_default_clears_stale_box_override(self, tmp_path):
+        """A default (True) rewrite drops a stale box.enable_vault override."""
+        from kanibako.config import load_doc
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text('box:\n  enable_vault: false\n  image: "i:1"\n')
+        write_project_meta(
+            toml_path, mode="primary", workspace="/w", shell="/s",
+            vault_ro="/ro", vault_rw="/rw",  # default True
+        )
+        data = load_doc(toml_path)
+        assert "enable_vault" not in data["box"]
+        assert data["box"]["image"] == "i:1"  # other box keys preserved
+
+    def test_read_enable_vault_from_box_scope(self, tmp_path):
+        """read_project_meta sources enable_vault from box.enable_vault only."""
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text(
+            'project:\n  mode: "primary"\n'
+            'box:\n  enable_vault: false\n'
+        )
+        assert read_project_meta(toml_path)["enable_vault"] is False
+
+    def test_read_enable_vault_absent_defaults_true(self, tmp_path):
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text('project:\n  mode: "primary"\n')
+        assert read_project_meta(toml_path)["enable_vault"] is True
+
+    def test_read_ignores_legacy_project_enable_vault(self, tmp_path):
+        """CLEAN BREAK: a legacy project.enable_vault=false is IGNORED — the
+        value comes from box.enable_vault (absent here → default True).
+
+        Mutation guard: re-adding a project fallback would make this read False
+        and fail the assertion.
+        """
+        toml_path = tmp_path / "settings.yaml"
+        toml_path.write_text(
+            'project:\n  mode: "primary"\n  enable_vault: false\n'
+        )
+        assert read_project_meta(toml_path)["enable_vault"] is True
+
     def test_preserves_existing_sections(self, tmp_path):
         toml_path = tmp_path / "settings.yaml"
         toml_path.write_text('box:\n  image: "custom:v1"\n')
@@ -720,8 +801,7 @@ class TestProjectMeta:
         toml_path = tmp_path / "settings.yaml"
         # Write old-style config without new fields.
         toml_path.write_text(
-            'project:\n  mode: "default"\n  layout: "default"\n'
-            '  enable_vault: true\n\n'
+            'project:\n  mode: "default"\n  layout: "default"\n\n'
             'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
             '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
         )
@@ -742,8 +822,7 @@ class TestProjectMeta:
         for raw_mode in ("primary", "named", "standalone", "default", "account_centric"):
             toml_path = tmp_path / f"project-{raw_mode}.yaml"
             toml_path.write_text(
-                f'project:\n  mode: "{raw_mode}"\n  layout: "default"\n'
-                '  enable_vault: true\n\n'
+                f'project:\n  mode: "{raw_mode}"\n  layout: "default"\n\n'
                 'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
                 '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
             )

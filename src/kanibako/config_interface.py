@@ -86,8 +86,10 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # time/bootstrap layer ([project].mode at box creation), NOT overridable via
     # ``config set``. The on-disk [project].mode write/read (write_project_meta /
     # read_project_meta) — the bootstrap identity write + detection input — stays.
-    # Vault
-    "vault.enabled",
+    # Vault. ``enable_vault`` migrated to the box-scope key ``box.enable_vault``
+    # (P2 clean break — no ``vault.enabled`` alias); ``vault.ro``/``vault.rw``
+    # remain project-section scopeless keys until P5.
+    "box.enable_vault",
     "vault.ro",
     "vault.rw",
     # Layer-1 CONFIG-key foundation (bootstrap paths; ``[config]`` table, spec §1)
@@ -170,15 +172,17 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "workset.auth.global_sync": (("workset", "auth"), "global_sync"),
     "box.auth.global_enabled": (("box", "auth"), "global_enabled"),
     "box.auth.workset_enabled": (("box", "auth"), "workset_enabled"),
-    # Project section ([project] table) — vault.* are read back by
-    # read_project_meta(); vault.enabled lands in its real stored key
-    # ``enable_vault`` (the H1 alias fix).
+    # ``enable_vault`` is the box-scope key ``box.enable_vault`` (P2 clean
+    # break): it routes to the ``box:`` table nested slot ``enable_vault`` (the
+    # same nested-settings pattern as ``box.image``), read back by
+    # read_project_meta() from ``box.enable_vault`` — NO ``project`` fallback.
+    # ``vault.ro``/``vault.rw`` stay in the [project] table until P5.
     # ``mode`` removed from the settable routing table (block B1, spec §2b L486 /
     # §0 meta-RO): the project mode is the RO identity anchor ``meta.box.mode``,
     # set by the bootstrap layer at box creation, never via ``config set``. The
     # on-disk [project].mode write/read (write_project_meta / read_project_meta)
     # — bootstrap identity + detection input — is untouched.
-    "vault.enabled": (("project",), "enable_vault"),
+    "box.enable_vault": (("box",), "enable_vault"),
     "vault.ro": (("project",), "vault_ro"),
     "vault.rw": (("project",), "vault_rw"),
     # Top-level scalar fields (flat KanibakoConfig fields).
@@ -200,7 +204,7 @@ KEY_TYPES: dict[str, str] = {
     "workset.auth.global_sync": "bool",
     "box.auth.global_enabled": "bool",
     "box.auth.workset_enabled": "bool",
-    "vault.enabled": "bool",
+    "box.enable_vault": "bool",
 }
 
 
@@ -261,7 +265,7 @@ def _resolve_key(raw: str) -> str:
     """Return the canonical config key for a user-supplied key name.
 
     Most config keys are already canonical (dot-notation like ``box.image`` or
-    ``vault.enabled``, or a raw flat key) and pass through unchanged; this is the
+    ``box.enable_vault``, or a raw flat key) and pass through unchanged; this is the
     single canonicalization seam every get/set/reset path routes through.
 
     The ONE canonicalization it performs (block B1): for a per-persona agent key
@@ -977,7 +981,7 @@ def _set_category_value(
 
 
 def _dot_to_flat(key: str) -> str:
-    """Convert ``vault.enabled`` to ``enable_vault``, etc."""
+    """Convert ``box.image`` to ``box_image``, etc."""
     return key.replace(".", "_")
 
 

@@ -77,7 +77,9 @@ class TestIsKnownKey:
         assert is_known_key("agent") is False
 
     def test_known_dotted_key(self):
-        assert is_known_key("vault.enabled") is True
+        assert is_known_key("box.enable_vault") is True
+        # P2 clean break: the retired ``vault.enabled`` alias is NOT known.
+        assert is_known_key("vault.enabled") is False
         assert is_known_key("config.data") is True
         assert is_known_key("config.agents") is True
         assert is_known_key("system.default_agent") is True
@@ -674,13 +676,39 @@ class TestH1NoCrashOnAdvertisedKeys:
         # Top-level scalar field, stored as a real bool.
         assert data["allow_helpers"] is False
 
-    def test_set_vault_enabled_lands_in_real_location(self, tmp_path):
-        """vault.enabled aliases to its real stored key enable_vault (H1 note)."""
+    def test_set_box_enable_vault_lands_in_box_table(self, tmp_path):
+        """P2: ``box.enable_vault`` routes to the ``box:`` table nested slot
+        ``enable_vault`` as a real bool (NOT the [project] section, NOT a
+        string)."""
         project_toml = tmp_path / "settings.yaml"
-        msg = set_config_value("vault.enabled", "false", config_path=project_toml)
+        msg = set_config_value("box.enable_vault", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
-        assert data["project"]["enable_vault"] is False
+        assert data["box"]["enable_vault"] is False
+        # Real bool, not the string "false" (mutation guard on KEY_TYPES).
+        assert isinstance(data["box"]["enable_vault"], bool)
+        # Clean break: nothing lands in [project].
+        assert "enable_vault" not in data.get("project", {})
+
+    def test_set_box_enable_vault_preserves_other_box_keys(self, tmp_path):
+        """The nested write merges — a pre-existing ``box.image`` survives."""
+        project_toml = tmp_path / "settings.yaml"
+        dump_doc(project_toml, {"box": {"image": "img:1"}})
+        set_config_value("box.enable_vault", "false", config_path=project_toml)
+        data = load_doc(project_toml)
+        assert data["box"]["image"] == "img:1"
+        assert data["box"]["enable_vault"] is False
+
+    def test_reset_box_enable_vault_removes_it(self, tmp_path):
+        """Reset clears the box-scope override (sparse store)."""
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value("box.enable_vault", "false", config_path=project_toml)
+        assert load_doc(project_toml)["box"]["enable_vault"] is False
+        reset_config_value(
+            "box.enable_vault", config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
+        assert "enable_vault" not in load_doc(project_toml).get("box", {})
 
     def test_set_mode_rejected_not_settable(self, tmp_path):
         """``mode`` is no longer settable via config set (block B1, spec §2b L486 /
@@ -1751,9 +1779,11 @@ class TestScopeDirectionGuard:
         assert not msg.startswith("Error:"), msg
 
     def test_scopeless_vault_key_allowed_at_workset(self, tmp_path):
+        # ``vault.ro`` is a SCOPELESS project-section key (stays until P5) —
+        # legal at any scope by construction (own-file write).
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
-            "vault.enabled", "false",
+            "vault.ro", "/ro",
             config_path=f, command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
@@ -2065,22 +2095,22 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         assert val is None
 
     def test_plain_get_scopeless_key_roundtrips_at_box(self, tmp_path):
-        # A SCOPELESS key (vault.enabled) is stored in — and read from — the
+        # A SCOPELESS key (vault.ro) is stored in — and read from — the
         # command's own config file (get mirrors set's dest selection): set at
         # the box noun → get at the box noun returns it; unset → "(not set)".
         global_cfg = tmp_path / "kanibako_config.yaml"
         project_toml = tmp_path / "settings.yaml"
         assert get_config_value(
-            "vault.enabled",
+            "vault.ro",
             global_config_path=global_cfg,
             project_toml=project_toml,
         ) is None
-        set_config_value("vault.enabled", "false", config_path=project_toml)
+        set_config_value("vault.ro", "/ro", config_path=project_toml)
         assert get_config_value(
-            "vault.enabled",
+            "vault.ro",
             global_config_path=global_cfg,
             project_toml=project_toml,
-        ) == "false"
+        ) == "/ro"
 
     def test_effective_view_unchanged_still_shows_resolved(
         self, tmp_path, capsys,
@@ -2217,20 +2247,20 @@ class TestF7HonestResetMessage:
         assert "falls back through the cascade" in msg, msg
 
     def test_scopeless_key_never_claims_cascade_effective(self, tmp_path):
-        # Editor F1: a SCOPELESS key (vault.enabled) is read by read_project_meta
+        # Editor F1: a SCOPELESS key (vault.ro) is read by read_project_meta
         # / the flat KanibakoConfig from a SINGLE file — NOT the settings cascade.
-        # So even with cascade inputs holding a lower-tier project.enable_vault,
+        # So even with cascade inputs holding a lower-tier project.vault_ro,
         # the reset must NOT claim a cascade-derived "effective" (a value from a
         # tier nothing reads). It keeps the cleared-only form.
         ws = tmp_path / "ws.yaml"
         box = tmp_path / "box.yaml"
-        dump_doc(ws, {"project": {"enable_vault": False}})  # a lower-tier value
+        dump_doc(ws, {"project": {"vault_ro": "/lower"}})  # a lower-tier value
         set_config_value(
-            "vault.enabled", "true", config_path=box,
+            "vault.ro", "/box", config_path=box,
             command_scope=ConfigLevel.box,
         )
         msg = reset_config_value(
-            "vault.enabled", config_path=box, command_scope=ConfigLevel.box,
+            "vault.ro", config_path=box, command_scope=ConfigLevel.box,
             cascade_workset_path=ws, cascade_box_path=box,
         )
         assert "cleared" in msg.lower(), msg

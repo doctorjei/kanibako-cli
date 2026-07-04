@@ -288,20 +288,29 @@ def write_project_meta(
     Phase 5 removed the layout axis: ``mode`` (``box.mode``) is the sole
     on-disk shape descriptor now.  No ``layout`` field is written.
 
-    The bool meta key (``enable_vault``) is routed through the shared
-    :func:`coerce_bool` so it round-trips identically to the typed ``config set``
-    writer (H1/H2 fix); a non-bool literal falls back to raw.
+    ``enable_vault`` migrated to the box-scope key ``box.enable_vault`` (P2
+    clean break): it is written SPARSELY into the ``box:`` table — a real bool
+    ``False`` ONLY when vault is explicitly disabled; the default (``True``)
+    writes NOTHING for it (and drops any stale ``box.enable_vault`` override).
+    The write MERGES into an existing ``box:`` section (preserving other box
+    keys such as ``box.image``) and never materializes an empty one.  It is no
+    longer written into the ``project:`` section.
     """
     existing = load_doc(path)
 
-    ev = coerce_bool(enable_vault)
-    project_sec: dict = {
-        "mode": mode,
-        "enable_vault": ev if ev is not None else enable_vault,
-    }
+    project_sec: dict = {"mode": mode}
     if name:
         project_sec["name"] = name
     existing["project"] = project_sec
+
+    ev = coerce_bool(enable_vault)
+    if ev is False:
+        existing.setdefault("box", {})["enable_vault"] = False
+    else:
+        box_sec = existing.get("box")
+        if isinstance(box_sec, dict):
+            box_sec.pop("enable_vault", None)
+
     existing.setdefault("resolved", {})
     existing["resolved"]["workspace"] = workspace
     existing["resolved"]["shell"] = shell
@@ -337,7 +346,10 @@ def read_project_meta(path: Path) -> dict | None:
 
     return {
         "mode": mode,
-        "enable_vault": project_sec.get("enable_vault", True),
+        # ``enable_vault`` is sourced ONLY from the box-scope key
+        # ``box.enable_vault`` (P2 clean break — NO ``project`` fallback);
+        # absent ⇒ the default True.
+        "enable_vault": (data.get("box") or {}).get("enable_vault", True),
         "name": project_sec.get("name", ""),
         "workspace": resolved_sec.get("workspace", ""),
         "shell": resolved_sec.get("shell", ""),

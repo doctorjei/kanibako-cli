@@ -148,10 +148,17 @@ class TestVaultOptional:
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
 
-        resolve_project(
+        proj = resolve_project(
             std, config, project_dir=project_dir,
             initialize=True, enable_vault=False,
         )
+
+        # P2: the flag is stored SPARSELY as the box-scope key box.enable_vault
+        # (a real bool), NOT in the [project] section.
+        from kanibako.config import BOX_META_FILE, load_doc
+        on_disk = load_doc(proj.metadata_path / BOX_META_FILE)
+        assert on_disk["box"]["enable_vault"] is False
+        assert "enable_vault" not in on_disk.get("project", {})
 
         # Second resolve reads metadata, should still be False.
         proj2 = resolve_project(
