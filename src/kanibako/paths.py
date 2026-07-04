@@ -10,8 +10,6 @@ from pathlib import Path, PurePosixPath
 from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol, overload
 
-import yaml
-
 from kanibako.log import get_logger
 
 from kanibako.config import (
@@ -19,6 +17,7 @@ from kanibako.config import (
     KanibakoConfig,
     config_file_path,
     load_config,
+    read_box_enable_vault,
     read_project_meta,
     write_project_meta,
 )
@@ -932,14 +931,16 @@ def resolve_project(
     # describe/lifecycle read path) for the on-disk record; they are no longer read
     # as a resolution override here.
     project_toml = metadata_path / BOX_META_FILE
-    meta = read_project_meta(project_toml)
     shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
         std, metadata_path, project_name or metadata_path.name,
     )
-    if meta:
-        actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
-    else:
-        actual_vault_enabled = enable_vault if enable_vault is not None else True
+    # enable_vault (P5a): an explicit param wins; otherwise the stored box-scope
+    # ``box.enable_vault`` (absent ⇒ True).  Decoupled from box identity — which
+    # now derives from the registries (``box_resolve``), not ``read_project_meta``.
+    actual_vault_enabled = (
+        enable_vault if enable_vault is not None
+        else read_box_enable_vault(project_toml)
+    )
 
     is_new = False
     if initialize and not project_dir_path.is_dir():
@@ -994,6 +995,16 @@ def resolve_project(
             project_hash=phash,
             name=project_name,
         )
+        # P5a dual-register: record membership in the PRIMARY workset's
+        # per-workset registry (name → external workspace) — the new-model
+        # source box_resolve reads — IN ADDITION to the transitional ``project:``
+        # write above (and the deferred global name-registry write in
+        # ``_register_new_box``).  The PRIMARY workset is NON-EXCEPTIONAL
+        # (D0/D1): its registry is anchored by ``std.primary_workset``.
+        # Idempotent — ``register_workset_box`` overwrites a moved box's path.
+        _register_workset_box_membership(
+            std.primary_workset, project_name, project_path,
+        )
         import sys
         print(f"Project name: {project_name}", file=sys.stderr)
         is_new = True
@@ -1003,8 +1014,18 @@ def resolve_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Backfill settings.yaml for old-format projects (pre-v0.8).
-        if metadata_path.is_dir() and read_project_meta(metadata_path / BOX_META_FILE) is None:
+        # Backfill settings.yaml for old-format projects (pre-v0.8).  P5a: the
+        # "materialized box" signal here is settings-FILE presence — a faithful,
+        # cheap replacement for the old ``read_project_meta(...) is None`` (which,
+        # under the D8 clean break, only ever returned None when the file itself
+        # was absent).  Deliberately NOT ``box_resolve``: this is a settings-file
+        # concern (an ancient box dir lacking a settings.yaml), and a registry
+        # lookup would both mis-key (skip a registered box whose file went
+        # missing / rewrite an unregistered box that has a valid file) and add a
+        # full enumerate-scan to every primary resolve for a pre-v0.8 vestige.
+        if metadata_path.is_dir() and not (
+            metadata_path / BOX_META_FILE
+        ).is_file():
             # Use directory name as project name (name-based dirs).
             _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
             write_project_meta(
@@ -1289,24 +1310,21 @@ _STANDALONE_META_DIR = "box_data"
 
 
 def _is_standalone_meta_dir(root: Path) -> bool:
-    """True only if *root* is a real standalone project root.
+    """True only if *root* carries the standalone box MARKER (presence-based).
 
-    The walk marker is a ``box_data/`` directory present under *root* PLUS a box
+    P5a: the marker is a ``box_data/`` directory under *root* PLUS a box
     ``settings.yaml`` AT THE ROOT (``<root>/settings.yaml``, NOT inside
-    ``box_data/``) that declares ``box.mode = "standalone"``.  Requiring both
-    keeps an unrelated ``box_data/`` directory from ever being mistaken for a
-    standalone marker, and distinguishes standalone from a NAMED workset (whose
-    root ``settings.yaml`` carries ``workset.meta`` and has no ``box_data/``).
+    ``box_data/``), both PRESENT.  The FILE's existence is the standalone
+    self-declaration (design D4) — the former ``box.mode == "standalone"`` field
+    read is DROPPED (that field is going away).  A box's own in-place settings
+    file is the highest-precedence, authoritative standalone signal and
+    OVERRIDES any workset determination (D3-mode #1); requiring both parts keeps
+    an unrelated ``box_data/`` directory from being mistaken for a marker.
+    Delegates to :func:`box_resolve.standalone_settings_present` (the single
+    definition of the presence check).
     """
-    meta_dir = root / _STANDALONE_META_DIR
-    toml = root / BOX_META_FILE
-    if not meta_dir.is_dir() or not toml.is_file():
-        return False
-    try:
-        meta = read_project_meta(toml)
-    except (OSError, ValueError, yaml.YAMLError):  # malformed/unreadable file
-        return False
-    return bool(meta and meta.get("mode") == "standalone")
+    from kanibako import box_resolve
+    return box_resolve.standalone_settings_present(root)
 
 
 def detect_project_mode(
@@ -1433,6 +1451,27 @@ def _check_workset(
     return None
 
 
+def _register_workset_box_membership(
+    ws_root: Path, box_name: str, workspace: Path,
+) -> None:
+    """Register *box_name* → *workspace* in *ws_root*'s per-workset registry.
+
+    The P5a dual-register helper (D1/D3-auth): resolves the workset's
+    ``workset.registry`` path (honoring a repoint via its ``settings.yaml``) and
+    records the box's membership.  Idempotent — ``register_workset_box``
+    overwrites a moved box's stored path.  Used for both NAMED worksets
+    (``ws_root`` = the workset root) and the PRIMARY workset (``ws_root`` =
+    ``std.primary_workset`` — NON-EXCEPTIONAL per D0/D1).
+    """
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws_root, load_doc(ws_root / "settings.yaml"),
+    )
+    workset_registry.register_workset_box(registry_path, box_name, workspace)
+
+
 def resolve_workset_project(
     ws: WorksetSpec,
     project_name: str,
@@ -1464,12 +1503,14 @@ def resolve_workset_project(
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
-    # Check for stored paths in settings.yaml (enables user overrides).
+    # Workspace override (transitional).  A box connected to an EXTERNAL dir
+    # stores that dir as its live workspace in ``resolved.workspace``.  connect
+    # (workset.py) is UNTOUCHED in P5a and still writes ONLY settings.yaml — the
+    # per-workset-registry home for this record is D10/P7 — so the override is
+    # read from settings.yaml here, NOT from box_resolve (which would return the
+    # layout path).  Mirrors the describe path (iter_projects).
     project_toml = metadata_path / BOX_META_FILE
     meta = read_project_meta(project_toml)
-    # Honor a stored workspace override (set when the project was connected to
-    # an EXTERNAL directory): the external dir is the live workspace.  Mirrors
-    # the describe path (iter_projects), which already reads meta["workspace"].
     if meta and meta.get("workspace"):
         project_path = Path(meta["workspace"])
     # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
@@ -1480,10 +1521,12 @@ def resolve_workset_project(
     shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
         metadata_path, ws.vault_dir, project_name,
     )
-    if meta:
-        actual_vault_enabled = meta.get("enable_vault", True) if enable_vault is None else enable_vault
-    else:
-        actual_vault_enabled = enable_vault if enable_vault is not None else True
+    # enable_vault (P5a): explicit param wins; else the stored box-scope
+    # ``box.enable_vault`` (absent ⇒ True), read via the box-settings path.
+    actual_vault_enabled = (
+        enable_vault if enable_vault is not None
+        else read_box_enable_vault(project_toml)
+    )
 
     # Hash the resolved workspace path for container naming.
     phash = project_hash(str(project_path.resolve()))
@@ -1502,6 +1545,13 @@ def resolve_workset_project(
             metadata=str(metadata_path),
             project_hash=phash,
         )
+        # P5a dual-register: record membership in the workset's per-workset
+        # registry (name → workspace), IN ADDITION to the transitional
+        # ``project:`` write above.  Sourced from the resolved *project_path* so
+        # an external-connect override seeds the registry with the external dir
+        # (the D10/P7 home for that record).  Idempotent — overwrites a moved
+        # box's path.
+        _register_workset_box_membership(ws.root, project_name, project_path)
         is_new = True
 
     if initialize:
@@ -1588,22 +1638,38 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     projects_dir = std.boxes
     if not projects_dir.is_dir():
         return []
+    # P5a: box → workspace comes from the PRIMARY per-workset registry
+    # (name → workspace), the new-model source seeded at create
+    # (``_register_new_box``).  Un-migrated boxes are absent there → fall back to
+    # the transitional settings.yaml ``resolved.workspace``, then the legacy
+    # ``project-path.txt`` breadcrumb.  (These are PRIMARY boxes: ``std.boxes``
+    # == ``@config.primary_workset/boxes``, so the PRIMARY registry is the home.)
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    primary_registry = workset_registry.resolve_workset_registry_path(
+        std.primary_workset, load_doc(std.primary_workset / "settings.yaml"),
+    )
+    registered = workset_registry.load_workset_boxes(primary_registry)
     results: list[tuple[Path, Path | None]] = []
     for entry in sorted(projects_dir.iterdir()):
         if not entry.is_dir():
             continue
         project_path: Path | None = None
-        # Prefer settings.yaml workspace field.
-        meta = read_project_meta(entry / BOX_META_FILE)
-        if meta and meta.get("workspace"):
-            project_path = Path(meta["workspace"])
+        registered_ws = registered.get(entry.name)
+        if registered_ws:
+            project_path = Path(registered_ws)
         else:
-            # Backward compat: fall back to breadcrumb file.
-            breadcrumb = entry / "project-path.txt"
-            if breadcrumb.is_file():
-                text = breadcrumb.read_text().strip()
-                if text:
-                    project_path = Path(text)
+            # Transitional fallback: settings.yaml workspace, then breadcrumb.
+            meta = read_project_meta(entry / BOX_META_FILE)
+            if meta and meta.get("workspace"):
+                project_path = Path(meta["workspace"])
+            else:
+                breadcrumb = entry / "project-path.txt"
+                if breadcrumb.is_file():
+                    text = breadcrumb.read_text().strip()
+                    if text:
+                        project_path = Path(text)
         results.append((entry, project_path))
     return results
 
@@ -2048,29 +2114,33 @@ def resolve_standalone_project(
     project_path = root / "workspace"
     project_toml = root / BOX_META_FILE
 
-    meta = None
-    if box_data.is_dir() and project_toml.is_file():
-        meta = read_project_meta(project_toml)
-
     # STANDALONE paths are ALWAYS derived from the (current) root, never the
     # stored absolutes: a standalone tree is drop-in portable, so a moved/
     # imported tree must resolve against its new location.  The resolved.*
     # section in settings.yaml is advisory only (BUG#1 fix); home/vault always
     # live at the fixed box_data/home + <root>/vault/{ro,rw} positions.
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
-    if meta:
-        actual_vault_enabled = (
-            meta.get("enable_vault", True) if enable_vault is None else enable_vault
-        )
-    else:
-        actual_vault_enabled = enable_vault if enable_vault is not None else True
+    # enable_vault (P5a): explicit param wins; else the stored box-scope
+    # ``box.enable_vault`` (absent ⇒ True), read via the box-settings path.
+    actual_vault_enabled = (
+        enable_vault if enable_vault is not None
+        else read_box_enable_vault(project_toml)
+    )
 
-    # Box identity: reuse the stored name; for a fresh box, resolve the identity
-    # from the user-supplied *name* (empty → fresh canonical) at create time via
-    # establish_standalone → box_identity.resolve_standalone_name.
+    # Box identity name (transitional): the standalone name is authoritative in
+    # the box's OWN ``settings.yaml`` (design D6 — generated + stored at create,
+    # kuid-prefixed in P6).  box_resolve does NOT yet source the stored name for
+    # an UNREGISTERED standalone — it returns the dir leaf, and an interrupted
+    # create is exactly the unregistered case — so that gap (P6) means the name
+    # must be read from settings.yaml here, not derived via box_resolve.  A
+    # not-yet-materialized root (no ``box_data/``) yields "" (the create block
+    # below assigns it authoritatively via establish_standalone).
+    meta = None
+    if box_data.is_dir() and project_toml.is_file():
+        meta = read_project_meta(project_toml)
     box_name = meta.get("name", "") if meta else ""
     # The user's explicit --name (only meaningful when establishing a new box;
-    # ignored once meta exists since the stored identity is authoritative).
+    # ignored once the box exists since the stored identity is authoritative).
     requested_name = name
 
     is_new = False

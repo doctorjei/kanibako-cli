@@ -306,10 +306,13 @@ class TestResolveBoxIdentity:
 
 
 # ---------------------------------------------------------------------------
-# ADDITIVE guard — nothing in src/ imports box_resolve yet
+# P5a wiring guard — the resolvers now consume box_resolve (was P4-additive)
 # ---------------------------------------------------------------------------
 
-def test_box_resolve_is_imported_by_nothing_in_src():
+def test_box_resolve_is_wired_into_the_resolvers():
+    """P5a cut the resolvers over to box_resolve.  Confirm ``paths.py`` (the
+    resolver home) references it — the inverse of the retired P4 "imported by
+    nothing" additive guard."""
     import subprocess
 
     src = Path(__file__).resolve().parents[1] / "src"
@@ -317,6 +320,7 @@ def test_box_resolve_is_imported_by_nothing_in_src():
         ["grep", "-rln", "--include=*.py", "box_resolve", str(src)],
         capture_output=True, text=True,
     ).stdout.splitlines()
-    # Only the module's own file may mention the name (ignore .pyc caches).
-    offenders = [p for p in out if not p.endswith("box_resolve.py")]
-    assert offenders == [], f"box_resolve is imported/referenced by: {offenders}"
+    referencers = {Path(p).name for p in out}
+    assert "paths.py" in referencers, (
+        f"box_resolve should be wired into paths.py; referencers: {referencers}"
+    )
