@@ -134,6 +134,55 @@ def test_override_bridge_repoints_agent_binding_by_name():
 
 
 # --------------------------------------------------------------------------- #
+# P6a: workset LAYOUT-anchor keys are settable and a user override WINS over    #
+# the floor default in the resolved snapshot (settings-conformance).           #
+# --------------------------------------------------------------------------- #
+
+
+def test_workset_anchor_floor_default_resolves_when_unset():
+    # With NO workset file, the ``workset.*`` layout anchors resolve to the FLOOR
+    # default (byte-identical to today — the floor is the ultimate fallback).
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        workset_anchor={
+            "workset.boxes": "/floor/boxes",
+            "workset.auth.path": "/floor/auth",
+        },
+    )
+    assert snap.workset.boxes == "/floor/boxes"
+    assert snap.workset.auth.path == "/floor/auth"
+
+
+def test_workset_anchor_user_override_wins_over_floor(tmp_path: Path):
+    # A user ``config set workset workset.boxes=…`` writes an EXPLICIT workset-level
+    # value; it must OUT-PRECEDE the base floor default in the resolved snapshot.
+    # MUTATION-PROOF: if the floor were a hard construct-set value that shadowed the
+    # override (or the override were ignored), the snapshot would carry the FLOOR
+    # value ``/floor/boxes`` and these asserts go RED.
+    from kanibako.config_io import dump_doc
+
+    ws_file = tmp_path / "workset-settings.yaml"
+    dump_doc(
+        ws_file,
+        {"workset": {"boxes": "/override/boxes", "auth": {"path": "/override/auth"}}},
+    )
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=ws_file, box_path=None,
+        workset_anchor={
+            "workset.boxes": "/floor/boxes",
+            "workset.auth.path": "/floor/auth",
+        },
+    )
+    # The workset-scope EXPLICIT set wins over the base floor default (workset ⊐ base).
+    assert snap.workset.boxes == "/override/boxes"
+    assert snap.workset.auth.path == "/override/auth"
+    # And it is NOT the floor value (mutation guard made explicit).
+    assert snap.workset.boxes != "/floor/boxes"
+
+
+# --------------------------------------------------------------------------- #
 # snapshot_category_entries — the adapter                                      #
 # --------------------------------------------------------------------------- #
 

@@ -85,6 +85,18 @@ class TestIsKnownKey:
         assert is_known_key("system.default_agent") is True
         # P3: the per-workset registry key is a known settable key.
         assert is_known_key("workset.registry") is True
+        # P6a: the workset LAYOUT anchors are now known settable keys.
+        for k in (
+            "workset.auth.path",
+            "workset.boxes",
+            "workset.vault_ro",
+            "workset.vault_rw",
+            "workset.logs",
+            "workset.channels.commons",
+            "workset.channels.chat",
+            "workset.channels.share",
+        ):
+            assert is_known_key(k) is True, k
 
     def test_dead_keys_no_longer_known(self):
         """W4: paths.shell/paths.vault, layout, persistence were deleted.
@@ -750,6 +762,83 @@ class TestH1NoCrashOnAdvertisedKeys:
             command_scope=ConfigLevel.workset,
         )
         assert "registry" not in load_doc(project_toml).get("workset", {})
+
+    def test_set_workset_boxes_lands_in_workset_table_as_string(self, tmp_path):
+        """P6a: ``workset.boxes`` routes to the ``workset:`` table nested slot
+        ``boxes`` as a real STRING path (NOT bool-coerced, NOT [project])."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.boxes", "/srv/boxes", config_path=project_toml
+        )
+        assert msg.startswith("Set"), msg
+        data = load_doc(project_toml)
+        assert data["workset"]["boxes"] == "/srv/boxes"
+        assert isinstance(data["workset"]["boxes"], str)
+        assert "boxes" not in data.get("project", {})
+
+    def test_set_workset_auth_path_nests_under_auth(self, tmp_path):
+        """P6a: ``workset.auth.path`` nests under ``workset.auth`` (the same nested
+        pattern as ``workset.auth.share_allowed``)."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.auth.path", "/srv/auth", config_path=project_toml
+        )
+        assert msg.startswith("Set"), msg
+        assert load_doc(project_toml)["workset"]["auth"]["path"] == "/srv/auth"
+
+    def test_set_workset_channels_commons_nests_under_channels(self, tmp_path):
+        """P6a: ``workset.channels.commons`` nests under ``workset.channels``."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.channels.commons", "/srv/commons", config_path=project_toml
+        )
+        assert msg.startswith("Set"), msg
+        assert (
+            load_doc(project_toml)["workset"]["channels"]["commons"] == "/srv/commons"
+        )
+
+    def test_set_workset_anchor_preserves_other_workset_keys(self, tmp_path):
+        """The nested write merges — a pre-existing ``workset:`` key survives."""
+        project_toml = tmp_path / "settings.yaml"
+        dump_doc(project_toml, {"workset": {"registry": "/reg.yaml"}})
+        set_config_value("workset.boxes", "/srv/boxes", config_path=project_toml)
+        data = load_doc(project_toml)
+        assert data["workset"]["registry"] == "/reg.yaml"
+        assert data["workset"]["boxes"] == "/srv/boxes"
+
+    def test_reset_workset_boxes_removes_it(self, tmp_path):
+        """Reset clears the workset-scope override (sparse store)."""
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value("workset.boxes", "/srv/boxes", config_path=project_toml)
+        assert load_doc(project_toml)["workset"]["boxes"] == "/srv/boxes"
+        reset_config_value(
+            "workset.boxes", config_path=project_toml,
+            command_scope=ConfigLevel.workset,
+        )
+        assert "boxes" not in load_doc(project_toml).get("workset", {})
+
+    def test_set_workset_boxes_at_box_scope_refused(self, tmp_path):
+        """P6a: a workset anchor is UPWARD from the box scope — refused (matches the
+        sibling ``workset.auth.share_allowed`` direction). Nothing is written."""
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "workset.boxes", "/srv/boxes",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "workset" in msg and "box" in msg
+        assert not f.exists()
+
+    def test_set_workset_boxes_at_workset_scope_allowed(self, tmp_path):
+        """P6a: the SAME-scope (workset) write is accepted and lands in the workset
+        settings file (the sibling behavior for ``workset.auth.share_allowed``)."""
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "workset.boxes", "/srv/boxes",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["workset"]["boxes"] == "/srv/boxes"
 
     def test_set_mode_rejected_not_settable(self, tmp_path):
         """``mode`` is no longer settable via config set (block B1, spec §2b L486 /

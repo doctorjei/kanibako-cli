@@ -98,6 +98,24 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # ``registry`` (the same nested-settings pattern as ``box.image``). ADDITIVE:
     # nothing consumes it yet (the launch/create cutover is P4/P5).
     "workset.registry",
+    # Workset-scope LAYOUT anchors (settings-conformance P6a). These path anchors
+    # are floor-materialized (settings_launch.workset_anchor_floor / start.py) as
+    # OVERRIDABLE base-level defaults, but were NOT reachable through the settable
+    # surface — a Type-A "meta ⟺ not-settable" violation. Jei ruled them SETTABLE:
+    # they are per-workset REPOINTABLE dirs (the same nested-settings STRING-path
+    # keys as ``workset.auth.share_allowed``/``workset.registry``). A ``config set
+    # workset workset.boxes=…`` writes an EXPLICIT workset-level value that WINS
+    # over the base floor default by cascade precedence (workset ⊐ base). NO
+    # KEY_TYPES entry (all STRING paths, no bool coercion); routed to the ``workset:``
+    # nested slot below. Downward-default-able from a containing scope per R2.
+    "workset.auth.path",
+    "workset.boxes",
+    "workset.vault_ro",
+    "workset.vault_rw",
+    "workset.logs",
+    "workset.channels.commons",
+    "workset.channels.chat",
+    "workset.channels.share",
     # Layer-1 CONFIG-key foundation (bootstrap paths; ``[config]`` table, spec §1)
     "config.data",
     "config.settings",
@@ -197,6 +215,20 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # KEY_TYPES entry (no bool coercion); written sparsely on set. ADDITIVE: no
     # consumer wiring yet (P4/P5).
     "workset.registry": (("workset",), "registry"),
+    # Workset-scope LAYOUT anchors (settings-conformance P6a): the per-workset
+    # REPOINTABLE dirs floor-materialized in ``workset_anchor_floor``, now settable.
+    # Each routes to its nested ``workset.<...>`` slot in the command-scope settings
+    # file — the SAME nested-settings pattern as ``workset.auth.share_allowed`` /
+    # ``workset.registry`` — so a set-value lands where ``assemble_levels`` mirrors it
+    # and OUT-PRECEDES the base floor default at launch. STRING paths (no KEY_TYPES).
+    "workset.auth.path": (("workset", "auth"), "path"),
+    "workset.boxes": (("workset",), "boxes"),
+    "workset.vault_ro": (("workset",), "vault_ro"),
+    "workset.vault_rw": (("workset",), "vault_rw"),
+    "workset.logs": (("workset",), "logs"),
+    "workset.channels.commons": (("workset", "channels"), "commons"),
+    "workset.channels.chat": (("workset", "channels"), "chat"),
+    "workset.channels.share": (("workset", "channels"), "share"),
     # Top-level scalar fields (flat KanibakoConfig fields).
     "allow_helpers": ((), "allow_helpers"),
 }
