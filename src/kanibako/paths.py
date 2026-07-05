@@ -888,10 +888,10 @@ def resolve_project(
     *enable_vault* controls whether vault directories are created and mounted.
     Defaults to True for new projects; existing projects read from ``settings.yaml``.
 
-    *register* (B3 interrupted-create marker): when False AND this call
+    *register* (B3 interrupted-create journal): when False AND this call
     materializes a NEW box, the box dir + meta are created and ``is_new`` is set,
     but the name is NOT written to the registry — the caller defers registration
-    until AFTER the home seed (marker → seed → register → remove-marker) so the
+    until AFTER the home seed (journal entry → seed → register → clear-entry) so the
     invariant "registered ⟹ fully seeded" holds.  The picked name is still
     reserved against a concurrent create via the directory-aware
     :func:`names.pick_name`.  Defaults True (every other caller registers inline,
@@ -987,7 +987,7 @@ def resolve_project(
         # strictly; collisions error rather than auto-suffix.
         # B3: when *register* is False the name is PICKED (directory-aware, so a
         # half-built box's dir keeps its name reserved) but NOT written — the
-        # caller registers after seeding (marker → seed → register → remove).
+        # caller registers after seeding (journal entry → seed → register → clear-entry).
         if name_override:
             if register:
                 register_name(std.registry, name_override, project_path_str)
@@ -1996,7 +1996,7 @@ def resolve_box_target(
 
     *register* (B3) is forwarded to the PRIMARY/STANDALONE resolvers; ``start``
     passes ``register=False`` so an auto-created box defers registration until
-    after its home seed (marker → seed → register → remove).  Defaults True.
+    after its home seed (journal entry → seed → register → clear-entry).  Defaults True.
 
     *warn* gates the non-conforming-name FLAG (:func:`_flag_nonconforming`).  A
     NON-materialising PROBE (``initialize=False``) run purely to read a box's paths
@@ -2160,10 +2160,10 @@ def establish_standalone(
     surrounding concerns (file copies, unwind registration, old-name
     unregister) — only the identity/meta/register core lives here.
 
-    *register* (B3 interrupted-create marker): when False the identity is still
+    *register* (B3 interrupted-create journal): when False the identity is still
     resolved and the meta file written, but the box is NOT registered in
     ``registry.standalone`` — the caller defers registration until AFTER the home
-    seed (marker → seed → register → remove-marker), so a crash mid-seed leaves
+    seed (journal entry → seed → register → clear-entry), so a crash mid-seed leaves
     an UNregistered box that recovery resolves by its on-disk root.  Defaults True
     (the convert/duplicate lifecycle callers register inline, unchanged).
     """
@@ -2301,8 +2301,8 @@ def resolve_standalone_project(
         # Identity + meta + registration via the shared establish core.  The
         # init block is only reached when no meta exists, so the identity is
         # resolved fresh from the user-supplied --name (empty → fresh canonical).
-        # B3: defer registration to the caller (marker → seed → register →
-        # remove) when register=False; the identity + meta are still written so
+        # B3: defer registration to the caller (journal entry → seed → register →
+        # clear-entry) when register=False; the identity + meta are still written so
         # recovery can resolve the box by its on-disk root.
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
             std, root,
