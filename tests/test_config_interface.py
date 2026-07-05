@@ -2829,3 +2829,237 @@ def _bind_launch_ctx():
         agent_name="claude", workset_name=None, host_home="/home/host",
         xdg={"XDG_DATA_HOME": "/data"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Step B Phase 3 — get/reset read-back symmetry for repointed binds
+# ---------------------------------------------------------------------------
+
+class TestAgentNodeBindGetReset:
+    """The get/set/reset symmetry for a per-node DESCRIPTOR bind
+    ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0): what a repoint SET wrote is
+    read back by GET and removed by RESET, all against the node's OWN settings file
+    ``agents/<node>/settings.yaml`` (the previously-missing read-back half)."""
+
+    def _reg(self):
+        from kanibako.agent_representation import agent_default_bind_keys
+        return agent_default_bind_keys("claude")
+
+    def _agents_root(self, tmp_path):
+        # A node file under an agents root: agents/<node>/settings.yaml.
+        root = tmp_path / "agents"
+        (root / "claude").mkdir(parents=True)
+        return root
+
+    def test_set_then_get_reads_back_the_stored_tuple(self, tmp_path):
+        agents = self._agents_root(tmp_path)
+        node_file = agents / "claude" / "settings.yaml"
+        reg = self._reg()
+        set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node_file, command_scope=ConfigLevel.system,
+            cascade_agent_path=node_file, cascade_agent_name="claude",
+            default_categories=reg,
+        )
+        # GET reads back the RAW tuple STORED at the node file (stored-at-noun).
+        val = get_config_value(
+            "agent.claude.bindings.ro.launcher",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        )
+        _, dest, opts = reg["agent.claude.bindings.ro.launcher"]
+        assert val == str(["/newsrc", dest, opts])
+        assert "/newsrc" in val
+
+    def test_get_unset_node_bind_is_not_set(self, tmp_path):
+        # An unset bind → None ("(not set)"), non-crashing (mutation: RED if the get
+        # branch fabricated the floor default instead of the stored-at-noun value).
+        agents = self._agents_root(tmp_path)
+        val = get_config_value(
+            "agent.claude.bindings.ro.launcher",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        )
+        assert val is None
+
+    def test_get_without_agents_root_is_not_set(self, tmp_path):
+        # A box/workset-scope get (no agents_root threaded) → None, never crashes.
+        val = get_config_value(
+            "agent.claude.bindings.ro.launcher",
+            global_config_path=tmp_path / "cfg.yaml",
+        )
+        assert val is None
+
+    def test_reset_removes_the_override_and_get_reverts(self, tmp_path):
+        agents = self._agents_root(tmp_path)
+        node_file = agents / "claude" / "settings.yaml"
+        reg = self._reg()
+        set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node_file, command_scope=ConfigLevel.system,
+            cascade_agent_path=node_file, cascade_agent_name="claude",
+            default_categories=reg,
+        )
+        msg = reset_config_value(
+            "agent.claude.bindings.ro.launcher",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        )
+        assert msg.startswith("Cleared agent.claude.bindings.ro.launcher")
+        # The override is GONE from the node file; GET reverts to "(not set)".
+        assert load_doc(node_file) == {}
+        assert get_config_value(
+            "agent.claude.bindings.ro.launcher",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        ) is None
+
+    def test_reset_reports_reverted_to_floor_destination(self, tmp_path):
+        # item 3 — with the floor registry threaded, the honest cleared-message
+        # names the reverted-to descriptor destination [+ opts], NEVER the set-time
+        # placeholder host_src (evidence-honesty).
+        from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+
+        agents = self._agents_root(tmp_path)
+        node_file = agents / "claude" / "settings.yaml"
+        reg = self._reg()
+        set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node_file, command_scope=ConfigLevel.system,
+            cascade_agent_path=node_file, cascade_agent_name="claude",
+            default_categories=reg,
+        )
+        msg = reset_config_value(
+            "agent.claude.bindings.ro.launcher",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents, default_categories=reg,
+        )
+        _, dest, _opts = reg["agent.claude.bindings.ro.launcher"]
+        assert "effective is now" in msg
+        assert dest in msg
+        assert FLOOR_PLACEHOLDER_SRC not in msg  # the sentinel is never printed
+
+    def test_reset_without_registry_keeps_cleared_only_form(self, tmp_path):
+        # Mutation-proof the registry is load-bearing for item 3: drop
+        # default_categories and the message has NO "effective is now" clause.
+        agents = self._agents_root(tmp_path)
+        node_file = agents / "claude" / "settings.yaml"
+        set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node_file, command_scope=ConfigLevel.system,
+            cascade_agent_path=node_file, cascade_agent_name="claude",
+            default_categories=self._reg(),
+        )
+        msg = reset_config_value(
+            "agent.claude.bindings.ro.launcher",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        )
+        assert msg.startswith("Cleared agent.claude.bindings.ro.launcher")
+        assert "effective is now" not in msg
+
+    def test_reset_unset_node_bind_reports_no_override(self, tmp_path):
+        agents = self._agents_root(tmp_path)
+        msg = reset_config_value(
+            "agent.claude.bindings.ro.launcher",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents, default_categories=self._reg(),
+        )
+        assert msg == "No override for agent.claude.bindings.ro.launcher"
+
+    def test_get_reset_bind_named_after_state_leaf_routes_to_bind(self, tmp_path):
+        # Collision: a bind literally NAMED ``model`` must route to the node-bind
+        # get/reset path (the bindings.ro segment), NOT the persona ``model`` scalar.
+        agents = self._agents_root(tmp_path)
+        node_file = agents / "claude" / "settings.yaml"
+        # Seed the file with a bind at the descriptor-shaped location so a repoint
+        # (which must-exist in the cascade) is not needed to prove routing.
+        dump_doc(node_file, {"agent": {"claude": {"bindings": {"ro": {
+            "model": ["/hostmodel", "/box/model", "ro"]}}}}})
+        val = get_config_value(
+            "agent.claude.bindings.ro.model",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        )
+        assert val == str(["/hostmodel", "/box/model", "ro"])
+        # The PERSONA scalar ``agent.claude.model`` is a DIFFERENT key (flat slot),
+        # unaffected by the bind write.
+        assert get_config_value(
+            "agent.claude.model",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        ) is None
+        # Reset routes to the bind, removing the nested tuple (not the flat scalar).
+        reset_config_value(
+            "agent.claude.bindings.ro.model",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        )
+        assert load_doc(node_file) == {}
+
+
+class TestPersonaScalarGetResetUnchanged:
+    """The Phase-3 node-bind get/reset branches must NOT divert a persona SCALAR
+    key (``agent.<node>.model`` / ``.endpoint``) — it still routes stored-at-noun to
+    the flat ``agent:`` slot (byte-unchanged collision guard)."""
+
+    def test_persona_model_get_reset_unchanged(self, tmp_path):
+        agents = tmp_path / "agents"
+        (agents / "claude").mkdir(parents=True)
+        node_file = agents / "claude" / "settings.yaml"
+        set_config_value(
+            "agent.claude.model", "opus",
+            config_path=tmp_path / "x", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        )
+        # Stored at the FLAT persona slot ``agent.model`` (NOT nested bindings).
+        assert load_doc(node_file) == {"agent": {"model": "opus"}}
+        assert get_config_value(
+            "agent.claude.model",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        ) == "opus"
+        assert reset_config_value(
+            "agent.claude.model",
+            config_path=tmp_path / "x", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        ) == "Reset agent.claude.model"
+
+
+class TestCoreBindGetReset:
+    """item 4 — the CORE/path-category bind (``box.bindings.{ro,rw}.<name>``)
+    get/set/reset round-trip at box scope reads/removes the box settings file."""
+
+    def test_core_bind_set_get_reset_round_trip(self, tmp_path):
+        from kanibako.core_defaults import core_default_bind_keys
+
+        box_f = tmp_path / "box.yaml"
+        # Seed an existing tuple so the source-only repoint has a bind to repoint.
+        dump_doc(box_f, {"box": {"bindings": {"ro": {
+            "vault_ro": ["/old", "/vault/ro", "ro"]}}}})
+        set_config_value(
+            "box.bindings.ro.vault_ro", "/newvault",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_box_path=box_f,
+            default_categories=dict(core_default_bind_keys()),
+        )
+        # GET reads back the repointed tuple (was previously unread — get lacked a
+        # path-category branch and returned None; RED before the Phase-3 fix).
+        val = get_config_value(
+            "box.bindings.ro.vault_ro",
+            global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
+        )
+        assert val == str(["/newvault", "/vault/ro", "ro"])
+        # RESET removes the box-scope tuple.
+        msg = reset_config_value(
+            "box.bindings.ro.vault_ro", config_path=box_f,
+            command_scope=ConfigLevel.box,
+        )
+        assert msg == "Reset box.bindings.ro.vault_ro"
+        assert load_doc(box_f) == {}
+        assert get_config_value(
+            "box.bindings.ro.vault_ro",
+            global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
+        ) is None
+
+    def test_core_bind_get_unset_is_none(self, tmp_path):
+        box_f = tmp_path / "box.yaml"
+        dump_doc(box_f, {"box": {"image": "x"}})
+        assert get_config_value(
+            "box.bindings.ro.vault_ro",
+            global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
+        ) is None

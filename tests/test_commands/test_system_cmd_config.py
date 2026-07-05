@@ -503,3 +503,41 @@ class TestSystemAgentNodeBindRepoint:
         assert _set("agent.claude.model=opus") == 0
         std = _std(config_file)
         assert load_doc(self._file(std))["agent"]["model"] == "opus"
+
+    def test_set_then_get_reads_back_the_repoint(
+        self, config_file, tmp_home, capsys,
+    ):
+        # Step B Phase 3: the read-back half — a repoint SET is now visible via GET
+        # (was "(not set)" before). The stored tuple is echoed stored-at-noun.
+        assert _set("agent.claude.bindings.ro.launcher=/newsrc") == 0
+        capsys.readouterr()
+        rc = _get("agent.claude.bindings.ro.launcher")
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "agent.claude.bindings.ro.launcher=" in out
+        assert "/newsrc" in out
+
+    def test_get_unset_repoint_is_not_set(self, config_file, tmp_home, capsys):
+        rc = _get("agent.claude.bindings.ro.launcher")
+        assert rc == 0
+        assert "(not set)" in capsys.readouterr().out
+
+    def test_reset_repoint_removes_and_reports_floor(
+        self, config_file, tmp_home, capsys,
+    ):
+        # Step B Phase 3: a repoint RESET removes the override from the node file
+        # (was "Error: unknown config key" before) and — item 3 — names the
+        # reverted-to descriptor destination without the set-time placeholder.
+        from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+
+        _set("agent.claude.bindings.ro.launcher=/newsrc")
+        capsys.readouterr()
+        rc = _reset("agent.claude.bindings.ro.launcher")
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Cleared agent.claude.bindings.ro.launcher" in out
+        assert "effective is now" in out
+        assert FLOOR_PLACEHOLDER_SRC not in out
+        std = _std(config_file)
+        # The override is gone; the now-empty tables are pruned (sparse file).
+        assert load_doc(self._file(std)) == {}

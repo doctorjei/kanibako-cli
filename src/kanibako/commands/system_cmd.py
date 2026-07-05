@@ -295,6 +295,22 @@ def _run_system_config(args: argparse.Namespace) -> int:
             return 1
         # Ensure the system settings dir exists for SETTINGS removals.
         ssp.parent.mkdir(parents=True, exist_ok=True)
+        # item-0 (per-node DESCRIPTOR bind reset, item 3): a system-scope
+        # ``agent.<node>.bindings.{ro,rw}.<name>`` reset removes the repoint from
+        # the node's OWN settings file, reverting the bind to the descriptor FLOOR.
+        # Thread that detect-free per-node floor registry (``agent_default_bind_
+        # keys``) so the honest cleared-message names the reverted-to floor value
+        # (symmetric with the set handler's ``default_categories`` build).
+        reset_default_categories = None
+        reset_bind_parse = _parse_agent_node_bind_key(key)
+        if reset_bind_parse is not None:
+            node_raw, _rcat, _rname = reset_bind_parse
+            try:
+                reset_node = canonicalize_agent_ref(node_raw)
+            except ConfigError:
+                reset_node = None
+            if reset_node is not None:
+                reset_default_categories = agent_default_bind_keys(reset_node)
         # Thread the system SETTINGS file as the cascade's system tier so the
         # honest cleared-message can name the now-effective value + source tier
         # (item 1). A system-scope regular settings key was removed FROM ssp, so
@@ -304,6 +320,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
             agents_root=std.agents,
+            default_categories=reset_default_categories,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
