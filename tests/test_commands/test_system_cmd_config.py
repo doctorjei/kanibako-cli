@@ -447,3 +447,59 @@ class TestSystemPersonaAgentKeys:
         std = _std(config_file)
         data = load_doc(self._file(std))
         assert data == {"agent": {"endpoint": "https://ep"}}
+
+
+class TestSystemAgentNodeBindRepoint:
+    """item-0: ``system config set agent.<node>.bindings.{ro,rw}.<name> /new`` — a
+    SOURCE-ONLY repoint of the descriptor delivery bind (claude launcher/share),
+    written RAW to the node's OWN ``agents/<node>/settings.yaml`` (the SAME file the
+    persona keys write to), end-to-end through the ``system`` verbs."""
+
+    def _file(self, std, node="claude"):
+        return std.agents / node / "settings.yaml"
+
+    def test_repoint_launcher_writes_raw_tuple(self, config_file, tmp_home):
+        # The descriptor floor supplies the launcher box_dest/opts; the repoint swaps
+        # ONLY the host source (was refused/mis-routed before item-0).
+        from kanibako.agent_representation import agent_default_bind_keys
+
+        rc = _set("agent.claude.bindings.ro.launcher=/newsrc")
+        assert rc == 0
+        std = _std(config_file)
+        _, dest, opts = agent_default_bind_keys("claude")[
+            "agent.claude.bindings.ro.launcher"
+        ]
+        assert load_doc(self._file(std))["agent"]["claude"]["bindings"]["ro"][
+            "launcher"
+        ] == ["/newsrc", dest, opts]
+
+    def test_repoint_works_for_uninstalled_agent(self, config_file, tmp_home):
+        # Fork 3: the registry is descriptor-only (no detect), so the repoint
+        # validates + writes even though NO claude binary is installed in this
+        # isolated tmp_home — the box_dest still comes from the descriptor.
+        rc = _set("agent.claude.bindings.ro.share=/newshare")
+        assert rc == 0
+        std = _std(config_file)
+        tup = load_doc(self._file(std))["agent"]["claude"]["bindings"]["ro"]["share"]
+        assert tup[0] == "/newshare"
+        assert tup[1].endswith("/.local/share/claude")  # descriptor box_dest
+
+    def test_unknown_bind_name_refused(self, config_file, tmp_home, capsys):
+        rc = _set("agent.claude.bindings.ro.nonexistent=/x")
+        assert rc == 1
+        assert "nonexistent" in capsys.readouterr().err
+
+    def test_bind_named_model_routes_to_repoint_not_persona(
+        self, config_file, tmp_home, capsys,
+    ):
+        # COLLISION: a bind NAMED ``model`` is a category repoint (refused here as
+        # not-in-descriptor), NOT the persona scalar ``model`` (which would write a
+        # verbatim string). The refusal proves it took the category path.
+        rc = _set("agent.claude.bindings.ro.model=/x")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "must already exist in the cascade" in err or "model" in err
+        # And the persona-scalar model still writes verbatim (unchanged path).
+        assert _set("agent.claude.model=opus") == 0
+        std = _std(config_file)
+        assert load_doc(self._file(std))["agent"]["model"] == "opus"

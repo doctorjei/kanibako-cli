@@ -165,3 +165,55 @@ def agent_default_partial(
     partial = KeyStore()
     partial["agent"] = agent
     return partial
+
+
+def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
+    """The per-node DESCRIPTOR delivery-bind KEYS as a context-light set-time floor
+    registry (item-0 — the descriptor sibling of :func:`core_defaults.core_default_bind_keys`).
+
+    Given a *node_name* (the canonical ``℘``-form, e.g. ``claude`` or
+    ``navigator℘claude``), emits the SAME ``agent.<node>.bindings.{ro,rw}.<key>`` KEYS
+    :func:`agent_default_partial` delivers at launch, keyed under *node_name* (the
+    slot the launch floor reads), each with the STATIC ``box_dest`` + ``options``
+    straight from the plugin :class:`~kanibako.targets.base.PluginDescriptor`, but
+    with a PLACEHOLDER host_src (:data:`~kanibako.core_defaults.FLOOR_PLACEHOLDER_SRC`)
+    in element 0.
+
+    DETECT-FREE (the de-risk, Fork 3): it resolves the target purely by HARNESS
+    (``resolve_target(harness_of(node), project_path=None)``) and reads only
+    ``target.descriptor.bindings`` — the DECLARATIVE ``Binding.box_dest`` / ``.ro`` —
+    so it NEVER calls ``detect()`` / ``resolve_binding_source`` and works even for an
+    UNINSTALLED agent (no host binary needed). The only thing the set-time must-exist
+    gate needs from the floor is ``base[1:]`` (box_dest + options), which are pure
+    declarative literals (``settings_configset.repoint_host_src`` discards element 0).
+    So this exposes EXACTLY the launch descriptor-floor keys to ``config set`` so a
+    source-only repoint of a delivery bind (``system config set
+    agent.claude.bindings.ro.launcher /new``) is no longer refused / mis-routed.
+
+    ``box_dest`` / ``options`` are byte-identical to :func:`agent_default_partial`
+    (same descriptor, same fields): ``opts = "ro" if binding.ro else None`` (a non-ro
+    bind emits a 2-element tuple, opts absent — the ``Bind`` convention). host_src is
+    the discarded placeholder. An unknown harness / a descriptor-less (no-agent)
+    target yields ``{}`` (the repoint is then refused as nowhere-in-the-cascade).
+    """
+    from kanibako.agent_ref import harness_of
+    from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+    from kanibako.targets import resolve_target
+
+    try:
+        target = resolve_target(harness_of(node_name), project_path=None)
+    except (KeyError, ValueError):
+        return {}
+    descriptor = target.descriptor
+    if descriptor is None:
+        return {}
+
+    binds: "dict[str, tuple[str, ...]]" = {}
+    for binding in descriptor.bindings:
+        sub = "ro" if binding.ro else "rw"
+        key = f"agent.{node_name}.bindings.{sub}.{binding.key}"
+        if binding.ro:
+            binds[key] = (FLOOR_PLACEHOLDER_SRC, binding.box_dest, "ro")
+        else:
+            binds[key] = (FLOOR_PLACEHOLDER_SRC, binding.box_dest)
+    return binds

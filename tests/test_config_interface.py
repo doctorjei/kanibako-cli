@@ -2653,3 +2653,179 @@ class TestF10CoreFloorRepoint:
         for seg in ("box", "bindings", "rw", "home"):
             n2 = dict.get(n2, seg)
         assert n2.host == "/FLOOR"
+
+
+# ---------------------------------------------------------------------------
+# item-0 — per-node DESCRIPTOR bind repoint (agent.<node>.bindings.{ro,rw}.<name>)
+# ---------------------------------------------------------------------------
+
+class TestAgentNodeBindRouting:
+    """The ``agent.<node>.bindings.{ro,rw}.<name>`` predicate + its routing order:
+    it is a per-node DESCRIPTOR bind (item-0), NOT a persona scalar, NOT a box.agent
+    mirror, NOT the bare-``agent`` category form."""
+
+    def test_predicate_matches_node_bind_only(self):
+        from kanibako.config_interface import (
+            _is_agent_node_bind_key,
+            _is_box_agent_key,
+            _is_path_category_key,
+            _is_persona_agent_key,
+        )
+        # A node bind key: node-bind True, and the others False (no mis-capture).
+        k = "agent.claude.bindings.ro.launcher"
+        assert _is_agent_node_bind_key(k)
+        assert not _is_box_agent_key(k)
+        assert not _is_path_category_key(k)  # BIND_KEY_RE never matches the node form
+        assert not _is_persona_agent_key(k)  # launcher is not a state leaf
+
+    def test_bind_named_model_is_a_bind_not_a_persona_scalar(self):
+        # COLLISION: a bind literally NAMED ``model`` — the ``bindings.ro`` segment
+        # disambiguates it from the persona state leaf ``agent.claude.model``. Both
+        # predicates fire, but the node-bind is checked FIRST in the dispatch.
+        from kanibako.config_interface import (
+            _is_agent_node_bind_key,
+            _is_persona_agent_key,
+        )
+        k = "agent.claude.bindings.ro.model"
+        assert _is_agent_node_bind_key(k)
+        assert _is_persona_agent_key(k)  # would mis-capture if checked first
+
+    def test_persona_scalar_is_not_a_node_bind(self):
+        from kanibako.config_interface import _is_agent_node_bind_key
+        assert not _is_agent_node_bind_key("agent.claude.model")
+        assert not _is_agent_node_bind_key("agent.claude.endpoint")
+
+    def test_box_agent_bind_is_not_a_node_bind(self):
+        from kanibako.config_interface import (
+            _is_agent_node_bind_key,
+            _is_box_agent_key,
+        )
+        assert not _is_agent_node_bind_key("box.agent.bindings.ro.x")
+        assert _is_box_agent_key("box.agent.bindings.ro.x")
+
+    def test_bare_agent_category_is_not_a_node_bind(self):
+        # The bare ``agent.bindings.*`` (no node) stays on the ordinary category
+        # (BIND_KEY_RE) path — the node-bind regex requires a node segment.
+        from kanibako.config_interface import (
+            _is_agent_node_bind_key,
+            _is_path_category_key,
+        )
+        assert not _is_agent_node_bind_key("agent.bindings.ro.foo")
+        assert _is_path_category_key("agent.bindings.ro.foo")
+
+    def test_resolve_key_canonicalizes_node_plus_form(self):
+        from kanibako.config_interface import _resolve_key
+        assert (
+            _resolve_key("agent.navigator+claude.bindings.rw.plugins")
+            == "agent.navigator℘claude.bindings.rw.plugins"
+        )
+        # A bind named ``model`` under a persona keeps its bind shape (NOT the
+        # persona-scalar re-root).
+        assert (
+            _resolve_key("agent.nav+claude.bindings.ro.model")
+            == "agent.nav℘claude.bindings.ro.model"
+        )
+
+
+class TestAgentNodeBindRepoint:
+    """A source-only repoint of a per-node descriptor bind writes the RAW tuple to
+    the node file, sourcing box_dest/opts from the descriptor floor registry."""
+
+    def _reg(self):
+        from kanibako.agent_representation import agent_default_bind_keys
+        return agent_default_bind_keys("claude")
+
+    def test_repoint_writes_raw_tuple_to_node_file(self, tmp_path):
+        node = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node, command_scope=ConfigLevel.system,
+            cascade_agent_path=node, cascade_agent_name="claude",
+            default_categories=self._reg(),
+        )
+        assert msg.startswith(
+            "Set agent.claude.bindings.ro.launcher host source to /newsrc"
+        ), msg
+        # RAW tuple: new host_src, descriptor box_dest + opts BYTE-RAW from the floor,
+        # nested at agent.<node>.bindings.ro.launcher (the shape _agent_partial reads).
+        reg = self._reg()
+        _, dest, opts = reg["agent.claude.bindings.ro.launcher"]
+        assert load_doc(node)["agent"]["claude"]["bindings"]["ro"]["launcher"] == [
+            "/newsrc", dest, opts,
+        ]
+
+    def test_repoint_without_registry_is_refused(self, tmp_path):
+        # Mutation-proof the registry is load-bearing: drop default_categories and the
+        # SAME repoint is refused (nowhere in the cascade — the descriptor floor is
+        # launch-only). RED if the floor leaked in from elsewhere.
+        node = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node, command_scope=ConfigLevel.system,
+            cascade_agent_path=node, cascade_agent_name="claude",
+        )
+        assert msg.startswith("Error:") and "must already exist in the cascade" in msg
+
+    def test_unknown_bind_name_still_refused(self, tmp_path):
+        node = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "agent.claude.bindings.ro.nonexistent", "/x",
+            config_path=node, command_scope=ConfigLevel.system,
+            cascade_agent_path=node, cascade_agent_name="claude",
+            default_categories=self._reg(),
+        )
+        assert msg.startswith("Error:") and "nonexistent" in msg
+
+    def test_box_scope_repoint_is_refused_upward(self, tmp_path):
+        # Directional guard (unchanged): agent.* from box scope is UPWARD → refused.
+        box = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "agent.claude.bindings.ro.launcher", "/new",
+            config_path=box, command_scope=ConfigLevel.box,
+            default_categories=self._reg(),
+        )
+        assert msg.startswith("Error:") and "cannot be set" in msg
+        assert not box.exists()  # nothing written
+
+    def test_written_tuple_overrides_descriptor_floor_at_launch(self, tmp_path):
+        # (unit) the node-file tuple beats the descriptor default (agent_default_
+        # partial) at launch — the agent-file rung out-precedes the descriptor rung.
+        from kanibako.agent_representation import agent_default_partial
+        from kanibako.config_io import dump_doc
+        from kanibako.settings_launch import build_launch_snapshot
+        from kanibako.targets.base import (
+            AgentInstall, BindKind, BindScope, Binding, HostSrcOrigin,
+            PluginDescriptor,
+        )
+
+        install = AgentInstall(
+            name="claude", binary=tmp_path / "b",
+            launcher=tmp_path / "orig-launcher", install_dir=tmp_path / "share",
+        )
+        binding = Binding(
+            key="launcher", origin=HostSrcOrigin.LAUNCHER, box_dest="/box/launcher",
+            kind=BindKind.FILE, scope=BindScope.AGENT_CRITICAL, ro=True,
+        )
+        desc = PluginDescriptor(command=("claude",), bindings=(binding,), mode={})
+        partial = agent_default_partial(desc, install, node_name="claude")
+
+        # The exact shape our config-set write produces in the node file.
+        node = tmp_path / "settings.yaml"
+        dump_doc(node, {"agent": {"claude": {"bindings": {"ro": {
+            "launcher": ["/REPOINT", "/box/launcher", "ro"]}}}}})
+
+        snap = build_launch_snapshot(
+            agent_name="claude",
+            ctx=_bind_launch_ctx(),
+            system_path=None, agent_path=node, workset_path=None, box_path=None,
+            agent_partial=partial,
+        )
+        assert snap.agent.claude.bindings.ro.launcher.host == "/REPOINT"
+
+
+def _bind_launch_ctx():
+    from kanibako.settings_resolve import ResolveCtx
+    return ResolveCtx(
+        agent_name="claude", workset_name=None, host_home="/home/host",
+        xdg={"XDG_DATA_HOME": "/data"},
+    )
