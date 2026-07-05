@@ -351,7 +351,9 @@ class TestRunConfig:
         )
         rc = run_reset(args)
         assert rc == 0
-        assert "Reset all" in capsys.readouterr().out
+        # Count-based wording, aligned with the other scopes' reset_all: the
+        # fixture has env{EDITOR} + [agent]{run_args, model} = 3 overrides.
+        assert "Reset 3 override(s)." in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
         cfg = load_agent_config(path)
@@ -527,7 +529,8 @@ class TestSparseWrites:
             agent_id="claude", key=None, all_keys=True, force=True,
         ))
         assert rc == 0
-        assert "Reset all" in capsys.readouterr().out
+        # env{FOO} + env_file{TOK} + [agent]{endpoint, model, run_args} = 5.
+        assert "Reset 5 override(s)." in capsys.readouterr().out
 
         data = load_doc(path)
         assert data["agent"] == {"name": "Custom"}  # state/run_args/endpoint gone

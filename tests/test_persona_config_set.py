@@ -238,7 +238,10 @@ class TestGetResetPersona:
             "agent.navigator+claude.endpoint", config_path=cp,
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
-        assert msg == "Reset agent.navigator+claude.endpoint"
+        assert msg == (
+            "Cleared agent.navigator+claude.endpoint set on the system scope; "
+            "it now falls back through the cascade."
+        )
         # The now-empty agent table is pruned → file stays sparse (empty doc).
         assert load_doc(_node_file(agents_root)) == {}
         assert get_config_value(
