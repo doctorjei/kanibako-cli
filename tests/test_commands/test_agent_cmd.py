@@ -616,6 +616,7 @@ class TestRunReauth:
             # test is reached unchanged.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
                 return_value=(_SHARED_AUTH, None),
             ),
         ):
@@ -634,6 +635,56 @@ class TestRunReauth:
 
         assert rc == 0
         target.refresh_credentials.assert_called_once_with(proj.shell_path)
+
+    def test_reauth_calls_resolver_with_conformant_kwargs(
+        self, config_file, tmp_home, capsys
+    ):
+        """The reauth path must invoke ``_resolve_box_launch_decisions`` with the
+        POST-P6c signature (no ``project_toml`` / ``workset_path`` kwargs — the
+        resolver derives those from ``proj`` internally).
+
+        The patch is ``autospec=True``, so the mock enforces the real signature:
+        reintroducing the removed kwargs makes this call raise ``TypeError`` inside
+        ``run_reauth`` (rc != 0 / propagated) → RED. The explicit ``call_args``
+        assertion pins the exact conformant keyword set as a second guard.
+        """
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        with (
+            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.targets.resolve_target") as mock_target,
+            patch(
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
+                return_value=(_SHARED_AUTH, None),
+            ) as mock_resolve,
+        ):
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = True
+            target.display_name = "Claude Code"
+            target.descriptor = None
+            mock_target.return_value = target
+
+            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+                proj = MagicMock()
+                mock_proj.return_value = proj
+
+                rc = run_reauth(args)
+
+        # rc == 0 only if the autospec'd resolver accepted the call (signature
+        # conformant); a stray project_toml/workset_path would have raised.
+        assert rc == 0
+        mock_resolve.assert_called_once()
+        passed = set(mock_resolve.call_args.kwargs)
+        assert passed == {
+            "std", "proj", "target", "agent_name", "agent_cfg",
+            "system_settings_path", "agent_cfg_path",
+        }
+        # The two params P6c removed must NOT be passed.
+        assert "project_toml" not in passed
+        assert "workset_path" not in passed
 
     def test_reauth_refreshes_credentials_descriptor(self, config_file, tmp_home, capsys):
         """Descriptor-bearing target: refresh routes through the credsync engine.
@@ -656,6 +707,7 @@ class TestRunReauth:
             # stub a SHARING AuthSource so the credsync refresh branch is reached.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
                 return_value=(_SHARED_AUTH, None),
             ),
         ):
@@ -704,6 +756,7 @@ class TestRunReauth:
             # SHARING box, but with a resolved persona endpoint → the fork fires.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
                 return_value=(_SHARED_AUTH, "http://localhost:8080"),
             ),
         ):
@@ -740,6 +793,7 @@ class TestRunReauth:
             # private AuthSource so the distinct-auth branch is taken.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
                 return_value=(_PRIVATE_AUTH, None),
             ),
         ):
@@ -780,6 +834,7 @@ class TestRunReauth:
             # SHARING AuthSource so the shared-auth-fail path is reached.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
                 return_value=(_SHARED_AUTH, None),
             ),
         ):
@@ -817,6 +872,7 @@ class TestRunReauth:
             # SHARING AuthSource so the shared-auth-fail path is reached.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
                 return_value=(_SHARED_AUTH, None),
             ),
         ):

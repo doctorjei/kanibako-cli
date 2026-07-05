@@ -554,8 +554,6 @@ def run_reauth(args: argparse.Namespace) -> int:
         agent_name=agent_name,
         agent_cfg=reauth_agent_cfg,
         system_settings_path=std.settings,
-        project_toml=project_toml,
-        workset_path=workset_path,
         agent_cfg_path=agent_cfg_path,
     )
     suppress_oauth = active_endpoint is not None
