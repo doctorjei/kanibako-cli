@@ -1294,7 +1294,13 @@ def _to_workset(
         unwind.on_success(lambda: shutil.rmtree(stash, ignore_errors=True))
 
     # add_project (std-aware) registers + creates skeleton + (external) markers.
-    add_project(target_ws, new_name, source_for_add, std)
+    # ``force=True``: a convert/move/duplicate INTO a workset is a DELIBERATE
+    # absorb, so it must override the standalone-marker connect guard (B2a) — the
+    # source of a standalone->workset convert still carries its in-place
+    # ``box_data/`` marker at this point (the marker is removed later in the
+    # convert).  ``force`` only affects a standalone-marked source (a no-op
+    # otherwise), so it is safe for the non-standalone move/duplicate cases.
+    add_project(target_ws, new_name, source_for_add, std, force=True)
     unwind.push(
         lambda: _safe_remove_project(target_ws, new_name, std)
     )
