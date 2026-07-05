@@ -97,24 +97,65 @@ class TestResolveProject:
 class TestProjectMeta:
     """Tests for project metadata storage in settings.yaml (Phase 1b)."""
 
-    def test_init_writes_project_toml(self, config_file, tmp_home, credentials_dir):
-        """resolve_project(initialize=True) writes metadata to settings.yaml."""
+    def test_init_sparse_no_project_meta(self, config_file, tmp_home, credentials_dir):
+        """P8b/Option A: a default-vault PRIMARY create writes NO ``project:``/
+        ``resolved:`` identity — identity lives in the registry, not on disk."""
+        from kanibako.config import read_project_meta
+        from kanibako.config_io import load_doc
+        from kanibako.names import read_names
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         project_toml = proj.metadata_path / "settings.yaml"
-        assert project_toml.is_file()
+        # Sparse create with default vault writes NOTHING to settings.yaml.
+        assert not project_toml.exists()
+        # No self-describing identity is recoverable from disk.
+        assert read_project_meta(project_toml) is None
+        if project_toml.exists():  # (guards a future non-default write)
+            doc = load_doc(project_toml)
+            assert "project" not in doc
+            assert "resolved" not in doc
+        # Identity IS in the registry (name -> external workspace).
+        names = read_names(std.registry)
+        assert proj.name in names["projects"]
+        assert names["projects"][proj.name] == str(proj.project_path)
 
-        from kanibako.config import read_project_meta
-        meta = read_project_meta(project_toml)
-        assert meta is not None
-        assert meta["mode"] == "primary"
-        assert meta["workspace"] == str(proj.project_path)
-        assert meta["shell"] == str(proj.shell_path)
-        assert meta["vault_ro"] == str(proj.vault_ro_path)
-        assert meta["vault_rw"] == str(proj.vault_rw_path)
+    def test_disabled_vault_persists_sparsely_at_create(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A non-default ``box.enable_vault`` (disabled) is persisted sparsely at
+        create — the ONLY thing the sparse create writes — with no ``project:``/
+        ``resolved:`` section; default vault writes nothing at all."""
+        from kanibako.config import read_box_enable_vault
+        from kanibako.config_io import load_doc
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # Disabled vault → box.enable_vault: false is written, alone.
+        (tmp_home / "voff").mkdir()
+        off_dir = str(tmp_home / "voff")
+        proj_off = resolve_project(
+            std, config, project_dir=off_dir, initialize=True, enable_vault=False,
+        )
+        toml_off = proj_off.metadata_path / "settings.yaml"
+        assert toml_off.is_file()
+        doc = load_doc(toml_off)
+        assert doc.get("box", {}).get("enable_vault") is False
+        assert "project" not in doc
+        assert "resolved" not in doc
+        assert read_box_enable_vault(toml_off) is False
+
+        # Default (enabled) vault → nothing written.
+        (tmp_home / "von").mkdir()
+        on_dir = str(tmp_home / "von")
+        proj_on = resolve_project(
+            std, config, project_dir=on_dir, initialize=True,
+        )
+        toml_on = proj_on.metadata_path / "settings.yaml"
+        assert not toml_on.exists()
+        assert read_box_enable_vault(toml_on) is True
 
     def test_no_meta_without_initialize(self, config_file, tmp_home):
         """resolve_project(initialize=False) does not write settings.yaml."""
@@ -169,8 +210,16 @@ class TestProjectMeta:
         assert proj2.shell_path == default_shell
         assert proj2.shell_path != custom_shell
 
-    def test_standalone_init_writes_meta(self, config_file, tmp_home, credentials_dir):
-        """resolve_standalone_project(initialize=True) writes metadata."""
+    def test_standalone_init_materializes_marker_sparsely(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """P8b/Option A: a standalone create STILL materializes ``settings.yaml``
+        (the standalone marker) via the sparse ``workset.kuid`` write, but writes
+        NO ``project:``/``resolved:`` identity — the name derives from the kuid +
+        ``registry.standalone``."""
+        from kanibako.config import read_project_meta, read_workset_kuid
+        from kanibako.config_io import load_doc
+        from kanibako.kuid import SENTINEL
         from kanibako.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -178,16 +227,24 @@ class TestProjectMeta:
         proj = resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
 
         project_toml = proj.metadata_path / "settings.yaml"
+        # Marker file still exists (materialized by the sparse kuid write).
         assert project_toml.is_file()
+        # But it carries only sparse settings — no identity/resolved sections.
+        doc = load_doc(project_toml)
+        assert "project" not in doc
+        assert "resolved" not in doc
+        assert read_project_meta(project_toml) is None
+        # The kuid IS persisted sparsely (the stable cross-move identity handle).
+        assert read_workset_kuid(project_toml) != SENTINEL
 
+    def test_workset_init_sparse_no_project_meta(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """P8b/Option A: a default-vault NAMED create writes NO ``project:``/
+        ``resolved:`` identity — the box's membership lives in the workset's
+        per-workset ``boxes:`` registry."""
         from kanibako.config import read_project_meta
-        meta = read_project_meta(project_toml)
-        assert meta is not None
-        assert meta["mode"] == "standalone"
-        assert meta["workspace"] == str(proj.project_path)
-
-    def test_workset_init_writes_meta(self, config_file, tmp_home, credentials_dir):
-        """resolve_workset_project(initialize=True) writes metadata."""
+        from kanibako.config_io import load_doc
         from kanibako.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
         config = load_config(config_file)
@@ -197,37 +254,46 @@ class TestProjectMeta:
         add_project(ws, "metaproj", tmp_home / "project")
 
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), "metaproj", std, config, initialize=True)
+        assert proj.mode == BoxMode.named
+        assert proj.name == "metaproj"
 
         project_toml = proj.metadata_path / "settings.yaml"
-        assert project_toml.is_file()
+        # Sparse create with default vault writes nothing to settings.yaml.
+        assert not project_toml.exists()
+        assert read_project_meta(project_toml) is None
+        if project_toml.exists():
+            doc = load_doc(project_toml)
+            assert "project" not in doc
+            assert "resolved" not in doc
 
-        from kanibako.config import read_project_meta
-        meta = read_project_meta(project_toml)
-        assert meta is not None
-        assert meta["mode"] == "named"
-
-    def test_meta_preserves_existing_config(self, config_file, tmp_home, credentials_dir):
-        """write_project_meta preserves existing [box] section."""
+    def test_image_override_sparse_no_project_meta(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A ``box.image`` override coexists with sparse create: it is written to
+        the ``box:`` table with NO ``project:``/``resolved:`` section alongside."""
+        from kanibako.config import (
+            load_merged_config,
+            read_project_meta,
+            write_project_config,
+        )
+        from kanibako.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Write a container image override
+        # Write a container image override (sparse box-scope key).
         project_toml = proj.metadata_path / "settings.yaml"
-        from kanibako.config import write_project_config
         write_project_config(project_toml, "custom-image:v1")
 
-        # Re-read — image should be there alongside metadata
-        from kanibako.config import load_merged_config
         merged = load_merged_config(config_file, project_toml)
         assert merged.box_image == "custom-image:v1"
 
-        # Metadata should also be intact
-        from kanibako.config import read_project_meta
-        meta = read_project_meta(project_toml)
-        assert meta is not None
-        assert meta["mode"] == "primary"
+        # No identity section was ever written.
+        doc = load_doc(project_toml)
+        assert "project" not in doc
+        assert "resolved" not in doc
+        assert read_project_meta(project_toml) is None
 
     # The stored/computed global_shared/local_shared paths were removed in
     # 1.6.0 (Part 4): no ``shared/`` dir exists in the target tree, so the

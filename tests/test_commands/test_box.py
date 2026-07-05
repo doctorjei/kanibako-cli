@@ -801,22 +801,26 @@ class TestBoxDuplicateCrossMode:
         result = detect_project_mode(dst_dir, std, config)
         assert result.mode == BoxMode.standalone
 
-        # (2) Metadata declares mode=standalone with a fresh <kuid>_<leaf>
-        #     name; settings.yaml lives at the ROOT (drift I).
-        meta = read_project_meta(dst_dir / BOX_META_FILE)
-        assert meta is not None
-        assert meta["mode"] == "standalone"
-        new_name = meta["name"]
+        # (2) P8b/Option A: no on-disk ``project:`` identity — the marker
+        #     settings.yaml lives at the ROOT (drift I) and is materialized by the
+        #     sparse kuid write; read_project_meta is None.
+        from kanibako.config import read_workset_kuid
+        from kanibako.kuid import SENTINEL
+        assert read_project_meta(dst_dir / BOX_META_FILE) is None
+        assert (dst_dir / BOX_META_FILE).is_file()
+        assert read_workset_kuid(dst_dir / BOX_META_FILE) != SENTINEL
+
+        # (3) Registered in registry.standalone keyed by a fresh <kuid>_<leaf>
+        #     name → dst root (NOT the source's name).
+        standalone = load_standalone(std.registry)
+        matches = [n for n, root in standalone.items() if root == str(dst_dir)]
+        assert len(matches) == 1
+        new_name = matches[0]
         assert new_name != src_name
         # <kuid>_<leaf>: 5-char Crockford base32 prefix + "_" + sanitized leaf.
         prefix, _, leaf = new_name.partition("_")
         assert len(prefix) == 5
         assert leaf == "b3_dst"
-
-        # (3) Registered in registry.standalone keyed by the new name → dst root.
-        standalone = load_standalone(std.registry)
-        assert new_name in standalone
-        assert standalone[new_name] == str(dst_dir)
 
     def test_duplicate_cross_mode_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate

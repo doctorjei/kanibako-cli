@@ -20,7 +20,7 @@ from kanibako.config import (
     read_box_enable_vault,
     read_workset_kuid,
     read_workset_skip_kuid_check,
-    write_project_meta,
+    write_box_enable_vault,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings_resolve import (
@@ -922,42 +922,33 @@ def resolve_project(
         std.registry, project_path_str, std.boxes,
     )
 
-    # Drop-in import: the registry reverse-lookup missed, but an on-disk PRIMARY
-    # box for this workspace may exist under @config.primary_workset/boxes (a
-    # dropped-in / moved tree).  On-disk metadata is authoritative — import it
-    # (alert + register; name collision → refuse), then re-resolve the dir.
+    # Registry reverse-lookup miss.
     #
-    # J1: when register=False (a deferred-registration create/recovery resolve),
-    # the box's name is read from the pending CREATE JOURNAL entry whose recorded
-    # workspace == this workspace (P8b — identity no longer self-describes in
-    # on-disk meta).  Re-discovering a half-built box during a re-create must NOT
-    # prematurely register it (the caller completes seed -> register ->
-    # clear-entry), so the resolved name re-associates the on-disk dir directly
-    # (the registry is still empty, so _resolve_local_dir would miss again).
-    if not project_name:
-        if register:
-            from kanibako import import_reconcile
+    # register=True (a normal resolve): P8b/Option A — an unregistered on-disk
+    # PRIMARY box is NOT auto-rediscovered.  The registry is the SOLE identity
+    # authority; a primary box no longer self-describes on disk (sparse create),
+    # so there is nothing on disk to re-import from.  ``project_name`` stays empty
+    # and the code falls through to the not-found/create path below (a fresh name
+    # is assigned when ``initialize``; otherwise the miss surfaces downstream).
+    # The future ``system recover`` is the remedy for a lost registry entry.
+    #
+    # register=False (a deferred-registration create/recovery resolve): the box's
+    # name is read from the pending CREATE JOURNAL entry whose recorded workspace
+    # == this workspace (P8b — identity no longer self-describes in on-disk meta).
+    # Re-discovering a half-built box during a re-create must NOT prematurely
+    # register it (the caller completes seed -> register -> clear-entry), so the
+    # resolved name re-associates the on-disk dir directly (the registry is still
+    # empty, so _resolve_local_dir would miss again).
+    if not project_name and not register:
+        from kanibako import journal as journal_mod
 
-            imported = import_reconcile.import_primary_box_for_workspace(
-                std.registry, std.boxes, project_path, register=True,
-                journal=std.journal,
-            )
-            if imported:
-                project_name, project_dir_path = _resolve_local_dir(
-                    std.registry, project_path_str, std.boxes,
-                )
-        else:
-            # register=False: read the box name from the pending create journal
-            # entry for this workspace (not on-disk meta) and bind the dir.
-            from kanibako import journal as journal_mod
-
-            entry = journal_mod.pending_create_for_workspace(
-                std.journal, project_path,
-            )
-            recovered = (entry.get("name") or "").strip() if entry else ""
-            if recovered:
-                project_name = recovered
-                project_dir_path = std.boxes / recovered
+        entry = journal_mod.pending_create_for_workspace(
+            std.journal, project_path,
+        )
+        recovered = (entry.get("name") or "").strip() if entry else ""
+        if recovered:
+            project_name = recovered
+            project_dir_path = std.boxes / recovered
 
     metadata_path = project_dir_path
 
@@ -967,9 +958,8 @@ def resolve_project(
     # @meta.box.name; the launch routes the home/vault binds through those @-refs).
     # A user customizing home/vault now sets the box.bindings.{rw,ro}.{home,vault}
     # CASCADE override (which wins naturally), NOT a stored shell path.  The
-    # ``shell``/``vault_*`` fields are STILL WRITTEN to the meta file (below + the
-    # describe/lifecycle read path) for the on-disk record; they are no longer read
-    # as a resolution override here.
+    # ``shell``/``vault_*`` fields are no longer written to disk at all under sparse
+    # create (P8b/Option A) — they are always the spec-derived default location.
     project_toml = metadata_path / BOX_META_FILE
     shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
         std, metadata_path, project_name or metadata_path.name,
@@ -1023,18 +1013,12 @@ def resolve_project(
             vault_ro_path, vault_rw_path, project_path,
             enable_vault=actual_vault_enabled,
         )
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace=str(project_path),
-            shell=str(shell_path),
-            vault_ro=str(vault_ro_path),
-            vault_rw=str(vault_rw_path),
-            enable_vault=actual_vault_enabled,
-            metadata=str(metadata_path),
-            project_hash=phash,
-            name=project_name,
-        )
+        # Sparse create (P8b/Option A): NO ``project:``/``resolved:`` identity is
+        # written — the box's identity + workspace live in the registries
+        # (``box_resolve``: the global name index + the PRIMARY per-workset
+        # registry, written just below).  Only a NON-default ``box.enable_vault``
+        # is persisted, sparsely.
+        write_box_enable_vault(project_toml, actual_vault_enabled)
         # P5a dual-register: record membership in the PRIMARY workset's
         # per-workset registry (name → external workspace) — the new-model
         # source box_resolve reads — IN ADDITION to the transitional ``project:``
@@ -1054,32 +1038,12 @@ def resolve_project(
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # Backfill settings.yaml for old-format projects (pre-v0.8).  P5a: the
-        # "materialized box" signal here is settings-FILE presence — a faithful,
-        # cheap replacement for the old ``read_project_meta(...) is None`` (which,
-        # under the D8 clean break, only ever returned None when the file itself
-        # was absent).  Deliberately NOT ``box_resolve``: this is a settings-file
-        # concern (an ancient box dir lacking a settings.yaml), and a registry
-        # lookup would both mis-key (skip a registered box whose file went
-        # missing / rewrite an unregistered box that has a valid file) and add a
-        # full enumerate-scan to every primary resolve for a pre-v0.8 vestige.
-        if metadata_path.is_dir() and not (
-            metadata_path / BOX_META_FILE
-        ).is_file():
-            # Use directory name as project name (name-based dirs).
-            _bf_name = metadata_path.name if not metadata_path.name.startswith(phash[:8]) else ""
-            write_project_meta(
-                metadata_path / BOX_META_FILE,
-                mode="primary",
-                workspace=str(project_path),
-                shell=str(shell_path),
-                vault_ro=str(vault_ro_path),
-                vault_rw=str(vault_rw_path),
-                enable_vault=actual_vault_enabled,
-                metadata=str(metadata_path),
-                project_hash=phash,
-                name=_bf_name,
-            )
+        # P8b/Option A: NO settings.yaml backfill.  A primary box's identity,
+        # workspace and ``box.enable_vault`` all live in the registries now (not a
+        # self-describing ``project:``/``resolved:`` on disk), so a box dir lacking
+        # a settings.yaml is not a defect to repair here — nothing needs the file
+        # to exist for a default-vault primary box.  (The former pre-v0.8 backfill
+        # materialized an identity that no longer exists on disk.)
 
     return ProjectPaths(
         project_path=project_path,
@@ -1599,17 +1563,12 @@ def resolve_workset_project(
     is_new = False
     if initialize and not shell_path.is_dir():
         _init_workset_project(std, metadata_path, shell_path)
-        write_project_meta(
-            project_toml,
-            mode="named",
-            workspace=str(project_path),
-            shell=str(shell_path),
-            vault_ro=str(vault_ro_path),
-            vault_rw=str(vault_rw_path),
-            enable_vault=actual_vault_enabled,
-            metadata=str(metadata_path),
-            project_hash=phash,
-        )
+        # Sparse create (P8b/Option A): NO ``project:``/``resolved:`` identity —
+        # the box's name lives in the workset's per-workset registry (the
+        # ``boxes:`` entry written just below, which box_resolve reads) and its
+        # workspace override in that same registry.  Only a NON-default
+        # ``box.enable_vault`` is persisted, sparsely.
+        write_box_enable_vault(project_toml, actual_vault_enabled)
         # P5a dual-register: record membership in the workset's per-workset
         # registry (name → workspace), IN ADDITION to the transitional
         # ``project:`` write above.  Sourced from the resolved *project_path* so
@@ -2144,9 +2103,11 @@ def establish_standalone(
        ``registry.standalone``) when *name* is empty, otherwise honoring the
        supplied (lowercased) ``--name``: a verbatim canonical id if free (else
        refuse), or a fresh prefix over the supplied string as the leaf;
-    2. writes the standalone ``<root>/settings.yaml`` meta (``mode=standalone``
-       + the fixed STANDALONE path table via :func:`_standalone_box_paths`); the
-       box ``settings.yaml`` lives at the ROOT (the ``box_data/`` marker dir
+    2. writes a SPARSE ``<root>/settings.yaml`` (P8b/Option A): the settable
+       ``workset.kuid`` (which MATERIALIZES the file — the standalone marker) plus
+       a NON-default ``box.enable_vault``.  NO ``project:``/``resolved:`` identity
+       is written — the name/mode/workspace derive from ``registry.standalone`` +
+       the live kuid.  The file lives at the ROOT (the ``box_data/`` marker dir
        holds only ``home/`` + the ``<box>.jsonl`` helper log);
     3. registers the box in ``registry.standalone`` (``box_name`` → *root*).
 
@@ -2166,33 +2127,22 @@ def establish_standalone(
     """
     from kanibako import box_identity, registry_store
 
-    box_data = root / _STANDALONE_META_DIR
-    workspace = root / "workspace"
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
-    # phash derives from the resolved root (a standalone tree is drop-in
-    # portable); the on-disk string fields below use *root* verbatim, matching
-    # each call site's prior behavior.
-    phash = project_hash(str(root.resolve()))
 
     existing = registry_store.standalone_box_names(std.registry)
     box_name = box_identity.resolve_standalone_name(root, name, existing)
 
     settings_file = root / BOX_META_FILE
-    write_project_meta(
-        settings_file,
-        mode="standalone",
-        workspace=str(workspace),
-        shell=str(shell_path),
-        vault_ro=str(vault_ro_path),
-        vault_rw=str(vault_rw_path),
-        enable_vault=enable_vault,
-        metadata=str(box_data),
-        project_hash=phash,
-        name=box_name,
-    )
+    # Sparse create (P8b/Option A): NO ``project:``/``resolved:`` identity — the
+    # standalone box's name is registered in ``registry.standalone`` (below) and
+    # re-composed LIVE from the sparse ``workset.kuid`` (written just below) +
+    # the dir leaf.  Only a NON-default ``box.enable_vault`` is persisted here;
+    # the settings.yaml FILE (the standalone marker, alongside ``box_data/``) is
+    # still MATERIALIZED unconditionally by the ``workset.kuid`` write below.
+    write_box_enable_vault(settings_file, enable_vault)
     # Persist the GENERATED kuid as the settable ``workset.kuid`` key (P6d), sparsely
-    # (read-modify-write, preserving the ``project:`` meta above) via the SAME keystore
-    # sparse-write engine ``config set`` uses — [[settings-must-map-to-keystore-key]].
+    # (read-modify-write, merging with the sparse ``box.enable_vault`` above) via the
+    # SAME keystore sparse-write engine ``config set`` uses — [[settings-must-map-to-keystore-key]].
     # The kuid IS the name's prefix (``box_identity.standalone_kuid``); storing it
     # makes it the STABLE cross-move handle (the launch re-composes the name as
     # ``<stored kuid>_<live leaf>`` so a moved box keeps its identity).

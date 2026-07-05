@@ -31,6 +31,22 @@ from kanibako.paths import (
 from kanibako.workset import add_project, create_workset
 
 
+def _write_primary_meta(std, name, workspace):
+    """Stamp the legacy on-disk PRIMARY identity the PARKED ``import_primary_*``
+    reconcile skeleton reads.
+
+    Sparse create no longer writes ``project:``/``resolved:`` (P8b/Option A), so
+    tests exercising the retained-but-unwired reconcile helpers lay the meta down
+    themselves.
+    """
+    from kanibako.config import BOX_META_FILE, write_project_meta
+    write_project_meta(
+        (std.boxes / name) / BOX_META_FILE,
+        mode="primary", workspace=str(workspace),
+        shell="", vault_ro="", vault_rw="", name=name,
+    )
+
+
 # ---------------------------------------------------------------------------
 # journal.pending_import — the register-only recovery signal (op-typed)
 # ---------------------------------------------------------------------------
@@ -82,23 +98,24 @@ class TestImportBehavioralEquivalence:
         )
         assert journal.read_journal(std.journal) == {}
 
-    def test_primary_import_empty_journal_at_rest(
+    def test_primary_resolve_no_rediscovery_option_a(
         self, std, config, project_dir, credentials_dir, capsys,
     ):
+        """P8b/Option A: a register=True resolve does NOT auto-rediscover an
+        unregistered on-disk PRIMARY box (retired live import) — and it touches no
+        journal.  The registry is the sole identity authority."""
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
-        name = proj.name
+        assert proj.name
         registry_store.save_section(std.registry, "projects", {})
         capsys.readouterr()
 
         proj2 = resolve_project(
             std, config, project_dir=str(project_dir), initialize=False,
         )
-        assert proj2.name == name
-        assert registry_store.load_section(std.registry, "projects").get(
-            name
-        ) == str(project_dir.resolve())
+        assert proj2.name == ""  # not recovered from disk
+        assert registry_store.load_section(std.registry, "projects") == {}
         assert journal.read_journal(std.journal) == {}
 
     def test_named_workset_import_empty_journal_at_rest(
@@ -311,13 +328,19 @@ class TestPrimaryImportRecovery:
     def test_interrupted_import_completes_and_clears_no_seed(
         self, std, config, project_dir, credentials_dir, capsys, seed_tripwire,
     ):
-        """PRIMARY import interrupted (entry left, NOT registered): re-resolve
-        registers + clears; seed NEVER called.  UNCONDITIONAL asserts."""
+        """PRIMARY import interrupted (entry left, NOT registered): the PARKED
+        reconcile sweep registers + clears; seed NEVER called.  UNCONDITIONAL
+        asserts.  (P8b/Option A: import recovery is no longer wired into a
+        register=True resolve — it lives on the parked reconcile path, the seed of
+        the future ``system recover``.)"""
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
         name = proj.name
         box_dir = std.boxes / name
+        # Sparse create wrote no on-disk identity; stamp it for the parked sweep,
+        # then simulate the interrupted import (unregistered + stale entry).
+        _write_primary_meta(std, name, project_dir.resolve())
         registry_store.save_section(std.registry, "projects", {})
 
         box_key = str(box_dir.resolve())
@@ -329,11 +352,11 @@ class TestPrimaryImportRecovery:
         assert journal.pending_import(std.journal, box_key) is not None
         assert registry_store.load_section(std.registry, "projects") == {}
 
-        proj2 = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=False,
+        imported = import_reconcile.reconcile_primary_boxes(
+            std.registry, std.boxes, journal=std.journal,
         )
 
-        assert proj2.name == name
+        assert imported == [name]
         registered = registry_store.load_section(std.registry, "projects")
         assert registered.get(name) == str(project_dir.resolve())
         assert journal.pending_import(std.journal, box_key) is None
@@ -349,6 +372,8 @@ class TestPrimaryImportRecovery:
             std, config, project_dir=str(project_dir), initialize=True,
         )
         name = proj.name
+        # Parked-function unit test: stamp the on-disk identity the sweep reads.
+        _write_primary_meta(std, name, project_dir.resolve())
         box_key = str((std.boxes / name).resolve())
         journal.write_entry(
             std.journal, box_key, op="import", name=name, mode="primary",

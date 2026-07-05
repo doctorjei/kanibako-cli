@@ -349,7 +349,9 @@ class TestLocalNameAssignment:
 
         assert proj.name == "project"
 
-    def test_name_stored_in_project_toml(self, config_file, tmp_home, credentials_dir):
+    def test_name_stored_in_registry_not_on_disk(self, config_file, tmp_home, credentials_dir):
+        """P8b/Option A: the box name lives in the registry (names.yaml), NOT a
+        self-describing on-disk ``project:`` section (read_project_meta is None)."""
         from kanibako.config import load_config, read_project_meta
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -358,9 +360,9 @@ class TestLocalNameAssignment:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        meta = read_project_meta(proj.metadata_path / "settings.yaml")
-        assert meta is not None
-        assert meta["name"] == "project"
+        assert proj.name == "project"
+        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
+        assert read_names(std.registry)["projects"].get("project") == project_dir
 
     def test_name_registered_in_names_toml(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
@@ -483,7 +485,8 @@ class TestNameRegistration:
         assert "project" not in read_names(std.registry)["projects"]
 
     def test_read_name_after_creation(self, config_file, tmp_home, credentials_dir):
-        """Project name is readable from settings.yaml metadata after creation."""
+        """P8b/Option A: the project name is readable from the registry (the sole
+        identity authority) after creation — not from an on-disk section."""
         from kanibako.config import load_config, read_project_meta
         from kanibako.paths import load_std_paths, resolve_project
 
@@ -492,8 +495,9 @@ class TestNameRegistration:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        meta = read_project_meta(proj.metadata_path / "settings.yaml")
-        assert meta["name"] == "project"
+        assert proj.name == "project"
+        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
+        assert read_names(std.registry)["projects"].get("project") == project_dir
 
 
 class TestBoxListName:

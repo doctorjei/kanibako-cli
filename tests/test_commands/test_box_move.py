@@ -46,11 +46,14 @@ class TestBoxMove:
         assert str(dest) in names["projects"].values()
         assert str(project_dir) not in names["projects"].values()
 
-        # settings.yaml rewritten with the new workspace + hash.
+        # P8b/Option A: the moved box resolves at the new workspace from the
+        # registry (names.yaml above), not an on-disk ``resolved.workspace``.
         proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
-        meta = read_project_meta(proj.metadata_path / "settings.yaml")
-        assert meta["workspace"] == str(dest.resolve())
-        assert meta["project_hash"] == project_hash(str(dest.resolve()))
+        # The primary move re-derives the box name from the new workspace basename.
+        assert names["projects"].get(proj.name) == str(dest)
+        assert proj.project_path == dest.resolve()
+        assert proj.project_hash == project_hash(str(dest.resolve()))
+        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
 
     def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
         """move with a missing path returns an error (no cwd fallback)."""
