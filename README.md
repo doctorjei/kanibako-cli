@@ -13,6 +13,9 @@ agent sessions that survive reboots and SSH disconnects.
 
 CRAB: **C**ontained **R**untime **A**gent in a **B**ox.
 
+New here? Start with [GETTING_STARTED.md](GETTING_STARTED.md) for a five-minute
+walkthrough from install to your first agent session.
+
 No Docker or Podman experience required.  Just `cd` into a project and run
 `kanibako`.  Setup, rig pulls, credential syncing, and teardown are automatic.
 Claude Code, Codex, and Goose ship as first-class agent plugins (all installed
