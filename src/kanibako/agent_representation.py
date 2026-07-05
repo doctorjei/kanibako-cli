@@ -199,6 +199,7 @@ def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
     from kanibako.agent_ref import harness_of
     from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
     from kanibako.targets import resolve_target
+    from kanibako.targets.base import HostSrcOrigin
 
     try:
         target = resolve_target(harness_of(node_name), project_path=None)
@@ -210,6 +211,15 @@ def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
 
     binds: "dict[str, tuple[str, ...]]" = {}
     for binding in descriptor.bindings:
+        # Match `agent_default_partial`'s None-origin OMIT (S27) for the PURELY
+        # DECLARATIVE case: a LITERAL binding with no literal_src resolves to None
+        # at launch (detect-free — no `install` needed), so it must not be exposed
+        # as a set-time key either. The install-DEPENDENT None-origin cases
+        # (LAUNCHER/BINARY/INSTALL_DIR with the corresponding install.<field> unset)
+        # are intentionally still emitted: they can't be evaluated detect-free, and
+        # repointing such a key legitimately SUPPLIES the missing source.
+        if binding.origin is HostSrcOrigin.LITERAL and binding.literal_src is None:
+            continue
         sub = "ro" if binding.ro else "rw"
         key = f"agent.{node_name}.bindings.{sub}.{binding.key}"
         if binding.ro:
