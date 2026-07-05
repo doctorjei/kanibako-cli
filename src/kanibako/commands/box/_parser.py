@@ -1411,6 +1411,11 @@ def _run_box_config(args: argparse.Namespace) -> int:
             )
         except Exception:
             reset_agent_name = ""
+        # Bug 2: thread the context-light CORE box-mount floor registry (the SAME
+        # one the box SET path folds) so the honest cleared-message can name the
+        # reverted-to FLOOR value when a core bind (``box.bindings.{ro,rw}.<key>``)
+        # is reset. ``core_default_bind_keys`` does NO proj/std probe.
+        from kanibako.core_defaults import core_default_bind_keys
         msg = reset_config_value(
             reset_key,
             config_path=project_toml,
@@ -1420,6 +1425,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             cascade_workset_path=reset_ws_path,
             cascade_box_path=project_toml,
             cascade_agent_name=reset_agent_name,
+            default_categories=dict(core_default_bind_keys()),
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
