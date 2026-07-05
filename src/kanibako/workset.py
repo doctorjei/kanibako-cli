@@ -485,6 +485,7 @@ def add_project(
     name: str,
     source_path: Path,
     std: StandardPaths | None = None,
+    force: bool = False,
 ) -> WorksetProject:
     """Add a project to a workset.  Creates per-project subdirectories.
 
@@ -498,7 +499,11 @@ def add_project(
     path resolve back to this workset.  Sources inside the workset tree keep the
     normal behavior (a real ``workspaces/{name}`` directory).
 
-    Raises ``WorksetError`` if a project with *name* already exists.
+    Raises ``WorksetError`` if a project with *name* already exists, or (for an
+    EXTERNAL source that carries the in-place standalone MARKER) unless *force*
+    is set — connecting a self-declared standalone box would silently absorb a
+    box that declares itself standalone (D3-mode #1), so it is refused by
+    default.
     """
     for p in ws.projects:
         if p.name == name:
@@ -540,6 +545,26 @@ def add_project(
             )
 
         from kanibako import box_resolve
+
+        # D3-mode #1: an in-place standalone MARKER (box_data/ + settings.yaml)
+        # is the box's authoritative self-declaration of standalone identity.
+        # Connecting such a dir would register a per-workset ``boxes:`` entry and
+        # let resolution report it as a ``named`` workset box — a silent "steal"
+        # of a box that declares itself standalone (and it would leave the box
+        # dual-registered: global ``standalone:`` AND the workset ``boxes:``).
+        # Refuse BEFORE any mutation unless the caller deliberately overrides.
+        # The guard alone fixes the steal: with no ``boxes:`` entry written,
+        # resolution falls through to the marker.  Only the EXTERNAL connect path
+        # writes that entry, so the guard scopes there (an internal add creates a
+        # real workspace dir and never registers a ``boxes:`` membership).
+        if not force and box_resolve.standalone_settings_present(resolved_source):
+            raise WorksetError(
+                f"Cannot connect '{resolved_source}': it is a standalone box "
+                "(in-place marker present). Connecting it would absorb a box "
+                "that declares itself standalone. Re-run with --force to connect "
+                "it anyway (it becomes a workset box), or convert it explicitly "
+                "first."
+            )
 
         existing = box_resolve.find_connected_external_box(resolved_source, std)
         if existing is not None:
@@ -616,6 +641,44 @@ def add_project(
             unwind.push(
                 lambda: _unregister_workset_box_membership(ws.root, name)
             )
+
+            # --force absorbing a self-declared standalone box: MOVE the
+            # registration (a box lives in EXACTLY ONE registry).  Drop the
+            # global ``standalone:`` entry so the box becomes SOLELY a workset box
+            # — no dual registration.  The in-place ``box_data/`` marker stays
+            # (intrinsic identity): while the ``boxes:`` entry exists,
+            # ``detect_project_mode`` step 1b (find_connected_external_box) fires
+            # BEFORE the standalone marker walk, so it resolves as a workset box
+            # and ``import_standalone`` never re-registers it.  On ``disconnect``
+            # (the ``boxes:`` entry gone) the marker walk re-imports it as
+            # standalone — a clean round-trip.  ``standalone_name_for_root``
+            # returns None when the box was never registered as standalone yet
+            # (nothing to drop — still no dual-reg), so this is a no-op then.
+            from kanibako import box_resolve as _box_resolve
+
+            if force and _box_resolve.standalone_settings_present(
+                resolved_source
+            ):
+                from kanibako import registry_store
+
+                std_name = registry_store.standalone_name_for_root(
+                    std.registry, resolved_source
+                )
+                if std_name is not None:
+                    dropped_name: str = std_name
+                    dropped_root = registry_store.load_standalone(std.registry)[
+                        dropped_name
+                    ]
+                    registry_store.unregister_standalone(
+                        std.registry, dropped_name
+                    )
+
+                    def _restore_standalone() -> None:
+                        registry_store.register_standalone(
+                            std.registry, dropped_name, Path(dropped_root)
+                        )
+
+                    unwind.push(_restore_standalone)
         else:
             # Internal (or no std): a real workspace directory.
             ws_dir = ws.workspaces_dir / name

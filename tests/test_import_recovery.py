@@ -321,10 +321,11 @@ class TestStandaloneImportRecovery:
 # move/convert/duplicate pipelines also call; FIX 2).
 # ---------------------------------------------------------------------------
 
-def _connect_args(workset, source, project_name=None):
+def _connect_args(workset, source, project_name=None, force=False):
     import argparse as _ap
     return _ap.Namespace(
         workset=workset, source=str(source), project_name=project_name,
+        force=force,
     )
 
 

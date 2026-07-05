@@ -323,7 +323,7 @@ class TestWorksetConnect:
         src.mkdir()
 
         args = argparse.Namespace(
-            workset="addws", source=str(src), project_name=None,
+            workset="addws", source=str(src), project_name=None, force=False,
         )
         rc = run_connect(args)
         assert rc == 0
@@ -343,7 +343,7 @@ class TestWorksetConnect:
         monkeypatch.chdir(cwd_dir)
 
         args = argparse.Namespace(
-            workset="cwdws", source=None, project_name=None,
+            workset="cwdws", source=None, project_name=None, force=False,
         )
         rc = run_connect(args)
         assert rc == 0
@@ -361,7 +361,7 @@ class TestWorksetConnect:
         src.mkdir()
 
         args = argparse.Namespace(
-            workset="namews", source=str(src), project_name="custom-name",
+            workset="namews", source=str(src), project_name="custom-name", force=False,
         )
         rc = run_connect(args)
         assert rc == 0
@@ -380,7 +380,7 @@ class TestWorksetConnect:
         add_project(ws, "proj1", src)
 
         args = argparse.Namespace(
-            workset="dupws", source=str(src), project_name="proj1",
+            workset="dupws", source=str(src), project_name="proj1", force=False,
         )
         rc = run_connect(args)
         assert rc == 1
@@ -406,7 +406,7 @@ class TestWorksetConnect:
         external.mkdir()
 
         args = argparse.Namespace(
-            workset="extws", source=str(external), project_name="ext",
+            workset="extws", source=str(external), project_name="ext", force=False,
         )
         rc = run_connect(args)
         assert rc == 0
@@ -442,7 +442,7 @@ class TestWorksetConnect:
         internal.mkdir()
 
         args = argparse.Namespace(
-            workset="intws", source=str(internal), project_name="int",
+            workset="intws", source=str(internal), project_name="int", force=False,
         )
         rc = run_connect(args)
         assert rc == 0
@@ -460,6 +460,54 @@ class TestWorksetConnect:
         wsdir = ws.workspaces_dir / "int"
         assert wsdir.is_dir()
         assert not wsdir.is_symlink()
+
+    def test_connect_standalone_refused_without_force(
+        self, config_file, tmp_home, capsys
+    ):
+        """B2a: connecting a self-declared standalone box (in-place marker) is
+        REFUSED without --force (no silent absorb/steal)."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("saws", tmp_home / "ws_sa", std)
+
+        external = (tmp_home / "sa_box").resolve()
+        external.mkdir()
+        (external / "box_data").mkdir()
+        (external / "settings.yaml").write_text("project: {}\n")
+
+        args = argparse.Namespace(
+            workset="saws", source=str(external), project_name="sb", force=False,
+        )
+        rc = run_connect(args)
+        assert rc == 1
+        assert "standalone box" in capsys.readouterr().err
+        # Nothing registered — no steal.
+        assert "sb" not in _workset_boxes(ws)
+
+    def test_connect_standalone_absorbed_with_force(
+        self, config_file, tmp_home, capsys
+    ):
+        """B2a: --force deliberately absorbs the standalone box as a workset box
+        (registers the connection record)."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("saws2", tmp_home / "ws_sa2", std)
+
+        external = (tmp_home / "sa_box2").resolve()
+        external.mkdir()
+        (external / "box_data").mkdir()
+        (external / "settings.yaml").write_text("project: {}\n")
+
+        args = argparse.Namespace(
+            workset="saws2", source=str(external), project_name="sb", force=True,
+        )
+        rc = run_connect(args)
+        assert rc == 0
+        assert _workset_boxes(ws).get("sb") == str(external)
 
 
 class TestWorksetDisconnect:

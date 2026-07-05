@@ -383,6 +383,99 @@ class TestAddProjectConnectGuard:
         add_project(ws, "x", inside_other)  # no std → no guard
         assert len(ws.projects) == 1
 
+    # --- D3-mode #1: standalone-marker steal guard (B2a) ---
+
+    @staticmethod
+    def _make_standalone(dir_path: Path) -> None:
+        """Stamp *dir_path* with the in-place standalone MARKER (box_data/ +
+        settings.yaml), matching box_resolve.standalone_settings_present."""
+        from kanibako.box_resolve import standalone_settings_present
+        from kanibako.config import BOX_META_FILE
+        from kanibako.paths import _STANDALONE_META_DIR
+
+        dir_path.mkdir(parents=True, exist_ok=True)
+        (dir_path / _STANDALONE_META_DIR).mkdir()
+        (dir_path / BOX_META_FILE).write_text("project: {}\n")
+        assert standalone_settings_present(dir_path)  # marker is real
+
+    def test_refuses_standalone_marked_external_source(self, std, tmp_home):
+        # Connecting a dir that declares itself standalone (in-place marker) must
+        # be REFUSED by default — a silent absorb/"steal" (D3-mode #1).
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        external = (tmp_home / "standalone_box").resolve()
+        self._make_standalone(external)
+
+        with pytest.raises(WorksetError, match="standalone box"):
+            add_project(ws, "sb", external, std)
+
+        # No partial state: nothing registered for the project.
+        assert not (ws.projects_dir / "sb").exists()
+        assert len(ws.projects) == 0
+
+    def test_force_moves_standalone_registration_to_workset(self, std, tmp_home):
+        # With force=True the deliberate absorb MOVES the registration: the box
+        # leaves the global standalone: index and becomes SOLELY a workset box
+        # (exactly-one-registry — no dual registration).
+        from kanibako import box_resolve, registry_store
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        external = (tmp_home / "standalone_box").resolve()
+        self._make_standalone(external)
+        # Pre-register it in the global standalone: index (the pre-connect state
+        # of a box that has been resolved/imported at least once).
+        registry_store.register_standalone(std.registry, "kx_standalone_box", external)
+        assert "kx_standalone_box" in registry_store.load_standalone(std.registry)
+
+        proj = add_project(ws, "sb", external, std, force=True)
+
+        assert proj.name == "sb"
+        assert len(ws.projects) == 1
+        # The boxes: connection record now exists (it resolves as a workset box).
+        owned = box_resolve.find_connected_external_box(external, std)
+        assert owned is not None
+        assert owned.box_name == "sb"
+        # And the global standalone: registration is GONE — NOT dual-registered.
+        assert "kx_standalone_box" not in registry_store.load_standalone(std.registry)
+
+    def test_force_roundtrip_disconnect_reimports_standalone(
+        self, std, tmp_home, config
+    ):
+        # --force connect (standalone: dropped, boxes: added) → disconnect (boxes:
+        # removed) → a resolve re-imports the box back to standalone: (clean
+        # round-trip; the box_data/ marker is untouched throughout).
+        from kanibako import registry_store
+        from kanibako.paths import BoxMode, detect_project_mode
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        external = (tmp_home / "standalone_box").resolve()
+        self._make_standalone(external)
+        registry_store.register_standalone(std.registry, "kx_standalone_box", external)
+
+        add_project(ws, "sb", external, std, force=True)
+        assert "kx_standalone_box" not in registry_store.load_standalone(std.registry)
+
+        # Disconnect removes the boxes: entry.
+        remove_project(ws, "sb", std=std)
+
+        # A resolve now walks to the marker and re-imports it as standalone.
+        result = detect_project_mode(external, std, config)
+        assert result.mode is BoxMode.standalone
+        assert (
+            registry_store.standalone_name_for_root(std.registry, external)
+            is not None
+        )
+        # The intrinsic marker was never removed.
+        assert (external / "box_data").is_dir()
+
+    def test_non_standalone_external_source_unaffected(self, std, tmp_home):
+        # A plain external dir (no marker) still connects without --force.
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        external = (tmp_home / "plain_repo").resolve()
+        external.mkdir()
+
+        add_project(ws, "pr", external, std)
+        assert len(ws.projects) == 1
+
 
 class TestUnifiedProjectRecord:
     """The unified per-project record (B7): identity + path ONLY, no `seeded`.
