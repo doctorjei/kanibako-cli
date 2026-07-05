@@ -389,7 +389,11 @@ class TestResourceKeys:
         dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
 
         msg = reset_config_value("resource.plugins", config_path=project_toml)
-        assert "Reset" in msg
+        # Honest cleared-form (F7), consistent with every other reset branch.
+        assert msg == (
+            "Cleared resource.plugins set on this scope; it now falls back "
+            "through the cascade."
+        ), msg
 
         data = load_doc(project_toml)
         assert "resource_overrides" not in data  # section removed when empty
@@ -427,7 +431,10 @@ class TestTargetSettings:
         dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         msg = reset_config_value("model", config_path=project_toml)
-        assert "Reset model" in msg
+        assert msg == (
+            "Cleared model set on this scope; it now falls back through the "
+            "cascade."
+        ), msg
 
     def test_endpoint_is_known_key(self):
         # Block B: endpoint is a settable agent setting, a sibling of model.
@@ -1276,7 +1283,11 @@ class TestSystemSettingsTierSplit:
         msg = reset_config_value(
             "system.default_agent", config_path=cf, system_settings_path=ssp,
         )
-        assert not msg.startswith("Error:"), msg
+        # Honest cleared-form (F7), consistent with every other reset branch.
+        assert msg == (
+            "Cleared system.default_agent set on this scope; it now falls back "
+            "through the cascade."
+        ), msg
         assert read_default_agent(ssp) is None
         assert not cf.exists()
 
@@ -3096,7 +3107,10 @@ class TestPersonaScalarGetResetUnchanged:
             "agent.claude.model",
             config_path=tmp_path / "x", command_scope=ConfigLevel.system,
             agents_root=agents,
-        ) == "Reset agent.claude.model"
+        ) == (
+            "Cleared agent.claude.model set on the system scope; it now falls "
+            "back through the cascade."
+        )
 
 
 class TestCoreBindGetReset:

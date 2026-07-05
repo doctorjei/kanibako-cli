@@ -1775,7 +1775,7 @@ def reset_config_value(
     if _is_resource_key(canonical):
         resource_name = canonical[9:]
         if _remove_toml_key(config_path, "resource_overrides", resource_name):
-            return f"Reset resource.{resource_name}"
+            return _honest_reset_message(canonical, command_scope)
         return f"No override for resource.{resource_name}"
 
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
@@ -1818,14 +1818,14 @@ def reset_config_value(
         path, sections, leaf = target
         display = _persona_display_key(canonical)
         if _remove_nested_toml_key(path, sections, leaf):
-            return f"Reset {display}"
+            return _honest_reset_message(display, command_scope)
         return f"No override for {display}"
 
     # target settings — reset the any-agent ``agent.default`` tier (SYSTEM scope
     # routes to the system settings file).
     if _is_agent_setting(canonical):
         if _remove_nested_toml_key(settings_dest, ("agent", "default"), canonical):
-            return f"Reset {canonical}"
+            return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
     # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380):
@@ -1873,7 +1873,7 @@ def reset_config_value(
         if _remove_nested_toml_key(
             settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
         ):
-            return f"Reset {canonical}"
+            return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
     # STRUCTURAL system.* path-tier keys — FILE-ONLY (see set_config_value).

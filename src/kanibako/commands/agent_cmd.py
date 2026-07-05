@@ -323,7 +323,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
                 try:
                     confirm_prompt(
-                        "Reset all agent config overrides? Type 'yes' to proceed: "
+                        "Remove all config overrides? Type 'yes' to proceed: "
                     )
                 except UserCancelled:
                     print("Aborted.")
@@ -335,19 +335,32 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # old de-sparse reset, which cleared state/env/env_file/run_args but
             # left name and tweakcc intact. Sparse write: no default keys are
             # re-materialized (spec [[settings-must-map-to-keystore-key]]).
+            #
+            # Report a COUNT of the overrides actually removed — the SAME wording
+            # the other scopes' ``reset_all`` (config_interface.py) prints — so
+            # ``agent reset --all`` reads consistently across scopes: count each
+            # env / env_file entry and each removed [agent] key (name excluded).
             from kanibako.config_io import dump_doc, load_doc
 
             data = load_doc(path)
-            data.pop("env", None)
-            data.pop("env_file", None)
+            count = 0
+            env_tbl = data.pop("env", None)
+            if isinstance(env_tbl, dict):
+                count += len(env_tbl)
+            env_file_tbl = data.pop("env_file", None)
+            if isinstance(env_file_tbl, dict):
+                count += len(env_file_tbl)
             agent_sec = data.get("agent")
             if isinstance(agent_sec, dict):
                 for k in [k for k in agent_sec if k != "name"]:
                     del agent_sec[k]
+                    count += 1
                 if not agent_sec:
                     del data["agent"]
             dump_doc(path, data)
-            print("Reset all agent config overrides.")
+            print(
+                f"Reset {count} override(s)." if count else "No overrides to reset."
+            )
             return 0
 
         # Key can come from --reset VALUE or from positional key_value.
