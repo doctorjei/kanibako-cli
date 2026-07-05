@@ -198,6 +198,10 @@ class TestStandaloneLaunch:
         proj.shell_path = project_path / ".kanibako" / "shell"
         proj.vault_ro_path = project_path / "vault" / "ro"
         proj.vault_rw_path = project_path / "vault" / "rw"
+        # A real materialized box always has its workspace + home on disk;
+        # the launch-time integrity gate (_check_box_components) requires it.
+        proj.project_path.mkdir(parents=True, exist_ok=True)
+        proj.shell_path.mkdir(parents=True, exist_ok=True)
         return proj
 
     def test_start_detects_standalone_project(self, start_mocks, tmp_path):
@@ -403,6 +407,10 @@ class TestWorksetLaunch:
         proj.shell_path = ws_root / "kanibako" / project_name / "shell"
         proj.vault_ro_path = ws_root / "vault" / project_name / "ro"
         proj.vault_rw_path = ws_root / "vault" / project_name / "rw"
+        # A real materialized box always has its workspace + home on disk;
+        # the launch-time integrity gate (_check_box_components) requires it.
+        proj.project_path.mkdir(parents=True, exist_ok=True)
+        proj.shell_path.mkdir(parents=True, exist_ok=True)
         return proj
 
     def test_start_detects_workset_project(self, start_mocks, tmp_path):
