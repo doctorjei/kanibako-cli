@@ -935,7 +935,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         for key, val in [
             ("box.auth.global_enabled", "false"),
             ("box.image", "custom:latest"),
-            ("vault.ro", "/ro"),
+            ("workset.vault_ro", "/ro"),
         ]:
             set_config_value(key, val, config_path=project_toml)
             got = get_config_value(
@@ -2020,15 +2020,32 @@ class TestScopeDirectionGuard:
         )
         assert not msg.startswith("Error:"), msg
 
-    def test_scopeless_vault_key_allowed_at_workset(self, tmp_path):
-        # ``vault.ro`` is a SCOPELESS project-section key (stays until P5) —
-        # legal at any scope by construction (own-file write).
+    def test_scopeless_allow_helpers_key_allowed_at_workset(self, tmp_path):
+        # ``allow_helpers`` is a SCOPELESS scalar key — legal at any scope by
+        # construction (own-file write); the directional guard does not apply.
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
-            "vault.ro", "/ro",
+            "allow_helpers", "true",
             config_path=f, command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
+
+    def test_removed_bare_vault_keys_are_unknown(self, tmp_path):
+        # Bug 4: the old bare ``vault.ro``/``vault.rw`` keys routed to the
+        # ``project:`` section P8 DELETED — a silent dead write. They are REMOVED;
+        # a set/reset/flat-form now returns the unknown-key error and writes
+        # nothing (the vault override surface is ``box.bindings.{ro,rw}.vault``).
+        f = tmp_path / "settings.yaml"
+        for key in ("vault.ro", "vault.rw", "vault_ro", "vault_rw"):
+            msg = set_config_value(
+                key, "/x", config_path=f, command_scope=ConfigLevel.box,
+            )
+            assert msg.startswith("Error:"), (key, msg)
+            assert "unknown config key" in msg, (key, msg)
+        rmsg = reset_config_value("vault.ro", config_path=f)
+        assert rmsg.startswith("Error:") and "unknown config key" in rmsg, rmsg
+        # Nothing was written by the dead set.
+        assert not f.exists() or "project" not in load_doc(f)
 
     # --- reset follows the same directional rule ---------------------------
 
@@ -2337,22 +2354,22 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         assert val is None
 
     def test_plain_get_scopeless_key_roundtrips_at_box(self, tmp_path):
-        # A SCOPELESS key (vault.ro) is stored in — and read from — the
+        # A SCOPELESS key (allow_helpers) is stored in — and read from — the
         # command's own config file (get mirrors set's dest selection): set at
         # the box noun → get at the box noun returns it; unset → "(not set)".
         global_cfg = tmp_path / "kanibako_config.yaml"
         project_toml = tmp_path / "settings.yaml"
         assert get_config_value(
-            "vault.ro",
+            "allow_helpers",
             global_config_path=global_cfg,
             project_toml=project_toml,
         ) is None
-        set_config_value("vault.ro", "/ro", config_path=project_toml)
+        set_config_value("allow_helpers", "true", config_path=project_toml)
         assert get_config_value(
-            "vault.ro",
+            "allow_helpers",
             global_config_path=global_cfg,
             project_toml=project_toml,
-        ) == "/ro"
+        ) == "true"
 
     def test_effective_view_unchanged_still_shows_resolved(
         self, tmp_path, capsys,
@@ -2489,20 +2506,20 @@ class TestF7HonestResetMessage:
         assert "falls back through the cascade" in msg, msg
 
     def test_scopeless_key_never_claims_cascade_effective(self, tmp_path):
-        # Editor F1: a SCOPELESS key (vault.ro) is read from a SINGLE settings
-        # file / the flat KanibakoConfig — NOT the settings cascade.
-        # So even with cascade inputs holding a lower-tier project.vault_ro,
+        # Editor F1: a SCOPELESS key (allow_helpers) is read from a SINGLE
+        # settings file / the flat KanibakoConfig — NOT the settings cascade.
+        # So even with cascade inputs holding a lower-tier allow_helpers,
         # the reset must NOT claim a cascade-derived "effective" (a value from a
         # tier nothing reads). It keeps the cleared-only form.
         ws = tmp_path / "ws.yaml"
         box = tmp_path / "box.yaml"
-        dump_doc(ws, {"project": {"vault_ro": "/lower"}})  # a lower-tier value
+        dump_doc(ws, {"allow_helpers": False})  # a lower-tier value
         set_config_value(
-            "vault.ro", "/box", config_path=box,
+            "allow_helpers", "true", config_path=box,
             command_scope=ConfigLevel.box,
         )
         msg = reset_config_value(
-            "vault.ro", config_path=box, command_scope=ConfigLevel.box,
+            "allow_helpers", config_path=box, command_scope=ConfigLevel.box,
             cascade_workset_path=ws, cascade_box_path=box,
         )
         assert "cleared" in msg.lower(), msg

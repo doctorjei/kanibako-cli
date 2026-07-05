@@ -89,11 +89,12 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # no ``project:`` section; ``read_project_meta``/``write_project_meta`` were
     # deleted in P8c) — it derives from ``box_resolve`` at resolve time.
     # Vault. ``enable_vault`` migrated to the box-scope key ``box.enable_vault``
-    # (P2 clean break — no ``vault.enabled`` alias); ``vault.ro``/``vault.rw``
-    # remain project-section scopeless keys until P5.
+    # (P2 clean break — no ``vault.enabled`` alias). The old bare ``vault.ro``/
+    # ``vault.rw`` keys are REMOVED (dead residue): P8 deleted the ``project:``
+    # settings section + its reader (``read_project_meta``), so a set landed in a
+    # section NOTHING reads — a silent dead write. The vault override surface is
+    # now the repointable core bind ``box.bindings.{ro,rw}.vault`` (spec §2c).
     "box.enable_vault",
-    "vault.ro",
-    "vault.rw",
     # Per-workset registry location (settings-conformance P3). A NORMAL settable
     # STRING-path key (default ``@meta.workset.path/registry.yaml``), NOT a
     # config-locate key — routes to the ``workset:`` table nested slot
@@ -216,14 +217,15 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # break): it routes to the ``box:`` table nested slot ``enable_vault`` (the
     # same nested-settings pattern as ``box.image``), read back by
     # read_box_enable_vault() from ``box.enable_vault`` — NO ``project`` fallback.
-    # ``vault.ro``/``vault.rw`` stay in the [project] table until P5.
+    # The old bare ``vault.ro``/``vault.rw`` keys are REMOVED (dead residue): they
+    # routed to the ``project:`` section P8 DELETED (reader ``read_project_meta``
+    # gone) — a silent dead write. The vault override surface is the repointable
+    # core bind ``box.bindings.{ro,rw}.vault`` (spec §2c), not a bare key here.
     # ``mode`` removed from the settable routing table (block B1, spec §2b L486 /
     # §0 meta-RO): the project mode is the RO identity anchor ``meta.box.mode``,
     # never via ``config set``. The mode is not persisted to disk (P8b sparse
     # create); it derives from ``box_resolve`` at resolve time.
     "box.enable_vault": (("box",), "enable_vault"),
-    "vault.ro": (("project",), "vault_ro"),
-    "vault.rw": (("project",), "vault_rw"),
     # ``workset.registry`` (settings-conformance P3): the per-workset registry
     # file location, routed to the ``workset:`` table nested slot ``registry``
     # (same nested-settings pattern as ``box.image``). A STRING path — NO
@@ -771,7 +773,7 @@ def _is_path_category_key(key: str) -> bool:
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
 # A key whose first segment is NOT one of these (``env.*`` / ``resource.*`` and
 # the un-prefixed scalars ``model`` / ``start_mode`` / ``autonomous`` /
-# ``allow_helpers`` / ``vault.*``) is SCOPELESS — it always writes to the command
+# ``allow_helpers``) is SCOPELESS — it always writes to the command
 # scope's OWN file, so the direction guard does not apply to it. ``config`` is a
 # real namespace (config.* keys exist) but no config.* key actually REACHES this
 # guard: set/reset short-circuit config.* earlier with the file-only refusal (B2).
@@ -841,7 +843,7 @@ def _scope_direction_error(
     """
     key_scope = canonical.split(".", 1)[0]
     if key_scope not in _SCOPE_NAMESPACES:
-        # Scopeless key (env.*, resource.*, model, vault.*, …) — own-file write.
+        # Scopeless key (env.*, resource.*, model, allow_helpers, …) — own-file write.
         return None
     if key_scope == "meta":
         return (
@@ -1684,9 +1686,8 @@ def set_config_value(
     # ``assemble_levels`` mirrors — never remapped to the key-scope's own file).
     # settings_dest == config_path at box/workset; at SYSTEM it is the system
     # settings file (``@config.settings``) — settings keys never land in the
-    # Layer-1 kanibako_config.yaml (spec §1). Non-scope keys (vault.*,
-    # allow_helpers) and system.* regular keys keep their historical
-    # config_path slot.
+    # Layer-1 kanibako_config.yaml (spec §1). Non-scope keys (allow_helpers) and
+    # system.* regular keys keep their historical config_path slot.
     dest = (
         settings_dest
         if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
