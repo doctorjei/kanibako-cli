@@ -270,58 +270,6 @@ def write_project_config(path: Path, image: str) -> None:
     write_project_config_key(path, "box_image", image)
 
 
-def write_project_meta(
-    path: Path,
-    *,
-    mode: str,
-    workspace: str,
-    shell: str,
-    vault_ro: str,
-    vault_rw: str,
-    enable_vault: bool = True,
-    metadata: str = "",
-    project_hash: str = "",
-    name: str = "",
-) -> None:
-    """Write resolved project metadata to settings.yaml, preserving other sections.
-
-    Phase 5 removed the layout axis: ``mode`` (``box.mode``) is the sole
-    on-disk shape descriptor now.  No ``layout`` field is written.
-
-    ``enable_vault`` migrated to the box-scope key ``box.enable_vault`` (P2
-    clean break): it is written SPARSELY into the ``box:`` table — a real bool
-    ``False`` ONLY when vault is explicitly disabled; the default (``True``)
-    writes NOTHING for it (and drops any stale ``box.enable_vault`` override).
-    The write MERGES into an existing ``box:`` section (preserving other box
-    keys such as ``box.image``) and never materializes an empty one.  It is no
-    longer written into the ``project:`` section.
-    """
-    existing = load_doc(path)
-
-    project_sec: dict = {"mode": mode}
-    if name:
-        project_sec["name"] = name
-    existing["project"] = project_sec
-
-    ev = coerce_bool(enable_vault)
-    if ev is False:
-        existing.setdefault("box", {})["enable_vault"] = False
-    else:
-        box_sec = existing.get("box")
-        if isinstance(box_sec, dict):
-            box_sec.pop("enable_vault", None)
-
-    existing.setdefault("resolved", {})
-    existing["resolved"]["workspace"] = workspace
-    existing["resolved"]["shell"] = shell
-    existing["resolved"]["vault_ro"] = vault_ro
-    existing["resolved"]["vault_rw"] = vault_rw
-    existing["resolved"]["metadata"] = metadata
-    existing["resolved"]["project_hash"] = project_hash
-
-    dump_doc(path, existing)
-
-
 def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
     """Sparsely persist the box-scope ``box.enable_vault`` key at *path*.
 
@@ -354,57 +302,18 @@ def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
         dump_doc(path, existing)
 
 
-def read_project_meta(path: Path) -> dict | None:
-    """Read stored project metadata from settings.yaml.
-
-    Returns a dict with 'mode', 'workspace', 'shell', 'vault_ro', 'vault_rw'
-    or None if no project metadata is stored.
-    """
-    if not path.exists():
-        return None
-    data = load_doc(path)
-
-    project_sec = data.get("project", {})
-    # Support both old ("paths") and new ("resolved") section names.
-    resolved_sec = data.get("resolved", data.get("paths", {}))
-
-    if not project_sec.get("mode"):
-        return None
-
-    # No back-compat token translation: 1.6.0 is a hard break (fresh trees
-    # only).  The on-disk ``box.mode`` token is read verbatim — pre-1.6.0 dev
-    # boxes (``default``/``workset``/``account_centric``/…) are unsupported.
-    mode = project_sec["mode"]
-
-    return {
-        "mode": mode,
-        # ``enable_vault`` is sourced ONLY from the box-scope key
-        # ``box.enable_vault`` (P2 clean break — NO ``project`` fallback);
-        # absent ⇒ the default True.
-        "enable_vault": (data.get("box") or {}).get("enable_vault", True),
-        "name": project_sec.get("name", ""),
-        "workspace": resolved_sec.get("workspace", ""),
-        "shell": resolved_sec.get("shell", ""),
-        "vault_ro": resolved_sec.get("vault_ro", ""),
-        "vault_rw": resolved_sec.get("vault_rw", ""),
-        "metadata": resolved_sec.get("metadata", ""),
-        "project_hash": resolved_sec.get("project_hash", ""),
-    }
-
-
 def read_box_enable_vault(path: Path) -> bool:
     """Return the box-scope ``box.enable_vault`` value stored at *path*.
 
     The single reader for the settable box-scope ``box.enable_vault`` key (P2
     clean break): it sources the flag DIRECTLY from the ``box:`` table of the
-    box ``settings.yaml``, independent of any ``project:`` identity section.
-    An absent file, an absent ``box:`` table, or an absent key all yield the
-    default ``True`` (vault on).
+    box ``settings.yaml``.  An absent file, an absent ``box:`` table, or an
+    absent key all yield the default ``True`` (vault on).
 
-    This is the P5a replacement for reading ``enable_vault`` off the identity
-    dict returned by :func:`read_project_meta`: box identity now derives from
-    the registries (``box_resolve``) while ``enable_vault`` stays a plain
-    box-settings read — the two concerns are decoupled.
+    Box identity derives entirely from the registries (``box_resolve``) — there
+    is no on-disk ``project:`` identity section (P8b sparse create) — while
+    ``enable_vault`` stays a plain box-settings read: the two concerns are
+    decoupled.  Paired writer: :func:`write_box_enable_vault`.
     """
     if not path.exists():
         return True

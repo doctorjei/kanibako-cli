@@ -35,6 +35,10 @@ where = ["src"]
 [tool.ruff]
 target-version = "py311"
 line-length = 99
+# ``salvage/`` holds frozen, non-shipping reference snapshots (retired code kept
+# for a possible future ``system recover``); it is not live code and is not
+# linted. It is also outside ``src/`` so the wheel build never includes it.
+extend-exclude = ["salvage"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]
@@ -48,6 +52,9 @@ line-length = 99
 # mypy at every src base and enable explicit package bases.
 namespace_packages = true
 explicit_package_bases = true
+# ``salvage/`` is a frozen non-shipping reference snapshot (see [tool.ruff]); it
+# is not type-checked and is not on any src base.
+exclude = ['^salvage/']
 mypy_path = "$MYPY_CONFIG_FILE_DIR/src:$MYPY_CONFIG_FILE_DIR/packages/agent-claude/src:$MYPY_CONFIG_FILE_DIR/packages/agent-goose/src:$MYPY_CONFIG_FILE_DIR/packages/agent-codex/src"
 
 [[tool.mypy.overrides]]

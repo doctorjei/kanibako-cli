@@ -14,11 +14,11 @@ KEY *is* the box name), **D3-auth** membership authority (registry ⇒ dirs), an
 **D10** enumerate-and-scan (all worksets are reachable up front; their
 per-workset registries collectively form the reverse index).
 
-This is ADDITIVE phase-P4 infrastructure: nothing in ``src/`` imports it yet.
-The switch that points the ~15 ``read_project_meta`` consumers at it (and the
-data-move + legacy deletes) is the next phase (P5).  It changes no existing
-flow — ``read_project_meta``/``write_project_meta`` and the resolvers are
-untouched.
+Introduced as additive phase-P4 infrastructure and made the LIVE identity source
+in P5a: the former ``read_project_meta`` consumers now derive identity here, and
+the legacy on-disk-meta helpers (``read_project_meta``/``write_project_meta``)
+were deleted in P8c once sparse create (P8b) stopped writing the ``project:``/
+``resolved:`` sections they read.
 """
 
 from __future__ import annotations

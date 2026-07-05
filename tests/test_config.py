@@ -10,15 +10,15 @@ from kanibako.config import (
     config_file_path,
     load_config,
     load_merged_config,
-    read_project_meta,
+    read_box_enable_vault,
     read_resource_overrides,
     read_setup_completed,
     read_agent_settings,
     remove_resource_override,
     remove_agent_setting,
+    write_box_enable_vault,
     write_global_config,
     write_project_config,
-    write_project_meta,
     write_resource_override,
     write_agent_setting,
 )
@@ -613,242 +613,53 @@ class TestWriteProjectConfig:
         assert "image: fresh:v1" in p.read_text()
 
 
-class TestProjectMeta:
-    """Tests for write_project_meta / read_project_meta."""
+class TestBoxEnableVault:
+    """Direct tests for the sparse box.enable_vault writer/reader.
 
-    def test_write_and_read(self, tmp_path):
-        toml_path = tmp_path / "settings.yaml"
-        write_project_meta(
-            toml_path,
-            mode="primary",
-            workspace="/home/user/myproject",
-            shell="/data/kanibako/settings/abc/shell",
-            vault_ro="/home/user/myproject/vault/ro",
-            vault_rw="/home/user/myproject/vault/rw",
-        )
-        assert toml_path.is_file()
+    P8c: ``write_project_meta`` (which formerly exercised this sparse box-write
+    path by analogy) was deleted; ``write_box_enable_vault`` is now the sole
+    writer, so it gets its own direct coverage here.
+    """
 
-        meta = read_project_meta(toml_path)
-        assert meta is not None
-        assert meta["mode"] == "primary"
-        assert meta["workspace"] == "/home/user/myproject"
-        assert meta["shell"] == "/data/kanibako/settings/abc/shell"
-        assert meta["vault_ro"] == "/home/user/myproject/vault/ro"
-        assert meta["vault_rw"] == "/home/user/myproject/vault/rw"
-
-    def test_read_missing_file(self, tmp_path):
-        meta = read_project_meta(tmp_path / "nonexistent.yaml")
-        assert meta is None
-
-    def test_read_no_project_section(self, tmp_path):
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text('box:\n  image: "foo"\n')
-        meta = read_project_meta(toml_path)
-        assert meta is None
-
-    # --- P2: enable_vault migrated to the box-scope key box.enable_vault -----
-
-    def test_enable_vault_false_written_sparsely_to_box(self, tmp_path):
-        """enable_vault=False → box:{enable_vault: False} (a real bool), and
-        NOTHING in [project]."""
+    def test_disabled_writes_box_enable_vault_false(self, tmp_path):
+        """(a) enable_vault=False → box:{enable_vault: False} (a real bool)."""
         from kanibako.config import load_doc
-        toml_path = tmp_path / "settings.yaml"
-        write_project_meta(
-            toml_path, mode="primary", workspace="/w", shell="/s",
-            vault_ro="/ro", vault_rw="/rw", enable_vault=False,
-        )
-        data = load_doc(toml_path)
+        p = tmp_path / "settings.yaml"
+        write_box_enable_vault(p, enable_vault=False)
+        data = load_doc(p)
         assert data["box"]["enable_vault"] is False
         assert isinstance(data["box"]["enable_vault"], bool)
-        assert "enable_vault" not in data.get("project", {})
+        # Round-trips through the paired reader.
+        assert read_box_enable_vault(p) is False
 
-    def test_enable_vault_default_writes_no_key(self, tmp_path):
-        """Default (True) writes NO enable_vault key anywhere — sparse."""
+    def test_default_true_on_fresh_path_writes_nothing(self, tmp_path):
+        """(b) default True on a fresh path writes NOTHING — no file, no empty
+        ``box:`` table materialized."""
+        p = tmp_path / "settings.yaml"
+        write_box_enable_vault(p)  # default True
+        assert not p.exists()
+        # The absent file reads back as the default True.
+        assert read_box_enable_vault(p) is True
+
+    def test_default_true_drops_stale_override(self, tmp_path):
+        """(c) default True with a stale box.enable_vault present → drops it."""
         from kanibako.config import load_doc
-        toml_path = tmp_path / "settings.yaml"
-        write_project_meta(
-            toml_path, mode="primary", workspace="/w", shell="/s",
-            vault_ro="/ro", vault_rw="/rw",  # enable_vault defaults True
-        )
-        data = load_doc(toml_path)
+        p = tmp_path / "settings.yaml"
+        p.write_text("box:\n  enable_vault: false\n")
+        write_box_enable_vault(p)  # default True
+        data = load_doc(p)
         assert "enable_vault" not in data.get("box", {})
-        assert "enable_vault" not in data.get("project", {})
+        assert read_box_enable_vault(p) is True
 
-    def test_enable_vault_write_preserves_other_box_keys(self, tmp_path):
-        """The sparse box write MERGES — a pre-existing box.image survives."""
+    def test_disabled_merges_beside_existing_box_image(self, tmp_path):
+        """(d) disabled merges beside an existing box.image (preserves it)."""
         from kanibako.config import load_doc
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text('box:\n  image: "custom:v1"\n')
-        write_project_meta(
-            toml_path, mode="primary", workspace="/w", shell="/s",
-            vault_ro="/ro", vault_rw="/rw", enable_vault=False,
-        )
-        data = load_doc(toml_path)
+        p = tmp_path / "settings.yaml"
+        p.write_text('box:\n  image: "custom:v1"\n')
+        write_box_enable_vault(p, enable_vault=False)
+        data = load_doc(p)
         assert data["box"]["image"] == "custom:v1"
         assert data["box"]["enable_vault"] is False
-
-    def test_enable_vault_default_clears_stale_box_override(self, tmp_path):
-        """A default (True) rewrite drops a stale box.enable_vault override."""
-        from kanibako.config import load_doc
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text('box:\n  enable_vault: false\n  image: "i:1"\n')
-        write_project_meta(
-            toml_path, mode="primary", workspace="/w", shell="/s",
-            vault_ro="/ro", vault_rw="/rw",  # default True
-        )
-        data = load_doc(toml_path)
-        assert "enable_vault" not in data["box"]
-        assert data["box"]["image"] == "i:1"  # other box keys preserved
-
-    def test_read_enable_vault_from_box_scope(self, tmp_path):
-        """read_project_meta sources enable_vault from box.enable_vault only."""
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text(
-            'project:\n  mode: "primary"\n'
-            'box:\n  enable_vault: false\n'
-        )
-        assert read_project_meta(toml_path)["enable_vault"] is False
-
-    def test_read_enable_vault_absent_defaults_true(self, tmp_path):
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text('project:\n  mode: "primary"\n')
-        assert read_project_meta(toml_path)["enable_vault"] is True
-
-    def test_read_ignores_legacy_project_enable_vault(self, tmp_path):
-        """CLEAN BREAK: a legacy project.enable_vault=false is IGNORED — the
-        value comes from box.enable_vault (absent here → default True).
-
-        Mutation guard: re-adding a project fallback would make this read False
-        and fail the assertion.
-        """
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text(
-            'project:\n  mode: "primary"\n  enable_vault: false\n'
-        )
-        assert read_project_meta(toml_path)["enable_vault"] is True
-
-    def test_preserves_existing_sections(self, tmp_path):
-        toml_path = tmp_path / "settings.yaml"
-        toml_path.write_text('box:\n  image: "custom:v1"\n')
-
-        write_project_meta(
-            toml_path,
-            mode="standalone",
-            workspace="/tmp/proj",
-            shell="/tmp/proj/.kanibako/shell",
-            vault_ro="/tmp/proj/vault/ro",
-            vault_rw="/tmp/proj/vault/rw",
-        )
-
-        # Container section preserved
-        cfg = load_config(toml_path)
-        assert cfg.box_image == "custom:v1"
-
-        # Metadata also present
-        meta = read_project_meta(toml_path)
-        assert meta["mode"] == "standalone"
-
-    def test_overwrite_existing_meta(self, tmp_path):
-        toml_path = tmp_path / "settings.yaml"
-        write_project_meta(
-            toml_path,
-            mode="primary",
-            workspace="/old",
-            shell="/old/shell",
-            vault_ro="/old/vault/ro",
-            vault_rw="/old/vault/rw",
-        )
-        write_project_meta(
-            toml_path,
-            mode="named",
-            workspace="/new",
-            shell="/new/shell",
-            vault_ro="/new/vault/ro",
-            vault_rw="/new/vault/rw",
-        )
-
-        meta = read_project_meta(toml_path)
-        assert meta["mode"] == "named"
-        assert meta["workspace"] == "/new"
-
-    def test_new_fields_round_trip(self, tmp_path):
-        """New fields (metadata, project_hash) round-trip.
-
-        The global_shared/local_shared resolved keys were removed in 1.6.0
-        (Part 4): no ``shared/`` dir exists in the target tree.
-        """
-        toml_path = tmp_path / "settings.yaml"
-        write_project_meta(
-            toml_path,
-            mode="primary",
-            workspace="/home/user/proj",
-            shell="/data/boxes/abc/shell",
-            vault_ro="/home/user/proj/vault/ro",
-            vault_rw="/home/user/proj/vault/rw",
-            metadata="/data/boxes/abc",
-            project_hash="abc123def456",
-        )
-
-        meta = read_project_meta(toml_path)
-        assert meta is not None
-        assert meta["metadata"] == "/data/boxes/abc"
-        assert meta["project_hash"] == "abc123def456"
-        assert "global_shared" not in meta
-        assert "local_shared" not in meta
-
-    def test_backward_compat_missing_new_fields(self, tmp_path):
-        """Old settings.yaml without new fields returns empty strings."""
-        toml_path = tmp_path / "settings.yaml"
-        # Write old-style config without new fields.
-        toml_path.write_text(
-            'project:\n  mode: "default"\n  layout: "default"\n\n'
-            'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
-            '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
-        )
-
-        meta = read_project_meta(toml_path)
-        assert meta is not None
-        assert meta["metadata"] == ""
-        assert meta["project_hash"] == ""
-        assert "global_shared" not in meta
-        assert "local_shared" not in meta
-
-    def test_mode_token_read_verbatim(self, tmp_path):
-        """The on-disk ``box.mode`` token is read verbatim (no back-compat).
-
-        1.6.0 is a hard break (fresh trees only): pre-1.6.0 tokens such as
-        ``default``/``workset``/``account_centric`` are NOT translated.
-        """
-        for raw_mode in ("primary", "named", "standalone", "default", "account_centric"):
-            toml_path = tmp_path / f"project-{raw_mode}.yaml"
-            toml_path.write_text(
-                f'project:\n  mode: "{raw_mode}"\n  layout: "default"\n\n'
-                'resolved:\n  workspace: "/old"\n  shell: "/old/shell"\n'
-                '  vault_ro: "/old/ro"\n  vault_rw: "/old/rw"\n'
-            )
-            meta = read_project_meta(toml_path)
-            assert meta is not None
-            assert meta["mode"] == raw_mode, f"{raw_mode} should read verbatim"
-
-    def test_partial_new_fields(self, tmp_path):
-        """Only some new fields present — missing ones default to empty string."""
-        toml_path = tmp_path / "settings.yaml"
-        write_project_meta(
-            toml_path,
-            mode="named",
-            workspace="/ws/proj",
-            shell="/ws/proj/shell",
-            vault_ro="/ws/vault/proj/ro",
-            vault_rw="/ws/vault/proj/rw",
-            metadata="/ws/data/proj",
-            # project_hash not passed → default ""
-        )
-
-        meta = read_project_meta(toml_path)
-        assert meta["metadata"] == "/ws/data/proj"
-        assert meta["project_hash"] == ""
-        assert "global_shared" not in meta
-        assert "local_shared" not in meta
 
 
 class TestConfigFilePath:
@@ -877,11 +688,7 @@ class TestResourceOverrides:
 
     def _write_base_toml(self, path):
         """Write a minimal settings.yaml for testing."""
-        write_project_meta(
-            path,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
+        write_project_config(path, "base:image")
 
     def test_round_trip(self, tmp_path):
         """Write and read back resource overrides."""
@@ -926,10 +733,9 @@ class TestResourceOverrides:
         self._write_base_toml(p)
         write_resource_override(p, "plugins/", "project")
 
-        # Project metadata should still be intact.
-        meta = read_project_meta(p)
-        assert meta is not None
-        assert meta["mode"] == "primary"
+        # The base box section should still be intact.
+        cfg = load_config(p)
+        assert cfg.box_image == "base:image"
 
 
 class TestTargetSettings:
@@ -937,11 +743,7 @@ class TestTargetSettings:
 
     def _write_base_toml(self, path):
         """Write a minimal settings.yaml for testing."""
-        write_project_meta(
-            path,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
+        write_project_config(path, "base:image")
 
     def test_round_trip(self, tmp_path):
         """Write and read back agent-keyed target settings."""
@@ -1031,10 +833,9 @@ class TestTargetSettings:
         self._write_base_toml(p)
         write_agent_setting(p, "model", "haiku", "claude")
 
-        # Project metadata should still be intact.
-        meta = read_project_meta(p)
-        assert meta is not None
-        assert meta["mode"] == "primary"
+        # The base box section should still be intact.
+        cfg = load_config(p)
+        assert cfg.box_image == "base:image"
 
 
 class TestReadBindingOverrides:

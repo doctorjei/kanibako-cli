@@ -8,8 +8,8 @@ then proceeds — with **no confirmation prompt**.  This is what lets a user cop
 or move a box/workset/project tree to a new location (or machine) and have
 kanibako re-discover it (it "effectively becomes an import").
 
-Three modes are supported, all backed by one uniform "reconcile registry from
-on-disk truth" mechanism (no per-mode special-casing):
+Two live modes are supported, both backed by one uniform "reconcile registry
+from on-disk truth" mechanism (no per-mode special-casing):
 
 * **STANDALONE** — :func:`import_standalone`, called lazily during the
   ancestor-walk when a ``box_data/`` marker is found whose box is not in
@@ -17,17 +17,18 @@ on-disk truth" mechanism (no per-mode special-casing):
 * **NAMED** — :func:`import_named_workset`, called lazily during the walk when a
   workset-root marker (a ``settings.yaml`` carrying a ``workset.meta`` identity)
   is found that is not a registered workset root.
-* **PRIMARY** — :func:`import_primary_box` (single box) and
-  :func:`reconcile_primary_boxes` (scan ``@config.primary_workset/boxes/*``),
-  for re-associating a central primary box with its external workspace.
-  **RETIRED FROM THE LIVE PATH (P8b/Option A).** Under sparse create a primary
-  box no longer self-describes its identity on disk (no ``project:``/``resolved:``
-  in ``settings.yaml``), so there is nothing on disk to re-import from — the
-  registry is the sole identity authority.  These three functions are RETAINED
-  but UNCALLED pending the ``system recover`` port decision (P8c): their
-  enumerate / match-by-workspace / collision-refuse / journal-atomic skeleton is
-  the seed of a future heuristic registry-repair.  Do NOT wire them back into the
-  live resolve path.
+
+A third **PRIMARY** mode (``import_primary_box`` /
+``import_primary_box_for_workspace`` / ``reconcile_primary_boxes``) used to
+re-associate a central primary box with its external workspace by reading its
+on-disk ``project:``/``resolved:`` meta.  It was **RETIRED FROM THE LIVE PATH
+(P8b/Option A)**: under sparse create a primary box no longer self-describes its
+identity on disk, so there is nothing on disk to re-import from — the registry is
+the sole identity authority.  Its enumerate / match-by-workspace /
+collision-refuse / journal-atomic skeleton — the seed of a future heuristic
+``system recover`` — was **sequestered** into ``salvage/primary_reconcile.py``
+(a non-shipping frozen reference snapshot, P8c); it is no longer part of the live
+package.
 
 Conflict semantics (all modes): if the import's NAME collides with an entity
 already registered to a *different* root/path, the import is **REFUSED** —
@@ -43,7 +44,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from kanibako import registry_store
-from kanibako.config import BOX_META_FILE, read_project_meta
+from kanibako.config import BOX_META_FILE
 from kanibako.errors import KanibakoError
 
 
@@ -296,159 +297,3 @@ def import_named_workset(
         registry_store.save_section(registry, "worksets", names_section)
     _alert("workset", name, root)
     return name
-
-
-# ---------------------------------------------------------------------------
-# PRIMARY (central box store → external workspace)
-#
-# NO LIVE CALLER as of P8b (Option A): retired from ``paths.resolve_project``
-# because a sparse-created primary box does not self-describe its identity on
-# disk.  Retained (still fully functional, exercised by direct unit tests)
-# pending the ``system recover`` port decision (P8c) — the enumerate / match /
-# collision / journal-atomic skeleton below is the seed of a future heuristic
-# registry repair.  Do NOT wire these back into the live path.
-# ---------------------------------------------------------------------------
-
-def import_primary_box(
-    registry: Path, box_dir: Path, *, journal: Path | None = None,
-) -> str | None:
-    """Reconcile a single on-disk PRIMARY box at *box_dir* against ``registry.projects``.
-
-    **No live caller as of P8b (Option A)** — parked pending the ``system
-    recover`` port (P8c).  Still functional (direct unit-tested); do NOT re-wire
-    into the live resolve path.
-
-    *box_dir* is a per-box directory under ``@config.primary_workset/boxes/``;
-    its ``settings.yaml`` carries ``project.name`` (the box name) and the real
-    external ``workspace`` dir.  Reconciles name → workspace against
-    ``registry.projects``:
-
-    * The name is already registered to the box's workspace → silent no-op.
-    * The name is registered to a DIFFERENT workspace → :class:`ImportConflictError`.
-    * Otherwise register name → workspace, alert, return the name.
-
-    Returns the box name, or ``None`` when *box_dir* has no readable metadata or
-    no workspace recorded (nothing to import).
-    """
-    meta = read_project_meta(box_dir / BOX_META_FILE)
-    if not meta:
-        return None
-    name = (meta.get("name") or "").strip()
-    workspace = (meta.get("workspace") or "").strip()
-    if not name or not workspace:
-        return None
-    workspace_str = str(Path(workspace).resolve())
-
-    projects = registry_store.load_section(registry, "projects")
-    current = projects.get(name)
-    if current is not None:
-        if str(Path(current).resolve()) == workspace_str:
-            # Already registered to this workspace → no-op; clear a stale entry.
-            _clear_stale_import(journal, box_dir)
-            return name
-        raise _conflict("primary box", name, Path(workspace_str), str(current))
-
-    # J2: write-ahead the register (register-only; the primary box is already
-    # seeded on disk under *box_dir*).  box dir IS *box_dir* (it holds ``home/``).
-    with _journal_register(
-        journal, box_dir, op="import", name=name, mode="primary",
-    ):
-        projects[name] = workspace_str
-        registry_store.save_section(registry, "projects", projects)
-    _alert("primary box", name, Path(workspace_str))
-    return name
-
-
-def import_primary_box_for_workspace(
-    registry: Path, boxes_dir: Path, workspace: Path, *,
-    register: bool = True, journal: Path | None = None,
-) -> str | None:
-    """Import the on-disk PRIMARY box whose recorded workspace is *workspace*.
-
-    Scans *boxes_dir* (``@config.primary_workset/boxes``) for a box dir whose
-    ``settings.yaml`` records *workspace* as its workspace and is NOT yet in
-    ``registry.projects``, then imports it (alert + register).
-
-    **No live caller as of P8b (Option A)** — this was the
-    :func:`kanibako.paths.resolve_project` primary drop-in rediscovery hook; that
-    caller is retired (a sparse-created box no longer records its workspace on
-    disk to scan for).  Parked pending the ``system recover`` port (P8c); do NOT
-    re-wire into the live resolve path.
-
-    Returns the imported box name, or ``None`` when no matching unregistered
-    on-disk box is found.  Idempotent: a box already registered to *workspace*
-    is found by the caller's normal reverse-lookup, so this is only reached on a
-    genuine miss.
-
-    *register* (J1 interrupted-create recovery): when False, the matching on-disk
-    box's NAME is RESOLVED and returned (so the caller can re-associate the dir)
-    but the registry is NOT written.  This honors a ``register=False`` resolve —
-    the create path defers registration past the home seed (journal entry ->
-    seed -> register -> clear-entry), so re-discovering a half-built box during a
-    re-create must NOT prematurely register it and break ``is_new``.  Defaults
-    True (every other resolve registers a dropped-in box inline, unchanged).
-    """
-    if not boxes_dir.is_dir():
-        return None
-    target = str(workspace.resolve())
-    for entry in sorted(boxes_dir.iterdir()):
-        if not entry.is_dir():
-            continue
-        meta = read_project_meta(entry / BOX_META_FILE)
-        if not meta:
-            continue
-        ws = (meta.get("workspace") or "").strip()
-        if not ws or str(Path(ws).resolve()) != target:
-            continue
-        if not register:
-            # Resolve the box's name from its on-disk meta WITHOUT registering;
-            # the deferred-registration caller completes the create + registers.
-            name = (meta.get("name") or "").strip()
-            return name or None
-        return import_primary_box(registry, entry, journal=journal)
-    return None
-
-
-def reconcile_primary_boxes(
-    registry: Path, boxes_dir: Path, *, journal: Path | None = None,
-) -> list[str]:
-    """Scan *boxes_dir* for on-disk PRIMARY boxes missing from ``registry.projects``.
-
-    Imports each discovered-but-unregistered box via :func:`import_primary_box`
-    (alert + register).  This is the registry-wide reconcile a future
-    ``box import`` / ``diagnose`` would expose, and the same primitive the
-    per-box import uses.  *boxes_dir* is ``@config.primary_workset/boxes``
-    (``std.boxes``).
-
-    **No live caller as of P8b (Option A)** — parked pending the ``system
-    recover`` port (P8c).  Still functional (direct unit-tested); do NOT re-wire
-    into the live resolve path.
-
-    Returns the list of box names imported during this scan (empty when every
-    on-disk box is already registered).  A name-collision in any single box
-    raises :class:`ImportConflictError` (the offending box is not imported);
-    boxes already scanned before the conflict remain imported (each import is an
-    independent atomic registry write).
-    """
-    if not boxes_dir.is_dir():
-        return []
-    imported: list[str] = []
-    for entry in sorted(boxes_dir.iterdir()):
-        if not entry.is_dir():
-            continue
-        meta = read_project_meta(entry / BOX_META_FILE)
-        if not meta:
-            continue
-        name = (meta.get("name") or "").strip()
-        if not name:
-            continue
-        # Only import the ones missing (idempotent: registered → no-op, and
-        # import_primary_box returns the name without alerting).
-        projects = registry_store.load_section(registry, "projects")
-        if name in projects:
-            # Already present — let import_primary_box decide no-op vs conflict.
-            import_primary_box(registry, entry, journal=journal)
-            continue
-        if import_primary_box(registry, entry, journal=journal) is not None:
-            imported.append(name)
-    return imported
