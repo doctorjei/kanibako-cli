@@ -527,6 +527,79 @@ def _persona_agent_target(
     return path, ("agent",), tail
 
 
+def _node_bind_target(
+    canonical: str, agents_root: "Path | None",
+) -> "tuple[Path, tuple[str, ...], str] | None":
+    """Resolve a canonical per-node DESCRIPTOR bind key
+    ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0) to its FILE read/reset
+    location — the get/reset symmetry twin of the set path (which routes through
+    ``_set_category_value`` → ``repoint_host_src``).
+
+    Returns ``(path, sections, leaf)``: the node's OWN settings file
+    ``agents/<node>/settings.yaml`` (*path*), and the nested table the repoint
+    writes — the FULL canonical dotted path ``agent.<node>.bindings.<ro|rw>.<name>``
+    split into ``(sections, leaf)`` EXACTLY as ``repoint_host_src`` splits it
+    (``key.split(".")``), so get/reset read/remove precisely where set wrote (the
+    shape ``_agent_partial`` reads back at launch). The node appears BOTH in the
+    dir path AND in the nested key — that is the launch read shape, not a bug.
+
+    Returns ``None`` when *canonical* is not a node bind, *agents_root* was not
+    threaded (the per-node store is global under ``config.agents`` — only reachable
+    at the SYSTEM scope, mirroring ``_persona_agent_target``), the node is the
+    reserved any-agent tier, or the node ref is MALFORMED (validate-only via
+    :func:`parse_agent_ref`, never re-swapped).
+    """
+    parsed = _parse_agent_node_bind_key(canonical)
+    if parsed is None or agents_root is None:
+        return None
+    node, _cat, _name = parsed
+    if node == _AGENT_DEFAULT_SUB:
+        return None
+    from kanibako.agent_config import agent_settings_path
+
+    try:
+        parse_agent_ref(node)  # validate only (raises on a malformed ref)
+    except ConfigError:
+        return None
+    path = agent_settings_path(agents_root, node)
+    parts = canonical.split(".")
+    return path, tuple(parts[:-1]), parts[-1]
+
+
+def _floor_bind_display(
+    canonical: str, default_categories: "Mapping[str, object] | None",
+) -> "tuple[str, str] | None":
+    """The reverted-to descriptor FLOOR ``(value, tier)`` a reset of a floor bind
+    lands on (item 3), or ``None`` when no registry is threaded / no floor entry.
+
+    *default_categories* is the SAME context-light floor registry the set path folds
+    (``agent_representation.agent_default_bind_keys`` for a node bind). Its element-0
+    host_src is a SET-TIME SENTINEL (``core_defaults.FLOOR_PLACEHOLDER_SRC``) — the
+    real host source is re-resolved at LAUNCH (``detect()``), so it is NEVER printed
+    as a value (evidence-honesty: the exact fabricate-a-value lie the honest-reset
+    fix targets). We report the STATIC part that actually reverts — the descriptor
+    destination [+ options] — and name the tier so the user knows the host source is
+    launch-resolved. A non-tuple / absent / placeholder-only entry → ``None`` (keep
+    the cleared-only form).
+    """
+    from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+
+    if not default_categories:
+        return None
+    val = default_categories.get(canonical)
+    if not isinstance(val, (list, tuple)) or len(val) < 2:
+        return None
+    parts = list(val)
+    if parts and parts[0] == FLOOR_PLACEHOLDER_SRC:
+        parts = parts[1:]  # drop the set-time sentinel — it is not a launch value
+    if not parts:
+        return None
+    rendered = _render_stored_scalar(parts)
+    if rendered is None:
+        return None
+    return (rendered, "descriptor floor; host re-resolved at launch")
+
+
 def _is_env_key(key: str) -> bool:
     return key.startswith("env.")
 
@@ -1217,6 +1290,23 @@ def get_config_value(
             return str(overrides.get(resource_name, "")) or None
         return None
 
+    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
+    # read the RAW tuple STORED at ``agent.<node>.bindings.<ro|rw>.<name>`` in the
+    # node's OWN settings file ``agents/<node>/settings.yaml`` (the get/set/reset
+    # symmetry twin — get reads exactly where ``repoint_host_src`` wrote). Checked
+    # BEFORE the persona branch: a bind literally NAMED after a state leaf
+    # (``agent.<node>.bindings.ro.model``) would otherwise be mis-captured by the
+    # persona form (``model`` is a state leaf). A plain get is stored-at-noun — the
+    # RESOLVED/effective bind (descriptor floor + this override) is the ``show
+    # --effective`` cascade view, not this (matching persona get: stored-at-noun
+    # only). A missing agents_root (box/workset scope) / malformed node → ``None``.
+    if _is_agent_node_bind_key(canonical):
+        bind_target = _node_bind_target(canonical, agents_root)
+        if bind_target is None:
+            return None
+        path, sections, leaf = bind_target
+        return _read_stored_leaf(path, sections, leaf)
+
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): read the value
     # STORED at the flat slot in the agent's OWN settings file
     # ``agents/<node>/settings.yaml`` (symmetric with the set/reset branches; the
@@ -1275,6 +1365,20 @@ def get_config_value(
     # the ``--effective`` view, not this).
     if _is_box_agent_key(canonical):
         tail = canonical.split(".")  # ["box", "agent", <key...>, leaf]
+        return _read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
+
+    # Path-TUPLE category keys (``<scope>.bindings.{ro,rw}.<name>`` / ``caches`` /
+    # ``seeded`` / ``shared`` / ``synced``) — the get/set/reset symmetry twin of the
+    # category SET branch (F10, spec §2a). Read the RAW tuple STORED at the nested
+    # dotted path in the NOUN's settings file (== the box file at box scope, the
+    # system settings file at SYSTEM), exactly where ``repoint_host_src`` wrote it.
+    # Checked BEFORE the ``system.*`` file-only branch because a SYSTEM-scope
+    # category key (``system.bindings.*``) only LOOKS like a ``system.*`` config
+    # key — categories are settable/gettable at every scope (mirrors the set/reset
+    # order). A plain get is stored-at-noun; the resolved-with-floor bind is the
+    # ``show --effective`` cascade view. Absent → ``None`` ("(not set)").
+    if _is_path_category_key(canonical):
+        tail = canonical.split(".")
         return _read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
 
     # config.* / system.* path keys — read the raw set-value from the bootstrap
@@ -1608,6 +1712,7 @@ def reset_config_value(
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
     agents_root: Path | None = None,
+    default_categories: "Mapping[str, object] | None" = None,
 ) -> str:
     """Remove an override for a single key.  Returns confirmation message.
 
@@ -1629,6 +1734,13 @@ def reset_config_value(
     now-effective value + its source tier AFTER the removal (residuals item 1,
     F7 "where cheap"). They are additive and consulted ONLY for that message; a
     caller that omits them still gets the correct cleared-only form.
+
+    *default_categories* is the caller's context-light FLOOR registry (item 3) — the
+    launch-only descriptor bind KEYS (``agent.<node>.bindings.{ro,rw}.<name>`` from
+    ``agent_representation.agent_default_bind_keys``) with STATIC box_dest+options.
+    Consulted ONLY on the per-node bind reset path so the honest cleared-message can
+    name the reverted-to FLOOR value; a caller that omits it keeps the cleared-only
+    form.
     """
     canonical = _resolve_key(key)
 
@@ -1664,6 +1776,30 @@ def reset_config_value(
         if _remove_toml_key(config_path, "resource_overrides", resource_name):
             return f"Reset resource.{resource_name}"
         return f"No override for resource.{resource_name}"
+
+    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
+    # remove the source-only repoint from the node's OWN settings file
+    # ``agents/<node>/settings.yaml`` (the get/set/reset symmetry twin — reset
+    # removes exactly where set wrote). Checked BEFORE the persona branch (a bind
+    # NAMED after a state leaf must route here). The §0 directional guard already
+    # ran: agent.* is settable/resettable only DOWNWARD from system, so a box/
+    # workset reset was refused above — reaching here means SYSTEM scope, where
+    # ``agents_root`` is threaded. After removal the bind reverts to the descriptor
+    # FLOOR; when the caller threads that floor registry (``default_categories`` =
+    # ``agent_default_bind_keys(node)``) the honest cleared-message names the
+    # reverted-to floor value (item 3), else the cleared-only form.
+    if _is_agent_node_bind_key(canonical):
+        bind_target = _node_bind_target(canonical, agents_root)
+        if bind_target is None:
+            return (
+                f"Error: '{key}' is a per-node descriptor bind and is only "
+                f"resettable at the system scope."
+            )
+        path, sections, leaf = bind_target
+        if _remove_nested_toml_key(path, sections, leaf):
+            floor = _floor_bind_display(canonical, default_categories)
+            return _honest_reset_message(canonical, command_scope, floor)
+        return f"No override for {canonical}"
 
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): remove the stored
     # override from the agent's OWN settings file ``agents/<node>/settings.yaml``
