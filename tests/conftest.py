@@ -558,10 +558,6 @@ def start_mocks():
                     behavior_floor=_floor, default_categories=None,
                     agent_partial=partial,
                     agent_state=_state,
-                    binding_overrides=kw.get("binding_overrides"),
-                    descriptor_bindings=(
-                        list(_desc.bindings) if _desc is not None else None
-                    ),
                 )
                 entries = snapshot_category_entries(
                     snap, active_agent=_node, box_ctx=ctx,

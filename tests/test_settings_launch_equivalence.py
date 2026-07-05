@@ -191,9 +191,9 @@ def _shipped_descriptor(agent: str):
     return PluginDescriptor(command=(agent,), bindings=binds, mode={})
 
 
-def _new_delivery_mounts(agent, install, desc, ctx, *, overrides=None, node_name=None):
-    """The NEW single-route delivery: 7a partial (+ override bridge) → snapshot →
-    adapter → reconcile → agent_delivery_mounts (critical-set exit-1).
+def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
+    """The NEW single-route delivery: 7a partial → snapshot → adapter → reconcile
+    → agent_delivery_mounts (critical-set exit-1).
 
     *node_name* (Block E fix 2a) is the ACTIVE node the read path (active_agent)
     walks; defaults to *agent* (the harness == install.name for a bare agent). For
@@ -209,8 +209,6 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, overrides=None, node_name
         agent_name=active, ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         agent_partial=partial,
-        binding_overrides=overrides,
-        descriptor_bindings=list(desc.bindings),
     )
     rec = reconcile_categories(
         snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
@@ -244,25 +242,10 @@ def test_delivery_matches_descriptor_mounts(agent, tmp_path):
     assert all(m.options == "ro" for m in new)
 
 
-@pytest.mark.parametrize("agent", ["claude", "goose", "codex"])
-def test_delivery_override_bridge_matches(agent, tmp_path):
-    # An override repoint must take effect IDENTICALLY through the bridge (NEW)
-    # and descriptor_mounts(overrides=) (OLD), per agent.
-    from kanibako.targets.assembly import descriptor_mounts
-
-    install = _install(agent, tmp_path)
-    desc = _shipped_descriptor(agent)
-    ctx = _ctx(agent, None)
-    # Repoint the FIRST binding's host source to a different existing file.
-    key = desc.bindings[0].key
-    repoint = tmp_path / "repointed"
-    repoint.write_text("x")
-    overrides = {key: str(repoint)}
-
-    old = descriptor_mounts(desc, install, overrides=overrides)
-    new = _new_delivery_mounts(agent, install, desc, ctx, overrides=overrides)
-    assert _mount_sig(new) == _mount_sig(old)
-    assert str(repoint) in {str(m.source) for m in new}  # the repoint took.
+# The user-repoint equivalence (a settable ``agent.<name>.bindings.*`` host-source
+# override reaching the emitted Mount through the ordinary cascade) is covered by
+# ``test_settings_launch.test_settings_file_repoints_delivery_bind_by_plural_key``
+# — the plural-key route that replaced the retired singular override bridge.
 
 
 # ----------------------------------------------------------------------------- #
@@ -322,18 +305,26 @@ def test_delivery_critical_missing_exit1_parity(agent, tmp_path):
     # AGENT_CRITICAL must-exist exit-1: a missing critical source raises
     # BindingSourceError on BOTH paths (the safe-fail relocated, not dropped).
     from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
+    from kanibako.targets.base import AgentInstall
 
-    install = _install(agent, tmp_path)
+    # An install whose delivery sources do NOT exist on the host (no overrides —
+    # the origin itself is missing), so the first AGENT_CRITICAL binding fails the
+    # must-exist check on both the OLD (descriptor_mounts) and NEW (snapshot →
+    # agent_delivery_mounts) paths.
+    gone = tmp_path / "gone"
+    install = AgentInstall(
+        name=agent,
+        binary=gone / "bin",
+        launcher=gone / "launcher",
+        install_dir=gone / "share",
+    )
     desc = _shipped_descriptor(agent)
     ctx = _ctx(agent, None)
-    # Repoint the first critical binding to a NON-existent source.
-    key = desc.bindings[0].key
-    gone = {key: str(tmp_path / "gone")}
 
     with pytest.raises(BindingSourceError):
-        descriptor_mounts(desc, install, overrides=gone)
+        descriptor_mounts(desc, install)
     with pytest.raises(BindingSourceError):
-        _new_delivery_mounts(agent, install, desc, ctx, overrides=gone)
+        _new_delivery_mounts(agent, install, desc, ctx)
 
 
 def test_depth_order_preserved_across_families():

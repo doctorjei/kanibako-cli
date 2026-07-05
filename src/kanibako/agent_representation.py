@@ -152,7 +152,8 @@ def agent_default_partial(
     # walks (fix 2a). The agent NAME is part of the KEY PATH (NOT a bare ``agent``
     # token, §0 L21) — so this partial merges BY NAME with 2a's discriminated
     # ``agent.<active>.*`` level and any higher-scope ``agent.<node>.*`` override
-    # (block 2b), including the node-keyed override bridge.
+    # (block 2b), including a user-set ``agent.<node>.bindings.*`` repoint on a
+    # scope file.
     name = node_name if node_name is not None else install.name
     agent_sub = KeyStore()
     if dict.__len__(bindings):
