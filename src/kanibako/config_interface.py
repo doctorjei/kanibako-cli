@@ -18,7 +18,7 @@ import sys
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from kanibako.config import (
     coerce_bool,
@@ -786,6 +786,7 @@ def _category_set_lookups(
     workset_path: Path | None = None,
     box_path: Path | None = None,
     agent_name: str = "",
+    default_categories: "Mapping[str, object] | None" = None,
 ):
     """Build the set-time lookups for a category ``config set`` at *config_path*
     (the COMMAND-scope file): the E3 RESOLUTION probe (Q9, spec §2a) AND the
@@ -860,6 +861,28 @@ def _category_set_lookups(
         pass
 
     ctx = _set_time_ctx(config=config_foundation)
+
+    # F10 / item-0: fold the caller's context-light default-category FLOOR registry
+    # into the SAME base floor so a source-only repoint of a LAUNCH-ONLY floor bind
+    # (the CORE box mounts — ``box.bindings.{ro,rw}.<key>``) sees the key in the
+    # SET-TIME cascade. Those binds live only in the launch floor
+    # (``core_default_categories``, host-probed per box/mode), so before this fold
+    # the F10 must-exist gate refused a repoint of them ("nowhere in the cascade").
+    # The registry (``core_defaults.core_default_bind_keys``) carries the STATIC
+    # box_dest + options with a PLACEHOLDER host_src — exactly what the repoint needs
+    # (``repoint_host_src`` keeps only ``base[1:]``, discarding the placeholder). The
+    # keys are ALREADY fully scope-qualified (``box.*``), so this is a DIRECT union
+    # (no ``_agent_scope_qualify`` re-rooting — that launch step re-roots BARE
+    # ``agent.<cat>.*`` default tables, which this bindings-only registry never
+    # emits). A scope FILE tuple at the same key still OVERRIDES this floor via merge
+    # (base is least-specific), so an already-file-set bind repoints from the file
+    # (no regression), and a box-scope written tuple wins at launch by reconcile
+    # precedence (box beats the base floor).
+    if default_categories:
+        for reg_key, reg_val in default_categories.items():
+            if reg_val == "":
+                continue
+            floor[reg_key] = reg_val
 
     # Place the COMMAND-scope file (config_path) into its TRUE precedence slot by the
     # edited key's scope token — a box.* set lands in the box slot, workset.* in the
@@ -966,6 +989,7 @@ def _set_category_value(
     workset_path: Path | None = None,
     box_path: Path | None = None,
     agent_name: str = "",
+    default_categories: "Mapping[str, object] | None" = None,
 ) -> str:
     """Validate + RAW-repoint a path-tuple category key (S24/S25, spec §2a).
 
@@ -1007,6 +1031,7 @@ def _set_category_value(
         workset_path=workset_path,
         box_path=box_path,
         agent_name=agent_name,
+        default_categories=default_categories,
     )
     verdict = validate_config_set(
         canonical,
@@ -1268,6 +1293,7 @@ def set_config_value(
     cascade_agent_name: str = "",
     command_scope: ConfigLevel | None = None,
     agents_root: Path | None = None,
+    default_categories: "Mapping[str, object] | None" = None,
 ) -> str:
     """Write a config value to the appropriate store.
 
@@ -1285,6 +1311,13 @@ def set_config_value(
     context and thread it here so a cross-scope ``@``-ref resolves at set-time
     exactly as it would at launch. They are additive and only consulted on the
     category path; absent, the command-scope file is still placed in its true slot.
+
+    *default_categories* is the caller's context-light set-time FLOOR registry
+    (F10 / item-0) — the LAUNCH-ONLY core-bind KEYS (``box.bindings.{ro,rw}.<key>``
+    from ``core_defaults.core_default_bind_keys``) with STATIC box_dest+options and a
+    placeholder host_src — folded into the category set-time cascade so a source-only
+    repoint of a core floor bind is no longer refused as "nowhere in the cascade".
+    Only consulted on the category path; the box handler builds and threads it.
 
     *command_scope* is the scope the ``config set`` was issued at (block B4). It
     drives the §0 directional-write guard (``_scope_direction_error``): a write is
@@ -1409,6 +1442,7 @@ def set_config_value(
             workset_path=cascade_workset_path,
             box_path=cascade_box_path,
             agent_name=cascade_agent_name,
+            default_categories=default_categories,
         )
 
     # system.default_agent — a SETTING (F3): lands in the settings tier's

@@ -1571,6 +1571,16 @@ def _run_box_config(args: argparse.Namespace) -> int:
         except Exception:
             cascade_agent_name = ""
 
+        # F10: expose the launch-only CORE box-mount floor (``box.bindings.{ro,rw}.
+        # <key>`` — home/workspace/vault) to the set-time cascade so a source-only
+        # repoint of a core bind is no longer refused as "nowhere in the cascade".
+        # The registry is CONTEXT-LIGHT — box_dest/options straight from the
+        # declarative ``core:`` doc + a placeholder host_src the repoint discards
+        # (``core_default_bind_keys`` does NO proj/std probe); it is folded into the
+        # box-scope set-time floor, NEVER the launch snapshot.
+        from kanibako.core_defaults import core_default_bind_keys
+        set_default_categories: dict[str, object] = dict(core_default_bind_keys())
+
         msg = set_config_value(
             key, value,
             config_path=project_toml,
@@ -1580,6 +1590,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             cascade_box_path=project_toml,
             cascade_agent_name=cascade_agent_name,
             command_scope=ConfigLevel.box,
+            default_categories=set_default_categories,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

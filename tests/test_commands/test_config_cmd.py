@@ -274,6 +274,35 @@ class TestBoxConfigSet:
         captured = capsys.readouterr()
         assert "Set resource.plugins=/my/plugins" in captured.out
 
+    def test_set_core_bind_repoint_end_to_end(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        # F10 (Phase 1): the box handler threads the CORE floor registry, so a
+        # source-only repoint of a launch-only core bind now VALIDATES + writes the
+        # RAW tuple (was refused "nowhere in the cascade" before Step B).
+        from kanibako.commands.box._parser import run_set
+        from kanibako.config_io import load_doc
+
+        config = load_config(config_file)
+        from kanibako.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        args = argparse.Namespace(
+            args=[project_dir, "box.bindings.rw.home=/newhome"],
+            force=False, local=False,
+        )
+        rc = run_set(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Set box.bindings.rw.home host source to /newhome" in captured.out
+        # RAW tuple in the box file: new host_src, dest+options byte-raw from floor.
+        project_toml = proj.metadata_path / "settings.yaml"
+        assert load_doc(project_toml)["box"]["bindings"]["rw"]["home"] == [
+            "/newhome", "~", "Z,U",
+        ]
+
 
 class TestBoxConfigReset:
     def test_reset_key(self, config_file, tmp_home, credentials_dir, capsys):
