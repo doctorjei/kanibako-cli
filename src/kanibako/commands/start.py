@@ -1485,16 +1485,7 @@ def _run_container(
         # (S12 resolve-ONCE). It carries the behavior FLOOR (→ agent.default.*, OS1),
         # the per-agent file's flat behavior state (wrapped under agent.<active>),
         # the always-available category default tables, 7a's descriptor delivery
-        # partial + the override bridge, and the resolved system.* tier.
-        binding_overrides: dict[str, str] = {}
-        if desc is not None:
-            binding_overrides = _build_binding_overrides(
-                project_toml=project_toml,
-                workset_config_path=workset_path,
-                agent_config_path=agent_cfg_path,
-                global_config_path=system_settings_path,
-                agent_name=agent_id,
-            )
+        # partial, and the resolved system.* tier.
         _snapshot, reconciled = _resolve_launch_snapshot(
             std=std,
             proj=proj,
@@ -1505,7 +1496,6 @@ def _run_container(
             install=install,
             target=target,
             agent_cfg=agent_cfg,
-            binding_overrides=binding_overrides,
             shares=auth_src.shares,
         )
 
@@ -1611,7 +1601,7 @@ def _run_container(
         # + ONE reconcile built ABOVE (the same ``_snapshot`` / ``reconciled`` the
         # behavior read consumes — S12 resolve-ONCE). The always-available category
         # default tables (core / kani / channel / share / seeds), the resolved
-        # ``system.*`` tier, 7a's descriptor delivery partial + the override bridge
+        # ``system.*`` tier, and 7a's descriptor delivery partial are
         # all folded in there. The image + helper tables are CONDITIONAL and
         # late-bound (their inputs are computed further down), so they are resolved
         # at their own sites — their box_dests are disjoint from these families, so
@@ -2930,43 +2920,6 @@ def _resolve_box_launch_decisions(
     return auth_src, endpoint
 
 
-def _build_binding_overrides(
-    *,
-    project_toml,
-    workset_config_path,
-    agent_config_path,
-    global_config_path,
-    agent_name: str,
-) -> dict[str, str]:
-    """Resolve descriptor binding host-source overrides across the config cascade.
-
-    Reads each config level's ``agent.<agent_name>.binding`` sub-table (layered
-    over ``agent.default.binding`` within each file) via
-    :func:`~kanibako.config.read_binding_overrides`, mirroring B3's agent-keying,
-    then overlays the levels MOST-SPECIFIC-WINS:
-
-        box (settings.yaml) > workset > agent (agents/<name>/settings.yaml) > system
-
-    Returns ``{binding_key: host_src}`` (empty when nothing is configured, the
-    common case).  A bad/unreadable level contributes nothing (the reader
-    swallows its own errors).
-    """
-    from kanibako.config import read_binding_overrides
-
-    overrides: dict[str, str] = {}
-    # Least-specific first so each more-specific level's .update() wins. The old
-    # machine-wide third config file is DELETED (spec §2 clean break); the
-    # global user config is now the least-specific source.
-    for path in (
-        global_config_path,
-        agent_config_path,
-        workset_config_path,
-        project_toml,
-    ):
-        overrides.update(read_binding_overrides(path, agent_name))
-    return overrides
-
-
 def _launch_snapshot_inputs(
     *,
     std,
@@ -3237,7 +3190,6 @@ def _resolve_launch_snapshot(
     log_path=None,
     graph_root=None,
     storage_conf_path=None,
-    binding_overrides=None,
     shares: bool = True,
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
@@ -3248,8 +3200,8 @@ def _resolve_launch_snapshot(
     runtime ``default_categories`` table (core / kani / channel / share / seeds /
     masks, plus the CONDITIONAL helper + image tables) into ONE floor, folds in
     the resolved ``system.*`` tier so @-refs resolve from the snapshot, represents
-    the agent's descriptor delivery binds via 7a's ``agent_default_partial`` (with
-    the override bridge), and runs ``assemble_levels → merge → expand`` ONCE via
+    the agent's descriptor delivery binds via 7a's ``agent_default_partial``, and
+    runs ``assemble_levels → merge → expand`` ONCE via
     :func:`kanibako.settings_launch.build_launch_snapshot`.  The expanded snapshot
     is then adapted to ``CategoryEntry`` and reconciled ONCE.
 
@@ -3355,8 +3307,6 @@ def _resolve_launch_snapshot(
         default_categories=default_categories,
         agent_partial=agent_partial,
         agent_state=agent_state,
-        binding_overrides=binding_overrides,
-        descriptor_bindings=list(desc.bindings) if desc is not None else None,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
@@ -3756,7 +3706,7 @@ def _apply_init_seeds(
     # ``extra_default_categories=default_seeds`` injects ONLY the target's declared
     # seeds (matching the old agent-level ``defaults=default_seeds``) — it does NOT
     # pull in the unrelated core/channel/share families. The agent-binding inputs
-    # (``desc``/``install``/``binding_overrides``) are omitted — they feed only
+    # (``desc``/``install``) are omitted — they feed only
     # ``agent.bindings.*`` MOUNTs, never the seeded COPY winners — so the resulting
     # ``reconciled.copies`` seeded set is byte-for-byte the old narrow resolve's.
     _snapshot, reconciled = _resolve_launch_snapshot(

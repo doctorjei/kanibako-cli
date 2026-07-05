@@ -1,7 +1,7 @@
 """Unit tests for settings_launch — the block-7b launch-time snapshot read-path.
 
 These pin the PURE logic of the ONE-resolve-per-launch builder + adapter (no
-launch I/O): the floor/category/agent-partial/override-bridge fold into the single
+launch I/O): the floor/category/agent-partial fold into the single
 snapshot, the category adapter's shape + root-join + box-side box_dest resolution
 (equivalent to the old resolve_categories ``space="guest"`` pass), the behavior
 read, and the agent-delivery emitter's AGENT_CRITICAL exit-1 safe-fail.
@@ -106,31 +106,67 @@ def test_agent_partial_inserted():
     assert snap_default.agent.claude.bindings.ro.share.host == "/orig"
 
 
-def test_override_bridge_repoints_agent_binding_by_name():
-    from kanibako.targets.base import BindKind, BindScope, Binding, HostSrcOrigin
+def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
+    # A user-settable ``agent.<name>.bindings.{ro,rw}.<key>`` written on a scope
+    # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY
+    # cascade — the plural-key route that REPLACED the retired singular
+    # ``agent.<name>.binding.<key>`` override bridge. Exercises the FULL emit path
+    # (build_launch_snapshot → snapshot_category_entries → reconcile_categories →
+    # agent_delivery_mounts), so it proves the repoint reaches the emitted Mount.
+    from kanibako.agent_representation import agent_default_partial
+    from kanibako.config_io import dump_doc
+    from kanibako.targets.base import (
+        AgentInstall, BindKind, BindScope, Binding, HostSrcOrigin, PluginDescriptor,
+    )
 
+    # The shipped descriptor delivery bind (claude 'share' = INSTALL_DIR, ro,
+    # AGENT_CRITICAL) + a real install whose install_dir EXISTS (so the origin
+    # default would itself resolve — the mutation guard below is meaningful).
+    orig_share = tmp_path / "orig-share"
+    orig_share.mkdir()
+    install = AgentInstall(
+        name="claude",
+        binary=tmp_path / "claude-bin",
+        launcher=tmp_path / "claude-launcher",
+        install_dir=orig_share,
+    )
     binding = Binding(
-        key="share",
-        origin=HostSrcOrigin.INSTALL_DIR,
-        box_dest="/box/share",
-        kind=BindKind.DIR,
-        scope=BindScope.AGENT_CRITICAL,
-        ro=True,
+        key="share", origin=HostSrcOrigin.INSTALL_DIR, box_dest="/box/share",
+        kind=BindKind.DIR, scope=BindScope.AGENT_CRITICAL, ro=True,
     )
-    agent_partial = KeyStore(
-        {"agent": {"claude": {"bindings": {
-            "ro": {"share": Bind("/orig", "/box/share", "ro")}}}}}
+    desc = PluginDescriptor(command=("claude",), bindings=(binding,), mode={})
+    # 7a delivers the descriptor default under agent.claude.bindings.ro.share.
+    partial = agent_default_partial(desc, install, node_name="claude")
+
+    # The user repoint: the agent-scope FILE sets the SAME discriminated plural key
+    # to a DIFFERENT existing host source (the settable-tier equivalent of a
+    # ``config set agent agent.claude.bindings.ro.share=[…]``). The agent file sits
+    # ABOVE the 7a descriptor-default rung, so it wins the host source by name.
+    repoint = tmp_path / "user-repoint"
+    repoint.mkdir()
+    agent_file = tmp_path / "agent-settings.yaml"
+    dump_doc(
+        agent_file,
+        {"agent": {"claude": {"bindings": {"ro": {
+            "share": [str(repoint), "/box/share"]}}}}},
     )
+
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        agent_partial=agent_partial,
-        binding_overrides={"share": "/user/repoint"},
-        descriptor_bindings=[binding],
+        system_path=None, agent_path=agent_file, workset_path=None, box_path=None,
+        agent_partial=partial,
     )
-    # The override bridge wins over 7a's origin default by name, under the SAME
-    # discriminated active slot (agent.<active>.bindings.*).
-    assert snap.agent.claude.bindings.ro.share.host == "/user/repoint"
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    rec = reconcile_categories(entries)
+    mounts = agent_delivery_mounts(rec.mounts, critical_keys=frozenset({"share"}))
+
+    sources = {str(m.source) for m in mounts}
+    # The file-set plural key repoints the emitted delivery Mount's source.
+    assert str(repoint) in sources
+    # MUTATION guard (non-vacuous): the descriptor origin (install_dir) is REPLACED,
+    # not carried alongside — if the repoint were ignored the emit would still carry
+    # ``orig_share`` and this assert would go RED.
+    assert str(orig_share) not in sources
 
 
 # --------------------------------------------------------------------------- #

@@ -34,20 +34,17 @@ scope still overrides by name — precedence-equivalent to the old AGENT-level
   ``agent.<active>.bindings.{ro,rw}.<key>`` in the cascade (the active agent's
   DISCRIMINATED slot, ``install.name``; §2d / §0 L21 — NO bare ``agent`` token), so
   agent binary/launcher/share delivery flows through the ONE category keyspace
-  (single-route), NOT a parallel ``descriptor_mounts`` route.
-* **override bridge** — the transitional ``agent.<name>.binding.<key>`` repoint
-  (read by ``config.read_binding_overrides``) is injected as a host_src repoint of
-  ``agent.<active>.bindings.{ro,rw}.<key>`` (the SAME active slot 7a delivers into)
-  so it merges over 7a BY NAME — zero-drift preservation of today's
-  ``descriptor_mounts(override=…)``. (The singular key's eventual retirement in
-  favour of the plural ``agent.<agent>.bindings.*`` is a deferred, Jei-noted
-  breaking change — NOT silent here.)
+  (single-route), NOT a parallel ``descriptor_mounts`` route. A user repoint of a
+  descriptor delivery bind's host source is an ordinary settable
+  ``agent.<agent>.bindings.{ro,rw}.<key>`` set on a scope FILE (the SAME active
+  slot 7a delivers into); it merges over 7a BY NAME through the normal cascade —
+  no parallel override route.
 
 The DISCRIMINATED agent read (§2d L368)
 ---------------------------------------
 The snapshot keeps the agent tier discriminated — ``agent.default.*`` (the
-all-agents backstop) and ``agent.<active>.*`` (the active slot, where 7a / the
-override bridge / a per-agent file land). Both the behavior read
+all-agents backstop) and ``agent.<active>.*`` (the active slot, where 7a or
+a per-agent file land). Both the behavior read
 (:func:`effective_behavior`) and the category adapter
 (:func:`snapshot_category_entries`) do the active-over-default value-pick PER NAME
 HERE — the consumer's job, since 2a/7a / the merge deliberately keep both slots'
@@ -74,7 +71,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Mapping
+from typing import Literal, Mapping
 
 from kanibako.settings_assemble import assemble_levels
 from kanibako.settings_categories import (
@@ -86,9 +83,6 @@ from kanibako.settings_expand import expand
 from kanibako.settings_merge import merge
 from kanibako.settings_resolve import ResolveCtx, SettingsError, expand_expr
 from kanibako.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
-
-if TYPE_CHECKING:
-    from kanibako.targets.base import Binding
 
 
 # The category tokens that hold bind-shaped (``Bind``) leaves in the snapshot's
@@ -799,8 +793,6 @@ def build_launch_snapshot(
     default_categories: Mapping[str, object] | None = None,
     agent_partial: KeyStore | None = None,
     agent_state: Mapping[str, str] | None = None,
-    binding_overrides: Mapping[str, str] | None = None,
-    descriptor_bindings: "list[Binding] | None" = None,
     auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
     meta_identity: Mapping[str, object] | None = None,
@@ -819,9 +811,7 @@ def build_launch_snapshot(
     *behavior_floor* is the BARE behavior-default dict (``{d.key: d.default}``);
     *default_categories* are the already-scope-qualified category default tables
     (``{"box.bindings.rw.home": (h, d, o), ...}``) unioned across every mount
-    family. *binding_overrides* are the transitional ``{binding_key: host_src}``
-    repoints (bridge), placed via *descriptor_bindings* (each ``Binding`` supplies
-    the ``ro`` flag selecting ``bindings.ro`` vs ``bindings.rw``).
+    family.
 
     *auth_chain* is the auth 3-tier SHARING chain floor fragment built by
     :func:`auth_chain_floor` per box mode — the spec's @-ref / literal ``auth.*``
@@ -946,8 +936,6 @@ def build_launch_snapshot(
     # their PRECISE precedence rungs, computed from these FIXED base indices (doing
     # all splices in one pass keeps the math robust — no chained index drift):
     #
-    #   override bridge  — just below box (above workset): wins 7a's origin default
-    #                      by name, loses to a box-file set.
     #   agent_state      — the per-agent FILE's behavior, wrapped under the active
     #                      slot, at the AGENT-FILE rung (above the empty assemble
     #                      agent.<active> level, below workset): the OLD
@@ -955,9 +943,6 @@ def build_launch_snapshot(
     #   agent_partial    — 7a descriptor DEFAULT delivery, the LEAST-specific agent
     #                      rung (just below agent.default) so any
     #                      agent.<active>/workset/box repoint wins.
-    bridge = _override_bridge_partial(
-        agent_name, binding_overrides, descriptor_bindings
-    )
     state_partial = _agent_state_partial(agent_name, agent_state)
     # box.agent.* CATEGORY fold (spec §2b L411 / §0 L32-42): the box's same-scope
     # tweak of its active agent's category tables, re-rooted to agent.<active> at BOX
@@ -966,7 +951,7 @@ def build_launch_snapshot(
     # DEFAULTS-DOWN (spec §0), so a CONTAINING file (workset/system/base) may set
     # box.agent.* too; the fold sources each file-backed level's RAW box.agent SEPAR-
     # ATELY, MOST-SPECIFIC-FIRST (box, workset, system, base — the agent partials
-    # carry no ``box`` node), and splices them as a GROUP ABOVE the override bridge so
+    # carry no ``box`` node), and splices them as a GROUP ABOVE box so
     # the cascade settles box.agent.<key> among its sources with the winner at BOX
     # precedence (matching the old overlay). NO-AGENT box → [].
     box_agent_folds = _box_agent_category_fold(
@@ -976,8 +961,6 @@ def build_launch_snapshot(
     levels: list[KeyStore] = []
     levels.extend(box_agent_folds)                      # box.agent categories (top)
     levels.append(base_levels[0])                       # box
-    if bridge is not None:
-        levels.append(bridge)                           # override bridge (below box)
     levels.append(base_levels[1])                       # workset
     if state_partial is not None:
         levels.append(state_partial)                    # per-agent FILE behavior
@@ -1235,38 +1218,6 @@ def _box_agent_category_fold(
     return folded
 
 
-def _override_bridge_partial(
-    agent_name: str,
-    binding_overrides: Mapping[str, str] | None,
-    descriptor_bindings: "list[Binding] | None",
-) -> KeyStore | None:
-    """Build the override-bridge partial, or ``None`` if no override applies.
-
-    A transitional ``agent.<name>.binding.<key>`` repoint (today's
-    ``descriptor_mounts(override=…)``, which ALWAYS wins a binding's host source)
-    becomes a host_src repoint of the DISCRIMINATED
-    ``agent.<agent_name>.bindings.{ro,rw}.<key>`` (the §2d key form, §0 L21 — NO bare
-    ``agent``), under the SAME active-agent slot 7a delivers the descriptor binds
-    into (``install.name`` == *agent_name*). The caller splices it just BELOW box so
-    it beats 7a's origin default by name yet loses to a box-file set.
-    """
-    if not binding_overrides or not descriptor_bindings:
-        return None
-    ro_by_key = {b.key: bool(b.ro) for b in descriptor_bindings}
-    dest_by_key = {b.key: b.box_dest for b in descriptor_bindings}
-    bridge = KeyStore()
-    for key, host_src in binding_overrides.items():
-        if key not in ro_by_key:
-            continue  # not a descriptor binding key → nothing to repoint.
-        mode = "ro" if ro_by_key[key] else "rw"
-        opts = "ro" if ro_by_key[key] else None
-        _insert_bind(
-            bridge, ("agent", agent_name, "bindings", mode, key),
-            Bind(host_src, dest_by_key[key], opts),
-        )
-    return bridge if dict.__len__(bridge) else None
-
-
 def _agent_scope_qualify(key: str, agent_name: str) -> str:
     """Re-root a BARE ``agent.<category>.*`` default-table key onto the active slot.
 
@@ -1287,22 +1238,6 @@ def _agent_scope_qualify(key: str, agent_name: str) -> str:
     if second in ("default", agent_name):
         return key
     return f"agent.{agent_name}.{key[len('agent.'):]}"
-
-
-def _insert_bind(store: KeyStore, path: tuple[str, ...], bind: Bind) -> None:
-    """Insert *bind* at *path* into *store*, creating nested KeyStore nodes.
-
-    Used to build the override-bridge partial. Uses the UNBOUND ``dict`` probe
-    (S3) so a path segment named ``get`` cannot shadow the protocol.
-    """
-    node: KeyStore = store
-    for seg in path[:-1]:
-        existing = dict.get(node, seg, _MISSING)
-        if not isinstance(existing, KeyStore):
-            existing = KeyStore()
-            node[seg] = existing
-        node = existing
-    node[path[-1]] = bind
 
 
 # --------------------------------------------------------------------------- #
@@ -1418,7 +1353,7 @@ def agent_delivery_mounts(
     *reconciled_mounts* is the full MOUNT winner list from
     :func:`reconcile_categories`; this picks the ``scope == "agent"`` /
     ``category in bindings.ro|rw`` entries (the descriptor delivery binds, now in
-    the cascade via 7a's partial + the override bridge). For each:
+    the cascade via 7a's partial). For each:
 
     * **AGENT_CRITICAL** (``name`` in *critical_keys*): the host_src MUST exist,
       else :class:`~kanibako.targets.assembly.BindingSourceError` is raised — the
@@ -1474,7 +1409,7 @@ def snapshot_category_entries(
     EFFECTIVE agent node = ``agent.default`` overlaid by ``agent.<active_agent>``
     (the active slot wins each name it sets; ``agent.default`` fills the gaps), then
     walks that one effective node as the (bare) ``agent`` scope. The descriptor
-    delivery binds (7a) + the override bridge live under the active slot; the
+    delivery binds (7a) live under the active slot; the
     all-agents declared defaults live under ``agent.default`` — so this pick is the
     delivery-side analog of :func:`effective_behavior`'s read.
 

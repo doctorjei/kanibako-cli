@@ -753,56 +753,6 @@ def remove_agent_setting(path: Path, key: str, agent_name: str) -> bool:
     return True
 
 
-def read_binding_overrides(path: Path | None, agent_name: str) -> dict[str, str]:
-    """Read agent-keyed binding host-source overrides from a config ``agent`` table.
-
-    Reads the ``binding`` sub-table under ``agent.<agent_name>`` layered over the
-    reserved any-agent ``agent.default.binding`` tier (the agent-specific value
-    wins within a single file) — the SAME agent-keying as
-    :func:`read_agent_settings`. These redirect the HOST SOURCE of a descriptor
-    :class:`~kanibako.targets.base.Binding` (e.g. ``agent.claude.binding.plugins``
-    points the claude ``plugins`` share at a custom host directory).
-
-    Returns ``{binding_key: host_src}``. Each binding VALUE may be either:
-
-    * a bare string ``host_src`` (``agent.claude.binding.plugins = "/path"``), or
-    * a sub-table carrying a ``host_src`` key
-      (``agent.claude.binding.plugins.host_src = "/path"``).
-
-    A sub-table without a string ``host_src`` (and any other non-string value)
-    is skipped. As with :func:`read_agent_settings`, a legacy FLAT ``[agent]``
-    table is treated as UNSET (no pass-1 migration); the common no-config case
-    (absent/None/unreadable path, or absent ``agent``/``binding`` table) returns
-    ``{}``.
-    """
-    if path is None or not path.exists():
-        return {}
-    try:
-        data = load_doc(path)
-    except Exception:
-        return {}
-    agent = data.get("agent", {})
-    if not isinstance(agent, dict):
-        return {}
-    out: dict[str, str] = {}
-    # Least-specific (default tier) first so the agent-specific tier wins.
-    for tier in ("default", agent_name):
-        section = agent.get(tier)
-        if not isinstance(section, dict):
-            continue
-        binding = section.get("binding")
-        if not isinstance(binding, dict):
-            continue
-        for key, val in binding.items():
-            if isinstance(val, str):
-                out[key] = val
-            elif isinstance(val, dict):
-                host_src = val.get("host_src")
-                if isinstance(host_src, str):
-                    out[key] = host_src
-    return out
-
-
 # ---------------------------------------------------------------------------
 # Scope categories (settings-framework {scope}.<category>.* — the unified
 # masks/bindings/caches/seeded/shared/synced/env primitive)

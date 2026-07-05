@@ -242,7 +242,9 @@ def resolve_binding_source(
 ) -> Path | None:
     """Resolve a binding's host source path (no existence check here).
 
-    A non-empty *override* (a user cascade value, ``agent.<name>.binding.<key>``)
+    A non-empty *override* (a caller-supplied host source repoint; the settable
+    user cascade equivalent is ``agent.<name>.bindings.{ro,rw}.<key>``, resolved
+    upstream in the launch snapshot — this param is now used by tests only)
     always wins and is returned as ``Path(override)``.  Otherwise the source is
     derived from ``binding.origin``:
 

@@ -88,13 +88,13 @@ class BindScope(Enum):
 class Binding:
     """One bound element (delivery binary/launcher/share or an agent share).
 
-    The resolved host source = user cascade override (agent.<name>.binding.<key>) ELSE the *origin*:
+    The resolved host source = user cascade override (agent.<name>.bindings.{ro,rw}.<key>) ELSE the *origin*:
     a detection field (LAUNCHER/INSTALL_DIR/BINARY) or literal_src (LITERAL).  AGENT_CRITICAL bindings
     keep source-exists safe-fail + bind-as-is inode-pin + core dest-symlink clearing; AGENT shares are
     best-effort (a missing/suppressed share is fine).
     """
 
-    key: str                          # stable override key -> agent.<name>.binding.<key>
+    key: str                          # stable override key -> agent.<name>.bindings.{ro,rw}.<key>
     origin: HostSrcOrigin
     box_dest: str
     kind: BindKind
