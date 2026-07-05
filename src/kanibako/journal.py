@@ -83,6 +83,7 @@ def write_entry(
     name: str,
     mode: str,
     workset: str | None = None,
+    workspace: str | None = None,
 ) -> None:
     """Write-ahead: record an in-flight lifecycle op keyed by *box_path*.
 
@@ -91,6 +92,11 @@ def write_entry(
     for future liveness detection).  Overwrites any existing entry for the same
     *box_path* (a re-run before recovery re-stamps the intent — harmless, the op
     is idempotent).
+
+    *workspace* (P8b): the box's WORKSPACE dir, recorded so a create can be
+    re-discovered BY WORKSPACE during deferred-registration recovery (the journal
+    is keyed by box PATH, so a workspace lookup scans — see
+    :func:`pending_create_for_workspace`).  Persisted only when provided.
     """
     key = _key(box_path)
     doc = load_doc(journal_path)
@@ -105,6 +111,8 @@ def write_entry(
     }
     if workset is not None:
         entry["workset"] = workset
+    if workspace is not None:
+        entry["workspace"] = workspace
     entry["started_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry["host"] = socket.gethostname()
     entries[key] = entry
@@ -141,6 +149,31 @@ def pending_create(journal_path: Path, box_path: str | Path) -> dict | None:
     entry = pending_entry(journal_path, box_path)
     if entry is not None and entry.get("op") == "create":
         return entry
+    return None
+
+
+def pending_create_for_workspace(
+    journal_path: Path, workspace: str | Path,
+) -> dict | None:
+    """Return the pending ``create`` entry whose ``workspace`` == *workspace*.
+
+    The journal is keyed by box host-side PATH, so a lookup BY WORKSPACE requires
+    scanning every entry for an ``op: create`` whose recorded ``workspace`` field
+    resolves to the same dir as *workspace* (both ``resolve()``d for symlink /
+    trailing-slash equivalence).  This is the PRIMARY deferred-registration
+    create-recovery signal (P8b): a box was mid-create for this workspace but
+    never registered — the name is read from the journal, not from on-disk meta.
+    ``None`` when no such entry exists (the ordinary registry-hit resolve).
+    """
+    target = str(Path(workspace).resolve())
+    for entry in read_journal(journal_path).values():
+        if entry.get("op") != "create":
+            continue
+        ws = entry.get("workspace")
+        if ws is None:
+            continue
+        if str(Path(ws).resolve()) == target:
+            return entry
     return None
 
 

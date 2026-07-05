@@ -477,6 +477,7 @@ def run_connect(args: argparse.Namespace) -> int:
         with _journal_connect(
             std.journal, ws.projects_dir / project_name,
             name=project_name, workset=ws.name,
+            workspace=str(source.resolve()),
         ):
             proj = add_project(ws, project_name, source, std)
     except WorksetError as e:

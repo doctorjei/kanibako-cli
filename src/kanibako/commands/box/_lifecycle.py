@@ -31,7 +31,7 @@ from kanibako.box_identity import validate_box_name
 from kanibako.config import (
     BOX_META_FILE,
     KanibakoConfig,
-    read_project_meta,
+    read_box_enable_vault,
     write_project_meta,
 )
 from kanibako.errors import ProjectError, WorksetError
@@ -277,10 +277,11 @@ def _default_state_from_meta(
             break
     if name is None:
         return None
+    # P8b: registry membership (the ``names["projects"]`` hit above) IS the
+    # existence signal — identity no longer self-describes on disk, so there is no
+    # ``project.mode`` presence gate.  ``enable_vault`` is the plain box-scope
+    # ``box.enable_vault`` read (decoupled from identity).
     metadata_path = std.boxes / name
-    meta = read_project_meta(metadata_path / BOX_META_FILE)
-    if not meta:
-        return None
     # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
     # OVERRIDE is DROPPED here too — to stay CONSISTENT with the launch path
     # (resolve_project), which now derives home/vault SOLELY from the default
@@ -295,7 +296,7 @@ def _default_state_from_meta(
         workspace_path=workspace.resolve(), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=bool(meta.get("enable_vault", True)),
+        enable_vault=read_box_enable_vault(metadata_path / BOX_META_FILE),
     )
 
 
@@ -1327,7 +1328,22 @@ def _to_workset(
     if internal:
         recorded_workspace = (target_ws.workspaces_dir / new_name)
     else:
-        recorded_workspace = new_workspace
+        # External: source the workspace from the per-workset ``boxes:`` registry
+        # that ``add_project`` just wrote (P8b — the D10 connection record is the
+        # authoritative external-workspace source, not the box's settings.yaml
+        # identity, which stops self-describing under sparse create).
+        from kanibako import workset_registry
+        from kanibako.config_io import load_doc
+
+        registry_path = workset_registry.resolve_workset_registry_path(
+            target_ws.root, load_doc(target_ws.root / "settings.yaml"),
+        )
+        recorded_str = workset_registry.load_workset_boxes(registry_path).get(
+            new_name
+        )
+        recorded_workspace = (
+            Path(recorded_str) if recorded_str else new_workspace
+        )
     phash = project_hash(str(recorded_workspace.resolve()))
 
     vault_ro = target_ws.vault_dir / "ro" / new_name

@@ -55,6 +55,22 @@ class TestWriteEntry:
         )
         assert journal.read_journal(jp)["/box/foo"]["workset"] == "myws"
 
+    def test_workspace_recorded_when_supplied(self, tmp_path: Path) -> None:
+        jp = tmp_path / "journal.yaml"
+        journal.write_entry(
+            jp, "/box/foo", op="create", name="foo", mode="primary",
+            workspace="/ws/foo",
+        )
+        entry = journal.read_journal(jp)["/box/foo"]
+        assert entry["workspace"] == "/ws/foo"
+
+    def test_workspace_absent_when_not_supplied(self, tmp_path: Path) -> None:
+        jp = tmp_path / "journal.yaml"
+        journal.write_entry(
+            jp, "/box/foo", op="create", name="foo", mode="primary",
+        )
+        assert "workspace" not in journal.read_journal(jp)["/box/foo"]
+
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         """The journal parent (e.g. ``global/``) is created on first write."""
         jp = tmp_path / "global" / "journal.yaml"
@@ -132,6 +148,55 @@ class TestPending:
         # A non-create op is NOT a pending create (no re-seed for import/connect).
         assert journal.pending_create(jp, "/box/i") is None
         assert journal.pending_create(jp, "/box/missing") is None
+
+
+class TestPendingCreateForWorkspace:
+    def test_finds_create_by_workspace(self, tmp_path: Path) -> None:
+        jp = tmp_path / "journal.yaml"
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        journal.write_entry(
+            jp, "/box/c", op="create", name="c", mode="primary",
+            workspace=str(ws),
+        )
+        entry = journal.pending_create_for_workspace(jp, ws)
+        assert entry is not None and entry["name"] == "c"
+
+    def test_resolves_both_sides(self, tmp_path: Path) -> None:
+        # A trailing-slash / unresolved query still matches a stored resolved path.
+        jp = tmp_path / "journal.yaml"
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        journal.write_entry(
+            jp, "/box/c", op="create", name="c", mode="primary",
+            workspace=str(ws.resolve()),
+        )
+        assert journal.pending_create_for_workspace(jp, Path(str(ws) + "/")) is not None
+
+    def test_ignores_non_create_ops(self, tmp_path: Path) -> None:
+        jp = tmp_path / "journal.yaml"
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        journal.write_entry(
+            jp, "/box/i", op="import", name="i", mode="primary",
+            workspace=str(ws),
+        )
+        # A non-create op with a matching workspace is NOT returned.
+        assert journal.pending_create_for_workspace(jp, ws) is None
+
+    def test_none_when_workspace_mismatch(self, tmp_path: Path) -> None:
+        jp = tmp_path / "journal.yaml"
+        journal.write_entry(
+            jp, "/box/c", op="create", name="c", mode="primary",
+            workspace=str(tmp_path / "ws-a"),
+        )
+        assert journal.pending_create_for_workspace(jp, tmp_path / "ws-b") is None
+
+    def test_none_when_no_workspace_field(self, tmp_path: Path) -> None:
+        # A legacy entry without a workspace field never matches (no crash).
+        jp = tmp_path / "journal.yaml"
+        journal.write_entry(jp, "/box/c", op="create", name="c", mode="primary")
+        assert journal.pending_create_for_workspace(jp, tmp_path / "ws") is None
 
 
 class TestAtomicity:

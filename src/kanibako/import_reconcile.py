@@ -61,23 +61,6 @@ def _alert(mode: str, name: str, path: Path) -> None:
     print(f"Imported {mode} '{name}' at {path}", file=sys.stderr)
 
 
-def _persist_box_name(meta_path: Path, name: str) -> None:
-    """Write *name* into a box metadata file's ``project.name`` key.
-
-    Mirrors where :func:`kanibako.config.write_project_meta` stores the box name
-    (``project.name``), preserving every other section of the file.
-    """
-    from kanibako.config_io import dump_doc, load_doc
-
-    data = load_doc(meta_path)
-    project_sec = data.get("project")
-    if not isinstance(project_sec, dict):
-        project_sec = {}
-        data["project"] = project_sec
-    project_sec["name"] = name
-    dump_doc(meta_path, data)
-
-
 def _conflict(
     mode: str, name: str, new_path: Path, existing_path: str,
 ) -> ImportConflictError:
@@ -188,16 +171,19 @@ def import_standalone(
 
     * Already registered to *root* (by ``standalone_name_for_root``) → silent
       no-op, returns the registered name.
-    * The box's persisted ``name`` (from ``<root>/settings.yaml``) is missing
-      or empty (a hand-created tree) → generate a fresh ``<kuid>_<leaf>``
-      name, persist it back into the metadata, register, alert, return it.
-    * Otherwise the persisted name is registered to *root* + alerted, UNLESS it
-      already maps to a DIFFERENT root → :class:`ImportConflictError` (refuse,
-      no mutation).
+    * Otherwise the identity is COMPOSED kuid-first (P8b — the box no longer
+      self-describes its ``project.name`` on disk): the stored ``workset.kuid``
+      (sparse-persisted at create) prefixes the LIVE dir leaf
+      (``<kuid>_<leaf>``, mirroring
+      :func:`kanibako.box_resolve.resolve_box_identity`); a pre-kuid box
+      (SENTINEL) falls back to the dir leaf.  The composed name is registered to
+      *root* + alerted, UNLESS it already maps to a DIFFERENT root →
+      :class:`ImportConflictError` (refuse, no mutation).
 
     *root* is the standalone project root (the dir containing ``box_data/`` and,
     at the root, ``settings.yaml``).  Returns the registered box name, or
-    ``None`` when *root* has no readable standalone metadata (nothing to import).
+    ``None`` when *root* carries no standalone MARKER (``box_data/`` +
+    ``settings.yaml`` — nothing to import).
     """
     root = root.resolve()
     root_str = str(root)
@@ -210,50 +196,39 @@ def import_standalone(
         _clear_stale_import(journal, root / _STANDALONE_BOX_DIR)
         return existing_name
 
-    # Box meta lives at the ROOT (the ``box_data/`` marker dir holds only home/
-    # + the helper log).
-    meta_path = root / BOX_META_FILE
-    meta = read_project_meta(meta_path)
-    if not meta:
-        return None  # No standalone metadata on disk → nothing to import.
+    # Gate on the standalone MARKER (design D4: the box's own settings FILE is the
+    # standalone signal — NOT ``project.mode``).  No marker → nothing to import.
+    from kanibako import box_identity, box_resolve, kuid
+    from kanibako.config import read_workset_kuid
 
-    persisted_name = (meta.get("name") or "").strip()
+    if not box_resolve.standalone_settings_present(root):
+        return None
+
+    # Compose the LIVE name kuid-first (mirrors box_resolve's standalone branch):
+    # the stored ``workset.kuid`` prefixes the current dir leaf so a MOVED box
+    # keeps its stable kuid identity while the leaf tracks the new dir.  A pre-kuid
+    # box (SENTINEL) falls back to the dir leaf.
+    stored_kuid = read_workset_kuid(root / BOX_META_FILE)
+    if stored_kuid != kuid.SENTINEL:
+        name = box_identity.compose_standalone_name(stored_kuid, root)
+    else:
+        name = root.name
+
+    # Collision check against a DIFFERENT root.
     registered = registry_store.load_standalone(registry)
-
-    if not persisted_name:
-        # Hand-created tree with no persisted identity: mint one and persist it.
-        from kanibako import box_identity
-
-        name = box_identity.make_standalone_box_name(
-            root, registry_store.standalone_box_names(registry),
-        )
-        # Persist the generated name back into the box metadata (under
-        # ``project.name``, matching write/read_project_meta) so the identity is
-        # stable across future resolves.
-        _persist_box_name(meta_path, name)
-        # J2: write-ahead the register (NO seed — the box is already seeded on
-        # disk).  box dir = <root>/box_data (where home/ lives).
-        with _journal_register(
-            journal, root / _STANDALONE_BOX_DIR,
-            op="import", name=name, mode="standalone",
-        ):
-            registry_store.register_standalone(registry, name, root)
-        _alert("standalone box", name, root)
-        return name
-
-    # Persisted name present: collision check against a DIFFERENT root.
-    other_root = registered.get(persisted_name)
+    other_root = registered.get(name)
     if other_root is not None and other_root != root_str:
-        raise _conflict("standalone box", persisted_name, root, other_root)
+        raise _conflict("standalone box", name, root, other_root)
 
-    # J2: write-ahead the register (register-only; NO seed).
+    # J2: write-ahead the register (register-only; NO seed — the box is already
+    # seeded on disk).  box dir = <root>/box_data (where home/ lives).
     with _journal_register(
         journal, root / _STANDALONE_BOX_DIR,
-        op="import", name=persisted_name, mode="standalone",
+        op="import", name=name, mode="standalone",
     ):
-        registry_store.register_standalone(registry, persisted_name, root)
-    _alert("standalone box", persisted_name, root)
-    return persisted_name
+        registry_store.register_standalone(registry, name, root)
+    _alert("standalone box", name, root)
+    return name
 
 
 # ---------------------------------------------------------------------------

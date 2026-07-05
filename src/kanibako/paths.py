@@ -928,28 +928,36 @@ def resolve_project(
     # (alert + register; name collision → refuse), then re-resolve the dir.
     #
     # J1: when register=False (a deferred-registration create/recovery resolve),
-    # the import HONORS the flag — it resolves the box's name from on-disk meta
-    # WITHOUT registering, so re-discovering a half-built box during a re-create
-    # does NOT prematurely register it (the caller completes seed -> register ->
-    # clear-entry).  The returned name re-associates the on-disk dir directly
+    # the box's name is read from the pending CREATE JOURNAL entry whose recorded
+    # workspace == this workspace (P8b — identity no longer self-describes in
+    # on-disk meta).  Re-discovering a half-built box during a re-create must NOT
+    # prematurely register it (the caller completes seed -> register ->
+    # clear-entry), so the resolved name re-associates the on-disk dir directly
     # (the registry is still empty, so _resolve_local_dir would miss again).
     if not project_name:
-        from kanibako import import_reconcile
+        if register:
+            from kanibako import import_reconcile
 
-        imported = import_reconcile.import_primary_box_for_workspace(
-            std.registry, std.boxes, project_path, register=register,
-            journal=std.journal,
-        )
-        if imported:
-            if register:
+            imported = import_reconcile.import_primary_box_for_workspace(
+                std.registry, std.boxes, project_path, register=True,
+                journal=std.journal,
+            )
+            if imported:
                 project_name, project_dir_path = _resolve_local_dir(
                     std.registry, project_path_str, std.boxes,
                 )
-            else:
-                # register=False: the registry was not written; bind the dir to
-                # the resolved on-disk name directly.
-                project_name = imported
-                project_dir_path = std.boxes / imported
+        else:
+            # register=False: read the box name from the pending create journal
+            # entry for this workspace (not on-disk meta) and bind the dir.
+            from kanibako import journal as journal_mod
+
+            entry = journal_mod.pending_create_for_workspace(
+                std.journal, project_path,
+            )
+            recovered = (entry.get("name") or "").strip() if entry else ""
+            if recovered:
+                project_name = recovered
+                project_dir_path = std.boxes / recovered
 
     metadata_path = project_dir_path
 
