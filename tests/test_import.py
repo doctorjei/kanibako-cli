@@ -81,30 +81,53 @@ class TestStandaloneImport:
             name: "/some/other/root"
         }
 
-    def test_handcreated_tree_mints_and_persists_name(
+    def test_prekuid_tree_falls_back_to_dir_leaf(
         self, std, config, project_dir, capsys,
     ):
-        # A hand-built standalone tree: <root>/settings.yaml (drift I) with no
-        # name, plus the box_data/ marker dir.
-        from kanibako.config import read_project_meta, write_project_meta
+        # A hand-built / pre-kuid standalone tree: the box_data/ marker + a
+        # settings.yaml carrying NO workset.kuid (P8b: import composes kuid-first
+        # and, absent a stored kuid — the SENTINEL — falls back to the dir leaf,
+        # mirroring box_resolve.resolve_box_identity; it does NOT persist a name).
+        from kanibako.config_io import dump_doc, load_doc
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
         meta_file = project_dir / "settings.yaml"
-        write_project_meta(
-            meta_file,
-            mode="standalone",
-            workspace=str((project_dir / "workspace").resolve()),
-            shell="", vault_ro="", vault_rw="",
-            name="",  # no persisted identity
-        )
+        # A sparse settings.yaml with a box: table but no workset.kuid.
+        dump_doc(meta_file, {"box": {"enable_vault": True}})
         capsys.readouterr()
 
         name = import_reconcile.import_standalone(std.registry, project_dir)
-        assert name  # a fresh <kuid>_<leaf> name was minted
-        # Persisted back into the metadata (project.name).
-        assert read_project_meta(meta_file)["name"] == name
+        # Falls back to the current dir leaf (no kuid stored).
+        assert name == project_dir.resolve().name
+        # Import does NOT write project.name back to disk (sparse model).
+        assert "project" not in load_doc(meta_file)
         # Registered + alerted.
+        assert registry_store.load_standalone(std.registry).get(name) == str(
+            project_dir.resolve()
+        )
+        assert f"Imported standalone box '{name}'" in capsys.readouterr().err
+
+    def test_kuid_first_compose_from_stored_kuid(
+        self, std, config, project_dir, capsys,
+    ):
+        # A standalone tree carrying a stored workset.kuid: import composes the
+        # LIVE name as <kuid>_<dir leaf> (P8b kuid-first), NOT project.name.
+        from kanibako import box_identity, kuid
+        from kanibako.config_io import dump_doc
+
+        box_data = project_dir / "box_data"
+        box_data.mkdir(parents=True)
+        meta_file = project_dir / "settings.yaml"
+        box_kuid = kuid.generate()
+        dump_doc(meta_file, {"workset": {"kuid": box_kuid}})
+        capsys.readouterr()
+
+        name = import_reconcile.import_standalone(std.registry, project_dir)
+        expected = box_identity.compose_standalone_name(
+            box_kuid, project_dir.resolve(),
+        )
+        assert name == expected
         assert registry_store.load_standalone(std.registry).get(name) == str(
             project_dir.resolve()
         )

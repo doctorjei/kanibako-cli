@@ -84,6 +84,7 @@ def _journal_connect(
     *,
     name: str,
     workset: str | None = None,
+    workspace: str | None = None,
 ):
     """Bracket a ``connect`` (workset-membership) register with a journal entry.
 
@@ -105,7 +106,7 @@ def _journal_connect(
 
     journal_mod.write_entry(
         journal, box_path, op="connect", name=name, mode="named",
-        workset=workset,
+        workset=workset, workspace=workspace,
     )
     yield
     journal_mod.clear_entry(journal, box_path)

@@ -3664,6 +3664,7 @@ def _write_create_entry(std, proj) -> None:
     journal.write_entry(
         std.journal, _box_journal_key(proj),
         op="create", name=proj.name, mode=proj.mode.value, workset=workset,
+        workspace=str(proj.project_path),
     )
 
 

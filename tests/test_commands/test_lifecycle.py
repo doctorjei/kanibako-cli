@@ -834,3 +834,57 @@ class TestUnwind:
         # original default project intact.
         assert str(pdir) in read_names(std.registry)["projects"].values()
         assert read_project_meta(state.metadata_path / "settings.yaml")["mode"] == "primary"
+
+
+# ---------------------------------------------------------------------------
+# _default_state_from_meta — the remap fallback when the workspace dir is gone.
+# P8b: existence is REGISTRY membership (not on-disk project.mode); enable_vault
+# is the plain box-scope ``box.enable_vault`` read (decoupled from identity).
+# ---------------------------------------------------------------------------
+
+class TestDefaultStateFromMeta:
+    def test_registry_membership_sources_state(self, env):
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="gonebox")
+        # Disable vault via the box-scope key so we can prove enable_vault is
+        # sourced from ``box.enable_vault`` (not a project-identity field).
+        from kanibako.commands.box._lifecycle import _default_state_from_meta
+        from kanibako.config_interface import _write_nested_toml_key
+
+        _write_nested_toml_key(
+            std.boxes / "gonebox" / "settings.yaml",
+            ("box",), "enable_vault", False,
+        )
+
+        state = _default_state_from_meta(pdir, std)
+        assert state is not None
+        assert state.name == "gonebox"
+        assert state.mode is BoxMode.primary
+        assert state.metadata_path == std.boxes / "gonebox"
+        assert state.enable_vault is False  # sourced from box.enable_vault
+
+    def test_unregistered_workspace_returns_none(self, env):
+        config, std, tmp_home = env
+        from kanibako.commands.box._lifecycle import _default_state_from_meta
+
+        # No registration for this path → no membership → None.
+        assert _default_state_from_meta(tmp_home / "nope", std) is None
+
+    def test_membership_without_settings_still_resolves(self, env):
+        """Mutation guard: the OLD ``read_project_meta`` presence gate returned
+        None when settings.yaml was absent.  Now membership alone suffices — a
+        registered box whose settings.yaml is gone still yields a state (enable_
+        vault defaulting True via the box-scope reader)."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="nosettings")
+        from kanibako.commands.box._lifecycle import _default_state_from_meta
+
+        # Remove the box's settings.yaml (identity no longer self-describes).
+        (std.boxes / "nosettings" / "settings.yaml").unlink()
+        # Sanity: the box dir + registration remain.
+        assert (std.boxes / "nosettings").is_dir()
+
+        state = _default_state_from_meta(pdir, std)
+        assert state is not None
+        assert state.name == "nosettings"
+        assert state.enable_vault is True  # default via read_box_enable_vault
