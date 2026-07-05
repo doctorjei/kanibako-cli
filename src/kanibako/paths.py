@@ -1343,40 +1343,80 @@ def detect_project_mode(
     mode and the ancestor directory where the marker was found.
 
     Detection order:
-    1. Workset — *project_dir* lives inside a registered workset root
+    1. Connected-external — *project_dir* (or an ancestor) is an external
+       directory bound to a workset by a live ``boxes:`` connection record.
+       Runs FIRST so a force-connected box (which keeps its on-disk marker)
+       resolves as its workset box, never re-imported as standalone.
+    2. In-place standalone marker — a ``box_data/`` + root ``settings.yaml``
+       marker AT *project_dir* declares it standalone (D3-mode #1); OVERRIDES
+       workset tree membership.  Imported (registered) on discovery.
+    3. Workset — *project_dir* lives inside a registered workset root
        (``workspaces/`` subdirectory first, then the root itself).
-    2. Default (name-based) — one-pass scan of ``names.yaml``;
+    4. Default (name-based) — one-pass scan of ``names.yaml``;
        deepest registered path that is an ancestor of *project_dir* wins.
        Requires ``boxes/{name}/`` to exist on disk.
-    3. Walk ancestors for on-disk markers — a ``box_data/`` standalone marker,
+    5. Walk ancestors for on-disk markers — a ``box_data/`` standalone marker,
        or an unregistered NAMED workset root (a ``settings.yaml`` carrying a
        ``workset.meta`` identity).  Both are drop-in *imported* on discovery
        (registered + an alert to stderr; a name collision REFUSES — see
        :mod:`kanibako.import_reconcile`).
-    4. Default — ``primary`` mode at the original *project_dir*.
+    6. Default — ``primary`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
     home = Path.home().resolve()
 
-    # 1. Workset check (no walk needed — relative_to handles subdirs).
-    ws_result = _check_workset(resolved, std)
-    if ws_result is not None:
-        return ws_result
-
-    # 1b. Connected-external check: the path (or an ancestor) is an external
-    # directory connected to a workset.  Resolves before the default scan.  D10:
-    # the per-workset registries collectively form the reverse index, scanned by
-    # box_resolve (replaces the deleted global connected: index).
+    # 1. Connected-external check: the path (or an ancestor) is an external
+    # directory connected to a workset by a live boxes: record.  This MUST run
+    # BEFORE the standalone-marker check (step 2) to preserve the single-registry
+    # invariant.  A FORCE-CONNECTED standalone box (absorbed via
+    # workset.add_project(force=True)) deliberately KEEPS its on-disk box_data/ +
+    # root settings.yaml marker while its global standalone: registry entry is
+    # DROPPED and a per-workset boxes: connection entry is written — the box lives
+    # in EXACTLY ONE registry (no dual registration).  Such a box is EXTERNAL
+    # (outside the workset tree), so the workset-tree check (step 3) does NOT match
+    # it; the live connection is what claims it as its named workset box.  Were the
+    # marker check to run first, its import_standalone side-effect would re-register
+    # the box in standalone:, re-creating the very dual registration that --force
+    # removed.  D10: the per-workset registries collectively form the reverse
+    # index, scanned by box_resolve (replaces the deleted global connected: index).
     from kanibako import box_resolve
     if box_resolve.find_connected_external_box(resolved, std) is not None:
         return DetectionResult(BoxMode.named, resolved)
 
-    # 2. Name-based default-mode check (one-pass scan, deepest match wins).
+    # 2. In-place standalone marker AT the resolved dir (D3-mode #1, marker-first).
+    # A box's own in-place settings file is the highest-precedence, authoritative
+    # standalone self-declaration and OVERRIDES any workset TREE determination — a
+    # workset (even one whose tree physically CONTAINS this box) must NOT be able
+    # to "steal" a box that declares itself standalone.  (A LIVE connection is the
+    # one exception, resolved by step 1 above: a force-connected box is its workset
+    # box, never re-registered as standalone.)  This mirrors the marker-first
+    # precedence of box_resolve.detect_box_mode (step 1) and keys on the SAME
+    # standalone-marker signal (box_data/ + root settings.yaml, via
+    # _is_standalone_meta_dir → box_resolve.standalone_settings_present), so a
+    # workset/primary box (which never carries box_data/) is unaffected.  Only the
+    # resolved dir itself is inspected here (an ancestor marker is still handled by
+    # the step-5 walk below); this matches detect_box_mode, which likewise honors
+    # the in-place marker only at project_dir before the workset scan.  A GENUINE
+    # nested standalone (with NO connection record) is authoritative on disk →
+    # import (register) on discovery, exactly as the step-5 walk does.
+    if _is_standalone_meta_dir(resolved):
+        from kanibako import import_reconcile
+        import_reconcile.import_standalone(
+            std.registry, resolved, journal=std.journal,
+        )
+        return DetectionResult(BoxMode.standalone, resolved)
+
+    # 3. Workset check (no walk needed — relative_to handles subdirs).
+    ws_result = _check_workset(resolved, std)
+    if ws_result is not None:
+        return ws_result
+
+    # 4. Name-based default-mode check (one-pass scan, deepest match wins).
     ac_ancestor = _find_local_ancestor(resolved, std.registry, std.boxes)
     if ac_ancestor is not None:
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
-    # 3. Walk ancestors for on-disk markers (standalone box_data/ or an
+    # 5. Walk ancestors for on-disk markers (standalone box_data/ or an
     # unregistered NAMED workset root).  On-disk metadata is authoritative; a
     # discovered-but-unregistered entity is IMPORTED here (alert + register;
     # collision → refuse) so a dropped-in tree is re-discovered.  The named
@@ -1399,9 +1439,11 @@ def detect_project_mode(
             if ws_after is not None:
                 return ws_after
 
-        # STANDALONE: a box_data/ directory holding a real standalone metadata
-        # file (box.mode = "standalone").  A bare directory is not enough (the
-        # metadata file must declare standalone mode).
+        # STANDALONE: the in-place marker — a box_data/ directory alongside a
+        # root settings.yaml (presence-only since D4; the former box.mode ==
+        # "standalone" field read is DROPPED).  A bare box_data/ directory is not
+        # enough — the root settings.yaml must be present too (see
+        # _is_standalone_meta_dir → box_resolve.standalone_settings_present).
         if _is_standalone_meta_dir(current):
             import_reconcile.import_standalone(
                 std.registry, current, journal=std.journal,
@@ -1416,7 +1458,7 @@ def detect_project_mode(
             break
         current = parent
 
-    # 4. Default: primary mode at the original directory.
+    # 6. Default: primary mode at the original directory.
     return DetectionResult(BoxMode.primary, resolved)
 
 

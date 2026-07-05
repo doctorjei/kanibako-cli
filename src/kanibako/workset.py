@@ -647,8 +647,8 @@ def add_project(
             # global ``standalone:`` entry so the box becomes SOLELY a workset box
             # — no dual registration.  The in-place ``box_data/`` marker stays
             # (intrinsic identity): while the ``boxes:`` entry exists,
-            # ``detect_project_mode`` step 1b (find_connected_external_box) fires
-            # BEFORE the standalone marker walk, so it resolves as a workset box
+            # ``detect_project_mode`` step 1 (find_connected_external_box) fires
+            # BEFORE the standalone marker check, so it resolves as a workset box
             # and ``import_standalone`` never re-registers it.  On ``disconnect``
             # (the ``boxes:`` entry gone) the marker walk re-imports it as
             # standalone — a clean round-trip.  ``standalone_name_for_root``

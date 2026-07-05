@@ -562,6 +562,113 @@ class TestDetectBoxMode:
         result = detect_project_mode(subdir.resolve(), std, config)
         assert result.mode is BoxMode.named
 
+    # --- B2b: in-place standalone marker OVERRIDES workset tree membership ---
+
+    def test_nested_standalone_marker_overrides_workset_tree(
+        self, config_file, tmp_home
+    ):
+        """A STANDALONE box physically INSIDE a workset's directory tree resolves
+        as standalone (its own in-place marker wins over the enclosing workset).
+
+        Regression for bug B2b: detect_project_mode used to check workset
+        tree-membership (step 1) BEFORE the standalone marker, so a box under a
+        workset root was wrongly claimed by the workset ("Inside workset ... but
+        not in a specific project workspace") and NEVER resolved standalone. The
+        in-place marker is the highest-precedence signal (spec D3-mode #1) and
+        must OVERRIDE any workset determination, matching box_resolve.detect_box_mode.
+        """
+        from kanibako.workset import create_workset
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        ws_root = tmp_home / "worksets" / "myws"
+        create_workset("myws", ws_root, std)
+
+        # A standalone box dropped INSIDE the workset tree (its own box_data/
+        # marker dir + a ROOT settings.yaml).
+        inner = ws_root / "innerstand"
+        (inner / "box_data").mkdir(parents=True)
+        (inner / "settings.yaml").write_text(
+            'project:\n  mode: "standalone"\n'
+        )
+
+        result = detect_project_mode(inner.resolve(), std, config)
+        assert result.mode is BoxMode.standalone
+        assert result.project_root == inner.resolve()
+
+    def test_workset_box_without_marker_still_named_inside_tree(
+        self, config_file, tmp_home
+    ):
+        """Regression guard for B2b: a REAL workset box (under the workset tree,
+        NO box_data/ marker) STILL resolves as its named workset box — the new
+        top-of-function standalone check keys on the box_data/ marker signal only,
+        so a marker-less in-tree dir is unaffected.
+        """
+        from kanibako.workset import create_workset
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        ws_root = tmp_home / "worksets" / "myws"
+        create_workset("myws", ws_root, std)
+
+        proj_dir = ws_root.resolve() / "workspaces" / "x"
+        proj_dir.mkdir(parents=True)
+
+        result = detect_project_mode(proj_dir, std, config)
+        assert result.mode is BoxMode.named
+
+    def test_connected_external_marker_stays_named_no_dual_registration(
+        self, config_file, tmp_home
+    ):
+        """Anti-dual-registration regression (B2b coverage gap): a standalone box
+        FORCE-CONNECTED into a workset keeps its on-disk marker, but is claimed by
+        the live ``boxes:`` connection — it must resolve as its NAMED workset box,
+        and the top-of-function standalone-marker check must NOT re-import it into
+        the global ``standalone:`` registry (the single-registry invariant — a box
+        lives in EXACTLY ONE registry).  The connected-external check runs BEFORE
+        the marker check precisely so this holds.
+
+        With the OLD order (marker before connected) this FAILS: the marker check
+        fires first, re-registering the box in ``standalone:`` (dual registration)
+        and returning ``standalone`` instead of ``named``.
+        """
+        from kanibako import registry_store
+        from kanibako.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+
+        # A standalone box at an EXTERNAL dir (outside the workset tree): the
+        # in-place marker (box_data/ + root settings.yaml) plus a global
+        # standalone: registration (its pre-connect resolved state).
+        external = (tmp_home / "standalone_box").resolve()
+        (external / "box_data").mkdir(parents=True)
+        (external / "settings.yaml").write_text("project: {}\n")
+        registry_store.register_standalone(
+            std.registry, "kx_standalone_box", external
+        )
+        assert "kx_standalone_box" in registry_store.load_standalone(std.registry)
+
+        # Force-connect: the standalone: entry is DROPPED and a per-workset boxes:
+        # connection entry is written (registration MOVED, not duplicated).
+        add_project(ws, "sb", external, std, force=True)
+        assert (
+            "kx_standalone_box"
+            not in registry_store.load_standalone(std.registry)
+        )
+
+        # WHILE connected (marker still on disk): resolves as its workset box …
+        result = detect_project_mode(external, std, config)
+        assert result.mode is BoxMode.named
+        # … and the marker check did NOT re-register it in standalone:.
+        assert (
+            registry_store.standalone_name_for_root(std.registry, external) is None
+        )
+        # The intrinsic on-disk marker was never removed.
+        assert (external / "box_data").is_dir()
+
 
 class TestFindLocalAncestor:
     """Tests for _find_local_ancestor() one-pass name scan."""
