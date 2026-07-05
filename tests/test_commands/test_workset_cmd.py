@@ -395,7 +395,7 @@ class TestWorksetConnect:
         dir.  P8b/Option A: the override is NO LONGER written to settings.yaml —
         the per-workset registry is the sole connection record."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import read_project_meta
+        from kanibako.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -414,7 +414,7 @@ class TestWorksetConnect:
         # P8b/Option A: no on-disk ``project:`` identity is written for the
         # connected box — the override lives ONLY in the per-workset registry.
         project_toml = ws.projects_dir / "ext" / "settings.yaml"
-        assert read_project_meta(project_toml) is None
+        assert "project" not in load_doc(project_toml)
 
         # The per-workset registry has the connection record: box name → external
         # path (the D10 replacement for the global connected: index).
@@ -431,7 +431,7 @@ class TestWorksetConnect:
         """connect to a dir INSIDE the workset root → normal behavior: a real
         workspaces/{name} dir, no override, no external connection record."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import read_project_meta
+        from kanibako.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -449,8 +449,7 @@ class TestWorksetConnect:
 
         # No workspace override written (settings.yaml not pre-seeded).
         project_toml = ws.projects_dir / "int" / "settings.yaml"
-        meta = read_project_meta(project_toml)
-        assert meta is None
+        assert "project" not in load_doc(project_toml)
 
         # No external connection record for an internal source (the per-workset
         # registry only records EXTERNAL connects; an internal source keeps the

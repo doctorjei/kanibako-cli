@@ -17,7 +17,8 @@ from kanibako.commands.box._lifecycle import (
     run_move,
     run_remap,
 )
-from kanibako.config import load_config, read_project_meta
+from kanibako.config import load_config
+from kanibako.config_io import load_doc
 from kanibako.names import read_names
 from kanibako.paths import (
     BoxMode,
@@ -139,11 +140,11 @@ class TestRemap:
         assert str(new) in names["projects"].values()
 
         # P8b/Option A: the remapped workspace resolves from the registry, not an
-        # on-disk ``resolved.workspace`` (read_project_meta is None).
+        # on-disk ``resolved.workspace`` (no ``project:`` on disk).
         proj = resolve_project(std, config, project_dir=str(new), initialize=False)
         assert proj.project_path == new.resolve()
         assert proj.project_hash == project_hash(str(new.resolve()))
-        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
+        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
 
     def test_remap_external_repoint(self, env):
         """remap on an EXTERNAL-connected project repoints records, no move."""
@@ -239,7 +240,7 @@ class TestConvert:
         # the sparse kuid write), but no on-disk ``project:`` identity — the
         # standalone box is registered in registry.standalone.
         from kanibako.registry_store import load_standalone
-        assert read_project_meta(pdir / "settings.yaml") is None
+        assert "project" not in load_doc(pdir / "settings.yaml")
         assert (pdir / "settings.yaml").is_file()
         assert (pdir / "box_data").is_dir()
         assert any(root == str(pdir) for root in load_standalone(std.registry).values())
@@ -253,7 +254,7 @@ class TestConvert:
         assert proj.metadata_path.parent == std.boxes
         # P8b/Option A: primary identity is the names.yaml registration, not disk.
         assert proj.mode == BoxMode.primary
-        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
+        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
         assert str(pdir) in read_names(std.registry)["projects"].values()
 
     def test_convert_to_workset_inplace_external(self, env):

@@ -134,16 +134,15 @@ class TestBuildEffectiveState:
         spec §0.) The mirror targets the ACTIVE agent; per-agent discrimination
         for a NON-active agent must ride a legal downward source (the system file).
         """
-        from kanibako.config import write_project_meta
+        from kanibako.config import write_project_config
         from kanibako.config_io import dump_doc, load_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         project_toml = tmp_path / "settings.yaml"
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
+        # A minimal box-tier settings file (P8b sparse create writes no identity
+        # section; the box.agent overrides below are what this scoping test cares
+        # about).
+        write_project_config(project_toml, "base:image")
         if settings:
             doc = load_doc(project_toml)
             box = doc.setdefault("box", {})
@@ -419,7 +418,7 @@ class TestXdgFallbackRegression:
         launch) PLUS a declared behavior key with the same token, so the
         expanded value is assertable end-to-end through the display read.
         """
-        from kanibako.config import write_project_meta
+        from kanibako.config import write_project_config
 
         target = MagicMock()
         target.setting_descriptors.return_value = [
@@ -439,11 +438,9 @@ class TestXdgFallbackRegression:
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
         project_toml = proj_dir / "settings.yaml"
-        write_project_meta(
-            project_toml,
-            mode="primary",
-            workspace="/w", shell="/s", vault_ro="/ro", vault_rw="/rw",
-        )
+        # A minimal box-tier settings file (P8b sparse create writes no identity
+        # section); the XDG expansion under test rides the global/agent tiers.
+        write_project_config(project_toml, "base:image")
         return target, AgentConfig(), project_toml, global_toml
 
     def test_stored_xdg_cache_value_with_env_var_set(self, tmp_path, monkeypatch):

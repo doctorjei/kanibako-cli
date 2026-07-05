@@ -138,22 +138,13 @@ class TestNonConformingNameFlagged:
         root.mkdir()
         (root / "box_data").mkdir()
         bad_name = "bad name"  # contains whitespace -> non-conforming
-        # Write meta with the bad name + register it directly (bypassing the
-        # validating create path, as a pre-existing box would be).
-        from kanibako.config import write_project_meta, BOX_META_FILE
-        from kanibako.paths import _standalone_box_paths
-        from kanibako.utils import project_hash
-        shell_p, vro, vrw = _standalone_box_paths(root)
-        write_project_meta(
-            root / BOX_META_FILE,
-            mode="standalone",
-            workspace=str(root / "workspace"),
-            shell=str(shell_p), vault_ro=str(vro), vault_rw=str(vrw),
-            enable_vault=True,
-            metadata=str(root / "box_data"),
-            project_hash=project_hash(str(root.resolve())),
-            name=bad_name,
-        )
+        # Materialize the sparse standalone marker (box_data/ + settings.yaml)
+        # and register the bad name directly (bypassing the validating create
+        # path, as a pre-existing box would be).  P8b/Option A: the name comes
+        # from the registry key, not on-disk meta — the marker file only needs to
+        # exist, and it carries no ``workset.kuid`` so the registry key wins.
+        from kanibako.config import BOX_META_FILE
+        (root / BOX_META_FILE).write_text("")
         registry_store.register_standalone(std.registry, bad_name, root)
 
         with caplog.at_level(logging.WARNING):

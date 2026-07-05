@@ -2427,8 +2427,8 @@ class TestF7HonestResetMessage:
         assert "falls back through the cascade" in msg, msg
 
     def test_scopeless_key_never_claims_cascade_effective(self, tmp_path):
-        # Editor F1: a SCOPELESS key (vault.ro) is read by read_project_meta
-        # / the flat KanibakoConfig from a SINGLE file — NOT the settings cascade.
+        # Editor F1: a SCOPELESS key (vault.ro) is read from a SINGLE settings
+        # file / the flat KanibakoConfig — NOT the settings cascade.
         # So even with cascade inputs holding a lower-tier project.vault_ro,
         # the reset must NOT claim a cascade-derived "effective" (a value from a
         # tier nothing reads). It keeps the cleared-only form.

@@ -31,22 +31,6 @@ from kanibako.paths import (
 from kanibako.workset import add_project, create_workset
 
 
-def _write_primary_meta(std, name, workspace):
-    """Stamp the legacy on-disk PRIMARY identity the PARKED ``import_primary_*``
-    reconcile skeleton reads.
-
-    Sparse create no longer writes ``project:``/``resolved:`` (P8b/Option A), so
-    tests exercising the retained-but-unwired reconcile helpers lay the meta down
-    themselves.
-    """
-    from kanibako.config import BOX_META_FILE, write_project_meta
-    write_project_meta(
-        (std.boxes / name) / BOX_META_FILE,
-        mode="primary", workspace=str(workspace),
-        shell="", vault_ro="", vault_rw="", name=name,
-    )
-
-
 # ---------------------------------------------------------------------------
 # journal.pending_import — the register-only recovery signal (op-typed)
 # ---------------------------------------------------------------------------
@@ -324,70 +308,11 @@ class TestStandaloneImportRecovery:
         assert seed_tripwire["seed"] is False
 
 
-class TestPrimaryImportRecovery:
-    def test_interrupted_import_completes_and_clears_no_seed(
-        self, std, config, project_dir, credentials_dir, capsys, seed_tripwire,
-    ):
-        """PRIMARY import interrupted (entry left, NOT registered): the PARKED
-        reconcile sweep registers + clears; seed NEVER called.  UNCONDITIONAL
-        asserts.  (P8b/Option A: import recovery is no longer wired into a
-        register=True resolve — it lives on the parked reconcile path, the seed of
-        the future ``system recover``.)"""
-        proj = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=True,
-        )
-        name = proj.name
-        box_dir = std.boxes / name
-        # Sparse create wrote no on-disk identity; stamp it for the parked sweep,
-        # then simulate the interrupted import (unregistered + stale entry).
-        _write_primary_meta(std, name, project_dir.resolve())
-        registry_store.save_section(std.registry, "projects", {})
-
-        box_key = str(box_dir.resolve())
-        journal.write_entry(
-            std.journal, box_key, op="import", name=name, mode="primary",
-        )
-        capsys.readouterr()
-
-        assert journal.pending_import(std.journal, box_key) is not None
-        assert registry_store.load_section(std.registry, "projects") == {}
-
-        imported = import_reconcile.reconcile_primary_boxes(
-            std.registry, std.boxes, journal=std.journal,
-        )
-
-        assert imported == [name]
-        registered = registry_store.load_section(std.registry, "projects")
-        assert registered.get(name) == str(project_dir.resolve())
-        assert journal.pending_import(std.journal, box_key) is None
-        assert journal.read_journal(std.journal) == {}
-        assert seed_tripwire["seed"] is False
-
-    def test_reconcile_sweep_clears_stale_entry(
-        self, std, config, project_dir, credentials_dir, capsys, seed_tripwire,
-    ):
-        """The reconcile sweep over an already-registered box clears a stale
-        register->clear-window entry (register-if-absent satisfied → clear)."""
-        proj = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=True,
-        )
-        name = proj.name
-        # Parked-function unit test: stamp the on-disk identity the sweep reads.
-        _write_primary_meta(std, name, project_dir.resolve())
-        box_key = str((std.boxes / name).resolve())
-        journal.write_entry(
-            std.journal, box_key, op="import", name=name, mode="primary",
-        )
-        capsys.readouterr()
-        assert journal.pending_import(std.journal, box_key) is not None
-
-        imported = import_reconcile.reconcile_primary_boxes(
-            std.registry, std.boxes, journal=std.journal,
-        )
-        # Already registered → not re-imported, but the stale entry is cleared.
-        assert imported == []
-        assert journal.pending_import(std.journal, box_key) is None
-        assert seed_tripwire["seed"] is False
+# NOTE (P8c): the PRIMARY import-recovery tests were removed — they exercised
+# ``reconcile_primary_boxes``, which was sequestered out of the live package into
+# ``salvage/primary_reconcile.py`` (a non-shipping frozen reference).  Under
+# Option A primary import recovery is not wired into any live resolve path; the
+# STANDALONE/CONNECT recovery paths above/below remain live and covered.
 
 
 # ---------------------------------------------------------------------------

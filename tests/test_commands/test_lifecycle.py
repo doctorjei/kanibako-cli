@@ -18,7 +18,8 @@ from kanibako.commands.box._lifecycle import (
     execute_lifecycle,
     resolve_lifecycle_target,
 )
-from kanibako.config import load_config, read_project_meta
+from kanibako.config import load_config
+from kanibako.config_io import load_doc
 from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import read_names
 from kanibako.paths import (
@@ -227,12 +228,13 @@ class TestConvertInPlace:
         assert (pdir / "box_data").is_dir()
         assert not (pdir / "box_data" / "settings.yaml").exists()
         # P8b/Option A: no on-disk ``project:`` identity — the marker settings.yaml
-        # exists (materialized by the sparse kuid write) but read_project_meta is
-        # None; the standalone identity lives in registry.standalone + new.name.
+        # exists (materialized by the sparse kuid write) but carries no
+        # ``project:`` section; the standalone identity lives in
+        # registry.standalone + new.name.
         from kanibako.config import read_workset_kuid
         from kanibako.kuid import SENTINEL
         from kanibako.registry_store import load_standalone
-        assert read_project_meta(pdir / "settings.yaml") is None
+        assert "project" not in load_doc(pdir / "settings.yaml")
         assert read_workset_kuid(pdir / "settings.yaml") != SENTINEL
         assert new.mode == BoxMode.standalone
         assert load_standalone(std.registry).get(new.name) == str(pdir)
@@ -283,7 +285,7 @@ class TestConvertInPlace:
         # (2) P8b/Option A: no on-disk ``project:`` identity — the name is a fresh
         #     canonical <kuid>_<leaf> in new.name + registry.standalone (below),
         #     NOT the source's primary name.  The marker settings.yaml is sparse.
-        assert read_project_meta(pdir / "settings.yaml") is None
+        assert "project" not in load_doc(pdir / "settings.yaml")
         new_name = new.name
         assert new_name != src_name
         prefix, _, leaf = new_name.partition("_")
@@ -332,8 +334,8 @@ class TestConvertInPlace:
         assert new.mode is BoxMode.standalone
         assert new.name == "abcde_proj"
         # P8b/Option A: the honored name lives in registry.standalone + new.name,
-        # not an on-disk ``project:`` section (read_project_meta is None).
-        assert read_project_meta(pdir / "settings.yaml") is None
+        # not an on-disk ``project:`` section (no ``project:`` on disk).
+        assert "project" not in load_doc(pdir / "settings.yaml")
         standalone = load_standalone(std.registry)
         assert standalone["abcde_proj"] == str(pdir)
 
@@ -384,8 +386,8 @@ class TestConvertInPlace:
         assert new.metadata_path.is_dir()
         assert new.metadata_path.parent == std.boxes
         # P8b/Option A: a primary box no longer self-describes on disk — identity
-        # is the names.yaml registration (asserted below); read_project_meta None.
-        assert read_project_meta(new.metadata_path / "settings.yaml") is None
+        # is the names.yaml registration (asserted below); no ``project:`` on disk.
+        assert "project" not in load_doc(new.metadata_path / "settings.yaml")
         # old in-tree metadata gone.
         assert not (pdir / "box_data").exists()
         # name registered.
@@ -563,8 +565,8 @@ class TestMoveSameOwner:
         assert not pdir.exists()
         # P8b/Option A: the moved box's workspace is the names.yaml registration
         # (updated below), not an on-disk ``resolved.workspace``.  The returned
-        # state carries the new location; read_project_meta is None.
-        assert read_project_meta(new.metadata_path / "settings.yaml") is None
+        # state carries the new location; no ``project:`` on disk.
+        assert "project" not in load_doc(new.metadata_path / "settings.yaml")
         assert new.workspace_path == dest.resolve()
         # names.yaml updated.
         assert str(dest) in read_names(std.registry)["projects"].values()
@@ -611,7 +613,7 @@ class TestCombo:
         # P8b/Option A: the recorded workspace is the returned state's in-tree dir
         # (an internal box records ``workspaces/<name>``), not an on-disk section.
         assert new.workspace_path == landed.resolve()
-        assert read_project_meta(ws.projects_dir / "proj" / "settings.yaml") is None
+        assert "project" not in load_doc(ws.projects_dir / "proj" / "settings.yaml")
 
 
 # ---------------------------------------------------------------------------
@@ -802,7 +804,7 @@ class TestUnwind:
         dest = tmp_home / "unwind_dest"
 
         names_before = dict(read_names(std.registry)["projects"])
-        meta_before = read_project_meta(state.metadata_path / "settings.yaml")
+        meta_before = load_doc(state.metadata_path / "settings.yaml")
 
         # Force the standalone ownership step to raise AFTER file move + name
         # work has begun.
@@ -822,7 +824,7 @@ class TestUnwind:
         assert pdir.is_dir() and (pdir / "file.txt").read_text() == "unwind"
         # Names + metadata unchanged.
         assert dict(read_names(std.registry)["projects"]) == names_before
-        assert read_project_meta(state.metadata_path / "settings.yaml") == meta_before
+        assert load_doc(state.metadata_path / "settings.yaml") == meta_before
 
     def test_workset_failure_unwinds_registration(self, env, monkeypatch):
         """A failure after add_project unwinds the workset registration."""

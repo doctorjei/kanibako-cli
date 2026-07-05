@@ -100,7 +100,6 @@ class TestProjectMeta:
     def test_init_sparse_no_project_meta(self, config_file, tmp_home, credentials_dir):
         """P8b/Option A: a default-vault PRIMARY create writes NO ``project:``/
         ``resolved:`` identity — identity lives in the registry, not on disk."""
-        from kanibako.config import read_project_meta
         from kanibako.config_io import load_doc
         from kanibako.names import read_names
         config = load_config(config_file)
@@ -112,7 +111,7 @@ class TestProjectMeta:
         # Sparse create with default vault writes NOTHING to settings.yaml.
         assert not project_toml.exists()
         # No self-describing identity is recoverable from disk.
-        assert read_project_meta(project_toml) is None
+        assert "project" not in load_doc(project_toml)
         if project_toml.exists():  # (guards a future non-default write)
             doc = load_doc(project_toml)
             assert "project" not in doc
@@ -193,17 +192,14 @@ class TestProjectMeta:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
         default_shell = proj.shell_path
 
-        # Editing the stored ``shell`` field to a custom path...
+        # Hand-editing a stale ``resolved.shell`` field into settings.yaml (as a
+        # legacy/tampered file might carry)...
         custom_shell = tmp_home / "custom_shell"
-        from kanibako.config import write_project_meta
-        write_project_meta(
-            proj.metadata_path / "settings.yaml",
-            mode="primary",
-            workspace=str(proj.project_path),
-            shell=str(custom_shell),
-            vault_ro=str(proj.vault_ro_path),
-            vault_rw=str(proj.vault_rw_path),
-        )
+        from kanibako.config_io import dump_doc, load_doc
+        toml = proj.metadata_path / "settings.yaml"
+        doc = load_doc(toml)
+        doc["resolved"] = {"shell": str(custom_shell)}
+        dump_doc(toml, doc)
 
         # ...is now IGNORED for resolution: home stays the default location.
         proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
@@ -217,7 +213,7 @@ class TestProjectMeta:
         (the standalone marker) via the sparse ``workset.kuid`` write, but writes
         NO ``project:``/``resolved:`` identity — the name derives from the kuid +
         ``registry.standalone``."""
-        from kanibako.config import read_project_meta, read_workset_kuid
+        from kanibako.config import read_workset_kuid
         from kanibako.config_io import load_doc
         from kanibako.kuid import SENTINEL
         from kanibako.paths import resolve_standalone_project
@@ -233,7 +229,6 @@ class TestProjectMeta:
         doc = load_doc(project_toml)
         assert "project" not in doc
         assert "resolved" not in doc
-        assert read_project_meta(project_toml) is None
         # The kuid IS persisted sparsely (the stable cross-move identity handle).
         assert read_workset_kuid(project_toml) != SENTINEL
 
@@ -243,7 +238,6 @@ class TestProjectMeta:
         """P8b/Option A: a default-vault NAMED create writes NO ``project:``/
         ``resolved:`` identity — the box's membership lives in the workset's
         per-workset ``boxes:`` registry."""
-        from kanibako.config import read_project_meta
         from kanibako.config_io import load_doc
         from kanibako.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
@@ -260,7 +254,7 @@ class TestProjectMeta:
         project_toml = proj.metadata_path / "settings.yaml"
         # Sparse create with default vault writes nothing to settings.yaml.
         assert not project_toml.exists()
-        assert read_project_meta(project_toml) is None
+        assert "project" not in load_doc(project_toml)
         if project_toml.exists():
             doc = load_doc(project_toml)
             assert "project" not in doc
@@ -273,7 +267,6 @@ class TestProjectMeta:
         the ``box:`` table with NO ``project:``/``resolved:`` section alongside."""
         from kanibako.config import (
             load_merged_config,
-            read_project_meta,
             write_project_config,
         )
         from kanibako.config_io import load_doc
@@ -293,7 +286,6 @@ class TestProjectMeta:
         doc = load_doc(project_toml)
         assert "project" not in doc
         assert "resolved" not in doc
-        assert read_project_meta(project_toml) is None
 
     # The stored/computed global_shared/local_shared paths were removed in
     # 1.6.0 (Part 4): no ``shared/`` dir exists in the target tree, so the
@@ -656,20 +648,8 @@ class TestResolveProjectHomeGuard:
         boxes_dir = std.boxes / "home"
         boxes_dir.mkdir(parents=True)
         (boxes_dir / "shell").mkdir()
-        # Write a minimal settings.yaml so resolve_project reads stored paths.
-        from kanibako.config import write_project_meta
-        write_project_meta(
-            boxes_dir / "settings.yaml",
-            mode="primary",
-            workspace=str(home.resolve()),
-            shell=str(boxes_dir / "shell"),
-            vault_ro=str(home / "vault" / "ro"),
-            vault_rw=str(home / "vault" / "rw"),
-            enable_vault=True,
-            metadata=str(boxes_dir),
-            project_hash=project_hash(str(home.resolve())),
-            name="home",
-        )
+        # P8b/Option A: identity lives in the registry (written above); the box
+        # dir + registration are the whole story — no on-disk project meta.
 
         # Should not raise — project already exists.
         proj = resolve_project(std, config, project_dir=str(home), initialize=True)
@@ -1369,7 +1349,8 @@ class TestP5aCreateThenResolve:
         """enable_vault is a box-scope read decoupled from the project: identity
         (P2/P5a).  A settings.yaml with box.enable_vault=False but NO project.mode
         still yields enable_vault=False on resolve — proving the read no longer
-        goes through read_project_meta's project.mode gate."""
+        goes through the old project.mode identity gate (it is a plain box-scope
+        read via read_box_enable_vault)."""
         from kanibako.config import BOX_META_FILE, dump_doc
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1395,21 +1376,22 @@ class TestP5aCreateThenResolve:
         (Mutation target: neuter the registry read → this returns the settings
         workspace instead → RED.  Covers the otherwise-vacuous new branch.)"""
         from kanibako import workset_registry
-        from kanibako.config import BOX_META_FILE, write_project_meta
-        from kanibako.config_io import load_doc
+        from kanibako.config import BOX_META_FILE
+        from kanibako.config_io import dump_doc, load_doc
         from kanibako.paths import iter_projects
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # A primary box dir whose settings.yaml workspace is path A.
+        # A primary box dir whose settings.yaml workspace is path A (a legacy
+        # ``resolved.workspace`` a re-added fallback would read — the mutation
+        # target).
         box_dir = std.boxes / "mybox"
         box_dir.mkdir(parents=True)
         settings_ws = tmp_home / "settings_ws"
-        write_project_meta(
-            box_dir / BOX_META_FILE, mode="primary",
-            workspace=str(settings_ws), shell="", vault_ro="", vault_rw="",
-            name="mybox",
-        )
+        dump_doc(box_dir / BOX_META_FILE, {
+            "project": {"mode": "primary", "name": "mybox"},
+            "resolved": {"workspace": str(settings_ws)},
+        })
         # Register a DIFFERENT path B in the PRIMARY per-workset registry.
         registry_ws = tmp_home / "registry_ws"
         reg_path = workset_registry.resolve_workset_registry_path(
@@ -1431,20 +1413,22 @@ class TestP5aCreateThenResolve:
         breadcrumb fallbacks are DROPPED.  (Mutation target: re-add a
         settings.yaml-workspace fallback → this box would list ``settings_ws``
         instead of ``None`` → RED.)"""
-        from kanibako.config import BOX_META_FILE, write_project_meta
+        from kanibako.config import BOX_META_FILE
+        from kanibako.config_io import dump_doc
         from kanibako.paths import iter_projects
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # A primary box dir with a settings.yaml workspace but NO registry entry.
+        # A primary box dir with a legacy settings.yaml workspace but NO registry
+        # entry (the mutation target: a re-added settings-workspace fallback would
+        # read this and list ``settings_ws`` instead of ``None``).
         box_dir = std.boxes / "unregbox"
         box_dir.mkdir(parents=True)
         settings_ws = tmp_home / "settings_ws"
-        write_project_meta(
-            box_dir / BOX_META_FILE, mode="primary",
-            workspace=str(settings_ws), shell="", vault_ro="", vault_rw="",
-            name="unregbox",
-        )
+        dump_doc(box_dir / BOX_META_FILE, {
+            "project": {"mode": "primary", "name": "unregbox"},
+            "resolved": {"workspace": str(settings_ws)},
+        })
 
         results = dict(iter_projects(std, config))
         # No registry membership → no resolvable workspace → None (NOT settings_ws).

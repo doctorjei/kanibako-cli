@@ -84,8 +84,9 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # §0): the project mode is the RO identity anchor ``meta.box.mode`` (surfacing
     # the runtime-resolved ``@meta.runtime.project_type``), set by the construct-
     # time/bootstrap layer ([project].mode at box creation), NOT overridable via
-    # ``config set``. The on-disk [project].mode write/read (write_project_meta /
-    # read_project_meta) — the bootstrap identity write + detection input — stays.
+    # ``config set``. The mode is not persisted to disk (P8b sparse create wrote
+    # no ``project:`` section; ``read_project_meta``/``write_project_meta`` were
+    # deleted in P8c) — it derives from ``box_resolve`` at resolve time.
     # Vault. ``enable_vault`` migrated to the box-scope key ``box.enable_vault``
     # (P2 clean break — no ``vault.enabled`` alias); ``vault.ro``/``vault.rw``
     # remain project-section scopeless keys until P5.
@@ -207,13 +208,12 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # ``enable_vault`` is the box-scope key ``box.enable_vault`` (P2 clean
     # break): it routes to the ``box:`` table nested slot ``enable_vault`` (the
     # same nested-settings pattern as ``box.image``), read back by
-    # read_project_meta() from ``box.enable_vault`` — NO ``project`` fallback.
+    # read_box_enable_vault() from ``box.enable_vault`` — NO ``project`` fallback.
     # ``vault.ro``/``vault.rw`` stay in the [project] table until P5.
     # ``mode`` removed from the settable routing table (block B1, spec §2b L486 /
     # §0 meta-RO): the project mode is the RO identity anchor ``meta.box.mode``,
-    # set by the bootstrap layer at box creation, never via ``config set``. The
-    # on-disk [project].mode write/read (write_project_meta / read_project_meta)
-    # — bootstrap identity + detection input — is untouched.
+    # never via ``config set``. The mode is not persisted to disk (P8b sparse
+    # create); it derives from ``box_resolve`` at resolve time.
     "box.enable_vault": (("box",), "enable_vault"),
     "vault.ro": (("project",), "vault_ro"),
     "vault.rw": (("project",), "vault_rw"),
@@ -1638,8 +1638,8 @@ def reset_config_value(
         # ({system,agent,workset,box}.*) actually READS through the
         # assemble/merge cascade — so only for those is the assembled snapshot the
         # key's real read path. A SCOPELESS key (``vault.*``, ``allow_helpers``,
-        # ``model``/``start_mode``/``autonomous``) is read by ``read_project_meta``
-        # / the flat ``KanibakoConfig`` (a SINGLE file, NOT the cascade), so a
+        # ``model``/``start_mode``/``autonomous``) is read from a single settings
+        # file / the flat ``KanibakoConfig`` (NOT the cascade), so a
         # cascade-derived "effective" would name a value from a tier NOTHING reads
         # — a wrong claim. Those keep the cleared-only form. This is the SAME token
         # test that picks ``dest`` above (the write path and the read path agree).

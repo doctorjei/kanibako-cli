@@ -4,7 +4,9 @@ On-disk metadata is authoritative; the registry is a derived index.  When
 detection/resolution finds an on-disk box/workset/project that is NOT in the
 registry, it is imported (registered + an ALERT to stderr) with no confirmation;
 a NAME collision against a different root/path REFUSES the import (no mutation).
-These tests cover all three modes (standalone, named, primary) plus idempotency.
+These tests cover the two live modes (standalone, named) plus idempotency, and
+assert that a dropped-in PRIMARY box is NOT rediscovered (P8b/Option A — the
+primary reconcile skeleton was sequestered to ``salvage/primary_reconcile.py``).
 """
 
 from __future__ import annotations
@@ -20,22 +22,6 @@ from kanibako.paths import (
     resolve_standalone_project,
 )
 from kanibako.workset import create_workset
-
-
-def _write_primary_meta(std, name, workspace):
-    """Lay down the legacy on-disk PRIMARY identity that the PARKED
-    ``import_primary_*`` reconcile skeleton reads.
-
-    Sparse create no longer writes ``project:``/``resolved:`` (P8b/Option A), so
-    these direct unit tests of the retained-but-unwired reconcile helpers stamp
-    the meta themselves to exercise the functions in isolation.
-    """
-    from kanibako.config import BOX_META_FILE, write_project_meta
-    write_project_meta(
-        (std.boxes / name) / BOX_META_FILE,
-        mode="primary", workspace=str(workspace),
-        shell="", vault_ro="", vault_rw="", name=name,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,64 +270,8 @@ class TestPrimaryBoxImport:
         assert registry_store.load_section(std.registry, "projects") == {}
         assert "Imported primary box" not in capsys.readouterr().err
 
-    def test_reconcile_scan_imports_unregistered(
-        self, std, config, project_dir, credentials_dir, capsys,
-    ):
-        # PARKED-function unit test (no longer wired into resolve): stamp the
-        # legacy on-disk identity the reconcile skeleton reads.
-        proj = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=True,
-        )
-        name = proj.name
-        _write_primary_meta(std, name, project_dir.resolve())
-        registry_store.save_section(std.registry, "projects", {})
-        capsys.readouterr()
-
-        imported = import_reconcile.reconcile_primary_boxes(
-            std.registry, std.boxes,
-        )
-        assert imported == [name]
-        assert registry_store.load_section(std.registry, "projects").get(
-            name
-        ) == str(project_dir.resolve())
-        assert f"Imported primary box '{name}'" in capsys.readouterr().err
-
-    def test_reconcile_idempotent_no_op(
-        self, std, config, project_dir, credentials_dir, capsys,
-    ):
-        # PARKED-function unit test: with the box already registered to its own
-        # workspace, the reconcile scan is a silent no-op.
-        proj = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=True,
-        )
-        _write_primary_meta(std, proj.name, project_dir.resolve())
-        before = registry_store.load_section(std.registry, "projects")
-        capsys.readouterr()
-
-        assert import_reconcile.reconcile_primary_boxes(std.registry, std.boxes) == []
-        assert registry_store.load_section(std.registry, "projects") == before
-        assert "Imported" not in capsys.readouterr().err
-
-    def test_name_collision_refuses(
-        self, std, config, project_dir, credentials_dir,
-    ):
-        # PARKED-function unit test: stamp the on-disk identity, then register the
-        # name to a DIFFERENT workspace so the import refuses.
-        proj = resolve_project(
-            std, config, project_dir=str(project_dir), initialize=True,
-        )
-        name = proj.name
-        _write_primary_meta(std, name, project_dir.resolve())
-        registry_store.save_section(
-            std.registry, "projects", {name: "/some/other/workspace"},
-        )
-        box_dir = std.boxes / name
-        with pytest.raises(ImportConflictError, match="rename"):
-            import_reconcile.import_primary_box(std.registry, box_dir)
-        assert registry_store.load_section(std.registry, "projects") == {
-            name: "/some/other/workspace"
-        }
-
-    def test_no_boxes_dir_returns_empty(self, std, config, tmp_home):
-        missing = tmp_home / "no-boxes"
-        assert import_reconcile.reconcile_primary_boxes(std.registry, missing) == []
+    # NOTE (P8c): the direct unit tests of ``import_primary_box`` /
+    # ``reconcile_primary_boxes`` were removed — those functions were sequestered
+    # out of the live package into ``salvage/primary_reconcile.py`` (a
+    # non-shipping frozen reference).  The live-path assertion above (a dropped-in
+    # box is NOT rediscovered) is the behavior that matters here.

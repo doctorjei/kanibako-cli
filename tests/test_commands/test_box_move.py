@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 
 from kanibako.commands.box._lifecycle import run_move
-from kanibako.config import load_config, read_project_meta
+from kanibako.config import load_config
+from kanibako.config_io import load_doc
 from kanibako.names import read_names
 from kanibako.paths import load_std_paths, resolve_project
 from kanibako.utils import project_hash
@@ -53,7 +54,7 @@ class TestBoxMove:
         assert names["projects"].get(proj.name) == str(dest)
         assert proj.project_path == dest.resolve()
         assert proj.project_hash == project_hash(str(dest.resolve()))
-        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
+        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
 
     def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
         """move with a missing path returns an error (no cwd fallback)."""

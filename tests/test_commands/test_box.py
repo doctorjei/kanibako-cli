@@ -778,7 +778,8 @@ class TestBoxDuplicateCrossMode:
         ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
         as a standalone, since primary boxes use ``names.yaml``)."""
         from kanibako.commands.box import run_duplicate
-        from kanibako.config import BOX_META_FILE, read_project_meta
+        from kanibako.config import BOX_META_FILE
+        from kanibako.config_io import load_doc
         from kanibako.paths import BoxMode, detect_project_mode
         from kanibako.registry_store import load_standalone
 
@@ -803,10 +804,10 @@ class TestBoxDuplicateCrossMode:
 
         # (2) P8b/Option A: no on-disk ``project:`` identity — the marker
         #     settings.yaml lives at the ROOT (drift I) and is materialized by the
-        #     sparse kuid write; read_project_meta is None.
+        #     sparse kuid write; no ``project:`` section on disk.
         from kanibako.config import read_workset_kuid
         from kanibako.kuid import SENTINEL
-        assert read_project_meta(dst_dir / BOX_META_FILE) is None
+        assert "project" not in load_doc(dst_dir / BOX_META_FILE)
         assert (dst_dir / BOX_META_FILE).is_file()
         assert read_workset_kuid(dst_dir / BOX_META_FILE) != SENTINEL
 
