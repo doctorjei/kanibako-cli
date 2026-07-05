@@ -669,6 +669,13 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # Full launch cascade so the honest cleared-message can name the
         # now-effective value + source tier (item 1) — mirrors the workset SET
         # handler (system settings file + this workset file; no box scope here).
+        # Bug 2: thread the context-light CORE box-mount floor registry too, for
+        # message consistency with the box handler. Workset CONTAINS box (§0), so a
+        # DOWNWARD ``workset config reset box.bindings.{ro,rw}.<key>`` is permitted;
+        # if the workset file held such a downward default, the honest cleared-
+        # message names the reverted-to FLOOR. ``core_default_bind_keys`` is
+        # host-free (no proj/std probe).
+        from kanibako.core_defaults import core_default_bind_keys
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
@@ -676,6 +683,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             command_scope=ConfigLevel.workset,
             cascade_system_path=std.settings,
             cascade_workset_path=ws_config,
+            default_categories=dict(core_default_bind_keys()),
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

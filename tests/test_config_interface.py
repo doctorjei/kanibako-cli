@@ -1654,7 +1654,14 @@ class TestRepointFromCascade:
             "box.bindings.rw.vault",
             config_path=box_f, command_scope=ConfigLevel.box,
         )
-        assert msg == "Reset box.bindings.rw.vault"
+        # Bug 2: the honest cleared-message form. No floor registry is threaded on
+        # THIS call, so there is no reverted-to floor to name → the cleared-only
+        # clause (same information as the old plain "Reset", via the honest
+        # formatter).
+        assert msg == (
+            "Cleared box.bindings.rw.vault set on the box scope; "
+            "it now falls back through the cascade."
+        )
         doc = load_doc(box_f)
         assert "vault" not in doc.get("box", {}).get("bindings", {}).get("rw", {})
         # ROUNDTRIP: with the override gone the cascade tuple is the base again —
@@ -1676,6 +1683,61 @@ class TestRepointFromCascade:
             config_path=box_f, command_scope=ConfigLevel.box,
         )
         assert msg == "No override for box.bindings.rw.vault"
+
+    def test_reset_core_bind_names_reverted_to_floor(self, tmp_path):
+        """Bug 2 — a CORE bind reset (``box.bindings.rw.home``) with the core-bind
+        floor registry threaded NAMES the reverted-to descriptor floor
+        (dest [+ opts]); the set-time placeholder host_src is NEVER printed."""
+        from kanibako.core_defaults import (
+            FLOOR_PLACEHOLDER_SRC,
+            core_default_bind_keys,
+        )
+
+        box_f = tmp_path / "box-settings.yaml"
+        reg = dict(core_default_bind_keys())
+        # The core bind ``home`` lives only in the launch floor; thread the core
+        # registry into the SET so the must-exist gate passes (the real box handler
+        # does exactly this) — the write lands in the box file.
+        set_msg = set_config_value(
+            "box.bindings.rw.home", "/newhome",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_box_path=box_f, default_categories=reg,
+        )
+        assert not set_msg.startswith("Error:"), set_msg
+        msg = reset_config_value(
+            "box.bindings.rw.home",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            default_categories=reg,
+        )
+        # The reverted-to floor's static box_dest is named; the sentinel is not.
+        _placeholder, dest, opts = reg["box.bindings.rw.home"]
+        assert "effective is now" in msg, msg
+        assert dest in msg, msg
+        assert opts in msg, msg
+        assert FLOOR_PLACEHOLDER_SRC not in msg, msg
+        assert "descriptor floor" in msg, msg
+        # The override is really gone.
+        assert "home" not in (
+            load_doc(box_f).get("box", {}).get("bindings", {}).get("rw", {})
+        )
+
+    def test_reset_non_core_category_key_stays_cleared_only(self, tmp_path):
+        """Bug 2 — a NON-core category key reset (registry threaded but the key is
+        absent from it) has no floor to name → the cleared-only honest form (the
+        same information as the old plain "Reset", never a fabricated value)."""
+        from kanibako.core_defaults import core_default_bind_keys
+
+        box_f = tmp_path / "box-settings.yaml"
+        dump_doc(box_f, {"box": {"caches": {"foo": ["/src", "/dest"]}}})
+        msg = reset_config_value(
+            "box.caches.foo",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            default_categories=dict(core_default_bind_keys()),
+        )
+        assert msg == (
+            "Cleared box.caches.foo set on the box scope; "
+            "it now falls back through the cascade."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -3044,12 +3106,17 @@ class TestCoreBindGetReset:
             global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
         )
         assert val == str(["/newvault", "/vault/ro", "ro"])
-        # RESET removes the box-scope tuple.
+        # RESET removes the box-scope tuple. Bug 2: no floor registry threaded on
+        # this call → the honest cleared-only form (same info as the old plain
+        # "Reset", via the honest formatter).
         msg = reset_config_value(
             "box.bindings.ro.vault_ro", config_path=box_f,
             command_scope=ConfigLevel.box,
         )
-        assert msg == "Reset box.bindings.ro.vault_ro"
+        assert msg == (
+            "Cleared box.bindings.ro.vault_ro set on the box scope; "
+            "it now falls back through the cascade."
+        )
         assert load_doc(box_f) == {}
         assert get_config_value(
             "box.bindings.ro.vault_ro",

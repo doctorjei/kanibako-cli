@@ -1849,10 +1849,20 @@ def reset_config_value(
     # tuple (a higher scope's or the launch floor's) resurfaces at the next
     # assemble. Before this branch a category key fell through to the routing
     # table and mis-reported "unknown config key".
+    #
+    # The honest cleared-message (Bug 2) names the reverted-to FLOOR value when the
+    # caller threads the context-light core-bind registry (``default_categories`` =
+    # ``core_default_bind_keys()``): a CORE bind (``box.bindings.{ro,rw}.<key>``)
+    # reverts to the launch descriptor floor, so ``_floor_bind_display`` reports its
+    # static box_dest+options (the host_src is a set-time placeholder, re-resolved at
+    # launch — never printed). A NON-core category key (a user ``box.caches.foo``, or
+    # a caller that omits the registry) → ``None`` → the cleared-only form, same
+    # information as the old plain "Reset" but via the honest formatter.
     if _is_path_category_key(canonical):
         tail = canonical.split(".")
         if _remove_nested_toml_key(config_path, tuple(tail[:-1]), tail[-1]):
-            return f"Reset {canonical}"
+            floor = _floor_bind_display(canonical, default_categories)
+            return _honest_reset_message(canonical, command_scope, floor)
         return f"No override for {canonical}"
 
     # system.default_agent — a SETTING (F3), symmetric with set: remove it from
