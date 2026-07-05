@@ -322,6 +322,38 @@ def write_project_meta(
     dump_doc(path, existing)
 
 
+def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
+    """Sparsely persist the box-scope ``box.enable_vault`` key at *path*.
+
+    The single writer for ``box.enable_vault`` at box create/move time (P8b —
+    extracted from the retired ``write_project_meta`` identity write so create no
+    longer emits a ``project:``/``resolved:`` section: box identity lives in the
+    registries (``box_resolve``), not on disk — Option A).  Sparse, matching
+    ``config set box.enable_vault``:
+
+    * ``enable_vault`` explicitly ``False`` → write ``box.enable_vault = False``
+      into the ``box:`` table (created + merged beside ``box.image``);
+    * the default ``True`` → write NOTHING, and DROP any stale
+      ``box.enable_vault`` override (an empty ``box:`` table is never
+      materialized, and a would-be no-op leaves the file untouched — so a
+      default-vault primary/named box gets no settings.yaml written here).
+
+    Paired reader: :func:`read_box_enable_vault`.
+    """
+    existing = load_doc(path)
+    ev = coerce_bool(enable_vault)
+    if ev is False:
+        existing.setdefault("box", {})["enable_vault"] = False
+        dump_doc(path, existing)
+        return
+    # Default (True): only rewrite when there is a stale override to drop —
+    # otherwise leave the file exactly as-is (no empty file materialized).
+    box_sec = existing.get("box")
+    if isinstance(box_sec, dict) and "enable_vault" in box_sec:
+        box_sec.pop("enable_vault", None)
+        dump_doc(path, existing)
+
+
 def read_project_meta(path: Path) -> dict | None:
     """Read stored project metadata from settings.yaml.
 

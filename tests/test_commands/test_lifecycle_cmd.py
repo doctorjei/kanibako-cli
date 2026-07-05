@@ -20,6 +20,7 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.config import load_config, read_project_meta
 from kanibako.names import read_names
 from kanibako.paths import (
+    BoxMode,
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
@@ -137,10 +138,12 @@ class TestRemap:
         names = read_names(std.registry)
         assert str(new) in names["projects"].values()
 
+        # P8b/Option A: the remapped workspace resolves from the registry, not an
+        # on-disk ``resolved.workspace`` (read_project_meta is None).
         proj = resolve_project(std, config, project_dir=str(new), initialize=False)
-        meta = read_project_meta(proj.metadata_path / "settings.yaml")
-        assert meta["workspace"] == str(new.resolve())
-        assert meta["project_hash"] == project_hash(str(new.resolve()))
+        assert proj.project_path == new.resolve()
+        assert proj.project_hash == project_hash(str(new.resolve()))
+        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
 
     def test_remap_external_repoint(self, env):
         """remap on an EXTERNAL-connected project repoints records, no move."""
@@ -232,10 +235,14 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_standalone=True))
         assert rc == 0
-        # Drift I: settings.yaml at the ROOT (box_data/ is the marker dir).
-        meta = read_project_meta(pdir / "settings.yaml")
-        assert meta["mode"] == "standalone"
+        # P8b/Option A: Drift I marker settings.yaml at the ROOT (materialized by
+        # the sparse kuid write), but no on-disk ``project:`` identity — the
+        # standalone box is registered in registry.standalone.
+        from kanibako.registry_store import load_standalone
+        assert read_project_meta(pdir / "settings.yaml") is None
+        assert (pdir / "settings.yaml").is_file()
         assert (pdir / "box_data").is_dir()
+        assert any(root == str(pdir) for root in load_standalone(std.registry).values())
 
     def test_convert_to_default_inplace(self, env):
         config, std, tmp_home = env
@@ -244,8 +251,10 @@ class TestConvert:
         assert rc == 0
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
         assert proj.metadata_path.parent == std.boxes
-        meta = read_project_meta(proj.metadata_path / "settings.yaml")
-        assert meta["mode"] == "primary"
+        # P8b/Option A: primary identity is the names.yaml registration, not disk.
+        assert proj.mode == BoxMode.primary
+        assert read_project_meta(proj.metadata_path / "settings.yaml") is None
+        assert str(pdir) in read_names(std.registry)["projects"].values()
 
     def test_convert_to_workset_inplace_external(self, env):
         config, std, tmp_home = env
@@ -255,9 +264,16 @@ class TestConvert:
         assert rc == 0
         ws2 = load_workset(ws.root)
         assert any(p.name == "proj" for p in ws2.projects)
-        # in-place → workspace stays outside → external.
-        meta = read_project_meta(ws.projects_dir / "proj" / "settings.yaml")
-        assert meta["workspace"] == str(pdir.resolve())
+        # P8b/Option A: the external workspace is recorded in the workset's
+        # per-workset ``boxes:`` registry, not an on-disk ``resolved.workspace``.
+        from kanibako import workset_registry
+        from kanibako.config_io import load_doc
+        reg = workset_registry.load_workset_boxes(
+            workset_registry.resolve_workset_registry_path(
+                ws.root, load_doc(ws.root / "settings.yaml"),
+            )
+        )
+        assert reg.get("proj") == str(pdir.resolve())
 
     def test_convert_move_path(self, env):
         config, std, tmp_home = env
@@ -287,12 +303,11 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=_BARE_MOVE))
         assert rc == 1
-        # nothing changed.
-        meta = read_project_meta(
-            resolve_project(std, config, project_dir=str(pdir),
-                            initialize=False).metadata_path / "settings.yaml"
-        )
-        assert meta["mode"] == "primary"
+        # nothing changed: still a primary box, no standalone marker created.
+        assert resolve_project(
+            std, config, project_dir=str(pdir), initialize=False,
+        ).mode == BoxMode.primary
+        assert not (pdir / "box_data").exists()
 
     def test_convert_requires_target(self, env):
         config, std, tmp_home = env
@@ -355,12 +370,11 @@ class TestLockGuard:
         assert rc == 2
         assert pdir.is_dir() and (pdir / "file.txt").read_text() == "live"
         assert not dest.exists()
-        # Ownership unchanged (still default).
-        meta = read_project_meta(
-            resolve_project(std, config, project_dir=str(pdir),
-                            initialize=False).metadata_path / "settings.yaml"
-        )
-        assert meta["mode"] == "primary"
+        # Ownership unchanged (still default): resolves as primary, no marker.
+        assert resolve_project(
+            std, config, project_dir=str(pdir), initialize=False,
+        ).mode == BoxMode.primary
+        assert not (pdir / "box_data").exists()
 
     def test_convert_locked_force_proceeds(self, env):
         config, std, tmp_home = env

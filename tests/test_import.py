@@ -22,6 +22,22 @@ from kanibako.paths import (
 from kanibako.workset import create_workset
 
 
+def _write_primary_meta(std, name, workspace):
+    """Lay down the legacy on-disk PRIMARY identity that the PARKED
+    ``import_primary_*`` reconcile skeleton reads.
+
+    Sparse create no longer writes ``project:``/``resolved:`` (P8b/Option A), so
+    these direct unit tests of the retained-but-unwired reconcile helpers stamp
+    the meta themselves to exercise the functions in isolation.
+    """
+    from kanibako.config import BOX_META_FILE, write_project_meta
+    write_project_meta(
+        (std.boxes / name) / BOX_META_FILE,
+        mode="primary", workspace=str(workspace),
+        shell="", vault_ro="", vault_rw="", name=name,
+    )
+
+
 # ---------------------------------------------------------------------------
 # STANDALONE
 # ---------------------------------------------------------------------------
@@ -244,35 +260,40 @@ class TestNamedWorksetImport:
 # ---------------------------------------------------------------------------
 
 class TestPrimaryBoxImport:
-    def test_dropin_import_via_resolve(
+    def test_dropin_not_rediscovered_option_a(
         self, std, config, project_dir, credentials_dir, capsys,
     ):
-        # Create a primary box, then drop the registry's projects entry so the
-        # on-disk box dir (with settings.yaml) survives unregistered.
+        """P8b/Option A: an unregistered on-disk PRIMARY box is NOT auto-
+        rediscovered on a normal (register=True) resolve — the registry is the
+        sole identity authority and a sparse-created box does not self-describe on
+        disk, so there is nothing to re-import.  (``system recover`` is the future
+        remedy.)"""
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
-        name = proj.name
+        assert proj.name  # created + registered
+        # Drop the registry entry — the on-disk box dir survives, unregistered.
         registry_store.save_section(std.registry, "projects", {})
         capsys.readouterr()
 
-        # Re-resolving the same workspace re-discovers + imports the box.
+        # Re-resolving the same workspace does NOT silently re-register the box.
         proj2 = resolve_project(
             std, config, project_dir=str(project_dir), initialize=False,
         )
-        assert proj2.name == name
-        assert registry_store.load_section(std.registry, "projects").get(
-            name
-        ) == str(project_dir.resolve())
-        assert f"Imported primary box '{name}'" in capsys.readouterr().err
+        assert proj2.name == ""  # not recovered from disk
+        assert registry_store.load_section(std.registry, "projects") == {}
+        assert "Imported primary box" not in capsys.readouterr().err
 
     def test_reconcile_scan_imports_unregistered(
         self, std, config, project_dir, credentials_dir, capsys,
     ):
+        # PARKED-function unit test (no longer wired into resolve): stamp the
+        # legacy on-disk identity the reconcile skeleton reads.
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
         name = proj.name
+        _write_primary_meta(std, name, project_dir.resolve())
         registry_store.save_section(std.registry, "projects", {})
         capsys.readouterr()
 
@@ -288,9 +309,12 @@ class TestPrimaryBoxImport:
     def test_reconcile_idempotent_no_op(
         self, std, config, project_dir, credentials_dir, capsys,
     ):
-        resolve_project(
+        # PARKED-function unit test: with the box already registered to its own
+        # workspace, the reconcile scan is a silent no-op.
+        proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
+        _write_primary_meta(std, proj.name, project_dir.resolve())
         before = registry_store.load_section(std.registry, "projects")
         capsys.readouterr()
 
@@ -301,11 +325,13 @@ class TestPrimaryBoxImport:
     def test_name_collision_refuses(
         self, std, config, project_dir, credentials_dir,
     ):
+        # PARKED-function unit test: stamp the on-disk identity, then register the
+        # name to a DIFFERENT workspace so the import refuses.
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
         name = proj.name
-        # The box's name is registered to a DIFFERENT workspace.
+        _write_primary_meta(std, name, project_dir.resolve())
         registry_store.save_section(
             std.registry, "projects", {name: "/some/other/workspace"},
         )

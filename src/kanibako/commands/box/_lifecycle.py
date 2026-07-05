@@ -32,7 +32,7 @@ from kanibako.config import (
     BOX_META_FILE,
     KanibakoConfig,
     read_box_enable_vault,
-    write_project_meta,
+    write_box_enable_vault,
 )
 from kanibako.errors import ProjectError, WorksetError
 from kanibako.names import (
@@ -52,7 +52,7 @@ from kanibako.paths import (
     resolve_standalone_project,
     resolve_workset_project,
 )
-from kanibako.utils import project_hash, write_project_gitignore
+from kanibako.utils import write_project_gitignore
 from kanibako.workset import (
     Workset,
     add_project,
@@ -993,23 +993,16 @@ def _to_default(
             shell_into_metadata=True, unwind=unwind,
         )
 
-    phash = project_hash(str(new_workspace.resolve()))
     # Phase 5 fixed PRIMARY table: vault under @config.primary_workset.
     vault_ro = std.primary_vault_ro / project_name
     vault_rw = std.primary_vault_rw / project_name
 
-    write_project_meta(
-        dst_metadata / BOX_META_FILE,
-        mode="primary",
-        workspace=str(new_workspace),
-        shell=str(dst_shell),
-        vault_ro=str(vault_ro),
-        vault_rw=str(vault_rw),
-        enable_vault=state.enable_vault,
-        metadata=str(dst_metadata),
-        project_hash=phash,
-        name=project_name,
-    )
+    # Sparse move (P8b/Option A): NO ``project:``/``resolved:`` identity is
+    # written — the moved box's identity/workspace live in the registries (the
+    # global name index re-registered above + the PRIMARY membership).  Persist
+    # only the NON-default ``box.enable_vault``, sparsely (carried from the source
+    # box's ``state.enable_vault`` so a disabled-vault box stays disabled).
+    write_box_enable_vault(dst_metadata / BOX_META_FILE, state.enable_vault)
 
     if state.enable_vault:
         vault_ro.mkdir(parents=True, exist_ok=True)
@@ -1344,25 +1337,16 @@ def _to_workset(
         recorded_workspace = (
             Path(recorded_str) if recorded_str else new_workspace
         )
-    phash = project_hash(str(recorded_workspace.resolve()))
-
     vault_ro = target_ws.vault_dir / "ro" / new_name
     vault_rw = target_ws.vault_dir / "rw" / new_name
 
-    # Rewrite settings.yaml.  add_project (external) already wrote a minimal
-    # settings.yaml with the workspace override; we overwrite with full content.
-    write_project_meta(
-        dst_project / BOX_META_FILE,
-        mode="named",
-        workspace=str(recorded_workspace),
-        shell=str(dst_shell),
-        vault_ro=str(vault_ro),
-        vault_rw=str(vault_rw),
-        enable_vault=state.enable_vault,
-        metadata=str(dst_project),
-        project_hash=phash,
-        name=new_name,
-    )
+    # Sparse move (P8b/Option A): NO ``project:``/``resolved:`` identity is
+    # written — the moved box's identity lives in the global name index and its
+    # workspace in the target workset's ``boxes:`` registry (add_project wrote the
+    # external entry; sourced above as ``recorded_workspace``).  Persist only the
+    # NON-default ``box.enable_vault``, sparsely (carried from ``state`` so a
+    # disabled-vault box stays disabled across the move).
+    write_box_enable_vault(dst_project / BOX_META_FILE, state.enable_vault)
 
     # For a workset source the registration was already released above;
     # otherwise clean up the source owner's metadata/markers now.

@@ -20,6 +20,14 @@ on-disk truth" mechanism (no per-mode special-casing):
 * **PRIMARY** — :func:`import_primary_box` (single box) and
   :func:`reconcile_primary_boxes` (scan ``@config.primary_workset/boxes/*``),
   for re-associating a central primary box with its external workspace.
+  **RETIRED FROM THE LIVE PATH (P8b/Option A).** Under sparse create a primary
+  box no longer self-describes its identity on disk (no ``project:``/``resolved:``
+  in ``settings.yaml``), so there is nothing on disk to re-import from — the
+  registry is the sole identity authority.  These three functions are RETAINED
+  but UNCALLED pending the ``system recover`` port decision (P8c): their
+  enumerate / match-by-workspace / collision-refuse / journal-atomic skeleton is
+  the seed of a future heuristic registry-repair.  Do NOT wire them back into the
+  live resolve path.
 
 Conflict semantics (all modes): if the import's NAME collides with an entity
 already registered to a *different* root/path, the import is **REFUSED** —
@@ -292,12 +300,23 @@ def import_named_workset(
 
 # ---------------------------------------------------------------------------
 # PRIMARY (central box store → external workspace)
+#
+# NO LIVE CALLER as of P8b (Option A): retired from ``paths.resolve_project``
+# because a sparse-created primary box does not self-describe its identity on
+# disk.  Retained (still fully functional, exercised by direct unit tests)
+# pending the ``system recover`` port decision (P8c) — the enumerate / match /
+# collision / journal-atomic skeleton below is the seed of a future heuristic
+# registry repair.  Do NOT wire these back into the live path.
 # ---------------------------------------------------------------------------
 
 def import_primary_box(
     registry: Path, box_dir: Path, *, journal: Path | None = None,
 ) -> str | None:
     """Reconcile a single on-disk PRIMARY box at *box_dir* against ``registry.projects``.
+
+    **No live caller as of P8b (Option A)** — parked pending the ``system
+    recover`` port (P8c).  Still functional (direct unit-tested); do NOT re-wire
+    into the live resolve path.
 
     *box_dir* is a per-box directory under ``@config.primary_workset/boxes/``;
     its ``settings.yaml`` carries ``project.name`` (the box name) and the real
@@ -348,9 +367,13 @@ def import_primary_box_for_workspace(
 
     Scans *boxes_dir* (``@config.primary_workset/boxes``) for a box dir whose
     ``settings.yaml`` records *workspace* as its workspace and is NOT yet in
-    ``registry.projects``, then imports it (alert + register).  Used by
-    :func:`kanibako.paths.resolve_project` to re-discover a primary box that was
-    dropped in / moved when the registry has no name → path entry for it.
+    ``registry.projects``, then imports it (alert + register).
+
+    **No live caller as of P8b (Option A)** — this was the
+    :func:`kanibako.paths.resolve_project` primary drop-in rediscovery hook; that
+    caller is retired (a sparse-created box no longer records its workspace on
+    disk to scan for).  Parked pending the ``system recover`` port (P8c); do NOT
+    re-wire into the live resolve path.
 
     Returns the imported box name, or ``None`` when no matching unregistered
     on-disk box is found.  Idempotent: a box already registered to *workspace*
@@ -396,6 +419,10 @@ def reconcile_primary_boxes(
     ``box import`` / ``diagnose`` would expose, and the same primitive the
     per-box import uses.  *boxes_dir* is ``@config.primary_workset/boxes``
     (``std.boxes``).
+
+    **No live caller as of P8b (Option A)** — parked pending the ``system
+    recover`` port (P8c).  Still functional (direct unit-tested); do NOT re-wire
+    into the live resolve path.
 
     Returns the list of box names imported during this scan (empty when every
     on-disk box is already registered).  A name-collision in any single box

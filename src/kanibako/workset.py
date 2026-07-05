@@ -585,7 +585,7 @@ def add_project(
         if is_external:
             # External: workspaces/{name} is a self-documenting symlink to the
             # external dir (never mounted — the bind-mount uses the workspace
-            # override).  Write the override + record the redirect.
+            # override).  Record the redirect.
             # is_external can only be True when std is not None (set above),
             # but mypy can't track that cross-variable invariant.
             assert std is not None
@@ -597,18 +597,10 @@ def add_project(
                     lambda: link.unlink() if link.is_symlink() else None
                 )
 
-            from kanibako.config import BOX_META_FILE, write_project_meta
-
-            project_toml = ws.projects_dir / name / BOX_META_FILE
-            write_project_meta(
-                project_toml,
-                mode="named",
-                workspace=str(resolved_source),
-                shell="",
-                vault_ro="",
-                vault_rw="",
-                name=name,
-            )
+            # Sparse create (P8b/Option A): NO settings.yaml identity is written
+            # for the connected box — the connection record IS the per-workset
+            # ``boxes:`` entry below (name → EXTERNAL path), which box_resolve reads
+            # for both identity and the workspace override.
 
             # P7/D10: record the connection in the TARGET workset's per-workset
             # registry — ``boxes: {name → EXTERNAL path}``.  The per-workset

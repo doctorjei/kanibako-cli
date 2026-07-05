@@ -390,9 +390,10 @@ class TestWorksetConnect:
     def test_connect_external_writes_override_and_symlink(
         self, config_file, tmp_home, capsys
     ):
-        """connect to an EXTERNAL dir → workspace override in settings.yaml, a
-        per-workset boxes: connection record (D10), and a workspaces/{name}
-        symlink to the dir."""
+        """connect to an EXTERNAL dir → workspace override in the per-workset
+        boxes: connection record (D10), and a workspaces/{name} symlink to the
+        dir.  P8b/Option A: the override is NO LONGER written to settings.yaml —
+        the per-workset registry is the sole connection record."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.config import read_project_meta
 
@@ -410,11 +411,10 @@ class TestWorksetConnect:
         rc = run_connect(args)
         assert rc == 0
 
-        # settings.yaml carries the workspace override = external path.
+        # P8b/Option A: no on-disk ``project:`` identity is written for the
+        # connected box — the override lives ONLY in the per-workset registry.
         project_toml = ws.projects_dir / "ext" / "settings.yaml"
-        meta = read_project_meta(project_toml)
-        assert meta is not None
-        assert meta["workspace"] == str(external)
+        assert read_project_meta(project_toml) is None
 
         # The per-workset registry has the connection record: box name → external
         # path (the D10 replacement for the global connected: index).
