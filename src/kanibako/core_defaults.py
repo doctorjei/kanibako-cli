@@ -36,6 +36,17 @@ if TYPE_CHECKING:
 # Filename of the shipped system/core defaults (in kanibako.data).
 CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
+# The set-time FLOOR-registry placeholder host_src (F10). ``core_default_bind_keys``
+# / ``agent_representation.agent_default_bind_keys`` emit their bind tuples with THIS
+# sentinel in element 0 because the set-time repoint DISCARDS the old host_src
+# (``settings_configset.repoint_host_src`` uses only ``base[1:]`` = box_dest+options).
+# It is NEVER a launch value — the registry is folded ONLY into the set-time
+# ``_category_set_lookups`` floor, never into the launch ``build_launch_snapshot``
+# (which uses the real, host-probed ``core_default_categories`` /
+# ``agent_default_partial``). A plain literal (not an ``@``-ref) so a stray lenient
+# expand of a non-edited key never records a spurious dangling-ref defect.
+FLOOR_PLACEHOLDER_SRC = "__floor_placeholder__"
+
 
 def _load_doc() -> dict[str, Any]:
     """Read and parse the bundled system/core defaults file."""
@@ -194,6 +205,40 @@ def core_default_categories(
             host_src = entry.get("meta_ref", sources[entry["source"]])
         binds[f"box.{category}.{entry['key']}"] = (
             host_src,
+            str(entry["box_dest"]),
+            str(entry["options"]),
+        )
+    return binds
+
+
+def core_default_bind_keys() -> dict[str, tuple[str, str, str]]:
+    """The CORE box bind KEYS as a context-light set-time floor registry (F10).
+
+    Mirrors :func:`core_default_categories`'s KEY set — ``box.bindings.{ro,rw}.
+    <key>`` for home + workspace + vault (ro and rw) — with the STATIC ``box_dest``
+    + per-entry ``options`` read straight from the same declarative ``core:`` doc,
+    but with a PLACEHOLDER host_src (:data:`FLOOR_PLACEHOLDER_SRC`) in element 0.
+
+    HOST-FREE (the F10 de-risk): it takes NO :class:`~kanibako.paths.ProjectPaths`
+    / :class:`~kanibako.paths.StandardPaths` and does NO runtime probe or
+    create-if-missing — the ONLY thing the set-time must-exist gate needs from the
+    floor is ``base[1:]`` (box_dest + options), which are pure declarative literals
+    (``settings_configset.repoint_host_src`` discards element 0). So this exposes
+    EXACTLY the launch core-floor keys to ``config set`` so a source-only repoint of
+    a core bind (``box config set box.bindings.rw.home /new``) is no longer refused
+    as "nowhere in the cascade".
+
+    Vault keys are ALWAYS emitted (both ``ro`` and ``rw``), regardless of whether
+    vault would be ENABLED at launch: the gate is about the KEY existing in the
+    set-time cascade, not the runtime host value. box_dest/options are byte-identical
+    to the launch builder (same file, same fields); host_src is the discarded
+    placeholder.
+    """
+    binds: dict[str, tuple[str, str, str]] = {}
+    for entry in _load_doc().get("core", []):
+        key = f"box.{entry['category']}.{entry['key']}"
+        binds[key] = (
+            FLOOR_PLACEHOLDER_SRC,
             str(entry["box_dest"]),
             str(entry["options"]),
         )

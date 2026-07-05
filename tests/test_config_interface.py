@@ -2519,3 +2519,137 @@ class TestSetTimeCtxUsesHostXdgMap:
         )
         ctx = ci._set_time_ctx()
         assert ctx.xdg == sentinel
+
+
+# ---------------------------------------------------------------------------
+# F10 — expose the launch-only CORE box-mount floor to config-set (Phase 1)
+# ---------------------------------------------------------------------------
+
+class TestF10CoreFloorRegistry:
+    """``core_defaults.core_default_bind_keys`` — the context-light set-time floor
+    registry (F10): the CORE box-mount KEYS with STATIC box_dest+options and a
+    placeholder host_src, built WITHOUT any proj/std probe."""
+
+    def test_emits_the_launch_core_keys_host_free(self):
+        from kanibako.core_defaults import core_default_bind_keys, FLOOR_PLACEHOLDER_SRC
+
+        reg = core_default_bind_keys()
+        # The SAME keys the launch core floor emits — home + workspace + vault ro/rw.
+        assert set(reg) == {
+            "box.bindings.rw.home",
+            "box.bindings.rw.workspace",
+            "box.bindings.ro.vault",
+            "box.bindings.rw.vault",
+        }
+        # box_dest + options are the STATIC declarative literals; host_src is the
+        # discarded placeholder (mutation: swap FLOOR_PLACEHOLDER_SRC to a proj-
+        # probed path and this equality goes RED — proving it is host-FREE).
+        assert reg["box.bindings.ro.vault"] == (FLOOR_PLACEHOLDER_SRC, "~/vault/ro", "ro")
+        assert reg["box.bindings.rw.home"] == (FLOOR_PLACEHOLDER_SRC, "~", "Z,U")
+
+    def test_vault_keys_present_regardless_of_enable_vault(self):
+        # The gate is about the KEY existing at set-time, not the runtime host value:
+        # both vault binds are exposed even though launch may disable vault.
+        from kanibako.core_defaults import core_default_bind_keys
+
+        reg = core_default_bind_keys()
+        assert "box.bindings.ro.vault" in reg
+        assert "box.bindings.rw.vault" in reg
+
+
+class TestF10CoreFloorRepoint:
+    """A source-only repoint of a launch-only CORE bind (``box.bindings.{ro,rw}.
+    <key>``) validates + writes RAW once the floor registry is threaded — it was
+    REFUSED as "nowhere in the cascade" before (Step B / F10)."""
+
+    def _reg(self):
+        from kanibako.core_defaults import core_default_bind_keys
+
+        return dict(core_default_bind_keys())
+
+    def test_repoint_core_bind_writes_raw_tuple(self, tmp_path):
+        box = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.bindings.ro.vault", "/newsrc",
+            config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box, default_categories=self._reg(),
+        )
+        # Validated + wrote (was refused before) — the confirm line, warn allowed.
+        assert msg.startswith("Set box.bindings.ro.vault host source to /newsrc"), msg
+        # RAW tuple: new host_src, dest + options BYTE-RAW from the floor.
+        assert load_doc(box)["box"]["bindings"]["ro"]["vault"] == [
+            "/newsrc", "~/vault/ro", "ro",
+        ]
+
+    def test_repoint_without_registry_is_refused(self, tmp_path):
+        # Mutation-proof the registry is load-bearing: drop default_categories and
+        # the SAME set is refused (the pre-Step-B behavior). RED if the fold leaked
+        # the floor in from elsewhere.
+        box = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.bindings.ro.vault", "/newsrc",
+            config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box,
+        )
+        assert msg.startswith("Error:") and "must already exist in the cascade" in msg
+
+    def test_unknown_bind_name_still_refused(self, tmp_path):
+        # A genuinely-unknown bind name is NOT in the registry → still refused even
+        # with the registry threaded (the gate creates nothing).
+        box = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.bindings.ro.nonexistent", "/x",
+            config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box, default_categories=self._reg(),
+        )
+        assert msg.startswith("Error:") and "nonexistent" in msg
+
+    def test_rw_bind_options_preserved(self, tmp_path):
+        box = tmp_path / "box.yaml"
+        set_config_value(
+            "box.bindings.rw.home", "/newhome",
+            config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box, default_categories=self._reg(),
+        )
+        # Z,U options + ~ dest carried through byte-raw from the floor.
+        assert load_doc(box)["box"]["bindings"]["rw"]["home"] == ["/newhome", "~", "Z,U"]
+
+    def test_already_file_set_bind_repoints_from_file_not_floor(self, tmp_path):
+        # No regression: when the box FILE already sets the key, the repoint sources
+        # box_dest/options from the FILE tuple (the cascade winner at box scope), NOT
+        # the floor default — proving the floor is only a FALLBACK.
+        box = tmp_path / "box.yaml"
+        dump_doc(box, {"box": {"bindings": {"ro": {"vault": [
+            "/old", "/custom/dest", "ro",
+        ]}}}})
+        set_config_value(
+            "box.bindings.ro.vault", "/new2",
+            config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box, default_categories=self._reg(),
+        )
+        assert load_doc(box)["box"]["bindings"]["ro"]["vault"] == [
+            "/new2", "/custom/dest", "ro",
+        ]
+
+    def test_written_box_tuple_overrides_floor_at_launch(self, tmp_path):
+        # Take-effect (reconcile precedence): a box-scope written tuple sits at the
+        # box level and BEATS the base floor when the launch cascade merges.
+        from kanibako.settings_assemble import assemble_levels
+        from kanibako.settings_merge import merge
+
+        box = tmp_path / "box.yaml"
+        dump_doc(box, {"box": {"bindings": {"rw": {"home": [
+            "/BOXWIN", "~", "Z,U",
+        ]}}}})
+        floor = {"box.bindings.rw.home": ("/FLOOR", "~", "Z,U")}
+        snap = merge(assemble_levels(agent_name="", box_path=box, floor=floor))
+        node = snap
+        for seg in ("box", "bindings", "rw", "home"):
+            node = dict.get(node, seg)
+        assert node.host == "/BOXWIN"  # box beats the base floor
+        # And with NO box file the floor value is the fallback (proves reachability).
+        snap2 = merge(assemble_levels(agent_name="", floor=floor))
+        n2 = snap2
+        for seg in ("box", "bindings", "rw", "home"):
+            n2 = dict.get(n2, seg)
+        assert n2.host == "/FLOOR"
