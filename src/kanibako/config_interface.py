@@ -14,6 +14,7 @@ syntax:
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import fields
 from enum import Enum
@@ -155,6 +156,12 @@ def is_known_key(arg: str) -> bool:
     if arg in KNOWN_CONFIG_KEYS:
         return True
     if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
+        return True
+    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind key
+    # (item-0): a settable key (recognised on the +form too, before canonicalization)
+    # so get/show + the project-name heuristic treat it as a KEY. Checked BEFORE the
+    # persona form so a bind named after a state leaf is recognised as the bind.
+    if _is_agent_node_bind_key(arg):
         return True
     # agent.<node>.<key> — the per-persona agent key (block B1): a settable key
     # (recognised on the +form too, before canonicalization) so get/show + the
@@ -339,7 +346,22 @@ def _resolve_key(raw: str) -> str:
     is preserved verbatim.  A malformed node is left RAW here — the set/reset
     persona branch surfaces the parse error (and a bad node never silently swaps).
     Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.
+
+    The per-node DESCRIPTOR bind key ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0)
+    is canonicalized the SAME way (``<node>`` ``+`` -> ``℘``) and is matched BEFORE the
+    persona form — a bind named after a persona state leaf
+    (``agent.<node>.bindings.ro.model``) would otherwise be mis-parsed by
+    :func:`_parse_persona_agent_key` (``model`` is a state leaf). The ``bindings.
+    {ro,rw}`` category segment + the bind name are preserved verbatim.
     """
+    bind = _parse_agent_node_bind_key(raw)
+    if bind is not None:
+        node_raw, cat, name = bind
+        try:
+            node = canonicalize_agent_ref(node_raw)
+        except ConfigError:
+            return raw
+        return f"agent.{node}.{cat}.{name}"
     parsed = _parse_persona_agent_key(raw)
     if parsed is None:
         return raw
@@ -404,6 +426,46 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 def _is_persona_agent_key(key: str) -> bool:
     """True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1)."""
     return _parse_persona_agent_key(key) is not None
+
+
+# ---------------------------------------------------------------------------
+# Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``
+# repointed (source-only) on the agent's OWN settings file, via the CATEGORY path.
+# ---------------------------------------------------------------------------
+
+# ``agent.<node>.bindings.{ro,rw}.<name>`` — the per-node descriptor delivery bind
+# (claude launcher/share …). ``<node>`` is NON-greedy so the FIRST ``.bindings.
+# {ro,rw}.`` segment splits node from name (a bind literally NAMED ``model`` — the
+# name group — is thus ``agent.<node>.bindings.ro.model``, disambiguated from the
+# persona state leaf ``agent.<node>.model`` by the ``bindings.{ro,rw}`` segment).
+# NOTE: this is the ``agent.<node>.*`` (node-in-key) form; it does NOT match the
+# BARE ``agent.bindings.*`` category form (``BIND_KEY_RE``, no node) nor the
+# ``box.agent.bindings.*`` box-mirror form (a ``box`` top-token).
+_AGENT_NODE_BIND_RE = re.compile(
+    r"^agent\.(?P<node>.+?)\.(?P<cat>bindings\.(?:ro|rw))\.(?P<name>.+)$"
+)
+
+
+def _parse_agent_node_bind_key(key: str) -> "tuple[str, str, str] | None":
+    """Split ``agent.<node>.bindings.{ro,rw}.<name>`` into ``(node_raw, cat, name)``.
+
+    Returns ``None`` when *key* is not a per-node descriptor bind key. ``cat`` is the
+    ``bindings.ro`` / ``bindings.rw`` segment; ``node_raw`` is VERBATIM (possibly a
+    ``+`` form) for :func:`canonicalize_agent_ref` to canonicalize as a WHOLE. Parsed
+    BEFORE :func:`_parse_persona_agent_key` everywhere so a bind named after a persona
+    state leaf (``agent.claude.bindings.ro.model``) is a BIND, never mis-split as the
+    state key ``agent.claude.model``.
+    """
+    m = _AGENT_NODE_BIND_RE.match(key)
+    if m is None:
+        return None
+    return m.group("node"), m.group("cat"), m.group("name")
+
+
+def _is_agent_node_bind_key(key: str) -> bool:
+    """True iff *key* is a per-node descriptor bind ``agent.<node>.bindings.*`` key
+    (item-0). Checked BEFORE :func:`_is_persona_agent_key` in the routing dispatch."""
+    return _parse_agent_node_bind_key(key) is not None
 
 
 def _persona_display_key(canonical: str) -> str:
@@ -901,6 +963,13 @@ def _category_set_lookups(
         sys_p = cmd if sys_p is None else sys_p
     elif scope == "workset":
         ws_p = cmd if ws_p is None else ws_p
+    elif scope == "agent":
+        # A per-node descriptor bind (``agent.<node>.bindings.*``, item-0) sets the
+        # AGENT-scope file (``agents/<node>/settings.yaml``); place it in the agent
+        # slot so its own already-set tuple (read by ``_agent_partial`` at the
+        # ``agent.<agent_name>`` sub-table) is the cascade winner — NOT the box slot
+        # (where ``_drop_upward_scopes`` would DROP its agent-scope keys).
+        agent_p = cmd if agent_p is None else agent_p
     else:  # box (the default / most-specific scope)
         box_p = cmd if box_p is None else box_p
 
@@ -1379,6 +1448,31 @@ def set_config_value(
     # supplied only by the system scope (the global ``config.agents`` store);
     # absent it, the write is refused (the directional guard already refuses this
     # key from box/workset — an UPWARD agent-scope write).
+    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR delivery bind
+    # (item-0): a SOURCE-ONLY repoint of the descriptor bind (claude launcher/share)
+    # on the agent's OWN settings file. Routed to the CATEGORY path (NOT the persona
+    # verbatim-scalar branch below — else it would write a malformed source-only bind
+    # with no box_dest) so ``repoint_host_src`` writes the RAW tuple
+    # ``[<new_src>, <descriptor box_dest>, <opts>]``. Checked BEFORE
+    # ``_is_persona_agent_key`` because a bind literally NAMED ``model`` /
+    # ``endpoint`` (``agent.<node>.bindings.ro.model``) would otherwise be captured by
+    # the persona branch (``model`` is a state leaf). The §0 directional guard already
+    # ran above: system ⊃ agent so a system-scope write is DOWNWARD (allowed); a box/
+    # workset write is UPWARD (refused). The command scope (system) supplies
+    # ``config_path`` = the node file + the descriptor floor registry
+    # (``agent_representation.agent_default_bind_keys``) as ``default_categories`` so
+    # the must-exist gate sees the launch-only descriptor floor.
+    if _is_agent_node_bind_key(canonical):
+        return _set_category_value(
+            canonical, value, config_path=config_path,
+            system_path=cascade_system_path,
+            agent_path=cascade_agent_path,
+            workset_path=cascade_workset_path,
+            box_path=cascade_box_path,
+            agent_name=cascade_agent_name,
+            default_categories=default_categories,
+        )
+
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, str):

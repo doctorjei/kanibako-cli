@@ -255,9 +255,13 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # The system-tier env file (mirrors the launch's system env source).
     env_sys = std.data_path / "env"
 
+    from kanibako.agent_config import agent_settings_path
+    from kanibako.agent_ref import canonicalize_agent_ref
+    from kanibako.agent_representation import agent_default_bind_keys
     from kanibako.config_interface import (
         ConfigAction,
         ConfigLevel,
+        _parse_agent_node_bind_key,
         get_config_value,
         is_known_key,
         parse_config_arg,
@@ -266,6 +270,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         set_config_value,
         show_config,
     )
+    from kanibako.errors import ConfigError
 
     key_value = getattr(args, "key_value", None)
     action, key, value = parse_config_arg(key_value)
@@ -352,17 +357,50 @@ def _run_system_config(args: argparse.Namespace) -> int:
     if action == ConfigAction.set:
         # Ensure the system settings dir exists for SETTINGS writes.
         ssp.parent.mkdir(parents=True, exist_ok=True)
+
+        # item-0 (per-node DESCRIPTOR bind repoint): a system-scope
+        # ``agent.<node>.bindings.{ro,rw}.<name>`` set SOURCE-ONLY repoints the
+        # descriptor delivery bind (claude launcher/share) on the node's OWN settings
+        # file. The write target is ``agents/<node>/settings.yaml`` (NOT the
+        # kanibako_config.yaml CONFIG file), the SAME file the per-persona agent keys
+        # write to; and the DESCRIPTOR floor registry (detect-free, per-node) is
+        # threaded as ``default_categories`` so the must-exist gate sees the
+        # launch-only descriptor floor. The node is resolved by HARNESS with NO
+        # detect(), so this validates even for an uninstalled agent (Fork 3).
+        set_config_path = cf
+        set_default_categories = None
+        set_cascade_agent_path = None
+        set_cascade_agent_name = ""
+        bind_parse = _parse_agent_node_bind_key(key)
+        if bind_parse is not None:
+            node_raw, _cat, _name = bind_parse
+            try:
+                node = canonicalize_agent_ref(node_raw)
+            except ConfigError:
+                node = None
+            if node is not None:
+                node_file = agent_settings_path(std.agents, node)
+                node_file.parent.mkdir(parents=True, exist_ok=True)
+                set_config_path = node_file
+                set_default_categories = agent_default_bind_keys(node)
+                set_cascade_agent_path = node_file
+                set_cascade_agent_name = node
+
         # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
         # 2026-06-29): the system is the command scope. A system-scope category set
         # writes to the CONFIG file (cf — see set_config_value's category branch),
         # so cf goes in the system slot for sibling @-refs; the resolved system.*
         # config tier is folded in as the FLOOR regardless.
         msg = set_config_value(
-            key, value, config_path=cf, env_path=env_sys, is_system=True,
+            key, value, config_path=set_config_path, env_path=env_sys,
+            is_system=True,
             system_settings_path=ssp,
             cascade_system_path=cf,
+            cascade_agent_path=set_cascade_agent_path,
+            cascade_agent_name=set_cascade_agent_name,
             command_scope=ConfigLevel.system,
             agents_root=std.agents,
+            default_categories=set_default_categories,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
