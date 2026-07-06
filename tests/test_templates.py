@@ -277,15 +277,39 @@ class TestInstallPackagedTemplates:
         assert (std.base_template / "INSTRUCTIONS.md").is_file()
 
     def test_claude_template_landed(self, std):
-        """The claude agent template (.claude.json stub + settings) is copied."""
+        """The claude agent template (.claude.json stub + settings + AGENTS.md) is copied."""
         install_packaged_templates(std, ["claude"])
         dest = agent_template_dir(std, "claude")
         assert (dest / ".claude.json").is_file()
         assert (dest / ".claude" / "settings.json").is_file()
+        # STEP 2b — the editable user-instructions stub the loader @import's.
+        assert (dest / ".claude" / "AGENTS.md").is_file()
+        # The old home-root CLAUDE.md "Project notes" stub is gone (its user-notes
+        # role moved to ~/.claude/AGENTS.md; the ~/.claude/CLAUDE.md loader is an RO
+        # bind, NOT a seeded template file).
+        assert not (dest / "CLAUDE.md").exists()
         # The onboarding stub marks onboarding complete.
         import json
         data = json.loads((dest / ".claude.json").read_text())
         assert data.get("hasCompletedOnboarding") is True
+
+    def test_claude_agents_md_seeds_create_if_absent(self, std, tmp_path):
+        """STEP 2b — the editable ~/.claude/AGENTS.md seeds once, never clobbering edits.
+
+        It lands in a fresh box home via the agent template layer, and a subsequent
+        re-seed leaves a user's edits intact (create-if-absent).
+        """
+        install_packaged_templates(std, ["claude"])
+        home = tmp_path / "box-home"
+        layers = [agent_template_dir(std, "claude")]
+        stage_and_seed_templates(home, layers)
+        seeded = home / ".claude" / "AGENTS.md"
+        assert seeded.is_file()
+
+        # User edits their instructions; a re-seed must NOT overwrite them.
+        seeded.write_text("MY AGENT NOTES")
+        stage_and_seed_templates(home, layers)
+        assert seeded.read_text() == "MY AGENT NOTES"
 
     def test_goose_and_codex_templates_landed(self, std):
         install_packaged_templates(std, ["goose", "codex"])

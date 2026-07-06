@@ -129,7 +129,8 @@ class TestDetect:
 
 class TestDescriptorDeliveryMounts:
     def test_mounts(self, tmp_path):
-        """The descriptor delivers the two AS-IS host binds: share dir + launcher."""
+        """The descriptor delivers the two AS-IS host binds (share dir + launcher)
+        PLUS the STEP 2b ~/.claude/CLAUDE.md loader (best-effort, shipped source exists)."""
         from kanibako.targets.assembly import descriptor_mounts
 
         t = ClaudeTarget()
@@ -148,13 +149,19 @@ class TestDescriptorDeliveryMounts:
         )
         mounts = descriptor_mounts(t.descriptor, install)
 
-        assert len(mounts) == 2
+        assert len(mounts) == 3
         assert mounts[0].source == install_dir
         assert mounts[0].destination == "/home/agent/.local/share/claude"
         assert mounts[0].options == "ro"
         assert mounts[1].source == launcher
         assert mounts[1].destination == "/home/agent/.local/bin/claude"
         assert mounts[1].options == "ro"
+        # STEP 2b — the loader, delivered read-only to ~/.claude/CLAUDE.md.
+        assert mounts[2].destination == "/home/agent/.claude/CLAUDE.md"
+        assert mounts[2].options == "ro"
+        loader_lines = mounts[2].source.read_text().splitlines()
+        assert "@KANIBAKO.md" in loader_lines
+        assert "@AGENTS.md" in loader_lines
 
     def test_missing_source_safe_fails(self, tmp_path):
         """A missing AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
@@ -554,8 +561,9 @@ class TestDescriptor:
         bindings = {b.key: b for b in d.bindings}
         # Part 3a: the ``plugins`` SHARED_STORE binding was removed; plugins (and
         # cache) are now AGENT-scope ``shared`` category entries (default_shares),
-        # so only the two AGENT_CRITICAL delivery binds remain.
-        assert set(bindings) == {"share", "launcher"}
+        # so only the two AGENT_CRITICAL delivery binds remain — plus (STEP 2b) the
+        # best-effort ~/.claude/CLAUDE.md loader.
+        assert set(bindings) == {"share", "launcher", "managed_pointer"}
 
         share = bindings["share"]
         assert share.origin == HostSrcOrigin.INSTALL_DIR
@@ -570,6 +578,18 @@ class TestDescriptor:
         assert launcher.kind == BindKind.FILE
         assert launcher.scope == BindScope.AGENT_CRITICAL
         assert launcher.ro is True
+
+        # STEP 2b — the loader: LITERAL-origin (shipped package data), delivered RO
+        # to ~/.claude/CLAUDE.md (claude's user-memory slot), BEST-EFFORT (scope
+        # AGENT, not AGENT_CRITICAL) so a missing source can't crash a launch.
+        pointer = bindings["managed_pointer"]
+        assert pointer.origin == HostSrcOrigin.LITERAL
+        assert pointer.box_dest == "/home/agent/.claude/CLAUDE.md"
+        assert pointer.kind == BindKind.FILE
+        assert pointer.scope == BindScope.AGENT
+        assert pointer.ro is True
+        # The package-relative source resolved to a real shipped file.
+        assert pointer.literal_src is not None and pointer.literal_src.exists()
 
     def test_mode(self):
         d = ClaudeTarget().descriptor

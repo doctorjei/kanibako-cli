@@ -374,14 +374,18 @@ class TestBinaryMountContract:
         )
 
     def test_delivery_mounts_all_exist(self, tmp_path):
-        """When sources exist, both ro delivery binds are returned."""
+        """When sources exist, all ro delivery binds are returned.
+
+        Two AGENT_CRITICAL delivery binds (share + launcher) plus the STEP 2b
+        best-effort ~/.claude/CLAUDE.md loader (its shipped source exists).
+        """
         from kanibako.targets.assembly import descriptor_mounts
 
         t = ClaudeTarget()
         install = self._install(tmp_path)
         mounts = descriptor_mounts(t.descriptor, install)
 
-        assert len(mounts) == 2
+        assert len(mounts) == 3
         for m in mounts:
             assert m.source.exists(), f"Mount source does not exist: {m.source}"
             assert m.options == "ro"
