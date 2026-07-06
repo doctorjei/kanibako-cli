@@ -36,6 +36,7 @@ from kanibako.errors import ConfigError, ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
+from kanibako.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
 from kanibako.paths import (
     _upgrade_shell,
     box_state_home,
@@ -1757,15 +1758,18 @@ def _run_container(
         container_env.update(
             {e.box_dest: e.options for e in reconciled.envs}
         )
-        # env-from-file (spec §2d): the ACTIVE persona's ``env_file`` pointers —
-        # VAR -> host token PATH — are read HERE (the env-emission seam), the file
-        # CONTENTS become the env VALUE (one trailing newline stripped). The SECRET
-        # (e.g. the bearer ANTHROPIC_AUTH_TOKEN) reaches the container ENV only;
-        # its value is NEVER in the snapshot/keystore nor logged. Per-node: only the
-        # active node's agent_cfg loaded. Missing/unreadable/empty file -> WARN +
-        # var UNSET (fail-soft, no crash). Sits at the agent config-env level, BELOW
-        # target state env and CLI -e (so a per-run -e can still override).
-        container_env.update(_resolve_env_files(agent_cfg.env_file, logger))
+        # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
+        # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
+        # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
+        # SECRET_MOUNT_DIR/<VAR> and exported IN-BOX by a shim at agent start.
+        # kanibako NEVER reads the file VALUE (it is never in container_env, never on
+        # the podman argv, never in the snapshot/keystore/logs) — this REPLACES the
+        # retired env-value read that pulled the secret into our memory + onto the
+        # argv. Missing/unreadable/empty host file -> WARN + VAR unset (fail-soft).
+        # ``secret_export_vars`` drives the box-side export shim below; an EMPTY list
+        # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
+        secret_mounts, secret_export_vars = _emit_secret_mounts(reconciled, logger)
+        extra_mounts.extend(secret_mounts)
         container_env.update(state_env)                        # target-derived state env
 
         # Merge per-run -e/--env KEY=VALUE vars (highest priority).
@@ -2040,6 +2044,16 @@ def _run_container(
         if setup_only:
             return 0
 
+        # SECRET export shim (spec §2a secret_path): when the box has secret_path
+        # winners, nest a ``sh -c 'export <VAR>=$(cat mount); …; exec <agent> "$@"'``
+        # shim INSIDE the agent command so each secret is exported IN-BOX from its ro
+        # mount at agent start. Applied to the INNERMOST program (the agent, or the
+        # no-agent box.shell) BEFORE the tmux/bootstrap wrap, so it nests correctly.
+        # ⚑ ONLY when secret_export_vars is non-empty — a box with NO secrets skips
+        # the shim entirely and keeps the bare entrypoint BYTE-IDENTICAL (zero delta).
+        # Delivery is agent-INDEPENDENT: a no-agent shell launch with a box secret
+        # still gets the exports (the shim wraps box.shell).
+        #
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
             # box_shell is None only on a real-agent launch, but that path
@@ -2047,13 +2061,23 @@ def _run_container(
             # always a str; mypy can't track that cross-variable invariant.
             inner_cmd = entrypoint or box_shell
             assert inner_cmd is not None
+            inner_args = list(cli_args or [])
+            if secret_export_vars:
+                inner_cmd, inner_args = _secret_export_shim(
+                    inner_cmd, inner_args, secret_export_vars,
+                )
             entrypoint, cli_args = _bootstrap_wrap(
-                bootstrap_program, inner_cmd, list(cli_args or []),
+                bootstrap_program, inner_cmd, inner_args,
             )
-        elif not entrypoint:
-            # Non-persistent no-agent launch: run box.shell explicitly instead
-            # of deferring to the image's default entrypoint.
-            entrypoint = box_shell
+        else:
+            if not entrypoint:
+                # Non-persistent no-agent launch: run box.shell explicitly instead
+                # of deferring to the image's default entrypoint.
+                entrypoint = box_shell
+            if secret_export_vars and entrypoint:
+                entrypoint, cli_args = _secret_export_shim(
+                    entrypoint, list(cli_args or []), secret_export_vars,
+                )
 
         # Preflight: rootless podman cannot overlay/pivot_root on a virtiofs
         # graph root, so the launch would die with a cryptic runtime error.
@@ -2436,61 +2460,134 @@ def _build_config_env(
     return env
 
 
-def _resolve_env_files(
-    env_file: dict[str, str], logger,
-) -> dict[str, str]:
-    """Resolve the ACTIVE agent's ``env_file`` pointers to ``{VAR: value}``.
+def _emit_secret_mounts(reconciled, logger) -> "tuple[list, list[str]]":
+    """Emit the SECRET-category (``secret_path``) ro Mounts + the export VAR list.
 
-    Each entry maps an env VAR to a HOST PATH (the token file — spec §2d). This
-    reads each file and returns the var VALUE = the file's contents with a SINGLE
-    trailing newline stripped. This is the env-from-file mechanism (the persona's
-    ``ANTHROPIC_AUTH_TOKEN`` bearer token): the SECRET lives only in the host file
-    (0600) and reaches the container as an ENV var — it is NEVER stored in the
-    keystore/snapshot as a value nor written to any box file.
+    ARM'S-LENGTH delivery (spec §2a SECRET category, 2026-07-06): each resolved
+    ``secret_path.<VAR>`` winner maps a host PATH (a 0600 token file) to a ro bind
+    mount at ``SECRET_MOUNT_DIR/<VAR>``. kanibako NEVER reads the file VALUE — it
+    ships only the PATH: the value flows host→podman→box via the mount, and the
+    box-side export shim (:func:`_secret_export_shim`) reads it into ``<VAR>`` at
+    agent start. So the secret is never in our process memory, never on the podman
+    argv (only the mount PATH is), never in the snapshot/keystore/logs.
 
-    ``~`` and ``$VAR`` in the path are expanded (a user writes
-    ``~/.config/claude/navigator/token``). The map is already per-node: only the
-    ACTIVE agent's ``agents/<node>/settings.yaml`` is loaded (a sibling persona's
-    ``env_file`` never reaches here).
+    The winners come from the SINGLE launch reconcile (``reconcile_categories``
+    already picked the per-VAR precedence winner — a box ``secret_path.<VAR>`` beats
+    a workset one at the identical ``SECRET_MOUNT_DIR/<VAR>`` box_dest). Each entry's
+    ``host_src`` is the cascade-resolved path (already ``~``/``$VAR`` host-expanded by
+    the snapshot expand pass); it is re-expanded defensively (idempotent on an
+    absolute path) so a hand-set relative ``~`` pointer still resolves.
 
-    FAIL-SOFT: a missing / unreadable / empty file is WARNED (loudly, to stderr
-    via the WARNING logger) and the var is left UNSET — never a crash/traceback.
-    A persona then fails auth with a clear symptom, which is the right UX. Every log
-    line references the VAR name + source PATH only — the token VALUE is NEVER
-    logged.
+    FAIL-SOFT: a missing / unreadable / EMPTY host file is WARNED (loudly, to stderr
+    via the WARNING logger) and the VAR is left OUT of both the mount list AND the
+    export list — never a crash. A persona then fails auth with a clear symptom.
+    Emptiness is checked via ``stat`` (``st_size == 0``) — kanibako does NOT read the
+    contents to decide. (A whitespace-only NON-empty file is not detected as empty —
+    arm's-length cannot inspect contents — so it delivers a whitespace/empty VALUE
+    in-box and auth then fails clearly; the inherent price of never reading the secret.)
+    Every log line references the VAR name + source PATH only — the token VALUE is
+    NEVER logged (nor read). An invalid VAR name (not a plain env identifier) is also
+    dropped fail-soft: it would otherwise be interpolated into the export shim.
+
+    Returns ``(mounts, export_vars)``: the ordered ``list[Mount]`` (ro, NO ``:U``)
+    and the ordered ``list[str]`` of VAR names the shim must export. An EMPTY
+    ``export_vars`` means NO shim is applied (the byte-identical no-secret path).
     """
-    resolved: dict[str, str] = {}
-    for var, raw_path in env_file.items():
-        # Expand $VAR then ~ against the LAUNCHING user's environment/home.
-        expanded = Path(os.path.expandvars(str(raw_path))).expanduser()
+    from kanibako.targets.base import Mount
+
+    mounts: list = []
+    export_vars: list[str] = []
+    for e in reconciled.mounts:
+        if e.category != "secret_path":
+            continue
+        var = e.name
+        # DEFENSE-IN-DEPTH: the VAR is interpolated into a generated ``sh -c`` export
+        # shim (:func:`_secret_export_shim`), so re-enforce the plain-identifier shape
+        # HERE — a VAR that bypassed ``config set`` validation (hand-edited YAML, or a
+        # broader settable surface) must never reach the shell. Fail-soft skip+warn.
+        if not SECRET_VAR_RE.match(var):
+            logger.warning(
+                "secret_path: ignoring invalid VAR name %r (must be a plain env "
+                "identifier [A-Za-z_][A-Za-z0-9_]*); not delivered", var,
+            )
+            continue
+        # host_src is the cascade-resolved path; re-expand $VAR then ~ defensively.
+        assert e.host_src is not None  # secret_path entries always carry a path.
+        src = Path(os.path.expandvars(e.host_src)).expanduser()
+        # FAIL-SOFT arm's-length checks — stat only, NEVER read the contents.
         try:
-            # utf-8 text read; a single trailing newline is stripped (the common
-            # "echo token > file" shape). Only ONE trailing \n is removed so a
-            # token that legitimately ends in whitespace is not further mangled.
-            contents = expanded.read_text(encoding="utf-8")
+            st = src.stat()
         except FileNotFoundError:
             logger.warning(
-                "env_file: token file not found at %s; %s unset "
-                "(persona will fail auth)", expanded, var,
+                "secret_path: token file not found at %s; %s unset "
+                "(agent may fail auth)", src, var,
             )
             continue
-        except OSError as e:
-            # Unreadable (perms, is-a-dir, io error). Reference the errno class
-            # only — never the file contents.
+        except OSError as exc:
             logger.warning(
-                "env_file: cannot read token file at %s (%s); %s unset "
-                "(persona will fail auth)", expanded, e.strerror or "unreadable", var,
+                "secret_path: cannot stat token file at %s (%s); %s unset "
+                "(agent may fail auth)", src, exc.strerror or "unreadable", var,
             )
             continue
-        value = contents[:-1] if contents.endswith("\n") else contents
-        if not value:
+        if not src.is_file():
             logger.warning(
-                "env_file: token file at %s is empty; %s unset "
-                "(persona will fail auth)", expanded, var,
+                "secret_path: %s is not a regular file; %s unset "
+                "(agent may fail auth)", src, var,
             )
             continue
-        resolved[var] = value
-    return resolved
+        if not os.access(src, os.R_OK):
+            logger.warning(
+                "secret_path: token file at %s is unreadable; %s unset "
+                "(agent may fail auth)", src, var,
+            )
+            continue
+        if st.st_size == 0:
+            logger.warning(
+                "secret_path: token file at %s is empty; %s unset "
+                "(agent may fail auth)", src, var,
+            )
+            continue
+        # ro mount, NO ``:U`` (never chown the host secret). box_dest is the fixed
+        # SECRET_MOUNT_DIR/<VAR> the entry already carries.
+        mounts.append(Mount(source=src, destination=e.box_dest, options="ro"))
+        export_vars.append(var)
+    return mounts, export_vars
+
+
+def _secret_export_shim(
+    program: str, args: list[str], export_vars: list[str],
+) -> "tuple[str, list[str]]":
+    """Wrap ``(program, args)`` in a ``sh -c`` shim that exports each secret VAR
+    from its ro mount, then ``exec``s the agent — the box-side half of the
+    arm's-length SECRET delivery.
+
+    The shim runs, at agent start, ``export <VAR>="$(cat SECRET_MOUNT_DIR/<VAR>)"``
+    for each *export_vars* entry, then ``exec``s the original *program* with its
+    *args*. kanibako writes only the export STATEMENT referencing the MOUNT PATH —
+    it never ``cat``s the file itself (the ``cat`` runs IN the box). The VARs are
+    read from an EXPLICIT list (not a ``for f in .../*`` glob) so the shim depends on
+    nothing but the mounts we placed, and an unresolved VAR simply never mounts.
+
+    Returns ``("sh", ["-c", <script>, "sh", program, *args])`` so ``sh -c`` sets
+    ``$0=sh`` and ``$@=program args`` and ``exec "$@"`` runs the agent with its args
+    intact. This nests inside the existing tmux/bootstrap wrap (the caller passes the
+    returned pair as that wrap's inner command). ONLY called when *export_vars* is
+    non-empty — a box with NO secrets keeps the bare entrypoint BYTE-IDENTICAL.
+    """
+    import shlex
+
+    lines: list[str] = []
+    for var in export_vars:
+        # Both the VAR name and the mount path are shell-quoted so a pathological
+        # VAR (there is none — VAR is the [A-Za-z_][A-Za-z0-9_]* env-name shape) or
+        # path can never break out of the export statement. The value is read IN the
+        # box from the mount (``cat``) — kanibako never reads it.
+        mount_path = f"{SECRET_MOUNT_DIR}/{var}"
+        lines.append(
+            f'export {var}="$(cat {shlex.quote(mount_path)})"'
+        )
+    script = "; ".join(lines) + '; exec "$@"'
+    return "sh", ["-c", script, "sh", program, *args]
 
 
 # --------------------------------------------------------------------------- #
@@ -2507,16 +2604,32 @@ def _resolve_env_files(
 # The host-login OAuth env var (BASE_URL) and the bearer token reach the box
 # through the EXISTING single-route channels (no bespoke copy): the endpoint via
 # the descriptor's ``endpoint``->``ANTHROPIC_BASE_URL`` env (populated into
-# ``agent_cfg.state``), the token via ``env_file`` (``_resolve_env_files``), and
-# any other non-secret settings.json env (the model-map ``ANTHROPIC_DEFAULT_*_
-# MODEL``) via the agent ``env`` channel (``_build_config_env``).  BASE_URL and
-# the token are carried by their dedicated channels and excluded from the env
-# overlay so each var has exactly ONE source.
+# ``agent_cfg.state``), the token via the ``secret_path`` category (arm's-length ro
+# mount + in-box export), and any other non-secret settings.json env (the model-map
+# ``ANTHROPIC_DEFAULT_*_MODEL``) via the agent ``env`` channel (``_build_config_env``).
+# BASE_URL and the token are carried by their dedicated channels and excluded from
+# the env overlay so each var has exactly ONE source.
 
 #: The persona's bearer token env var (harness-agnostic here: the persona MVP
-#: bearer channel).  Excluded from the model-map env overlay (delivered via
-#: ``env_file`` so the secret lives only in the host file).
+#: bearer channel).  Excluded from the model-map env overlay (delivered via the
+#: ``secret_path`` category so the secret lives only in the host file).
 _PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
+
+
+def _secret_pointer_usable(raw_path: str) -> bool:
+    """True iff *raw_path* points at a usable secret file — WITHOUT reading it.
+
+    ARM'S-LENGTH: expands ``$VAR``/``~`` then STATs the path (regular file,
+    readable, non-empty) but NEVER opens it — the persona preflight only needs to
+    know a token is PRESENT, not its value. Mirrors the fail-soft stat checks in
+    :func:`_emit_secret_mounts`, so preflight-usable ≡ launch-mountable.
+    """
+    try:
+        p = Path(os.path.expandvars(str(raw_path))).expanduser()
+        st = p.stat()
+    except OSError:
+        return False
+    return p.is_file() and os.access(p, os.R_OK) and st.st_size > 0
 #: The base-URL env var carried by the ``endpoint`` descriptor (its single
 #: source); excluded from the model-map env overlay so it is never double-sourced.
 _PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
@@ -2526,8 +2639,7 @@ def _persona_host_dir(persona: str) -> Path:
     """The host config dir the class setup script writes for *persona*.
 
     ``$XDG_CONFIG_HOME/claude/<persona>/`` (``~/.config/claude/<persona>/`` by
-    default) — the same convention ``_resolve_env_files`` expands for a hand-set
-    ``env_file`` pointer.
+    default) — the same convention a hand-set ``secret_path`` pointer expands.
     """
     return xdg("XDG_CONFIG_HOME", ".config") / "claude" / persona
 
@@ -2545,9 +2657,9 @@ def _adopt_persona_from_host_dir(
     * *extra_env* — the rest of the settings.json ``env`` block (the model-map
       ``ANTHROPIC_DEFAULT_*_MODEL``), MINUS the base-URL and bearer-token vars
       (each of those has its own single-source channel);
-    * *token_path* — the ``token`` file path (delivered via ``env_file`` →
-      ``_resolve_env_files``; returned even when absent so the caller emits the
-      token-missing error).
+    * *token_path* — the ``token`` file path (delivered via the ``secret_path``
+      category → arm's-length ro mount + in-box export; returned even when absent so
+      the caller emits the token-missing error).
 
     Returns ``None`` when the dir / settings.json is absent, unreadable, not a
     JSON object, or carries no ``ANTHROPIC_BASE_URL`` (→ the caller hard-errors:
@@ -2639,9 +2751,9 @@ def _preflight_persona_load(
     ``keyspace_endpoint`` is the endpoint the launch snapshot already resolved from
     ``agent.<node>.endpoint`` (explicit config wins).  When it is ``None`` the
     persona is not recognised → B3 adopts from ``~/.config/claude/<persona>/``,
-    populating ``agent_cfg.state['endpoint']`` (endpoint), ``agent_cfg.env_file``
+    populating ``agent_cfg.state['endpoint']`` (endpoint), ``agent_cfg.secret_path``
     (bearer token pointer) and ``agent_cfg.env`` (model-map).  A resolved endpoint
-    with NO usable token (neither a keyspace ``env_file`` nor the host ``token``)
+    with NO usable token (neither a keyspace ``secret_path`` nor the host ``token``)
     is ALSO a hard error (a bearer endpoint with no token 401s inside the box).
     """
     persona = persona_of(agent_id)
@@ -2652,9 +2764,11 @@ def _preflight_persona_load(
         if adoption is not None:
             base_url, extra_env, token_path = adoption
             agent_cfg.state["endpoint"] = base_url
-            # Deliver the bearer token via the env-from-file mechanism (secret
-            # stays in the host file); do not clobber a pre-set keyspace pointer.
-            agent_cfg.env_file.setdefault(_PERSONA_TOKEN_VAR, token_path)
+            # Deliver the bearer token via the SECRET category (arm's-length ro
+            # mount + in-box export; the secret stays in the host file — kanibako
+            # never reads it). Do not clobber a pre-set keyspace pointer. Written to
+            # ``agent.<persona>.secret_path.ANTHROPIC_AUTH_TOKEN`` when persisted.
+            agent_cfg.secret_path.setdefault(_PERSONA_TOKEN_VAR, token_path)
             # Deliver the model-map (and any other non-secret settings.json env)
             # via the agent env channel; keyspace env wins (do not clobber).
             for var, val in extra_env.items():
@@ -2685,23 +2799,24 @@ def _preflight_persona_load(
         ), False
 
     # Endpoint resolved — require a usable BEARER token.  A KEYSPACE-recognised
-    # persona whose ``env_file`` carries no token FALLS BACK to the host-dir
+    # persona whose ``secret_path`` carries no token FALLS BACK to the host-dir
     # ``token`` file (F4): the endpoint may come from the keyspace while the class
     # setup script supplies the token on disk.  Only when NEITHER a resolvable
-    # ``env_file`` token NOR the host token exists is it an error.
+    # ``secret_path`` token NOR the host token exists is it an error.
     host_token = host_dir / "token"
-    if not agent_cfg.env_file.get(_PERSONA_TOKEN_VAR) and host_token.exists():
-        agent_cfg.env_file[_PERSONA_TOKEN_VAR] = str(host_token)
-        adopted = True  # env_file mutated in place → caller persists it.
-    # Check the TOKEN var SPECIFICALLY (N1): a non-empty resolver result for some
-    # OTHER env_file var does not mean a bearer token is present.
-    resolved = _resolve_env_files(agent_cfg.env_file, logger)
-    if not resolved.get(_PERSONA_TOKEN_VAR):
+    if not agent_cfg.secret_path.get(_PERSONA_TOKEN_VAR) and host_token.exists():
+        agent_cfg.secret_path[_PERSONA_TOKEN_VAR] = str(host_token)
+        adopted = True  # secret_path mutated in place → caller persists it.
+    # Check the TOKEN var SPECIFICALLY (N1): a usable result for some OTHER
+    # secret_path var does not mean a bearer token is present. STAT the pointer
+    # arm's-length (never read the value — the value flows only via the launch mount).
+    token_ptr = agent_cfg.secret_path.get(_PERSONA_TOKEN_VAR)
+    if not token_ptr or not _secret_pointer_usable(token_ptr):
         return None, (
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
             f"auth token.\n"
             f"  A custom-endpoint persona needs a bearer token; none was found "
-            f"(neither a configured env_file nor {host_token}).\n"
+            f"(neither a configured secret_path nor {host_token}).\n"
             f"  Run the class setup script to write {host_token}, then retry."
         ), adopted
     return endpoint, None, adopted
@@ -3358,6 +3473,9 @@ def _emit_category_mounts(reconciled, *, label: str) -> list:
             continue  # tmpfs masks have no host source; split into tmpfs_masks.
         if e.scope == "agent" and e.category in ("bindings.ro", "bindings.rw"):
             continue  # agent delivery binds → agent_delivery_mounts (must-exist).
+        if e.category == "secret_path":
+            continue  # SECRET category → _emit_secret_mounts (arm's-length ro mount
+            # + box-side export shim; kept OUT of this ~-rooted depth-sorted emit).
         assert e.host_src is not None  # bind-shaped MOUNTs always have a source.
         src = _Path(e.host_src)
         if e.options != "ro":

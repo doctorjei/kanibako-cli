@@ -47,8 +47,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Set an agent setting (key=value).\n\n"
             "  agent set myagent model=sonnet     set 'model'\n"
             "  agent set myagent env.FOO=bar      set env var FOO\n"
-            "  agent set myagent env_file.TOKEN=~/.config/claude/foo/token\n"
-            "                                     env var TOKEN from a host file\n"
+            "  agent set myagent secret_path.TOKEN=~/.config/claude/foo/token\n"
+            "                                     TOKEN from a host secret file\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -225,11 +225,11 @@ def run_info(args: argparse.Namespace) -> int:
     else:
         print("Env:          (none)")
 
-    # env-from-file POINTERS (VAR -> host path). The token file contents (the
+    # SECRET category POINTERS (VAR -> host path). The token file contents (the
     # secret) are never read here — only the path is shown.
-    if cfg.env_file:
-        print("Env (file):")
-        for k, v in sorted(cfg.env_file.items()):
+    if cfg.secret_path:
+        print("Secret paths:")
+        for k, v in sorted(cfg.secret_path.items()):
             print(f"  {k} = {v}")
 
     return 0
@@ -328,18 +328,18 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                 except UserCancelled:
                     print("Aborted.")
                     return 0
-            # Sparse "remove all user overrides": drop the env / env_file
-            # tables entirely and, from [agent], every key EXCEPT ``name``
-            # (this removes run_args + all state keys), then prune the now-empty
-            # [agent] table. PRESERVES name + tweakcc — behavior-parity with the
-            # old de-sparse reset, which cleared state/env/env_file/run_args but
-            # left name and tweakcc intact. Sparse write: no default keys are
-            # re-materialized (spec [[settings-must-map-to-keystore-key]]).
+            # Sparse "remove all user overrides": drop the env table entirely and,
+            # from [agent], every key EXCEPT ``name`` (this removes run_args, all
+            # state keys, AND the discriminated ``<node>`` sub-table that holds
+            # secret_path / node binds), then prune the now-empty [agent] table.
+            # PRESERVES name + tweakcc — behavior-parity with the old de-sparse reset.
+            # Sparse write: no default keys re-materialized ([[settings-must-map-to-
+            # keystore-key]]).
             #
-            # Report a COUNT of the overrides actually removed — the SAME wording
-            # the other scopes' ``reset_all`` (config_interface.py) prints — so
-            # ``agent reset --all`` reads consistently across scopes: count each
-            # env / env_file entry and each removed [agent] key (name excluded).
+            # Report a COUNT of the overrides actually removed — the SAME wording the
+            # other scopes' ``reset_all`` (config_interface.py) prints. Each secret_path
+            # entry under ``agent.<node>.secret_path`` counts individually (parity with
+            # the old flat env_file count); each other removed [agent] key counts once.
             from kanibako.config_io import dump_doc, load_doc
 
             data = load_doc(path)
@@ -347,14 +347,22 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             env_tbl = data.pop("env", None)
             if isinstance(env_tbl, dict):
                 count += len(env_tbl)
-            env_file_tbl = data.pop("env_file", None)
-            if isinstance(env_file_tbl, dict):
-                count += len(env_file_tbl)
             agent_sec = data.get("agent")
             if isinstance(agent_sec, dict):
                 for k in [k for k in agent_sec if k != "name"]:
+                    val = agent_sec[k]
+                    if k == agent_id and isinstance(val, dict):
+                        # The discriminated node sub-table: count each secret_path
+                        # pointer per-VAR (parity with the old flat env_file count),
+                        # plus one for any other node content (e.g. node binds).
+                        secret_sub = val.get("secret_path")
+                        if isinstance(secret_sub, dict):
+                            count += len(secret_sub)
+                        if any(kk != "secret_path" for kk in val):
+                            count += 1
+                    else:
+                        count += 1
                     del agent_sec[k]
-                    count += 1
                 if not agent_sec:
                     del data["agent"]
             dump_doc(path, data)
@@ -370,7 +378,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             return 1
 
         key = reset_key.strip()
-        sections, leaf = _agent_key_route(key)
+        sections, leaf = _agent_key_route(key, agent_id)
         changed = _remove_nested_toml_key(path, sections, leaf)
         if changed:
             # Honest cleared-form (F7), same contract as every other noun's
@@ -398,7 +406,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         key, _, value = key_value.partition("=")
         key = key.strip()
         value = value.strip()
-        sections, leaf = _agent_key_route(key)
+        sections, leaf = _agent_key_route(key, agent_id)
         # run_args is stored as a LIST (space-split); everything else is the
         # raw string. Sparse write — only the touched key is materialized.
         stored: object = value.split() if key == "run_args" else value
@@ -419,12 +427,11 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
 def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     """Read a single key from agent config."""
-    # env_file.<VAR> — the env-from-file POINTER (host path). Checked before the
-    # ``env.`` prefix so ``env_file.X`` is not mis-parsed as ``env.`` + ``file.X``.
-    # Returns the stored PATH, never the (secret) file contents.
-    if key.startswith("env_file."):
-        var = key[len("env_file."):]
-        return cfg.env_file.get(var)
+    # secret_path.<VAR> — the SECRET category POINTER (host path). Checked before the
+    # ``env.`` prefix. Returns the stored PATH, never the (secret) file contents.
+    if key.startswith("secret_path."):
+        var = key[len("secret_path."):]
+        return cfg.secret_path.get(var)
     if key.startswith("env."):
         env_name = key[4:]
         return cfg.env.get(env_name)
@@ -436,19 +443,22 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     return cfg.state.get(key)
 
 
-def _agent_key_route(key: str) -> tuple[tuple[str, ...], str]:
+def _agent_key_route(key: str, node: str) -> tuple[tuple[str, ...], str]:
     """Map an agent config *key* to its ``(sections, leaf)`` file path.
 
     Single source of truth for the SPARSE set/reset routing (mirrors the read
-    routing in :func:`_get_agent_key`). ``env_file.`` is tested BEFORE ``env.``
-    so ``env_file.X`` is a pointer named ``X`` — never mis-split as ``env.`` +
-    ``file.X``. ``name``, ``run_args``, and every other (state) key live under
-    the ``[agent]`` table with the key as the leaf.
+    routing in :func:`_get_agent_key`). ``secret_path.`` is tested BEFORE ``env.``
+    so ``secret_path.X`` is a pointer named ``X``. A ``secret_path.<VAR>`` pointer is
+    stored DISCRIMINATED under ``agent.<node>.secret_path.<VAR>`` (the SAME first-class
+    SECRET category shape the ``config set agent.<node>.secret_path.<VAR>`` route and
+    ``_agent_partial`` use), so *node* (the agent id) is threaded in. ``name``,
+    ``run_args``, and every other (state) key live under the ``[agent]`` table.
     """
-    # env_file.<VAR> — the env-from-file POINTER (host path). The secret (the
-    # token) stays in the host file; only the PATH is persisted (spec §2d).
-    if key.startswith("env_file."):
-        return ("env_file",), key[len("env_file."):]
+    # secret_path.<VAR> — the SECRET category POINTER (host path), discriminated
+    # under agent.<node>.secret_path (spec §2a; RENAMED from rc-only env_file). The
+    # secret stays in the host file; only the PATH is persisted (never read here).
+    if key.startswith("secret_path."):
+        return ("agent", node, "secret_path"), key[len("secret_path."):]
     if key.startswith("env."):
         return ("env",), key[len("env."):]
     # name / run_args / state (model, auto_approve, allow_helpers, …).
@@ -481,11 +491,11 @@ def _show_agent_config(
             print(f"  env.{k} = {v}")
         has_output = True
 
-    # [env_file] section — the env-from-file POINTERS (VAR -> host path). Only the
-    # PATH is shown; the token file contents (the secret) are never read here.
-    if cfg.env_file:
-        for k, v in sorted(cfg.env_file.items()):
-            print(f"  env_file.{k} = {v}")
+    # secret_path POINTERS (VAR -> host path). Only the PATH is shown; the token
+    # file contents (the secret) are never read here.
+    if cfg.secret_path:
+        for k, v in sorted(cfg.secret_path.items()):
+            print(f"  secret_path.{k} = {v}")
         has_output = True
 
     if not has_output:

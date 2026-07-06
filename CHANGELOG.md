@@ -123,11 +123,18 @@ equivalence-preserving for launches.
     `ANTHROPIC_BASE_URL`). When set, kanibako **does not sync the host Anthropic
     OAuth credential** to that box (a fail-safe credential fork), so your Anthropic
     token is never sent to a third-party endpoint.
-  - **`agent.<agent>.env_file.<VAR> = <host-path>`** — delivers a host-file secret
-    (e.g. a bearer token → `ANTHROPIC_AUTH_TOKEN`) into the container as an env var
-    at launch, **without** the value ever entering the keystore, the launch
-    snapshot, or any box file (only the path pointer is stored). A
+  - **`<scope>.secret_path.<VAR> = <host-path>`** (all four scopes; the persona
+    bearer token uses `agent.<agent>.secret_path.ANTHROPIC_AUTH_TOKEN`) — the
+    first-class **SECRET category**: delivers a host-file secret (e.g. a bearer
+    token → `ANTHROPIC_AUTH_TOKEN`) into the box **arm's-length** — the host file is
+    read-only bind-mounted to a fixed in-box location and exported in-box by a shim
+    at agent start, so kanibako **never reads the secret value** (never into process
+    memory, never onto the podman argv, never in the keystore / launch snapshot /
+    any box file / logs — only the path pointer is stored). Resolves through the
+    `system → workset → box → agent` cascade like any category. A
     missing/unreadable/empty file warns and leaves the var unset (fail-soft).
+    *(Renamed from the rc0-rc2 `agent.<agent>.env_file.<VAR>`, which read the value
+    into the container env — clean break, no alias.)*
 
   A persona shares the bare harness's plugins/cache (via a symlink shim into the
   harness store) rather than starting empty.

@@ -548,6 +548,17 @@ def start_mocks():
                         _floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
                     _state = dict(_agent_cfg.state)
+                # SECRET category (spec §2a secret_path): fold the active agent's
+                # secret_path pointers into the snapshot as agent-scope category
+                # defaults (already discriminated agent.<node>.secret_path.<VAR>), so
+                # the reconcile emits the secret_path winners the delivery seam +
+                # export shim consume — exactly as the real cascade would.
+                _default_cats = None
+                if _agent_cfg is not None and getattr(_agent_cfg, "secret_path", None):
+                    _default_cats = {
+                        f"agent.{_node}.secret_path.{var}": path
+                        for var, path in _agent_cfg.secret_path.items()
+                    }
                 # allow_helpers is now an AGENT-scope behavior key (spec §2d): the
                 # live launch reader (effective_behavior) resolves it off the
                 # snapshot and DEFAULTS True (helpers ON). Unit tests drive the
@@ -564,7 +575,7 @@ def start_mocks():
                     agent_name=_node, ctx=ctx,
                     system_path=None, agent_path=None,
                     workset_path=None, box_path=None,
-                    behavior_floor=_floor, default_categories=None,
+                    behavior_floor=_floor, default_categories=_default_cats,
                     agent_partial=partial,
                     agent_state=_state,
                 )

