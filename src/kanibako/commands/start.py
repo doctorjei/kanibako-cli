@@ -3701,7 +3701,8 @@ def _apply_init_seeds(
     # Single-route (7c): resolve the seed COPY winners off the ONE committed
     # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
     # ``_resolve_launch_snapshot``), replacing the retired second resolver route
-    # (``_resolve_launch_categories`` → ``resolve_categories``/``read_categories``).
+    # (the retired by-name category resolver, now the frozen
+    # ``tests/support/flawed_oracle.py`` baseline).
     # NARROW injection: ``include_base_families=False`` +
     # ``extra_default_categories=default_seeds`` injects ONLY the target's declared
     # seeds (matching the old agent-level ``defaults=default_seeds``) — it does NOT

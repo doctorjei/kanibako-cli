@@ -1,11 +1,18 @@
-"""Behavior-EQUIVALENCE: the block-7b snapshot category path vs the retired
-per-family LevelView path produce the SAME reconciled mount/copy/env set.
+"""DRIFT TRIPWIRE: the live snapshot category path vs the FROZEN legacy by-name
+resolver (``tests/support/flawed_oracle.py``) reconcile to the SAME mount/copy/env
+set.
 
-The Editor's gate (bar #3): for a representative category config the NEW
-``build_launch_snapshot → snapshot_category_entries → reconcile_categories`` path
-yields the IDENTICAL reconciled (source, dest, options) SET — AND depth-order — as
-the OLD ``resolve_categories → reconcile_categories`` path did, so the live swap is
-drift-free. Parametrised over the scope-root shapes that distinguish the launch
+The live ``build_launch_snapshot → snapshot_category_entries →
+reconcile_categories`` path is compared, for a representative category config,
+against the frozen ``flawed_oracle_categories → reconcile_categories`` baseline —
+the recorded (source, dest, options) SET AND depth-order.
+
+⚑ The frozen baseline is NOT a correctness authority (the product REPLACED that
+resolver because it was wrong in a number of cases). A mismatch therefore means
+the live path DRIFTED from the recorded baseline — NOT that the live path is
+wrong. On a divergence a HUMAN adjudicates the correct value against the SPEC
+(``reference/settings-keyspace-1.6.0-target.md``); the frozen side may itself be
+the buggy one. Parametrised over the scope-root shapes that distinguish the launch
 MODES (standalone has no workset root; named/primary add the workset binding roots)
 and the AGENT (the agent-store root differs by agent name), since those are the only
 launch-variant inputs the category resolution depends on.
@@ -18,13 +25,19 @@ import pytest
 from kanibako.settings_categories import (
     ReconciledCategories,
     reconcile_categories,
-    resolve_categories,
 )
 from kanibako.settings_launch import (
     build_launch_snapshot,
     snapshot_category_entries,
 )
 from kanibako.settings_resolve import LevelView, ResolveCtx
+
+# The FROZEN legacy by-name resolver (retired from the product). It is a DRIFT
+# TRIPWIRE, NOT a correctness authority: a mismatch below means the live snapshot
+# path DRIFTED from this recorded baseline, and a human adjudicates the correct
+# value against the SPEC (reference/settings-keyspace-1.6.0-target.md) — the OLD
+# resolver here may itself be the wrong side.
+from tests.support.flawed_oracle import flawed_oracle_categories
 
 
 def _ctx(agent: str, workset: str | None) -> ResolveCtx:
@@ -103,8 +116,9 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
     ctx = _ctx(agent, workset)
     roots = _scope_roots(agent, ws_root)
 
-    # --- OLD path: resolve_categories over a single AGENT-level LevelView whose
-    # defaults carry the tables + the resolved system.* lookup map.
+    # --- FROZEN BASELINE path: the retired by-name resolver over a single
+    # AGENT-level LevelView whose defaults carry the tables + the resolved
+    # system.* lookup map. (Drift tripwire, NOT an authority — see module docstring.)
     old_levels = [
         LevelView("box", {}),
         LevelView("workset", {}),
@@ -117,7 +131,7 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
             return _RESOLVED_SYS[ref]
         raise AssertionError(f"unexpected @-ref {ref}")
 
-    old_entries = resolve_categories(
+    old_entries = flawed_oracle_categories(
         levels=old_levels, ctx=ctx, lookup=_lookup, scope_roots=roots,
     )
     old_rec = reconcile_categories(old_entries)

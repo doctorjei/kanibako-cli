@@ -10,9 +10,7 @@ from kanibako.settings_categories import (
     ENV,
     MOUNT,
     CategoryEntry,
-    is_category_key,
     reconcile_categories,
-    resolve_categories,
 )
 from kanibako.settings_resolve import (
     LevelView,
@@ -21,6 +19,13 @@ from kanibako.settings_resolve import (
     _Unset,
     expand_expr,
     resolve_value,
+)
+
+# The FROZEN legacy by-name resolver (retired from the product; a tests-only
+# drift tripwire, NOT a correctness authority — adjudicate divergences vs SPEC).
+from tests.support.flawed_oracle import (
+    flawed_oracle_categories,
+    flawed_oracle_is_category_key,
 )
 
 HOST_HOME = "/home/u"
@@ -53,7 +58,7 @@ def make_lookup(levels: list[LevelView], ctx: ResolveCtx):
 
 def _resolve(levels, ctx, scope_roots=None) -> list[CategoryEntry]:
     lookup = make_lookup(levels, ctx)
-    return resolve_categories(
+    return flawed_oracle_categories(
         levels=levels, ctx=ctx, lookup=lookup, scope_roots=scope_roots
     )
 
@@ -338,7 +343,7 @@ class TestEnv:
 
     def test_env_dotted_var_not_matched(self):
         # env VAR names cannot contain dots, so a dotted "VAR" is not an env key.
-        assert not is_category_key("box.env.A.B")
+        assert not flawed_oracle_is_category_key("box.env.A.B")
 
     def test_env_precedence_box_over_system(self):
         ctx = make_ctx()
@@ -533,32 +538,32 @@ class TestErrors:
 
 
 # ---------------------------------------------------------------------------
-# is_category_key
+# flawed_oracle_is_category_key
 # ---------------------------------------------------------------------------
 
 
 class TestIsCategoryKey:
     def test_true_for_each_category(self):
-        assert is_category_key("system.masks")
-        assert is_category_key("box.bindings.ro.x")
-        assert is_category_key("box.bindings.rw.x")
-        assert is_category_key("agent.caches.k")
-        assert is_category_key("agent.seeded.t")
-        assert is_category_key("workset.shared.s")
-        assert is_category_key("agent.synced.c")
-        assert is_category_key("box.env.FOO")
+        assert flawed_oracle_is_category_key("system.masks")
+        assert flawed_oracle_is_category_key("box.bindings.ro.x")
+        assert flawed_oracle_is_category_key("box.bindings.rw.x")
+        assert flawed_oracle_is_category_key("agent.caches.k")
+        assert flawed_oracle_is_category_key("agent.seeded.t")
+        assert flawed_oracle_is_category_key("workset.shared.s")
+        assert flawed_oracle_is_category_key("agent.synced.c")
+        assert flawed_oracle_is_category_key("box.env.FOO")
         # Dotted name allowed for bind categories.
-        assert is_category_key("system.bindings.rw.a.b.c")
+        assert flawed_oracle_is_category_key("system.bindings.rw.a.b.c")
 
     def test_false_for_non_category_keys(self):
-        assert not is_category_key("system.data")
-        assert not is_category_key("agent.model")
-        assert not is_category_key("box.image")
-        assert not is_category_key("nope.bindings.rw.x")
-        assert not is_category_key("system.path.share_rw.foo")  # old shape gone
-        assert not is_category_key("system.bindings.rw")        # missing name
-        assert not is_category_key("box.bindings.xx.y")         # bad mode
-        assert not is_category_key("box.env")                   # missing VAR
+        assert not flawed_oracle_is_category_key("system.data")
+        assert not flawed_oracle_is_category_key("agent.model")
+        assert not flawed_oracle_is_category_key("box.image")
+        assert not flawed_oracle_is_category_key("nope.bindings.rw.x")
+        assert not flawed_oracle_is_category_key("system.path.share_rw.foo")  # old shape gone
+        assert not flawed_oracle_is_category_key("system.bindings.rw")        # missing name
+        assert not flawed_oracle_is_category_key("box.bindings.xx.y")         # bad mode
+        assert not flawed_oracle_is_category_key("box.env")                   # missing VAR
 
 
 # ---------------------------------------------------------------------------
@@ -923,7 +928,7 @@ class TestCoreDefaultCategories:
         assert "box.bindings.rw.workspace" in binds
 
     def test_options_flow_through_resolver_to_entry(self, tmp_path):
-        """The 3rd-slot options survive resolve_categories as the entry options.
+        """The 3rd-slot options survive flawed_oracle_categories as the entry options.
 
         Injected as AGENT-level defaults, the structured triples resolve to
         CategoryEntry with the per-entry options override applied (so vault_ro keeps
