@@ -739,13 +739,19 @@ class TestH1NoCrashOnAdvertisedKeys:
         data = load_doc(project_toml)
         assert data["box"]["auth"]["workset_enabled"] is False
 
-    def test_set_allow_helpers_no_crash(self, tmp_path):
+    def test_set_allow_helpers_lands_in_agent_default_tier(self, tmp_path):
+        """allow_helpers moved to the AGENT keyspace (spec §2d L557): the bare
+        key is the any-agent ``agent.default`` tier (mirrors ``model``), NOT a
+        flat top-level scalar. Clean break — nothing lands at the old scopeless
+        ``allow_helpers`` key."""
         project_toml = tmp_path / "settings.yaml"
         msg = set_config_value("allow_helpers", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
-        # Top-level scalar field, stored as a real bool.
-        assert data["allow_helpers"] is False
+        # Agent-scope scalar: lands in [agent][default]allow_helpers (like model).
+        assert data["agent"]["default"]["allow_helpers"] == "false"
+        # Clean break: the old flat top-level scalar is gone.
+        assert "allow_helpers" not in data
 
     def test_set_box_enable_vault_lands_in_box_table(self, tmp_path):
         """P2: ``box.enable_vault`` routes to the ``box:`` table nested slot
@@ -984,14 +990,33 @@ class TestH2BoolCoercion:
             set_config_value("box.share_images", raw, config_path=project_toml)
             assert load_doc(project_toml)["box"]["share_images"] is expected
 
-    def test_set_allow_helpers_false_loads_as_real_bool(self, tmp_path):
-        from kanibako.config import load_config
-
+    def test_get_allow_helpers_round_trips_agent_default(self, tmp_path):
+        """The bare ``allow_helpers`` get reads the value STORED at the any-agent
+        ``agent.default`` tier (symmetric with set; mirrors ``model``)."""
         project_toml = tmp_path / "settings.yaml"
-        set_config_value("allow_helpers", "false", config_path=project_toml)
-        cfg = load_config(project_toml)
-        assert cfg.allow_helpers is False
-        assert not cfg.allow_helpers
+        dump_doc(project_toml, {"agent": {"default": {"allow_helpers": "false"}}})
+        val = get_config_value(
+            "allow_helpers",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=project_toml,
+        )
+        assert val == "false"
+
+    def test_set_allow_helpers_per_agent_override(self, tmp_path):
+        """A per-agent override ``agent.<agent>.allow_helpers`` is a PERSONA key
+        (like ``agent.<agent>.model``): it lands on the agent's OWN
+        ``agents/<agent>/settings.yaml`` flat ``agent:`` slot the launch reads."""
+        cf = tmp_path / "kanibako_config.yaml"
+        agents_root = tmp_path / "agents"
+        msg = set_config_value(
+            "agent.claude.allow_helpers", "false",
+            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            agents_root=agents_root,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+            "agent": {"allow_helpers": "false"},
+        }
 
     def test_bool_key_rejects_garbage(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"

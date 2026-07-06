@@ -348,6 +348,29 @@ def test_effective_behavior_active_over_default():
     assert eff == {"model": "opus", "auto_approve": "True"}
 
 
+def test_effective_behavior_resolves_allow_helpers_default_tier():
+    # allow_helpers moved to the AGENT keyspace (spec §2d L557): with only the
+    # agent.default backstop set, that value resolves (the launch gate reads it).
+    snap = KeyStore({"agent": {"default": {"allow_helpers": "false"}}})
+    eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
+    assert eff == {"allow_helpers": "false"}
+
+
+def test_effective_behavior_allow_helpers_per_agent_override_wins():
+    # §2d L368: a per-agent allow_helpers overrides the agent.default backstop.
+    snap = KeyStore({"agent": {
+        "default": {"allow_helpers": "false"},
+        "claude": {"allow_helpers": "true"},
+    }})
+    eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
+    assert eff == {"allow_helpers": "true"}
+    # A DIFFERENT active agent that has no override falls back to the default.
+    eff_other = effective_behavior(
+        snap, active_agent="goose", keys=["allow_helpers"],
+    )
+    assert eff_other == {"allow_helpers": "false"}
+
+
 def test_effective_behavior_omits_present_none():
     # A present-None reset in the WINNING (active) slot SETS + shadows default →
     # omitted (the consumer applies its own default, §3).
