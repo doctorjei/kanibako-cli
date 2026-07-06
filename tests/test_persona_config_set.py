@@ -147,6 +147,34 @@ class TestSetPersona:
             "env": {"ANTHROPIC_MODEL": "gemma"},
         }
 
+    def test_set_persona_auto_approve_accepts_bool(self, tmp_path, agents_root):
+        """A per-persona ``agent.<node>.auto_approve`` bool literal is accepted +
+        written VERBATIM to the node's flat agent leaf (happy path unchanged)."""
+        msg = set_config_value(
+            "agent.navigator+claude.auto_approve", "false",
+            config_path=_cfg_path(tmp_path),
+            command_scope=ConfigLevel.system, agents_root=agents_root,
+        )
+        assert msg.startswith("Set")
+        assert load_doc(_node_file(agents_root)) == {
+            "agent": {"auto_approve": "false"},
+        }
+
+    def test_set_persona_auto_approve_typo_rejected(self, tmp_path, agents_root):
+        """AUTH-CRITICAL: a per-persona ``auto_approve`` typo is REJECTED at set
+        time (never written), same write-guard as the bare key (Editor finding B).
+        Mutation proof: dropping the guard lets ``garbage`` through and this
+        reddens."""
+        msg = set_config_value(
+            "agent.navigator+claude.auto_approve", "garbage",
+            config_path=_cfg_path(tmp_path),
+            command_scope=ConfigLevel.system, agents_root=agents_root,
+        )
+        assert msg.startswith("Error:")
+        assert "auto_approve must be a boolean" in msg
+        # The node file was never written (the typo did not land).
+        assert not _node_file(agents_root).exists()
+
     def test_default_only_persona_file_stays_sparse(self, tmp_path, agents_root):
         # Setting ONLY endpoint must not materialise name/run_args/env/secret_path/
         # tweakcc — the sparse-store rule. The file has EXACTLY the one key.
