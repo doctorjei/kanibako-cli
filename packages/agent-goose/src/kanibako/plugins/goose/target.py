@@ -6,10 +6,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.agent_defaults import load_descriptor
+from kanibako.agent_defaults import load_category_binds, load_descriptor
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
+    BindDefault,
     PluginDescriptor,
     Target,
     TargetSetting,
@@ -59,6 +60,17 @@ class GooseTarget(Target):
     @property
     def descriptor(self) -> PluginDescriptor | None:
         return _GOOSE_DESCRIPTOR
+
+    def default_category_binds(self) -> dict[str, BindDefault]:
+        """Declare goose's instructions bind (spec §2d L608).
+
+        ``agent.goose.bindings.ro.instructions = (@system.instructions,
+        ~/.config/goose/KANIBAKO.md)`` — the shared box-guidance doc delivered
+        READ-ONLY into goose's config dir.  Paired with the descriptor's
+        ``CONTEXT_FILE_NAMES`` box env (goose-defaults.yaml) so goose loads the file.
+        Declared in ``goose-defaults.yaml`` (read via the loader).
+        """
+        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
     # NOTE: no ``transform_cred`` override.  The old host config.yaml IMPORT
     # (extensions/instructions allowlist filter) stays removed; all of goose's

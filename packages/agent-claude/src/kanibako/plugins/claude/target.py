@@ -10,7 +10,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.agent_defaults import load_descriptor, load_shares
+from kanibako.agent_defaults import (
+    load_category_binds,
+    load_descriptor,
+    load_shares,
+)
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
@@ -236,6 +240,16 @@ class ClaudeTarget(Target):
         in this plugin's ``claude-defaults.yaml`` (read via the loader).
         """
         return load_shares(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+
+    def default_category_binds(self) -> dict[str, BindDefault]:
+        """Declare claude's instructions bind (spec §2d L608).
+
+        ``agent.claude.bindings.ro.instructions = (@system.instructions,
+        ~/.claude/KANIBAKO.md)`` — the shared box-guidance doc delivered READ-ONLY
+        into claude's config dir.  Declared in ``claude-defaults.yaml`` (read via
+        the loader); the ``@system.instructions`` source keeps core agent-agnostic.
+        """
+        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.

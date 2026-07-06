@@ -354,6 +354,25 @@ class Target(ABC):
         """
         return {}
 
+    def default_category_binds(self) -> dict[str, BindDefault]:
+        """Declare default AGENT-scope ``@``-ref-sourced category binds.
+
+        Returns a mapping of scoped category keys (``agent.bindings.ro.<name>``) to
+        STRUCTURED bind tuples ``(meta_ref, box_dest[, "ro"])`` (spec §2a) whose
+        HOST SOURCE is an ``@``-ref STRING resolved by the launch category cascade —
+        the AGENT-scope mirror of :mod:`kanibako.core_defaults`'s ``meta_ref`` bind
+        shape.  These are injected as the AGENT level's declared defaults
+        (``default_categories``) alongside :meth:`default_shares`; a user can
+        override or suppress (terminal "") any of them at a more-specific level.
+
+        The canonical use (spec §2d L608) is the PLUGIN-declared instructions bind
+        ``agent.<agent>.bindings.ro.instructions = (@system.instructions,
+        <harness slot>)`` — each plugin owns its own harness-slot ``box_dest`` while
+        the shared ``@system.instructions`` source keeps core agent-agnostic.  The
+        default returns ``{}`` (no category binds).
+        """
+        return {}
+
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare what runtime settings this target supports.
 
