@@ -56,7 +56,7 @@ box_dest deferral (S17 / B6)
 The snapshot keeps box-side ``$XDG`` / ``~`` in a ``Bind.box`` RAW (deferred —
 host ≠ box). The category ADAPTER (:func:`snapshot_category_entries`) is a
 ``box_dest`` consumer: it resolves box-side ``~`` → ``GUEST_HOME`` and ``$XDG``
-against the BOX ctx (matching today's ``resolve_categories`` ``space="guest"``)
+against the BOX ctx (matching the retired by-name resolver's ``space="guest"``)
 BEFORE building each :class:`CategoryEntry`, so reconcile keys on the SAME
 absolute ``box_dest`` it did pre-swap (depth-sort + dest-collision unchanged). The
 S20 escape contract (backslash-escaped ``$`` / ``~`` / ``\\`` carried literal) is
@@ -847,7 +847,8 @@ def build_launch_snapshot(
             floor[f"agent.default.{key}"] = val
     # Category default tables are already scope-qualified dotted keys. A live
     # ""-suppression of a DEFAULT means "this default is disabled" → just DROP it
-    # (absent ≡ no default), matching resolve_categories' terminal skip. (A box/
+    # (absent ≡ no default), matching the retired by-name resolver's terminal
+    # skip. (A box/
     # workset FILE ""-suppression of an inherited default is a separate path —
     # see the module note; no shipped default table uses "".)
     #
@@ -1393,12 +1394,12 @@ def snapshot_category_entries(
     scope_roots: Mapping[str, str] | None = None,
 ) -> list[CategoryEntry]:
     """Walk the snapshot's category subtrees → the ``list[CategoryEntry]``
-    :func:`reconcile_categories` consumes (the SAME shape ``resolve_categories``
-    produced), so the by-dest reconcile pass is unchanged (§6g).
+    :func:`reconcile_categories` consumes (the SAME shape the retired by-name
+    resolver produced), so the by-dest reconcile pass is unchanged (§6g).
 
     For every ``<scope>.<category>`` subtree present it emits one entry per leaf.
     The four scopes are the SAME ``system, agent, workset, box`` apply order the
-    old ``resolve_categories`` used (so a reconcile tie breaks identically), and
+    old by-name resolver used (so a reconcile tie breaks identically), and
     every emitted entry's ``scope`` / root-join ``group`` is the BARE scope token
     (``agent`` / ``agent.<category>``) — the load-bearing scope identity (§7 /
     ``scope_roots``), NOT the snapshot's agent discriminator.
@@ -1416,8 +1417,8 @@ def snapshot_category_entries(
     host_src is read from the expanded ``Bind`` (already host-resolved at build),
     then ROOT-JOINED: a RELATIVE host_src under a group that has a *scope_roots*
     entry (``agent.shared`` → the per-agent store dir, ``agent.bindings.ro`` → the
-    share root, etc.) is prefixed with that root — replicating the old
-    ``resolve_categories`` join EXACTLY (relative-only, root absolute). box_dest is
+    share root, etc.) is prefixed with that root — replicating the old by-name
+    resolver's join EXACTLY (relative-only, root absolute). box_dest is
     resolved BOX-side here (this is a ``box_dest`` consumer, B6): ``~`` →
     ``GUEST_HOME`` and ``$XDG`` against *box_ctx* — matching the old
     ``space="guest"`` pass — so reconcile keys on the SAME absolute dest. ``env``
@@ -1433,7 +1434,7 @@ def snapshot_category_entries(
         return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
 
     def _root_join(group: str, host_src: str) -> str:
-        # Replicate resolve_categories' root-join: a RELATIVE host_src under a
+        # Replicate the retired by-name resolver's root-join: a RELATIVE host_src under a
         # group with a root is prefixed with that (absolute) root; else as-is.
         root = roots.get(group)
         if root and not host_src.startswith("/"):
@@ -1627,7 +1628,7 @@ def _emit_bind(
     present-None bind (§3/§6e) and the views' S22 contract holds — so a non-Bind
     leaf is a build-invariant breach; raise loudly (never type-launder).
     *root_join_fn* prefixes a RELATIVE host_src with *group*'s scope-root
-    (replicating ``resolve_categories``); *box_dest_fn* resolves box-side.
+    (replicating the retired by-name resolver); *box_dest_fn* resolves box-side.
     """
     if not isinstance(bind, Bind):
         raise SettingsError(

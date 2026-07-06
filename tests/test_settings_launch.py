@@ -3,7 +3,7 @@
 These pin the PURE logic of the ONE-resolve-per-launch builder + adapter (no
 launch I/O): the floor/category/agent-partial fold into the single
 snapshot, the category adapter's shape + root-join + box-side box_dest resolution
-(equivalent to the old resolve_categories ``space="guest"`` pass), the behavior
+(equivalent to the retired by-name resolver's ``space="guest"`` pass), the behavior
 read, and the agent-delivery emitter's AGENT_CRITICAL exit-1 safe-fail.
 """
 
@@ -75,7 +75,7 @@ def test_category_default_table_folds_into_snapshot():
 
 def test_empty_string_default_suppression_dropped():
     # A ""-suppressed DEFAULT means "disabled" → dropped from the floor (absent),
-    # matching resolve_categories' terminal skip (no shipped default uses "").
+    # matching the retired by-name resolver's terminal skip (no shipped default uses "").
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),

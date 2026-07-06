@@ -718,10 +718,7 @@ class TestHelperDefaultCategories:
         # with EMPTY mount options (not the rw default Z,U) — the property the live
         # socket depends on.
         from kanibako import core_defaults
-        from kanibako.settings_categories import (
-            reconcile_categories,
-            resolve_categories,
-        )
+        from kanibako.settings_categories import reconcile_categories
         from kanibako.settings_resolve import (
             LevelView,
             ResolveCtx,
@@ -729,6 +726,9 @@ class TestHelperDefaultCategories:
             expand_expr,
             resolve_value,
         )
+
+        # Frozen legacy by-name resolver (tests-only drift tripwire, not an authority).
+        from tests.support.flawed_oracle import flawed_oracle_categories
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
@@ -757,7 +757,7 @@ class TestHelperDefaultCategories:
                 rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain
             )
 
-        entries = resolve_categories(
+        entries = flawed_oracle_categories(
             levels=levels, ctx=ctx, lookup=lookup, scope_roots=None
         )
         reconciled = reconcile_categories(entries, shares=True)
