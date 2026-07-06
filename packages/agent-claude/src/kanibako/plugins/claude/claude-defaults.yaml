@@ -107,3 +107,23 @@ shares:
   - key: agent.shared.cache
     host_src: cache
     box_dest: "$GUEST_HOME/.claude/cache"
+
+# AGENT-scope @-ref-sourced category binds (spec §2d L608).  Each entry becomes an
+# `agent.<category>.<key>` default whose VALUE is the structured bind tuple
+# (<@-ref host_src>, <box_dest>, <options>) — the AGENT-scope mirror of
+# core-defaults.yaml's `meta_ref` bind shape.  `meta_ref` is emitted VERBATIM as the
+# host_src (NOT a fixed path), which the launch category cascade / `expand` resolves
+# from the snapshot floor — so the plugin declares its harness slot WITHOUT any
+# per-harness path knowledge leaking into core.  Read by the thin loader
+# `kanibako.agent_defaults.load_category_binds`.
+category_binds:
+  # Instructions bind: the shared box-guidance doc delivered RO into claude's config
+  # dir at ~/.claude/KANIBAKO.md (uniform namespaced slot w/ goose; discoverable).
+  # STEP 2a delivers the CONTENT only — the managed /etc/claude-code/CLAUDE.md
+  # @import pointer is a separate follow-up (STEP 2b).  Source = the single shared
+  # @system.instructions.
+  - key: instructions
+    category: bindings.ro
+    meta_ref: "@system.instructions"
+    box_dest: "~/.claude/KANIBAKO.md"
+    ro: true

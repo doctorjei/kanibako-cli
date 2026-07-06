@@ -475,8 +475,11 @@ class TestDescriptor:
         # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
         # setting): the in-box OS keyring/D-Bus secret-service is unavailable, so
         # goose must store secrets in the file ~/.config/goose/secrets.yaml.
+        # CONTEXT_FILE_NAMES (STEP 2a) makes goose load the bound KANIBAKO.md file;
+        # its value is a JSON array STRING re-including the default context filenames.
         assert GooseTarget().descriptor.container_env == {
-            "GOOSE_DISABLE_KEYRING": "true"
+            "GOOSE_DISABLE_KEYRING": "true",
+            "CONTEXT_FILE_NAMES": '["KANIBAKO.md","AGENTS.md",".goosehints"]',
         }
 
     def test_cred_files(self):

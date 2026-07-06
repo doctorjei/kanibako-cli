@@ -65,8 +65,15 @@ descriptor:
   # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static): the in-box OS
   # keyring/D-Bus secret-service is unavailable, so goose stores secrets in the
   # file ~/.config/goose/secrets.yaml instead (the file kanibako syncs).
+  #
+  # CONTEXT_FILE_NAMES makes goose load the kanibako box-guidance file (bound RO to
+  # ~/.config/goose/KANIBAKO.md by the instructions bind below) — goose only reads
+  # the filenames in this list.  The value is a JSON array STRING (goose's expected
+  # format); the defaults (AGENTS.md / .goosehints) are re-included so a user's own
+  # context files still load alongside ours.
   container_env:
     GOOSE_DISABLE_KEYRING: "true"
+    CONTEXT_FILE_NAMES: '["KANIBAKO.md","AGENTS.md",".goosehints"]'
 
   # Two-way SYNC of three things so in-box `goose configure` persists to the host
   # (host check_auth then passes -> no re-prompt).  All unfiltered (key-by-NAME):
@@ -94,3 +101,22 @@ descriptor:
   # Credential-SHARING CAPABILITY (spec §2d): goose supports shared creds.
   # RO / plugin-set → meta.agent.goose.auth.share_support.
   auth_share_support: true
+
+# AGENT-scope @-ref-sourced category binds (spec §2d L608).  Each entry becomes an
+# `agent.<category>.<key>` default whose VALUE is the structured bind tuple
+# (<@-ref host_src>, <box_dest>, <options>) — the AGENT-scope mirror of
+# core-defaults.yaml's `meta_ref` bind shape.  `meta_ref` is emitted VERBATIM as the
+# host_src (NOT a fixed path), which the launch category cascade / `expand` resolves
+# from the snapshot floor — so the plugin declares its harness slot WITHOUT any
+# per-harness path knowledge leaking into core.  Read by the thin loader
+# `kanibako.agent_defaults.load_category_binds`.
+category_binds:
+  # Instructions bind: the shared box-guidance doc delivered RO into a dedicated,
+  # namespaced goose config-dir slot (~/.config/goose/KANIBAKO.md) — no collision
+  # with the user's own goose context files; loaded via CONTEXT_FILE_NAMES above.
+  # Source = the single shared @system.instructions.
+  - key: instructions
+    category: bindings.ro
+    meta_ref: "@system.instructions"
+    box_dest: "~/.config/goose/KANIBAKO.md"
+    ro: true

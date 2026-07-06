@@ -163,6 +163,44 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     )
 
 
+def load_category_binds(package: str, filename: str) -> dict[str, BindDefault]:
+    """Build a plugin's AGENT-scope ``@``-ref-sourced category BINDS from its file.
+
+    Each entry in the file's ``category_binds:`` section declares one agent-scope
+    category default whose HOST SOURCE is an ``@``-ref (``meta_ref``) — the mirror
+    of :mod:`kanibako.core_defaults`'s ``meta_ref`` bind shape, at AGENT scope.  It
+    returns a mapping of the (un-discriminated) scoped category key
+    ``agent.<category>.<key>`` → a STRUCTURED bind tuple ``(meta_ref, box_dest[,
+    "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).
+
+    The value's element 0 is the RAW ``@``-ref STRING (e.g.
+    ``"@system.instructions"``); the launch category cascade folds it into the floor
+    and ``expand`` resolves it to the referenced path — so a plugin declares a bind
+    to the shared source WITHOUT any per-harness path knowledge in core (spec §2d
+    L608 — the PLUGIN-declared instructions bind).  ``start.py`` unions this table
+    into ``default_categories`` alongside :func:`load_shares`; the bare
+    ``agent.<category>.*`` key is re-rooted to the active slot by
+    ``settings_launch._agent_scope_qualify`` exactly like a share.
+
+    ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression (``$GUEST_HOME`` is
+    expanded here; a leading ``~`` is left for the box-side ``box_dest`` resolve in
+    :func:`~kanibako.settings_launch.snapshot_category_entries`).  ``ro: true`` emits
+    the explicit ``"ro"`` mount option (element 2); otherwise a 2-tuple is emitted
+    and reconcile falls back to the category default.  Returns ``{}`` when the file
+    declares no category binds.
+    """
+    binds: dict[str, BindDefault] = {}
+    for entry in _load_doc(package, filename).get("category_binds", []):
+        key = f"agent.{entry['category']}.{entry['key']}"
+        box_dest = _expand(entry["box_dest"])
+        host_src = entry["meta_ref"]
+        if entry.get("ro", False):
+            binds[key] = (host_src, box_dest, "ro")
+        else:
+            binds[key] = (host_src, box_dest)
+    return binds
+
+
 def load_shares(package: str, filename: str) -> dict[str, BindDefault]:
     """Build a plugin's AGENT-scope ``default_shares`` map from its defaults file.
 

@@ -48,10 +48,11 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.agent_defaults import load_descriptor
+from kanibako.agent_defaults import load_category_binds, load_descriptor
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
+    BindDefault,
     PluginDescriptor,
     Target,
     TargetSetting,
@@ -233,6 +234,16 @@ class CodexTarget(Target):
     @property
     def descriptor(self) -> PluginDescriptor | None:
         return _CODEX_DESCRIPTOR
+
+    def default_category_binds(self) -> dict[str, BindDefault]:
+        """Declare codex's instructions bind (spec §2d L608).
+
+        ``agent.codex.bindings.ro.instructions = (@system.instructions,
+        ~/.codex/AGENTS.md)`` — the shared box-guidance doc delivered READ-ONLY into
+        codex's global-agents slot (codex reads ``AGENTS.md`` natively).  Declared in
+        ``codex-defaults.yaml`` (read via the loader).
+        """
+        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
     @property
     def default_entrypoint(self) -> str | None:

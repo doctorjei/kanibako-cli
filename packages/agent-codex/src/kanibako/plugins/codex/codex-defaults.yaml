@@ -74,3 +74,21 @@ descriptor:
   # Credential-SHARING CAPABILITY (spec §2d): codex supports shared creds.
   # RO / plugin-set → meta.agent.codex.auth.share_support.
   auth_share_support: true
+
+# AGENT-scope @-ref-sourced category binds (spec §2d L608).  Each entry becomes an
+# `agent.<category>.<key>` default whose VALUE is the structured bind tuple
+# (<@-ref host_src>, <box_dest>, <options>) — the AGENT-scope mirror of
+# core-defaults.yaml's `meta_ref` bind shape.  `meta_ref` is emitted VERBATIM as the
+# host_src (NOT a fixed path), which the launch category cascade / `expand` resolves
+# from the snapshot floor — so the plugin declares its harness slot WITHOUT any
+# per-harness path knowledge leaking into core.  Read by the thin loader
+# `kanibako.agent_defaults.load_category_binds`.
+category_binds:
+  # Instructions bind: the shared box-guidance doc delivered RO into codex's global
+  # AGENTS.md slot (codex reads ~/.codex/AGENTS.md natively; additive concat under a
+  # project-level AGENTS.md).  Source = the single shared @system.instructions.
+  - key: instructions
+    category: bindings.ro
+    meta_ref: "@system.instructions"
+    box_dest: "~/.codex/AGENTS.md"
+    ro: true
