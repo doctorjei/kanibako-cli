@@ -43,6 +43,27 @@ descriptor:
       kind: file
       scope: agent_critical
       ro: true
+    # STEP 2b — the claude LOADER.  A tiny plugin-shipped static file (constant,
+    # claude-specific — NOT an @system.instructions keyspace source) delivered RO
+    # to ~/.claude/CLAUDE.md (claude's user-memory slot, loaded every session).  Its
+    # whole content is two RELATIVE imports, `@KANIBAKO.md` + `@AGENTS.md`, which
+    # claude resolves next to this file in ~/.claude/ — so it loads the box guide
+    # that STEP 2a binds RO to ~/.claude/KANIBAKO.md AND the user's editable
+    # ~/.claude/AGENTS.md (seeded once).  (The earlier managed /etc/claude-code
+    # pointer was dropped: its @import only expanded under skip-permissions and not
+    # for ~ — the native user-memory slot with relative imports works in both modes.)
+    # `origin: literal` + `literal_src_pkg` names a package-relative resource
+    # (resolved to its shipped host path by the loader via importlib.resources).
+    # scope `agent` = BEST-EFFORT: a missing/unresolvable source is SKIPPED, never
+    # raised (unlike agent_critical), so a failed loader can NOT crash a launch —
+    # mirrors 2a's best-effort bind.
+    - key: managed_pointer
+      origin: literal
+      literal_src_pkg: "data/claude-md-loader"
+      box_dest: "$GUEST_HOME/.claude/CLAUDE.md"
+      kind: file
+      scope: agent
+      ro: true
 
   # mode is {start, continue} only — resume intentionally NOT offered (user
   # decision 2026-06-17: -R/--resume falls through to --continue).
@@ -119,9 +140,9 @@ shares:
 category_binds:
   # Instructions bind: the shared box-guidance doc delivered RO into claude's config
   # dir at ~/.claude/KANIBAKO.md (uniform namespaced slot w/ goose; discoverable).
-  # STEP 2a delivers the CONTENT only — the managed /etc/claude-code/CLAUDE.md
-  # @import pointer is a separate follow-up (STEP 2b).  Source = the single shared
-  # @system.instructions.
+  # STEP 2a delivers the CONTENT only — the ~/.claude/CLAUDE.md loader that makes
+  # claude @import this file is the descriptor `managed_pointer` bind above (STEP
+  # 2b).  Source = the single shared @system.instructions.
   - key: instructions
     category: bindings.ro
     meta_ref: "@system.instructions"

@@ -78,15 +78,30 @@ def _load_doc(package: str, filename: str) -> dict[str, Any]:
     return raw
 
 
-def _build_binding(entry: dict[str, Any]) -> Binding:
+def _build_binding(entry: dict[str, Any], package: str) -> Binding:
     """Build one :class:`Binding` from a declarative file entry.
 
     ``origin`` names the detected install field that supplies the host source
     (``binary`` / ``launcher`` / ``install_dir`` / ``literal``); ``box_dest`` is a
     ``$GUEST_HOME`` expression expanded here.  ``kind`` / ``scope`` map to their
     enums; ``ro`` defaults to True.
+
+    A ``literal`` origin's fixed host source is named EITHER as a
+    ``literal_src_pkg`` (a *package*-relative resource — e.g. claude's shipped
+    ``~/.claude/CLAUDE.md`` loader file — resolved here to its installed host path
+    via :mod:`importlib.resources`, the same seam :func:`_load_doc` uses) OR as a
+    plain ``literal_src`` filesystem path.  ``literal_src_pkg`` wins when both are
+    present.
     """
+    literal_pkg = entry.get("literal_src_pkg")
     literal = entry.get("literal_src")
+    if literal_pkg is not None:
+        ref = importlib.resources.files(package).joinpath(literal_pkg)
+        literal_src: Path | None = Path(str(ref))
+    elif literal is not None:
+        literal_src = Path(literal)
+    else:
+        literal_src = None
     return Binding(
         key=entry["key"],
         origin=HostSrcOrigin(entry["origin"]),
@@ -94,7 +109,7 @@ def _build_binding(entry: dict[str, Any]) -> Binding:
         kind=BindKind(entry["kind"]),
         scope=BindScope(entry["scope"]),
         ro=bool(entry.get("ro", True)),
-        literal_src=Path(literal) if literal is not None else None,
+        literal_src=literal_src,
     )
 
 
@@ -147,7 +162,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
 
     return PluginDescriptor(
         command=tuple(desc["command"]),
-        bindings=tuple(_build_binding(b) for b in desc.get("bindings", [])),
+        bindings=tuple(_build_binding(b, package) for b in desc.get("bindings", [])),
         mode={k: tuple(v) for k, v in desc.get("mode", {}).items()},
         operations={
             k: Operation(tuple(v["fragment"]))
