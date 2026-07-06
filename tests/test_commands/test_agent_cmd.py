@@ -216,6 +216,62 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.state["model"] == "sonnet"
 
+    def test_config_set_auto_approve_accepts_bool(self, agent_env, capsys):
+        """AUTH-CRITICAL parity: ``agent set <agent> auto_approve=<bool>`` is
+        accepted and written VERBATIM to the flat agent leaf — the SAME happy
+        path the ``config set`` verb takes (test_config_interface.py). Both bool
+        literals round-trip.
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.config_io import load_doc
+        from kanibako.agent_config import agent_config_path
+
+        path = agent_config_path(agent_env, "claude")
+        for literal in ("false", "true"):
+            rc = run_set(argparse.Namespace(
+                agent_id="claude", key_value=f"auto_approve={literal}",
+            ))
+            assert rc == 0
+            assert f"Set auto_approve={literal}" in capsys.readouterr().out
+            assert load_doc(path)["agent"]["auto_approve"] == literal
+
+    def test_config_set_auto_approve_typo_rejected(self, agent_env, capsys):
+        """AUTH-CRITICAL: ``agent set <agent> auto_approve=<typo>`` is REJECTED at
+        set time (rc 1, "must be a boolean" on stderr) and the key is NOT written
+        — closing the gap that this sibling verb bypassed the ``config set``
+        guard (commit a368026). Mutation proof: dropping the ``_is_auto_approve_
+        key`` guard lets ``flase`` land verbatim and this reddens.
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.config_io import load_doc
+        from kanibako.agent_config import agent_config_path
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="auto_approve=flase",
+        ))
+        assert rc == 1
+        assert "auto_approve must be a boolean" in capsys.readouterr().err
+        # The typo did not land: the fixture's agent doc has no auto_approve key.
+        path = agent_config_path(agent_env, "claude")
+        assert "auto_approve" not in load_doc(path).get("agent", {})
+
+    def test_config_set_model_still_succeeds_guard_not_overreaching(
+        self, agent_env, capsys,
+    ):
+        """CONTROL: the auto_approve guard does NOT over-reach — a non-bool
+        ``model`` value still writes fine (only ``auto_approve`` is validated).
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.agent_config import agent_config_path, load_agent_config
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="model=whatever",
+        ))
+        assert rc == 0
+        assert "Set model=whatever" in capsys.readouterr().out
+        cfg = load_agent_config(agent_config_path(agent_env, "claude"))
+        assert cfg.state["model"] == "whatever"
+
     def test_config_set_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
         from kanibako.agent_config import agent_config_path, load_agent_config

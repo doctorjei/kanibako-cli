@@ -290,7 +290,9 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         agent_settings_path,
         load_agent_config,
     )
+    from kanibako.config import coerce_bool
     from kanibako.config_interface import (
+        _is_auto_approve_key,
         _remove_nested_toml_key,
         _write_nested_toml_key,
     )
@@ -406,6 +408,22 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         key, _, value = key_value.partition("=")
         key = key.strip()
         value = value.strip()
+        # Write-time validation for the auth-critical ``auto_approve`` permission
+        # key (parity with the ``config set`` path in config_interface.py). This
+        # sibling ``agent set`` verb writes the SAME keyspace slot but through a
+        # different setter, so without this guard a typo (``auto_approve=flase``)
+        # would land verbatim as the string ``"flase"`` and ``coerce_bool`` to
+        # None at LAUNCH — falling back to the PERMISSIVE default (True →
+        # ``--dangerously-skip-permissions``), the unsafe direction. Reject a
+        # non-bool value NOW using the SAME truth table (``config.coerce_bool``)
+        # the launch coercion uses; only ``auto_approve`` is guarded, never
+        # ``model`` / ``allow_helpers`` / ``run_args`` / ``env.*`` / ``secret_path.*``.
+        if _is_auto_approve_key(key) and coerce_bool(value) is None:
+            print(
+                f"Error: auto_approve must be a boolean (true/false); got {value!r}",
+                file=sys.stderr,
+            )
+            return 1
         sections, leaf = _agent_key_route(key, agent_id)
         # run_args is stored as a LIST (space-split); everything else is the
         # raw string. Sparse write — only the touched key is materialized.
