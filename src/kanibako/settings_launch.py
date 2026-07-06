@@ -1129,7 +1129,7 @@ def _agent_state_partial(
     ``assemble_levels``' ``_agent_partial`` reads (it treats a flat ``[agent]`` table
     as UNSET). So passing the file raw as ``agent_path`` DROPS its behavior. This
     wraps it into the DISCRIMINATED active slot (the §2d / §0 L21 form) so it merges
-    by name; undeclared keys (``start_mode`` / ``access``) ride through verbatim.
+    by name; any undeclared agent-scope scalar keys ride through verbatim (forward-compat).
     """
     if not agent_state:
         return None
@@ -1272,8 +1272,8 @@ def effective_behavior(
 
     *keys*: when given, read exactly those keys; when ``None`` (the live default),
     DISCOVER every scalar behavior leaf present under ``agent.<active>`` ∪
-    ``agent.default`` (so undeclared pass-through keys like ``start_mode`` /
-    ``access`` survive, matching the old reader's key union). Category subtrees
+    ``agent.default`` (so any undeclared agent-scope scalar keys survive as
+    pass-through, matching the old reader's key union). Category subtrees
     (``bindings`` / ``meta`` / ``shared`` / …) and ``Bind`` leaves are NOT behavior
     and are skipped.
 

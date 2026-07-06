@@ -1537,22 +1537,24 @@ def _run_container(
                 # apply_state / build_cli_args hooks for descriptor-bearing
                 # targets).
                 #
-                # safe_off redeems the persisted `access` setting (claude:
-                # safe_bypass.setting_key="access", default "permissive") while
-                # the per-launch -A/-S flags still win (safe_mode IS the -S
-                # `secure` bool; autonomous IS -A).  An agent whose descriptor
-                # declares no safe_bypass.setting_key (goose/codex) falls back to
-                # default-autonomous via effective_safe_mode_off.
+                # safe_off redeems the persisted `auto_approve` agent-scope key
+                # (spec §2d L556 ``agent.default.auto_approve | true``; every shipped
+                # descriptor sets safe_bypass.setting_key="auto_approve"), coerced to
+                # bool and DEFAULTING True (PERMISSIVE) when unset.  The per-launch
+                # -A/-S flags still win (safe_mode IS the -S `secure` bool; autonomous
+                # IS -A).  An agent whose descriptor declares no safe_bypass.setting_
+                # key falls back to the True default via effective_safe_mode_off.
                 sb = desc.safe_bypass
-                persisted_access = (
-                    effective_state.get(sb.setting_key, "")
+                _aa = coerce_bool(
+                    effective_state.get(sb.setting_key)
                     if sb is not None and sb.setting_key
-                    else ""
+                    else None
                 )
+                auto_approve = True if _aa is None else _aa
                 safe_off = assembly.effective_safe_mode_off(
                     secure=safe_mode,
                     autonomous=autonomous,
-                    persisted_access=persisted_access,
+                    auto_approve=auto_approve,
                 )
                 mode_key = assembly.resolve_mode(
                     resume_mode=resume_mode,

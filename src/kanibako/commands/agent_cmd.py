@@ -451,7 +451,7 @@ def _agent_key_route(key: str) -> tuple[tuple[str, ...], str]:
         return ("env_file",), key[len("env_file."):]
     if key.startswith("env."):
         return ("env",), key[len("env."):]
-    # name / run_args / state (model, start_mode, autonomous, …).
+    # name / run_args / state (model, auto_approve, allow_helpers, …).
     return ("agent",), key
 
 

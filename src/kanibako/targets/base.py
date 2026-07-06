@@ -136,7 +136,9 @@ class SafeBypass:
       MUST set the secure field so ``-S`` actually restricts it.
 
     Special vs SettingArg: it's driven by the resolved effective safe-mode, not a plain setting value.
-    *setting_key* is an OPTIONAL persisted default (claude "access"); empty = per-launch -A/-S only (goose/codex).
+    *setting_key* names the persisted default key the launch reader redeems (all
+    three shipped agents = ``"auto_approve"``, spec §2d L556, default True); empty =
+    per-launch ``-A``/``-S`` only.
     """
 
     channel: Channel

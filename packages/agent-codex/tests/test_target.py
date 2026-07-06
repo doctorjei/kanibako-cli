@@ -390,7 +390,10 @@ class TestSettingDescriptors:
         settings = CodexTarget().setting_descriptors()
         keys = [s.key for s in settings]
         assert keys == ["model"]
-        # No 'access' setting (codex has no persisted safe-bypass default).
+        # auto_approve is NOT a declared TargetSetting — it is the agent-scope bool
+        # key routed verbatim (safe_bypass.setting_key), redeemed at launch.
+        assert "auto_approve" not in keys
+        # 'access' is fully retired (folded into auto_approve).
         assert "access" not in keys
 
 
@@ -441,7 +444,9 @@ class TestDescriptor:
         assert sb.channel == Channel.FLAG
         assert sb.flag == ("--dangerously-bypass-approvals-and-sandbox",)
         assert sb.env_var == ""
-        assert sb.setting_key == ""
+        # codex persists auto_approve uniformly (2026-06-27 collapse ruling): the
+        # persisted default is redeemed via setting_key="auto_approve".
+        assert sb.setting_key == "auto_approve"
 
     def test_settings_model_flag(self):
         d = CodexTarget().descriptor

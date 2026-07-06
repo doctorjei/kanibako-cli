@@ -55,11 +55,12 @@ descriptor:
       fragment: ["-p"]
 
   # safe-bypass is the FLAG --dangerously-skip-permissions; persisted default via
-  # the "access" setting (claude is default-safe so no secure_flag needed).
+  # the "auto_approve" agent-scope key (spec §2d L556, default true/PERMISSIVE;
+  # claude is default-safe so no secure_flag needed).
   safe_bypass:
     channel: flag
     flag: ["--dangerously-skip-permissions"]
-    setting_key: access
+    setting_key: auto_approve
 
   settings:
     - setting_key: model

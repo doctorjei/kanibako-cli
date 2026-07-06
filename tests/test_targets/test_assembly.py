@@ -54,7 +54,7 @@ def _claude_descriptor() -> PluginDescriptor:
         safe_bypass=SafeBypass(
             channel=Channel.FLAG,
             flag=("--dangerously-skip-permissions",),
-            setting_key="access",
+            setting_key="auto_approve",
         ),
         settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
         container_env={"DISABLE_AUTOUPDATER": "1"},
@@ -227,30 +227,30 @@ def test_safe_off_default_is_true() -> None:
     assert effective_safe_mode_off(secure=False, autonomous=False) is True
 
 
-def test_safe_off_persisted_permissive_is_true() -> None:
+def test_safe_off_persisted_auto_approve_true_is_true() -> None:
     assert (
-        effective_safe_mode_off(secure=False, autonomous=False, persisted_access="permissive")
+        effective_safe_mode_off(secure=False, autonomous=False, auto_approve=True)
         is True
     )
 
 
-def test_safe_off_persisted_restricted_is_false() -> None:
+def test_safe_off_persisted_auto_approve_false_is_false() -> None:
     assert (
-        effective_safe_mode_off(secure=False, autonomous=False, persisted_access="restricted")
+        effective_safe_mode_off(secure=False, autonomous=False, auto_approve=False)
         is False
     )
 
 
-def test_safe_off_secure_beats_persisted_permissive() -> None:
+def test_safe_off_secure_beats_persisted_auto_approve_true() -> None:
     assert (
-        effective_safe_mode_off(secure=True, autonomous=False, persisted_access="permissive")
+        effective_safe_mode_off(secure=True, autonomous=False, auto_approve=True)
         is False
     )
 
 
-def test_safe_off_unknown_persisted_falls_to_default_true() -> None:
+def test_safe_off_autonomous_beats_persisted_auto_approve_false() -> None:
     assert (
-        effective_safe_mode_off(secure=False, autonomous=False, persisted_access="bogus")
+        effective_safe_mode_off(secure=False, autonomous=True, auto_approve=False)
         is True
     )
 

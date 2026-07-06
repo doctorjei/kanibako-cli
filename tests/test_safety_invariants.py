@@ -408,12 +408,10 @@ def _claude_argv(*, safe_mode, resume_mode, new_session, is_new_project, extra_a
     from kanibako.targets import assembly
 
     desc = ClaudeTarget().descriptor
-    sb = desc.safe_bypass
-    persisted_access = (
-        "permissive" if sb is not None and sb.setting_key else ""
-    )
+    # Persisted auto_approve defaults True (PERMISSIVE) when unset; mirror the
+    # launch reader's bool coercion (the setting_key is now "auto_approve").
     safe_off = assembly.effective_safe_mode_off(
-        secure=safe_mode, autonomous=False, persisted_access=persisted_access,
+        secure=safe_mode, autonomous=False, auto_approve=True,
     )
     mode_key = assembly.resolve_mode(
         resume_mode=resume_mode,
@@ -426,7 +424,7 @@ def _claude_argv(*, safe_mode, resume_mode, new_session, is_new_project, extra_a
         desc,
         mode_key=mode_key,
         safe_mode_off=safe_off,
-        setting_values={"model": "opus", "access": "permissive"},
+        setting_values={"model": "opus"},
         op=None,
         extra_args=extra_args,
     )

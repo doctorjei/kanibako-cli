@@ -376,10 +376,10 @@ class CodexTarget(Target):
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Codex runtime settings.
 
-        Only ``model`` (freeform; OpenAI adds models regularly).  There is no
-        ``access`` setting: codex has no persisted safe-bypass default (the
-        descriptor's ``safe_bypass.setting_key`` is ""), so safe-bypass is a
-        per-launch -A/-S toggle only.
+        Only ``model`` (freeform; OpenAI adds models regularly).  Safe-bypass is
+        NOT a setting descriptor: it rides the uniform ``auto_approve`` key (the
+        descriptor's ``safe_bypass.setting_key`` is ``auto_approve``), persisted +
+        cascade-resolved, default permissive; ``-A``/``-S`` override per launch.
         """
         return [
             TargetSetting(

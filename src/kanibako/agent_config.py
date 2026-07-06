@@ -17,7 +17,7 @@ class AgentConfig:
 
     Sections:
       agent     — identity (name, run_args) plus agent-state knobs
-                  (model, access, start_mode, autonomous, …)
+                  (model, auto_approve, allow_helpers, endpoint, …)
       env       — raw env vars injected into container (VAR -> value)
       env_file  — env-from-file pointers (VAR -> host PATH): at launch the
                   file's contents become the env var's VALUE (secret stays in

@@ -753,6 +753,31 @@ class TestH1NoCrashOnAdvertisedKeys:
         # Clean break: the old flat top-level scalar is gone.
         assert "allow_helpers" not in data
 
+    def test_set_auto_approve_lands_in_agent_default_tier(self, tmp_path):
+        """auto_approve is an AGENT-scope bool key (spec §2d L556): the bare key is
+        the any-agent ``agent.default`` tier (mirrors ``model``/``allow_helpers``),
+        written VERBATIM (no KEY_TYPES coercion — read-coerced at launch)."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value("auto_approve", "false", config_path=project_toml)
+        assert msg.startswith("Set")
+        data = load_doc(project_toml)
+        assert data["agent"]["default"]["auto_approve"] == "false"
+        # No flat top-level scalar leaks out.
+        assert "auto_approve" not in data
+
+    def test_set_explicit_agent_default_auto_approve_refused(self, tmp_path):
+        """An explicit ``agent.default.auto_approve`` write is REFUSED — the
+        any-agent default is the BARE key (``default`` is the reserved tier, never
+        a persona node)."""
+        cf = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value(
+            "agent.default.auto_approve", "false",
+            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            agents_root=tmp_path / "agents",
+        )
+        assert msg.startswith("Error:")
+        assert "reserved any-agent tier" in msg
+
     def test_set_box_enable_vault_lands_in_box_table(self, tmp_path):
         """P2: ``box.enable_vault`` routes to the ``box:`` table nested slot
         ``enable_vault`` as a real bool (NOT the [project] section, NOT a
@@ -1017,6 +1042,47 @@ class TestH2BoolCoercion:
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
             "agent": {"allow_helpers": "false"},
         }
+
+    def test_get_auto_approve_round_trips_agent_default(self, tmp_path):
+        """The bare ``auto_approve`` get reads the value STORED at the any-agent
+        ``agent.default`` tier (symmetric with set; mirrors ``model``)."""
+        project_toml = tmp_path / "settings.yaml"
+        dump_doc(project_toml, {"agent": {"default": {"auto_approve": "false"}}})
+        val = get_config_value(
+            "auto_approve",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=project_toml,
+        )
+        assert val == "false"
+
+    def test_set_auto_approve_per_agent_override(self, tmp_path):
+        """A per-agent override ``agent.<agent>.auto_approve`` is a PERSONA key: it
+        lands on the agent's OWN ``agents/<agent>/settings.yaml`` flat slot the
+        launch reader picks over ``agent.default`` (§2d active-over-default)."""
+        cf = tmp_path / "kanibako_config.yaml"
+        agents_root = tmp_path / "agents"
+        msg = set_config_value(
+            "agent.claude.auto_approve", "false",
+            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            agents_root=agents_root,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+            "agent": {"auto_approve": "false"},
+        }
+
+    def test_retired_autonomous_and_access_do_not_route(self, tmp_path):
+        """The dead ``autonomous`` persisted leaf and the claude-only ``access``
+        string leaf are RETIRED (folded into ``auto_approve``): neither is a known
+        key, and a bare set is refused as unknown (never lands in agent.default)."""
+        assert is_known_key("autonomous") is False
+        assert is_known_key("access") is False
+        # A bare ``autonomous`` set no longer takes the agent.default agent-setting
+        # route (which model/auto_approve take) — it is refused as an unknown key.
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value("autonomous", "true", config_path=project_toml)
+        assert msg == "Error: unknown config key: autonomous"
+        assert not project_toml.exists()
 
     def test_bool_key_rejects_garbage(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"

@@ -819,7 +819,7 @@ class TestDescriptorLaunchPath:
         m.target.descriptor = _CLAUDE_DESCRIPTOR
         # No declared setting descriptors -> effective_state = crab state verbatim.
         m.target.setting_descriptors.return_value = []
-        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.agent_cfg.state = {"model": "opus"}
         m.load_agent_config.return_value = m.agent_cfg
 
     def test_default_continue_model_and_env(self, start_mocks):
@@ -853,6 +853,47 @@ class TestDescriptorLaunchPath:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
             assert "--continue" in cli_args
+
+    def test_persisted_auto_approve_false_omits_bypass(self, start_mocks):
+        """Persisted ``agent.default.auto_approve=false`` (no -A/-S) resolves off the
+        snapshot via effective_behavior -> SAFE -> bypass ABSENT. This is the whole
+        point of the auto_approve BUILD (the writer now has a reader)."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "auto_approve": "false"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" not in cli_args
+
+    def test_autonomous_flag_overrides_persisted_false(self, start_mocks):
+        """-A (autonomous) WINS over a persisted auto_approve=false -> bypass PRESENT."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "auto_approve": "false"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                autonomous=True, extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" in cli_args
+
+    def test_secure_flag_overrides_persisted_true(self, start_mocks):
+        """-S (secure) WINS over a persisted auto_approve=true -> bypass ABSENT."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "auto_approve": "true"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=True, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" not in cli_args
 
     def test_new_session_drops_continue(self, start_mocks):
         with start_mocks() as m:
@@ -1123,7 +1164,7 @@ class TestCredsyncRouting:
         m.target.name = "claude"
         m.target.descriptor = _CLAUDE_DESCRIPTOR
         m.target.setting_descriptors.return_value = []
-        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.agent_cfg.state = {"model": "opus"}
         m.load_agent_config.return_value = m.agent_cfg
 
     # ---- descriptor path: credsync engine is used, legacy hooks bypassed ----
@@ -2899,7 +2940,7 @@ class TestNewSessionRetryPreservesAgent:
         m.target.name = "claude"
         m.target.descriptor = _CLAUDE_DESCRIPTOR
         m.target.setting_descriptors.return_value = []
-        m.agent_cfg.state = {"model": "opus", "access": "permissive"}
+        m.agent_cfg.state = {"model": "opus"}
         m.load_agent_config.return_value = m.agent_cfg
         # Target requests exactly one new-session retry.
         m.target.should_retry_new_session.return_value = True
