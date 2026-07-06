@@ -1,67 +1,27 @@
-# Box environment & channel guide
+# Your box notes (editable)
 
-> This file is managed by **kanibako** and seeded into every box at creation.
-> It describes the box's filesystem layout and the inter-instance channel
-> system. It is safe to edit — kanibako will not overwrite your changes on a
-> later launch.
+> Seeded once by **kanibako** into your box home (`~/INSTRUCTIONS.md`) and yours
+> to keep — kanibako won't overwrite it on a later launch. Use it for box- or
+> operator-specific notes that aren't part of the project itself.
 
-## Where you are
+## Start with KANIBAKO.md
 
-You are running inside a **box**: a rootless container with a persistent home,
-isolated from the host and from other boxes. The host operator runs you here on
-purpose; treat the box as your durable workspace.
+The canonical, always-current guide to this box — your identity
+(`KANIBAKO_NAME`), the filesystem layout, the `~/channels` communication system,
+credentials, git safety, and the limitations to work within — is **KANIBAKO.md**,
+provided read-only by kanibako and loaded automatically by your agent. It is the
+source of truth for how the box works; read it first.
 
-Key locations in your home (`~`):
+This file is the opposite: a small, editable space that travels with your box
+home. Kanibako seeds it once and then leaves it alone.
 
-| Path | What it is |
-|------|------------|
-| `~/workspace` | The project directory. Your code work lives here. |
-| `~/vault/ro`  | Read-only vault — shared reference material the operator gives you. Do not expect writes to persist. |
-| `~/vault/rw`  | Read-write vault — durable scratch/output the operator can see from the host. |
-| `~/channels`  | The inter-instance channel system (see below). |
+## What belongs here
 
-(Older boxes used `~/share-ro` / `~/share-rw`; those are gone — use `~/vault/ro`
-and `~/vault/rw`.)
+- Operator notes specific to *this* box — things the human wants you to remember.
+- Reminders or conventions that aren't project code and don't fit the project's
+  own docs.
+- Anything a future session should see that isn't captured elsewhere.
 
-## The channel system
-
-Boxes talk to each other through `~/channels/`. Communication is plain file I/O:
-to send, write a file; to receive, read one. There are five channel types.
-
-| Type | Where | Use it for |
-|------|-------|------------|
-| **Mailbox** | `~/channels/mailboxes/<workset>/<box>/` | Direct messages/artifacts to a specific box (write into its mailbox). |
-| **Inbox** | `~/channels/inbox/` | Your **own** mailbox, surfaced at a stable path. Read here for messages addressed to you. |
-| **Share** | `~/channels/share/` | Publish artifacts for others to read (others read-only). |
-| **Commons** | `~/channels/commons/` | A shared read-write scratch area for the whole scope. |
-| **Chat** | `~/channels/chat/*.md` | Append-style message logs. `general.md` is the default; `broadcast.md` is the broadcast log. |
-
-`~/channels/inbox/` and your entry under `~/channels/mailboxes/<workset>/<box>/`
-are the **same directory** — inbox is just a stable alias for your own mailbox.
-
-### Worksets
-
-If your box belongs to a **workset** (a named group of related projects), you
-also get a workset-local channel tree at `~/channels/workset/` with its own
-`commons/`, `chat/`, and `share/`. Standalone boxes do not have this — they use
-the system channels only.
-
-### Broadcast
-
-`~/channels/chat/broadcast.md` is the broadcast log. Append a line to reach
-everyone in scope. The workset broadcast (if present) is
-`~/channels/workset/chat/broadcast.md`.
-
-## Etiquette
-
-- **Send by writing, receive by reading.** No special command is required —
-  it's all files.
-- **Address mailboxes deliberately.** Write into the recipient's
-  `mailboxes/<workset>/<box>/`, not into your own inbox.
-- **Append to chat logs; don't rewrite them.** Other boxes are reading the same
-  file. Add your line; leave existing content intact.
-- **Share read-only, by convention.** The `share/` and `mailboxes/` conventions
-  (who reads, who writes) are not yet enforced — respect them so peers can trust
-  the channel. Don't overwrite another box's mailbox, share, or chat history.
-- **Identify yourself.** Sign messages with your box name so peers know the
-  source.
+Box mechanics live in KANIBAKO.md. Project-specific instructions live in the
+project's own documentation and in your harness's file (Claude `CLAUDE.md`,
+Codex/Goose `AGENTS.md`). This file is just yours.
