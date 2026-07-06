@@ -24,6 +24,7 @@ from kanibako.agent_config import (
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import (
     BOX_META_FILE,
+    coerce_bool,
     config_file_path,
     load_config,
     load_merged_config,
@@ -1499,6 +1500,21 @@ def _run_container(
             shares=auth_src.shares,
         )
 
+        # allow_helpers is an AGENT-scope behavior key (spec §2d L557,
+        # ``agent.default.allow_helpers | true``): resolve it off the ONE launch
+        # snapshot (via ``effective_behavior``, the §2d active-over-default pick),
+        # coerced to bool and DEFAULTING True when unset. Resolved here for BOTH the
+        # agent and the no-agent/shell path (agent_id == "general") so the helper
+        # hub gate below sees the effective value regardless of target — an unset
+        # box keeps the True floor (helpers ON), matching the old flat default.
+        from kanibako import settings_launch as _settings_launch
+        _ah = coerce_bool(
+            _settings_launch.effective_behavior(
+                _snapshot, active_agent=agent_id,
+            ).get("allow_helpers")
+        )
+        helpers_allowed = True if _ah is None else _ah
+
         # Build CLI args via target, merging agent run_args and state
         if target:
             # The LIVE behavior read (block 7b — ruling A): off the ONE snapshot via
@@ -1778,7 +1794,7 @@ def _run_container(
 
         # Helper hub: start listener before director, mount socket
         hub = None
-        helpers_enabled = not no_helpers and merged.allow_helpers
+        helpers_enabled = not no_helpers and helpers_allowed
 
         # Resolve the no-agent box.shell once, up front, so it can be threaded
         # into both the helper context (below) and the main launch decision

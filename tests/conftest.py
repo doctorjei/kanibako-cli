@@ -395,9 +395,6 @@ def start_mocks():
             merged.box_agent_name = ""
             merged.box_bootstrap_program = "tmux"
             merged.box_share_images = False
-            # Helpers off by default in the mock (MagicMock attrs are truthy);
-            # individual tests opt in by setting merged.allow_helpers = True.
-            merged.allow_helpers = False
             m_merged.return_value = merged
 
             runtime = MagicMock()
@@ -551,6 +548,18 @@ def start_mocks():
                         _floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
                     _state = dict(_agent_cfg.state)
+                # allow_helpers is now an AGENT-scope behavior key (spec §2d): the
+                # live launch reader (effective_behavior) resolves it off the
+                # snapshot and DEFAULTS True (helpers ON). Unit tests drive the
+                # start path with a MagicMock ``std``/``proj``, so the helper hub
+                # must stay OFF (else its socket/log mkdir hits a MagicMock path
+                # and leaks). Seed the agent.default FLOOR with allow_helpers=false
+                # (the robust replacement for the old ``merged.allow_helpers =
+                # False`` seam) — a test exercising the hub sets
+                # ``start_mocks.agent_cfg.state["allow_helpers"] = "true"`` (the
+                # active-over-default pick makes the per-agent slot WIN).
+                _floor = _floor or {}
+                _floor.setdefault("allow_helpers", "false")
                 snap = build_launch_snapshot(
                     agent_name=_node, ctx=ctx,
                     system_path=None, agent_path=None,

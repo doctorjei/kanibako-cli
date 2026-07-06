@@ -1634,3 +1634,98 @@ class TestAgentStamp:
             )
             env = m.runtime.run.call_args.kwargs["env"]
             assert "KANIBAKO_AGENT" not in env
+
+
+class TestAllowHelpersGate:
+    """The helper-hub gate now reads the AGENT-scope ``allow_helpers`` key (spec
+    §2d L557) resolved off the launch snapshot, then ANDs in the ephemeral
+    ``--no-helpers`` flag: ``helpers_enabled = not no_helpers and helpers_allowed``.
+
+    The start_mocks fixture seeds the ``agent.default`` FLOOR with
+    ``allow_helpers=false`` (helpers OFF by default in unit tests). A per-agent
+    override on ``agent_cfg.state`` WINS that default (§2d active-over-default), so
+    these tests flip the resolved value via the active slot. Observation seam: for
+    a real-agent launch (``no_agent_launch`` is False), ``resolve_box_shell`` is
+    reached ONLY when ``helpers_enabled`` is True.
+    """
+
+    def test_unset_snapshot_defaults_helpers_on(self, start_mocks):
+        # The UNSET default (spec §2d ``agent.default.allow_helpers | true``): with
+        # NO allow_helpers anywhere in the snapshot, the launch read resolves None
+        # and start.py falls back to the True floor (helpers ON). Mutation guard on
+        # ``helpers_allowed = True if _ah is None else _ah`` — flipping that ``True``
+        # to ``False`` makes helpers_enabled False → resolve_box_shell is never
+        # reached → the sentinel never raises → pytest.raises reddens this test.
+        #
+        # The start_mocks stub seeds the agent.default FLOOR with allow_helpers=false
+        # (so every OTHER unit test keeps helpers off). Simulate a genuinely-unset
+        # box by stripping allow_helpers from the live behavior read for THIS test —
+        # exactly what a snapshot with no allow_helpers in either agent slot yields.
+        import kanibako.settings_launch as _sl
+        _real_eff = _sl.effective_behavior
+
+        def _eff_without_allow_helpers(*a, **k):
+            out = _real_eff(*a, **k)
+            out.pop("allow_helpers", None)
+            return out
+
+        with start_mocks():
+            sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
+            with (
+                patch(
+                    "kanibako.settings_launch.effective_behavior",
+                    side_effect=_eff_without_allow_helpers,
+                ),
+                patch(
+                    "kanibako.shells.resolve_box_shell", side_effect=sentinel,
+                ) as m_shell,
+            ):
+                with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
+                    _run_container(
+                        project_dir=None, entrypoint=None, image_override=None,
+                        new_session=False, safe_mode=False, resume_mode=False,
+                        extra_args=[], no_helpers=False,
+                    )
+            m_shell.assert_called_once()
+
+    def test_per_agent_override_true_enables_helper_gate(self, start_mocks):
+        # active agent.<claude>.allow_helpers=true beats the default-false floor →
+        # helpers_enabled True → the real-agent launch reaches resolve_box_shell.
+        with start_mocks() as m:
+            m.agent_cfg.state["allow_helpers"] = "true"
+            sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
+            with patch(
+                "kanibako.shells.resolve_box_shell", side_effect=sentinel,
+            ) as m_shell:
+                with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
+                    _run_container(
+                        project_dir=None, entrypoint=None, image_override=None,
+                        new_session=False, safe_mode=False, resume_mode=False,
+                        extra_args=[], no_helpers=False,
+                    )
+            m_shell.assert_called_once()
+
+    def test_no_helpers_flag_forces_off_even_when_key_true(self, start_mocks):
+        # --no-helpers ANDs in: even with the key resolved True, helpers_enabled is
+        # False → a real-agent launch never reaches resolve_box_shell.
+        with start_mocks() as m:
+            m.agent_cfg.state["allow_helpers"] = "true"
+            with patch("kanibako.shells.resolve_box_shell") as m_shell:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], no_helpers=True,
+                )
+            m_shell.assert_not_called()
+
+    def test_default_false_floor_keeps_helper_gate_off(self, start_mocks):
+        # No per-agent override → the agent.default floor (false) resolves →
+        # helpers OFF → a real-agent launch never reaches resolve_box_shell.
+        with start_mocks():
+            with patch("kanibako.shells.resolve_box_shell") as m_shell:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], no_helpers=False,
+                )
+            m_shell.assert_not_called()

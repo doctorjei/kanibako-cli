@@ -67,6 +67,13 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "start_mode",
     "autonomous",
     "model",
+    # allow_helpers: an agent-scope BEHAVIOR key (spec §2d L557
+    # ``agent.default.allow_helpers | true``). The bare key is the any-agent
+    # ``agent.default`` tier (mirrors ``model``); per-agent overrides are the
+    # persona key ``agent.<agent>.allow_helpers``. Gates the helper hub/socket/
+    # listener at launch (start.py). Was a flat scopeless top-level scalar
+    # (1.7.0-rc clean break — no back-compat for the old bare-config-field form).
+    "allow_helpers",
     # endpoint (persona): alternate harness base-URL, a sibling of model (block B).
     "endpoint",
     # Box
@@ -144,8 +151,6 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # config path).  Routed to the SYSTEM settings tier (the agent.default
     # table), NOT the [system] config table — handled explicitly below.
     "system.default_agent",
-    # Helpers
-    "allow_helpers",
 })
 
 # Prefixes for dynamic keys (env vars, resources).
@@ -253,20 +258,24 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # (paths.establish_standalone); primary/named default to the sentinel/true.
     "workset.kuid": (("workset",), "kuid"),
     "workset.skip_kuid_check": (("workset",), "skip_kuid_check"),
-    # Top-level scalar fields (flat KanibakoConfig fields).
-    "allow_helpers": ((), "allow_helpers"),
+    # (``allow_helpers`` is NO LONGER a routed top-level scalar: it moved to the
+    # agent keyspace (spec §2d) — the bare key routes through ``_is_agent_setting``
+    # to the ``agent.default`` tier, per-agent via the ``_PERSONA_STATE_LEAVES``
+    # form ``agent.<agent>.allow_helpers``, exactly like ``model``.)
 }
 
 # Keys whose values must be coerced to a real type before writing (the H2 fix).
 # Boolean keys parse true/false/1/0/yes/no (case-insensitive) to a Python bool
 # so the loader reads back a real bool (``set box.share_images false`` actually
-# disables it).  Build this extensibly — later phases add
-# vault_enabled / agent.*.{auto_approve,allow_helpers} etc.  The truth table
-# itself lives in ``config`` (shared with the box.meta writer); see
-# ``config.coerce_bool``.
+# disables it).  Build this extensibly — later phases add vault_enabled etc.  The
+# truth table itself lives in ``config`` (shared with the box.meta writer); see
+# ``config.coerce_bool``.  NOTE: the agent-scope scalars (``allow_helpers`` and,
+# once wired, ``auto_approve``) are NOT here — the bare key routes through
+# ``_is_agent_setting`` (verbatim string write, like ``model``/``autonomous``) and
+# the launch reader coerces at read; this table only governs the ROUTED
+# ``_KEY_ROUTES`` writer + the category ``validate_config_set`` path.
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
-    "allow_helpers": "bool",
     "system.auth.share_allowed": "bool",
     "workset.auth.share_allowed": "bool",
     "workset.auth.global_sync": "bool",
@@ -386,7 +395,7 @@ def _resolve_key(raw: str) -> str:
 # ``.env_file``), so a value ``set`` here is what the launch snapshot resolves for
 # the persona (endpoint via ``effective_behavior``; token via ``env_file``).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
-    {"endpoint", "model", "start_mode", "autonomous", "access"}
+    {"endpoint", "model", "start_mode", "autonomous", "access", "allow_helpers"}
 )
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env", "env_file"})
 
@@ -612,7 +621,7 @@ def _is_resource_key(key: str) -> bool:
 
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
-    return key in {"model", "start_mode", "autonomous", "endpoint"}
+    return key in {"model", "start_mode", "autonomous", "endpoint", "allow_helpers"}
 
 
 def _is_box_agent_key(key: str) -> bool:

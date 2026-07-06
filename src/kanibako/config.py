@@ -57,7 +57,6 @@ class KanibakoConfig:
     box_agent_name: str = _DEFAULTS["box_agent_name"]
     box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
     box_shell: str = _DEFAULTS["box_shell"]
-    allow_helpers: bool = True
     box_share_images: bool = False
     # Bootstrap PATH set-values keyed by full dotted name — the MERGED Layer-1
     # ``config.<leaf>`` foundation keys (from the ``[config]`` table) AND the
@@ -361,10 +360,10 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
 
     ``"box_image"``       → ``("box", "image")``
     ``"paths_dot_path"``  → ``("paths", "dot_path")``
-    ``"allow_helpers"``   → ``("", "allow_helpers")`` (top-level scalar field)
+    ``"some_scalar"``     → ``("", "some_scalar")`` (top-level scalar field)
 
-    A flat key with no recognised section prefix is a TOP-LEVEL scalar field
-    (e.g. ``allow_helpers``); it returns an empty section rather than raising
+    A flat key with no recognised section prefix is a TOP-LEVEL scalar field;
+    it returns an empty section rather than raising
     (the typed writer in ``config_interface`` is the routed set/get/reset path —
     this helper only serves the few remaining flat-key callers and must never
     crash on an advertised key).
@@ -390,7 +389,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
     if not section:
-        # Top-level scalar field (e.g. allow_helpers).
+        # Top-level scalar field (no recognised section prefix).
         data[key] = value
         dump_doc(path, data)
         return
@@ -413,7 +412,7 @@ def unset_project_config_key(path: Path, flat_key: str) -> bool:
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
     if not section:
-        # Top-level scalar field (e.g. allow_helpers).
+        # Top-level scalar field (no recognised section prefix).
         if key not in data:
             return False
         del data[key]
