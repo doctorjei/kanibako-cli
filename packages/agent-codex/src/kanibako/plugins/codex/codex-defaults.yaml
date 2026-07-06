@@ -42,13 +42,14 @@ descriptor:
     exec:
       fragment: ["exec"]
 
-  # safe-bypass is the FLAG --dangerously-bypass-approvals-and-sandbox; per-launch
-  # only (no persisted setting -> setting_key "").  codex is default-safe, so no
-  # secure_flag.
+  # safe-bypass is the FLAG --dangerously-bypass-approvals-and-sandbox; persisted
+  # default via the "auto_approve" agent-scope key (spec §2d L630, default
+  # true/PERMISSIVE; codex persists uniformly per the 2026-06-27 collapse ruling).
+  # codex is default-safe, so no secure_flag.
   safe_bypass:
     channel: flag
     flag: ["--dangerously-bypass-approvals-and-sandbox"]
-    setting_key: ""
+    setting_key: auto_approve
 
   settings:
     - setting_key: model

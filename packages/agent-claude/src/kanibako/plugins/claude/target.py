@@ -213,7 +213,7 @@ class ClaudeTarget(Target):
 
         return _AgentConfig(
             name="Claude Code",
-            state={"model": "opus", "access": "permissive"},
+            state={"model": "opus"},
         )
 
     def default_shares(self) -> dict[str, BindDefault]:
@@ -408,8 +408,13 @@ class ClaudeTarget(Target):
         """Declare Claude Code runtime settings.
 
         - ``model``: freeform (Claude adds models regularly).
-        - ``access``: constrained to permissive/restricted.
         - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
+
+        ``auto_approve`` is NOT declared here: it is the agent-scope boolean
+        behavior key (spec §2d L556, ``agent.default.auto_approve | true``, default
+        PERMISSIVE) redeemed by ``safe_bypass.setting_key`` and resolved at launch
+        (coerced to bool, default True) — routed verbatim like ``allow_helpers``,
+        with the per-launch ``-S``/``-A`` flags overriding it.
         """
         return [
             TargetSetting(
@@ -422,12 +427,6 @@ class ClaudeTarget(Target):
                 description="Alternate base-URL endpoint (persona); "
                 "unset uses the harness default and syncs the OAuth login",
                 default="",
-            ),
-            TargetSetting(
-                key="access",
-                description="Permission mode (permissive bypasses, restricted enforces)",
-                default="permissive",
-                choices=("permissive", "restricted"),
             ),
         ]
 

@@ -107,28 +107,26 @@ def effective_safe_mode_off(
     *,
     secure: bool,
     autonomous: bool,
-    persisted_access: str = "",
+    auto_approve: bool = True,
 ) -> bool:
     """Return True when the agent should run WITHOUT safety (safe-bypass ON).
 
-    Resolution (matches kanibako's documented default of autonomous):
+    Resolution (matches kanibako's documented PERMISSIVE default; the box is the
+    isolation boundary):
 
     * *secure* (``-S``) -> ``False`` (safe mode ON, bypass OFF) — wins over everything.
-    * *autonomous* (``-A``) -> ``True``.
-    * else the persisted default (``persisted_access``, the redeemed claude
-      ``access`` setting; ``""`` for goose/codex): ``"permissive"`` -> ``True``,
-      ``"restricted"`` -> ``False``, anything else (empty/unknown) -> ``True``
-      (start.py: "Neither means autonomous (default)").
+    * *autonomous* (``-A``) -> ``True`` (bypass ON) — the per-launch override.
+    * else the persisted *auto_approve* key (spec §2d L556
+      ``agent.default.auto_approve | true``, resolved off the launch snapshot and
+      DEFAULTING True when unset): ``True`` -> bypass ON (permissive), ``False`` ->
+      safe.  This is the redeemed persisted default; the per-launch ``-S``/``-A``
+      flags above still win over it.
     """
     if secure:
         return False
     if autonomous:
         return True
-    if persisted_access == "permissive":
-        return True
-    if persisted_access == "restricted":
-        return False
-    return True
+    return auto_approve
 
 
 def assemble_argv(

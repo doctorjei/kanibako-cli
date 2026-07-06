@@ -112,7 +112,8 @@ class TestInstallAgentTomls:
         assert claude_toml.is_file()
         cfg = load_agent_config(claude_toml)
         assert cfg.name == "Claude Code"
-        assert cfg.state == {"model": "opus", "access": "permissive"}
+        # ``access`` retired (folded into auto_approve, unset = default permissive).
+        assert cfg.state == {"model": "opus"}
 
     def test_does_not_overwrite_existing_agent_toml(self, tmp_home):
         from kanibako.commands.install import run

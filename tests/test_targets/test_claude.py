@@ -444,12 +444,14 @@ class TestSettingDescriptors:
         assert descriptors["model"].default == "opus"
         assert descriptors["model"].choices == ()  # freeform
 
-    def test_access_setting(self):
+    def test_access_and_auto_approve_not_declared_settings(self):
+        # ``access`` is RETIRED (folded into ``auto_approve``). ``auto_approve`` is
+        # NOT a declared TargetSetting either — it is the agent-scope bool key routed
+        # verbatim (safe_bypass.setting_key), redeemed + coerced at launch.
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
-        assert "access" in descriptors
-        assert descriptors["access"].default == "permissive"
-        assert descriptors["access"].choices == ("permissive", "restricted")
+        assert "access" not in descriptors
+        assert "auto_approve" not in descriptors
 
     def test_endpoint_setting(self):
         # Block B: endpoint declared with an empty (<None>) default → unset by
@@ -466,7 +468,9 @@ class TestGenerateAgentConfig:
         t = ClaudeTarget()
         cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
-        assert cfg.state == {"model": "opus", "access": "permissive"}
+        # ``access`` retired: the default crab state carries model only; auto_approve
+        # is UNSET (launch reader defaults it True/PERMISSIVE).
+        assert cfg.state == {"model": "opus"}
         assert cfg.run_args == []
         assert cfg.env == {}
 
@@ -584,7 +588,7 @@ class TestDescriptor:
         assert sb is not None
         assert sb.channel == Channel.FLAG
         assert sb.flag == ("--dangerously-skip-permissions",)
-        assert sb.setting_key == "access"
+        assert sb.setting_key == "auto_approve"
 
     def test_settings_model(self):
         d = ClaudeTarget().descriptor

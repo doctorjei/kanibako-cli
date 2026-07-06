@@ -41,13 +41,14 @@ descriptor:
 
   # safe-bypass is the SYMMETRIC ENV channel GOOSE_MODE (no --approve-all flag in
   # 1.37.0): safe-OFF -> auto; safe-ON -> approve.  The secure value is MANDATORY
-  # because goose's unset GOOSE_MODE default is itself `auto`.
+  # because goose's unset GOOSE_MODE default is itself `auto`.  Persisted default
+  # via the "auto_approve" agent-scope key (spec §2d L655, default true/PERMISSIVE).
   safe_bypass:
     channel: env
     env_var: GOOSE_MODE
     env_value: auto
     secure_env_value: approve
-    setting_key: ""
+    setting_key: auto_approve
 
   # provider/model route via the ENV channel (GOOSE_MODEL/GOOSE_PROVIDER); the
   # SettingArg only wires the env-var NAME — there is deliberately NO default

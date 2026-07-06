@@ -65,7 +65,6 @@ class ConfigLevel(Enum):
 KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # Start mode / agent flags
     "start_mode",
-    "autonomous",
     "model",
     # allow_helpers: an agent-scope BEHAVIOR key (spec §2d L557
     # ``agent.default.allow_helpers | true``). The bare key is the any-agent
@@ -74,6 +73,15 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # listener at launch (start.py). Was a flat scopeless top-level scalar
     # (1.7.0-rc clean break — no back-compat for the old bare-config-field form).
     "allow_helpers",
+    # auto_approve: an agent-scope BEHAVIOR key (spec §2d L556
+    # ``agent.default.auto_approve | true``, PERMISSIVE). The bare key is the
+    # any-agent ``agent.default`` tier (mirrors ``model``); per-agent overrides are
+    # the persona key ``agent.<agent>.auto_approve``. Redeemed by each descriptor's
+    # ``safe_bypass.setting_key`` at launch (claude/codex FLAG, goose GOOSE_MODE
+    # ENV), coerced to bool (default True); the per-launch ``-A``/``-S`` flags
+    # override it. COLLAPSES the dead ``autonomous`` persisted leaf + the claude-only
+    # ``access`` string leaf (1.7.0-rc clean break — no alias for either).
+    "auto_approve",
     # endpoint (persona): alternate harness base-URL, a sibling of model (block B).
     "endpoint",
     # Box
@@ -269,11 +277,11 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # so the loader reads back a real bool (``set box.share_images false`` actually
 # disables it).  Build this extensibly — later phases add vault_enabled etc.  The
 # truth table itself lives in ``config`` (shared with the box.meta writer); see
-# ``config.coerce_bool``.  NOTE: the agent-scope scalars (``allow_helpers`` and,
-# once wired, ``auto_approve``) are NOT here — the bare key routes through
-# ``_is_agent_setting`` (verbatim string write, like ``model``/``autonomous``) and
-# the launch reader coerces at read; this table only governs the ROUTED
-# ``_KEY_ROUTES`` writer + the category ``validate_config_set`` path.
+# ``config.coerce_bool``.  NOTE: the agent-scope scalars (``allow_helpers`` /
+# ``auto_approve``) are NOT here — the bare key routes through ``_is_agent_setting``
+# (verbatim string write, like ``model``) and the launch reader coerces at read;
+# this table only governs the ROUTED ``_KEY_ROUTES`` writer + the category
+# ``validate_config_set`` path.
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
     "system.auth.share_allowed": "bool",
@@ -395,7 +403,7 @@ def _resolve_key(raw: str) -> str:
 # ``.env_file``), so a value ``set`` here is what the launch snapshot resolves for
 # the persona (endpoint via ``effective_behavior``; token via ``env_file``).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
-    {"endpoint", "model", "start_mode", "autonomous", "access", "allow_helpers"}
+    {"endpoint", "model", "start_mode", "auto_approve", "allow_helpers"}
 )
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env", "env_file"})
 
@@ -411,7 +419,7 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 
     Returns ``None`` when *key* is not a settable per-persona agent key. The
     settable *tail* forms are a FLAT state leaf (``endpoint`` / ``model`` /
-    ``start_mode`` / ``autonomous`` / ``access``) or a sectioned ``env.<VAR>`` /
+    ``start_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>`` /
     ``env_file.<VAR>`` pointer.  The node segment is returned VERBATIM (possibly
     a ``+`` form, possibly itself dotted — a persona/harness segment may contain
     ``.``) for :func:`canonicalize_agent_ref` to canonicalize as a WHOLE.
@@ -621,7 +629,7 @@ def _is_resource_key(key: str) -> bool:
 
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
-    return key in {"model", "start_mode", "autonomous", "endpoint", "allow_helpers"}
+    return key in {"model", "start_mode", "auto_approve", "endpoint", "allow_helpers"}
 
 
 def _is_box_agent_key(key: str) -> bool:
@@ -781,7 +789,7 @@ def _is_path_category_key(key: str) -> bool:
 
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
 # A key whose first segment is NOT one of these (``env.*`` / ``resource.*`` and
-# the un-prefixed scalars ``model`` / ``start_mode`` / ``autonomous`` /
+# the un-prefixed scalars ``model`` / ``start_mode`` / ``auto_approve`` /
 # ``allow_helpers``) is SCOPELESS — it always writes to the command
 # scope's OWN file, so the direction guard does not apply to it. ``config`` is a
 # real namespace (config.* keys exist) but no config.* key actually REACHES this
@@ -1331,7 +1339,7 @@ def get_config_value(
             return _read_stored_leaf(path, sections, leaf)
         return None
 
-    # target settings (model, start_mode, autonomous)
+    # target settings (model, start_mode, auto_approve, allow_helpers)
     if _is_agent_setting(canonical):
         # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
         # ``agent.default`` tier; per-agent overrides live under ``agent.<name>``
@@ -1922,7 +1930,7 @@ def reset_config_value(
         # ({system,agent,workset,box}.*) actually READS through the
         # assemble/merge cascade — so only for those is the assembled snapshot the
         # key's real read path. A SCOPELESS key (``vault.*``, ``allow_helpers``,
-        # ``model``/``start_mode``/``autonomous``) is read from a single settings
+        # ``model``/``start_mode``/``auto_approve``) is read from a single settings
         # file / the flat ``KanibakoConfig`` (NOT the cascade), so a
         # cascade-derived "effective" would name a value from a tier NOTHING reads
         # — a wrong claim. Those keep the cleared-only form. This is the SAME token

@@ -396,7 +396,7 @@ class TestPluginDescriptorDataclasses:
             safe_bypass=SafeBypass(
                 channel=Channel.FLAG,
                 flag=("--dangerously-skip-permissions",),
-                setting_key="access",
+                setting_key="auto_approve",
             ),
             settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
             cred_files=(
@@ -418,7 +418,7 @@ class TestPluginDescriptorDataclasses:
         assert d.bindings[0].scope is BindScope.AGENT_CRITICAL
         assert d.mode["continue"] == ("--continue",)
         assert d.operations["exec"].fragment == ("--print",)
-        assert d.safe_bypass is not None and d.safe_bypass.setting_key == "access"
+        assert d.safe_bypass is not None and d.safe_bypass.setting_key == "auto_approve"
         assert d.cred_files[0].cadence is Cadence.SYNC
         assert d.cred_files[1].cadence is Cadence.SEED_ONCE
         assert d.init_dirs == (".claude",)
