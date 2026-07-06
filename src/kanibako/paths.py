@@ -1164,6 +1164,14 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
     return std.primary_logs / f"{box}.jsonl"
 
 
+# ⚠ PROVISIONAL / UNDOCUMENTED — do NOT build on `.shell.d`. This drop-in dir is
+# sourced ONLY by an interactive `.bashrc` (a human attaching to the box); it does
+# NOT reach the agent (exec'd directly), the agent's `bash -c` tool calls
+# (non-interactive), or the launch env. It currently has NO producers and is NOT a
+# documented feature. Its fate — keep + document as interactive-shell ergonomics
+# (populated via the seed/template system) vs remove — is a BACKLOG DISCUSSION item
+# (see tasks.md 🧰 Codebase health). Do NOT add code that depends on `.shell.d` until
+# that is decided; to deliver env to the AGENT use `env.<VAR>` / `secret_path` (§2a/§2d).
 _SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
 
 
