@@ -202,17 +202,38 @@ def _packaged_agent_template(agent_name: str) -> Path | None:
     return path if path.is_dir() else None
 
 
+def _packaged_instructions() -> Path | None:
+    """Locate the packaged default box-guidance file (``kanibako.data/global/KANIBAKO.md``)."""
+    try:
+        ref = importlib.resources.files("kanibako.data").joinpath("global", "KANIBAKO.md")
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+    path = Path(str(ref))
+    return path if path.is_file() else None
+
+
 def install_packaged_templates(std: StandardPaths, agent_names: list[str]) -> None:
     """Copy packaged curated-template content into the runtime template dirs.
 
     Populates ``@system.base_template`` from the packaged base content and each
     ``@config.agents/<agent>/template`` from the agent plugin's packaged
-    ``template/``.  Create-if-absent (never clobbers user edits).  Called from
-    first-run init; safe to re-run (idempotent for unchanged trees).
+    ``template/``.  Also installs the shipped default box-guidance file to
+    ``@system.instructions`` (``<data>/global/KANIBAKO.md``).  Create-if-absent
+    (never clobbers user edits).  Called from first-run init; safe to re-run
+    (idempotent for unchanged trees).
     """
     base_src = _packaged_base_template()
     if base_src is not None:
         _copy_resource_tree_if_absent(base_src, std.base_template)
+
+    # Agent-agnostic box-guidance source (@system.instructions): a single
+    # shipped default installed create-if-absent, resolved via the keyspace so a
+    # user who repoints/edits the key or the file keeps their copy.  Plugins bind
+    # this host source read-only into each harness slot (delivery = plugin layer).
+    instr_src = _packaged_instructions()
+    if instr_src is not None and not std.instructions.exists():
+        std.instructions.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(instr_src), str(std.instructions))
 
     for agent_name in agent_names:
         agent_src = _packaged_agent_template(agent_name)

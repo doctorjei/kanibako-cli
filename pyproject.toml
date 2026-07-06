@@ -30,6 +30,7 @@ where = ["src"]
     "templates/**/*", "templates/**/.*",
     "templates/.*/**/*", "templates/.*/*",
     "templates/**/.*/**/*", "templates/**/.*/*",
+    "global/*", "global/**/*",
 ]
 
 [tool.ruff]

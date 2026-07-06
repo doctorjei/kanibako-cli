@@ -309,6 +309,24 @@ class TestInstallPackagedTemplates:
         install_packaged_templates(std, ["claude"])
         assert instr.read_text() == "MY EDITS"
 
+    def test_instructions_default_landed(self, std):
+        """The shipped default KANIBAKO.md is installed at @system.instructions."""
+        assert not std.instructions.exists()
+        install_packaged_templates(std, ["claude"])
+        assert std.instructions.is_file()
+        assert std.instructions == std.data / "global" / "KANIBAKO.md"
+        # Verbatim shipped content (header line of the packaged default).
+        assert std.instructions.read_text().startswith(
+            "# KANIBAKO.md — Operating Guide for Agents in a Kanibako Box"
+        )
+
+    def test_instructions_create_if_absent_does_not_clobber(self, std):
+        """A user-edited KANIBAKO.md survives a re-install (create-if-absent)."""
+        install_packaged_templates(std, ["claude"])
+        std.instructions.write_text("MY BOX GUIDE")
+        install_packaged_templates(std, ["claude"])
+        assert std.instructions.read_text() == "MY BOX GUIDE"
+
     def test_fresh_box_seeds_base_and_agent(self, std, tmp_path):
         """End-to-end: install packaged templates, then the layered seed-once
         stage+seed lands the base INSTRUCTIONS.md + the agent files into a box
