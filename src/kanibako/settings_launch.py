@@ -76,6 +76,7 @@ from typing import Literal, Mapping
 from kanibako.settings_assemble import assemble_levels
 from kanibako.settings_categories import (
     _DELIVERY,
+    SECRET_MOUNT_DIR,
     CategoryEntry,
     _bind_options,
 )
@@ -1149,7 +1150,7 @@ def _agent_state_partial(
 # auto_approve / …) are NOT folded — they stay on the box.agent mirror overlay,
 # read directly by :func:`effective_behavior` (byte-identical behavior path).
 _FOLD_CATEGORY_TOKENS: frozenset[str] = frozenset(
-    {"bindings", *_BIND_LEAF_CATEGORIES, "masks", "env"}
+    {"bindings", *_BIND_LEAF_CATEGORIES, "masks", "env", "secret_path"}
 )
 
 
@@ -1605,6 +1606,37 @@ def _emit_scope_node(
                     host_src=None,
                     delivery="ENV",
                     options=value if isinstance(value, str) else str(value),
+                    name=var,
+                ),
+            ))
+
+    # secret_path — the SECRET category (spec §2a, 2026-07-06): a scalar host PATH
+    # keyed by VAR, delivered as a ro MOUNT to SECRET_MOUNT_DIR/{VAR}. Modeled on the
+    # env branch but MOUNT: host_src = the scalar path (already host-expanded by the
+    # expand pass — a scalar leaf is expanded host-side, ``~``/``$VAR``/@-refs), and
+    # box_dest = the fixed in-box secrets path. The reconcile pass picks the per-VAR
+    # winner (box over workset) by identical box_dest; start.py emits the ro Mount +
+    # the box-side export shim — kanibako NEVER reads the file VALUE. options="ro"
+    # (NO ``:U`` chown of the host secret). name = VAR (the shim exports it).
+    secret = dict.get(scope_node, "secret_path", _MISSING)
+    if isinstance(secret, KeyStore):
+        for var in dict.keys(secret):
+            path_val = dict.__getitem__(secret, var)
+            if path_val is None:
+                continue  # a reset secret_path has no path to mount.
+            box_dest = f"{SECRET_MOUNT_DIR}/{var}"
+            sort_key = (order, "secret_path", var)
+            collected.append((
+                sort_key,
+                CategoryEntry(
+                    category="secret_path",
+                    scope=scope,
+                    box_dest=box_dest,
+                    host_src=(
+                        path_val if isinstance(path_val, str) else str(path_val)
+                    ),
+                    delivery="MOUNT",
+                    options="ro",
                     name=var,
                 ),
             ))

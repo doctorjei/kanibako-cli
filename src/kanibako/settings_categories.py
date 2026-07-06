@@ -22,28 +22,40 @@ equivalence test — NOT a correctness authority. The ``settings_shares`` /
 ``settings_seeds`` wrapper modules it used to feed were retired in 7c (the launch +
 ``workset share`` paths now resolve through the snapshot pipeline).
 
-The eight categories
---------------------
+The nine categories
+-------------------
 Available at every scope ``{system, agent, workset, box}``:
 
-============= ===================================== ============= =========
-category      key shape                              host_src      delivery
-============= ===================================== ============= =========
-``masks``     ``{scope}.masks``  (list[box_dest])    ``None``      MOUNT
-``bindings.ro``  ``{scope}.bindings.ro.{name}``      bind          MOUNT
-``bindings.rw``  ``{scope}.bindings.rw.{name}``      bind          MOUNT
-``caches``    ``{scope}.caches.{name}``              bind          MOUNT
-``seeded``    ``{scope}.seeded.{name}``              bind          COPY
-``shared``    ``{scope}.shared.{name}``              bind          MOUNT
-``synced``    ``{scope}.synced.{name}``              bind          COPY
-``env``       ``{scope}.env.{VAR}``  (value)         ``None``      ENV
-============= ===================================== ============= =========
+================ ===================================== ============= =========
+category         key shape                              host_src      delivery
+================ ===================================== ============= =========
+``masks``        ``{scope}.masks``  (list[box_dest])    ``None``      MOUNT
+``bindings.ro``  ``{scope}.bindings.ro.{name}``         bind          MOUNT
+``bindings.rw``  ``{scope}.bindings.rw.{name}``         bind          MOUNT
+``caches``       ``{scope}.caches.{name}``              bind          MOUNT
+``seeded``       ``{scope}.seeded.{name}``              bind          COPY
+``shared``       ``{scope}.shared.{name}``              bind          MOUNT
+``synced``       ``{scope}.synced.{name}``              bind          COPY
+``env``          ``{scope}.env.{VAR}``  (value)         ``None``      ENV
+``secret_path``  ``{scope}.secret_path.{VAR}`` (path)   host path     MOUNT
+================ ===================================== ============= =========
 
 A "bind" value is a STRUCTURED pair/tuple ``[host_src, box_dest[, options]]``
 unpacked by the engine's :func:`~kanibako.settings_resolve.unpack_bind` (spec
 §2a — never a colon-joined string).  ``masks`` carries a list of guest paths to
 tmpfs-hide (no host source); ``env`` carries a scalar value for ``{VAR}`` (no
 host source, no guest *path* — its ``box_dest`` field is the VAR name).
+
+``secret_path`` (spec §2a SECRET category, 2026-07-06) is SCALAR-valued like
+``env`` (a host PATH to secret material, e.g. a 0600 bearer-token file), but
+delivered ARM'S-LENGTH as a ro MOUNT: at launch the cascade-resolved host path is
+ro-bind-mounted to a fixed, non-persistent in-box location
+(:data:`SECRET_MOUNT_DIR`\\ ``/{VAR}``) and a box-side shim exports ``{VAR}`` from
+that mount — so kanibako NEVER reads the secret VALUE (never in process memory /
+the podman argv / the snapshot / keystore / logs). Keyed per ``{VAR}`` (same
+cascade merge + reserved-name floor as ``env.{VAR}``); its ``box_dest`` IS a real
+guest path (so it participates in box_dest collisions with a binding-level
+authority rank), and its ``host_src`` is the SCALAR path (NOT a Bind tuple).
 
 Delivery
 ~~~~~~~~
@@ -91,6 +103,14 @@ COPY: Final[Delivery] = "COPY"
 MOUNT: Final[Delivery] = "MOUNT"
 ENV: Final[Delivery] = "ENV"
 
+#: The fixed, non-persistent in-box directory the SECRET category (``secret_path``)
+#: ro-mounts each host secret file into, as ``{SECRET_MOUNT_DIR}/{VAR}`` (spec §2a
+#: SECRET category, 2026-07-06). NOT under the box ``~`` home (so it is disjoint
+#: from the home/workspace/vault mounts and stays OUT of the ``~``-rooted mount
+#: depth-sort). A box-side export shim (``start.py``) reads each file here into
+#: ``{VAR}`` at agent start — kanibako only ever writes the mount PATH.
+SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
+
 # The bind-shaped categories (one ``{scope}.<category>.<name>`` key per entry,
 # value is a ``host_src:guest_dest`` expression).  ``masks`` (a list) and
 # ``env`` (a scalar) have bespoke key shapes handled separately below.
@@ -110,6 +130,10 @@ _DELIVERY: dict[str, Delivery] = {
     "shared": MOUNT,
     "synced": COPY,
     "env": ENV,
+    # secret_path: scalar host PATH delivered as a ro MOUNT (spec §2a SECRET
+    # category) — same delivery TAG as a binding, but the value is a scalar path
+    # (host_src), not a Bind tuple. Its box_dest is a real guest path.
+    "secret_path": MOUNT,
 }
 
 # One regex for the bind-shaped categories: scope . <category> . name
@@ -125,6 +149,19 @@ MASK_KEY_RE = re.compile(r"^(?P<scope>system|agent|workset|box)\.masks$")
 ENV_KEY_RE = re.compile(
     r"^(?P<scope>system|agent|workset|box)\.env\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
 )
+# ``{scope}.secret_path.{VAR}`` — the SECRET category (spec §2a, 2026-07-06): a
+# scalar host PATH keyed by the env VAR it delivers. VAR is the env-name shape
+# (mirrors :data:`ENV_KEY_RE`), never dotted.
+SECRET_KEY_RE = re.compile(
+    r"^(?P<scope>system|agent|workset|box)\.secret_path\."
+    r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
+)
+#: The bare-VAR shape (the ``name`` group of :data:`SECRET_KEY_RE`), enforced AGAIN
+#: at launch emit — the VAR is interpolated into a generated ``sh -c`` export shim,
+#: so a VAR that slipped past ``config set`` validation (a hand-edited YAML, or a
+#: future settable surface) must be re-checked before it reaches the shell. Keep in
+#: sync with the ``name`` group above.
+SECRET_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Sentinel value that disables a COPY entry (the "empty" terminal, preserved
 # from the seed resolver).
@@ -147,6 +184,12 @@ _CATEGORY_AUTHORITY: dict[str, int] = {
     "shared": 3,        # shared
     "synced": 4,        # synced
     "masks": 5,         # masks
+    # secret_path: a ro MOUNT whose box_dest IS a real guest path (unlike ``env``),
+    # so it CAN collide on box_dest. Ranked at binding-level (2) — its dests live in
+    # the disjoint ``SECRET_MOUNT_DIR`` namespace, so a collision only ever occurs
+    # between two secret_path entries for the SAME VAR (identical box_dest), resolved
+    # by scope apply-order (box wins) exactly like env precedence.
+    "secret_path": 2,   # binding-level
 }
 
 
@@ -156,10 +199,13 @@ class CategoryEntry:
 
     *category* is the category token (``"masks"``, ``"bindings.ro"``,
     ``"bindings.rw"``, ``"caches"``, ``"seeded"``, ``"shared"``, ``"synced"``,
-    ``"env"``).  *scope* is the KEY's scope.  *box_dest* is the in-box
-    destination (a guest path for path categories; the VAR name for ``env``).
+    ``"env"``, ``"secret_path"``).  *scope* is the KEY's scope.  *box_dest* is the
+    in-box destination (a guest path for path categories — INCLUDING
+    ``secret_path``'s ``SECRET_MOUNT_DIR/{VAR}``; the VAR name for ``env``).
     *host_src* is the resolved host source path, or ``None`` for value-only
-    categories (``masks`` and ``env``).  *delivery* is COPY / MOUNT / ENV per the
+    categories (``masks`` and ``env``).  For ``secret_path`` *host_src* is the
+    SCALAR host path and *box_dest* is ``SECRET_MOUNT_DIR/{VAR}``; *name* is the
+    VAR (the box-side shim exports it).  *delivery* is COPY / MOUNT / ENV per the
     category.  *options* carries mount flags (``"ro"`` / ``"Z,U"``) for MOUNT
     entries (and ``env``'s VALUE for ``env`` entries — see below).  *name* is the
     ``<name>`` leaf for diagnostics.

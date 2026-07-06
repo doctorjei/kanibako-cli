@@ -33,45 +33,67 @@ class TestAgentConfigDefaults:
         assert cfg.env == {"FOO": "bar"}
 
 
-class TestAgentConfigEnvFile:
-    """The env_file POINTER family (VAR -> host path; secret stays in the file)."""
+class TestAgentConfigSecretPath:
+    """The secret_path POINTER family (VAR -> host path; secret stays in the file).
+
+    RENAMED from ``env_file`` (rc0-rc2, clean break). Now stored DISCRIMINATED under
+    ``agent.<node>.secret_path.<VAR>`` — the node is the per-agent store dir name
+    (``agents/<node>/settings.yaml``), the SAME shape ``_agent_partial`` reads into
+    the launch cascade. The value is a PATH only (never the secret contents).
+    """
+
+    def _node_file(self, tmp_path, node="nav℘claude"):
+        p = tmp_path / node / "settings.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
 
     def test_default_empty(self):
-        assert AgentConfig().env_file == {}
+        assert AgentConfig().secret_path == {}
 
     def test_custom_value(self):
-        cfg = AgentConfig(env_file={"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"})
-        assert cfg.env_file == {"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"}
+        cfg = AgentConfig(
+            secret_path={"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"}
+        )
+        assert cfg.secret_path == {
+            "ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"
+        }
 
-    def test_load_env_file_section(self, tmp_path):
-        cfg_path = tmp_path / "test.yaml"
+    def test_load_secret_path_section(self, tmp_path):
+        cfg_path = self._node_file(tmp_path)
         cfg_path.write_text(
             'agent:\n'
             '  name: "persona"\n'
-            'env_file:\n'
-            '  ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
+            '  nav℘claude:\n'
+            '    secret_path:\n'
+            '      ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
         )
         cfg = load_agent_config(cfg_path)
-        # Only the PATH is loaded (a pointer), never any secret value.
-        assert cfg.env_file == {"ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"}
+        # Only the PATH is loaded (a pointer), never any secret value. The node
+        # sub-table does NOT leak into flat state.
+        assert cfg.secret_path == {
+            "ANTHROPIC_AUTH_TOKEN": "~/.config/claude/nav/token"
+        }
+        assert "nav℘claude" not in cfg.state
 
-    def test_load_missing_env_file_section(self, tmp_path):
-        cfg_path = tmp_path / "test.yaml"
+    def test_load_missing_secret_path_section(self, tmp_path):
+        cfg_path = self._node_file(tmp_path)
         cfg_path.write_text('agent:\n  name: "x"\n')
-        assert load_agent_config(cfg_path).env_file == {}
+        assert load_agent_config(cfg_path).secret_path == {}
 
-    def test_round_trip_env_file(self, tmp_path):
-        path = tmp_path / "test.yaml"
+    def test_round_trip_secret_path(self, tmp_path):
+        path = self._node_file(tmp_path)
         original = AgentConfig(
             name="persona",
-            env_file={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
+            secret_path={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
         )
         write_agent_config(path, original)
-        # The written file stores the PATH, not any token contents.
+        # The written file stores the PATH (discriminated under agent.<node>), not
+        # any token contents, and NO legacy env_file section.
         content = path.read_text()
         assert "/secure/token" in content
+        assert "env_file" not in content
         loaded = load_agent_config(path)
-        assert loaded.env_file == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
+        assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
 
 
 class TestAgentsDir:

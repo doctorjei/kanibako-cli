@@ -177,6 +177,12 @@ def is_known_key(arg: str) -> bool:
     # persona form so a bind named after a state leaf is recognised as the bind.
     if _is_agent_node_bind_key(arg):
         return True
+    # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a): a
+    # settable key (recognised on the +form too, before canonicalization). Checked
+    # here so get/show + the project-name heuristic treat it as a KEY. Also the
+    # NON-agent ``<scope>.secret_path.<VAR>`` scope form.
+    if _is_agent_node_secret_key(arg) or _is_scope_secret_key(arg):
+        return True
     # agent.<node>.<key> — the per-persona agent key (block B1): a settable key
     # (recognised on the +form too, before canonicalization) so get/show + the
     # project-name heuristic treat it as a KEY, never a project name.
@@ -361,7 +367,7 @@ def _resolve_key(raw: str) -> str:
     so the write/get/reset all target the canonical ``agents/<node>/`` slot the
     resolver reads.  The node segment is canonicalized as a WHOLE via
     :func:`canonicalize_agent_ref` (agent_ref design law: never re-split a ref on
-    the raw separator); the tail (``endpoint`` / ``env.<VAR>`` / ``env_file.<VAR>``)
+    the raw separator); the tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``)
     is preserved verbatim.  A malformed node is left RAW here — the set/reset
     persona branch surfaces the parse error (and a bad node never silently swaps).
     Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.
@@ -381,6 +387,14 @@ def _resolve_key(raw: str) -> str:
         except ConfigError:
             return raw
         return f"agent.{node}.{cat}.{name}"
+    secret = _parse_agent_node_secret_key(raw)
+    if secret is not None:
+        node_raw, var = secret
+        try:
+            node = canonicalize_agent_ref(node_raw)
+        except ConfigError:
+            return raw
+        return f"agent.{node}.secret_path.{var}"
     parsed = _parse_persona_agent_key(raw)
     if parsed is None:
         return raw
@@ -398,14 +412,17 @@ def _resolve_key(raw: str) -> str:
 # ---------------------------------------------------------------------------
 
 # The settable per-persona agent leaves: the FLAT agent-state knobs (``_is_agent_
-# setting`` set) plus the ``env.``/``env_file.`` sections — the EXACT shape
-# ``agent_config.load_agent_config`` reads back (``AgentConfig.state`` / ``.env`` /
-# ``.env_file``), so a value ``set`` here is what the launch snapshot resolves for
-# the persona (endpoint via ``effective_behavior``; token via ``env_file``).
+# setting`` set) plus the ``env.`` section — the EXACT shape
+# ``agent_config.load_agent_config`` reads back (``AgentConfig.state`` / ``.env``),
+# so a value ``set`` here is what the launch snapshot resolves for the persona
+# (endpoint via ``effective_behavior``). The former ``env_file.`` section is RENAMED
+# to the DISCRIMINATED ``agent.<node>.secret_path.<VAR>`` SECRET category (routed by
+# ``_is_agent_node_secret_key`` → ``_node_secret_target``, NOT here — a clean break;
+# ``env_file`` only shipped rc0-rc2, no alias).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
     {"endpoint", "model", "start_mode", "auto_approve", "allow_helpers"}
 )
-_PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env", "env_file"})
+_PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
 # The RESERVED any-agent tier name (mirrors ``settings_assemble._AGENT_DEFAULT_SUB``
 # / ``config.read_agent_settings``: "no real agent may be named default"). It is
@@ -419,21 +436,24 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 
     Returns ``None`` when *key* is not a settable per-persona agent key. The
     settable *tail* forms are a FLAT state leaf (``endpoint`` / ``model`` /
-    ``start_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>`` /
-    ``env_file.<VAR>`` pointer.  The node segment is returned VERBATIM (possibly
-    a ``+`` form, possibly itself dotted — a persona/harness segment may contain
-    ``.``) for :func:`canonicalize_agent_ref` to canonicalize as a WHOLE.
+    ``start_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>``
+    pointer.  The SECRET pointer ``secret_path.<VAR>`` is NOT parsed here — it is
+    matched EARLIER (``_is_agent_node_secret_key``) and stored DISCRIMINATED (spec §2a;
+    it replaced the rc-only ``env_file.<VAR>``, which routed here).  The node segment
+    is returned VERBATIM (possibly a ``+`` form, possibly itself dotted — a
+    persona/harness segment may contain ``.``) for :func:`canonicalize_agent_ref` to
+    canonicalize as a WHOLE.
 
     Parsed from the RIGHT: the closed set of settable tails is unambiguous, so
-    everything left of a recognised tail is the node.  ``env``/``env_file`` are
-    matched BEFORE the flat leaves so ``agent.<node>.env_file.MODEL`` is a token
-    pointer named ``MODEL``, never mis-split as the state leaf ``model``.
+    everything left of a recognised tail is the node.  ``env`` is matched BEFORE the
+    flat leaves so ``agent.<node>.env.MODEL`` is an env var named ``MODEL``, never
+    mis-split as the state leaf ``model``.
     """
     if not key.startswith("agent."):
         return None
     rest = key[len("agent."):]
     parts = rest.split(".")
-    # env.<VAR> / env_file.<VAR> — the section is the 2nd-from-last segment.
+    # env.<VAR> — the section is the 2nd-from-last segment.
     if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
         return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
     # Flat state leaf — the last segment.
@@ -487,6 +507,37 @@ def _is_agent_node_bind_key(key: str) -> bool:
     return _parse_agent_node_bind_key(key) is not None
 
 
+# ``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a, 2026-
+# 07-06). Like the descriptor bind key it is DISCRIMINATED (node in the key) and
+# stored UNDER the ``agent.<node>.secret_path`` sub-table in the node's OWN settings
+# file — the shape ``_agent_partial`` reads into the launch cascade — but the value
+# is a SCALAR host PATH, not a Bind tuple (so it routes via a plain scalar write, NOT
+# ``_set_category_value``/``repoint_host_src``). ``<node>`` is NON-greedy so the
+# FIRST ``.secret_path.`` splits node from VAR; VAR is the env-name shape (no dots).
+_AGENT_NODE_SECRET_RE = re.compile(
+    r"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+)
+
+
+def _parse_agent_node_secret_key(key: str) -> "tuple[str, str] | None":
+    """Split ``agent.<node>.secret_path.<VAR>`` into ``(node_raw, var)``, or ``None``.
+
+    ``node_raw`` is VERBATIM (possibly a ``+`` form) for :func:`canonicalize_agent_ref`
+    to canonicalize as a WHOLE. Parsed BEFORE :func:`_parse_persona_agent_key` so a
+    secret pointer never falls through to the (now env_file-less) persona branch.
+    """
+    m = _AGENT_NODE_SECRET_RE.match(key)
+    if m is None:
+        return None
+    return m.group("node"), m.group("var")
+
+
+def _is_agent_node_secret_key(key: str) -> bool:
+    """True iff *key* is a per-node ``agent.<node>.secret_path.<VAR>`` key (SECRET
+    category). Checked BEFORE the persona + path-category branches in dispatch."""
+    return _parse_agent_node_secret_key(key) is not None
+
+
 def _persona_display_key(canonical: str) -> str:
     """Render a canonical persona key for USER-FACING output (``℘`` -> ``+``)."""
     parsed = _parse_persona_agent_key(canonical)
@@ -494,6 +545,16 @@ def _persona_display_key(canonical: str) -> str:
         return canonical
     node, tail = parsed
     return f"agent.{display_agent_ref(node)}.{tail}"
+
+
+def _node_secret_display_key(canonical: str) -> str:
+    """Render a canonical ``agent.<node>.secret_path.<VAR>`` key for USER-FACING
+    output (``℘`` -> ``+`` on the node segment)."""
+    parsed = _parse_agent_node_secret_key(canonical)
+    if parsed is None:
+        return canonical
+    node, var = parsed
+    return f"agent.{display_agent_ref(node)}.secret_path.{var}"
 
 
 def _persona_agent_target(
@@ -505,7 +566,7 @@ def _persona_agent_target(
 
     * ``(path, sections, leaf)`` — the route into ``agents/<node>/settings.yaml``
       (``path``), the nested file table (``("agent",)`` for a flat state leaf,
-      ``("env",)`` / ``("env_file",)`` for a pointer), and the leaf name;
+      ``("env",)`` for an env pointer), and the leaf name;
     * an ``"Error: ..."`` string — a MALFORMED node ref (validated, never routed);
     * ``None`` — not a persona key, OR *agents_root* was not supplied (the per-
       persona store is global under ``config.agents`` and is only reachable when
@@ -539,8 +600,6 @@ def _persona_agent_target(
     except ConfigError as exc:
         return f"Error: {exc}"
     path = agent_settings_path(agents_root, node)
-    if tail.startswith("env_file."):
-        return path, ("env_file",), tail[len("env_file."):]
     if tail.startswith("env."):
         return path, ("env",), tail[len("env."):]
     return path, ("agent",), tail
@@ -582,6 +641,42 @@ def _node_bind_target(
         return None
     path = agent_settings_path(agents_root, node)
     parts = canonical.split(".")
+    return path, tuple(parts[:-1]), parts[-1]
+
+
+def _node_secret_target(
+    canonical: str, agents_root: "Path | None",
+) -> "tuple[Path, tuple[str, ...], str] | None":
+    """Resolve a canonical ``agent.<node>.secret_path.<VAR>`` key (SECRET category)
+    to its FILE write/read/reset location — the get/set/reset symmetry twin.
+
+    Returns ``(path, sections, leaf)``: the node's OWN settings file
+    ``agents/<node>/settings.yaml`` (*path*) and the DISCRIMINATED nested table
+    ``agent.<node>.secret_path`` (*sections*) with *leaf* = the VAR — EXACTLY the
+    shape ``_agent_partial`` reads into the launch cascade (``agent.<node>.
+    secret_path.<VAR>``) and ``load_agent_config`` reads back into
+    ``AgentConfig.secret_path``. The node appears BOTH in the dir path AND the nested
+    key — that is the launch read shape, not a bug (same as ``_node_bind_target``).
+
+    Returns ``None`` when *canonical* is not a node secret key, *agents_root* was not
+    threaded (the per-node store is global under ``config.agents`` — only reachable at
+    the SYSTEM scope, mirroring ``_node_bind_target``), the node is the reserved
+    any-agent tier, or the node ref is MALFORMED (validate-only; never re-swapped).
+    """
+    parsed = _parse_agent_node_secret_key(canonical)
+    if parsed is None or agents_root is None:
+        return None
+    node, _var = parsed
+    if node == _AGENT_DEFAULT_SUB:
+        return None
+    from kanibako.agent_config import agent_settings_path
+
+    try:
+        parse_agent_ref(node)  # validate only (raises on a malformed ref)
+    except ConfigError:
+        return None
+    path = agent_settings_path(agents_root, node)
+    parts = canonical.split(".")  # ["agent", <node>, "secret_path", <VAR>]
     return path, tuple(parts[:-1]), parts[-1]
 
 
@@ -767,6 +862,22 @@ def _config_key_refusal(canonical: str, *, action: str) -> str:
         f"Error: config.* keys can only be {verb} by editing the configuration "
         f"file ({config_file})."
     )
+
+
+# ``<scope>.secret_path.<VAR>`` for the NON-agent scopes (system/workset/box). The
+# AGENT scope form ``agent.<node>.secret_path.<VAR>`` is DISCRIMINATED and routed by
+# ``_is_agent_node_secret_key`` (the node file); this covers the other three, which
+# write a scalar to the COMMAND scope's OWN settings file at ``<scope>.secret_path.<VAR>``
+# (the shape ``_file_partial`` reads into the cascade).
+_SCOPE_SECRET_RE = re.compile(
+    r"^(?P<scope>system|workset|box)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+)
+
+
+def _is_scope_secret_key(key: str) -> bool:
+    """True iff *key* is a NON-agent ``<scope>.secret_path.<VAR>`` SECRET-category
+    key (system/workset/box) — settable to the command scope's own settings file."""
+    return _SCOPE_SECRET_RE.match(key) is not None
 
 
 def _is_path_category_key(key: str) -> bool:
@@ -1326,6 +1437,29 @@ def get_config_value(
         path, sections, leaf = bind_target
         return _read_stored_leaf(path, sections, leaf)
 
+    # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a): read
+    # the stored PATH (never the secret VALUE) at the DISCRIMINATED
+    # ``agent.<node>.secret_path.<VAR>`` slot in the node's OWN settings file — the
+    # get/set/reset symmetry twin. Checked BEFORE the persona branch. Missing
+    # agents_root / malformed node → ``None`` ("(not set)").
+    if _is_agent_node_secret_key(canonical):
+        secret_target = _node_secret_target(canonical, agents_root)
+        if secret_target is None:
+            return None
+        path, sections, leaf = secret_target
+        return _read_stored_leaf(path, sections, leaf)
+
+    # <scope>.secret_path.<VAR> (system/workset/box) — read the stored PATH from the
+    # NOUN's settings file (stored-at-noun; the --effective cascade view is the show
+    # path). project_toml is the command scope's settings file here.
+    if _is_scope_secret_key(canonical):
+        if project_toml and project_toml.exists():
+            parts = canonical.split(".")
+            return _read_stored_leaf(
+                project_toml, (parts[0], "secret_path"), parts[2],
+            )
+        return None
+
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): read the value
     # STORED at the flat slot in the agent's OWN settings file
     # ``agents/<node>/settings.yaml`` (symmetric with the set/reset branches; the
@@ -1561,13 +1695,14 @@ def set_config_value(
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): write to the
     # agent's OWN settings file ``agents/<node>/settings.yaml`` (NOT the command
     # scope's settings file), at the FLAT slot ``load_agent_config`` reads back
-    # (state leaf under ``agent:``; ``env.<VAR>`` under ``env:``; ``env_file.<VAR>``
-    # under ``env_file:``).  The node was ``℘``-canonicalized by ``_resolve_key``.
-    # Sparse by construction: ``_write_nested_toml_key`` is read-modify-write, so
-    # only the key the user set is materialised — a default-only persona file
-    # stays empty of everything else.  The value is written VERBATIM (like every
-    # other agent-setting write) — the persona-critical trio (endpoint,
-    # env_file.ANTHROPIC_AUTH_TOKEN, model) are strings.  ``agents_root`` is
+    # (state leaf under ``agent:``; ``env.<VAR>`` under ``env:``).  The SECRET
+    # pointer ``secret_path.<VAR>`` is handled EARLIER (discriminated node storage,
+    # ``_is_agent_node_secret_key``), not here.  The node was ``℘``-canonicalized by
+    # ``_resolve_key``. Sparse by construction: ``_write_nested_toml_key`` is
+    # read-modify-write, so only the key the user set is materialised — a
+    # default-only persona file stays empty of everything else.  The value is
+    # written VERBATIM (like every other agent-setting write) — the persona-critical
+    # trio (endpoint, secret_path.ANTHROPIC_AUTH_TOKEN, model) are strings.  ``agents_root`` is
     # supplied only by the system scope (the global ``config.agents`` store);
     # absent it, the write is refused (the directional guard already refuses this
     # key from box/workset — an UPWARD agent-scope write).
@@ -1595,6 +1730,37 @@ def set_config_value(
             agent_name=cascade_agent_name,
             default_categories=default_categories,
         )
+
+    # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a). A
+    # SCALAR path write to the node's OWN settings file at the DISCRIMINATED
+    # ``agent.<node>.secret_path`` sub-table (the shape ``_agent_partial`` reads into
+    # the cascade + ``load_agent_config`` reads back). Checked BEFORE the persona
+    # branch (env_file was there in rc; secret_path is discriminated node storage, a
+    # clean break). The §0 directional guard already ran: agent.* is settable only
+    # DOWNWARD from system, so box/workset was refused above; SYSTEM threads agents_root.
+    if _is_agent_node_secret_key(canonical):
+        secret_target = _node_secret_target(canonical, agents_root)
+        if secret_target is None:
+            return (
+                f"Error: '{key}' is a per-node secret pointer and is only "
+                f"settable at the system scope."
+            )
+        path, sections, leaf = secret_target
+        _write_nested_toml_key(path, sections, leaf, value)
+        return f"Set {_node_secret_display_key(canonical)}={value}"
+
+    # <scope>.secret_path.<VAR> (system/workset/box) — the SECRET category at a
+    # NON-agent scope: a SCALAR path write to the command scope's SETTINGS file at
+    # the nested ``<scope>.secret_path.<VAR>`` slot (the shape ``_file_partial`` reads
+    # into the cascade). The §0 directional guard already permitted it (own/contained
+    # scope). settings_dest = the command scope's settings file (config_path at box/
+    # workset; the system settings file at SYSTEM — never the Layer-1 config file).
+    if _is_scope_secret_key(canonical):
+        parts = canonical.split(".")  # [<scope>, "secret_path", <VAR>]
+        _write_nested_toml_key(
+            settings_dest, (parts[0], "secret_path"), parts[2], value,
+        )
+        return f"Set {canonical}={value}"
 
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
@@ -1819,10 +1985,35 @@ def reset_config_value(
             return _honest_reset_message(canonical, command_scope, floor)
         return f"No override for {canonical}"
 
+    # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a):
+    # remove the stored pointer from the node's OWN settings file (symmetric with
+    # set/get). Checked BEFORE the persona branch. A missing agents_root / malformed
+    # node → refused (only resettable at the system scope).
+    if _is_agent_node_secret_key(canonical):
+        secret_target = _node_secret_target(canonical, agents_root)
+        if secret_target is None:
+            return (
+                f"Error: '{key}' is a per-node secret pointer and is only "
+                f"resettable at the system scope."
+            )
+        path, sections, leaf = secret_target
+        display = _node_secret_display_key(canonical)
+        if _remove_nested_toml_key(path, sections, leaf):
+            return _honest_reset_message(display, command_scope)
+        return f"No override for {display}"
+
+    # <scope>.secret_path.<VAR> (system/workset/box) — remove the stored pointer
+    # from the command scope's settings file (symmetric with set/get).
+    if _is_scope_secret_key(canonical):
+        parts = canonical.split(".")
+        if _remove_nested_toml_key(settings_dest, (parts[0], "secret_path"), parts[2]):
+            return _honest_reset_message(canonical, command_scope)
+        return f"No override for {canonical}"
+
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): remove the stored
     # override from the agent's OWN settings file ``agents/<node>/settings.yaml``
     # (symmetric with set/get; ``_remove_nested_toml_key`` prunes now-empty
-    # ``agent:``/``env:``/``env_file:`` tables, keeping the file sparse).
+    # ``agent:``/``env:`` tables, keeping the file sparse).
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, str):

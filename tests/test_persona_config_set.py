@@ -66,10 +66,10 @@ class TestResolveKeyCanonicalization:
             == "agent.navigator℘claude.endpoint"
         )
 
-    def test_env_file_tail_preserved(self):
+    def test_secret_path_tail_preserved(self):
         assert (
-            _resolve_key(f"agent.navigator+claude.env_file.{_TOKEN_VAR}")
-            == f"agent.navigator℘claude.env_file.{_TOKEN_VAR}"
+            _resolve_key(f"agent.navigator+claude.secret_path.{_TOKEN_VAR}")
+            == f"agent.navigator℘claude.secret_path.{_TOKEN_VAR}"
         )
 
     def test_non_persona_key_untouched(self):
@@ -85,7 +85,7 @@ class TestResolveKeyCanonicalization:
 
     def test_is_known_key_recognizes_persona_key_plus_form(self):
         assert is_known_key("agent.navigator+claude.endpoint")
-        assert is_known_key("agent.navigator+claude.env_file.TOK")
+        assert is_known_key("agent.navigator+claude.secret_path.TOK")
         assert not is_known_key("agent.navigator+claude.bogus")
 
 
@@ -123,16 +123,18 @@ class TestSetPersona:
             "agent": {"endpoint": _URL, "model": "gemma-4-31b-it"},
         }
 
-    def test_set_env_file_token_lands_in_env_file_section(
+    def test_set_secret_path_token_lands_in_discriminated_section(
         self, tmp_path, agents_root,
     ):
         set_config_value(
-            f"agent.navigator+claude.env_file.{_TOKEN_VAR}", "/host/token",
+            f"agent.navigator+claude.secret_path.{_TOKEN_VAR}", "/host/token",
             config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
+        # Stored DISCRIMINATED under agent.<node>.secret_path — the shape
+        # _agent_partial reads into the cascade (NOT a flat top-level section).
         assert load_doc(_node_file(agents_root)) == {
-            "env_file": {_TOKEN_VAR: "/host/token"},
+            "agent": {"navigator℘claude": {"secret_path": {_TOKEN_VAR: "/host/token"}}},
         }
 
     def test_set_env_var_lands_in_env_section(self, tmp_path, agents_root):
@@ -146,7 +148,7 @@ class TestSetPersona:
         }
 
     def test_default_only_persona_file_stays_sparse(self, tmp_path, agents_root):
-        # Setting ONLY endpoint must not materialise name/run_args/env/env_file/
+        # Setting ONLY endpoint must not materialise name/run_args/env/secret_path/
         # tweakcc — the sparse-store rule. The file has EXACTLY the one key.
         set_config_value(
             "agent.navigator+claude.endpoint", _URL,
@@ -157,6 +159,7 @@ class TestSetPersona:
         assert data == {"agent": {"endpoint": _URL}}
         assert "name" not in data.get("agent", {})
         assert "env" not in data and "env_file" not in data
+        assert "navigator℘claude" not in data.get("agent", {})
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +329,7 @@ class TestPersonaLoadableEndToEnd:
         for key, val in (
             ("agent.navigator+claude.endpoint", _URL),
             ("agent.navigator+claude.model", "gemma-4-31b-it"),
-            (f"agent.navigator+claude.env_file.{_TOKEN_VAR}", str(token)),
+            (f"agent.navigator+claude.secret_path.{_TOKEN_VAR}", str(token)),
         ):
             set_config_value(
                 key, val, config_path=cp,
@@ -335,11 +338,11 @@ class TestPersonaLoadableEndToEnd:
 
         # Load the just-written persona file the way the launch does, then run the
         # SAME pre-flight the launch runs. The stored endpoint is the keyspace
-        # endpoint; the env_file token resolves → loadable (error is None).
+        # endpoint; the secret_path token resolves → loadable (error is None).
         agent_cfg = load_agent_config(_node_file(agents_root))
         assert agent_cfg.state["endpoint"] == _URL
         assert agent_cfg.state["model"] == "gemma-4-31b-it"
-        assert agent_cfg.env_file[_TOKEN_VAR] == str(token)
+        assert agent_cfg.secret_path[_TOKEN_VAR] == str(token)
 
         endpoint, error, _adopted = _preflight_persona_load(
             "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),

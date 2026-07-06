@@ -229,54 +229,55 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.env["PAGER"] == "less"
 
-    def test_config_set_env_file_key(self, agent_env, capsys):
-        # env_file.<VAR>=<path> stores the POINTER (not a secret) under env_file.
+    def test_config_set_secret_path_key(self, agent_env, capsys):
+        # secret_path.<VAR>=<path> stores the POINTER (not a secret) DISCRIMINATED
+        # under agent.<node>.secret_path (spec §2a; RENAMED from rc-only env_file).
         from kanibako.commands.agent_cmd import run_set
         from kanibako.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude",
-            key_value="env_file.ANTHROPIC_AUTH_TOKEN=~/.config/claude/nav/token",
+            key_value="secret_path.ANTHROPIC_AUTH_TOKEN=~/.config/claude/nav/token",
         )
         rc = run_set(args)
         assert rc == 0
-        assert "Set env_file.ANTHROPIC_AUTH_TOKEN=" in capsys.readouterr().out
+        assert "Set secret_path.ANTHROPIC_AUTH_TOKEN=" in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
         cfg = load_agent_config(path)
-        assert cfg.env_file["ANTHROPIC_AUTH_TOKEN"] == "~/.config/claude/nav/token"
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] == "~/.config/claude/nav/token"
         # It must NOT have leaked into the plain env map.
         assert "ANTHROPIC_AUTH_TOKEN" not in cfg.env
 
-    def test_config_get_env_file_key(self, agent_env, capsys):
+    def test_config_get_secret_path_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set, run_get
 
         run_set(argparse.Namespace(
-            agent_id="claude", key_value="env_file.TOKEN=/secure/token",
+            agent_id="claude", key_value="secret_path.TOKEN=/secure/token",
         ))
         capsys.readouterr()
-        rc = run_get(argparse.Namespace(agent_id="claude", key="env_file.TOKEN"))
+        rc = run_get(argparse.Namespace(agent_id="claude", key="secret_path.TOKEN"))
         assert rc == 0
         assert "/secure/token" in capsys.readouterr().out
 
-    def test_config_reset_env_file_key(self, agent_env, capsys):
+    def test_config_reset_secret_path_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set, run_reset
         from kanibako.agent_config import agent_config_path, load_agent_config
 
         run_set(argparse.Namespace(
-            agent_id="claude", key_value="env_file.TOKEN=/secure/token",
+            agent_id="claude", key_value="secret_path.TOKEN=/secure/token",
         ))
         capsys.readouterr()
         rc = run_reset(argparse.Namespace(
-            agent_id="claude", key="env_file.TOKEN", all_keys=False, force=False,
+            agent_id="claude", key="secret_path.TOKEN", all_keys=False, force=False,
         ))
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Cleared env_file.TOKEN set on the agent scope" in out
+        assert "Cleared secret_path.TOKEN set on the agent scope" in out
         assert "falls back through the cascade" in out
-        assert "Reset env_file.TOKEN" not in out
+        assert "Reset secret_path.TOKEN" not in out
         cfg = load_agent_config(agent_config_path(agent_env, "claude"))
-        assert "TOKEN" not in cfg.env_file
+        assert "TOKEN" not in cfg.secret_path
 
     def test_config_shell_is_no_longer_an_identity_key(self, agent_env, capsys):
         # The template-variant ``shell`` axis was removed; ``shell`` is no longer
@@ -405,7 +406,7 @@ def _write_sparse(data_path: Path, agent: str, doc: dict) -> Path:
 class TestSparseWrites:
     def test_set_is_sparse_no_default_keys(self, agent_env):
         """Core sparsity guard: a single ``set`` on a sparse file adds exactly
-        ONE key and re-materializes NO defaults (name/run_args/env/env_file/
+        ONE key and re-materializes NO defaults (name/run_args/env/secret_path/
         tweakcc). Mutation check: reverting to ``write_agent_config`` makes this
         fail — it always emits those default tables.
         """
@@ -436,7 +437,7 @@ class TestSparseWrites:
         for kv in (
             "model=opus",
             "env.FOO=bar",
-            "env_file.TOK=/p/token",
+            "secret_path.TOK=/p/token",
             "name=Custom",
         ):
             assert run_set(
@@ -448,8 +449,10 @@ class TestSparseWrites:
         assert data["agent"]["model"] == "opus"
         assert data["agent"]["name"] == "Custom"
         assert data["env"] == {"FOO": "bar"}
-        assert data["env_file"] == {"TOK": "/p/token"}
-        # env_file.<VAR> must NOT leak into the plain env table.
+        # secret_path lands DISCRIMINATED under agent.<node>.secret_path (the shape
+        # _agent_partial reads into the cascade), NOT a flat top-level section.
+        assert data["agent"]["claude"] == {"secret_path": {"TOK": "/p/token"}}
+        # secret_path.<VAR> must NOT leak into the plain env table.
         assert "TOK" not in data["env"]
 
     def test_set_run_args_stored_as_list(self, agent_env):
@@ -511,7 +514,7 @@ class TestSparseWrites:
         assert "No override for name" in capsys.readouterr().out
 
     def test_reset_all_preserves_name_and_tweakcc(self, agent_env, capsys):
-        """reset --all drops state/env/env_file/run_args but PRESERVES name and
+        """reset --all drops state/env/secret_path/run_args but PRESERVES name and
         tweakcc (behavior-parity with the old de-sparse reset)."""
         from kanibako.commands.agent_cmd import run_reset
         from kanibako.config_io import load_doc
@@ -520,22 +523,22 @@ class TestSparseWrites:
             "agent": {
                 "name": "Custom", "endpoint": "x", "model": "opus",
                 "run_args": ["--a"],
+                # secret_path now lives DISCRIMINATED under agent.<node>.secret_path.
+                "claude": {"secret_path": {"TOK": "/p"}},
             },
             "env": {"FOO": "bar"},
-            "env_file": {"TOK": "/p"},
             "tweakcc": {"theme": "dark"},
         })
         rc = run_reset(argparse.Namespace(
             agent_id="claude", key=None, all_keys=True, force=True,
         ))
         assert rc == 0
-        # env{FOO} + env_file{TOK} + [agent]{endpoint, model, run_args} = 5.
+        # env{FOO} + secret_path{TOK} + [agent]{endpoint, model, run_args} = 5.
         assert "Reset 5 override(s)." in capsys.readouterr().out
 
         data = load_doc(path)
-        assert data["agent"] == {"name": "Custom"}  # state/run_args/endpoint gone
+        assert data["agent"] == {"name": "Custom"}  # state/run_args/node-sub gone
         assert "env" not in data
-        assert "env_file" not in data
         assert data["tweakcc"] == {"theme": "dark"}  # preserved
 
     def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
