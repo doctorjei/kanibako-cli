@@ -2,6 +2,6 @@
 
 from kanibako.plugins.codex.target import CodexTarget
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = ["CodexTarget", "__version__"]
