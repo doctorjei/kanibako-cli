@@ -467,6 +467,26 @@ def _is_persona_agent_key(key: str) -> bool:
     return _parse_persona_agent_key(key) is not None
 
 
+def _is_auto_approve_key(canonical: str) -> bool:
+    """True iff *canonical* is the auth-critical ``auto_approve`` permission key.
+
+    Matches BOTH settable forms: the BARE any-agent ``agent.default`` tier key
+    (``canonical == "auto_approve"``, routed via :func:`_is_agent_setting`) and a
+    per-persona override ``agent.<node>.auto_approve`` (routed via
+    :func:`_is_persona_agent_key`).  Used to WRITE-VALIDATE the value at ``config
+    set`` time: ``auto_approve`` drives ``--dangerously-skip-permissions`` and is
+    ``coerce_bool``'d at LAUNCH with an UNRECOGNISED value falling back to the
+    PERMISSIVE default (True) — so a typo (``flase``) must be REJECTED here, never
+    silently resolved permissive (the unsafe direction).  Only ``auto_approve``
+    gets this guard (Jei: only the auth-critical key), not ``allow_helpers`` /
+    ``model``.
+    """
+    if canonical == "auto_approve":
+        return True
+    parsed = _parse_persona_agent_key(canonical)
+    return parsed is not None and parsed[1] == "auto_approve"
+
+
 # ---------------------------------------------------------------------------
 # Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``
 # repointed (source-only) on the agent's OWN settings file, via the CATEGORY path.
@@ -1670,6 +1690,19 @@ def set_config_value(
     scope_err = _scope_direction_error(canonical, command_scope)
     if scope_err is not None:
         return scope_err
+
+    # Write-time validation for the auth-critical ``auto_approve`` permission key
+    # (Editor finding B). It routes VERBATIM below (bare -> ``_is_agent_setting``;
+    # per-node -> ``_is_persona_agent_key``) and is ``coerce_bool``'d at LAUNCH with
+    # an UNRECOGNISED value falling back to the PERMISSIVE default (True). So a typo
+    # (``config set auto_approve=flase``) would otherwise be accepted here and
+    # silently bring the box up permissive (the UNSAFE direction). Reject a non-bool
+    # value NOW using the SAME truth table (``config.coerce_bool``) the launch
+    # coercion uses — the happy literals (true/false/1/0/yes/no/on/off, any case)
+    # still write verbatim as before; ONLY ``auto_approve`` is guarded (Jei: only
+    # the auth-critical key), not ``allow_helpers`` / ``model``.
+    if _is_auto_approve_key(canonical) and coerce_bool(value) is None:
+        return f"Error: auto_approve must be a boolean (true/false); got {value!r}"
 
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path

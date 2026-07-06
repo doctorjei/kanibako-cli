@@ -778,6 +778,34 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert msg.startswith("Error:")
         assert "reserved any-agent tier" in msg
 
+    def test_set_auto_approve_typo_is_rejected(self, tmp_path):
+        """auto_approve is AUTH-CRITICAL: it read-coerces at launch, where an
+        UNRECOGNISED value falls back PERMISSIVE (True). A typo (``flase``) must be
+        REJECTED at set time, never silently accepted + written (Editor finding B).
+        Mutation proof: dropping the ``_is_auto_approve_key`` write-guard lets this
+        through and this assertion reddens."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value("auto_approve", "flase", config_path=project_toml)
+        assert msg.startswith("Error:")
+        assert "auto_approve must be a boolean" in msg
+        # NOT written: the typo never lands in the file.
+        assert not project_toml.exists() or "auto_approve" not in (
+            load_doc(project_toml).get("agent", {}).get("default", {})
+        )
+
+    def test_set_auto_approve_accepts_all_bool_literals(self, tmp_path):
+        """Every recognised bool literal (any case) is accepted + written VERBATIM
+        (happy path unchanged; coerce_bool's full truth table)."""
+        for literal in ("false", "true", "1", "0", "no", "yes", "ON", "off"):
+            project_toml = tmp_path / f"settings_{literal}.yaml"
+            msg = set_config_value(
+                "auto_approve", literal, config_path=project_toml,
+            )
+            assert msg.startswith("Set"), literal
+            data = load_doc(project_toml)
+            # Written verbatim (the string as typed) — launch does the coercion.
+            assert data["agent"]["default"]["auto_approve"] == literal
+
     def test_set_box_enable_vault_lands_in_box_table(self, tmp_path):
         """P2: ``box.enable_vault`` routes to the ``box:`` table nested slot
         ``enable_vault`` as a real bool (NOT the [project] section, NOT a
