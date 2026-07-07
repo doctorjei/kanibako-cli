@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
         add_shell_parser,
         add_start_parser,
     )
+    from kanibako.commands.code_cmd import add_code_parser
     from kanibako.commands.image import add_parser as add_rig_parser
     from kanibako.commands.box import add_parser as add_box_parser
     from kanibako.commands.box._parser import run_create, run_list as run_list_fn, run_ps, run_rm
@@ -82,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_start_parser(subparsers)
     add_shell_parser(subparsers)
     add_stop_parser(subparsers)
+    add_code_parser(subparsers)
 
     # list — top-level shortcut for box list
     list_p = subparsers.add_parser("list", help="List active and/or inactive boxes")
@@ -172,7 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
-    "start", "stop", "shell", "ps", "list", "create", "rm",
+    "start", "stop", "shell", "code", "ps", "list", "create", "rm",
     # Management commands.
     "box", "rig", "workset", "agent", "system", "baseline",
     # Setup wizard.
