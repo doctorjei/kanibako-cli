@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -264,6 +265,197 @@ def _check_storage(data_path: Path) -> tuple[str, str]:
         return "--", f"cannot check ({data_path})"
 
 
+# ---------------------------------------------------------------------------
+# VS Code "Attach to Running Container" host-prerequisite check (feature #1)
+# ---------------------------------------------------------------------------
+
+# Extension id of the "Dev Containers" extension that the attach flow driven by
+# `kanibako code <box>` (Phase 1) depends on.
+_DEVCONTAINERS_EXT_ID = "ms-vscode-remote.remote-containers"
+
+
+def _strip_jsonc(text: str) -> str:
+    """Best-effort strip of JSONC (comments + trailing commas) to plain JSON.
+
+    VS Code ``settings.json`` is JSONC: it permits ``//`` and ``/* */`` comments
+    and trailing commas, none of which :func:`json.loads` accepts.  This is a
+    light, best-effort pass (not a full JSONC parser): block comments, then
+    WHOLE-LINE ``//`` comments only (so ``"http://..."`` inside a string value
+    is left intact), then trailing commas before ``}`` / ``]``.
+
+    LIMITATION (deliberate, for string-safety): a TRAILING inline ``//`` comment
+    (e.g. ``"...": "podman" // note``) is NOT stripped -- reliably telling a
+    real comment from a ``//`` inside a string value would require a real
+    tokenizer, and a wrong guess would corrupt string values.  Such a
+    hand-edited file therefore fails to parse and degrades to the honest ``--``
+    ("could not be parsed") line rather than risking a false read.
+    """
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    text = re.sub(r"(?m)^\s*//.*$", "", text)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return text
+
+
+def _load_jsonc(text: str) -> object | None:
+    """Parse JSONC text, returning the object or ``None`` if unparseable.
+
+    Tries strict :func:`json.loads` first (the common case — VS Code writes
+    valid JSON when edited via the settings UI), falling back to a
+    comment/trailing-comma strip for hand-edited JSONC.  See
+    :func:`_strip_jsonc` for what the fallback does NOT handle (trailing inline
+    ``//`` comments), which degrade to ``None`` here.
+    """
+    import json
+
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    try:
+        return json.loads(_strip_jsonc(text))
+    except ValueError:
+        return None
+
+
+def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
+    """Check ``dev.containers.dockerPath == "podman"`` in the user settings.
+
+    Rootless podman is not Docker, so VS Code's Dev Containers must be told to
+    drive ``podman`` explicitly.  Returns a single ``(status, label, detail)``
+    line: ``ok`` when set to ``podman``; ``!!`` (with remediation) when the file
+    or key is absent or holds another value; ``--`` when the file exists but is
+    unreadable / unparseable.
+    """
+    label = "VS Code dockerPath"
+    remediation = (
+        'set "dev.containers.dockerPath": "podman" in VS Code user settings.json'
+    )
+    if not settings_path.is_file():
+        return (
+            "!!",
+            label,
+            f"settings.json not found ({settings_path}) -- {remediation}",
+        )
+    try:
+        text = settings_path.read_text(encoding="utf-8")
+    except OSError:
+        return ("--", label, f"cannot read settings.json ({settings_path})")
+
+    data = _load_jsonc(text)
+    if not isinstance(data, dict):
+        return (
+            "--",
+            label,
+            f"settings.json present but could not be parsed ({settings_path})",
+        )
+    value = data.get("dev.containers.dockerPath")
+    if value == "podman":
+        return ("ok", label, '"dev.containers.dockerPath": "podman"')
+    if value is None:
+        return ("!!", label, f'"dev.containers.dockerPath" not set -- {remediation}')
+    return (
+        "!!",
+        label,
+        f'"dev.containers.dockerPath" is "{value}", expected "podman" -- '
+        f"{remediation}",
+    )
+
+
+def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]:
+    """Check host prerequisites for VS Code "Attach to Running Container".
+
+    ``kanibako code <box>`` (Phase 1) launches the host VS Code with an
+    ``attached-container`` remote URI; that flow needs, host-side: (1) the
+    ``code`` CLI on PATH, (2) the "Dev Containers" extension
+    (``ms-vscode-remote.remote-containers``), and (3)
+    ``"dev.containers.dockerPath": "podman"`` in the user ``settings.json``.
+
+    Returns one ``(status, label, detail)`` line per sub-check.  *config_home*
+    is the XDG config base (defaults to ``$XDG_CONFIG_HOME`` / ``~/.config``);
+    injectable so tests can point ``settings.json`` at a tmp dir.
+
+    NOTE (Phase-0 UNKNOWN): rootless podman may ALSO require the user podman
+    socket (``systemctl --user --now enable podman.socket``) plus a matching
+    ``dev.containers.dockerHost``.  Whether ``dockerPath: podman`` alone
+    suffices is unconfirmed, so a socket sub-check is deliberately NOT added
+    here yet; it may be added once Phase-0 settles it.
+    """
+    import subprocess
+
+    results: list[tuple[str, str, str]] = []
+
+    # 1. `code` CLI on PATH.
+    code_bin = shutil.which("code")
+    if code_bin is None:
+        results.append(
+            (
+                "!!",
+                "VS Code CLI",
+                "'code' not on PATH -- install VS Code and run Command Palette "
+                "-> 'Shell Command: Install code command in PATH'",
+            )
+        )
+    else:
+        results.append(("ok", "VS Code CLI", code_bin))
+
+    # 2. Dev Containers extension -- only checkable via the `code` CLI.
+    if code_bin is None:
+        results.append(
+            ("--", "VS Code Dev Containers ext", "cannot check -- code not on PATH")
+        )
+    else:
+        try:
+            proc = subprocess.run(
+                [code_bin, "--list-extensions"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except Exception:
+            # Catches a raising CLI AND a HANG: a wedged `code` (shell wrapper
+            # blocking on a remote, stuck node proc) would otherwise block
+            # diagnose forever.  subprocess.TimeoutExpired subclasses Exception,
+            # so a timeout routes here to the honest `-- cannot check` line.
+            proc = None
+        if proc is None or proc.returncode != 0:
+            results.append(
+                (
+                    "--",
+                    "VS Code Dev Containers ext",
+                    "cannot check -- 'code --list-extensions' failed",
+                )
+            )
+        else:
+            installed = {
+                line.strip().lower()
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            }
+            if _DEVCONTAINERS_EXT_ID.lower() in installed:
+                results.append(
+                    ("ok", "VS Code Dev Containers ext", _DEVCONTAINERS_EXT_ID)
+                )
+            else:
+                results.append(
+                    (
+                        "!!",
+                        "VS Code Dev Containers ext",
+                        "not installed -- run: code --install-extension "
+                        f"{_DEVCONTAINERS_EXT_ID}",
+                    )
+                )
+
+    # 3. dev.containers.dockerPath in the user settings.json.
+    if config_home is None:
+        from kanibako.paths import xdg
+
+        config_home = xdg("XDG_CONFIG_HOME", ".config")
+    settings_path = config_home / "Code" / "User" / "settings.json"
+    results.append(_check_vscode_docker_path(settings_path))
+
+    return results
+
+
 def run_system_diagnose(args: object) -> int:
     """Run full system diagnostics."""
     from kanibako.config import config_file_path, load_config, load_merged_config
@@ -335,6 +527,17 @@ def run_system_diagnose(args: object) -> int:
             print(_format_check(status, "Journal", detail))
     else:
         print(_format_check("--", "Journal", "cannot check"))
+
+    # VS Code "Attach to Running Container" host prerequisites (feature #1).
+    # This is a HOST-side prerequisite (does the operator's machine have the
+    # `code` CLI + Dev Containers extension + podman dockerPath?), not per-box
+    # state -- so it belongs on system-diagnose only, not run_box_diagnose.
+    # Wrapped so any failure degrades to a single `--` line, never crashing.
+    try:
+        for status, label, detail in _check_vscode():
+            print(_format_check(status, label, detail))
+    except Exception:
+        print(_format_check("--", "VS Code", "cannot check"))
 
     print()
     return 0
