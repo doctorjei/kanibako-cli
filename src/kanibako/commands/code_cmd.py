@@ -28,7 +28,6 @@ from kanibako.settings_resolve import GUEST_HOME
 from kanibako.utils import container_name_for
 from kanibako.vscode_config import (
     attached_container_config_path,
-    build_attached_container_config,
     seed_attached_container_config,
 )
 
@@ -187,27 +186,60 @@ def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> st
         return None
 
 
+def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
+    """Best-effort: the image reference keying the box's attached-container config.
+
+    The attached config is IMAGE-shared, so we must key it by the box's image.
+    STAMP-FIRST-style, mirroring ``_resolve_box_vscode_extension``: prefer the
+    RUNNING container's ACTUAL image (``runtime.container_image``) — the
+    authoritative source for a live box.  Falls back to the box's configured
+    ``box_image`` (the create-time merged config, which itself defaults to the
+    packaged ``ghcr.io/doctorjei/kanibako-oci:latest``).  Returns ``None`` only
+    if every source fails — callers then SKIP seeding rather than crash.
+    """
+    image = runtime.container_image(container_name)
+    if image:
+        return image
+    try:
+        from kanibako.config import BOX_META_FILE, load_merged_config
+        from kanibako.paths import workset_settings_path
+
+        merged = load_merged_config(
+            config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
+            proj.metadata_path / BOX_META_FILE,
+            workset_path=workset_settings_path(proj.group),
+        )
+        return merged.box_image or None
+    except Exception:
+        get_logger("code").debug(
+            "could not resolve box image; skipping attached-config seed",
+            exc_info=True,
+        )
+        return None
+
+
 def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
     """Best-effort seed of the box's attached-container config. NEVER raises.
 
-    Writes a NAME-level devcontainer.json subset (create-if-absent) pointing VS
-    Code at the box workspace + the box agent's editor extension.  Any failure
-    (resolution, filesystem) is logged at debug and swallowed so the `code`
-    launch is unaffected.
+    UNION-MERGES the box workspace + the box agent's editor extension into the
+    IMAGE-keyed devcontainer.json-subset VS Code reads on attach (preserving
+    everything VS Code/the user already wrote).  Any failure — image resolution,
+    agent resolution, filesystem — is logged at debug and swallowed so the
+    `code` launch is unaffected (Phase-1 zero-launch-delta).
     """
     try:
+        image_ref = _resolve_box_image(runtime, proj, container_name)
+        if image_ref is None:
+            return  # can't key the image-shared config → skip, never crash
         extension = _resolve_box_vscode_extension(runtime, std, proj, container_name)
-        # `agent` = the image user-contract (GUEST_UID=1000 `agent`); it's the
-        # fixed image contract, not a tunable setting, so it's hardcoded here.
-        cfg = build_attached_container_config(
-            workspace_folder=GUEST_HOME + "/workspace",
-            remote_user="agent",
-            extensions=[extension] if extension else [],
-        )
         path = attached_container_config_path(
-            container_name, xdg("XDG_CONFIG_HOME", ".config"),
+            image_ref, xdg("XDG_CONFIG_HOME", ".config"),
         )
-        seed_attached_container_config(path, cfg)
+        seed_attached_container_config(
+            path,
+            workspace_folder=GUEST_HOME + "/workspace",
+            extension=extension,
+        )
     except Exception:
         get_logger("code").debug(
             "failed to seed VS Code attached-container config", exc_info=True,

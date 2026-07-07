@@ -30,6 +30,8 @@ def _args(project=None, box=None) -> argparse.Namespace:
 def mock_runtime():
     rt = MagicMock()
     rt.is_running.return_value = True
+    # The RUNNING container's image keys the (image-shared) attached config.
+    rt.container_image.return_value = "ghcr.io/doctorjei/kanibako-oci:latest"
     return rt
 
 
@@ -39,9 +41,10 @@ def _isolate_seed_path(tmp_path):
 
     Redirects the seed path to a per-test tmp dir so exercising run_code (which
     best-effort seeds a config) can't pollute ``~/.config`` on the test machine.
+    The fake ignores the (image-ref, config_home) args and returns a fixed path.
     """
-    def _fake_path(container_name, config_home):
-        return tmp_path / "nameConfigs" / f"{container_name}.json"
+    def _fake_path(image_ref, config_home):
+        return tmp_path / "imageConfigs" / "box.json"
 
     with patch(
         "kanibako.commands.code_cmd.attached_container_config_path", _fake_path,
@@ -119,7 +122,7 @@ def test_code_not_on_path(mock_runtime, capsys):
 def test_seeds_config_before_launch(mock_runtime, _isolate_seed_path):
     """run_code seeds the attached-container config BEFORE invoking ``code``."""
     tmp_path = _isolate_seed_path
-    seed_path = tmp_path / "nameConfigs" / "kanibako-foo.json"
+    seed_path = tmp_path / "imageConfigs" / "box.json"
     seen: dict[str, bool] = {}
 
     def _run_side_effect(argv):
@@ -144,12 +147,43 @@ def test_seeds_config_before_launch(mock_runtime, _isolate_seed_path):
     m_run.assert_called_once()
     # The config file existed at the moment ``code`` was launched.
     assert seen["existed_at_launch"] is True
+    # IMAGE-keyed content: no remoteUser (VS Code infers the user).
     written = json.loads(seed_path.read_text())
     assert written == {
-        "workspaceFolder": "/home/agent/workspace",
-        "remoteUser": "agent",
         "extensions": ["anthropic.claude-code"],
+        "workspaceFolder": "/home/agent/workspace",
     }
+
+
+def test_uses_running_image_to_key_path(mock_runtime, _isolate_seed_path):
+    """The IMAGE-keyed path is resolved from the RUNNING container's image."""
+    stack, _proj = _patched(mock_runtime)
+    captured: dict[str, str] = {}
+
+    def _capture_path(image_ref, config_home):
+        captured["image_ref"] = image_ref
+        return _isolate_seed_path / "imageConfigs" / "box.json"
+
+    mock_runtime.container_image.return_value = "ghcr.io/doctorjei/custom:v9"
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.commands.code_cmd._resolve_box_vscode_extension",
+            return_value="anthropic.claude-code",
+        ),
+        patch(
+            "kanibako.commands.code_cmd.attached_container_config_path",
+            _capture_path,
+        ),
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+
+    assert rc == 0
+    m_run.assert_called_once()
+    mock_runtime.container_image.assert_called_once_with("kanibako-foo")
+    assert captured["image_ref"] == "ghcr.io/doctorjei/custom:v9"
 
 
 def test_seed_failure_still_launches(mock_runtime):
@@ -158,7 +192,7 @@ def test_seed_failure_still_launches(mock_runtime):
     with (
         stack[0], stack[1], stack[2], stack[3], stack[4],
         patch(
-            "kanibako.commands.code_cmd.build_attached_container_config",
+            "kanibako.commands.code_cmd.seed_attached_container_config",
             side_effect=RuntimeError("boom"),
         ),
         patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
@@ -170,11 +204,36 @@ def test_seed_failure_still_launches(mock_runtime):
     m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
 
 
+def test_image_resolution_failure_still_launches(mock_runtime):
+    """If the box image can't be resolved, seeding is skipped but ``code`` launches."""
+    # No running-container image AND the merged-config fallback blows up.
+    mock_runtime.container_image.return_value = None
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.config.load_merged_config",
+            side_effect=RuntimeError("no config"),
+        ),
+        patch(
+            "kanibako.commands.code_cmd.seed_attached_container_config",
+        ) as m_seed,
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+
+    assert rc == 0
+    m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
+    # Image unresolved → we never attempt the (image-keyed) seed.
+    m_seed.assert_not_called()
+
+
 def test_stamp_first_wins_over_cascade(mock_runtime, _isolate_seed_path):
     """The RUNNING box's KANIBAKO_AGENT stamp resolves the extension — the
     create-time resolve_agent cascade is NOT consulted (and would raise here)."""
     tmp_path = _isolate_seed_path
-    seed_path = tmp_path / "nameConfigs" / "kanibako-foo.json"
+    seed_path = tmp_path / "imageConfigs" / "box.json"
 
     # The box is stamped as running "claude".
     mock_runtime.inspect_env.return_value = "claude"

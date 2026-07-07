@@ -449,6 +449,27 @@ class ContainerRuntime:
                 return item[len(prefix):]
         return None
 
+    def container_image(self, name: str) -> str | None:
+        """Return the image reference container *name* was created from, or None.
+
+        Reads the running container's ``.ImageName`` (the fully-qualified image
+        reference recorded at ``run`` time).  Returns None if the container does
+        not exist, the field is empty, or the inspect fails — callers fall back
+        to the configured ``box_image``.
+
+        Note: ``.ImageName`` is podman-specific; ``docker inspect`` has no such
+        field, so on Docker this errors → returns None → caller degrades to the
+        ``box_image`` config fallback (Docker is backlog, not yet supported).
+        """
+        result = subprocess.run(
+            [self.cmd, "inspect", "--format", "{{.ImageName}}", name],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
     def list_running(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
         """Return running containers matching *prefix* as (name, image, status) tuples."""
         result = subprocess.run(
