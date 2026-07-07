@@ -175,6 +175,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         host_prep=bool(desc.get("host_prep", False)),
         init_dirs=tuple(desc.get("init_dirs", ())),
         auth_share_support=bool(desc.get("auth_share_support", False)),
+        vscode_extension=desc.get("vscode_extension"),
     )
 
 
