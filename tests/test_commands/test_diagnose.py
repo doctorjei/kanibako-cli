@@ -12,6 +12,7 @@ from kanibako.commands.diagnose import (
     _check_journal,
     _check_runtime,
     _check_storage,
+    _check_vscode,
     _diagnose_baseline,
     _format_check,
     probe_missing_executables,
@@ -978,6 +979,219 @@ class TestDiagnoseBaseline:
         out = capsys.readouterr().out
         assert "[!!]" in out
         assert "ripgrep:rg" in out
+
+
+class TestCheckVscode:
+    """_check_vscode: host prerequisites for VS Code "Attach to Running Container".
+
+    Returns three (status, label, detail) lines in a fixed order:
+    [0] `code` CLI, [1] Dev Containers extension, [2] dockerPath.
+    """
+
+    def _settings(self, config_home: Path, text: str) -> Path:
+        """Write a VS Code user settings.json under *config_home* and return it."""
+        path = config_home / "Code" / "User" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    # --- code CLI + extension branches -------------------------------------
+
+    def test_code_absent(self, tmp_path: Path) -> None:
+        """No `code` on PATH -> [!!] CLI + [--] extension (uncheckable)."""
+        with patch("shutil.which", return_value=None):
+            lines = _check_vscode(config_home=tmp_path)
+        code_status, code_label, code_detail = lines[0]
+        assert code_status == "!!"
+        assert code_label == "VS Code CLI"
+        assert "not on PATH" in code_detail
+        assert "Install code command in PATH" in code_detail
+        # Extension cannot be checked without the CLI.
+        ext_status, _ext_label, ext_detail = lines[1]
+        assert ext_status == "--"
+        assert "code not on PATH" in ext_detail
+
+    def test_code_present_ext_present(self, tmp_path: Path) -> None:
+        """`code` present + Dev Containers listed -> both [ok]."""
+        proc = MagicMock(
+            returncode=0, stdout="ms-python.python\nms-vscode-remote.remote-containers\n"
+        )
+        with (
+            patch("shutil.which", return_value="/usr/bin/code"),
+            patch("subprocess.run", return_value=proc) as mock_run,
+        ):
+            lines = _check_vscode(config_home=tmp_path)
+        assert lines[0][0] == "ok"
+        assert lines[0][2] == "/usr/bin/code"
+        assert lines[1][0] == "ok"
+        assert "ms-vscode-remote.remote-containers" in lines[1][2]
+        # The list-extensions probe MUST be bounded so a wedged `code` cannot
+        # hang diagnose forever.
+        assert mock_run.call_args.kwargs.get("timeout") == 10
+
+    def test_code_present_ext_present_case_insensitive(self, tmp_path: Path) -> None:
+        """Extension match is case-insensitive."""
+        proc = MagicMock(returncode=0, stdout="MS-VSCode-Remote.Remote-Containers\n")
+        with (
+            patch("shutil.which", return_value="/usr/bin/code"),
+            patch("subprocess.run", return_value=proc),
+        ):
+            lines = _check_vscode(config_home=tmp_path)
+        assert lines[1][0] == "ok"
+
+    def test_code_present_ext_missing(self, tmp_path: Path) -> None:
+        """`code` present but Dev Containers NOT listed -> [!!] with remediation."""
+        proc = MagicMock(returncode=0, stdout="ms-python.python\n")
+        with (
+            patch("shutil.which", return_value="/usr/bin/code"),
+            patch("subprocess.run", return_value=proc),
+        ):
+            lines = _check_vscode(config_home=tmp_path)
+        ext_status, _label, ext_detail = lines[1]
+        assert ext_status == "!!"
+        assert "not installed" in ext_detail
+        assert "code --install-extension ms-vscode-remote.remote-containers" in ext_detail
+
+    def test_code_present_list_extensions_nonzero(self, tmp_path: Path) -> None:
+        """A non-zero `code --list-extensions` degrades to [--], never crashes."""
+        proc = MagicMock(returncode=1, stdout="")
+        with (
+            patch("shutil.which", return_value="/usr/bin/code"),
+            patch("subprocess.run", return_value=proc),
+        ):
+            lines = _check_vscode(config_home=tmp_path)
+        assert lines[1][0] == "--"
+        assert "failed" in lines[1][2]
+
+    def test_code_present_list_extensions_raises(self, tmp_path: Path) -> None:
+        """A raising `code --list-extensions` degrades to [--], never crashes."""
+        with (
+            patch("shutil.which", return_value="/usr/bin/code"),
+            patch("subprocess.run", side_effect=OSError("boom")),
+        ):
+            lines = _check_vscode(config_home=tmp_path)
+        assert lines[1][0] == "--"
+        assert "failed" in lines[1][2]
+
+    def test_code_present_list_extensions_hangs_times_out(
+        self, tmp_path: Path
+    ) -> None:
+        """A wedged `code` (TimeoutExpired) degrades to [--] -- diagnose must
+        never hang.  subprocess.run is called with timeout=; TimeoutExpired
+        subclasses Exception so it routes to the honest cannot-check line."""
+        import subprocess
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/code"),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(
+                    cmd="code --list-extensions", timeout=10
+                ),
+            ),
+        ):
+            lines = _check_vscode(config_home=tmp_path)
+        assert lines[1][0] == "--"
+        assert "failed" in lines[1][2]
+
+    # --- dockerPath / settings.json branches -------------------------------
+
+    def _vscode_with_settings(self, config_home: Path):
+        """Patch code-absent (irrelevant here) and return the dockerPath line."""
+        with patch("shutil.which", return_value=None):
+            return _check_vscode(config_home=config_home)[2]
+
+    def test_settings_absent(self, tmp_path: Path) -> None:
+        """No settings.json -> [!!] with remediation and the probed path."""
+        status, label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "!!"
+        assert label == "VS Code dockerPath"
+        assert "not found" in detail
+        assert 'dev.containers.dockerPath": "podman"' in detail
+        assert str(tmp_path / "Code" / "User" / "settings.json") in detail
+
+    def test_dockerpath_podman_ok(self, tmp_path: Path) -> None:
+        """dockerPath == podman -> [ok]."""
+        self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
+        status, _label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "ok"
+        assert "podman" in detail
+
+    def test_dockerpath_other_value(self, tmp_path: Path) -> None:
+        """dockerPath set to something else -> [!!] naming the wrong value."""
+        self._settings(tmp_path, '{"dev.containers.dockerPath": "docker"}')
+        status, _label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "!!"
+        assert "docker" in detail
+        assert "expected" in detail
+
+    def test_dockerpath_key_missing(self, tmp_path: Path) -> None:
+        """Valid settings.json but no dockerPath key -> [!!] 'not set'."""
+        self._settings(tmp_path, '{"editor.fontSize": 14}')
+        status, _label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "!!"
+        assert "not set" in detail
+
+    def test_settings_jsonc_comments_and_trailing_comma(self, tmp_path: Path) -> None:
+        """JSONC (comments + trailing comma) is parsed via the strip fallback."""
+        self._settings(
+            tmp_path,
+            """{
+                // line comment
+                "editor.fontSize": 14, /* block */
+                "dev.containers.dockerPath": "podman",
+            }""",
+        )
+        status, _label, _detail = self._vscode_with_settings(tmp_path)
+        assert status == "ok"
+
+    def test_settings_url_value_not_clobbered_by_strip(self, tmp_path: Path) -> None:
+        """A `//` inside a string value must NOT be treated as a comment."""
+        self._settings(
+            tmp_path,
+            """{
+                "some.url": "http://example.com",
+                "dev.containers.dockerPath": "podman",
+            }""",
+        )
+        status, _label, _detail = self._vscode_with_settings(tmp_path)
+        assert status == "ok"
+
+    def test_settings_unparseable(self, tmp_path: Path) -> None:
+        """Genuinely broken JSON -> [--] 'could not be parsed', never crashes."""
+        self._settings(tmp_path, "{ this is not json at all ][ ")
+        status, _label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "--"
+        assert "could not be parsed" in detail
+
+    def test_default_config_home_resolution(self, tmp_path: Path, monkeypatch) -> None:
+        """Without config_home, the XDG_CONFIG_HOME resolution is used."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
+        with patch("shutil.which", return_value=None):
+            lines = _check_vscode()
+        assert lines[2][0] == "ok"
+
+    # --- wiring into run_system_diagnose -----------------------------------
+
+    def test_system_diagnose_includes_vscode_section(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """run_system_diagnose prints the VS Code lines."""
+        from kanibako.errors import ContainerError
+
+        with (
+            patch(
+                "kanibako.container.ContainerRuntime",
+                side_effect=ContainerError("none"),
+            ),
+            patch("shutil.which", return_value=None),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "VS Code CLI" in out
+        assert "VS Code dockerPath" in out
 
 
 class TestParsers:
