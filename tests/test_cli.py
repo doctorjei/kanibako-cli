@@ -879,6 +879,8 @@ class TestParser:
             "box", "rig", "workset", "agent", "system", "baseline",
             # Setup wizard
             "setup",
+            # VS Code launcher
+            "code",
         }
         assert _SUBCOMMANDS == expected
 
