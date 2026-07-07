@@ -117,6 +117,11 @@ descriptor:
   # (per-agent host login). RO / plugin-set → meta.agent.claude.auth.share_support.
   auth_share_support: true
 
+  # VS Code Marketplace extension id auto-installed into the box on `kanibako
+  # code` attach, so claude's in-box `/ide` integration works out of the box.
+  # goose/codex leave this UNSET (→ None) until their Phase-5 support lands.
+  vscode_extension: anthropic.claude-code
+
 # AGENT-scope shared dirs (plugins + cache), rooted under the per-agent store dir
 # @meta.agent.claude.path = @system.agents/claude (core's agent.shared scope-root).
 # The relative host_src (the key name) joins under that root; box_dest is a

@@ -18,6 +18,7 @@ import sys
 from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError
+from kanibako.log import get_logger
 from kanibako.paths import (
     xdg,
     load_std_paths,
@@ -25,6 +26,11 @@ from kanibako.paths import (
 )
 from kanibako.settings_resolve import GUEST_HOME
 from kanibako.utils import container_name_for
+from kanibako.vscode_config import (
+    attached_container_config_path,
+    build_attached_container_config,
+    seed_attached_container_config,
+)
 
 
 def add_code_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -103,8 +109,106 @@ def run_code(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # Best-effort: seed the attached-container config so VS Code opens the box's
+    # workspace and auto-installs the box agent's editor extension on attach.
+    # NEVER blocks the launch — a failure here (unresolved agent, unwritable path)
+    # is logged and swallowed so `code` still opens (Phase-1 zero-launch-delta).
+    _seed_attached_config(runtime, std, proj, cname)
+
     uri = _attach_uri(cname)
     name = proj.name or cname
     print(f"Opening VS Code attached to box '{name}'...")
     subprocess.run([code_bin, "--folder-uri", uri])
     return 0
+
+
+def _extension_for_agent(agent_name: str, proj) -> str | None:
+    """Resolve *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
+
+    ``agent_name`` is a NODE-name; the plugin/target is keyed by its HARNESS
+    (``harness_of``), exactly as ``stop.py`` / ``start.py`` resolve a stamped box.
+    A descriptor-less target (the no-agent shell) or an unset extension → ``None``.
+    """
+    from kanibako.agent_ref import harness_of
+    from kanibako.targets import resolve_target
+
+    target = resolve_target(harness_of(agent_name), proj.project_path)
+    desc = target.descriptor
+    return desc.vscode_extension if desc is not None else None
+
+
+def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> str | None:
+    """Best-effort: the RUNNING box agent's ``descriptor.vscode_extension``.
+
+    STAMP-FIRST, mirroring ``stop.py._writeback_on_stop`` and ``start.py``'s
+    reattach fast-source: a running box's authoritative agent is its
+    ``KANIBAKO_AGENT`` launch stamp (``runtime.inspect_env``), NOT the create-time
+    cascade.  Using the stamp avoids two cascade mis-resolutions on a running box:
+    (1) 2+ installed agents + no system default → the cascade RAISES (seed nothing
+    for a live claude box); (2) a system default that has since diverged from the
+    box's actually-running agent → seed the WRONG agent's extension.
+
+    Falls back to the ``resolve_agent`` create-cascade ONLY for pre-stamp (older)
+    boxes with no ``KANIBAKO_AGENT`` env.  Swallows every failure (unresolved
+    agent, descriptor-less/no-agent shell, unset extension) → ``None``.  NEVER
+    raises.
+    """
+    try:
+        stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
+        if stamp:
+            return _extension_for_agent(stamp, proj)
+
+        # Pre-stamp (older) box: fall back to the create-time resolve_agent cascade.
+        from kanibako.config import (
+            BOX_META_FILE,
+            load_merged_config,
+            resolve_agent,
+        )
+        from kanibako.paths import workset_settings_path
+
+        merged = load_merged_config(
+            config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
+            proj.metadata_path / BOX_META_FILE,
+            workset_path=workset_settings_path(proj.group),
+        )
+        agent_name = resolve_agent(
+            explicit_agent=None,
+            box_agent_name=merged.box_agent_name,
+            workset_agent=None,
+            system_default_path=std.settings,
+            project_path=proj.project_path,
+        )
+        return _extension_for_agent(agent_name, proj)
+    except Exception:
+        get_logger("code").debug(
+            "could not resolve box agent VS Code extension; seeding none",
+            exc_info=True,
+        )
+        return None
+
+
+def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
+    """Best-effort seed of the box's attached-container config. NEVER raises.
+
+    Writes a NAME-level devcontainer.json subset (create-if-absent) pointing VS
+    Code at the box workspace + the box agent's editor extension.  Any failure
+    (resolution, filesystem) is logged at debug and swallowed so the `code`
+    launch is unaffected.
+    """
+    try:
+        extension = _resolve_box_vscode_extension(runtime, std, proj, container_name)
+        # `agent` = the image user-contract (GUEST_UID=1000 `agent`); it's the
+        # fixed image contract, not a tunable setting, so it's hardcoded here.
+        cfg = build_attached_container_config(
+            workspace_folder=GUEST_HOME + "/workspace",
+            remote_user="agent",
+            extensions=[extension] if extension else [],
+        )
+        path = attached_container_config_path(
+            container_name, xdg("XDG_CONFIG_HOME", ".config"),
+        )
+        seed_attached_container_config(path, cfg)
+    except Exception:
+        get_logger("code").debug(
+            "failed to seed VS Code attached-container config", exc_info=True,
+        )
