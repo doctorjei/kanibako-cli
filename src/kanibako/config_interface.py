@@ -777,6 +777,94 @@ def _is_box_agent_key(key: str) -> bool:
     return key.startswith("box.agent.")
 
 
+# The command scopes that CANNOT write a BARE agent behavior key: a bare key
+# (``_is_agent_setting``) targets the any-agent ``agent.default`` tier, which both
+# box (agent ⊃ box) and workset (agent ⊃ workset) CONTAIN — so a bare write from
+# either is UPWARD and is DROPPED at launch by
+# ``settings_assemble._drop_upward_scopes`` (a silent no-op the CLI reported as
+# "Set"). The two differ in the CURE: a BOX has a single active agent, so it gets
+# the ``box.agent.<key>`` mirror (redirect/teach); a WORKSET spans many boxes/
+# agents, so there is deliberately NO ``workset.agent.*`` mirror — it simply
+# refuses (configure at system scope for all agents, or per-box via the mirror).
+_NO_BARE_AGENT_KEY_SCOPES: "frozenset[ConfigLevel]" = frozenset(
+    {ConfigLevel.box, ConfigLevel.workset}
+)
+
+
+def box_agent_redirect_key(
+    canonical: str, command_scope: "ConfigLevel | None",
+) -> str | None:
+    """The canonical ``box.agent.<key>`` mirror a BARE agent behavior key redirects
+    to at BOX command scope, or ``None`` when this case does not apply.
+
+    A BARE agent behavior key — the WHOLE :func:`_is_agent_setting` family
+    (``model`` / ``auto_approve`` / ``bootstrap`` / ``endpoint`` /
+    ``allow_helpers`` / ``start_mode``), uniformly, NOT a per-key list — targets
+    the any-agent ``agent.default`` tier. From a BOX that is an UPWARD write (agent
+    ⊃ box in the containment order): spec L440 ("a box tweaks its agent through its
+    own box-scoped ``box.agent.*`` mirror") + the §0 directional rule REFUSE it.
+    The old code wrote ``agent.default.<key>`` into the BOX settings file, which
+    ``settings_assemble._drop_upward_scopes`` then DROPPED at launch (a box file may
+    not set a containing ``agent`` table) — a silent no-op the CLI still reported as
+    "Set". So the bare form at box scope is REDIRECTED to the box's active-agent
+    mirror ``box.agent.<key>``: ``set``/``reset`` REFUSE (the value lives at, and is
+    set/reset at, the mirror), ``get`` reads/names the mirror.
+
+    Fires ONLY for the bare form at BOX command scope (the mirror is box-specific).
+    A WORKSET bare agent key is caught by :func:`bare_agent_key_scope_error`
+    (refuse, no mirror). The already-qualified ``box.agent.<key>`` is
+    ``_is_box_agent_key`` (NOT ``_is_agent_setting``) — a legal SAME-scope box
+    write; a per-agent ``agent.<name>.<key>`` is ``_is_persona_agent_key``; a bare
+    key at SYSTEM scope is a DOWNWARD write (agent is a scope the system CONTAINS).
+    None of those match, so all stay unaffected.
+    """
+    if command_scope is ConfigLevel.box and _is_agent_setting(canonical):
+        return f"box.agent.{canonical}"
+    return None
+
+
+def bare_agent_key_scope_error(
+    canonical: str, command_scope: "ConfigLevel | None", *, verb: str,
+) -> str | None:
+    """Error string refusing a WRITE-shaped op on a BARE agent behavior key at a
+    scope that cannot write it (box / workset), or ``None`` when it is permitted.
+
+    A BARE agent behavior key (:func:`_is_agent_setting`, the whole family —
+    uniform, NOT a per-key list) targets the any-agent ``agent.default`` tier, which
+    both BOX (agent ⊃ box) and WORKSET (agent ⊃ workset) CONTAIN. A bare write from
+    either is UPWARD — ``settings_assemble._drop_upward_scopes`` DROPS it at launch,
+    a silent no-op the old CLI reported as "Set". So it is refused HERE, uniformly
+    for ``set`` / ``reset`` (writes) at both scopes, and for the workset ``get``
+    (the box ``get`` instead REDIRECTS via :func:`box_agent_redirect_key`).
+
+    *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``).
+
+    * **BOX** — a box has a single active agent, so the refusal TEACHES the
+      ``box.agent.<key>`` mirror (the box-scoped tweak surface; spec §2b L380).
+    * **WORKSET** — a workset spans multiple boxes/agents, so there is deliberately
+      NO ``workset.agent.*`` mirror (no single "the agent"). The refusal points at
+      system scope (all agents) or the per-box ``box.agent.<key>`` mirror.
+
+    Returns ``None`` for every other scope — a bare key at SYSTEM scope is a legit
+    DOWNWARD write; ``agent`` / ``system`` (no command scope) is unconstrained here.
+    """
+    if not _is_agent_setting(canonical) or command_scope not in _NO_BARE_AGENT_KEY_SCOPES:
+        return None
+    if command_scope is ConfigLevel.box:
+        return (
+            f"Error: box-scope agent settings can't be {verb} bare (a bare agent "
+            f"key targets agent.default, which a box cannot write). "
+            f"Use '{verb} box.agent.<key>' — did you mean '{verb} box.agent.{canonical}'?"
+        )
+    # workset — no mirror; point at system (all agents) or the per-box mirror.
+    return (
+        f"Error: agent settings can't be {verb} at workset scope (a workset spans "
+        f"multiple boxes/agents, so there's no single agent to configure). "
+        f"Configure them at system scope to apply to all agents, or per-box via "
+        f"'box.agent.{canonical}'."
+    )
+
+
 # ``system.default_agent`` is the lone ``system.*``-named SETTING (behavior, not
 # a config path).  It does NOT land in the ``[system]`` config table; it lands in
 # the SYSTEM settings tier — the reserved any-agent ``agent.default`` table, key
@@ -1403,6 +1491,7 @@ def get_config_value(
     env_project: Path | None = None,
     system_settings_path: Path | None = None,
     agents_root: Path | None = None,
+    command_scope: "ConfigLevel | None" = None,
 ) -> str | None:
     """Read a single config value from the appropriate store.
 
@@ -1427,6 +1516,19 @@ def get_config_value(
     F2/F3-class downward-key sibling: all "get reads where set wrote").
     """
     canonical = _resolve_key(key)
+
+    # A BARE agent behavior key at BOX command scope has no readable value of its
+    # own: a box cannot write ``agent.default.<key>`` (it is dropped at launch — see
+    # :func:`box_agent_redirect_key` + ``set_config_value``). REDIRECT the read to
+    # the box's active-agent mirror ``box.agent.<key>`` so ``get`` reads exactly
+    # where a corrected ``set box.agent.<key>`` wrote, and the caller NAMES the
+    # value ``box.agent.<key>`` (teaching the canonical form). WORKSET has no mirror,
+    # so a workset bare-agent-key get is REFUSED at the command handler
+    # (:func:`bare_agent_key_scope_error`, verb "read"), not here — this forgiving
+    # read only applies to box. Every other form / scope is unchanged.
+    _box_agent_redirect = box_agent_redirect_key(canonical, command_scope)
+    if _box_agent_redirect is not None:
+        canonical = _box_agent_redirect
 
     # The NOUN's settings file — the SAME per-noun selection ``set``/``reset``
     # use (``settings_dest``): the system settings file at SYSTEM scope, else the
@@ -1701,6 +1803,19 @@ def set_config_value(
     scope_err = _scope_direction_error(canonical, command_scope)
     if scope_err is not None:
         return scope_err
+
+    # A BARE agent behavior key at BOX or WORKSET command scope targets the
+    # any-agent ``agent.default`` tier — an UPWARD write (agent contains both box
+    # and workset) that ``settings_assemble._drop_upward_scopes`` DROPS at launch (a
+    # silent no-op the old CLI reported as "Set"). Refuse it HERE, BEFORE the write:
+    # box teaches the ``box.agent.<key>`` mirror; workset refuses (no mirror — a
+    # workset spans many agents). Uniform over the whole ``_is_agent_setting`` family
+    # (NOT a per-key list). Legitimate forms untouched: ``box.agent.<key>`` is
+    # ``_is_box_agent_key`` (a SAME-scope box write); ``agent.<name>.<key>`` is
+    # ``_is_persona_agent_key``; a bare key at SYSTEM scope is a DOWNWARD write.
+    bare_err = bare_agent_key_scope_error(canonical, command_scope, verb="set")
+    if bare_err is not None:
+        return bare_err
 
     # Write-time validation for the auth-critical ``auto_approve`` permission key
     # (Editor finding B). It routes VERBATIM below (bare -> ``_is_agent_setting``;
@@ -1986,6 +2101,20 @@ def reset_config_value(
     scope_err = _scope_direction_error(canonical, command_scope)
     if scope_err is not None:
         return scope_err
+
+    # A BARE agent behavior key at BOX or WORKSET command scope is REFUSED here,
+    # symmetric with ``set_config_value`` (the model is: REFUSE writes, redirect
+    # reads — a reset is a WRITE). Without this, a bare ``reset <key>`` fell to the
+    # ``_is_agent_setting`` branch below and removed ``agent.default.<key>`` from the
+    # command file — which the box/workset never wrote (it is DROPPED at launch), so
+    # it reported "No override" while the real value (at ``box.agent.<key>`` for a
+    # box) stayed STUCK. Refuse BEFORE the removal path: box teaches the
+    # ``reset box.agent.<key>`` mirror; workset refuses (no mirror). Uniform over the
+    # whole ``_is_agent_setting`` family; SYSTEM-scope bare resets + the
+    # ``box.agent.<key>`` / per-agent forms are UNAFFECTED.
+    bare_err = bare_agent_key_scope_error(canonical, command_scope, verb="reset")
+    if bare_err is not None:
+        return bare_err
 
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path

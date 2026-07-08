@@ -708,12 +708,26 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
+        # A BARE agent behavior key at workset scope is REFUSED (a workset spans
+        # multiple boxes/agents — no single agent to read, and no workset.agent.*
+        # mirror; set/get/reset are all refused symmetrically). The box scope
+        # instead redirects the read to its box.agent.* mirror.
+        from kanibako.config_interface import (
+            _resolve_key, bare_agent_key_scope_error,
+        )
+        _bare_err = bare_agent_key_scope_error(
+            _resolve_key(key), ConfigLevel.workset, verb="read",
+        )
+        if _bare_err is not None:
+            print(_bare_err, file=sys.stderr)
+            return 1
         val = get_config_value(
             key,
             global_config_path=config_file,
             project_toml=ws_config,
             env_global=std.data_path / "env",
             env_project=ws_env,
+            command_scope=ConfigLevel.workset,
         )
         if val is not None:
             print(val)
