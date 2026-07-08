@@ -179,6 +179,58 @@ class TestResolveName:
         assert path == "/other/path"
         assert kind == "project"
 
+    # -- Workset-MEMBER box fallback (BUG-B) --------------------------------
+
+    def _register_ws_member(
+        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
+    ) -> Path:
+        """Register a NAMED workset + a member box in its per-workset registry.
+
+        Returns the box's workspace path.
+        """
+        from kanibako import workset_registry
+
+        ws_root = tmp_path / ws_name
+        box_ws = ws_root / "workspaces" / box_name
+        box_ws.mkdir(parents=True)
+        register_name(registry, ws_name, str(ws_root), section="worksets")
+        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
+        workset_registry.register_workset_box(reg_path, box_name, box_ws)
+        return box_ws
+
+    def test_workset_member_resolves_from_outside(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A workset-MEMBER box name resolves from OUTSIDE its workset (BUG-B).
+
+        Mutation proof: deleting the step-4 workset-membership fallback in
+        ``resolve_name`` makes this raise ``ProjectError`` instead of resolving.
+        """
+        box_ws = self._register_ws_member(registry, tmp_path, "myws", "cluster2")
+
+        # cwd is OUTSIDE the workset (tmp_path is the parent of the ws root).
+        path, kind = resolve_name(registry, "cluster2", cwd=tmp_path)
+        assert kind == "project"
+        assert Path(path).resolve() == box_ws.resolve()
+
+    def test_workset_member_ambiguous_across_worksets_raises(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A name that is a member of TWO worksets is ambiguous from outside."""
+        self._register_ws_member(registry, tmp_path, "ws1", "dup")
+        self._register_ws_member(registry, tmp_path, "ws2", "dup")
+
+        with pytest.raises(ProjectError, match="Ambiguous"):
+            resolve_name(registry, "dup", cwd=tmp_path)
+
+    def test_workset_member_unknown_still_raises(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A bare name that is no member of any workset still raises."""
+        self._register_ws_member(registry, tmp_path, "myws", "cluster2")
+        with pytest.raises(ProjectError, match="Unknown"):
+            resolve_name(registry, "not-a-member", cwd=tmp_path)
+
 
 # ---------------------------------------------------------------------------
 # resolve_qualified_name

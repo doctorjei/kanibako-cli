@@ -182,6 +182,35 @@ def lookup_by_path(
     return None
 
 
+def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
+    """Return the workspace paths registered under box *name* across worksets.
+
+    Reads each NAMED workset's per-workset registry ``boxes:`` membership — the
+    SAME index the box resolver (``box_resolve``) consumes and ``list`` reflects
+    (design principle #2: one source of truth; this adds no new registry-reading
+    logic, only reuses :mod:`kanibako.workset_registry`).  One entry per workset
+    whose ``boxes:`` section lists *name*; the caller disambiguates any
+    cross-workset collision.  A workset with no such member contributes nothing.
+
+    *worksets* is the ``[worksets]`` section (``{ws_name: ws_root}``) — the
+    PRIMARY workset is intentionally excluded: its default-mode members live in
+    the ``[projects]`` section, which :func:`resolve_name` matches directly.
+    """
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    paths: list[str] = []
+    for ws_root_str in worksets.values():
+        ws_root = Path(ws_root_str)
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws_root, load_doc(ws_root / "settings.yaml"),
+        )
+        box_path = workset_registry.load_workset_boxes(registry_path).get(name)
+        if box_path is not None:
+            paths.append(box_path)
+    return paths
+
+
 def resolve_name(
     registry: Path,
     name: str,
@@ -194,9 +223,13 @@ def resolve_name(
     1. If *cwd* is inside a workset → check that workset's projects first
     2. ``[projects]`` section (default-mode projects)
     3. ``[worksets]`` section (workset names)
+    4. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
+       per-workset registry ``boxes:`` membership (so a member box is
+       addressable from OUTSIDE its workset)
 
     *kind* is ``"project"`` or ``"workset"``.
-    Raises ``ProjectError`` if no match is found.
+    Raises ``ProjectError`` if no match is found, or if the name is a member of
+    more than one workset (ambiguous when resolved from outside any workset).
     """
     names = _load(registry)
 
@@ -220,6 +253,24 @@ def resolve_name(
     # 3. Worksets.
     if name in names["worksets"]:
         return names["worksets"][name], "workset"
+
+    # 4. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
+    #    is otherwise unaddressable from outside that workset (the cwd-inside
+    #    case is handled by step 1) — resolve it to the member's WORKSPACE path
+    #    (what ``resolve_project`` expects: an existing box workspace dir).
+    member_paths = _workset_member_paths(names["worksets"], name)
+    if member_paths:
+        # Collapse identical targets (a symlinked workspace can normalize to the
+        # same path); genuinely distinct paths mean the name is a member of
+        # multiple worksets → ambiguous from outside any workset.
+        distinct = list(dict.fromkeys(str(Path(p).resolve()) for p in member_paths))
+        if len(distinct) == 1:
+            return member_paths[0], "project"
+        raise ProjectError(
+            f"Ambiguous box name '{name}': it is a member of multiple worksets "
+            f"({', '.join(distinct)}). Qualify it as '<workset>/{name}' or run "
+            f"the command from inside the intended workset."
+        )
 
     raise ProjectError(f"Unknown project or workset: '{name}'")
 
