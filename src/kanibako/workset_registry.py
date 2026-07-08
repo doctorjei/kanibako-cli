@@ -37,9 +37,27 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.config_io import dump_doc, load_doc
+from kanibako.errors import ProjectError
 
 # The single membership section of a per-workset registry file: box name → path.
 _BOXES_SECTION = "boxes"
+
+
+def _same_workspace(a: str, b: str) -> bool:
+    """True if *a* and *b* denote the SAME workspace path.
+
+    Exact-string equality first (the common case — callers store already-resolved
+    paths); then a resolved-path fallback so a normalization/symlink difference
+    between a stored value and a re-registering caller still counts as the same
+    workspace (the drift that let Bug A mint duplicate ``boxes:`` entries).
+    ``Path.resolve`` is non-strict here, so a not-yet-existing path never raises.
+    """
+    if a == b:
+        return True
+    try:
+        return Path(a).resolve() == Path(b).resolve()
+    except (OSError, RuntimeError):
+        return False
 
 
 def _load_boxes_raw(registry_path: Path) -> tuple[dict, dict[str, str]]:
@@ -87,9 +105,26 @@ def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
     Idempotent for a matching pair; overwrites the stored path if the same name
     re-registers a different path (a moved box).  Atomic; preserves every sibling
     section of the registry file.
+
+    Workspace-path uniqueness invariant (Bug A durable fix): within a workset's
+    ``boxes:`` section a workspace path maps to EXACTLY ONE box name.  If *path*
+    is already registered under a DIFFERENT name, this refuses (``ProjectError``)
+    rather than mint a second entry pointing at the same workspace — the
+    root-cause that surfaced as duplicate ``list`` rows.  This never obstructs the
+    legitimate flows: a re-register of the SAME ``(box_name, path)`` is idempotent,
+    and a MOVE (same *box_name*, new *path*) overwrites — only a *different* name
+    claiming an ALREADY-registered workspace is refused.
     """
     full_doc, boxes = _load_boxes_raw(registry_path)
-    boxes[box_name] = str(path)
+    path_str = str(path)
+    for existing_name, existing_path in boxes.items():
+        if existing_name != box_name and _same_workspace(existing_path, path_str):
+            raise ProjectError(
+                f"Workspace {path_str!r} is already registered in this workset "
+                f"as box {existing_name!r}; refusing to register it a second "
+                f"time as {box_name!r} (one box per workspace path)."
+            )
+    boxes[box_name] = path_str
     _write_boxes(registry_path, full_doc, boxes)
 
 
@@ -111,6 +146,27 @@ def unregister_workset_box(registry_path: Path, box_name: str) -> None:
 def workset_box_path(registry_path: Path, box_name: str) -> str | None:
     """Return the registered path for *box_name*, or ``None`` if not a member."""
     return load_workset_boxes(registry_path).get(box_name)
+
+
+def reverse_lookup_workset_box(
+    registry_path: Path, workspace: Path | str,
+) -> str | None:
+    """Return the box name registered for *workspace* in ``boxes:``, or ``None``.
+
+    The reverse of the name→path membership map, resolved-path aware (via
+    :func:`_same_workspace`) so a symlink/normalization alias of the stored path
+    still matches — the SAME drift :func:`register_workset_box`'s uniqueness guard
+    resolves.  Used at the registration layer (``resolve_project`` Guard 2) to
+    reuse an already-registered box name instead of minting a duplicate: the
+    per-workset ``boxes:`` membership is the registry ``list``/``box_resolve``
+    actually read, so this catches drift the GLOBAL name registry has lost (e.g. a
+    purge that dropped the global name but left this membership).
+    """
+    workspace_str = str(workspace)
+    for name, path in load_workset_boxes(registry_path).items():
+        if _same_workspace(path, workspace_str):
+            return name
+    return None
 
 
 def resolve_workset_registry_path(

@@ -51,6 +51,39 @@ class TestClean:
         assert lookup_by_path(std.registry, project_dir) is None
         assert project_dir not in read_names(std.registry)["projects"].values()
 
+    def test_purge_also_unregisters_primary_boxes_membership(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Bug A source fix: purging a primary box ALSO drops its PRIMARY-workset
+        ``boxes:`` membership — not just the global name — so the two registries
+        do not drift (the drift that later tripped ``register_workset_box``'s
+        uniqueness guard on a re-create).  Mutation guard: remove the membership
+        unregister in clean.py and the ``boxes:`` entry survives → this reddens.
+        """
+        from kanibako import workset_registry
+        from kanibako.commands.clean import run
+        from kanibako.config_io import load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        (tmp_home / "member_proj").mkdir()
+        project_dir = str(tmp_home / "member_proj")
+        proj = resolve_project(
+            std, config, project_dir=project_dir, initialize=True,
+        )
+
+        prim_reg = workset_registry.resolve_workset_registry_path(
+            std.primary_workset,
+            load_doc(std.primary_workset / "settings.yaml"),
+        )
+        assert proj.name in workset_registry.load_workset_boxes(prim_reg)
+
+        args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
+        assert run(args) == 0
+
+        # Membership dropped too — no stale boxes: entry left behind.
+        assert proj.name not in workset_registry.load_workset_boxes(prim_reg)
+
     def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
         """M2 mirror: --all purge clears every primary registry entry."""
         from kanibako.commands.clean import run

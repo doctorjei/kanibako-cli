@@ -74,6 +74,71 @@ def test_register_replaces_path(reg: Path) -> None:
     assert workset_registry.load_workset_boxes(reg) == {"alpha": "/new"}
 
 
+def test_register_same_name_same_path_is_idempotent(reg: Path) -> None:
+    """Re-registering the SAME ``(name, path)`` is a no-op replace (no duplicate).
+
+    The uniqueness guard must never obstruct a legitimate re-register (the
+    ``connect``/import re-register flow).
+    """
+    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/alpha"}
+
+
+def test_register_second_name_same_path_is_refused(reg: Path) -> None:
+    """A DIFFERENT name for an ALREADY-registered workspace path is refused.
+
+    Bug A durable fix: within a workset a workspace path maps to exactly one box
+    name — a second name for the same path (the duplicate-row root cause) raises
+    and does NOT add an entry.  Mutation guard: dropping the uniqueness loop lets
+    both entries land, so the post-refusal membership assertion goes RED.
+    """
+    from kanibako.errors import ProjectError
+
+    workset_registry.register_workset_box(reg, "alpha", Path("/abs/shared"))
+    with pytest.raises(ProjectError, match="already registered"):
+        workset_registry.register_workset_box(reg, "beta", Path("/abs/shared"))
+    # The refused register left the membership untouched — no duplicate.
+    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/shared"}
+
+
+def test_register_second_name_same_path_via_symlink_is_refused(
+    reg: Path, tmp_path: Path,
+) -> None:
+    """A normalization/symlink alias of an already-registered path is refused.
+
+    The resolved-path fallback in the uniqueness check catches the drift that
+    let ``_resolve_local_dir``'s exact-string match miss and mint a duplicate.
+    """
+    from kanibako.errors import ProjectError
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "alias"
+    link.symlink_to(real)
+    workset_registry.register_workset_box(reg, "alpha", real)
+    with pytest.raises(ProjectError, match="already registered"):
+        workset_registry.register_workset_box(reg, "beta", link)
+    assert workset_registry.load_workset_boxes(reg) == {"alpha": str(real)}
+
+
+def test_register_move_same_name_new_path_is_allowed(reg: Path) -> None:
+    """A MOVE (same name → new path) is NOT obstructed by the uniqueness guard."""
+    workset_registry.register_workset_box(reg, "alpha", Path("/old"))
+    workset_registry.register_workset_box(reg, "alpha", Path("/new"))
+    assert workset_registry.load_workset_boxes(reg) == {"alpha": "/new"}
+
+
+def test_register_distinct_paths_stay_distinct(reg: Path) -> None:
+    """Distinct workspace paths under distinct names are never collapsed."""
+    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+    workset_registry.register_workset_box(reg, "beta", Path("/abs/beta"))
+    assert workset_registry.load_workset_boxes(reg) == {
+        "alpha": "/abs/alpha",
+        "beta": "/abs/beta",
+    }
+
+
 def test_unregister_removes_only_that_box(reg: Path) -> None:
     """Unregister removes one box; the other survives."""
     workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
