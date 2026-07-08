@@ -1017,6 +1017,51 @@ class TestDescriptorLaunchPath:
             assert "--continue" in cli_args
             assert "--resume" not in cli_args
 
+    def test_persisted_continue_mode_false_starts_fresh(self, start_mocks):
+        """Persisted ``agent.default.continue_mode=false`` (no -N/-C/-R) resolves off
+        the snapshot via effective_behavior -> FRESH -> ``--continue`` ABSENT. This is
+        the whole point of the continue_mode BUILD (the writer now has a reader):
+        the negative direction the unset->default-True case cannot cover (a stuck-True
+        mutation dropping the ``_cm`` read would leave --continue and redden HERE)."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "continue_mode": "false"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" not in cli_args
+            assert "--resume" not in cli_args
+
+    def test_continue_flag_overrides_persisted_false(self, start_mocks):
+        """-C (continue_override) WINS over a persisted continue_mode=false ->
+        ``--continue`` PRESENT (the per-launch flag overrides the persisted key)."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "continue_mode": "false"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, continue_override=True, safe_mode=False,
+                resume_mode=False, extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" in cli_args
+
+    def test_new_flag_overrides_persisted_continue_true(self, start_mocks):
+        """-N WINS over a persisted continue_mode=true -> ``--continue`` ABSENT."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "continue_mode": "true"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=True, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--continue" not in cli_args
+
     def test_descriptor_delivery_mounts_used_not_binary_mounts(self, start_mocks):
         """Descriptor path builds delivery mounts via descriptor_mounts, not
         target.binary_mounts (which stays for the helper hub only)."""

@@ -144,11 +144,11 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     mode_group = p.add_mutually_exclusive_group()
     mode_group.add_argument(
         "-N", "--new", action="store_true", dest="new_session",
-        help="Start a new conversation (skip default --continue)",
+        help="Start a new conversation (overrides continue_mode)",
     )
     mode_group.add_argument(
         "-C", "--continue", action="store_true", dest="continue_session",
-        help="Continue the most recent conversation (default for existing projects)",
+        help="Continue the most recent conversation (overrides continue_mode)",
     )
     mode_group.add_argument(
         "-R", "--resume", action="store_true", dest="resume_session",
@@ -291,6 +291,7 @@ def run_start(args: argparse.Namespace) -> int:
     entrypoint = getattr(args, "entrypoint", None)
     image_override = getattr(args, "image", None)
     new_session = getattr(args, "new_session", False)
+    continue_session = getattr(args, "continue_session", False)
     resume_session = getattr(args, "resume_session", False)
     secure = getattr(args, "secure", False)
     model_override = getattr(args, "model", None)
@@ -413,6 +414,7 @@ def run_start(args: argparse.Namespace) -> int:
         entrypoint=entrypoint,
         image_override=image_override,
         new_session=new_session,
+        continue_override=continue_session,
         safe_mode=safe_mode,
         autonomous=autonomous,
         resume_mode=resume_session,
@@ -1013,6 +1015,7 @@ def _run_container(
     entrypoint: str | None,
     image_override: str | None,
     new_session: bool,
+    continue_override: bool = False,
     safe_mode: bool,
     autonomous: bool = False,
     resume_mode: bool,
@@ -1829,9 +1832,30 @@ def _run_container(
                     autonomous=autonomous,
                     auto_approve=auto_approve,
                 )
+                # continue_mode is an AGENT-scope behavior key (spec §2d L578
+                # ``agent.default.continue_mode | true``): resolve it off the SAME
+                # launch snapshot via the §2d active-over-default pick, coerced to
+                # bool and DEFAULTING True (continue) when unset — byte-identical to
+                # the ``auto_approve`` read above.  It is the PERSISTED FALLBACK for
+                # the continue-vs-fresh decision; the per-launch ``-N``/``-C``/``-R``
+                # flags OVERRIDE it (ephemeral wins, mirroring how ``-M`` overrides
+                # ``model`` and ``-A``/``-S`` override ``auto_approve``).  Realized by
+                # feeding an EFFECTIVE new_session into resolve_mode: when
+                # continue_mode is false AND no mode flag was given, force a fresh
+                # (skip_continue) start; an explicit ``-N`` (new_session) still forces
+                # fresh, and an explicit ``-C`` (continue_override) / ``-R``
+                # (resume_mode) still forces continue/resume regardless of the key.
+                _cm = coerce_bool(effective_state.get("continue_mode"))
+                continue_default = True if _cm is None else _cm
+                effective_new_session = assembly.resolve_new_session(
+                    new_session=new_session,
+                    continue_override=continue_override,
+                    resume_mode=resume_mode,
+                    continue_mode=continue_default,
+                )
                 mode_key = assembly.resolve_mode(
                     resume_mode=resume_mode,
-                    new_session=new_session,
+                    new_session=effective_new_session,
                     is_new_project=proj.is_new,
                     extra_args=all_extra,
                     available_modes=desc.mode.keys(),

@@ -282,7 +282,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     """Shared agent-config engine dispatch.
 
     Maps config keys to agent config sections:
-      model, start_mode, etc. -> state keys
+      model, continue_mode, etc. -> state keys
       env.X                   -> [env]
       shell, run_args, name   -> identity keys
     """

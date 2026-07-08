@@ -284,6 +284,89 @@ class TestRegularConfigKeys:
         }
 
 
+class TestContinueMode:
+    """``continue_mode`` — an agent-scope BOOL behavior key (spec §2d L578
+    ``agent.default.continue_mode | true``; "continue vs fresh; resume removed").
+    Wired EXACTLY like ``auto_approve``/``bootstrap``; REPLACES the dead
+    ``start_mode`` leaf (spec §3 L769, 1.7.0-rc clean break — no alias)."""
+
+    def test_continue_mode_is_known(self):
+        assert is_known_key("continue_mode") is True
+        # Per-agent override form (persona key), mirroring model/auto_approve.
+        assert is_known_key("agent.claude.continue_mode") is True
+
+    def test_start_mode_is_retired(self):
+        """The dead ``start_mode`` leaf is GONE — not a known key (no reader at
+        launch; fully covered by continue_mode + auto_approve, spec §3 L769)."""
+        assert is_known_key("start_mode") is False
+        assert is_known_key("agent.claude.start_mode") is False
+
+    def test_start_mode_bare_set_refused_as_unknown(self, tmp_path):
+        """A bare ``start_mode`` set no longer takes the agent.default route — it
+        is refused as an unknown key and nothing is written."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value("start_mode", "fresh", config_path=project_toml)
+        assert msg == "Error: unknown config key: start_mode"
+        assert not project_toml.exists()
+
+    def test_set_and_get_continue_mode_agent_default_tier(self, tmp_path):
+        """Setting the bare agent-scope ``continue_mode`` writes the reserved
+        ``agent.default`` tier (mirrors ``model``) and reads back the value."""
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text("box:\n  image: \"default:latest\"\n")
+        project_toml = tmp_path / "settings.yaml"
+
+        msg = set_config_value("continue_mode", "false", config_path=project_toml)
+        assert "Set continue_mode=false" in msg
+        data = load_doc(project_toml)
+        assert data["agent"]["default"]["continue_mode"] == "false"
+
+        val = get_config_value(
+            "continue_mode",
+            global_config_path=global_cfg,
+            project_toml=project_toml,
+        )
+        assert val == "false"
+
+    def test_set_explicit_agent_default_continue_mode_refused(self, tmp_path):
+        """``agent.default.continue_mode`` is refused (the any-agent default is the
+        BARE key), mirroring model/auto_approve."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "agent.default.continue_mode", "false", config_path=project_toml,
+        )
+        assert msg.startswith("Error:"), msg
+
+    def test_set_continue_mode_per_agent_override(self, tmp_path):
+        """A per-agent ``agent.<agent>.continue_mode`` override is a PERSONA key: it
+        lands on the agent's OWN ``agents/<agent>/settings.yaml`` flat slot the
+        launch reader picks over ``agent.default`` (§2d active-over-default)."""
+        cf = tmp_path / "kanibako_config.yaml"
+        agents_root = tmp_path / "agents"
+        msg = set_config_value(
+            "agent.claude.continue_mode", "false",
+            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            agents_root=agents_root,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+            "agent": {"continue_mode": "false"},
+        }
+
+    def test_bare_continue_mode_refused_at_box_scope(self, tmp_path):
+        """The box/workset bare-key refusal now COVERS continue_mode (it is in
+        ``_is_agent_setting``): a bare set at BOX scope is refused (redirected to
+        the box.agent.<key> mirror), nothing lands in a top-level agent table."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "continue_mode", "false",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        if f.exists():
+            assert "agent" not in load_doc(f)
+
+
 # ---------------------------------------------------------------------------
 # workset.kuid / workset.skip_kuid_check (P6d)
 # ---------------------------------------------------------------------------
@@ -426,7 +509,7 @@ class TestResourceKeys:
 
 
 # ---------------------------------------------------------------------------
-# Target settings (model, start_mode, autonomous)
+# Target settings (model, continue_mode, autonomous)
 # ---------------------------------------------------------------------------
 
 class TestTargetSettings:
@@ -596,14 +679,14 @@ class TestShowConfig:
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
-            agent_state={"model": "sonnet", "start_mode": "default"},
+            agent_state={"model": "sonnet", "continue_mode": "true"},
         )
         captured = capsys.readouterr()
         # model is set at box level -> marked override
         assert "model = sonnet (override)" in captured.out
-        # start_mode comes from a lower level -> no marker
-        assert "start_mode = default\n" in captured.out
-        assert "start_mode = default (override)" not in captured.out
+        # continue_mode comes from a lower level -> no marker
+        assert "continue_mode = true\n" in captured.out
+        assert "continue_mode = true (override)" not in captured.out
 
     def test_effective_env_resolved_used_when_supplied(self, tmp_path, capsys):
         """env_resolved is the source dict for the env section when given."""
@@ -2413,7 +2496,7 @@ class TestBoxAgentMirrorConfigSet:
 
 class TestBareAgentKeyAtBoxScope:
     """A BARE agent behavior key (model / auto_approve / bootstrap / endpoint /
-    allow_helpers / start_mode) at BOX command scope targets the any-agent
+    allow_helpers / continue_mode) at BOX command scope targets the any-agent
     ``agent.default`` tier — an UPWARD write a box cannot make (spec L440: a box
     tweaks its agent through its own ``box.agent.*`` mirror; §0 directional rule).
 
