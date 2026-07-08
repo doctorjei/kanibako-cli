@@ -118,9 +118,16 @@ class TestIsKnownKey:
         """box.shell must be a known GET key (set/--reset bypass is_known_key)."""
         assert is_known_key("box.shell") is True
 
-    def test_box_bootstrap_program_is_known(self):
-        """box.bootstrap_program must be a known GET key (set/--reset bypass it)."""
-        assert is_known_key("box.bootstrap_program") is True
+    def test_bootstrap_is_known(self):
+        """bootstrap is an agent-scope behavior key — a known GET key (spec §2d L579).
+
+        The old box-scope ``box.bootstrap_program`` is RETIRED (relocated to the
+        agent scope, 1.7.0-rc clean break — no alias)."""
+        assert is_known_key("bootstrap") is True
+        # Per-agent override form (persona key), mirroring model/auto_approve.
+        assert is_known_key("agent.claude.bootstrap") is True
+        # The retired box-scope key is no longer known.
+        assert is_known_key("box.bootstrap_program") is False
 
     def test_dynamic_env_prefix(self):
         assert is_known_key("env.MY_VAR") is True
@@ -225,37 +232,56 @@ class TestRegularConfigKeys:
         )
         assert val == "/bin/zsh"
 
-    def test_get_box_bootstrap_program_unset_is_not_set(self, tmp_path):
-        """F6 get model: an UNSET box.bootstrap_program at the box noun is
-        "(not set)" — a plain get never fabricates the built-in default ("tmux").
-        (Was ``..._returns_default``, which asserted the pre-F6 fabricated
-        default.  The built-in still applies at LAUNCH + ``--effective``.)"""
+    def test_get_bootstrap_unset_is_not_set(self, tmp_path):
+        """An UNSET agent-scope ``bootstrap`` is "(not set)" — a plain get never
+        fabricates the consumer default ("tmux").  The built-in still applies at
+        LAUNCH + ``--effective`` (spec §2d L579 agent.default.bootstrap=tmux)."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
         val = get_config_value(
-            "box.bootstrap_program",
+            "bootstrap",
             global_config_path=global_cfg,
             project_toml=project_toml,
         )
         assert val is None
 
-    def test_set_and_get_box_bootstrap_program(self, tmp_path):
-        """Setting box.bootstrap_program and reading it back returns the value."""
+    def test_set_and_get_bootstrap_agent_default_tier(self, tmp_path):
+        """Setting the bare agent-scope ``bootstrap`` writes the reserved
+        ``agent.default`` tier (mirrors ``model``) and reads back the value."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
 
-        set_config_value(
-            "box.bootstrap_program", "screen", config_path=project_toml
-        )
+        msg = set_config_value("bootstrap", "screen", config_path=project_toml)
+        assert "Set bootstrap=screen" in msg
+        # The agent-agnostic CLI writes the reserved agent.default tier.
+        data = load_doc(project_toml)
+        assert data["agent"]["default"]["bootstrap"] == "screen"
+
         val = get_config_value(
-            "box.bootstrap_program",
+            "bootstrap",
             global_config_path=global_cfg,
             project_toml=project_toml,
         )
         assert val == "screen"
+
+    def test_set_per_agent_bootstrap_override(self, tmp_path):
+        """A per-agent ``agent.<agent>.bootstrap`` override is a PER-PERSONA setting
+        routed to the agent's OWN ``agents/<node>/settings.yaml`` flat slot the launch
+        reads — mirroring ``agent.<agent>.model``."""
+        cf = tmp_path / "kanibako_config.yaml"
+        agents_root = tmp_path / "agents"
+        msg = set_config_value(
+            "agent.claude.bootstrap", "none",
+            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            agents_root=agents_root,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+            "agent": {"bootstrap": "none"},
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -1176,7 +1176,7 @@ class TestConfigurableBootstrap:
 
     def test_default_bootstrap_is_tmux(self, start_mocks):
         with start_mocks() as m:
-            # merged.box_bootstrap_program defaults to "tmux" in the fixture.
+            # effective_bootstrap defaults to "tmux" in the fixture.
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1192,7 +1192,7 @@ class TestConfigurableBootstrap:
 
     def test_non_tmux_bootstrap_execs_program_directly(self, start_mocks):
         with start_mocks() as m:
-            m.merged.box_bootstrap_program = "zellij"
+            m.effective_bootstrap.return_value = "zellij"
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1211,7 +1211,7 @@ class TestConfigurableBootstrap:
 
     def test_non_tmux_reattach_when_running(self, start_mocks):
         with start_mocks() as m:
-            m.merged.box_bootstrap_program = "zellij"
+            m.effective_bootstrap.return_value = "zellij"
             m.runtime.is_running.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,

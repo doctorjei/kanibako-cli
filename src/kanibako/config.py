@@ -43,7 +43,6 @@ _DEFAULTS = {
     "paths_project_toml": BOX_META_FILE,
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_agent_name": "",
-    "box_bootstrap_program": "tmux",
     "box_shell": "",
 }
 
@@ -55,7 +54,6 @@ class KanibakoConfig:
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     box_image: str = _DEFAULTS["box_image"]
     box_agent_name: str = _DEFAULTS["box_agent_name"]
-    box_bootstrap_program: str = _DEFAULTS["box_bootstrap_program"]
     box_shell: str = _DEFAULTS["box_shell"]
     box_share_images: bool = False
     # Bootstrap PATH set-values keyed by full dotted name — the MERGED Layer-1

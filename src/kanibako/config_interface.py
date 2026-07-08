@@ -84,12 +84,21 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "auto_approve",
     # endpoint (persona): alternate harness base-URL, a sibling of model (block B).
     "endpoint",
+    # bootstrap: an agent-scope BEHAVIOR key (spec §2d L579
+    # ``agent.default.bootstrap | tmux``; "bootstrap STAYS a key"). The bare key is
+    # the any-agent ``agent.default`` tier (mirrors ``model``); per-agent overrides
+    # are the persona key ``agent.<agent>.bootstrap``. Names the in-box multiplexer
+    # program for the persistent/reattachable session; the ``none`` sentinel means
+    # ephemeral / no-reattach (foreground single-use). Consumed by start.py's
+    # persistence-mode heuristic + bootstrap-wrap (consumer default ``tmux`` when
+    # unset). RELOCATED from the retired BOX-scope ``box.bootstrap_program`` key
+    # (1.7.0-rc clean break — no alias for the old box key).
+    "bootstrap",
     # Box
     "box.image",
     "box.agent_name",
     "box.share_images",
     "box.shell",
-    "box.bootstrap_program",
     # Auth sharing — settable 3-tier chain (system/workset/box.auth.*)
     "system.auth.share_allowed",
     "workset.auth.share_allowed",
@@ -221,7 +230,6 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "box.image": (("box",), "image"),
     "box.agent_name": (("box",), "agent_name"),
     "box.shell": (("box",), "shell"),
-    "box.bootstrap_program": (("box",), "bootstrap_program"),
     "box.share_images": (("box",), "share_images"),
     # Auth sharing — settable 3-tier chain (system/workset/box.auth.*). These are
     # ordinary SETTINGS keys: each routes to its nested ``<scope>.auth.<leaf>``
@@ -420,7 +428,7 @@ def _resolve_key(raw: str) -> str:
 # ``_is_agent_node_secret_key`` → ``_node_secret_target``, NOT here — a clean break;
 # ``env_file`` only shipped rc0-rc2, no alias).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
-    {"endpoint", "model", "start_mode", "auto_approve", "allow_helpers"}
+    {"endpoint", "model", "start_mode", "auto_approve", "allow_helpers", "bootstrap"}
 )
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
@@ -744,7 +752,10 @@ def _is_resource_key(key: str) -> bool:
 
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
-    return key in {"model", "start_mode", "auto_approve", "endpoint", "allow_helpers"}
+    return key in {
+        "model", "start_mode", "auto_approve", "endpoint", "allow_helpers",
+        "bootstrap",
+    }
 
 
 def _is_box_agent_key(key: str) -> bool:
