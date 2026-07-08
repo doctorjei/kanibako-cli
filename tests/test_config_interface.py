@@ -2176,13 +2176,17 @@ class TestScopeDirectionGuard:
         )
         assert not msg.startswith("Error:"), msg
 
-    def test_scopeless_allow_helpers_key_allowed_at_workset(self, tmp_path):
-        # ``allow_helpers`` is a SCOPELESS scalar key — legal at any scope by
-        # construction (own-file write); the directional guard does not apply.
-        f = tmp_path / "ws-settings.yaml"
+    def test_scopeless_env_key_allowed_at_workset(self, tmp_path):
+        # A SCOPELESS key (``env.*``) is legal at any scope by construction
+        # (own-file write); the DIRECTIONAL guard does not apply to it. (NB: the
+        # bare agent scalars — also scopeless — are separately REFUSED at box/
+        # workset by the multibox bare-agent rule; see
+        # TestBareAgentKeyAtWorksetScope. This test isolates the directional guard.)
+        env_f = tmp_path / "env"
         msg = set_config_value(
-            "allow_helpers", "true",
-            config_path=f, command_scope=ConfigLevel.workset,
+            "env.FOO", "bar",
+            config_path=tmp_path / "ws-settings.yaml", env_path=env_f,
+            command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
 
@@ -2405,6 +2409,249 @@ class TestBoxAgentMirrorConfigSet:
         )
         doc = load_doc(f)
         assert "agent" not in doc  # no top-level agent.* table
+
+
+class TestBareAgentKeyAtBoxScope:
+    """A BARE agent behavior key (model / auto_approve / bootstrap / endpoint /
+    allow_helpers / start_mode) at BOX command scope targets the any-agent
+    ``agent.default`` tier — an UPWARD write a box cannot make (spec L440: a box
+    tweaks its agent through its own ``box.agent.*`` mirror; §0 directional rule).
+
+    The OLD code wrote ``agent.default.<key>`` into the box settings file, which
+    ``settings_assemble._drop_upward_scopes`` then DROPPED at launch — a silent
+    no-op the CLI still reported as "Set". SET now REFUSES (teaching the
+    ``box.agent.<key>`` mirror); GET REDIRECTS the read to that mirror and the box
+    handler NAMES the value ``box.agent.<key>``. Uniform over the whole
+    ``_is_agent_setting`` family (NOT a per-key list). The legitimate forms
+    (``box.agent.<key>``, a bare key at SYSTEM scope, a per-agent
+    ``agent.<name>.<key>``) are UNAFFECTED.
+    """
+
+    def test_redirect_helper_fires_only_for_bare_key_at_box_scope(self):
+        from kanibako.config_interface import box_agent_redirect_key
+        # Bare agent keys at box scope → the box.agent.* mirror.
+        assert box_agent_redirect_key(
+            "bootstrap", ConfigLevel.box) == "box.agent.bootstrap"
+        assert box_agent_redirect_key(
+            "model", ConfigLevel.box) == "box.agent.model"
+        assert box_agent_redirect_key(
+            "auto_approve", ConfigLevel.box) == "box.agent.auto_approve"
+        # Non-box scopes: NO redirect (a bare key is a legit downward write there).
+        assert box_agent_redirect_key("bootstrap", ConfigLevel.system) is None
+        assert box_agent_redirect_key("bootstrap", ConfigLevel.workset) is None
+        assert box_agent_redirect_key("bootstrap", None) is None
+        # Already-qualified mirror / per-agent forms are NOT bare agent keys.
+        assert box_agent_redirect_key("box.agent.bootstrap", ConfigLevel.box) is None
+        assert box_agent_redirect_key(
+            "agent.claude.bootstrap", ConfigLevel.box) is None
+
+    def test_set_bare_bootstrap_at_box_scope_refused_nothing_written(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "bootstrap", "none", config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "can't be set bare" in msg, msg
+        assert "box.agent.bootstrap" in msg, msg  # names the correct mirror form
+        # NOTHING written — the refused set never creates the box file (no dropped
+        # agent.default.bootstrap). This is the mutation guard vs the old no-op write.
+        assert not f.exists(), "the refused set must not write the box file"
+
+    def test_set_bare_model_and_auto_approve_at_box_scope_refused(self, tmp_path):
+        # Uniformity: the SAME refusal for other agent behavior keys (proves the
+        # fix is keyed on the _is_agent_setting family, not a single per-key branch).
+        cases = {"model": "sonnet", "auto_approve": "true"}
+        for key, value in cases.items():
+            f = tmp_path / f"box-{key}.yaml"
+            msg = set_config_value(
+                key, value, config_path=f, command_scope=ConfigLevel.box,
+            )
+            assert msg.startswith("Error:"), (key, msg)
+            assert "can't be set bare" in msg, (key, msg)
+            assert f"box.agent.{key}" in msg, (key, msg)
+            assert not f.exists(), (key, "refused set must not write")
+
+    def test_box_agent_mirror_form_still_works(self, tmp_path):
+        # The legitimate box.agent.<key> mirror is UNAFFECTED — it still writes.
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.agent.bootstrap", "none",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["box"]["agent"]["bootstrap"] == "none"
+
+    def test_get_bare_bootstrap_at_box_scope_redirects_to_mirror(self, tmp_path):
+        # The box file carries the mirror value (box.agent.bootstrap); a bare
+        # `get bootstrap` at box scope REDIRECTS the read to that mirror.
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"box": {"agent": {"bootstrap": "screen"}}})
+        assert get_config_value(
+            "bootstrap", global_config_path=tmp_path / "cfg.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
+        ) == "screen"
+        # Mutation guard: WITHOUT box scope the bare read hits agent.default
+        # (absent here) → None — proving the redirect is what surfaced the value.
+        assert get_config_value(
+            "bootstrap", global_config_path=tmp_path / "cfg.yaml",
+            project_toml=f, command_scope=None,
+        ) is None
+
+    def test_get_bare_model_and_auto_approve_redirect(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"box": {"agent": {"model": "sonnet", "auto_approve": True}}})
+        assert get_config_value(
+            "model", global_config_path=tmp_path / "cfg.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
+        ) == "sonnet"
+        assert get_config_value(
+            "auto_approve", global_config_path=tmp_path / "cfg.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
+        ) == "true"
+
+    def test_bare_agent_key_at_system_scope_unaffected(self, tmp_path):
+        # A bare agent key at SYSTEM scope is a legit DOWNWARD write to
+        # agent.default — still works, lands in the file's agent.default table.
+        f = tmp_path / "sys-settings.yaml"
+        msg = set_config_value(
+            "bootstrap", "none", config_path=f, command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["agent"]["default"]["bootstrap"] == "none"
+        # And the system-scope get reads it back (no box redirect applies).
+        assert get_config_value(
+            "bootstrap", global_config_path=tmp_path / "cfg.yaml",
+            system_settings_path=f, command_scope=ConfigLevel.system,
+        ) == "none"
+
+    def test_reset_bare_bootstrap_at_box_scope_refused_value_not_removed(
+        self, tmp_path,
+    ):
+        # RESET is a WRITE, so a bare reset at box scope REFUSES (symmetric with
+        # SET). The mutation this guards: the OLD path removed the (absent)
+        # agent.default.bootstrap and reported "No override" while the real value
+        # at box.agent.bootstrap stayed STUCK. Prove the mirror value SURVIVES.
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"box": {"agent": {"bootstrap": "screen"}}})
+        msg = reset_config_value(
+            "bootstrap", config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "can't be reset bare" in msg, msg
+        assert "reset box.agent.bootstrap" in msg, msg  # teaches the mirror form
+        # The stuck-value mutation guard: box.agent.bootstrap is NOT removed.
+        assert load_doc(f)["box"]["agent"]["bootstrap"] == "screen"
+
+    def test_reset_bare_model_and_auto_approve_at_box_scope_refused(self, tmp_path):
+        # Uniformity: the SAME reset refusal for other agent behavior keys.
+        for key in ("model", "auto_approve"):
+            f = tmp_path / f"box-{key}.yaml"
+            dump_doc(f, {"box": {"agent": {key: "x"}}})
+            msg = reset_config_value(
+                key, config_path=f, command_scope=ConfigLevel.box,
+            )
+            assert msg.startswith("Error:"), (key, msg)
+            assert "can't be reset bare" in msg, (key, msg)
+            assert f"reset box.agent.{key}" in msg, (key, msg)
+            assert load_doc(f)["box"]["agent"][key] == "x", (key, "must survive")
+
+    def test_reset_box_agent_mirror_form_still_clears(self, tmp_path):
+        # The legitimate qualified reset box.agent.<key> is UNAFFECTED — it clears.
+        f = tmp_path / "box-settings.yaml"
+        dump_doc(f, {"box": {"agent": {"bootstrap": "screen"}}})
+        msg = reset_config_value(
+            "box.agent.bootstrap", config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert "cleared" in msg.lower(), msg
+        # The override (and the now-empty box.agent table) is gone.
+        assert "agent" not in load_doc(f).get("box", {})
+
+    def test_reset_bare_bootstrap_at_system_scope_unaffected(self, tmp_path):
+        # A bare reset at SYSTEM scope is a legit DOWNWARD reset — still clears
+        # agent.default (not refused, no box redirect).
+        f = tmp_path / "sys-settings.yaml"
+        dump_doc(f, {"agent": {"default": {"bootstrap": "none"}}})
+        msg = reset_config_value(
+            "bootstrap", config_path=f, command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert "cleared" in msg.lower(), msg
+        assert "default" not in load_doc(f).get("agent", {})
+
+    def test_per_agent_key_at_box_scope_unaffected(self, tmp_path):
+        # A per-agent agent.<name>.<key> is NOT a bare agent key — it is refused at
+        # box scope by the UPWARD agent-scope directional guard (agent ⊃ box), NOT
+        # by the bare-key redirect. The message must be the directional one.
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "agent.claude.bootstrap", "none",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "can't be set bare" not in msg, msg  # not the bare-key message
+        assert not f.exists(), "the refused per-agent write must not touch the box"
+
+
+class TestBareAgentKeyAtWorksetScope:
+    """A BARE agent behavior key at WORKSET command scope has the SAME upward-drop
+    bug as box (a workset file's top-level ``agent`` table is dropped at launch —
+    agent ⊃ workset). UNLIKE box, a workset spans MULTIPLE boxes/agents, so there is
+    deliberately NO ``workset.agent.*`` mirror (no single "the agent"). The
+    conformant fix is therefore to REFUSE — uniformly for set / get / reset — with a
+    message pointing at system scope (all agents) or the per-box ``box.agent.<key>``
+    mirror. Uniform over the whole ``_is_agent_setting`` family (NOT a per-key list).
+    """
+
+    def test_scope_error_helper_workset_refuses_no_mirror(self):
+        from kanibako.config_interface import bare_agent_key_scope_error
+        for verb in ("set", "read", "reset"):
+            msg = bare_agent_key_scope_error(
+                "bootstrap", ConfigLevel.workset, verb=verb,
+            )
+            assert msg is not None and msg.startswith("Error:"), (verb, msg)
+            assert f"can't be {verb} at workset scope" in msg, (verb, msg)
+            assert "system scope" in msg, (verb, msg)
+            # No workset.agent.* mirror is invented — it points per-box instead.
+            assert "workset.agent" not in msg, (verb, msg)
+            assert "box.agent.bootstrap" in msg, (verb, msg)
+        # A per-agent / already-qualified form is NOT a bare agent key.
+        assert bare_agent_key_scope_error(
+            "agent.claude.bootstrap", ConfigLevel.workset, verb="set") is None
+
+    def test_set_bare_agent_keys_at_workset_scope_refused(self, tmp_path):
+        # Uniformity: bootstrap + model + auto_approve all refused, nothing written.
+        cases = {"bootstrap": "none", "model": "sonnet", "auto_approve": "true"}
+        for key, value in cases.items():
+            f = tmp_path / f"ws-{key}.yaml"
+            msg = set_config_value(
+                key, value, config_path=f, command_scope=ConfigLevel.workset,
+            )
+            assert msg.startswith("Error:"), (key, msg)
+            assert "can't be set at workset scope" in msg, (key, msg)
+            assert not f.exists(), (key, "the refused set must not write")
+
+    def test_reset_bare_agent_keys_at_workset_scope_refused(self, tmp_path):
+        for key in ("bootstrap", "model", "auto_approve"):
+            f = tmp_path / f"ws-{key}.yaml"
+            # Even a pre-existing (mis-written) agent.default value stays put.
+            dump_doc(f, {"agent": {"default": {key: "x"}}})
+            msg = reset_config_value(
+                key, config_path=f, command_scope=ConfigLevel.workset,
+            )
+            assert msg.startswith("Error:"), (key, msg)
+            assert "can't be reset at workset scope" in msg, (key, msg)
+            assert load_doc(f)["agent"]["default"][key] == "x", (key, "must survive")
+
+    def test_workset_scope_keys_unaffected(self, tmp_path):
+        # A legitimate workset.* key is NOT an agent key — still writes normally.
+        f = tmp_path / "ws-settings.yaml"
+        msg = set_config_value(
+            "workset.boxes", "/srv/boxes",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["workset"]["boxes"] == "/srv/boxes"
 
 
 # ---------------------------------------------------------------------------
@@ -2667,15 +2914,21 @@ class TestF7HonestResetMessage:
         # So even with cascade inputs holding a lower-tier allow_helpers,
         # the reset must NOT claim a cascade-derived "effective" (a value from a
         # tier nothing reads). It keeps the cleared-only form.
+        # NOTE: exercised at SYSTEM scope — a BARE agent behavior key (it targets
+        # ``agent.default``) is a legit DOWNWARD write from system, whereas setting
+        # it BARE at BOX scope is now REFUSED (redirected to the box.agent.* mirror;
+        # see TestBareAgentKeyAtBoxScope). The F7 honest-reset property this guards
+        # (a scopeless key is a single-file read, never a cascade claim) is
+        # scope-independent.
         ws = tmp_path / "ws.yaml"
         box = tmp_path / "box.yaml"
         dump_doc(ws, {"allow_helpers": False})  # a lower-tier value
         set_config_value(
             "allow_helpers", "true", config_path=box,
-            command_scope=ConfigLevel.box,
+            command_scope=ConfigLevel.system,
         )
         msg = reset_config_value(
-            "allow_helpers", config_path=box, command_scope=ConfigLevel.box,
+            "allow_helpers", config_path=box, command_scope=ConfigLevel.system,
             cascade_workset_path=ws, cascade_box_path=box,
         )
         assert "cleared" in msg.lower(), msg

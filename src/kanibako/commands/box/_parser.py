@@ -1616,9 +1616,16 @@ def _run_box_config(args: argparse.Namespace) -> int:
             project_toml=project_toml,
             env_global=env_global,
             env_project=env_project,
+            command_scope=ConfigLevel.box,
         )
+        # A BARE agent behavior key at box scope has no box-writable value of its
+        # own: get_config_value redirected the READ to the box's active-agent mirror
+        # ``box.agent.<key>``. Name the value with that canonical form so the read
+        # teaches the mirror (mirrors the refuse-message ``set`` prints).
+        from kanibako.config_interface import _resolve_key, box_agent_redirect_key
+        redirect = box_agent_redirect_key(_resolve_key(key), ConfigLevel.box)
         if val is not None:
-            print(val)
+            print(f"{redirect}={val}" if redirect is not None else val)
         else:
             print("(not set)", file=sys.stderr)
         return 0
