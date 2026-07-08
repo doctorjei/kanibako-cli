@@ -34,6 +34,7 @@ from kanibako.settings_resolve import (
 )
 from kanibako.names import (
     assign_name,
+    lookup_by_path,
     pick_name,
     read_names,
     register_name,
@@ -956,6 +957,48 @@ def resolve_project(
             project_name = recovered
             project_dir_path = std.boxes / recovered
 
+    # Registration-layer reverse-lookup (Bug A durable fix — defense in depth).
+    #
+    # ``_resolve_local_dir`` reverse-looks-up the registry by EXACT string, so a
+    # normalization/symlink difference between the stored ``projects:`` path and
+    # this call's resolved ``project_path_str`` misses — and the create branch
+    # below would then ``assign_name`` a FRESH name + box dir for a workspace that
+    # is ALREADY registered, minting the duplicate that surfaced as duplicate
+    # ``list`` rows.  Reuse the existing name/dir instead of minting a second entry.
+    #
+    # TWO registries are consulted, RESOLVED-path aware (so both catch the drift):
+    #   1. the GLOBAL ``projects:`` name registry (``lookup_by_path``); and
+    #   2. the PRIMARY-WORKSET ``boxes:`` membership — the SAME registry
+    #      ``register_workset_box``'s uniqueness guard (Guard 1) writes and
+    #      ``list``/``box_resolve`` read.  The two can DRIFT (e.g. ``purge`` drops
+    #      the global name but leaves the ``boxes:`` membership), so a global miss
+    #      must still catch an existing primary-membership box — otherwise Guard 1
+    #      would raise INSIDE ``register_workset_box`` below AFTER ``assign_name``
+    #      and ``_init_project`` already committed a fresh entry + box dir, which
+    #      ``resolve_project`` has no unwind for (→ stranded half-box).
+    # Both lookups are exception-guarded (a symlink-cycle/permission path must not
+    # crash resolve_project) — matching ``_same_workspace``'s own guarding.
+    # (register=False deferred-create is handled by the journal block above and
+    # left untouched here.)
+    if not project_name and register:
+        try:
+            _existing = lookup_by_path(std.registry, project_path_str)
+        except (OSError, RuntimeError):
+            _existing = None
+        if _existing is not None and _existing[1] == "projects":
+            project_name = _existing[0]
+        else:
+            try:
+                _member = _workset_box_name_for_workspace(
+                    std.primary_workset, project_path_str,
+                )
+            except (OSError, RuntimeError):
+                _member = None
+            if _member:
+                project_name = _member
+        if project_name:
+            project_dir_path = std.boxes / project_name
+
     metadata_path = project_dir_path
 
     # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_ro"]/["vault_rw"]
@@ -994,14 +1037,26 @@ def resolve_project(
         # B3: when *register* is False the name is PICKED (directory-aware, so a
         # half-built box's dir keeps its name reserved) but NOT written — the
         # caller registers after seeding (journal entry → seed → register → clear-entry).
+        # Whether THIS call minted a fresh GLOBAL name entry — the belt-and-
+        # suspenders unwind below only rolls back an entry this call created.
+        minted_global = False
         if name_override:
             if register:
                 register_name(std.registry, name_override, project_path_str)
+                minted_global = True
             project_name = name_override
+        elif project_name:
+            # The reverse-lookup above (Bug A) matched this workspace to an
+            # ALREADY-registered box name — its dir is just missing here, so
+            # reuse the name and (re)create the dir below.  Do NOT mint a fresh
+            # name and do NOT ``register_name`` again (the mapping already exists
+            # — a second register would raise on the duplicate name).
+            pass
         elif register:
             project_name = assign_name(
                 std.registry, project_path_str, boxes_dir=std.boxes,
             )
+            minted_global = True
         else:
             project_name = pick_name(
                 std.registry, project_path_str, boxes_dir=std.boxes,
@@ -1013,6 +1068,15 @@ def resolve_project(
             std, metadata_path, project_name,
         )
         project_toml = metadata_path / BOX_META_FILE
+
+        # Creation ownership for the unwind below: capture whether the box dir
+        # ALREADY existed at its FINAL (post-``name_override`` reassignment) path,
+        # BEFORE ``_init_project`` merges into it (``mkdir(exist_ok=True)``).  A
+        # ``--name X`` pointing at a pre-existing orphan ``std.boxes/X`` must NOT
+        # be ``rmtree``d on a Guard-1 raise — that would delete a pre-existing
+        # box's ``home/`` (credentials, session state).  The unwind only removes a
+        # dir THIS call created.
+        _dir_existed = project_dir_path.is_dir()
 
         _init_project(
             std, metadata_path, shell_path,
@@ -1032,11 +1096,30 @@ def resolve_project(
         # ``_register_new_box``).  The PRIMARY workset is NON-EXCEPTIONAL
         # (D0/D1): its registry is anchored by ``std.primary_workset``.
         # Idempotent — ``register_workset_box`` overwrites a moved box's path.
-        _register_workset_box_membership(
-            std.primary_workset, project_name, project_path,
-        )
-        import sys
-        print(f"Project name: {project_name}", file=sys.stderr)
+        #
+        # Belt-and-suspenders unwind: Guard 2 above normally pre-empts Guard 1
+        # (the workspace-path uniqueness check in ``register_workset_box``) by
+        # reusing the existing name.  If Guard 1 STILL refuses here — e.g. an
+        # explicit ``--name`` claims a workspace already a member under a
+        # different name — ``resolve_project`` has no outer unwind, so roll back
+        # the box dir (ONLY if THIS call created it — never delete a pre-existing
+        # orphan's ``home/``) and any global name entry THIS call minted so a
+        # genuine invariant violation fails CLEAN (no stranded half-box), then
+        # re-raise.
+        try:
+            _register_workset_box_membership(
+                std.primary_workset, project_name, project_path,
+            )
+        except Exception:
+            if not _dir_existed:
+                import shutil
+
+                shutil.rmtree(project_dir_path, ignore_errors=True)
+            if minted_global:
+                from kanibako.names import unregister_name
+
+                unregister_name(std.registry, project_name)
+            raise
         is_new = True
 
     if initialize:
@@ -1511,6 +1594,24 @@ def _check_workset(
             continue
 
     return None
+
+
+def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None:
+    """Reverse-look-up *workspace* in *ws_root*'s per-workset ``boxes:`` membership.
+
+    Returns the registered box name (resolved-path aware) or ``None``.  Mirrors
+    :func:`_register_workset_box_membership`'s registry-path resolution so both the
+    write (Guard 1) and this reverse-lookup (Guard 2) consult the SAME per-workset
+    ``boxes:`` registry — the one ``list``/``box_resolve`` read — closing the drift
+    where a global-name miss let Guard 1 fire mid-create.
+    """
+    from kanibako import workset_registry
+    from kanibako.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws_root, load_doc(ws_root / "settings.yaml"),
+    )
+    return workset_registry.reverse_lookup_workset_box(registry_path, workspace)
 
 
 def _register_workset_box_membership(

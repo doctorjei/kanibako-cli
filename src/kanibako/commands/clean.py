@@ -60,9 +60,16 @@ def _unregister_purged(std, proj) -> None:
     the registered name by reverse path lookup first (the workspace path is what
     the registry stores), falling back to the resolved/ metadata-dir name, and
     remove it. Best-effort: a missing or already-clean entry is a no-op.
+
+    Bug A source fix: a PRIMARY box is ALSO a member of the PRIMARY-workset
+    ``boxes:`` registry (name → workspace).  Dropping ONLY the global name while
+    leaving that membership stale is the registry DRIFT that let a later re-create
+    at the same workspace trip ``register_workset_box``'s uniqueness guard — so
+    the membership is unregistered here too (both registries stay in step).
     """
     from kanibako import registry_store
     from kanibako.names import lookup_by_path, unregister_name
+    from kanibako.paths import _unregister_workset_box_membership
 
     try:
         if proj.mode is BoxMode.standalone:
@@ -79,6 +86,7 @@ def _unregister_purged(std, proj) -> None:
         name = found[0] if found else (proj.name or proj.metadata_path.name)
         if name:
             unregister_name(std.registry, name)
+            _unregister_workset_box_membership(std.primary_workset, name)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 
@@ -88,9 +96,12 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
 
     ``iter_projects`` yields ``(metadata_path, project_path)`` for primary-mode
     boxes; reverse-resolve the registered name from the workspace path (falling
-    back to the metadata dir name) and drop it from ``registry.projects``.
+    back to the metadata dir name) and drop it from ``registry.projects`` — and
+    from the PRIMARY-workset ``boxes:`` membership too (Bug A source fix: keep
+    both registries in step so a later re-create can't trip the uniqueness guard).
     """
     from kanibako.names import lookup_by_path, unregister_name
+    from kanibako.paths import _unregister_workset_box_membership
 
     try:
         name: str | None = None
@@ -102,6 +113,7 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
             name = metadata_path.name
         if name:
             unregister_name(std.registry, name)
+            _unregister_workset_box_membership(std.primary_workset, name)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 
