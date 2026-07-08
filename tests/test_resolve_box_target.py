@@ -94,9 +94,72 @@ class TestResolveByPath:
 
     def test_unknown_name_that_is_not_a_path_errors(self, std, config):
         # A bare token that matches no name and is not an existing path:
-        # falls through to path resolution and fails like positional `project`.
+        # refuse-invent raises an honest error rather than path-ifying to a
+        # nonexistent cwd-relative dir + minting a phantom kanibako-<hash>.
         with pytest.raises(ProjectError):
             resolve_box_target(std, config, "no-such-box")
+
+    def test_unknown_bare_name_does_not_mint_phantom_box(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """Refuse-invent (BUG-B #2): a bogus bare name never resolves to an
+        UNREGISTERED/empty-name box (which would hash to kanibako-<hash>).
+
+        Mutation proof: dropping the ``if not initialize: raise`` guard in
+        ``resolve_any_project`` makes this NOT raise (it path-ifies to
+        ``cwd/no-such-box`` and, since that dir is absent, surfaces a different
+        error or a hash box), reddening the assertion on the message.
+        """
+        cwd = tmp_home / "somewhere"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        # The honest name-based error, NOT the path-ified "Project path
+        # '<cwd>/no-such-box' does not exist" that the fall-through produced.
+        with pytest.raises(ProjectError, match="Unknown project or workset"):
+            resolve_box_target(std, config, "no-such-box", initialize=False)
+
+
+# ---------------------------------------------------------------------------
+# Workset-MEMBER box resolves from OUTSIDE its workset (BUG-B end-to-end)
+# ---------------------------------------------------------------------------
+
+class TestWorksetMemberFromOutside:
+    def test_member_box_name_resolves_from_outside(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """`stop <name>`/`start <name>` reach a workset member from ~ (BUG-B).
+
+        Builds a NAMED workset with an internal member box, materializes it
+        (writing the per-workset ``boxes:`` entry the launch path records), then
+        resolves the bare member name from a cwd OUTSIDE the workset.
+        """
+        from kanibako.paths import WorksetSpec, resolve_workset_project
+        from kanibako.workset import add_project, create_workset
+
+        ws_root = tmp_home / "worksets" / "cluster"
+        ws = create_workset("cluster", ws_root, std)
+        source = tmp_home / "cluster2-src"
+        source.mkdir()
+        add_project(ws, "cluster2", source)
+        # Materialize the box (initialize=True) so its membership is recorded in
+        # the workset's per-workset ``boxes:`` registry — exactly what a first
+        # `start` does.
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), "cluster2", std, config,
+            initialize=True,
+        )
+
+        # cwd OUTSIDE the workset tree.
+        outside = tmp_home / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        proj = resolve_box_target(std, config, "cluster2", initialize=False)
+        assert proj.mode is BoxMode.named
+        assert proj.name == "cluster2"
+        # The container name is now the real kanibako-cluster2, not a hash.
+        from kanibako.utils import container_name_for
+        assert container_name_for(proj) == "kanibako-cluster2"
 
 
 # ---------------------------------------------------------------------------

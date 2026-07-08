@@ -109,6 +109,69 @@ class TestBoxList:
         assert rc == 0
         assert capsys.readouterr().out == ""
 
+    def test_list_name_column_widens_for_long_names(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """NAME column grows so a long name doesn't overflow (BUG-A cosmetic).
+
+        A short name's row is padded to the LONGEST name's width, so its STATUS
+        column aligns.  Mutation proof: reverting the width to the fixed ``<18``
+        pads ``short`` to 18 (not the long width), reddening the assertion.
+        """
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        long_name = "ai-java-course-materials"  # 24 chars > 18
+        for base in ("short", long_name):
+            d = tmp_home / base
+            d.mkdir()
+            resolve_project(std, config, project_dir=str(d), initialize=True)
+
+        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        # name_width == len(long_name) == 24; the short row is ljust-padded to it.
+        assert "short".ljust(len(long_name)) in out
+
+    def test_list_dedups_identical_workset_rows(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Duplicate (name, path) workset rows collapse to one (BUG-A).
+
+        Simulates the observed duplicate-membership state by duplicating the
+        per-workset project entry ``iter_workset_projects`` yields; the printed
+        output must show the member exactly once.  Mutation proof: removing the
+        ``seen_rows`` dedup prints the name twice.
+        """
+        from kanibako.commands.box import run_list
+        from kanibako.paths import iter_workset_projects
+        from kanibako.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("cluster", tmp_home / "worksets" / "cluster", std)
+        source = tmp_home / "cluster2-src"
+        source.mkdir()
+        add_project(ws, "cluster2", source)
+
+        real = iter_workset_projects(std, config)
+        # Duplicate every project entry within each workset (the dup-mint shape).
+        dup = [(wn, w, plist + plist) for wn, w, plist in real]
+
+        args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
+        with patch(
+            "kanibako.commands.box._parser.iter_workset_projects",
+            return_value=dup,
+        ):
+            rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        # The member name appears exactly once (the source path does not contain
+        # the box name, so counting the name counts rows).
+        assert out.count("cluster2 ") == 1
+
 
 class TestBoxListOrphan:
     """Tests for box list --orphan (replaces old box orphan subcommand)."""

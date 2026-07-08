@@ -680,6 +680,33 @@ def run_list(args: argparse.Namespace) -> int:
     names_data = read_names(std.registry)
     path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
 
+    def _norm(p: object) -> str:
+        """Normalize a path (Path or str, possibly None) for row-identity keys."""
+        if not p:
+            return ""
+        try:
+            return str(Path(str(p)).resolve())
+        except OSError:
+            return str(p)
+
+    # NAME column width: floor 18 (the historical fixed width), grown to fit the
+    # longest displayed name (capped) so long names like
+    # ``ai-java-course-materials`` don't overflow the column.
+    _candidate_names: list[str] = []
+    for _sp, _pp in projects:
+        _candidate_names.append(
+            path_to_name.get(str(_pp), _sp.name) if _pp else _sp.name
+        )
+    for _wn, _ws, _plist in ws_data:
+        _candidate_names.extend(pn for pn, _st in _plist)
+    _candidate_names.extend(standalone.keys())
+    name_width = min(40, max([18, *(len(n) for n in _candidate_names)]))
+
+    # Cross-source row dedup (BUG-A): collapse rows that share the same
+    # ``(name, resolved path)`` so an already-duplicated registry entry (e.g. a
+    # box double-registered under the same workspace path) prints exactly once.
+    seen_rows: set[tuple[str, str]] = set()
+
     any_output = False
 
     if projects:
@@ -711,14 +738,20 @@ def run_list(args: argparse.Namespace) -> int:
             if active_only and status != "active":
                 continue
 
+            # Cross-source dedup (BUG-A).
+            row_key = (proj_name, _norm(project_path))
+            if row_key in seen_rows:
+                continue
+            seen_rows.add(row_key)
+
             any_output = True
             if quiet:
                 print(proj_name)
             else:
                 if not header_printed:
-                    print(f"{'NAME':<18} {'STATUS':<10} {'PATH'}")
+                    print(f"{'NAME':<{name_width}} {'STATUS':<10} {'PATH'}")
                     header_printed = True
-                print(f"{proj_name:<18} {status:<10} {label}")
+                print(f"{proj_name:<{name_width}} {status:<10} {label}")
 
     for ws_name, ws, project_list in ws_data:
         ws_items: list[tuple[str, str, str]] = []
@@ -742,6 +775,11 @@ def run_list(args: argparse.Namespace) -> int:
                 if p.name == proj_name:
                     source = str(p.source_path)
                     break
+            # Cross-source dedup (BUG-A): collapse identical (name, path) rows.
+            row_key = (proj_name, _norm(source))
+            if row_key in seen_rows:
+                continue
+            seen_rows.add(row_key)
             ws_items.append((proj_name, display_status, source))
 
         if not ws_items:
@@ -760,9 +798,9 @@ def run_list(args: argparse.Namespace) -> int:
         else:
             print()
             print(f"Workset: {ws_name} ({ws.root})")
-            print(f"  {'NAME':<18} {'STATUS':<10} {'SOURCE'}")
+            print(f"  {'NAME':<{name_width}} {'STATUS':<10} {'SOURCE'}")
             for proj_name, display_status, source in ws_items:
-                print(f"  {proj_name:<18} {display_status:<10} {source}")
+                print(f"  {proj_name:<{name_width}} {display_status:<10} {source}")
 
     # STANDALONE boxes (registry.standalone: box name → in-tree root).
     sa_items: list[tuple[str, str, str]] = []
@@ -777,6 +815,11 @@ def run_list(args: argparse.Namespace) -> int:
             continue
         if active_only and status != "active":
             continue
+        # Cross-source dedup (BUG-A).
+        row_key = (box_name, _norm(root_str))
+        if row_key in seen_rows:
+            continue
+        seen_rows.add(row_key)
         sa_items.append((box_name, status, root_str))
 
     if sa_items:
@@ -785,11 +828,12 @@ def run_list(args: argparse.Namespace) -> int:
             for box_name, _status, _root in sa_items:
                 print(box_name)
         else:
+            sa_width = max(name_width, 26)
             print()
             print("Standalone boxes:")
-            print(f"  {'NAME':<26} {'STATUS':<10} {'ROOT'}")
+            print(f"  {'NAME':<{sa_width}} {'STATUS':<10} {'ROOT'}")
             for box_name, status, root_str in sa_items:
-                print(f"  {box_name:<26} {status:<10} {root_str}")
+                print(f"  {box_name:<{sa_width}} {status:<10} {root_str}")
 
     if not any_output and not quiet:
         if active_only:

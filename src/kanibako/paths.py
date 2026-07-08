@@ -1910,6 +1910,21 @@ def resolve_any_project(
     if raw and "/" not in raw and not Path(raw).exists():
         try:
             resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd())
+        except ProjectError:
+            # A bare token that names NO known project/workset/workset-member box
+            # AND has no path of that name on disk.  Refuse to path-ify it to a
+            # nonexistent cwd-relative path — doing so would resolve to an
+            # UNREGISTERED box with an empty name, minting a phantom
+            # ``kanibako-<hash>`` container that no `list`/`ps` row corresponds
+            # to.  Surface an honest error on the READ path (``initialize`` is
+            # False for stop/box/diagnose/…).  The CREATE path
+            # (``initialize=True``) still path-ifies so a new box can be
+            # materialized at the resolved location; and an existing-path or
+            # qualified (``ws/proj``) spec never reaches here (guarded by the
+            # ``"/" not in raw and not exists`` condition).
+            if not initialize:
+                raise
+        else:
             if kind in ("project", "workset"):
                 # Update `raw` for BOTH kinds: a bare workset name resolves to
                 # the workset ROOT, which detect_project_mode must see (without
@@ -1918,8 +1933,6 @@ def resolve_any_project(
                 # box, so we still reject it below -- but with a clear message.
                 raw = resolved
                 named_workset = kind == "workset"
-        except ProjectError:
-            pass
     if named_workset:
         # The token named a workset, not a project.  `box`/diagnose operate on a
         # single project box, and a workset may contain zero or many; there is no
