@@ -64,6 +64,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--no-vault", action="store_true",
         help="Disable vault directories",
     )
+    create_p.add_argument(
+        "--force", action="store_true",
+        help="Create even if the name is already used by a primary box "
+             "(the box shadows this workset in bare-name resolution)",
+    )
     create_p.set_defaults(func=run_create)
 
     # kanibako workset list / ls (default)
@@ -341,7 +346,7 @@ def run_create(args: argparse.Namespace) -> int:
     name = args.name or path.name
 
     try:
-        ws = create_workset(name, path, std)
+        ws = create_workset(name, path, std, force=getattr(args, "force", False))
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

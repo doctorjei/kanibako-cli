@@ -7,7 +7,6 @@ import argparse
 from kanibako.commands.box._lifecycle import run_move
 from kanibako.config import load_config
 from kanibako.config_io import load_doc
-from kanibako.names import read_names
 from kanibako.paths import load_std_paths, resolve_project
 from kanibako.utils import project_hash
 
@@ -42,16 +41,17 @@ class TestBoxMove:
         assert (dest / "f.txt").read_text() == "data"
         assert not project_dir.exists()
 
-        # names.yaml updated to the new path.
-        names = read_names(std.registry)
-        assert str(dest) in names["projects"].values()
-        assert str(project_dir) not in names["projects"].values()
+        # PRIMARY membership updated to the new path.
+        from kanibako.paths import load_primary_boxes
+        boxes = load_primary_boxes(std.primary_workset)
+        assert str(dest) in boxes.values()
+        assert str(project_dir) not in boxes.values()
 
         # P8b/Option A: the moved box resolves at the new workspace from the
-        # registry (names.yaml above), not an on-disk ``resolved.workspace``.
+        # membership (above), not an on-disk ``resolved.workspace``.
         proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
         # The primary move re-derives the box name from the new workspace basename.
-        assert names["projects"].get(proj.name) == str(dest)
+        assert boxes.get(proj.name) == str(dest)
         assert proj.project_path == dest.resolve()
         assert proj.project_hash == project_hash(str(dest.resolve()))
         assert "project" not in load_doc(proj.metadata_path / "settings.yaml")

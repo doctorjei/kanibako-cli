@@ -1,16 +1,14 @@
 """Consolidated name registry (``config.registry`` → ``registry.yaml``).
 
 A single file at ``@config.registry`` (``@config.data/global/registry.yaml`` ==
-``{data_path}/global/registry.yaml``) backs every kanibako *name* store.  It replaces the former separate files
-``names.yaml`` (projects + worksets) and ``worksets.yaml`` (workset name →
-root), which are no longer read or written.  (The former global ``connected:``
-external-connect index is GONE — connections now live in each workset's
-per-workset registry as a ``boxes:`` entry, design D10.)
+``{data_path}/global/registry.yaml``) backs every kanibako *global* name store.
+It replaces the former separate files ``names.yaml`` (projects + worksets) and
+``worksets.yaml`` (workset name → root), which are no longer read or written.
+(The former global ``connected:`` external-connect index is GONE — connections
+now live in each workset's per-workset registry as a ``boxes:`` entry, design
+D10.)
 
 The file has these top-level sections::
-
-    projects:
-      myapp: /home/user/projects/myapp
 
     worksets:
       clientwork: /home/user/worksets/client
@@ -19,10 +17,11 @@ The file has these top-level sections::
       # box.name → root, populated by sub-step 5d; empty for now.
 
     # NOTE: there is NO ``seeded`` section.  Registry MEMBERSHIP is itself the
-    # seed signal — a box present here (PRIMARY ``projects`` / STANDALONE
-    # ``standalone`` / NAMED workset-local list) was seeded when ``create``
-    # registered it (seed-then-register, §0/§5 of the keyspace spec).  The
-    # former ``seeded`` flag section (and its first-launch gate) are GONE.
+    # seed signal — a box present here (STANDALONE ``standalone`` / NAMED
+    # workset-local list / PRIMARY per-workset ``boxes:`` membership) was seeded
+    # when ``create`` registered it (seed-then-register, §0/§5 of the keyspace
+    # spec).  The former ``seeded`` flag section (and its first-launch gate) are
+    # GONE.
 
     rigs:
       corp/base:1.0: {kind: prefab, ...}   # formerly rigs.yaml
@@ -30,8 +29,14 @@ The file has these top-level sections::
     image_shells:
       sha256:abc...: /bin/bash             # formerly image-shells.yaml
 
-``projects`` and ``worksets`` carry the two sections formerly in
-``names.yaml`` (the human-name index used for name-based lookups).
+The former ``projects`` section (default-mode box name → external-workspace) has
+been RETIRED (clean split, 2026-07-08): a PRIMARY box's identity now lives SOLELY
+in the primary workset's per-workset ``boxes:`` membership
+(``@config.primary_workset/registry.yaml`` via :mod:`kanibako.workset_registry`),
+the AUTHORITATIVE source of box names (spec L514).  This section is no longer
+loaded or written; a stale ``projects`` block left by an older install is simply
+dropped on the next ``save_registry`` (no migration, no legacy read).
+
 ``worksets`` carries the workset name → root registry used both for name-based
 lookups AND to discover/list worksets (the former separate ``worksets.yaml`` and
 its ``workset_roots`` duplicate were collapsed onto this single section,
@@ -63,9 +68,11 @@ from pathlib import Path
 
 from kanibako.config_io import dump_doc, load_doc
 
-# Top-level sections of registry.yaml, in canonical order.
+# Top-level sections of registry.yaml, in canonical order.  ``projects`` was
+# RETIRED (2026-07-08): default-mode box identity lives in the primary workset's
+# per-workset ``boxes:`` membership, not here.  Dropping it from this tuple stops
+# the loader surfacing it AND drops any stale block on the next write.
 _SECTIONS: tuple[str, ...] = (
-    "projects",
     "worksets",
     "standalone",
     "rigs",
@@ -73,7 +80,7 @@ _SECTIONS: tuple[str, ...] = (
 )
 # Name → path sections whose keys are sorted on write (legacy names.yaml shape).
 _NAME_SECTIONS: frozenset[str] = frozenset(
-    {"projects", "worksets"}
+    {"worksets"}
 )
 
 
@@ -86,15 +93,12 @@ def load_registry(registry: Path) -> dict[str, dict]:
     reconstruction.
 
     Absent file → empty sections.  Every section key is always present so
-    callers can index it without a ``.get`` default.  ``projects``/``worksets``
-    are ``{name: path_str}``; ``connected``/``standalone`` are passed through as
-    stored.
+    callers can index it without a ``.get`` default.  ``worksets`` is
+    ``{name: path_str}``; ``standalone`` is passed through as stored.  A stale
+    ``projects`` block (retired 2026-07-08) is ignored — never surfaced.
     """
     data = load_doc(registry) if registry.is_file() else {}
     return {
-        "projects": {
-            k: str(v) for k, v in dict(data.get("projects", {})).items()
-        },
         "worksets": {
             k: str(v) for k, v in dict(data.get("worksets", {})).items()
         },
@@ -108,9 +112,10 @@ def save_registry(registry: Path, sections: dict[str, dict]) -> None:
     """Atomically write *sections* to the ``registry.yaml`` at *registry*.
 
     *registry* is the resolved ``config.registry`` file path.  Only the canonical
-    sections are persisted; ``projects``/``worksets`` keys are sorted for stable
-    diffs (matching the legacy ``names.yaml`` writer).  Missing sections default
-    to empty.
+    sections are persisted; the ``worksets`` name section's keys are sorted for
+    stable diffs (matching the legacy ``names.yaml`` writer).  Missing sections
+    default to empty.  A retired ``projects`` block is NOT among the canonical
+    sections, so this write drops it (clean split).
     """
     data: dict = {}
     for section in _SECTIONS:

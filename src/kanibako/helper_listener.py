@@ -37,6 +37,7 @@ class HelperContext:
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
     boxes: Path | None = None          # resolved system.path.boxes (std.boxes)
     registry: Path | None = None       # resolved config.registry file (std.registry)
+    primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
 
 
 class HelperHub:
@@ -370,10 +371,14 @@ class HelperHub:
             or ctx.data_path is None
             or ctx.boxes is None
             or ctx.registry is None
+            or ctx.primary_workset is None
         ):
             return {
                 "status": "error",
-                "message": "fork requires project_path, data_path, boxes and registry",
+                "message": (
+                    "fork requires project_path, data_path, boxes, registry "
+                    "and primary_workset"
+                ),
             }
 
         name = request.get("name", "")
@@ -396,18 +401,23 @@ class HelperHub:
         except Exception as e:
             return {"status": "error", "message": f"workspace copy failed: {e}"}
 
-        # Resolve source metadata dir via names.yaml reverse lookup
-        from kanibako.names import assign_name, read_names
+        # Resolve source metadata dir via the PRIMARY per-workset ``boxes:``
+        # membership reverse lookup (the sole store since the global ``projects:``
+        # section retired).
+        from kanibako.paths import (
+            assign_primary_box_name,
+            primary_box_name_for_workspace,
+        )
 
         boxes_base = ctx.boxes
         source_meta_dir: Path | None = None
-        names = read_names(ctx.registry)
-        for rname, rpath in names["projects"].items():
-            if rpath == str(ctx.project_path):
-                candidate = boxes_base / rname
-                if candidate.is_dir():
-                    source_meta_dir = candidate
-                break
+        source_name = primary_box_name_for_workspace(
+            ctx.primary_workset, str(ctx.project_path),
+        )
+        if source_name is not None:
+            candidate = boxes_base / source_name
+            if candidate.is_dir():
+                source_meta_dir = candidate
 
         # Fallback: derive from shell_path (shell_path is typically boxes/{name}/home/)
         if source_meta_dir is None:
@@ -415,9 +425,13 @@ class HelperHub:
             if candidate.is_dir() and candidate.parent.name == "boxes":
                 source_meta_dir = candidate
 
-        # Assign a new name for the fork
+        # Assign + register a new name for the fork in the PRIMARY membership
+        # (was global-only before — a fork now joins the membership like any
+        # other primary box).
         try:
-            new_name = assign_name(ctx.registry, str(new_path))
+            new_name = assign_primary_box_name(
+                ctx.primary_workset, ctx.registry, str(new_path),
+            )
         except Exception as e:
             return {"status": "error", "message": f"name assignment failed: {e}"}
 

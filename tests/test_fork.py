@@ -29,12 +29,15 @@ def fork_ctx(tmp_path):
     data_path.mkdir()
     (data_path / "boxes").mkdir()
 
-    # Set up the registry with the project registered
+    # Set up the global registry (worksets only) and the PRIMARY membership with
+    # the source box "myapp" registered (name → external workspace) — the sole
+    # store since the global ``projects:`` section retired.
     registry_toml = data_path / "global" / "registry.yaml"
     registry_toml.parent.mkdir(parents=True, exist_ok=True)
-    registry_toml.write_text(
-        f'projects:\n  myapp: "{project_path}"\nworksets: {{}}\n'
-    )
+    registry_toml.write_text("worksets: {}\n")
+    primary_reg = data_path / "primary_workset" / "registry.yaml"
+    primary_reg.parent.mkdir(parents=True, exist_ok=True)
+    primary_reg.write_text(f'boxes:\n  myapp: "{project_path}"\n')
 
     # Set up metadata dir (boxes/myapp/)
     meta_dir = data_path / "boxes" / "myapp"
@@ -70,6 +73,7 @@ def fork_ctx(tmp_path):
         data_path=data_path,
         registry=data_path / "global" / "registry.yaml",
         boxes=data_path / "boxes",
+        primary_workset=data_path / "primary_workset",
     )
 
 
@@ -125,10 +129,9 @@ class TestHandleFork:
         resp = _send(sock_path, {"action": "fork", "name": "named"})
         assert resp["status"] == "ok"
         assert "name" in resp
-        # The assigned name should be registered in names.yaml
-        from kanibako.names import read_names
-        names = read_names(ctx.registry)
-        assert resp["name"] in names["projects"]
+        # The assigned name should be registered in the PRIMARY membership.
+        from kanibako.paths import load_primary_boxes
+        assert resp["name"] in load_primary_boxes(ctx.primary_workset)
 
     def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
         hub, sock_path, ctx = fork_hub

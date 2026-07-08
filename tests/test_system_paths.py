@@ -278,16 +278,14 @@ class TestBoxesOverrideConsumers:
         assert proj.metadata_path == custom_boxes / proj.name
 
         # Reverse-lookup (path -> name -> dir) resolves under the custom dir.
-        name, box_dir = _resolve_local_dir(
-            std.registry, str(workspace.resolve()), std.boxes,
-        )
+        name, box_dir = _resolve_local_dir(std, str(workspace.resolve()))
         assert name == proj.name
         assert box_dir == custom_boxes / proj.name
 
         # Deepest-ancestor lookup also keys off the custom boxes dir.
         sub = workspace / "src"
         sub.mkdir()
-        ancestor = _find_local_ancestor(sub.resolve(), std.registry, std.boxes)
+        ancestor = _find_local_ancestor(sub.resolve(), std)
         assert ancestor == workspace.resolve()
 
         # Listing enumerates the custom boxes dir.

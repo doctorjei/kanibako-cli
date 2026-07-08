@@ -1,24 +1,26 @@
-"""Project name registry (the ``projects``/``worksets`` sections of
-``system.registry``).
+"""Global name registry (the ``worksets`` section of ``config.registry``).
 
 Central index at ``@config.registry`` (``{data_path}/global/registry.yaml``)
-mapping human-readable names to project paths (for default-mode projects) and
-workset roots (for worksets).  Standalone projects are intentionally excluded
-here — their identity lives in the registry's ``standalone`` section (later
-sub-step), not in these two sections.
+mapping human-readable workset names to their root paths.  Default-mode
+(PRIMARY) box names are NOT here anymore — the former ``projects`` section was
+retired (2026-07-08, clean split): a primary box's identity now lives SOLELY in
+the primary workset's per-workset ``boxes:`` membership (spec L514, via
+:mod:`kanibako.workset_registry`; the primary-membership name API is in
+:mod:`kanibako.paths`).  Standalone boxes are likewise excluded — their identity
+lives in the registry's ``standalone`` section, owned by
+:mod:`kanibako.registry_store`.
 
-The registry holds these two sections (among others — see
-:mod:`kanibako.registry_store`)::
-
-    projects:
-      myapp: /home/user/projects/myapp
+The registry section this module owns::
 
     worksets:
       clientwork: /home/user/worksets/client
 
-This module reads/writes ONLY the ``projects``/``worksets`` sections; the
-``connected``/``standalone`` sections are owned by their respective callers and
-preserved across writes by :mod:`kanibako.registry_store`.
+This module reads/writes ONLY the ``worksets`` section; the
+``standalone``/``rigs``/``image_shells`` sections are owned by their respective
+callers and preserved across writes by :mod:`kanibako.registry_store`.
+:func:`resolve_name` additionally consults the PRIMARY per-workset membership
+(when a *primary_workset* is supplied) so a bare primary-box name still resolves
+at the same precedence the retired ``projects`` section held.
 """
 
 from __future__ import annotations
@@ -27,29 +29,30 @@ from pathlib import Path
 
 from kanibako import registry_store
 from kanibako.errors import ProjectError
+from kanibako.log import get_logger
+
+logger = get_logger("names")
 
 
 # ---------------------------------------------------------------------------
-# I/O helpers — back the projects/worksets sections of system.registry.
+# I/O helpers — back the worksets section of config.registry.
 # ---------------------------------------------------------------------------
 
 def _load(registry: Path) -> dict[str, dict[str, str]]:
-    """Load the projects/worksets sections of registry.yaml."""
+    """Load the worksets section of registry.yaml."""
     sections = registry_store.load_registry(registry)
     return {
-        "projects": dict(sections["projects"]),
         "worksets": dict(sections["worksets"]),
     }
 
 
 def _save(registry: Path, names: dict[str, dict[str, str]]) -> None:
-    """Write the projects/worksets sections of registry.yaml.
+    """Write the worksets section of registry.yaml.
 
-    Reads the full registry first so the ``connected``/``standalone`` sections
-    (owned elsewhere) are preserved.
+    Reads the full registry first so the ``standalone``/``rigs``/``image_shells``
+    sections (owned elsewhere) are preserved.
     """
     sections = registry_store.load_registry(registry)
-    sections["projects"] = dict(names.get("projects", {}))
     sections["worksets"] = dict(names.get("worksets", {}))
     registry_store.save_registry(registry, sections)
 
@@ -59,9 +62,11 @@ def _save(registry: Path, names: dict[str, dict[str, str]]) -> None:
 # ---------------------------------------------------------------------------
 
 def read_names(registry: Path) -> dict[str, dict[str, str]]:
-    """Load names.yaml.
+    """Load the global name registry.
 
-    Returns ``{"projects": {name: path, ...}, "worksets": {name: path, ...}}``.
+    Returns ``{"worksets": {name: path, ...}}``.  (The ``projects`` section was
+    retired — see the module docstring; primary box names live in the primary
+    per-workset membership.)
 
     *registry* is the resolved ``config.registry`` file path (``std.registry``).
     """
@@ -72,12 +77,14 @@ def register_name(
     registry: Path,
     name: str,
     path: str,
-    section: str = "projects",
+    section: str = "worksets",
 ) -> None:
-    """Register a name → path mapping.
+    """Register a workset name → path mapping.
 
-    Raises ``ProjectError`` if *name* is already registered in either section,
-    or if *path* resolves to ``$HOME``.
+    Raises ``ProjectError`` if *name* is already registered as a workset, or if
+    *path* resolves to ``$HOME``.  (Since the ``projects`` section retired, the
+    only global name section is ``worksets``; the primary-box name domain and its
+    registration live in :mod:`kanibako.paths`.)
     """
     # Guard: never register $HOME as a project path.
     if Path(path).resolve() == Path.home().resolve():
@@ -86,13 +93,11 @@ def register_name(
             "mount your entire home directory as the workspace."
         )
     names = _load(registry)
-    # Check for duplicates across both sections.
-    for sec in ("projects", "worksets"):
-        if name in names[sec]:
-            raise ProjectError(
-                f"Name '{name}' is already registered"
-                f" ({sec}: {names[sec][name]})"
-            )
+    if name in names["worksets"]:
+        raise ProjectError(
+            f"Name '{name}' is already registered"
+            f" (worksets: {names['worksets'][name]})"
+        )
     names[section][name] = path
     _save(registry, names)
 
@@ -101,7 +106,7 @@ def register_name_if_absent(
     registry: Path,
     name: str,
     path: str,
-    section: str = "projects",
+    section: str = "worksets",
 ) -> None:
     """Idempotent :func:`register_name` for the interrupted-create recovery path.
 
@@ -109,9 +114,9 @@ def register_name_if_absent(
     *path* (the only at-rest collision the deferred-registration marker flow can
     legitimately re-enter — a crash in the tiny register→remove-marker window
     leaves the box registered, so re-running the create/seed recovery must not
-    raise on the already-present mapping).  Anything else — the name registered
-    in the OTHER section, or in *section* under a DIFFERENT path — is a genuine
-    collision and re-raises via :func:`register_name`.
+    raise on the already-present mapping).  Anything else — *section* holding the
+    name under a DIFFERENT path — is a genuine collision and re-raises via
+    :func:`register_name`.
     """
     if Path(path).resolve() == Path.home().resolve():
         # Surface the $HOME guard with the same message as register_name.
@@ -128,7 +133,7 @@ def update_name_path(
     registry: Path,
     name: str,
     new_path: str,
-    section: str = "projects",
+    section: str = "worksets",
 ) -> bool:
     """Update the path for an existing registered name.
 
@@ -151,7 +156,7 @@ def update_name_path(
 def unregister_name(
     registry: Path,
     name: str,
-    section: str = "projects",
+    section: str = "worksets",
 ) -> bool:
     """Remove a name from the registry.
 
@@ -169,16 +174,17 @@ def lookup_by_path(
     registry: Path,
     path: str,
 ) -> tuple[str, str] | None:
-    """Find a registered name by its path value.
+    """Find a registered WORKSET name by its path value.
 
-    Returns ``(name, section)`` if found, ``None`` otherwise.
+    Returns ``(name, "worksets")`` if found, ``None`` otherwise.  (Primary-box
+    reverse-lookup by path lives in :mod:`kanibako.paths` against the primary
+    per-workset membership.)
     """
     resolved = str(Path(path).resolve())
     names = _load(registry)
-    for section in ("projects", "worksets"):
-        for name, registered_path in names[section].items():
-            if str(Path(registered_path).resolve()) == resolved:
-                return name, section
+    for name, registered_path in names["worksets"].items():
+        if str(Path(registered_path).resolve()) == resolved:
+            return name, "worksets"
     return None
 
 
@@ -193,8 +199,9 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     cross-workset collision.  A workset with no such member contributes nothing.
 
     *worksets* is the ``[worksets]`` section (``{ws_name: ws_root}``) — the
-    PRIMARY workset is intentionally excluded: its default-mode members live in
-    the ``[projects]`` section, which :func:`resolve_name` matches directly.
+    PRIMARY workset is intentionally excluded (it is not listed there): its
+    default-mode members live in the PRIMARY per-workset ``boxes:`` membership,
+    which :func:`resolve_name` matches directly (step 2) via *primary_workset*.
     """
     from kanibako import workset_registry
     from kanibako.config_io import load_doc
@@ -215,13 +222,16 @@ def resolve_name(
     registry: Path,
     name: str,
     cwd: Path | None = None,
+    primary_workset: Path | None = None,
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
     Resolution order:
 
     1. If *cwd* is inside a workset → check that workset's projects first
-    2. ``[projects]`` section (default-mode projects)
+    2. PRIMARY default-mode boxes: a bare name in the primary per-workset
+       ``boxes:`` membership (was the retired global ``[projects]`` section) —
+       consulted only when *primary_workset* is supplied
     3. ``[worksets]`` section (workset names)
     4. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
        per-workset registry ``boxes:`` membership (so a member box is
@@ -246,9 +256,32 @@ def resolve_name(
                 if candidate.is_dir():
                     return str(candidate), "project"
 
-    # 2. Default-mode projects.
-    if name in names["projects"]:
-        return names["projects"][name], "project"
+    # 2. PRIMARY default-mode boxes (the primary per-workset membership — the
+    #    store that succeeded the retired ``[projects]`` section, at the SAME
+    #    precedence position).  Only consulted when the caller passes the primary
+    #    workset root (a lookup with no *primary_workset* skips this step).
+    if primary_workset is not None:
+        from kanibako import workset_registry
+        from kanibako.config_io import load_doc
+
+        primary_reg = workset_registry.resolve_workset_registry_path(
+            primary_workset, load_doc(primary_workset / "settings.yaml"),
+        )
+        primary_path = workset_registry.workset_box_path(primary_reg, name)
+        if primary_path is not None:
+            # Cross-kind shadow (per-kind name policy, Jei 2026-07-08): a bare
+            # name that is BOTH a primary box and a workset resolves
+            # deterministically to the box (this step precedes the worksets
+            # step).  Warn once so the shadowed workset is not silently missed —
+            # it stays reachable via its noun-scoped ``workset`` commands.
+            if name in names["worksets"]:
+                logger.warning(
+                    "bare name '%s' resolved to the primary box; a workset of "
+                    "the same name is shadowed (reach it via "
+                    "'kanibako workset <cmd> %s').",
+                    name, name,
+                )
+            return primary_path, "project"
 
     # 3. Worksets.
     if name in names["worksets"]:
@@ -306,24 +339,20 @@ def resolve_qualified_name(
 def pick_name(
     registry: Path,
     path: str,
-    section: str = "projects",
+    section: str = "worksets",
     boxes_dir: Path | None = None,
 ) -> str:
-    """Pick a collision-free name from the basename of *path* WITHOUT writing.
+    """Pick a collision-free WORKSET name from the basename of *path* WITHOUT writing.
 
-    The candidate-selection core of :func:`assign_name`, split out so the
-    deferred-registration (interrupted-create) path can obtain the name a box
-    will be registered under WITHOUT writing the registry yet (marker → seed →
-    register → remove-marker, B3).
+    The candidate-selection core of :func:`assign_name`, split out so a deferred
+    registration path can obtain the name a workset will be registered under
+    WITHOUT writing the registry yet.
 
     Collisions append a number: ``name``, ``name2``, ``name3``, ...  A candidate
-    is rejected when it is already a registered name (either section) OR — when
+    is rejected when it is already a registered workset name OR — when
     *boxes_dir* is supplied — when its box directory ``boxes_dir/<candidate>``
-    already EXISTS on disk.  The directory check guards the deferred-registration
-    window: a half-built box (dir present, name not yet registered after a crash)
-    keeps its name reserved so a SECOND create cannot grab it and seed over the
-    interrupted box's home.  Recovery of that interrupted box resolves it by its
-    directory, not through ``pick_name``.
+    already EXISTS on disk.  (The PRIMARY-box name domain — primary membership ∪
+    workset names — and its directory-aware pick live in :mod:`kanibako.paths`.)
 
     Performs NO registration and NO filesystem mutation — caller registers (or
     defers).
@@ -333,7 +362,7 @@ def pick_name(
         base = "project"
 
     names = _load(registry)
-    all_names = set(names["projects"]) | set(names["worksets"])
+    all_names = set(names["worksets"])
 
     def taken(cand: str) -> bool:
         if cand in all_names:
@@ -354,7 +383,7 @@ def pick_name(
 def assign_name(
     registry: Path,
     path: str,
-    section: str = "projects",
+    section: str = "worksets",
     boxes_dir: Path | None = None,
 ) -> str:
     """Auto-assign a name from the basename of *path*.

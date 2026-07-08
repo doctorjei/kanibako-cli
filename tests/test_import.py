@@ -254,12 +254,20 @@ class TestPrimaryBoxImport:
         sole identity authority and a sparse-created box does not self-describe on
         disk, so there is nothing to re-import.  (``system recover`` is the future
         remedy.)"""
+        from kanibako.paths import (
+            load_primary_boxes,
+            unregister_primary_box_name,
+        )
+
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
         assert proj.name  # created + registered
-        # Drop the registry entry — the on-disk box dir survives, unregistered.
-        registry_store.save_section(std.registry, "projects", {})
+        # Drop the PRIMARY-membership entry (the sole store since the global
+        # ``projects:`` section retired) — the on-disk box dir survives,
+        # unregistered.
+        unregister_primary_box_name(std.primary_workset, proj.name)
+        assert load_primary_boxes(std.primary_workset) == {}
         capsys.readouterr()
 
         # Re-resolving the same workspace does NOT silently re-register the box.
@@ -267,7 +275,7 @@ class TestPrimaryBoxImport:
             std, config, project_dir=str(project_dir), initialize=False,
         )
         assert proj2.name == ""  # not recovered from disk
-        assert registry_store.load_section(std.registry, "projects") == {}
+        assert load_primary_boxes(std.primary_workset) == {}
         assert "Imported primary box" not in capsys.readouterr().err
 
     # NOTE (P8c): the direct unit tests of ``import_primary_box`` /

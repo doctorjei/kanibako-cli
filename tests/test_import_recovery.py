@@ -88,18 +88,25 @@ class TestImportBehavioralEquivalence:
         """P8b/Option A: a register=True resolve does NOT auto-rediscover an
         unregistered on-disk PRIMARY box (retired live import) — and it touches no
         journal.  The registry is the sole identity authority."""
+        from kanibako.paths import (
+            load_primary_boxes,
+            unregister_primary_box_name,
+        )
+
         proj = resolve_project(
             std, config, project_dir=str(project_dir), initialize=True,
         )
         assert proj.name
-        registry_store.save_section(std.registry, "projects", {})
+        # Drop the PRIMARY-membership entry (the sole store since the global
+        # ``projects:`` section retired).
+        unregister_primary_box_name(std.primary_workset, proj.name)
         capsys.readouterr()
 
         proj2 = resolve_project(
             std, config, project_dir=str(project_dir), initialize=False,
         )
         assert proj2.name == ""  # not recovered from disk
-        assert registry_store.load_section(std.registry, "projects") == {}
+        assert load_primary_boxes(std.primary_workset) == {}
         assert journal.read_journal(std.journal) == {}
 
     def test_named_workset_import_empty_journal_at_rest(

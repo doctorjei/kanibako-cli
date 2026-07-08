@@ -226,7 +226,8 @@ class TestRunCreate:
     ):
         """`box create --name X` registers the project under name X,
         not the directory basename."""
-        from kanibako.names import read_names
+        from kanibako.config import config_file_path, load_config
+        from kanibako.paths import load_primary_boxes, load_std_paths, xdg
 
         parser = build_parser()
         args = parser.parse_args(
@@ -235,13 +236,14 @@ class TestRunCreate:
         rc = run_create(args)
 
         assert rc == 0
-        names = read_names(credentials_dir / "global" / "registry.yaml")
-        assert "custom-name" in names["projects"], (
-            f"Expected 'custom-name' in registered projects, got: {names}"
+        std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
+        boxes = load_primary_boxes(std.primary_workset)
+        assert "custom-name" in boxes, (
+            f"Expected 'custom-name' in the PRIMARY membership, got: {boxes}"
         )
-        assert project_dir.name not in names["projects"], (
+        assert project_dir.name not in boxes, (
             f"Directory basename should NOT be registered when --name given, "
-            f"got: {names}"
+            f"got: {boxes}"
         )
 
     def test_resolve_project_accepts_registered_name(

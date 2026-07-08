@@ -31,7 +31,7 @@ from typing import Callable
 from kanibako import registry_store
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import WorksetError
-from kanibako.names import read_names, register_name, unregister_name
+from kanibako.names import register_name, unregister_name
 from kanibako.paths import StandardPaths
 
 # The single per-workset file at the workset root.  It carries the workset
@@ -311,11 +311,16 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
+def create_workset(
+    name: str, root: Path, std: StandardPaths, force: bool = False,
+) -> Workset:
     """Create a new workset directory structure and register it globally.
 
     Raises ``WorksetError`` if *root* already exists or name is already
-    registered.
+    registered.  Per the per-kind name policy (Jei 2026-07-08), a name that
+    already names a PRIMARY BOX is refused UNLESS *force* (box and workset names
+    are separate namespaces, but a bare name shared across kinds resolves to the
+    box, shadowing this workset in bare-name lookups).
     """
     if not name:
         raise WorksetError("Workset name must not be empty.")
@@ -337,6 +342,21 @@ def create_workset(name: str, root: Path, std: StandardPaths) -> Workset:
             f"{registry[name]}). Workset names must be unique; choose a "
             "different name."
         )
+
+    # Cross-kind name guard (per-kind name policy, Jei 2026-07-08): a NEW workset
+    # whose name collides with an existing PRIMARY BOX name would be shadowed by
+    # the box in bare-name resolution (the box wins).  Refuse UNLESS *force*,
+    # BEFORE any on-disk side effect below.  (SAME-kind workset uniqueness above
+    # stays unconditional — --force never bypasses it.)
+    if not force:
+        from kanibako.paths import load_primary_boxes
+        if name in load_primary_boxes(std.primary_workset):
+            raise WorksetError(
+                f"Workset name '{name}' is already in use by a primary box. "
+                f"Box and workset names are separate namespaces, but this bare "
+                f"name would then be shadowed by the box in bare-name "
+                f"resolution. Re-run with --force to use this name anyway."
+            )
 
     root = root.resolve()
     if root.exists():
@@ -412,19 +432,21 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 def default_workset(std: StandardPaths) -> Workset:
     """Synthesize the default workset (the group of default-mode projects).
 
-    The default workset is virtual: its members are the default-mode projects
-    in ``names.yaml [projects]``.  It roots at ``@config.primary_workset``
-    (spec §2c: PRIMARY ``meta.workset.path``), so its settings/env files derive
-    from ``root`` exactly like a named workset's (F4).  Credential sharing is
-    now a normal settable cascade key (``workset.auth.share_allowed``),
-    resolved through the settings pipeline — NOT a workset field.  This object
-    is NEVER persisted to disk (no registry write; the root settings.yaml
-    carries only cascade keys, never a ``workset.meta`` identity).
+    The default workset is virtual: its members are the default-mode boxes in
+    the PRIMARY per-workset ``boxes:`` membership (the sole store since the global
+    ``projects:`` section retired, 2026-07-08).  It roots at
+    ``@config.primary_workset`` (spec §2c: PRIMARY ``meta.workset.path``), so its
+    settings/env files derive from ``root`` exactly like a named workset's (F4).
+    Credential sharing is now a normal settable cascade key
+    (``workset.auth.share_allowed``), resolved through the settings pipeline —
+    NOT a workset field.  This object is NEVER persisted to disk (no registry
+    write; the root settings.yaml carries only cascade keys, never a
+    ``workset.meta`` identity).
     """
-    from kanibako.paths import warn_legacy_primary_settings
+    from kanibako.paths import load_primary_boxes, warn_legacy_primary_settings
 
     warn_legacy_primary_settings(std)
-    projects_map = read_names(std.registry).get("projects", {})
+    projects_map = load_primary_boxes(std.primary_workset)
     projects = [
         WorksetProject(name=name, source_path=Path(path))
         for name, path in projects_map.items()

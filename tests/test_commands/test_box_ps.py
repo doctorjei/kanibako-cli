@@ -43,7 +43,7 @@ def _mock_patches(mock_runtime, names=None):
         patch("kanibako.commands.box._parser.load_std_paths", return_value=MagicMock(data_path=MagicMock())),
         patch("kanibako.commands.box._parser.iter_projects", return_value=[]),
         patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-        patch("kanibako.commands.box._parser.read_names", return_value=names),
+        patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
     )
 
 
@@ -101,8 +101,8 @@ class TestBoxPs:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=[]),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names",
-                  return_value={"projects": {}, "worksets": {}}),
+            patch("kanibako.commands.box._parser.load_primary_boxes",
+                  return_value={}),
         ):
             args = _ps_args()
             rc = run_ps(args)
@@ -153,7 +153,7 @@ class TestRunList:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=projects),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names", return_value=names),
+            patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
         ):
             args = _list_args()
             rc = run_list(args)
@@ -196,7 +196,7 @@ class TestRunList:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=projects),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names", return_value=names),
+            patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
         ):
             args = _list_args(active=True)
             rc = run_list(args)
@@ -225,7 +225,7 @@ class TestRunList:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=projects),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names", return_value=names),
+            patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
         ):
             args = _list_args(active=True)
             rc = run_list(args)
@@ -253,7 +253,7 @@ class TestRunList:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=projects),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names", return_value=names),
+            patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
         ):
             args = _list_args(quiet=True)
             rc = run_list(args)
@@ -284,7 +284,7 @@ class TestRunList:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=projects),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names", return_value=names),
+            patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
         ):
             args = _list_args()
             rc = run_list(args)
@@ -324,7 +324,7 @@ class TestRunList:
                   return_value=MagicMock(data_path=MagicMock())),
             patch("kanibako.commands.box._parser.iter_projects", return_value=projects),
             patch("kanibako.commands.box._parser.iter_workset_projects", return_value=[]),
-            patch("kanibako.commands.box._parser.read_names", return_value=names),
+            patch("kanibako.commands.box._parser.load_primary_boxes", return_value=names.get("projects", {})),
         ):
             args = _ps_args(show_all=True)
             rc = run_ps(args)

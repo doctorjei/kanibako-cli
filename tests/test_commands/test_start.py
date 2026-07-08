@@ -4707,8 +4707,7 @@ class TestPersonaLoadOrErrorUnmasked:
         # cwd is tmp_home/project (a brand-new box → real resolver yields name='').
         # XDG_CONFIG_HOME (tmp_home/config) has NO persona host dir → unloadable.
         from kanibako.config import load_config
-        from kanibako.names import read_names
-        from kanibako.paths import load_std_paths
+        from kanibako.paths import load_primary_boxes, load_std_paths
 
         with self._preamble():
             rc = _run_container(
@@ -4725,9 +4724,9 @@ class TestPersonaLoadOrErrorUnmasked:
 
         std = load_std_paths(load_config(config_file))
         # (3) TRUE PRE-FLIGHT: the box was NEVER materialised (deferred probe only)
-        #     → no box dir / settings.yaml, registry untouched, no agent store.
+        #     → no box dir / settings.yaml, membership untouched, no agent store.
         assert not std.boxes.exists() or not any(std.boxes.iterdir())
-        assert read_names(std.registry)["projects"] == {}
+        assert load_primary_boxes(std.primary_workset) == {}
         assert not (std.agents / "navigator℘claude").exists()
 
     def test_loadable_persona_start_passes_gate_real_path(

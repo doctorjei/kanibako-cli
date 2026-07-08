@@ -31,7 +31,7 @@ Schema (``global/journal.yaml``)::
     entries:
       /home/jei/projects/foo:        # keyed by box host-side PATH (pre-registration)
         op: create                   # create|import|connect|move|convert|...
-        name: foo                    # assigned (pick_name); may not be registered yet
+        name: foo                    # assigned (pick_primary_box_name); may not be registered yet
         mode: primary                # primary|workset|standalone
         workset: __PRIMARY__         # if relevant (else absent)
         started_at: 2026-06-30T07:12:00Z
