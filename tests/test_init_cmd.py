@@ -48,6 +48,22 @@ class TestBoxCreateParser:
     def test_new_removed_from_subcommands(self):
         assert "new" not in _SUBCOMMANDS
 
+    def test_create_parser_private(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", "--private"])
+        assert args.private is True
+
+    def test_create_parser_private_default_false(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone"])
+        assert args.private is False
+
+    def test_top_level_create_parser_private(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "--standalone", "--private"])
+        assert args.command == "create"
+        assert args.private is True
+
 
 # ---------------------------------------------------------------------------
 # TestRunCreate
@@ -344,3 +360,149 @@ class TestCreateImage:
         project_toml = project_dir.resolve() / "settings.yaml"
         merged = load_merged_config(config_file, project_toml)
         assert "kanibako" in merged.box_image
+
+
+class TestCreatePrivate:
+    """`create --private` closes the OAuth-token-leak-at-create.
+
+    A private box persists ``box.auth.global_enabled=false`` +
+    ``box.auth.workset_enabled=false`` to the box settings.yaml BEFORE the home
+    seed runs, so ``seed_new_box``'s ``resolve_auth_source`` resolves tier
+    ``"box"`` (source_root None) and the host OAuth credential is never copied
+    into the box.
+    """
+
+    @staticmethod
+    def _box_auth(project_dir):
+        from kanibako.config import load_doc
+        settings = project_dir.resolve() / "settings.yaml"
+        return (load_doc(settings).get("box") or {}).get("auth") or {}
+
+    @staticmethod
+    def _shell_home(project_dir):
+        return project_dir.resolve() / "box_data" / "home"
+
+    def test_private_writes_both_auth_toggles(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """--private persists BOTH box-scope auth enables OFF (as real bools)."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", "--standalone", "--private", str(project_dir)]
+        )
+        assert run_create(args) == 0
+        auth = self._box_auth(project_dir)
+        assert auth.get("global_enabled") is False
+        assert auth.get("workset_enabled") is False
+
+    def test_private_writes_only_the_two_toggles(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """--private writes NOTHING beyond the two auth toggles (additive)."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", "--standalone", "--private", str(project_dir)]
+        )
+        assert run_create(args) == 0
+        auth = self._box_auth(project_dir)
+        assert set(auth) == {"global_enabled", "workset_enabled"}
+
+    def test_default_create_writes_no_auth_toggles(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """WITHOUT --private, no box.auth override is written (unchanged)."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["box", "create", "--standalone", str(project_dir)]
+        )
+        assert run_create(args) == 0
+        assert self._box_auth(project_dir) == {}
+
+    # ---- mechanism proof: the seed reads the toggles (tier="box") ----------
+
+    def test_private_seed_resolves_tier_box_no_forward(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """--private → seed_box_credentials sees auth.tier "box" (no sharing).
+
+        Mutation-proof: the toggles are written BEFORE the seed, so the seed's
+        ``resolve_auth_source`` resolves tier "box".  Drop/reorder the write and
+        a share-capable (claude) box would resolve tier "global" — this reddens.
+        """
+        from unittest.mock import patch
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "create", "--standalone", "--private",
+            "--agent", "claude", str(project_dir),
+        ])
+        with patch("kanibako.commands.start.credsync") as m_credsync:
+            assert run_create(args) == 0
+        m_credsync.seed_box_credentials.assert_called_once()
+        auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
+        assert auth.tier == "box"
+        assert auth.shares is False
+
+    def test_default_seed_resolves_tier_global_forwards(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """WITHOUT --private, a share-capable box resolves tier "global"."""
+        from unittest.mock import patch
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "create", "--standalone",
+            "--agent", "claude", str(project_dir),
+        ])
+        with patch("kanibako.commands.start.credsync") as m_credsync:
+            assert run_create(args) == 0
+        m_credsync.seed_box_credentials.assert_called_once()
+        auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
+        assert auth.tier == "global"
+        assert auth.shares is True
+
+    # ---- black-box proof: the real credential file is / isn't seeded -------
+
+    def test_private_does_not_seed_credentials_file(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """End-to-end: --private leaves NO .credentials.json in the box home."""
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "create", "--standalone", "--private",
+            "--agent", "claude", str(project_dir),
+        ])
+        assert run_create(args) == 0
+        seeded = list(self._shell_home(project_dir).rglob(".credentials.json"))
+        assert seeded == []
+
+    def test_default_seeds_credentials_file(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """End-to-end control: a default share-capable box DOES seed the cred."""
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "create", "--standalone",
+            "--agent", "claude", str(project_dir),
+        ])
+        assert run_create(args) == 0
+        seeded = list(self._shell_home(project_dir).rglob(".credentials.json"))
+        assert len(seeded) == 1
+
+    # ---- coverage: primary/named (non-standalone) mode is closed too -------
+
+    def test_private_primary_mode_resolves_tier_box(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """--private closes the leak in DEFAULT (primary/named) mode too — not
+        just standalone.  The box's settings.yaml lives under the data dir here,
+        so assert via the seed's resolved auth (tier "box", no forward)."""
+        from unittest.mock import patch
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "create", "--private", "--agent", "claude", str(project_dir),
+        ])
+        with patch("kanibako.commands.start.credsync") as m_credsync:
+            assert run_create(args) == 0
+        m_credsync.seed_box_credentials.assert_called_once()
+        auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
+        assert auth.tier == "box"
+        assert auth.shares is False
