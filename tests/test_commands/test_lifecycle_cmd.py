@@ -19,7 +19,7 @@ from kanibako.commands.box._lifecycle import (
 )
 from kanibako.config import load_config
 from kanibako.config_io import load_doc
-from kanibako.names import read_names
+from kanibako.paths import load_primary_boxes
 from kanibako.paths import (
     BoxMode,
     load_std_paths,
@@ -136,8 +136,8 @@ class TestRemap:
         assert rc == 0
         # File untouched (records-only).
         assert (new / "file.txt").read_text() == "keep"
-        names = read_names(std.registry)
-        assert str(new) in names["projects"].values()
+        names = load_primary_boxes(std.primary_workset)
+        assert str(new) in names.values()
 
         # P8b/Option A: the remapped workspace resolves from the registry, not an
         # on-disk ``resolved.workspace`` (no ``project:`` on disk).
@@ -255,7 +255,7 @@ class TestConvert:
         # P8b/Option A: primary identity is the names.yaml registration, not disk.
         assert proj.mode == BoxMode.primary
         assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
-        assert str(pdir) in read_names(std.registry)["projects"].values()
+        assert str(pdir) in load_primary_boxes(std.primary_workset).values()
 
     def test_convert_to_workset_inplace_external(self, env):
         config, std, tmp_home = env

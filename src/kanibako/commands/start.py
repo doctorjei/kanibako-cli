@@ -46,7 +46,6 @@ from kanibako.paths import (
     workset_env_path,
     workset_settings_path,
 )
-from kanibako.names import pick_name
 from kanibako.agent_ref import (
     canonicalize_agent_ref,
     display_agent_ref,
@@ -2192,6 +2191,7 @@ def _run_container(
                 data_path=std.data_path,
                 boxes=std.boxes,
                 registry=std.registry,
+                primary_workset=std.primary_workset,
             )
 
             msg_log = MessageLog(log_path)
@@ -3061,11 +3061,11 @@ def _name_new_box_probe(std, proj) -> None:
     BEFORE it can verdict (F7 on the launch path, F5 on the create path).  Give the
     probe the name it WILL be materialised under so the gate resolves cleanly:
 
-    * PRIMARY — :func:`~kanibako.names.pick_name` (DETERMINISTIC: the workspace
-      basename plus a collision check against the SAME registry/boxes state the
-      later ``initialize=True`` resolve reads, so the probe name == the
-      ``assign_name`` the materialise assigns — gate → materialise happen in ONE
-      invocation with no intervening registry/dir writes; single-source guard met).
+    * PRIMARY — :func:`~kanibako.paths.pick_primary_box_name` (DETERMINISTIC: the
+      workspace basename plus a collision check against the SAME primary
+      membership/boxes state the later ``initialize=True`` resolve reads, so the
+      probe name == the name the materialise picks — gate → materialise happen in
+      ONE invocation with no intervening registry/dir writes; single-source guard met).
     * STANDALONE / other — the standalone identity is a ``<kuid>_<leaf>``
       assigned at materialise, so it cannot be predicted; but a standalone box's
       config lives at ``<root>/settings.yaml`` (name-INDEPENDENT) and is empty for a
@@ -3081,8 +3081,10 @@ def _name_new_box_probe(std, proj) -> None:
     from kanibako.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
-        proj.name = pick_name(
-            std.registry, str(proj.project_path), boxes_dir=std.boxes,
+        from kanibako.paths import pick_primary_box_name
+        proj.name = pick_primary_box_name(
+            std.primary_workset, std.registry,
+            str(proj.project_path), boxes_dir=std.boxes,
         )
     else:
         proj.name = short_hash(proj.project_hash)
@@ -4143,21 +4145,29 @@ def _pending_create_entry(std, proj) -> dict | None:
     return journal.pending_create(std.journal, _box_journal_key(proj))
 
 
-def _register_new_box(std, proj) -> None:
+def _register_new_box(std, proj, *, force: bool = False) -> None:
     """Register a freshly-created box (idempotent), mode-appropriate (B3).
 
     The deferred-registration commit step: the create paths resolve with
     ``register=False`` (the resolver creates the dir + meta + sets ``is_new`` but
     does NOT write the registry), seed the home, then call this to register.
 
+    *force* is forwarded to the PRIMARY registration only (the cross-kind
+    workset-name refusal is bypassable; SAME-kind primary-box uniqueness is not).
+    A ``box create --name <workset-name> --force`` create passes it so the
+    deferred commit does not re-refuse what the up-front CLI check already
+    allowed.
+
     Idempotent for the SAME box (recovery re-entry after a crash in the tiny
     register -> clear-entry window leaves the box already registered): PRIMARY
-    uses :func:`names.register_name_if_absent` (no-op iff the identical name->path
-    mapping is present, re-raises a real collision); STANDALONE uses
+    uses :func:`paths.register_primary_box_name_if_absent` (writes the primary
+    per-workset ``boxes:`` membership — the sole store since the global
+    ``projects:`` section retired; no-op iff the identical name->path mapping is
+    present, re-raises a real collision); STANDALONE uses
     :func:`registry_store.register_standalone` (already idempotent — overwrites a
-    matching name->root).  NAMED boxes carry no name-registry entry on create
-    (workset membership lives in the workset YAML), so there is nothing to defer
-    or register here.
+    matching name->root).  NAMED boxes carry no deferred registry entry on create
+    (the workset membership is written eagerly at resolve), so there is nothing to
+    defer or register here.
     """
     from kanibako.paths import BoxMode
 
@@ -4168,11 +4178,12 @@ def _register_new_box(std, proj) -> None:
             std.registry, proj.name, Path(proj.metadata_path),
         )
     elif proj.mode is BoxMode.primary:
-        from kanibako.names import register_name_if_absent
-        register_name_if_absent(
-            std.registry, proj.name, str(proj.project_path),
+        from kanibako.paths import register_primary_box_name_if_absent
+        register_primary_box_name_if_absent(
+            std.primary_workset, std.registry,
+            proj.name, str(proj.project_path), force=force,
         )
-    # NAMED: no name-registry write on create (membership is the workset list).
+    # NAMED: no deferred registration on create (membership written at resolve).
 
 
 def _apply_init_seeds(

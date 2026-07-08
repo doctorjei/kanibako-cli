@@ -463,6 +463,12 @@ class TestBoxDuplicate:
         assert not (new_project / ".kanibako.lock").exists()
 
     def test_duplicate_force_overwrites_metadata(self, config_file, tmp_home, credentials_dir):
+        """A BARE duplicate whose destination workspace is ALREADY a registered
+        box refuses (one box per workspace path — the PRIMARY-membership Bug-A
+        guard).  Since the global ``projects:`` section retired, the membership is
+        the sole store and cannot hold a second box name for one workspace; the
+        old global store minted ``fw_dst2`` for the same dir (the duplicate-``list``-
+        rows bug).  ``--force`` overwrites metadata dirs, NOT the one-box invariant."""
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -479,16 +485,11 @@ class TestBoxDuplicate:
         (dst_proj.metadata_path / "stale.txt").write_text("old")
 
         rc = run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
-        assert rc == 0
-
-        projects_base = std.boxes
-        # Force duplicate re-registers and gets a deduplicated name since
-        # "fw_dst" is already taken by the pre-existing project.
-        new_project = projects_base / "fw_dst2"
-
-        # Fresh data present, stale data gone.
-        assert (new_project / "fresh.txt").read_text() == "new"
-        assert not (new_project / "stale.txt").exists()
+        # Refused: dst_dir is already box "fw_dst"; a bare duplicate there would be
+        # a second box for one workspace.
+        assert rc == 1
+        # No stray fw_dst2 box was minted.
+        assert not (std.boxes / "fw_dst2").exists()
 
     def test_duplicate_force_overwrites_workspace(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -524,7 +525,7 @@ class TestBoxDuplicate:
         either fully succeeds or leaves no trace.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.names import read_names
+        from kanibako.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -535,7 +536,7 @@ class TestBoxDuplicate:
 
         dst_dir = tmp_home / "orphan_dst"
 
-        names_before = read_names(std.registry)["projects"]
+        names_before = load_primary_boxes(std.primary_workset)
 
         # bare=True so only the metadata copytree runs (no prior workspace copy).
         with patch(
@@ -548,7 +549,7 @@ class TestBoxDuplicate:
                 pass
 
         # Name NOT left registered.
-        names_after = read_names(std.registry)["projects"]
+        names_after = load_primary_boxes(std.primary_workset)
         assert names_after == names_before
         assert "orphan_dst" not in names_after
         # No partial dest metadata dir.
@@ -740,7 +741,7 @@ class TestBoxDuplicateCrossMode:
         any partial dest dir.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.names import read_names
+        from kanibako.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -754,7 +755,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "tlfail_dst"
 
-        names_before = read_names(std.registry)["projects"]
+        names_before = load_primary_boxes(std.primary_workset)
 
         # bare=True isolates the metadata copytree inside _duplicate_to_local.
         with patch(
@@ -766,10 +767,81 @@ class TestBoxDuplicateCrossMode:
             except RuntimeError:
                 pass
 
-        names_after = read_names(std.registry)["projects"]
+        names_after = load_primary_boxes(std.primary_workset)
         assert names_after == names_before
         assert "tlfail_dst" not in names_after
         assert not (std.boxes / "tlfail_dst").exists()
+
+    def test_duplicate_cross_mode_to_registered_primary_refuses_cleanly(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """F2: a cross-mode ``--to-mode primary`` onto a dest workspace that is
+        ALREADY a registered primary box hits Guard 1 (one box per workspace
+        path).  The refusal must be CLEAN (rc=1, no traceback), leave the dest
+        box's registration intact, and mint no stray box dir.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "xdup_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('src')")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        # Dest is ALREADY a registered primary box (its workspace is a member).
+        dst_dir = tmp_home / "xdup_dst"
+        dst_dir.mkdir()
+        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+
+        names_before = load_primary_boxes(std.primary_workset)
+
+        rc = run_duplicate(
+            self._make_args(src_dir, dst_dir, "default", force=True)
+        )
+        assert rc == 1
+
+        # Dest box's pre-existing registration is intact; no second name minted.
+        assert load_primary_boxes(std.primary_workset) == names_before
+        assert not (std.boxes / "xdup_dst2").exists()
+
+    def test_duplicate_cross_mode_to_orphan_registered_dest_rolls_back_copy(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """F2 rollback branch: the dest workspace is REGISTERED but its dir is
+        ABSENT (orphan), so the cross-mode copytree CREATES ``new_path`` before
+        Guard 1 refuses.  The rollback (gated on ``new_path_existed``) must
+        remove the just-created workspace copy — no stranded partial state.
+        """
+        import shutil
+
+        from kanibako.commands.box import run_duplicate
+        from kanibako.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "odup_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('src')")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        # Register the dest, then orphan it: membership survives, dir gone.
+        dst_dir = tmp_home / "odup_dst"
+        dst_dir.mkdir()
+        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+        shutil.rmtree(dst_dir)
+
+        names_before = load_primary_boxes(std.primary_workset)
+
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, "default"))
+        assert rc == 1
+
+        # The copy this call created was rolled back; registration intact.
+        assert not dst_dir.exists()
+        assert load_primary_boxes(std.primary_workset) == names_before
 
     def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate

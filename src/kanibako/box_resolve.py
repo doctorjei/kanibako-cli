@@ -228,11 +228,10 @@ def detect_box_mode(
        result is detect_project_mode's NO-MARKER default (its case 4) — in the
        new model PRIMARY membership is authoritative via the registry scan
        (case 2 above), so an unregistered dir is NOT an existing box → ``None``
-       (the caller's create path).  ASSUMPTION (for P5): this ``primary → None``
-       also collapses detect_project_mode's case-2 genuine-primary (the global
-       ``projects:`` name index) — correct ONLY because new-model primary
-       membership lives in the per-workset registry (scanned in case 2) and the
-       global ``projects:`` section is emptied at the P5 cutover.
+       (the caller's create path).  This ``primary → None`` also collapses
+       detect_project_mode's case-2 genuine-primary: new-model primary membership
+       lives SOLELY in the per-workset registry (scanned in case 2) now that the
+       global ``projects:`` section has been RETIRED (clean split, 2026-07-08).
     4. Else ``None`` (not a box).
     """
     # 1. Standalone by in-place settings-file presence (OVERRIDES everything).

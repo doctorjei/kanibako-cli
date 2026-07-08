@@ -631,6 +631,15 @@ class TestParser:
         assert args.path == "/tmp/ws"
         assert args.name is None
 
+    def test_workset_create_force(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["workset", "create", "/tmp/ws", "--name", "myws", "--force"]
+        )
+        assert args.force is True
+        args = parser.parse_args(["workset", "create", "/tmp/ws"])
+        assert args.force is False
+
     def test_workset_list(self):
         parser = build_parser()
         args = parser.parse_args(["workset", "list"])
@@ -827,6 +836,20 @@ class TestParser:
         args = parser.parse_args(["create", "/tmp/proj", "--standalone"])
         assert args.command == "create"
         assert args.standalone is True
+
+    def test_create_top_level_force(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "/tmp/proj", "--name", "x", "--force"])
+        assert args.force is True
+        args = parser.parse_args(["create", "/tmp/proj"])
+        assert args.force is False
+
+    def test_box_create_force(self):
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "/tmp/proj", "--name", "x", "--force"])
+        assert args.force is True
+        args = parser.parse_args(["box", "create", "/tmp/proj"])
+        assert args.force is False
 
     def test_create_top_level_with_image(self):
         parser = build_parser()

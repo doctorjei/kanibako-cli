@@ -1,4 +1,11 @@
-"""Tests for kanibako.names (names.yaml I/O and resolution) and name wiring."""
+"""Tests for kanibako.names (global name registry I/O + resolution) and name wiring.
+
+Since the global ``projects:`` section retired (clean split, 2026-07-08), the
+:mod:`kanibako.names` module owns ONLY the ``worksets`` name section; default-mode
+(PRIMARY) box names live in the primary per-workset ``boxes:`` membership, whose
+name API (``pick``/``assign``/``register``/``unregister``/reverse-lookup) lives in
+:mod:`kanibako.paths` (tested here + in ``test_paths.py``).
+"""
 
 from __future__ import annotations
 
@@ -35,6 +42,16 @@ def registry(tmp_path: Path) -> Path:
     return dp / "global" / "registry.yaml"
 
 
+def _register_primary_box(
+    primary_workset: Path, name: str, workspace: Path | str,
+) -> None:
+    """Register a PRIMARY box (name → workspace) in the primary membership."""
+    from kanibako import workset_registry
+
+    reg = workset_registry.resolve_workset_registry_path(primary_workset, None)
+    workset_registry.register_workset_box(reg, name, Path(workspace))
+
+
 # ---------------------------------------------------------------------------
 # read_names
 # ---------------------------------------------------------------------------
@@ -42,79 +59,51 @@ def registry(tmp_path: Path) -> Path:
 class TestReadNames:
     def test_empty_when_no_file(self, registry: Path) -> None:
         result = read_names(registry)
-        assert result == {"projects": {}, "worksets": {}}
+        assert result == {"worksets": {}}
 
     def test_round_trip(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/home/user/myapp")
         register_name(registry, "client", "/home/user/ws/client", section="worksets")
         result = read_names(registry)
-        assert result["projects"] == {"myapp": "/home/user/myapp"}
         assert result["worksets"] == {"client": "/home/user/ws/client"}
-
-    def test_preserves_both_sections(self, registry: Path) -> None:
-        register_name(registry, "a", "/a")
-        register_name(registry, "b", "/b")
-        register_name(registry, "ws1", "/ws1", section="worksets")
-        result = read_names(registry)
-        assert len(result["projects"]) == 2
-        assert len(result["worksets"]) == 1
 
 
 # ---------------------------------------------------------------------------
-# register_name
+# register_name (worksets)
 # ---------------------------------------------------------------------------
 
 class TestRegisterName:
-    def test_register_project(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/home/user/myapp")
-        names = read_names(registry)
-        assert names["projects"]["myapp"] == "/home/user/myapp"
-
     def test_register_workset(self, registry: Path) -> None:
         register_name(registry, "ws1", "/ws/root", section="worksets")
         names = read_names(registry)
         assert names["worksets"]["ws1"] == "/ws/root"
 
-    def test_duplicate_name_same_section(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/home/user/myapp")
-        with pytest.raises(ProjectError, match="already registered"):
-            register_name(registry, "myapp", "/other/path")
+    def test_default_section_is_worksets(self, registry: Path) -> None:
+        register_name(registry, "ws1", "/ws/root")
+        assert read_names(registry)["worksets"]["ws1"] == "/ws/root"
 
-    def test_duplicate_name_cross_section(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/home/user/myapp")
+    def test_duplicate_name(self, registry: Path) -> None:
+        register_name(registry, "ws1", "/ws/root", section="worksets")
         with pytest.raises(ProjectError, match="already registered"):
-            register_name(registry, "myapp", "/ws/root", section="worksets")
+            register_name(registry, "ws1", "/other/path", section="worksets")
 
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         reg = tmp_path / "a" / "b" / "c" / "global" / "registry.yaml"
-        register_name(reg, "x", "/x")
+        register_name(reg, "x", "/x", section="worksets")
         assert reg.is_file()
 
 
 # ---------------------------------------------------------------------------
-# unregister_name
+# unregister_name (worksets)
 # ---------------------------------------------------------------------------
 
 class TestUnregisterName:
     def test_unregister_existing(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/myapp")
-        assert unregister_name(registry, "myapp") is True
-        names = read_names(registry)
-        assert "myapp" not in names["projects"]
-
-    def test_unregister_nonexistent(self, registry: Path) -> None:
-        assert unregister_name(registry, "nope") is False
-
-    def test_unregister_wrong_section(self, registry: Path) -> None:
-        register_name(registry, "ws1", "/ws1", section="worksets")
-        assert unregister_name(registry, "ws1", section="projects") is False
-        # Still exists in worksets.
-        assert read_names(registry)["worksets"]["ws1"] == "/ws1"
-
-    def test_unregister_workset(self, registry: Path) -> None:
         register_name(registry, "ws1", "/ws1", section="worksets")
         assert unregister_name(registry, "ws1", section="worksets") is True
         assert "ws1" not in read_names(registry)["worksets"]
+
+    def test_unregister_nonexistent(self, registry: Path) -> None:
+        assert unregister_name(registry, "nope", section="worksets") is False
 
 
 # ---------------------------------------------------------------------------
@@ -122,11 +111,27 @@ class TestUnregisterName:
 # ---------------------------------------------------------------------------
 
 class TestResolveName:
-    def test_resolve_project(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/home/user/myapp")
-        path, kind = resolve_name(registry, "myapp")
-        assert path == "/home/user/myapp"
+    def test_resolve_primary_box_via_membership(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A bare primary-box name resolves via the primary membership (step 2)."""
+        primary = tmp_path / "primary_workset"
+        ws = tmp_path / "myapp"
+        ws.mkdir()
+        _register_primary_box(primary, "myapp", ws)
+
+        path, kind = resolve_name(registry, "myapp", primary_workset=primary)
+        assert path == str(ws)
         assert kind == "project"
+
+    def test_primary_step_skipped_without_primary_workset(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """No *primary_workset* → the primary membership is not consulted."""
+        primary = tmp_path / "primary_workset"
+        _register_primary_box(primary, "myapp", tmp_path / "myapp")
+        with pytest.raises(ProjectError, match="Unknown project"):
+            resolve_name(registry, "myapp")
 
     def test_resolve_workset(self, registry: Path) -> None:
         register_name(registry, "ws1", "/home/user/ws", section="worksets")
@@ -134,14 +139,54 @@ class TestResolveName:
         assert path == "/home/user/ws"
         assert kind == "workset"
 
-    def test_project_takes_precedence_over_workset(self, registry: Path) -> None:
-        """If somehow both exist, project wins (checked first)."""
-        # Register a project and workset with different names.
-        register_name(registry, "proj", "/proj")
-        register_name(registry, "ws1", "/ws", section="worksets")
-        # Project is found first.
-        path, kind = resolve_name(registry, "proj")
+    def test_primary_takes_precedence_over_workset(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A primary box (step 2) is found before a workset (step 3)."""
+        primary = tmp_path / "primary_workset"
+        ws = tmp_path / "proj"
+        ws.mkdir()
+        _register_primary_box(primary, "proj", ws)
+        register_name(registry, "proj", "/ws", section="worksets")
+
+        path, kind = resolve_name(registry, "proj", primary_workset=primary)
         assert kind == "project"
+        assert path == str(ws)
+
+    def test_shadowed_bare_name_returns_box_and_warns(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Cross-kind shadow (per-kind name policy): a bare name that is BOTH a
+        primary box and a workset resolves to the BOX (step 2 precedes step 3)
+        and emits a ONE-LINE warning naming the shadowed workset."""
+        primary = tmp_path / "primary_workset"
+        ws = tmp_path / "proj"
+        ws.mkdir()
+        _register_primary_box(primary, "proj", ws)
+        register_name(registry, "proj", "/ws", section="worksets")
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "proj", primary_workset=primary)
+        assert (path, kind) == (str(ws), "project")
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "proj" in warnings[0] and "workset" in warnings[0]
+
+    def test_unshadowed_primary_resolve_does_not_warn(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A primary box with NO same-named workset resolves silently (the warn
+        fires ONLY on a live collision)."""
+        primary = tmp_path / "primary_workset"
+        ws = tmp_path / "solo"
+        ws.mkdir()
+        _register_primary_box(primary, "solo", ws)
+
+        with caplog.at_level("WARNING"):
+            resolve_name(registry, "solo", primary_workset=primary)
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
     def test_unknown_name_raises(self, registry: Path) -> None:
         with pytest.raises(ProjectError, match="Unknown project"):
@@ -162,21 +207,25 @@ class TestResolveName:
         assert path == str(ws_root / "workspaces" / "api")
         assert kind == "project"
 
-    def test_cwd_context_falls_through_when_no_match(
+    def test_cwd_context_falls_through_to_primary(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """cwd inside a workset but name doesn't match any project there."""
+        """cwd inside a workset but name matches a primary box instead."""
+        primary = tmp_path / "primary_workset"
+        other = tmp_path / "other" / "path"
+        other.mkdir(parents=True)
+        _register_primary_box(primary, "other", other)
+
         ws_root = tmp_path / "ws"
         ws_root.mkdir()
         (ws_root / "workspaces").mkdir()
         register_name(registry, "myws", str(ws_root), section="worksets")
-        register_name(registry, "other", "/other/path")
 
-        # "other" is not in the workset but is a registered default-mode project.
         path, kind = resolve_name(
-            registry, "other", cwd=ws_root / "workspaces"
+            registry, "other", cwd=ws_root / "workspaces",
+            primary_workset=primary,
         )
-        assert path == "/other/path"
+        assert path == str(other)
         assert kind == "project"
 
     # -- Workset-MEMBER box fallback (BUG-B) --------------------------------
@@ -266,125 +315,170 @@ class TestResolveQualifiedName:
 
 
 # ---------------------------------------------------------------------------
-# assign_name
+# assign_name / pick_name (worksets domain)
 # ---------------------------------------------------------------------------
 
 class TestAssignName:
-    def test_assigns_basename(self, registry: Path) -> None:
-        name = assign_name(registry, "/home/user/projects/myapp")
-        assert name == "myapp"
-        names = read_names(registry)
-        assert names["projects"]["myapp"] == "/home/user/projects/myapp"
-
-    def test_collision_numbering(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/first")
-        name = assign_name(registry, "/second/myapp")
-        assert name == "myapp2"
-
-    def test_multiple_collisions(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/first")
-        register_name(registry, "myapp2", "/second")
-        name = assign_name(registry, "/third/myapp")
-        assert name == "myapp3"
-
-    def test_cross_section_collision(self, registry: Path) -> None:
-        """A workset name prevents using the same project name."""
-        register_name(registry, "myapp", "/ws", section="worksets")
-        name = assign_name(registry, "/proj/myapp")
-        assert name == "myapp2"
-
     def test_assigns_to_worksets_section(self, registry: Path) -> None:
         name = assign_name(registry, "/ws/root", section="worksets")
         assert name == "root"
         names = read_names(registry)
         assert names["worksets"]["root"] == "/ws/root"
 
+    def test_collision_numbering(self, registry: Path) -> None:
+        register_name(registry, "myws", "/first", section="worksets")
+        name = assign_name(registry, "/second/myws", section="worksets")
+        assert name == "myws2"
+
     def test_empty_basename_fallback(self, registry: Path) -> None:
-        """Path with no basename (e.g. '/') gets 'project' as default."""
-        name = assign_name(registry, "/")
+        name = assign_name(registry, "/", section="worksets")
         assert name == "project"
 
-
-# ---------------------------------------------------------------------------
-# pick_name (B3 — no-write candidate selection + directory-awareness)
-# ---------------------------------------------------------------------------
 
 class TestPickName:
     def test_picks_basename_without_writing(self, registry: Path) -> None:
         from kanibako.names import pick_name
 
-        name = pick_name(registry, "/home/user/projects/myapp")
-        assert name == "myapp"
-        # No registry write — the section stays empty.
-        assert read_names(registry)["projects"] == {}
+        name = pick_name(registry, "/home/user/ws/myws", section="worksets")
+        assert name == "myws"
+        assert read_names(registry)["worksets"] == {}
 
     def test_collision_numbering_matches_assign(self, registry: Path) -> None:
         from kanibako.names import pick_name
 
-        register_name(registry, "myapp", "/first")
-        assert pick_name(registry, "/second/myapp") == "myapp2"
+        register_name(registry, "myws", "/first", section="worksets")
+        assert pick_name(registry, "/second/myws", section="worksets") == "myws2"
 
-    def test_skips_existing_box_dir(self, tmp_path: Path, registry: Path) -> None:
-        """A candidate whose box dir already EXISTS is skipped, even though the
-        name is NOT registered (the interrupted-create reservation guard)."""
-        from kanibako.names import pick_name
 
-        boxes = tmp_path / "boxes"
-        (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
-        name = pick_name(registry, "/x/myapp", boxes_dir=boxes)
-        assert name == "myapp2"
+# ---------------------------------------------------------------------------
+# PRIMARY-box name API (paths) — the membership-domain replacement for the
+# retired projects-section name operations.
+# ---------------------------------------------------------------------------
 
-    def test_no_boxes_dir_only_checks_registry(self, registry: Path) -> None:
-        from kanibako.names import pick_name
+class TestPrimaryBoxNameApi:
+    def test_assign_registers_membership(self, registry: Path, tmp_path: Path) -> None:
+        from kanibako.paths import assign_primary_box_name, load_primary_boxes
 
-        # Without boxes_dir, only the registry is consulted (legacy behavior).
-        assert pick_name(registry, "/x/myapp") == "myapp"
-
-    def test_assign_name_uses_pick_then_registers(self, registry: Path) -> None:
-        """assign_name == pick_name + register_name (behavior-identical)."""
-        name = assign_name(registry, "/x/myapp")
+        primary = tmp_path / "primary_workset"
+        ws = tmp_path / "projects" / "myapp"
+        name = assign_primary_box_name(primary, registry, str(ws))
         assert name == "myapp"
-        assert read_names(registry)["projects"]["myapp"] == "/x/myapp"
+        assert load_primary_boxes(primary)[name] == str(ws)
 
+    def test_collision_numbering(self, registry: Path, tmp_path: Path) -> None:
+        from kanibako.paths import assign_primary_box_name
 
-# ---------------------------------------------------------------------------
-# register_name_if_absent (B3 — idempotent recovery register)
-# ---------------------------------------------------------------------------
+        primary = tmp_path / "primary_workset"
+        assert assign_primary_box_name(primary, registry, "/a/myapp") == "myapp"
+        assert assign_primary_box_name(primary, registry, "/b/myapp") == "myapp2"
 
-class TestRegisterNameIfAbsent:
-    def test_registers_when_absent(self, registry: Path) -> None:
-        from kanibako.names import register_name_if_absent
-
-        register_name_if_absent(registry, "myapp", "/p/myapp")
-        assert read_names(registry)["projects"]["myapp"] == "/p/myapp"
-
-    def test_noop_on_identical_mapping(self, registry: Path) -> None:
-        """Recovery re-entry: same name->same path is a silent no-op (no raise)."""
-        from kanibako.names import register_name_if_absent
-
-        register_name(registry, "myapp", "/p/myapp")
-        register_name_if_absent(registry, "myapp", "/p/myapp")  # must not raise.
-        assert read_names(registry)["projects"]["myapp"] == "/p/myapp"
-
-    def test_raises_on_different_path_collision(self, registry: Path) -> None:
-        """A real collision (same name, DIFFERENT path) still raises."""
-        from kanibako.names import register_name_if_absent
-
-        register_name(registry, "myapp", "/p/myapp")
-        with pytest.raises(ProjectError):
-            register_name_if_absent(registry, "myapp", "/OTHER/myapp")
-
-    def test_raises_on_cross_section_collision(self, registry: Path) -> None:
-        """Name registered in the OTHER section is a genuine collision."""
-        from kanibako.names import register_name_if_absent
+    def test_cross_domain_collision_with_workset(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A WORKSET name prevents using the same PRIMARY box name (new domain)."""
+        from kanibako.paths import assign_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
+        primary = tmp_path / "primary_workset"
+        assert assign_primary_box_name(primary, registry, "/proj/myapp") == "myapp2"
+
+    def test_register_refuses_workset_name_collision_unless_forced(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """Cross-kind (per-kind name policy, Jei 2026-07-08): an EXPLICIT primary
+        box name that collides with a WORKSET name refuses UNLESS ``force`` — and
+        the refusal teaches ``--force``.  With ``force=True`` it registers."""
+        from kanibako.paths import load_primary_boxes, register_primary_box_name
+
+        register_name(registry, "myapp", "/ws", section="worksets")
+        primary = tmp_path / "primary_workset"
+        with pytest.raises(ProjectError, match="workset"):
+            register_primary_box_name(primary, registry, "myapp", "/proj/myapp")
+
+        # --force bypasses the CROSS-KIND refusal → the box registers.
+        register_primary_box_name(
+            primary, registry, "myapp", "/proj/myapp", force=True,
+        )
+        assert load_primary_boxes(primary)["myapp"] == "/proj/myapp"
+
+    def test_force_never_bypasses_same_kind_primary_collision(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """SAME-kind (two primary boxes, one name) is UNCONDITIONAL — ``force``
+        never bypasses it."""
+        from kanibako.paths import register_primary_box_name
+
+        primary = tmp_path / "primary_workset"
+        register_primary_box_name(primary, registry, "myapp", "/a/myapp")
+        with pytest.raises(ProjectError, match="already registered"):
+            register_primary_box_name(
+                primary, registry, "myapp", "/b/myapp", force=True,
+            )
+
+    def test_pick_skips_existing_box_dir(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        from kanibako.paths import pick_primary_box_name
+
+        primary = tmp_path / "primary_workset"
+        boxes = tmp_path / "boxes"
+        (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
+        name = pick_primary_box_name(primary, registry, "/x/myapp", boxes_dir=boxes)
+        assert name == "myapp2"
+
+    def test_if_absent_noop_on_identical(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        from kanibako.paths import (
+            register_primary_box_name,
+            register_primary_box_name_if_absent,
+        )
+
+        primary = tmp_path / "primary_workset"
+        register_primary_box_name(primary, registry, "myapp", "/p/myapp")
+        # Recovery re-entry: same name → same path is a silent no-op.
+        register_primary_box_name_if_absent(primary, registry, "myapp", "/p/myapp")
+
+    def test_if_absent_raises_on_different_path(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        from kanibako.paths import (
+            register_primary_box_name,
+            register_primary_box_name_if_absent,
+        )
+
+        primary = tmp_path / "primary_workset"
+        register_primary_box_name(primary, registry, "myapp", "/p/myapp")
         with pytest.raises(ProjectError):
-            register_name_if_absent(registry, "myapp", "/p/myapp")
+            register_primary_box_name_if_absent(
+                primary, registry, "myapp", "/OTHER/myapp",
+            )
+
+    def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
+        from kanibako.paths import register_primary_box_name
+
+        home = tmp_path / "fakehome"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        primary = tmp_path / "primary_workset"
+        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
+            register_primary_box_name(primary, registry, "bad", str(home))
+
+    def test_unregister(self, registry: Path, tmp_path: Path) -> None:
+        from kanibako.paths import (
+            load_primary_boxes,
+            register_primary_box_name,
+            unregister_primary_box_name,
+        )
+
+        primary = tmp_path / "primary_workset"
+        register_primary_box_name(primary, registry, "myapp", "/p/myapp")
+        unregister_primary_box_name(primary, "myapp")
+        assert "myapp" not in load_primary_boxes(primary)
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: Name assignment wiring into project/workset creation
+# Name assignment wiring into project/workset creation
 # ---------------------------------------------------------------------------
 
 class TestLocalNameAssignment:
@@ -401,12 +495,12 @@ class TestLocalNameAssignment:
 
         assert proj.name == "project"
 
-    def test_name_stored_in_registry_not_on_disk(self, config_file, tmp_home, credentials_dir):
-        """P8b/Option A: the box name lives in the registry (names.yaml), NOT a
+    def test_name_stored_in_membership_not_on_disk(self, config_file, tmp_home, credentials_dir):
+        """P8b/Option A: the box name lives in the PRIMARY membership, NOT a
         self-describing on-disk ``project:`` section (no ``project:`` on disk)."""
         from kanibako.config import load_config
         from kanibako.config_io import load_doc
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -415,20 +509,20 @@ class TestLocalNameAssignment:
 
         assert proj.name == "project"
         assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
-        assert read_names(std.registry)["projects"].get("project") == project_dir
+        assert load_primary_boxes(std.primary_workset).get("project") == project_dir
 
-    def test_name_registered_in_names_toml(self, config_file, tmp_home, credentials_dir):
+    def test_name_registered_in_membership(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        names = read_names(std.registry)
-        assert "project" in names["projects"]
-        assert names["projects"]["project"] == project_dir
+        boxes = load_primary_boxes(std.primary_workset)
+        assert "project" in boxes
+        assert boxes["project"] == project_dir
 
     def test_name_collision_on_second_project(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
@@ -467,7 +561,7 @@ class TestLocalNameAssignment:
 
 
 class TestWorksetNameRegistration:
-    """Workset creation registers the name in names.yaml."""
+    """Workset creation registers the name in the registry worksets section."""
 
     def test_create_workset_registers_name(self, std, tmp_home):
         from kanibako.workset import create_workset
@@ -491,11 +585,11 @@ class TestWorksetNameRegistration:
 
 
 class TestNameRegistration:
-    """Name uniqueness and update operations on names.yaml."""
+    """Name uniqueness and unregister operations on primary boxes."""
 
     def test_register_and_read_name(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -503,55 +597,25 @@ class TestNameRegistration:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Project should be auto-registered under its directory name
-        names = read_names(std.registry)
-        assert "project" in names["projects"]
-
-    def test_duplicate_name_rejected(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
-        from kanibako.names import register_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-
-        # Create two projects
-        dir1 = tmp_home / "proj1"
-        dir1.mkdir()
-        resolve_project(std, config, project_dir=str(dir1), initialize=True)
-
-        # Trying to register a duplicate name should raise
-        import pytest
-        with pytest.raises(Exception):
-            register_name(std.registry, "proj1", str(tmp_home / "other"))
+        assert "project" in load_primary_boxes(std.primary_workset)
 
     def test_unregister_name(self, config_file, tmp_home, credentials_dir):
         from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.paths import (
+            load_primary_boxes,
+            load_std_paths,
+            resolve_project,
+            unregister_primary_box_name,
+        )
 
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        assert "project" in read_names(std.registry)["projects"]
-        unregister_name(std.registry, "project")
-        assert "project" not in read_names(std.registry)["projects"]
-
-    def test_read_name_after_creation(self, config_file, tmp_home, credentials_dir):
-        """P8b/Option A: the project name is readable from the registry (the sole
-        identity authority) after creation — not from an on-disk section."""
-        from kanibako.config import load_config
-        from kanibako.config_io import load_doc
-        from kanibako.paths import load_std_paths, resolve_project
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        assert proj.name == "project"
-        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
-        assert read_names(std.registry)["projects"].get("project") == project_dir
+        assert "project" in load_primary_boxes(std.primary_workset)
+        unregister_primary_box_name(std.primary_workset, "project")
+        assert "project" not in load_primary_boxes(std.primary_workset)
 
 
 class TestBoxListName:
@@ -575,9 +639,8 @@ class TestBoxListName:
         assert "project" in output
 
 
-
 # ---------------------------------------------------------------------------
-# $HOME guard in register_name
+# $HOME guard in register_name (worksets)
 # ---------------------------------------------------------------------------
 
 class TestRegisterNameHomeGuard:
@@ -586,46 +649,23 @@ class TestRegisterNameHomeGuard:
         home.mkdir()
         monkeypatch.setenv("HOME", str(home))
         with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            register_name(registry, "bad", str(home))
-
-    def test_refuses_home_resolved(self, registry: Path, monkeypatch) -> None:
-        """Symlinks to $HOME are also caught."""
-        home = registry.parent.parent.parent / "realhome"
-        home.mkdir()
-        link = registry.parent.parent.parent / "linkhome"
-        link.symlink_to(home)
-        monkeypatch.setenv("HOME", str(home))
-        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            register_name(registry, "bad", str(link))
+            register_name(registry, "bad", str(home), section="worksets")
 
     def test_allows_subdirectory_of_home(self, registry: Path, monkeypatch) -> None:
         home = registry.parent.parent.parent / "fakehome"
         home.mkdir()
         monkeypatch.setenv("HOME", str(home))
-        subdir = home / "projects" / "myapp"
+        subdir = home / "worksets" / "myws"
         subdir.mkdir(parents=True)
-        register_name(registry, "myapp", str(subdir))
-        assert read_names(registry)["projects"]["myapp"] == str(subdir)
-
-    def test_assign_name_inherits_guard(self, registry: Path, monkeypatch) -> None:
-        """assign_name delegates to register_name, so the guard applies."""
-        home = registry.parent.parent.parent / "fakehome"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-        with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            assign_name(registry, str(home))
+        register_name(registry, "myws", str(subdir), section="worksets")
+        assert read_names(registry)["worksets"]["myws"] == str(subdir)
 
 
 # ---------------------------------------------------------------------------
-# lookup_by_path
+# lookup_by_path (worksets)
 # ---------------------------------------------------------------------------
 
 class TestLookupByPath:
-    def test_finds_project_by_path(self, registry: Path) -> None:
-        register_name(registry, "myapp", "/home/user/myapp")
-        result = lookup_by_path(registry, "/home/user/myapp")
-        assert result == ("myapp", "projects")
-
     def test_finds_workset_by_path(self, registry: Path) -> None:
         register_name(registry, "ws1", "/home/user/ws", section="worksets")
         result = lookup_by_path(registry, "/home/user/ws")
@@ -639,9 +679,9 @@ class TestLookupByPath:
         real.mkdir()
         link = tmp_path / "link"
         link.symlink_to(real)
-        register_name(registry, "proj", str(real))
+        register_name(registry, "ws1", str(real), section="worksets")
         result = lookup_by_path(registry, str(link))
-        assert result == ("proj", "projects")
+        assert result == ("ws1", "worksets")
 
 
 # ---------------------------------------------------------------------------
@@ -652,7 +692,7 @@ class TestBoxRm:
     def test_rm_by_name(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -663,8 +703,7 @@ class TestBoxRm:
         rc = run_rm(args)
         assert rc == 0
 
-        names = read_names(std.registry)
-        assert "project" not in names["projects"]
+        assert "project" not in load_primary_boxes(std.primary_workset)
 
         out = capsys.readouterr().out
         assert "Removed 'project' from the registry" in out
@@ -692,7 +731,7 @@ class TestBoxRm:
     def test_rm_by_path(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -703,8 +742,7 @@ class TestBoxRm:
         rc = run_rm(args)
         assert rc == 0
 
-        names = read_names(std.registry)
-        assert "project" not in names["projects"]
+        assert "project" not in load_primary_boxes(std.primary_workset)
 
     def test_rm_unknown_target(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm

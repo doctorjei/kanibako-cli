@@ -22,10 +22,14 @@ def reg(tmp_path: Path) -> Path:
 
 
 def test_fresh_tree_empty_sections(reg: Path) -> None:
-    """Absent registry.yaml → every section present and empty."""
+    """Absent registry.yaml → every section present and empty.
+
+    ``projects`` is NOT among them — it was RETIRED (clean split, 2026-07-08):
+    default-mode box identity lives in the primary per-workset ``boxes:``
+    membership now, not in the global registry.
+    """
     loaded = registry_store.load_registry(reg)
     assert loaded == {
-        "projects": {},
         "worksets": {},
         "standalone": {},
         "rigs": {},
@@ -36,7 +40,6 @@ def test_fresh_tree_empty_sections(reg: Path) -> None:
 def test_sections_round_trip(reg: Path) -> None:
     """All sections survive a save/load round-trip with their shapes intact."""
     sections = {
-        "projects": {"myapp": "/home/user/myapp"},
         "worksets": {"ws": "/home/user/ws"},
         "standalone": {"abc_box": "/abs/proj"},
         "rigs": {"corp/base:1.0": {"kind": "prefab"}},
@@ -49,18 +52,18 @@ def test_sections_round_trip(reg: Path) -> None:
 def test_save_creates_global_dir(tmp_path: Path) -> None:
     """Saving into a fresh tree creates the registry's parent dir."""
     reg = tmp_path / "a" / "b" / "global" / "registry.yaml"
-    registry_store.save_registry(reg, {"projects": {"x": "/x"}})
+    registry_store.save_registry(reg, {"worksets": {"x": "/x"}})
     assert reg.is_file()
 
 
 def test_name_sections_sorted_on_write(reg: Path) -> None:
-    """projects/worksets keys are written sorted (stable diffs)."""
+    """worksets keys are written sorted (stable diffs)."""
     registry_store.save_registry(
         reg,
-        {"projects": {"zed": "/z", "abe": "/a", "mid": "/m"}},
+        {"worksets": {"zed": "/z", "abe": "/a", "mid": "/m"}},
     )
     raw = load_doc(reg)
-    assert list(raw["projects"].keys()) == ["abe", "mid", "zed"]
+    assert list(raw["worksets"].keys()) == ["abe", "mid", "zed"]
 
 
 def test_save_section_preserves_other_sections(reg: Path) -> None:
@@ -68,14 +71,14 @@ def test_save_section_preserves_other_sections(reg: Path) -> None:
     registry_store.save_registry(
         reg,
         {
-            "projects": {"keep": "/keep"},
+            "worksets": {"keep": "/keep"},
             "rigs": {"corp/base:1.0": {"kind": "prefab"}},
         },
     )
     registry_store.save_section(reg, "standalone", {"box1": "/proj"})
 
     loaded = registry_store.load_registry(reg)
-    assert loaded["projects"] == {"keep": "/keep"}
+    assert loaded["worksets"] == {"keep": "/keep"}
     assert loaded["rigs"] == {"corp/base:1.0": {"kind": "prefab"}}
     assert loaded["standalone"] == {"box1": "/proj"}
 
@@ -84,7 +87,32 @@ def test_load_section_returns_single_section(reg: Path) -> None:
     registry_store.save_section(reg, "worksets", {"ws": "/root"})
     assert registry_store.load_section(reg, "worksets") == {"ws": "/root"}
     # Untouched sections read empty.
-    assert registry_store.load_section(reg, "projects") == {}
+    assert registry_store.load_section(reg, "standalone") == {}
+
+
+def test_projects_section_retired(reg: Path) -> None:
+    """The ``projects`` section is retired: never surfaced, dropped on write.
+
+    A legacy registry.yaml carrying a ``projects`` block (an older install that
+    predates the clean split) is ignored on load and dropped on the next save —
+    no migration, no read-compat.
+    """
+    from kanibako.config_io import dump_doc
+
+    dump_doc(
+        reg,
+        {
+            "projects": {"myapp": "/home/user/myapp"},
+            "worksets": {"ws": "/root"},
+        },
+    )
+    loaded = registry_store.load_registry(reg)
+    assert "projects" not in loaded
+    assert loaded["worksets"] == {"ws": "/root"}
+    # Round-trip a save: the projects section does not reappear on disk.
+    registry_store.save_registry(reg, loaded)
+    raw = load_doc(reg)
+    assert "projects" not in raw
 
 
 def test_register_standalone_adds_entry(reg: Path) -> None:
@@ -119,9 +147,9 @@ def test_standalone_name_for_root(reg: Path) -> None:
 
 
 def test_standalone_register_preserves_other_sections(reg: Path) -> None:
-    registry_store.save_section(reg, "projects", {"keep": "/keep"})
+    registry_store.save_section(reg, "worksets", {"keep": "/keep"})
     registry_store.register_standalone(reg, "abc_box", Path("/proj"))
-    assert registry_store.load_section(reg, "projects") == {"keep": "/keep"}
+    assert registry_store.load_section(reg, "worksets") == {"keep": "/keep"}
 
 
 def test_section_round_trip_by_registry_path(reg: Path) -> None:
@@ -139,12 +167,12 @@ def test_section_round_trip_by_registry_path(reg: Path) -> None:
 
 def test_section_preserves_sibling_sections(reg: Path) -> None:
     """A section-owner writing a section preserves every other section."""
-    registry_store.save_section(reg, "projects", {"keep": "/keep"})
+    registry_store.save_section(reg, "worksets", {"keep": "/keep"})
     registry_store.save_section(reg, "rigs", {"r": {"kind": "extended"}})
     registry_store.save_section(reg, "image_shells", {"sha256:a": "/bin/sh"})
 
     loaded = registry_store.load_registry(reg)
-    assert loaded["projects"] == {"keep": "/keep"}
+    assert loaded["worksets"] == {"keep": "/keep"}
     assert loaded["rigs"] == {"r": {"kind": "extended"}}
     assert loaded["image_shells"] == {"sha256:a": "/bin/sh"}
 
@@ -160,7 +188,7 @@ def test_no_seeded_section_in_loaded_registry(reg: Path) -> None:
     loaded = registry_store.load_registry(reg)
     assert "seeded" not in loaded
     # The membership sections are present and empty.
-    assert loaded["projects"] == {}
+    assert loaded["worksets"] == {}
     assert loaded["standalone"] == {}
 
 
@@ -196,9 +224,9 @@ def test_legacy_seeded_section_is_dropped_not_round_tripped(reg: Path) -> None:
 
 def test_atomic_write_no_partial_on_existing(reg: Path) -> None:
     """A second save fully replaces the file (atomic temp + replace)."""
-    registry_store.save_section(reg, "projects", {"a": "/a", "b": "/b"})
-    registry_store.save_section(reg, "projects", {"a": "/a"})
-    assert registry_store.load_section(reg, "projects") == {"a": "/a"}
+    registry_store.save_section(reg, "worksets", {"a": "/a", "b": "/b"})
+    registry_store.save_section(reg, "worksets", {"a": "/a"})
+    assert registry_store.load_section(reg, "worksets") == {"a": "/a"}
     # No stray temp files left in the global dir.
     global_dir = reg.parent
     leftovers = [p.name for p in global_dir.iterdir() if p.name != "registry.yaml"]
@@ -253,11 +281,11 @@ def test_repointed_config_registry_is_honored(tmp_path: Path) -> None:
     registry = resolved["config.registry"]
     assert registry == custom  # the repoint resolved through, not the default
 
-    registry_store.save_section(registry, "projects", {"myapp": "/home/user/myapp"})
+    registry_store.save_section(registry, "worksets", {"myapp": "/home/user/myapp"})
 
     # The repointed file holds the data...
     assert custom.is_file()
-    assert registry_store.load_section(registry, "projects") == {
+    assert registry_store.load_section(registry, "worksets") == {
         "myapp": "/home/user/myapp"
     }
     # ...and the DEFAULT location was never created (the repoint is honored, not

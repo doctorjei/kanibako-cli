@@ -18,13 +18,28 @@ from kanibako.paths import (
     _resolve_workset_or_connected,
     _upgrade_shell,
     detect_project_mode,
+    load_primary_boxes,
     load_std_paths,
+    register_primary_box_name,
     resolve_any_project,
     resolve_project,
     resolve_workset_project,
 )
-from kanibako.names import register_name
 from kanibako.utils import project_hash
+
+
+def _reg_primary(std, name: str, workspace) -> None:
+    """Register a PRIMARY box (name → workspace) in the primary membership.
+
+    The membership replacement for the retired ``register_name(..., "projects")``
+    setup used across these tests.
+    """
+    register_primary_box_name(std.primary_workset, std.registry, name, str(workspace))
+
+
+def _primary_names(std):
+    """Return the PRIMARY box membership as ``{name: workspace_str}``."""
+    return load_primary_boxes(std.primary_workset)
 
 
 class TestLoadStdPaths:
@@ -100,15 +115,10 @@ class TestResolveProject:
         string differs from the freshly-resolved one (symlink drift) is REUSED,
         not re-minted, when the box dir is already present.
 
-        ``_resolve_local_dir`` compares by EXACT string, so the symlink-vs-real
-        difference makes it miss; the resolved-path reverse-lookup guard matches
-        and reuses the existing name — so NO duplicate ``projects:`` entry and NO
-        duplicate box dir are minted.  Mutation guard: remove the reverse-lookup
-        guard and ``assign_name`` mints a second name → two ``projects:`` entries,
-        so the count assertion goes RED.
+        The membership reverse-lookup is resolved-path aware, so the symlink-vs-
+        real difference matches and reuses the existing name — so NO duplicate
+        membership entry and NO duplicate box dir are minted.
         """
-        from kanibako.names import read_names, register_name
-
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -119,7 +129,7 @@ class TestResolveProject:
 
         # Registered under the SYMLINK string (unresolved) → the stored value
         # differs from the resolved real path a fresh resolve computes.
-        register_name(std.registry, "myproj", str(link_ws))
+        _reg_primary(std, "myproj", str(link_ws))
         (std.boxes / "myproj").mkdir(parents=True)  # box dir already present
 
         proj = resolve_project(
@@ -128,8 +138,8 @@ class TestResolveProject:
 
         assert proj.name == "myproj"
         assert not proj.is_new  # reused, not created
-        # Exactly ONE registry entry — no duplicate minted.
-        assert list(read_names(std.registry)["projects"]) == ["myproj"]
+        # Exactly ONE membership entry — no duplicate minted.
+        assert list(_primary_names(std)) == ["myproj"]
 
     def test_reverse_lookup_reuses_registered_name_dir_missing(
         self, config_file, tmp_home, credentials_dir,
@@ -137,9 +147,7 @@ class TestResolveProject:
         """Same as above but the box dir is MISSING: reuse the registered name
         and (re)create the dir UNDER that name — still no duplicate registry
         entry.  Exercises the ``elif project_name`` reuse branch of the create
-        path (no second ``register_name``)."""
-        from kanibako.names import read_names, register_name
-
+        path (no second registration)."""
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -148,7 +156,7 @@ class TestResolveProject:
         link_ws = tmp_home / "linkws2"
         link_ws.symlink_to(real_ws)
 
-        register_name(std.registry, "keep", str(link_ws))
+        _reg_primary(std, "keep", str(link_ws))
 
         proj = resolve_project(
             std, config, project_dir=str(real_ws), initialize=True,
@@ -157,16 +165,14 @@ class TestResolveProject:
         assert proj.name == "keep"
         assert proj.is_new  # dir was (re)created
         assert (std.boxes / "keep").is_dir()
-        # Still exactly ONE registry entry — reused, not re-registered.
-        assert list(read_names(std.registry)["projects"]) == ["keep"]
+        # Still exactly ONE membership entry — reused, not re-registered.
+        assert list(_primary_names(std)) == ["keep"]
 
     def test_distinct_workspaces_still_mint_distinct_names(
         self, config_file, tmp_home, credentials_dir,
     ):
         """The reverse-lookup guard never collapses genuinely DISTINCT
         workspaces — two different paths get two different names."""
-        from kanibako.names import read_names
-
         config = load_config(config_file)
         std = load_std_paths(config)
         (tmp_home / "alpha").mkdir()
@@ -180,7 +186,7 @@ class TestResolveProject:
         )
 
         assert a.name != b.name
-        assert set(read_names(std.registry)["projects"]) == {a.name, b.name}
+        assert set(_primary_names(std)) == {a.name, b.name}
 
     def test_reverse_lookup_reuses_primary_membership_on_registry_drift(
         self, config_file, tmp_home, credentials_dir,
@@ -189,14 +195,11 @@ class TestResolveProject:
         name registry has dropped it (the purge-drift case) — so Guard 1 in
         ``register_workset_box`` never fires mid-create and strands a half-box.
 
-        Drift setup: the workspace is registered in the PRIMARY-workset ``boxes:``
-        membership under ``ghost`` but is ABSENT from the global ``projects:``
-        registry (exactly the state a ``purge`` left before the source fix).  A
-        re-create there must REUSE ``ghost`` (no fresh mint, no Guard 1 raise).
-        Mutation guard: drop the primary-membership arm of Guard 2 and the create
-        path ``assign_name``s a fresh name → ``register_workset_box`` then refuses
-        (workspace already a member under ``ghost``) → ``resolve_project`` raises,
-        so this reddens.
+        Setup: the workspace is registered in the PRIMARY-workset ``boxes:``
+        membership under ``ghost``.  A re-create there must REUSE ``ghost`` (no
+        fresh mint, no Guard 1 raise).  (Since the global ``projects:`` section
+        retired, the membership is the sole store; this test still exercises the
+        resolved-path reuse path so a re-create never strands a half-box.)
         """
         from kanibako import workset_registry
         from kanibako.config_io import load_doc
@@ -207,13 +210,12 @@ class TestResolveProject:
 
         ws = tmp_home / "drifted"
         ws.mkdir()
-        # Seed ONLY the primary-workset boxes: membership (global projects: stays
-        # empty — the drift).
+        # Seed the primary-workset boxes: membership (the sole store).
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, load_doc(std.primary_workset / "settings.yaml"),
         )
         workset_registry.register_workset_box(prim_reg, "ghost", ws)
-        assert "ghost" not in read_names(std.registry)["projects"]
+        assert "ghost" not in read_names(std.registry)["worksets"]
 
         proj = resolve_project(
             std, config, project_dir=str(ws), initialize=True,
@@ -231,22 +233,20 @@ class TestResolveProject:
     ):
         """Belt-and-suspenders: when Guard 1 DOES refuse mid-create (an explicit
         ``--name`` for a workspace already a member under another name), the
-        just-created box dir and the fresh global name entry are UNWOUND — no
-        stranded half-box.  Mutation guard: remove the try/except unwind and the
-        ``forced`` dir + global entry survive after the raise → this reddens.
+        just-created box dir is UNWOUND — no stranded half-box.  Mutation guard:
+        remove the try/except unwind and the ``forced`` dir survives after the
+        raise → this reddens.
         """
         from kanibako import workset_registry
         from kanibako.config_io import load_doc
-        from kanibako.names import read_names, register_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
 
         ws = tmp_home / "sharedws"
         ws.mkdir()
-        # Workspace already a member under ``orig`` (global + primary boxes:), but
-        # its box dir is missing (so the create branch runs).
-        register_name(std.registry, "orig", str(ws))
+        # Workspace already a member under ``orig`` (primary boxes:), but its box
+        # dir is missing (so the create branch runs).
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, load_doc(std.primary_workset / "settings.yaml"),
         )
@@ -258,9 +258,9 @@ class TestResolveProject:
                 name_override="forced",
             )
 
-        # Unwound: no stranded box dir, no orphan global name entry.
+        # Unwound: no stranded box dir, no orphan membership entry.
         assert not (std.boxes / "forced").exists()
-        assert "forced" not in read_names(std.registry)["projects"]
+        assert "forced" not in _primary_names(std)
 
     def test_name_override_collision_preserves_preexisting_dir(
         self, config_file, tmp_home, credentials_dir,
@@ -273,7 +273,6 @@ class TestResolveProject:
         """
         from kanibako import workset_registry
         from kanibako.config_io import load_doc
-        from kanibako.names import register_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -282,7 +281,6 @@ class TestResolveProject:
         ws.mkdir()
         # /ws already a primary member under a DIFFERENT name → Guard 1 will raise
         # when the create tries to register "orphan" for the same workspace.
-        register_name(std.registry, "orig", str(ws))
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, load_doc(std.primary_workset / "settings.yaml"),
         )
@@ -309,10 +307,11 @@ class TestResolveProject:
     def test_reverse_lookup_is_exception_guarded(
         self, config_file, tmp_home, credentials_dir, monkeypatch,
     ):
-        """Guard 2's global lookup must not crash ``resolve_project`` when a
-        registered path is unresolvable (symlink cycle / permission) — the lookup
-        is wrapped like ``_same_workspace``.  A raising ``lookup_by_path`` degrades
-        to the fallback, and the create still succeeds."""
+        """The primary-membership reverse-lookup must not crash ``resolve_project``
+        when a registry read is unresolvable (symlink cycle / permission) — both
+        ``_resolve_local_dir`` and the registration-layer Guard 2 wrap it.  A
+        raising ``_workset_box_name_for_workspace`` degrades to the fallback, and
+        the create still succeeds."""
         import kanibako.paths as paths_mod
 
         config = load_config(config_file)
@@ -323,7 +322,7 @@ class TestResolveProject:
         def boom(*_a, **_k):
             raise OSError("unresolvable path")
 
-        monkeypatch.setattr(paths_mod, "lookup_by_path", boom)
+        monkeypatch.setattr(paths_mod, "_workset_box_name_for_workspace", boom)
 
         proj = resolve_project(
             std, config, project_dir=str(ws), initialize=True,
@@ -339,7 +338,6 @@ class TestProjectMeta:
         """P8b/Option A: a default-vault PRIMARY create writes NO ``project:``/
         ``resolved:`` identity — identity lives in the registry, not on disk."""
         from kanibako.config_io import load_doc
-        from kanibako.names import read_names
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -354,10 +352,10 @@ class TestProjectMeta:
             doc = load_doc(project_toml)
             assert "project" not in doc
             assert "resolved" not in doc
-        # Identity IS in the registry (name -> external workspace).
-        names = read_names(std.registry)
-        assert proj.name in names["projects"]
-        assert names["projects"][proj.name] == str(proj.project_path)
+        # Identity IS in the PRIMARY membership (name -> external workspace).
+        boxes = _primary_names(std)
+        assert proj.name in boxes
+        assert boxes[proj.name] == str(proj.project_path)
 
     def test_disabled_vault_persists_sparsely_at_create(
         self, config_file, tmp_home, credentials_dir,
@@ -922,15 +920,15 @@ class TestFindLocalAncestor:
         inner.mkdir()
 
         # Register both and create their boxes dirs.
-        register_name(std.registry, "outer", str(outer))
+        _reg_primary(std, "outer", str(outer))
         (std.boxes / "outer").mkdir(parents=True)
-        register_name(std.registry, "inner", str(inner))
+        _reg_primary(std, "inner", str(inner))
         (std.boxes / "inner").mkdir(parents=True)
 
         # From a subdirectory of inner, the deeper match should win.
         target = inner / "src"
         target.mkdir()
-        result = _find_local_ancestor(target.resolve(), std.registry, std.boxes)
+        result = _find_local_ancestor(target.resolve(), std)
         assert result == inner.resolve()
 
     def test_name_scan_ignores_stale_entry_without_boxes_dir(
@@ -942,10 +940,10 @@ class TestFindLocalAncestor:
 
         project = tmp_home / "myproject"
         project.mkdir()
-        register_name(std.registry, "myproject", str(project))
+        _reg_primary(std, "myproject", str(project))
         # Intentionally do NOT create boxes/myproject/
 
-        result = _find_local_ancestor(project.resolve(), std.registry, std.boxes)
+        result = _find_local_ancestor(project.resolve(), std)
         assert result is None
 
     def test_name_scan_exact_match(self, config_file, tmp_home, credentials_dir):
@@ -955,10 +953,10 @@ class TestFindLocalAncestor:
 
         project = tmp_home / "exact"
         project.mkdir()
-        register_name(std.registry, "exact", str(project))
+        _reg_primary(std, "exact", str(project))
         (std.boxes / "exact").mkdir(parents=True)
 
-        result = _find_local_ancestor(project.resolve(), std.registry, std.boxes)
+        result = _find_local_ancestor(project.resolve(), std)
         assert result == project.resolve()
 
 
@@ -979,17 +977,19 @@ class TestResolveProjectHomeGuard:
         self, config_file, tmp_home, credentials_dir,
     ):
         """Pre-created project at $HOME → no error (project_dir_path.is_dir() is True)."""
+        from kanibako import workset_registry
+
         config = load_config(config_file)
         std = load_std_paths(config)
         home = tmp_home / "home"
 
-        # Pre-create the project via direct registry write (simulates
-        # a project registered before the $HOME guard existed).
-        names_path = std.registry
-        names_path.parent.mkdir(parents=True, exist_ok=True)
-        names_path.write_text(
-            f'projects:\n  home: "{home.resolve()}"\nworksets: {{}}\n'
+        # Pre-create the project via a DIRECT PRIMARY-membership write (bypassing
+        # the $HOME guard, which register_primary_box_name enforces) — simulates a
+        # box registered before the $HOME guard existed.
+        prim_reg = workset_registry.resolve_workset_registry_path(
+            std.primary_workset, None,
         )
+        workset_registry.register_workset_box(prim_reg, "home", home.resolve())
         boxes_dir = std.boxes / "home"
         boxes_dir.mkdir(parents=True)
         (boxes_dir / "shell").mkdir()

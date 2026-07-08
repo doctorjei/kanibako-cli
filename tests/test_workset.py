@@ -71,6 +71,16 @@ class TestCreateWorkset:
         with pytest.raises(WorksetError, match="already in use"):
             create_workset("same-name", root2, std)
 
+    def test_duplicate_name_raises_even_with_force(self, std, tmp_home):
+        # force overrides the CROSS-KIND check only; same-kind workset
+        # uniqueness stays hard (spec §5 cross-kind name semantics).
+        create_workset("same-name", tmp_home / "worksets" / "set1", std)
+
+        with pytest.raises(WorksetError, match="already in use"):
+            create_workset(
+                "same-name", tmp_home / "worksets" / "set2", std, force=True,
+            )
+
     def test_duplicate_name_message_explains_uniqueness(self, std, tmp_home):
         # The collision refusal must be explicit about the clash + uniqueness.
         create_workset("dup", tmp_home / "worksets" / "a", std)
@@ -124,12 +134,16 @@ class TestDefaultWorkset:
         assert ws.root == std.primary_workset
 
     def test_mirrors_names_projects(self, std, tmp_home):
+        from kanibako.paths import register_primary_box_name
+
         proj_a = tmp_home / "proj_a"
         proj_b = tmp_home / "proj_b"
         proj_a.mkdir()
         proj_b.mkdir()
-        register_name(std.registry, "alpha", str(proj_a))
-        register_name(std.registry, "beta", str(proj_b))
+        # default_workset synthesizes members from the PRIMARY membership (the
+        # sole store since the global ``projects:`` section retired).
+        register_primary_box_name(std.primary_workset, std.registry, "alpha", str(proj_a))
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(proj_b))
 
         ws = default_workset(std)
         by_name = {p.name: p.source_path for p in ws.projects}
@@ -164,6 +178,26 @@ class TestResolveWorksetName:
     def test_unknown_name_raises(self, std):
         with pytest.raises(WorksetError, match="not registered"):
             resolve_workset_name("nope", std)
+
+    def test_noun_scoped_lookup_of_shadowed_name_returns_workset_no_warn(
+        self, std, tmp_home, caplog: pytest.LogCaptureFixture,
+    ):
+        """Per-kind name policy: a workset name that is ALSO a primary box name
+        (a bare-name shadow) is still reachable via the NOUN-scoped workset
+        lookup — which returns the WORKSET and never emits the bare-name shadow
+        warning (that warning is bare-name resolution only)."""
+        from kanibako.paths import register_primary_box_name
+
+        proj = tmp_home / "proj"
+        proj.mkdir()
+        register_primary_box_name(std.primary_workset, std.registry, "proj", str(proj))
+        # --force: the workset shares the shadowed name deliberately.
+        create_workset("proj", tmp_home / "worksets" / "proj", std, force=True)
+
+        with caplog.at_level("WARNING"):
+            ws = resolve_workset_name("proj", std)
+        assert ws.name == "proj" and ws.is_default is False
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
 
 class TestListWorksetsExcludesDefault:

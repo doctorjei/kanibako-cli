@@ -286,9 +286,13 @@ class TestStaleNameSafety:
         std = load_std_paths(config)
         home = tmp_home / "home"  # $HOME set by fixture
 
-        # Register a stale entry pointing at $HOME.
-        from kanibako.names import register_name
-        register_name(std.registry, "jjb", str(home.resolve()))
+        # Register a stale PRIMARY-membership entry pointing at $HOME (direct
+        # write, bypassing the $HOME guard, to simulate a stale/legacy entry).
+        from kanibako import workset_registry
+        prim_reg = workset_registry.resolve_workset_registry_path(
+            std.primary_workset, None,
+        )
+        workset_registry.register_workset_box(prim_reg, "jjb", home.resolve())
         # Intentionally do NOT create boxes/jjb/
 
         # Run detection from a subdirectory of $HOME.

@@ -31,9 +31,12 @@ class TestClean:
         assert not proj.metadata_path.exists()
 
     def test_purge_unregisters_primary(self, config_file, tmp_home, credentials_dir):
-        """M2: purging a primary box drops its registry.projects entry."""
+        """M2: purging a primary box drops its PRIMARY-membership entry."""
         from kanibako.commands.clean import run
-        from kanibako.names import lookup_by_path, read_names
+        from kanibako.paths import (
+            load_primary_boxes,
+            primary_box_name_for_workspace,
+        )
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -42,14 +45,14 @@ class TestClean:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Initialized → registered.
-        assert lookup_by_path(std.registry, project_dir) is not None
+        assert primary_box_name_for_workspace(std.primary_workset, project_dir) is not None
 
         args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
         assert run(args) == 0
 
         # No dangling name → path entry remains.
-        assert lookup_by_path(std.registry, project_dir) is None
-        assert project_dir not in read_names(std.registry)["projects"].values()
+        assert primary_box_name_for_workspace(std.primary_workset, project_dir) is None
+        assert project_dir not in load_primary_boxes(std.primary_workset).values()
 
     def test_purge_also_unregisters_primary_boxes_membership(
         self, config_file, tmp_home, credentials_dir,
@@ -85,9 +88,9 @@ class TestClean:
         assert proj.name not in workset_registry.load_workset_boxes(prim_reg)
 
     def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
-        """M2 mirror: --all purge clears every primary registry entry."""
+        """M2 mirror: --all purge clears every primary membership entry."""
         from kanibako.commands.clean import run
-        from kanibako.names import read_names
+        from kanibako.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -101,7 +104,7 @@ class TestClean:
         args = argparse.Namespace(path=None, all_projects=True, force=True)
         assert run(args) == 0
 
-        projects = read_names(std.registry)["projects"]
+        projects = load_primary_boxes(std.primary_workset)
         assert a not in projects.values()
         assert b not in projects.values()
 

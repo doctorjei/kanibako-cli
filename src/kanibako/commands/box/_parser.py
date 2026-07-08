@@ -20,13 +20,17 @@ from kanibako.errors import ContainerError, ProjectError
 from kanibako.names import read_names, unregister_name
 from kanibako.paths import (
     xdg,
+    check_primary_box_name_free,
     iter_projects,
     iter_workset_projects,
+    load_primary_boxes,
     load_std_paths,
+    primary_box_name_for_workspace,
     resolve_any_project,
     resolve_box_target,
     resolve_project,
     resolve_standalone_project,
+    unregister_primary_box_name,
     workset_env_path,
     workset_settings_path,
 )
@@ -117,6 +121,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--private", action="store_true",
         help="Create a PRIVATE box: disable global and workset credential "
              "sharing so the host's OAuth token is never seeded into it.",
+    )
+    create_p.add_argument(
+        "--force", action="store_true",
+        help="Create even if --name is already used by a workset (the box "
+             "shadows that workset in bare-name resolution)",
     )
     create_p.set_defaults(func=run_create)
 
@@ -497,6 +506,25 @@ def run_create(args: argparse.Namespace) -> int:
             )
             return 1
 
+    # Cross-kind name guard (per-kind name policy, Jei 2026-07-08): an EXPLICIT
+    # --name for a PRIMARY box that collides with a WORKSET name shadows that
+    # workset in bare-name resolution (the box wins), so refuse UNLESS --force.
+    # SAME-KIND (another primary box already owns the name) is unconditional.
+    # The deferred registration (``_register_new_box``) re-checks with the same
+    # flag; doing it HERE refuses cleanly BEFORE the box dir + seed materialize
+    # (standalone boxes are not in the primary/workset name domain — skip them).
+    if getattr(args, "name", None) and not args.standalone:
+        from kanibako.errors import ProjectError
+        try:
+            check_primary_box_name_free(
+                std.primary_workset, std.registry,
+                args.name, str(effective_path),
+                force=getattr(args, "force", False),
+            )
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
     # Create directory if it doesn't exist.
     if project_dir is not None:
         target = Path(project_dir)
@@ -658,7 +686,7 @@ def run_create(args: argparse.Namespace) -> int:
     # recovery replays the seed.
     _write_create_entry(std, proj)
     seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
-    _register_new_box(std, proj)
+    _register_new_box(std, proj, force=getattr(args, "force", False))
     _clear_create_entry(std, proj)
 
     mode = "standalone" if args.standalone else "default"
@@ -717,9 +745,10 @@ def run_list(args: argparse.Namespace) -> int:
             print("No known projects.")
         return 0
 
-    # Build reverse lookup from path → name using names.yaml.
-    names_data = read_names(std.registry)
-    path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
+    # Build reverse lookup from path → name using the PRIMARY membership.
+    path_to_name: dict[str, str] = {
+        v: k for k, v in load_primary_boxes(std.primary_workset).items()
+    }
 
     def _norm(p: object) -> str:
         """Normalize a path (Path or str, possibly None) for row-identity keys."""
@@ -910,8 +939,9 @@ def _list_orphans(
             print("No orphaned projects found.")
         return 0
 
-    names_data = read_names(std.registry)
-    path_to_name: dict[str, str] = {v: k for k, v in names_data["projects"].items()}
+    path_to_name: dict[str, str] = {
+        v: k for k, v in load_primary_boxes(std.primary_workset).items()
+    }
 
     if ac_orphans:
         if not quiet:
@@ -1064,7 +1094,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
 
 def run_rm(args: argparse.Namespace) -> int:
-    """Unregister a project from names.yaml, optionally purging metadata."""
+    """Unregister a project/workset from the registry, optionally purging metadata."""
     from kanibako.names import lookup_by_path
     from kanibako.utils import confirm_prompt
 
@@ -1078,28 +1108,36 @@ def run_rm(args: argparse.Namespace) -> int:
         print("Error: no box specified to remove.", file=sys.stderr)
         return 1
     names = read_names(std.registry)
+    # PRIMARY boxes live in the primary per-workset ``boxes:`` membership (the
+    # sole store since the global ``projects:`` section retired); worksets in the
+    # global ``worksets:`` name section.  ``section`` carries "projects" for a
+    # primary box (drives the membership unregister below) or "worksets".
+    primary_boxes = load_primary_boxes(std.primary_workset)
 
     # Resolve target: try as a registered name first, then as a path.
     name: str | None = None
     section: str | None = None
     path: str | None = None
 
-    for sec in ("projects", "worksets"):
-        if target in names[sec]:
-            name = target
-            section = sec
-            path = names[sec][target]
-            break
+    if target in primary_boxes:
+        name, section, path = target, "projects", primary_boxes[target]
+    elif target in names["worksets"]:
+        name, section, path = target, "worksets", names["worksets"][target]
 
     if name is None:
-        # Try as a path (reverse lookup).
-        result = lookup_by_path(std.registry, target)
-        if result is not None:
-            name, section = result
-            path = names[section][name]
+        # Try as a path (reverse lookup): the primary membership first, then the
+        # global worksets index.
+        primary_hit = primary_box_name_for_workspace(std.primary_workset, target)
+        if primary_hit is not None:
+            name, section, path = primary_hit, "projects", primary_boxes.get(primary_hit)
+        else:
+            result = lookup_by_path(std.registry, target)
+            if result is not None:
+                name, section = result
+                path = names[section][name]
 
     if name is None:
-        # STANDALONE boxes are not in names.yaml — they live in
+        # STANDALONE boxes are not in the name index — they live in
         # registry.standalone (box name → root). Resolve the target as either a
         # registered standalone box name or a path (ancestor-walk detection), so
         # `box rm <canonical-name>` and `box rm <path>` both clean up an
@@ -1115,8 +1153,13 @@ def run_rm(args: argparse.Namespace) -> int:
     kind = "workset" if section == "worksets" else "project"
     print(f"Removing {kind}: {name} ({path})")
 
-    # Unregister from the registry.
-    unregister_name(std.registry, name, section=section)
+    # Unregister from the registry (membership for a primary box, the global
+    # worksets index for a workset) — re-routing the primary arm to membership
+    # closes the pre-existing gap where `rm` left the membership stale.
+    if section == "worksets":
+        unregister_name(std.registry, name, section="worksets")
+    else:
+        unregister_primary_box_name(std.primary_workset, name)
     print(f"Removed '{name}' from the registry")
 
     if args.purge:

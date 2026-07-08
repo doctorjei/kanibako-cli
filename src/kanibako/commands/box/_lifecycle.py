@@ -35,11 +35,6 @@ from kanibako.config import (
     write_box_enable_vault,
 )
 from kanibako.errors import ProjectError, WorksetError
-from kanibako.names import (
-    assign_name,
-    lookup_by_path,
-    unregister_name,
-)
 from kanibako.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
@@ -47,10 +42,13 @@ from kanibako.paths import (
     StandardPaths,
     WorksetSpec,
     _find_workset_for_path,
+    assign_primary_box_name,
     detect_project_mode,
+    primary_box_name_for_workspace,
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
+    unregister_primary_box_name,
 )
 from kanibako.utils import write_project_gitignore
 from kanibako.workset import (
@@ -195,7 +193,10 @@ def resolve_lifecycle_target(
     if raw and "/" not in raw and not Path(raw).exists():
         from kanibako.paths import resolve_name
         try:
-            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd())
+            resolved, kind = resolve_name(
+                std.registry, raw, cwd=Path.cwd(),
+                primary_workset=std.primary_workset,
+            )
             if kind in ("project", "workset"):
                 # Update `raw` for BOTH kinds (mirrors resolve_any_project): a
                 # bare workset name resolves to the workset ROOT, which
@@ -263,22 +264,15 @@ def _default_state_from_meta(
     """Build a default-mode :class:`ProjectState` from registered metadata.
 
     Used by ``remap`` when the recorded workspace directory no longer exists on
-    disk: the project is still registered in ``names.yaml`` (path -> name) and
-    its metadata lives in ``boxes/<name>``.  Returns ``None`` when no such
-    registration is found, so the caller can raise the normal error.
+    disk: the box is still registered in the PRIMARY ``boxes:`` membership (path
+    -> name) and its metadata lives in ``boxes/<name>``.  Returns ``None`` when no
+    such registration is found, so the caller can raise the normal error.
     """
-    from kanibako.names import read_names
-
-    names = read_names(std.registry)
-    name: str | None = None
-    for n, p in names["projects"].items():
-        if Path(p).resolve() == workspace.resolve():
-            name = n
-            break
+    name = primary_box_name_for_workspace(std.primary_workset, str(workspace))
     if name is None:
         return None
-    # P8b: registry membership (the ``names["projects"]`` hit above) IS the
-    # existence signal — identity no longer self-describes on disk, so there is no
+    # P8b: PRIMARY membership (the reverse-lookup hit above) IS the existence
+    # signal — identity no longer self-describes on disk, so there is no
     # ``project.mode`` presence gate.  ``enable_vault`` is the plain box-scope
     # ``box.enable_vault`` read (decoupled from identity).
     metadata_path = std.boxes / name
@@ -923,7 +917,7 @@ def _remove_old_metadata(
         reused_in_place = preserve_name is not None and state.name == preserve_name
         if state.name and not reused_in_place:
             try:
-                unregister_name(std.registry, state.name)
+                unregister_primary_box_name(std.primary_workset, state.name)
             except Exception:  # noqa: BLE001
                 pass
         if reused_in_place:
@@ -964,22 +958,26 @@ def _to_default(
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
     # L2 (name reuse on same-name convert): a PRIMARY source's own name is still
-    # registered at this point, so assign_name would see the collision and
-    # auto-suffix (foo→foo2), stranding the original entry once _remove_old_
+    # registered at this point, so assign_primary_box_name would see the collision
+    # and auto-suffix (foo→foo2), stranding the original entry once _remove_old_
     # metadata later unregisters it. Unregister the source's name FIRST (only for
-    # a primary source — other modes aren't in registry.projects) so the same
+    # a primary source — other modes aren't in the PRIMARY membership) so the same
     # name is reused; the later _remove_old_metadata unregister then no-ops.
     preserved_name: str | None = None
     if state.mode == BoxMode.primary and state.name:
-        existing = lookup_by_path(std.registry, str(new_workspace))
-        if existing is not None and existing[1] == "projects":
+        existing = primary_box_name_for_workspace(
+            std.primary_workset, str(new_workspace),
+        )
+        if existing is not None:
             # Path unchanged + still registered: free the name so it is reused
             # verbatim rather than suffixed, and mark it preserved so
             # _remove_old_metadata neither re-unregisters it nor deletes the
             # reused metadata.
-            preserved_name = existing[0]
-            _safe_unregister(std, existing[0])
-    project_name = assign_name(std.registry, str(new_workspace))
+            preserved_name = existing
+            _safe_unregister(std, existing)
+    project_name = assign_primary_box_name(
+        std.primary_workset, std.registry, str(new_workspace),
+    )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
@@ -998,8 +996,8 @@ def _to_default(
     vault_rw = std.primary_vault_rw / project_name
 
     # Sparse move (P8b/Option A): NO ``project:``/``resolved:`` identity is
-    # written — the moved box's identity/workspace live in the registries (the
-    # global name index re-registered above + the PRIMARY membership).  Persist
+    # written — the moved box's identity/workspace live in the PRIMARY ``boxes:``
+    # membership (re-registered above via assign_primary_box_name).  Persist
     # only the NON-default ``box.enable_vault``, sparsely (carried from the source
     # box's ``state.enable_vault`` so a disabled-vault box stays disabled).
     write_box_enable_vault(dst_metadata / BOX_META_FILE, state.enable_vault)
@@ -1458,7 +1456,7 @@ def _relocate_channel_partition(
 
 def _safe_unregister(std: StandardPaths, name: str) -> None:
     try:
-        unregister_name(std.registry, name)
+        unregister_primary_box_name(std.primary_workset, name)
     except Exception:  # noqa: BLE001
         pass
 

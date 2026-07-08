@@ -8,19 +8,20 @@ import sys
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
-from kanibako.names import assign_name, unregister_name
 from kanibako.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
     WorksetSpec,
     _resolve_local_dir,
     _resolve_workset_or_connected,
+    assign_primary_box_name,
     xdg,
     detect_project_mode,
     load_std_paths,
     resolve_standalone_project,
     resolve_project,
     resolve_workset_project,
+    unregister_primary_box_name,
 )
 from kanibako.utils import confirm_prompt
 
@@ -116,6 +117,12 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # files land in the destination's ``workspace/`` subdir (drift H), since the
     # destination root holds the standalone artifacts (settings.yaml, box_data/,
     # vault/).
+    # F2: capture whether the destination dir pre-existed BEFORE the workspace
+    # copy, so a late Guard-1 refusal in _duplicate_to_local (the dest workspace
+    # is ALREADY a registered primary box — one box per workspace path) can roll
+    # back a copy THIS call created without deleting a pre-existing dir.
+    new_path_existed = new_path.is_dir()
+
     workspace_src = src_proj.project_path
     if not args.bare and workspace_src.is_dir():
         if target_mode == BoxMode.standalone:
@@ -130,7 +137,18 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if target_mode == BoxMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
-        _duplicate_to_local(src_proj, new_path, std, config, args.force)
+        # Guard 1 (one box per workspace path) can refuse here when the dest
+        # workspace is ALREADY a registered primary box — mirror run_duplicate's
+        # clean catch (rc=1) and roll back a workspace copy THIS call created so
+        # the refusal leaves no partial residue (F2).
+        from kanibako.errors import ProjectError
+        try:
+            _duplicate_to_local(src_proj, new_path, std, config, args.force)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            if not new_path_existed and new_path.is_dir():
+                shutil.rmtree(new_path, ignore_errors=True)
+            return 1
 
     print(f"Duplicated project to {target_mode.value} mode:")
     print(f"  from: {source_path}")
@@ -220,7 +238,7 @@ def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
     guarded so one failure does not mask the rest.
     """
     try:
-        unregister_name(std.registry, project_name)
+        unregister_primary_box_name(std.primary_workset, project_name)
     except Exception:  # noqa: BLE001 - best-effort restore
         pass
     try:
@@ -237,7 +255,11 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
-    project_name = assign_name(std.registry, str(new_path))
+    # Registers the PRIMARY membership (the sole store; a duplicate now joins the
+    # membership like any other primary box — closing the old global-only gap).
+    project_name = assign_primary_box_name(
+        std.primary_workset, std.registry, str(new_path),
+    )
     projects_base = std.boxes
     dst_project = projects_base / project_name
 
@@ -504,9 +526,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
 
     # 3. Source must have kanibako metadata.
-    source_name, source_project_dir = _resolve_local_dir(
-        std.registry, str(source_path), std.boxes,
-    )
+    source_name, source_project_dir = _resolve_local_dir(std, str(source_path))
 
     if not source_project_dir.is_dir():
         print(
@@ -525,9 +545,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
 
     # 5. Destination metadata must not already exist (unless --force).
-    new_name, new_project_dir = _resolve_local_dir(
-        std.registry, str(new_path), std.boxes,
-    )
+    new_name, new_project_dir = _resolve_local_dir(std, str(new_path))
 
     if new_project_dir.is_dir() and not args.force:
         print(
@@ -567,7 +585,17 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
-    dup_name = assign_name(std.registry, str(new_path))
+    # The PRIMARY membership enforces one box per workspace path (Bug-A guard), so
+    # a bare duplicate whose destination workspace is ALREADY a registered box
+    # refuses cleanly rather than mint a second box for the same workspace.
+    from kanibako.errors import ProjectError
+    try:
+        dup_name = assign_primary_box_name(
+            std.primary_workset, std.registry, str(new_path),
+        )
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     new_project_dir = std.boxes / dup_name
 
     # Failure-consistency: a crash AFTER assign_name but DURING the metadata copy

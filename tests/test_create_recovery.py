@@ -29,7 +29,12 @@ from kanibako.commands.start import (
     _register_new_box,
     _write_create_entry,
 )
-from kanibako.paths import BoxMode
+from kanibako.paths import BoxMode, load_primary_boxes
+
+
+def _primary_names(std):
+    """Return the PRIMARY box membership (the sole store since projects retired)."""
+    return load_primary_boxes(std.primary_workset)
 
 
 # ---------------------------------------------------------------------------
@@ -86,16 +91,16 @@ class TestCreateEntryHelpers:
 class TestRegisterNewBox:
     def test_primary_registers_name_path(self, tmp_path: Path) -> None:
         from types import SimpleNamespace
-        from kanibako.names import read_names
 
         registry = tmp_path / "registry.yaml"
-        std = SimpleNamespace(registry=registry)
+        primary = tmp_path / "primary_workset"
+        std = SimpleNamespace(registry=registry, primary_workset=primary)
         proj = SimpleNamespace(
             mode=BoxMode.primary, name="myapp",
             project_path=tmp_path / "ws" / "myapp",
         )
         _register_new_box(std, proj)
-        assert read_names(registry)["projects"]["myapp"] == str(
+        assert load_primary_boxes(primary)["myapp"] == str(
             tmp_path / "ws" / "myapp"
         )
 
@@ -103,7 +108,8 @@ class TestRegisterNewBox:
         """Recovery re-entry on an already-registered box is a no-op (no raise)."""
         from types import SimpleNamespace
         registry = tmp_path / "registry.yaml"
-        std = SimpleNamespace(registry=registry)
+        primary = tmp_path / "primary_workset"
+        std = SimpleNamespace(registry=registry, primary_workset=primary)
         proj = SimpleNamespace(
             mode=BoxMode.primary, name="myapp",
             project_path=tmp_path / "ws" / "myapp",
@@ -128,18 +134,18 @@ class TestRegisterNewBox:
         assert registry_store.load_standalone(registry)["ab12_proj"] == str(root)
 
     def test_named_is_noop(self, tmp_path: Path) -> None:
-        """NAMED boxes carry no name-registry entry on create."""
+        """NAMED boxes carry no deferred registration on create."""
         from types import SimpleNamespace
-        from kanibako.names import read_names
 
         registry = tmp_path / "registry.yaml"
-        std = SimpleNamespace(registry=registry)
+        primary = tmp_path / "primary_workset"
+        std = SimpleNamespace(registry=registry, primary_workset=primary)
         proj = SimpleNamespace(
             mode=BoxMode.named, name="proj",
             project_path=tmp_path / "ws" / "workspaces" / "proj",
         )
         _register_new_box(std, proj)  # no-op.
-        assert read_names(registry)["projects"] == {}
+        assert load_primary_boxes(primary) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +157,6 @@ class TestResolverRegisterFalse:
         self, config_file, tmp_home, credentials_dir
     ):
         from kanibako.config import load_config
-        from kanibako.names import read_names
         from kanibako.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
@@ -163,14 +168,13 @@ class TestResolverRegisterFalse:
         )
         assert proj.is_new
         assert proj.name == "project"
-        assert read_names(std.registry)["projects"] == {}
+        assert _primary_names(std) == {}
         assert proj.shell_path.is_dir()
 
     def test_primary_register_true_is_default(
         self, config_file, tmp_home, credentials_dir
     ):
         from kanibako.config import load_config
-        from kanibako.names import read_names
         from kanibako.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
@@ -179,7 +183,7 @@ class TestResolverRegisterFalse:
         proj = resolve_project(
             std, config, project_dir=project_dir, initialize=True,
         )
-        assert read_names(std.registry)["projects"][proj.name] == project_dir
+        assert _primary_names(std)[proj.name] == project_dir
 
     def test_standalone_register_false_not_in_standalone_section(
         self, config_file, tmp_home, credentials_dir
@@ -265,7 +269,6 @@ class TestRunCreatePersonaGate:
 
         from kanibako.commands.box._parser import run_create
         from kanibako.config import load_config
-        from kanibako.names import read_names
         from kanibako.paths import load_std_paths
         from kanibako import journal
 
@@ -301,7 +304,7 @@ class TestRunCreatePersonaGate:
         m_write_entry.assert_not_called()
         assert seed_called["v"] is False
         assert journal.read_journal(std.journal) == {}
-        assert read_names(std.registry)["projects"] == {}
+        assert _primary_names(std) == {}
         # No agent-store artifact was materialised for the persona node.
         assert not (std.agents / "navigator℘claude").exists()
 
@@ -315,7 +318,6 @@ class TestRunCreateJournalLifecycle:
         (write-ahead ordering)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.config import load_config
-        from kanibako.names import read_names
         from kanibako.paths import load_std_paths
 
         seen = {}
@@ -336,7 +338,7 @@ class TestRunCreateJournalLifecycle:
         assert seen["pending_during_seed"] is True
         box_key = str(std.boxes / "project")
         assert journal.pending_create(std.journal, box_key) is None
-        assert "project" in read_names(std.registry)["projects"]
+        assert "project" in _primary_names(std)
 
     def test_genuine_collision_in_register_leaves_entry(
         self, config_file, tmp_home, credentials_dir, monkeypatch
@@ -357,7 +359,7 @@ class TestRunCreateJournalLifecycle:
             lambda std, config, proj, **kw: None,
         )
 
-        def boom(std, proj):
+        def boom(std, proj, **kw):
             raise ProjectError("simulated registry collision")
 
         monkeypatch.setattr("kanibako.commands.start._register_new_box", boom)
@@ -393,6 +395,86 @@ class TestRunCreateJournalLifecycle:
 
         rc2 = run_create(_create_args(tmp_home / "project"))
         assert rc2 == 1
+
+
+class TestRunCreateCrossKindName:
+    """`box create --name <workset-name>` (per-kind name policy, Jei 2026-07-08).
+
+    Box and workset names are SEPARATE namespaces, but a bare name shared across
+    kinds resolves to the box (shadowing the workset).  An explicit --name that
+    collides with a WORKSET name refuses UNLESS --force; the refusal is an
+    up-front CLI check (clean rc=1) BEFORE the box dir + seed materialize.
+    """
+
+    def test_name_collides_with_workset_refuses_cleanly(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.config import load_config
+        from kanibako.names import register_name
+        from kanibako.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        register_name(std.registry, "shared", str(tmp_home / "ws"), section="worksets")
+
+        seed_called = {"v": False}
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: seed_called.__setitem__("v", True),
+        )
+
+        rc = run_create(_create_args(tmp_home / "project", name="shared"))
+        assert rc == 1
+        # Refused up front: nothing materialized or seeded.
+        assert seed_called["v"] is False
+        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+        assert _primary_names(std) == {}
+
+    def test_name_collides_with_workset_force_creates(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.config import load_config
+        from kanibako.names import register_name
+        from kanibako.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        register_name(std.registry, "shared", str(tmp_home / "ws"), section="worksets")
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+        rc = run_create(_create_args(tmp_home / "project", name="shared", force=True))
+        assert rc == 0
+        # --force let the box take the shadowed name → registered in membership.
+        assert "shared" in _primary_names(std)
+
+    def test_name_collides_with_primary_box_refuses_even_with_force(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """SAME-KIND: a --name already owned by another PRIMARY box refuses even
+        with --force (per-kind uniqueness is unconditional)."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        register_primary_box_name(
+            std.primary_workset, std.registry, "shared", str(tmp_home / "other"),
+        )
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+        rc = run_create(_create_args(tmp_home / "project", name="shared", force=True))
+        assert rc == 1
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +561,6 @@ class TestRecoveryPrimary:
         SURVIVES.  Asserted UNCONDITIONALLY (no rc-gated skip)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.config import load_config
-        from kanibako.names import read_names
         from kanibako.paths import load_std_paths
 
         config = load_config(config_file)
@@ -496,7 +577,7 @@ class TestRecoveryPrimary:
         # Crash state confirmed: entry present.
         assert journal.pending_create(std.journal, box_key) is not None
         if not register_box:
-            assert read_names(std.registry)["projects"] == {}
+            assert _primary_names(std) == {}
 
         # Recovery: re-run create (seed neutralized — assert the
         # register+entry-clear completion + home untouched).
@@ -510,9 +591,9 @@ class TestRecoveryPrimary:
         std = load_std_paths(config)
         # UNCONDITIONAL recovery asserts.
         assert rc == 0
-        assert "project" in read_names(std.registry)["projects"]
+        assert "project" in _primary_names(std)
         # Registered EXACTLY once.
-        assert list(read_names(std.registry)["projects"]).count("project") == 1
+        assert list(_primary_names(std)).count("project") == 1
         assert journal.pending_create(std.journal, box_key) is None
         # Invariant restored: registered ==> no pending entry.
         assert journal.read_journal(std.journal) == {}

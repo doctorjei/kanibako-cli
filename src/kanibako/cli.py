@@ -145,6 +145,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create a PRIVATE box: disable global and workset credential "
              "sharing so the host's OAuth token is never seeded into it.",
     )
+    create_p.add_argument(
+        "--force", action="store_true",
+        help="Create even if --name is already used by a workset (the box "
+             "shadows that workset in bare-name resolution)",
+    )
     create_p.set_defaults(func=run_create)
 
     # rm — top-level alias for box rm
