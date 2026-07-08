@@ -159,8 +159,8 @@ def _extension_for_agent(agent_name: str, proj) -> str | None:
     return desc.vscode_extension if desc is not None else None
 
 
-def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> str | None:
-    """Best-effort: the RUNNING box agent's ``descriptor.vscode_extension``.
+def _resolve_box_agent_name(runtime, std, proj, container_name: str) -> str | None:
+    """Best-effort: the RUNNING box's authoritative agent NODE-name (or ``None``).
 
     STAMP-FIRST, mirroring ``stop.py._writeback_on_stop`` and ``start.py``'s
     reattach fast-source: a running box's authoritative agent is its
@@ -168,17 +168,18 @@ def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> st
     cascade.  Using the stamp avoids two cascade mis-resolutions on a running box:
     (1) 2+ installed agents + no system default → the cascade RAISES (seed nothing
     for a live claude box); (2) a system default that has since diverged from the
-    box's actually-running agent → seed the WRONG agent's extension.
+    box's actually-running agent → seed the WRONG agent.
 
     Falls back to the ``resolve_agent`` create-cascade ONLY for pre-stamp (older)
-    boxes with no ``KANIBAKO_AGENT`` env.  Swallows every failure (unresolved
-    agent, descriptor-less/no-agent shell, unset extension) → ``None``.  NEVER
-    raises.
+    boxes with no ``KANIBAKO_AGENT`` env.  Swallows every failure → ``None``.
+    NEVER raises.  Resolved ONCE per ``code`` invocation and consumed by the
+    extension seed (:func:`_resolve_box_vscode_extension`) so the box is inspected
+    a single time.
     """
     try:
         stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
         if stamp:
-            return _extension_for_agent(stamp, proj)
+            return stamp
 
         # Pre-stamp (older) box: fall back to the create-time resolve_agent cascade.
         from kanibako.config import (
@@ -193,13 +194,31 @@ def _resolve_box_vscode_extension(runtime, std, proj, container_name: str) -> st
             proj.metadata_path / BOX_META_FILE,
             workset_path=workset_settings_path(proj.group),
         )
-        agent_name = resolve_agent(
+        return resolve_agent(
             explicit_agent=None,
             box_agent_name=merged.box_agent_name,
             workset_agent=None,
             system_default_path=std.settings,
             project_path=proj.project_path,
         )
+    except Exception:
+        get_logger("code").debug(
+            "could not resolve box agent name; seeding none",
+            exc_info=True,
+        )
+        return None
+
+
+def _resolve_box_vscode_extension(agent_name: str | None, proj) -> str | None:
+    """Best-effort: *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
+
+    Takes the pre-resolved box agent NODE-name (see :func:`_resolve_box_agent_name`)
+    and maps it to its editor extension.  Swallows every failure (descriptor-less
+    / no-agent shell, unset extension) → ``None``.  NEVER raises.
+    """
+    if agent_name is None:
+        return None
+    try:
         return _extension_for_agent(agent_name, proj)
     except Exception:
         get_logger("code").debug(
@@ -254,7 +273,9 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
         image_ref = _resolve_box_image(runtime, proj, container_name)
         if image_ref is None:
             return  # can't key the image-shared config → skip, never crash
-        extension = _resolve_box_vscode_extension(runtime, std, proj, container_name)
+        # Resolve the box agent ONCE (STAMP-first) for the extension seed.
+        agent_name = _resolve_box_agent_name(runtime, std, proj, container_name)
+        extension = _resolve_box_vscode_extension(agent_name, proj)
         path = attached_container_config_path(
             image_ref, xdg("XDG_CONFIG_HOME", ".config"),
         )

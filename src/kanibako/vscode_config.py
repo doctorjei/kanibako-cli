@@ -165,3 +165,144 @@ def seed_attached_container_config(
     # attach, and the seed is idempotent, so a torn write self-heals next run.
     path.write_text(json.dumps(merged, indent=2) + "\n")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Ph4b Vector A: in-box claude settings.json bypassPermissions delivery.
+#
+# kanibako's per-agent ``auto_approve`` reaches the CLI claude via the
+# ``--dangerously-skip-permissions`` flag, but NOT the VS Code claude-code
+# EXTENSION panel (the default `kanibako code` UX), which reads the box's
+# in-box ``~/.claude/settings.json``.  This file is PER-BOX (the box home mount),
+# so it is the correctly-scoped place to reflect the box's configured yolo.
+#
+# SYMMETRIC: the managed ``permissions.defaultMode`` is DRIVEN by the box's
+# resolved claude ``auto_approve`` — SET to ``"bypassPermissions"`` when yolo is
+# ON, and CLEARED when yolo is OFF (so toggling off actually takes effect in the
+# panel).  Both directions merge, never clobber: the clear removes ONLY the exact
+# value we manage, leaving a user-chosen mode (``plan``/``default``/
+# ``acceptEdits``), sibling ``permissions.allow``/``deny``, and every other
+# top-level key intact.
+# ---------------------------------------------------------------------------
+
+# The exact ``permissions.defaultMode`` value kanibako owns for the panel-yolo
+# delivery.  We SET it on and CLEAR it (only when unchanged from this) off — a
+# user's own mode is never touched.
+_MANAGED_MODE = "bypassPermissions"
+
+
+def merge_bypass_permissions(settings: dict) -> dict:
+    """UNION-MERGE ``permissions.defaultMode = "bypassPermissions"`` into a claude
+    ``settings.json`` dict, returning a NEW dict (input never mutated).
+
+    * ``permissions`` — created if absent; if present, its OTHER sub-keys
+      (``allow``/``deny``/…) are preserved.  ``defaultMode`` is SET to
+      ``"bypassPermissions"`` (the yolo delivery target for the panel).
+    * every OTHER top-level key (``$schema``, ``includeCoAuthoredBy``, …) is
+      preserved untouched.
+    """
+    merged = copy.deepcopy(settings)
+    current = merged.get("permissions")
+    perms = dict(current) if isinstance(current, dict) else {}
+    perms["defaultMode"] = _MANAGED_MODE
+    merged["permissions"] = perms
+    return merged
+
+
+def clear_bypass_permissions(settings: dict) -> dict:
+    """Return a NEW dict with kanibako's MANAGED ``permissions.defaultMode`` removed.
+
+    The OFF-direction of the symmetric delivery.  Pure; input never mutated:
+
+    * ``permissions.defaultMode`` is removed ONLY when it equals the value we
+      manage (``"bypassPermissions"``).  A user-chosen mode (``plan``/``default``/
+      ``acceptEdits``) is left intact, and an absent ``permissions``/``defaultMode``
+      is a no-op.
+    * sibling ``permissions`` sub-keys (``allow``/``deny``/…) and every other
+      top-level key are preserved.
+    * if removing ``defaultMode`` empties the ``permissions`` object, the now-stray
+      ``permissions`` key is dropped (we are the only one who created it); a
+      ``permissions`` block that still has other keys is KEPT.
+    """
+    merged = copy.deepcopy(settings)
+    current = merged.get("permissions")
+    if not isinstance(current, dict) or current.get("defaultMode") != _MANAGED_MODE:
+        return merged
+    perms = dict(current)
+    del perms["defaultMode"]
+    if perms:
+        merged["permissions"] = perms
+    else:
+        del merged["permissions"]
+    return merged
+
+
+def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool:
+    """Write *merged* to *path* as pretty JSON iff it differs from disk.
+
+    Returns ``True`` iff a write occurred (idempotent), ``False`` when the merge
+    is a no-op versus what is already on disk.
+    """
+    if path.exists() and merged == existing:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(merged, indent=2) + "\n")
+    return True
+
+
+def seed_claude_bypass_permissions(settings_path: Path) -> bool:
+    """Read-modify-write: SET ``permissions.defaultMode=bypassPermissions`` into the
+    box's in-box claude ``~/.claude/settings.json`` (host path *settings_path*).
+
+    Reads the existing file tolerantly (absent/corrupt → ``{}``), merges via
+    :func:`merge_bypass_permissions`, and writes it back as pretty JSON (creating
+    parent dirs) iff it changed (idempotent).  Returns ``True`` iff it wrote the
+    file.  The ON-direction of :func:`deliver_claude_panel_permissions`.
+    """
+    existing = _read_existing_config(settings_path)
+    return _write_if_changed(
+        settings_path, existing, merge_bypass_permissions(existing),
+    )
+
+
+def clear_claude_bypass_permissions(settings_path: Path) -> bool:
+    """Read-modify-write: CLEAR our managed ``permissions.defaultMode`` from the
+    box's in-box claude ``~/.claude/settings.json`` (host path *settings_path*).
+
+    No-ops when the file is ABSENT (nothing to clear — never creates it).  Reads
+    tolerantly, applies :func:`clear_bypass_permissions`, and writes back iff it
+    changed (idempotent).  Returns ``True`` iff it wrote the file.  The
+    OFF-direction of :func:`deliver_claude_panel_permissions`.
+    """
+    if not settings_path.exists():
+        return False
+    existing = _read_existing_config(settings_path)
+    return _write_if_changed(
+        settings_path, existing, clear_bypass_permissions(existing),
+    )
+
+
+def deliver_claude_panel_permissions(
+    *, auto_approve: bool, is_claude: bool, claude_config_dir: Path,
+) -> bool:
+    """GATE + deliver the SYMMETRIC Vector A yolo state for the VS Code panel.
+
+    The single mutation-provable gate for the launch-side Vector A delivery,
+    driven by the box's resolved claude ``auto_approve``:
+
+    * non-claude box → inert, does NOTHING (returns ``False``).
+    * claude + ``auto_approve`` ON → SET ``permissions.defaultMode=bypassPermissions``
+      in ``<claude_config_dir>/settings.json``.
+    * claude + ``auto_approve`` OFF → CLEAR that managed value (no-op if the file
+      is absent) so toggling yolo off takes effect in the panel.
+
+    Both directions merge (never clobber a user's own settings) and are
+    idempotent.  Returns whether a write occurred.  Callers wrap this best-effort
+    so a failure never blocks the launch.
+    """
+    if not is_claude:
+        return False
+    settings_path = claude_config_dir / "settings.json"
+    if auto_approve:
+        return seed_claude_bypass_permissions(settings_path)
+    return clear_claude_bypass_permissions(settings_path)
