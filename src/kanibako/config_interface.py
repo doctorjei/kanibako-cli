@@ -63,8 +63,7 @@ class ConfigLevel(Enum):
 # This set drives the "known-key heuristic": if a positional arg matches one
 # of these, it's treated as a GET request rather than a project name.
 KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
-    # Start mode / agent flags
-    "start_mode",
+    # Agent flags
     "model",
     # allow_helpers: an agent-scope BEHAVIOR key (spec §2d L557
     # ``agent.default.allow_helpers | true``). The bare key is the any-agent
@@ -94,6 +93,19 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # unset). RELOCATED from the retired BOX-scope ``box.bootstrap_program`` key
     # (1.7.0-rc clean break — no alias for the old box key).
     "bootstrap",
+    # continue_mode: an agent-scope BEHAVIOR key (spec §2d L578
+    # ``agent.default.continue_mode | true``; "continue vs fresh; resume removed").
+    # The bare key is the any-agent ``agent.default`` tier (mirrors ``model``/
+    # ``auto_approve``); per-agent overrides are the persona key
+    # ``agent.<agent>.continue_mode``. Coerced to bool (default True): true ⇒
+    # continue the most-recent conversation, false ⇒ start fresh. It is the
+    # PERSISTED FALLBACK for the continue-vs-fresh decision at launch (start.py's
+    # ``resolve_mode`` seam); the per-launch ``-N``/``-C``/``-R`` flags OVERRIDE it
+    # (ephemeral wins), mirroring how ``-M`` overrides ``model`` and ``-A``/``-S``
+    # override ``auto_approve``. REPLACES the dead ``start_mode`` leaf (never read at
+    # launch; spec §3 L769 "``start_mode`` fully covered by ``continue_mode`` +
+    # ``auto_approve``" — 1.7.0-rc clean break, no alias).
+    "continue_mode",
     # Box
     "box.image",
     "box.agent_name",
@@ -428,7 +440,7 @@ def _resolve_key(raw: str) -> str:
 # ``_is_agent_node_secret_key`` → ``_node_secret_target``, NOT here — a clean break;
 # ``env_file`` only shipped rc0-rc2, no alias).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
-    {"endpoint", "model", "start_mode", "auto_approve", "allow_helpers", "bootstrap"}
+    {"endpoint", "model", "continue_mode", "auto_approve", "allow_helpers", "bootstrap"}
 )
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
@@ -444,7 +456,7 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 
     Returns ``None`` when *key* is not a settable per-persona agent key. The
     settable *tail* forms are a FLAT state leaf (``endpoint`` / ``model`` /
-    ``start_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>``
+    ``continue_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>``
     pointer.  The SECRET pointer ``secret_path.<VAR>`` is NOT parsed here — it is
     matched EARLIER (``_is_agent_node_secret_key``) and stored DISCRIMINATED (spec §2a;
     it replaced the rc-only ``env_file.<VAR>``, which routed here).  The node segment
@@ -753,7 +765,7 @@ def _is_resource_key(key: str) -> bool:
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
     return key in {
-        "model", "start_mode", "auto_approve", "endpoint", "allow_helpers",
+        "model", "continue_mode", "auto_approve", "endpoint", "allow_helpers",
         "bootstrap",
     }
 
@@ -799,7 +811,7 @@ def box_agent_redirect_key(
 
     A BARE agent behavior key — the WHOLE :func:`_is_agent_setting` family
     (``model`` / ``auto_approve`` / ``bootstrap`` / ``endpoint`` /
-    ``allow_helpers`` / ``start_mode``), uniformly, NOT a per-key list — targets
+    ``allow_helpers`` / ``continue_mode``), uniformly, NOT a per-key list — targets
     the any-agent ``agent.default`` tier. From a BOX that is an UPWARD write (agent
     ⊃ box in the containment order): spec L440 ("a box tweaks its agent through its
     own box-scoped ``box.agent.*`` mirror") + the §0 directional rule REFUSE it.
@@ -1019,7 +1031,7 @@ def _is_path_category_key(key: str) -> bool:
 
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
 # A key whose first segment is NOT one of these (``env.*`` / ``resource.*`` and
-# the un-prefixed scalars ``model`` / ``start_mode`` / ``auto_approve`` /
+# the un-prefixed scalars ``model`` / ``continue_mode`` / ``auto_approve`` /
 # ``allow_helpers``) is SCOPELESS — it always writes to the command
 # scope's OWN file, so the direction guard does not apply to it. ``config`` is a
 # real namespace (config.* keys exist) but no config.* key actually REACHES this
@@ -1606,7 +1618,7 @@ def get_config_value(
             return _read_stored_leaf(path, sections, leaf)
         return None
 
-    # target settings (model, start_mode, auto_approve, allow_helpers)
+    # target settings (model, continue_mode, auto_approve, allow_helpers)
     if _is_agent_setting(canonical):
         # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
         # ``agent.default`` tier; per-agent overrides live under ``agent.<name>``
@@ -2294,7 +2306,7 @@ def reset_config_value(
         # ({system,agent,workset,box}.*) actually READS through the
         # assemble/merge cascade — so only for those is the assembled snapshot the
         # key's real read path. A SCOPELESS key (``vault.*``, ``allow_helpers``,
-        # ``model``/``start_mode``/``auto_approve``) is read from a single settings
+        # ``model``/``continue_mode``/``auto_approve``) is read from a single settings
         # file / the flat ``KanibakoConfig`` (NOT the cascade), so a
         # cascade-derived "effective" would name a value from a tier NOTHING reads
         # — a wrong claim. Those keep the cleared-only form. This is the SAME token
@@ -2514,7 +2526,7 @@ def _clear_writable_scope_tables(
     such a key is refused, so ``--all`` must not clear it either.
 
     NEVER touched here: ``agent`` (agent-keyed; cleared by the caller's dedicated
-    pass, which holds the scopeless ``model``/``start_mode`` settings),
+    pass, which holds the scopeless ``model``/``continue_mode`` settings),
     ``resource_overrides`` (its own surface), ``meta`` (RO identity, §0), and
     non-scope keys (top-level scalars like ``allow_helpers`` — the flat
     ``load_project_overrides`` pass owns those). When *command_scope* is ``None``

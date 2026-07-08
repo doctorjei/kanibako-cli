@@ -389,7 +389,7 @@ def test_effective_behavior_discovers_all_keys_when_keys_none():
         "default": {"model": "sonnet", "auto_approve": True},
         "claude": {
             "model": "opus",            # active wins
-            "start_mode": "fresh",      # undeclared pass-through (active only)
+            "custom_leaf": "fresh",     # undeclared pass-through (active only)
             "bindings": {"ro": {"x": Bind("/h", "/b", "ro")}},  # category → skip
             "meta": {"name": "claude"},  # subtree → skip
         },
@@ -398,7 +398,7 @@ def test_effective_behavior_discovers_all_keys_when_keys_none():
     assert eff == {
         "model": "opus",            # active over default
         "auto_approve": "True",     # default fills the gap
-        "start_mode": "fresh",      # undeclared pass-through discovered
+        "custom_leaf": "fresh",     # undeclared pass-through discovered
     }
     # category / meta subtrees are NOT behavior → never surface.
     assert "bindings" not in eff and "meta" not in eff

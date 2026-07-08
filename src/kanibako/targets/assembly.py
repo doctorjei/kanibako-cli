@@ -129,6 +129,36 @@ def effective_safe_mode_off(
     return auto_approve
 
 
+def resolve_new_session(
+    *,
+    new_session: bool,
+    continue_override: bool,
+    resume_mode: bool,
+    continue_mode: bool = True,
+) -> bool:
+    """Return the EFFECTIVE ``new_session`` input to :func:`resolve_mode`, folding the
+    persisted ``continue_mode`` agent-scope key UNDER the per-launch mode flags.
+
+    ``continue_mode`` (spec §2d L578 ``agent.default.continue_mode | true``) is the
+    PERSISTED FALLBACK for the continue-vs-fresh decision — the default only when NO
+    per-launch mode flag is passed.  The per-launch flags are EPHEMERAL and OVERRIDE
+    it, mirroring how ``-A``/``-S`` override ``auto_approve`` in
+    :func:`effective_safe_mode_off`:
+
+    * *new_session* (``-N``) -> ``True`` (fresh) — the explicit new-session flag wins.
+    * *continue_override* (``-C``) / *resume_mode* (``-R``) -> the persisted key is
+      IGNORED (an explicit continue/resume was requested): return ``False`` here so
+      :func:`resolve_mode` picks ``continue``/``resume``.
+    * else the persisted *continue_mode*: ``True`` -> ``False`` (continue-last, the
+      historical default), ``False`` -> ``True`` (skip_continue → start fresh).
+    """
+    if new_session:
+        return True
+    if continue_override or resume_mode:
+        return False
+    return not continue_mode
+
+
 def assemble_argv(
     descriptor: PluginDescriptor,
     *,

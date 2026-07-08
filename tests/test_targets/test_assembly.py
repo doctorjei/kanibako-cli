@@ -20,6 +20,7 @@ from kanibako.targets.assembly import (
     entrypoint,
     resolve_binding_source,
     resolve_mode,
+    resolve_new_session,
 )
 from kanibako.targets.base import (
     AgentInstall,
@@ -208,6 +209,132 @@ def test_resolve_mode_bare_descriptor_always_start() -> None:
             )
             == "start"
         )
+
+
+# --------------------------------------------------------------------------- #
+# resolve_new_session (continue_mode persisted fallback + flag override)       #
+# --------------------------------------------------------------------------- #
+
+
+def test_new_session_persisted_continue_true_continues() -> None:
+    # No flag + continue_mode=true (default): effective new_session False -> the
+    # mode decision continues (byte-identical to today's default).
+    assert (
+        resolve_new_session(
+            new_session=False, continue_override=False, resume_mode=False,
+            continue_mode=True,
+        )
+        is False
+    )
+    assert (
+        resolve_mode(
+            resume_mode=False,
+            new_session=resolve_new_session(
+                new_session=False, continue_override=False, resume_mode=False,
+                continue_mode=True,
+            ),
+            is_new_project=False,
+            extra_args=[],
+            available_modes=_FULL_MODES,
+        )
+        == "continue"
+    )
+
+
+def test_new_session_persisted_continue_false_starts_fresh() -> None:
+    # No flag + continue_mode=false: effective new_session True -> the mode
+    # decision starts FRESH (the whole point of the key).
+    assert (
+        resolve_new_session(
+            new_session=False, continue_override=False, resume_mode=False,
+            continue_mode=False,
+        )
+        is True
+    )
+    assert (
+        resolve_mode(
+            resume_mode=False,
+            new_session=resolve_new_session(
+                new_session=False, continue_override=False, resume_mode=False,
+                continue_mode=False,
+            ),
+            is_new_project=False,
+            extra_args=[],
+            available_modes=_FULL_MODES,
+        )
+        == "start"
+    )
+
+
+def test_new_session_flag_N_overrides_persisted_continue_true() -> None:
+    # -N wins over continue_mode=true: fresh despite the key saying continue.
+    assert (
+        resolve_new_session(
+            new_session=True, continue_override=False, resume_mode=False,
+            continue_mode=True,
+        )
+        is True
+    )
+
+
+def test_new_session_flag_C_overrides_persisted_continue_false() -> None:
+    # -C (continue_override) wins over continue_mode=false: continue despite the
+    # key saying fresh -> the mode decision continues.
+    assert (
+        resolve_new_session(
+            new_session=False, continue_override=True, resume_mode=False,
+            continue_mode=False,
+        )
+        is False
+    )
+    assert (
+        resolve_mode(
+            resume_mode=False,
+            new_session=resolve_new_session(
+                new_session=False, continue_override=True, resume_mode=False,
+                continue_mode=False,
+            ),
+            is_new_project=False,
+            extra_args=[],
+            available_modes=_FULL_MODES,
+        )
+        == "continue"
+    )
+
+
+def test_new_session_flag_R_overrides_persisted_continue_false() -> None:
+    # -R (resume_mode) wins over continue_mode=false: NOT forced fresh, so the
+    # resume picker is reached.
+    assert (
+        resolve_new_session(
+            new_session=False, continue_override=False, resume_mode=True,
+            continue_mode=False,
+        )
+        is False
+    )
+    assert (
+        resolve_mode(
+            resume_mode=True,
+            new_session=resolve_new_session(
+                new_session=False, continue_override=False, resume_mode=True,
+                continue_mode=False,
+            ),
+            is_new_project=False,
+            extra_args=[],
+            available_modes=_FULL_MODES,
+        )
+        == "resume"
+    )
+
+
+def test_new_session_default_continue_mode_true() -> None:
+    # The default arg is True (spec §2d L578 default): no flags -> continue.
+    assert (
+        resolve_new_session(
+            new_session=False, continue_override=False, resume_mode=False,
+        )
+        is False
+    )
 
 
 # --------------------------------------------------------------------------- #
