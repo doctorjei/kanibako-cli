@@ -113,6 +113,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Permit a standalone project rooted at $HOME (mounts your entire "
              "home directory; required to create one there)",
     )
+    create_p.add_argument(
+        "--private", action="store_true",
+        help="Create a PRIVATE box: disable global and workset credential "
+             "sharing so the host's OAuth token is never seeded into it.",
+    )
     create_p.set_defaults(func=run_create)
 
     # kanibako box list (default behavior)
@@ -588,6 +593,42 @@ def run_create(args: argparse.Namespace) -> int:
         image = args.image or config.box_image
         project_toml = proj.metadata_path / BOX_META_FILE
         write_project_config(project_toml, image)
+
+        # --private: turn the box PRIVATE *before* the home seed runs, so the
+        # host OAuth cred is never forwarded.  Persist both box-scope auth
+        # toggles OFF into the box settings.yaml via the SANCTIONED settings
+        # write (set_config_value; NOT a raw yaml dump) — the same box-scope
+        # path `config set` uses, so the keys land in the box.auth.* slot the
+        # launch snapshot reads.  This writes to the SAME `project_toml` that
+        # seed_new_box's `resolve_auth_source` reads (the box-tier settings
+        # file, `box_workset_settings_paths`), and it runs BEFORE the seed
+        # below — so the seed then resolves tier="box" (source_root=None) and
+        # `seed_cred_files` no-ops.  Additive/non-destructive: no scrub, only
+        # two boolean overrides.
+        if getattr(args, "private", False):
+            from kanibako.config_interface import ConfigLevel, set_config_value
+            from kanibako.errors import KanibakoError
+            for _auth_key in (
+                "box.auth.global_enabled",
+                "box.auth.workset_enabled",
+            ):
+                # set_config_value RETURNS an "Error: …" string (never raises) on a
+                # refused/unknown-key write; success is a "Set …" string.  This is
+                # an AUTH-CRITICAL write — a silent no-op here would leave a
+                # supposedly-private box resolving a sharing tier and leak the host
+                # OAuth token into the seed.  Fail LOUD (before the seed runs) if
+                # the write did not succeed, rather than leak silently.
+                _msg = set_config_value(
+                    _auth_key, "false",
+                    config_path=project_toml,
+                    command_scope=ConfigLevel.box,
+                )
+                if not _msg.startswith("Set "):
+                    raise KanibakoError(
+                        f"--private: failed to persist {_auth_key} to the box "
+                        f"settings ({_msg}); refusing to create a box that would "
+                        f"forward host credentials."
+                    )
 
         # Write .gitignore for standalone projects only — at the project ROOT
         # (metadata_path), where box_data/ + vault/ live and need ignoring (drift

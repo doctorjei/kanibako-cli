@@ -140,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Permit a standalone project rooted at $HOME (mounts your entire "
              "home directory; required to create one there)",
     )
+    create_p.add_argument(
+        "--private", action="store_true",
+        help="Create a PRIVATE box: disable global and workset credential "
+             "sharing so the host's OAuth token is never seeded into it.",
+    )
     create_p.set_defaults(func=run_create)
 
     # rm — top-level alias for box rm
