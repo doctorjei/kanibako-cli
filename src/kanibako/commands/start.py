@@ -1658,6 +1658,32 @@ def _run_container(
                     else None
                 )
                 auto_approve = True if _aa is None else _aa
+                # Ph4b Vector A: mirror the box's PERSISTED claude ``auto_approve``
+                # into the box's in-box ``~/.claude/settings.json`` so the VS Code
+                # claude-code PANEL (the default `kanibako code` UX) reflects the
+                # box's configured yolo — the CLI flag path only reaches the CLI
+                # claude, not the panel.  This keys on the PERSISTED ``auto_approve``
+                # value (just resolved above), NOT the per-launch ``safe_off`` that
+                # drives ``--dangerously-skip-permissions`` below: the per-launch
+                # ``-S``/``-A`` flags DELIBERATELY do NOT touch the panel — the panel
+                # reflects the box's configured yolo, not a transient launch flag.
+                # SYMMETRIC + CLAUDE-only + best-effort: auto_approve ON SETs the
+                # managed defaultMode, OFF CLEARS it (so toggling off takes effect);
+                # non-claude is inert; a failure here NEVER blocks the launch.
+                try:
+                    from kanibako.vscode_config import (
+                        deliver_claude_panel_permissions,
+                    )
+                    deliver_claude_panel_permissions(
+                        auto_approve=auto_approve,
+                        is_claude=(target is not None and target.name == "claude"),
+                        claude_config_dir=proj.shell_path / ".claude",
+                    )
+                except Exception:
+                    logger.debug(
+                        "failed to seed claude bypassPermissions settings",
+                        exc_info=True,
+                    )
                 safe_off = assembly.effective_safe_mode_off(
                     secure=safe_mode,
                     autonomous=autonomous,
