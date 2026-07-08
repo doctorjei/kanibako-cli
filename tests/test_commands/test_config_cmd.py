@@ -241,6 +241,9 @@ class TestBoxConfigSet:
         assert "Set EDITOR=vim" in captured.out
 
     def test_set_model(self, config_file, tmp_home, credentials_dir, capsys):
+        """Agent behavior keys are set at box scope via the ``box.agent.<key>``
+        mirror; the BARE form is refused with a teach message (a bare agent key
+        targets ``agent.default``, which a box cannot write)."""
         from kanibako.commands.box._parser import run_set
 
         config = load_config(config_file)
@@ -249,13 +252,23 @@ class TestBoxConfigSet:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
+        # Bare agent key at box scope → refused, teaching the mirror form.
         args = argparse.Namespace(
             args=[project_dir, "model=sonnet"], force=False, local=False,
         )
         rc = run_set(args)
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "set box.agent.model" in captured.err
+
+        # The mirror form is the settable one.
+        args = argparse.Namespace(
+            args=[project_dir, "box.agent.model=sonnet"], force=False, local=False,
+        )
+        rc = run_set(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Set model=sonnet" in captured.out
+        assert "Set box.agent.model=sonnet" in captured.out
 
     def test_set_resource(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_set
