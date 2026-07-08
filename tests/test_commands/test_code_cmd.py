@@ -87,20 +87,84 @@ def test_happy_path(mock_runtime, capsys):
         assert "Opening VS Code attached to box 'foo'" in out
 
 
-def test_box_not_running(mock_runtime, capsys):
+def test_box_not_running_auto_starts_then_attaches(mock_runtime, capsys):
+    """Phase 4: a stopped box is AUTO-STARTED (detached keep-alive) then attached."""
+    # First is_running check (before auto-start) is False; after start_detached
+    # flips the box up, the re-check returns True and the attach proceeds.
+    mock_runtime.is_running.side_effect = [False, True]
+    stack, _proj = _patched(mock_runtime)
+
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.commands.start.start_detached", return_value=0,
+        ) as m_start,
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+        assert rc == 0
+        # Auto-start ran, then VS Code launched (attach).
+        m_start.assert_called_once()
+        m_run.assert_called_once_with(
+            ["/usr/bin/code", "--folder-uri", _EXPECTED_URI]
+        )
+        err = capsys.readouterr().err
+        assert "starting it in the background" in err
+
+
+def test_box_running_does_not_auto_start(mock_runtime):
+    """An already-running box is attached directly — start_detached is NOT called."""
+    # mock_runtime.is_running defaults to True (fixture).
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch("kanibako.commands.start.start_detached") as m_start,
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+        assert rc == 0
+        m_start.assert_not_called()
+        m_run.assert_called_once_with(
+            ["/usr/bin/code", "--folder-uri", _EXPECTED_URI]
+        )
+
+
+def test_auto_start_failure_aborts(mock_runtime, capsys):
+    """If the detached auto-start fails, `code` aborts and does NOT launch VS Code."""
     mock_runtime.is_running.return_value = False
     stack, _proj = _patched(mock_runtime)
     with (
         stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.commands.start.start_detached", return_value=1,
+        ) as m_start,
         patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
         patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
     ):
         rc = run_code(_args())
         assert rc == 1
+        m_start.assert_called_once()
         m_run.assert_not_called()
         err = capsys.readouterr().err
-        assert "is not running" in err
-        assert "kanibako start foo --persistent" in err
+        assert "could not auto-start" in err
+
+
+def test_code_not_on_path_before_auto_start(mock_runtime, capsys):
+    """A missing `code` CLI fails fast — BEFORE any auto-start leaves a box behind."""
+    mock_runtime.is_running.return_value = False
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch("kanibako.commands.start.start_detached") as m_start,
+        patch("kanibako.commands.code_cmd.shutil.which", return_value=None),
+    ):
+        rc = run_code(_args())
+        assert rc == 1
+        m_start.assert_not_called()
+        err = capsys.readouterr().err
+        assert "PATH" in err
 
 
 def test_code_not_on_path(mock_runtime, capsys):

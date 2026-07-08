@@ -198,6 +198,23 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Run in foreground without tmux (single-use session)",
     )
 
+    # Attach mode: --detach/--background (start a keep-alive box in the
+    # background, do NOT attach this terminal) vs --attach (the default: attach
+    # the terminal into the session).  Detach implies a persistent/tmux session:
+    # the box's PID-1 is a BARE keep-alive shell (not the agent), so the box
+    # stays Up for a later reattach / `kanibako code` / VS Code exec terminal.
+    attach_group = p.add_mutually_exclusive_group()
+    attach_group.add_argument(
+        "--detach", "--background", action="store_true", dest="detach",
+        help="Start a keep-alive box in the background without attaching the "
+             "terminal (box stays running; reattach later with 'kanibako start')",
+    )
+    attach_group.add_argument(
+        "--attach", action="store_false", dest="detach",
+        help="Attach the terminal into the session (default)",
+    )
+    p.set_defaults(detach=False)
+
     p.add_argument(
         "--no-helpers", action="store_true",
         help="Disable helper spawning (no hub socket mounted)",
@@ -283,9 +300,44 @@ def run_start(args: argparse.Namespace) -> int:
     share_images = getattr(args, "share_images", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
+    detach = getattr(args, "detach", False)
     bootstrap_program = _resolve_bootstrap_program()
     no_bootstrap = _is_no_bootstrap(bootstrap_program)
-    if explicit_persistent:
+    if detach:
+        # Detach is inherently a persistent/tmux mode (the box must survive as a
+        # keep-alive with no attached terminal).  --ephemeral is a direct
+        # contradiction (foreground single-use vs. background keep-alive).
+        #
+        # NOTE (Finding 4): unlike --persistent, detach does NOT require the
+        # bootstrap program on the HOST.  --persistent checks the host because it
+        # RE-ATTACHES this terminal into an in-box tmux and, historically, gates
+        # on the host program being present.  Detach never attaches — the
+        # keep-alive tmux runs entirely IN-BOX as PID-1, so the only thing that
+        # must have the bootstrap program is the IMAGE, which _run_container's
+        # tier-1 baseline probe already verifies for every persistent launch.
+        # This also unifies the two detach entry points: `kanibako code`'s
+        # auto-start goes through start_detached -> _run_container with no host
+        # check, so --detach must match.  The `box.bootstrap_program=none`
+        # config contradiction (no in-box bootstrap to keep alive) is still a
+        # genuine error, surfaced early here for a clean message and re-guarded
+        # by _run_container.
+        if explicit_ephemeral:
+            print(
+                "Error: --detach cannot be combined with --ephemeral "
+                "(detach starts a persistent background box).",
+                file=sys.stderr,
+            )
+            return 1
+        if no_bootstrap:
+            print(
+                "Error: --detach requires a bootstrap program, but "
+                "box.bootstrap_program=none (foreground opt-out). Unset it or "
+                "set an installed program (e.g. tmux) for background sessions.",
+                file=sys.stderr,
+            )
+            return 1
+        persistent = True
+    elif explicit_persistent:
         # An explicit reattach request needs a working bootstrap program on the
         # HOST (reattach shells out to it).  Two distinct failures, both clean
         # here rather than a downstream crash:
@@ -369,6 +421,7 @@ def run_start(args: argparse.Namespace) -> int:
         browser=browser,
         share_images=share_images,
         persistent=persistent,
+        detach=detach,
         model_override=model_override,
         cli_env=env_vars,
         explicit_agent=explicit_agent,
@@ -427,6 +480,36 @@ def run_shell(args: argparse.Namespace) -> int:
         persistent=persistent,
         cli_env=env_vars,
         box_shell_mode=box_shell_mode,
+    )
+
+
+def start_detached(
+    project_dir: str | None, *, explicit_agent: str | None = None,
+) -> int:
+    """Start a box DETACHED with a bare keep-alive PID-1 — no terminal attach.
+
+    Public entry reused by ``kanibako code`` auto-start.  Runs the FULL
+    persistent box assembly (mounts / credentials / agent delivery binds / env /
+    the ``KANIBAKO_AGENT`` stamp) exactly as a normal persistent launch, but the
+    tmux PID-1 session runs a SHELL keep-alive (NOT the agent) and the caller's
+    terminal is NOT attached.  The box therefore stays Up for a later VS Code
+    exec terminal, a ``tmux attach``, or a subsequent ``kanibako start``.
+
+    Returns 0 once the box is confirmed running in the background, non-zero on a
+    launch failure (with the container logs surfaced).
+    """
+    return _run_container(
+        project_dir=project_dir,
+        entrypoint=None,
+        image_override=None,
+        new_session=False,
+        safe_mode=False,
+        autonomous=False,
+        resume_mode=False,
+        extra_args=[],
+        persistent=True,
+        detach=True,
+        explicit_agent=explicit_agent,
     )
 
 
@@ -820,6 +903,7 @@ def _run_container(
     browser: bool = False,
     share_images: bool = False,
     persistent: bool = False,
+    detach: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
     box_shell_mode: bool = False,
@@ -910,6 +994,15 @@ def _run_container(
     # interpreted below — no bootstrap wrap, no image baseline probe).
     bootstrap_program = merged.box_bootstrap_program or "tmux"
     no_bootstrap = _is_no_bootstrap(bootstrap_program)
+
+    # Detach is inherently persistent: the box must survive as a background
+    # keep-alive (a tmux session running a bare shell as PID-1) with no attached
+    # terminal.  run_start already sets persistent=True for --detach; force it
+    # here too so any other caller (e.g. the `kanibako code` auto-start path)
+    # cannot reach the launch with detach=True but persistent=False.  The
+    # `none`-opt-out contradiction below then still fires for a detach launch.
+    if detach:
+        persistent = True
 
     # `none` opt-out is fundamentally incompatible with persistence (there is no
     # bootstrap program to wrap or reattach to).  run_start already turns this
@@ -1231,6 +1324,19 @@ def _run_container(
     # Persistent mode: reattach if already running, clean up stale containers
     if persistent:
         if runtime.is_running(container_name):
+            if detach:
+                # Detach = "ensure the box is Up in the background".  It already
+                # is, so there is nothing to attach — report and return without
+                # touching the running session.  We do NOT claim it is a
+                # keep-alive box: a box already running the agent as PID-1 is
+                # "running" but not a keep-alive, so the message stays neutral.
+                # (`kanibako code` pre-checks is_running so it never auto-starts
+                # a live box; `kanibako start --detach` on a live box lands here.)
+                print(
+                    f"Box '{proj.name}' is already running.",
+                    file=sys.stderr,
+                )
+                return 0
             # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
             # stream we're about to attach to).
             # Show the NODE-name (persona identity) in user-facing ``+`` form; a
@@ -1814,7 +1920,10 @@ def _run_container(
         no_agent_launch = not entrypoint and (
             target is None or target.default_entrypoint is None
         )
-        if no_agent_launch or helpers_enabled:
+        # DETACH also needs the resolved box shell: its PID-1 keep-alive runs a
+        # bare SHELL (not the agent), so resolve box.shell even for an agent
+        # launch (where no_agent_launch is False).
+        if no_agent_launch or helpers_enabled or detach:
             from kanibako.shells import resolve_box_shell
             box_shell, _box_shell_source = resolve_box_shell(
                 merged, std, runtime=runtime, image=image,
@@ -2054,14 +2163,43 @@ def _run_container(
         # Delivery is agent-INDEPENDENT: a no-agent shell launch with a box secret
         # still gets the exports (the shim wraps box.shell).
         #
+        # ⚑ DETACH CAVEAT (Finding 3): in detach mode the shim wraps the keep-alive
+        # SHELL (PID-1), so the secret/persona VARs are exported into PID-1's env
+        # ONLY.  A later `podman exec` (a VS Code integrated terminal, the
+        # claude-code panel's terminal) is a SEPARATE process that does NOT inherit
+        # PID-1's shell env, so an agent a user launches THERE won't see the
+        # exported secrets — a pre-existing limitation of the arm's-length shim,
+        # amplified by detach because exec is now the primary way to reach the
+        # agent.  This does not affect the VS Code PANEL, which self-serves auth
+        # host-side (decoupled from the in-box CLI creds).
+        #
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
-            # box_shell is None only on a real-agent launch, but that path
-            # guarantees a non-None entrypoint (set above), so inner_cmd is
-            # always a str; mypy can't track that cross-variable invariant.
-            inner_cmd = entrypoint or box_shell
-            assert inner_cmd is not None
-            inner_args = list(cli_args or [])
+            if detach:
+                # KEEP-ALIVE PID-1 (the load-bearing lifecycle guarantee): the
+                # tmux session runs a BARE SHELL, never the agent.  The container
+                # stays Up as long as this shell (PID-1's only tmux session)
+                # lives, which is INDEPENDENT of the agent.  The point of Ph4:
+                # separate `podman exec` processes — VS Code integrated terminals,
+                # the claude-code panel, and even closing VS Code — do NOT touch
+                # PID-1, so they never stop the box (contrast the default
+                # attaching path, where the agent IS the session command, so its
+                # exit ends the session and tears the box down).  An EXPLICIT
+                # terminal reattach (`kanibako start`/`shell` → `tmux attach -t
+                # kanibako`) DOES share this keep-alive session, so exiting it
+                # (typing `exit`) tears the box down — that is the INTENDED
+                # "I'm done" gesture, not a footgun.  box_shell is resolved above
+                # whenever detach is set, so it is never None here.
+                inner_cmd = box_shell
+                assert inner_cmd is not None
+                inner_args: list[str] = []
+            else:
+                # box_shell is None only on a real-agent launch, but that path
+                # guarantees a non-None entrypoint (set above), so inner_cmd is
+                # always a str; mypy can't track that cross-variable invariant.
+                inner_cmd = entrypoint or box_shell
+                assert inner_cmd is not None
+                inner_args = list(cli_args or [])
             if secret_export_vars:
                 inner_cmd, inner_args = _secret_export_shim(
                     inner_cmd, inner_args, secret_export_vars,
@@ -2130,7 +2268,38 @@ def _run_container(
                 except Exception as exc:
                     logger.debug("Browser sidecar cleanup: %s", exc)
 
-        if persistent:
+        if persistent and detach:
+            # DETACH: the box is launched as a background keep-alive; we DO NOT
+            # attach this terminal.  Verify it came up, then return — leaving the
+            # box Up (no teardown) so a later reattach / `kanibako code` / VS Code
+            # exec terminal can use it.  There is no session-end here, so there is
+            # nothing to write back yet (the agent has not run).
+            import time
+            for _attempt in range(10):
+                if runtime.is_running(container_name):
+                    break
+                time.sleep(0.3)
+            else:
+                logs = _container_logs(runtime, container_name)
+                if logs:
+                    print(logs, file=sys.stderr)
+                print(
+                    "Error: the background box failed to start.\n"
+                    "Check the logs above, or run 'kanibako system diagnose'.",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                f"Box '{proj.name}' started in the background (keep-alive).\n"
+                f"  Attach:    kanibako start {proj.name}\n"
+                f"  VS Code:   kanibako code {proj.name}\n"
+                f"  Stop it:   kanibako stop {proj.name}",
+                file=sys.stderr,
+            )
+            _print_launch_issues(std, container_name)
+            _print_shadow_issues(std, container_name)
+            return 0
+        elif persistent:
             # Wait briefly for the detached container to start, then verify
             # it's actually running before trying to exec into it.
             import time

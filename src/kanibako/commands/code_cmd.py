@@ -87,15 +87,8 @@ def run_code(args: argparse.Namespace) -> int:
     proj = resolve_box_target(std, config, project_dir, initialize=False)
     cname = container_name_for(proj)
 
-    if not runtime.is_running(cname):
-        name = proj.name or cname
-        print(
-            f"Error: box '{name}' is not running. "
-            f"Start it first: kanibako start {name} --persistent",
-            file=sys.stderr,
-        )
-        return 1
-
+    # Fail fast if the host `code` CLI is missing — BEFORE auto-starting a box, so
+    # a missing prerequisite never leaves a background box behind.
     code_bin = shutil.which("code")
     if code_bin is None:
         print(
@@ -107,6 +100,36 @@ def run_code(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if not runtime.is_running(cname):
+        # AUTO-START (Phase 4): the box isn't up, so start it DETACHED with a bare
+        # keep-alive PID-1 (a tmux session running a shell, NOT the agent) and no
+        # terminal attach — the box stays Up while the user works through VS Code.
+        # Detach-by-default is safe for `code`: the VS Code panel self-serves auth
+        # host-side, decoupled from the in-box CLI credentials.
+        name = proj.name or cname
+        print(
+            f"Box '{name}' is not running; starting it in the background...",
+            file=sys.stderr,
+        )
+        from kanibako.commands.start import start_detached
+        rc = start_detached(project_dir)
+        if rc != 0:
+            print(
+                f"Error: could not auto-start box '{name}' for VS Code.",
+                file=sys.stderr,
+            )
+            return rc
+        # Re-resolve: a brand-new box was just materialised (name/registration now
+        # exist), so recompute proj/cname before seeding + attaching.
+        proj = resolve_box_target(std, config, project_dir, initialize=False)
+        cname = container_name_for(proj)
+        if not runtime.is_running(cname):
+            print(
+                f"Error: box '{name}' did not come up after auto-start.",
+                file=sys.stderr,
+            )
+            return 1
 
     # Best-effort: seed the attached-container config so VS Code opens the box's
     # workspace and auto-installs the box agent's editor extension on attach.
