@@ -82,10 +82,11 @@ class TestTmuxHasSession:
 class TestDefaultPersistence:
     """``run_start`` defaults to persistent when tmux is available."""
 
-    def _make_args(self, persistent=False, ephemeral=False):
+    def _make_args(self, persistent=False, ephemeral=False, detach=False):
         args = MagicMock()
         args.persistent = persistent
         args.ephemeral = ephemeral
+        args.detach = detach
         args.new_session = False
         args.continue_session = False
         args.resume_session = False
@@ -167,10 +168,11 @@ class TestBootstrapNoneAndHostNote:
     """box.bootstrap_program=none opt-out, the host-absent clue-in note, and the
     clean --persistent-with-absent-program error (run_start default path)."""
 
-    def _make_args(self, persistent=False, ephemeral=False):
+    def _make_args(self, persistent=False, ephemeral=False, detach=False):
         args = MagicMock()
         args.persistent = persistent
         args.ephemeral = ephemeral
+        args.detach = detach
         args.new_session = False
         args.continue_session = False
         args.resume_session = False
