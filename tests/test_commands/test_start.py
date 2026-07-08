@@ -2829,6 +2829,224 @@ class TestBoxShellLaunch:
             assert m.runtime.run.call_args.kwargs.get("entrypoint") == "claude"
 
 
+class TestDetachKeepAlive:
+    """Phase 4: `--detach` starts a background KEEP-ALIVE box.
+
+    The load-bearing lifecycle guarantee: the tmux PID-1 session runs a bare
+    SHELL, NOT the agent (so exiting a later exec terminal can't stop the box),
+    and the caller's terminal is NOT attached (no ``runtime.exec``).
+    """
+
+    def test_detach_pid1_is_shell_not_agent(self, start_mocks):
+        """Detach launches tmux wrapping the resolved SHELL as inner_cmd — even
+        for a real agent (default_entrypoint='claude')."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ) as m_resolve:
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                    detach=True,
+                )
+            assert rc == 0
+            # box.shell was resolved despite this being a real-agent launch.
+            m_resolve.assert_called_once()
+            call = m.runtime.run.call_args
+            # Detached at the podman layer.
+            assert call.kwargs.get("detach") is True
+            # PID-1 = tmux wrapping the SHELL keep-alive, NOT the agent.
+            assert call.kwargs.get("entrypoint") == "tmux"
+            cli_args = call.kwargs.get("cli_args") or []
+            assert cli_args[cli_args.index("--") + 1] == "/bin/bash"
+            assert "claude" not in cli_args
+
+    def test_detach_does_not_attach_terminal(self, start_mocks):
+        """Detach returns WITHOUT an interactive attach (no ``runtime.exec``)."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                    detach=True,
+                )
+            assert rc == 0
+            m.runtime.run.assert_called_once()
+            # The default attaching path exec's `tmux attach`; detach must not.
+            m.runtime.exec.assert_not_called()
+
+    def test_detach_keeps_box_up_no_teardown(self, start_mocks):
+        """Detach never tears the box down (it must stay Up for later use)."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ):
+                _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=True,
+                    detach=True,
+                )
+            # is_running stays True after run() (fixture side effect); a running
+            # container is never rm'd by the teardown path.
+            m.runtime.rm.assert_not_called()
+
+    def test_detach_on_running_box_reports_and_returns(self, start_mocks):
+        """`start --detach` on an already-running box: report + return 0, no attach."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            # Neutralize the run()-side-effect so is_running stays True throughout.
+            m.runtime.run.side_effect = None
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+                persistent=True,
+                detach=True,
+            )
+            assert rc == 0
+            m.runtime.run.assert_not_called()
+            m.runtime.exec.assert_not_called()
+
+    def test_default_persistent_attaches_mutation_anchor(self, start_mocks):
+        """MUTATION ANCHOR: the DEFAULT persistent path (detach=False) is
+        unchanged — it wraps the AGENT and ATTACHES (calls ``runtime.exec``)."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+                persistent=True,
+                detach=False,
+            )
+            assert rc == 0
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            # Agent is the inner_cmd (unchanged default behavior)...
+            assert cli_args[cli_args.index("--") + 1] == "claude"
+            # ...and the terminal IS attached.
+            m.runtime.exec.assert_called_once()
+
+    def test_detach_implies_persistent_from_nonpersistent_arg(self, start_mocks):
+        """detach=True forces the persistent/detached launch even if a caller
+        passes persistent=False (defensive guard)."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    persistent=False,
+                    detach=True,
+                )
+            assert rc == 0
+            assert m.runtime.run.call_args.kwargs.get("detach") is True
+            m.runtime.exec.assert_not_called()
+
+
+class TestStartDetachedHelper:
+    """The public ``start_detached`` entry (reused by `kanibako code`)."""
+
+    def test_start_detached_routes_to_detached_launch(self, start_mocks):
+        from kanibako.commands.start import start_detached
+        with start_mocks() as m:
+            with patch(
+                "kanibako.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ):
+                rc = start_detached(None)
+            assert rc == 0
+            assert m.runtime.run.call_args.kwargs.get("detach") is True
+            m.runtime.exec.assert_not_called()
+
+
+class TestRunStartDetachFlag:
+    """`run_start` wiring for --detach/--attach."""
+
+    def _args(self, **over):
+        ns = argparse.Namespace(
+            project=None, box=None, agent_args=[], entrypoint=None, image=None,
+            new_session=False, continue_session=False, resume_session=False,
+            autonomous=False, secure=False, model=None, env=None,
+            no_helpers=False, no_auto_auth=False, browser=False,
+            share_images=False, persistent=False, ephemeral=False,
+            detach=False, agent=None,
+        )
+        for k, v in over.items():
+            setattr(ns, k, v)
+        return ns
+
+    def test_detach_flag_routes_to_run_container(self):
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            rc = run_start(self._args(detach=True))
+        assert rc == 0
+        assert m_run.call_args.kwargs.get("detach") is True
+        assert m_run.call_args.kwargs.get("persistent") is True
+
+    def test_default_is_attach(self):
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            run_start(self._args(detach=False))
+        assert m_run.call_args.kwargs.get("detach") is False
+
+    def test_detach_with_ephemeral_is_error(self, capsys):
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            rc = run_start(self._args(detach=True, ephemeral=True))
+        assert rc == 1
+        m_run.assert_not_called()
+        assert "cannot be combined with --ephemeral" in capsys.readouterr().err
+
+
 class TestRunShellBoxShell:
     """Verify run_shell uses resolve_box_shell for its interactive default."""
 
