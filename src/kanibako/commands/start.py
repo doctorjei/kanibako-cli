@@ -301,7 +301,17 @@ def run_start(args: argparse.Namespace) -> int:
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
     detach = getattr(args, "detach", False)
-    bootstrap_program = _resolve_bootstrap_program()
+    # Reconcile the positional subject with the blanket --box flag (same → warn,
+    # differ → error).  Computed HERE (ahead of the persistence-mode heuristic)
+    # because ``bootstrap`` is now an AGENT-scope key (spec §2d L579): resolving its
+    # value needs the box + its resolved agent, so ``_resolve_bootstrap_program``
+    # takes the subject + any explicit ``--agent`` (Phase D seam).
+    from kanibako.commands.flags import resolve_subject_value
+    project_dir = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
+    explicit_agent = getattr(args, "agent", None)  # Phase D seam (--agent flag)
+    bootstrap_program = _resolve_bootstrap_program(project_dir, explicit_agent)
     no_bootstrap = _is_no_bootstrap(bootstrap_program)
     if detach:
         # Detach is inherently a persistent/tmux mode (the box must survive as a
@@ -317,7 +327,7 @@ def run_start(args: argparse.Namespace) -> int:
         # tier-1 baseline probe already verifies for every persistent launch.
         # This also unifies the two detach entry points: `kanibako code`'s
         # auto-start goes through start_detached -> _run_container with no host
-        # check, so --detach must match.  The `box.bootstrap_program=none`
+        # check, so --detach must match.  The `agent.default.bootstrap=none`
         # config contradiction (no in-box bootstrap to keep alive) is still a
         # genuine error, surfaced early here for a clean message and re-guarded
         # by _run_container.
@@ -331,7 +341,7 @@ def run_start(args: argparse.Namespace) -> int:
         if no_bootstrap:
             print(
                 "Error: --detach requires a bootstrap program, but "
-                "box.bootstrap_program=none (foreground opt-out). Unset it or "
+                "agent.default.bootstrap=none (foreground opt-out). Unset it or "
                 "set an installed program (e.g. tmux) for background sessions.",
                 file=sys.stderr,
             )
@@ -347,7 +357,7 @@ def run_start(args: argparse.Namespace) -> int:
         if no_bootstrap:
             print(
                 "Error: --persistent requires a bootstrap program, but "
-                "box.bootstrap_program=none (foreground opt-out). Unset it or "
+                "agent.default.bootstrap=none (foreground opt-out). Unset it or "
                 "set an installed program (e.g. tmux) for persistent sessions.",
                 file=sys.stderr,
             )
@@ -375,37 +385,28 @@ def run_start(args: argparse.Namespace) -> int:
         # Configured program absent on the host: fall back to foreground
         # single-use (today's silent behavior) but CLUE THE USER IN once — name
         # the program, the consequence, and both remedies (install it, or make
-        # foreground explicit with box.bootstrap_program=none to silence this).
+        # foreground explicit with agent.default.bootstrap=none to silence this).
         persistent = False
         print(
             f"Note: '{bootstrap_program}' not found on this host; running in "
             f"the foreground (single-use, no reattach). Install "
             f"'{bootstrap_program}' for persistent sessions, or set "
-            f"box.bootstrap_program=none to make foreground mode explicit.",
+            f"agent.default.bootstrap=none to make foreground mode explicit.",
             file=sys.stderr,
         )
     env_vars = getattr(args, "env", None) or []
-    # Reconcile the positional subject with the blanket --box flag (same → warn,
-    # differ → error).  The winner is the path-or-name routed through
-    # resolve_box_target in _run_container.
-    from kanibako.commands.flags import resolve_subject_value
-    project_dir = resolve_subject_value(
-        getattr(args, "project", None), getattr(args, "box", None),
-    )
+    # ``project_dir`` + ``explicit_agent`` were resolved above (the persistence-mode
+    # heuristic needs them for the agent-scope ``bootstrap`` lookup).  Agent
+    # resolution proper happens UP FRONT inside _run_container via the unified
+    # resolve_agent cascade (explicit > box > workset > system default → the
+    # installed-count rule); a Gate-2a/2b there surfaces verbatim with a non-zero
+    # exit — NEVER a silent drop to shell.  `kanibako shell` (run_shell) bypasses it.
     agent_args = getattr(args, "agent_args", [])
 
     # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
     # -S means secure (safe_mode=True). Neither means autonomous (default).
     safe_mode = secure
     autonomous = getattr(args, "autonomous", False)
-
-    # Agent resolution happens UP FRONT inside _run_container via the unified
-    # resolve_agent cascade (explicit > box > workset > system default → the
-    # installed-count rule).  Nothing-resolved on this agent-requiring command
-    # raises a typed AgentResolutionError (Gate-2a/2b) which the top-level
-    # cli.py handler surfaces verbatim with a non-zero exit — NEVER a silent
-    # drop to shell.  `kanibako shell` (run_shell) bypasses this entirely.
-    explicit_agent = getattr(args, "agent", None)  # Phase D seam (--agent flag)
 
     return _run_container(
         project_dir=project_dir,
@@ -513,12 +514,21 @@ def start_detached(
     )
 
 
-# Exact-string sentinel for box.bootstrap_program meaning "no bootstrap wrapper,
-# on purpose": launch runs foreground single-use (today's absent-tmux fallback),
-# with NO host-absent note and NO image baseline probe for a bootstrap exe.  It
-# is a CONSUMER-side interpretation only (start.py) — the resolver/keyspace treat
-# it as a plain box-scope string value; nothing here changes the key's semantics.
+# Exact-string sentinel for the agent-scope ``bootstrap`` behavior key meaning "no
+# bootstrap wrapper, on purpose": launch runs foreground single-use (today's
+# absent-tmux fallback), with NO host-absent note and NO image baseline probe for a
+# bootstrap exe.  It is a CONSUMER-side interpretation only (start.py) — the
+# resolver/keyspace treat it as a plain agent-scope string value; nothing here
+# changes the key's semantics.
 _BOOTSTRAP_NONE = "none"
+
+# The consumer default for the agent-scope ``bootstrap`` behavior key.  The spec
+# lists ``agent.default.bootstrap | tmux`` (§2d L579), but — exactly like the old
+# ``box.bootstrap_program or "tmux"`` coercion this replaced — the ``tmux`` default
+# is applied HERE at the consumer (start.py), NOT baked into a descriptor floor, so
+# an unset value (no scope sets ``bootstrap``) resolves to ``tmux`` and every shipped
+# agent (which declares NO bootstrap override, spec §2d L640/658/683) inherits it.
+_BOOTSTRAP_DEFAULT = "tmux"
 
 
 def _is_no_bootstrap(program: str | None) -> bool:
@@ -531,19 +541,128 @@ def _is_no_bootstrap(program: str | None) -> bool:
     return program == _BOOTSTRAP_NONE
 
 
-def _resolve_bootstrap_program() -> str:
-    """Resolve the configured bootstrap program for the host-side default-mode
-    heuristic (machine + user global, no project).
+def _effective_bootstrap(
+    proj,
+    system_settings_path: "Path | None",
+    agent_id: str,
+    *,
+    agent_path: "Path | None" = None,
+) -> str:
+    """Resolve the effective AGENT-scope ``bootstrap`` behavior value for a box.
 
-    The authoritative per-launch value is read from the fully-merged config in
-    ``_run_container`` (which includes workset/project/CLI overrides); this is
-    only the cheap pre-resolution used to pick the default persistence mode.
+    ``bootstrap`` is an agent-scope behavior key (spec §2d L579
+    ``agent.default.bootstrap | tmux``), resolved off the SAME KeyStore snapshot
+    pipeline the launch reads for the other agent behavior scalars (``model`` /
+    ``auto_approve`` / ``allow_helpers``): a focused ``build_launch_snapshot`` over
+    the scope settings FILES (system / workset / box) + the per-agent file's flat
+    state, then :func:`~kanibako.settings_launch.effective_behavior`'s §2d L368
+    active-over-default pick.  There is NO derived-on-disk value — the keystore is
+    the sole intermediary ([[settings-must-map-to-keystore-key]]).
+
+    *agent_id* is the launch-resolved active node-name (``"general"`` for a
+    no-agent / shell box, so the ``agent.default`` backstop still applies).
+    *agent_path* is the active agent's OWN settings file (``agents/<node>/
+    settings.yaml``) so a per-agent ``config set agent.<agent>.bootstrap`` override
+    is honored; ``None`` skips it (the scope-file cascade still resolves).
+
+    Returns the resolved program name, or the consumer default ``tmux``
+    (:data:`_BOOTSTRAP_DEFAULT`) when no scope sets ``bootstrap`` — byte-identical
+    to the retired ``box.bootstrap_program or "tmux"`` coercion for the default case.
+    """
+    from kanibako import settings_launch
+    from kanibako.paths import host_xdg_map
+    from kanibako.settings_resolve import ResolveCtx
+
+    ctx = ResolveCtx(
+        agent_name=agent_id,
+        workset_name=None,
+        host_home=str(Path.home()),
+        xdg=host_xdg_map(),
+    )
+    # The per-agent file's FLAT behavior state (agent.<active>.* slot) — the shape
+    # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
+    agent_state: "dict[str, str] | None" = None
+    if agent_path is not None and Path(agent_path).exists():
+        try:
+            agent_state = dict(load_agent_config(agent_path).state)
+        except Exception:
+            agent_state = None
+    snapshot = settings_launch.build_launch_snapshot(
+        agent_name=agent_id,
+        ctx=ctx,
+        system_path=system_settings_path,
+        agent_path=None,
+        workset_path=workset_settings_path(proj.group),
+        box_path=proj.metadata_path / BOX_META_FILE,
+        # Seed the behavior FLOOR with just ``bootstrap`` (→ agent.default.bootstrap
+        # = tmux) so the snapshot's ``agent`` node ALWAYS exists.  Without it, a box
+        # whose SOLE agent-scope setting is the ``box.agent.bootstrap`` mirror (e.g.
+        # ``=none`` for a one-off ephemeral box) has NO ``agent`` node, so
+        # ``effective_behavior`` early-returns ``{}`` BEFORE consulting the box.agent
+        # mirror — silently dropping the override (the regression the retired
+        # ``box.bootstrap_program`` did not have).  Unlike ``model``'s read, this
+        # focused snapshot has no descriptor floor, so it must floor ``bootstrap``
+        # itself.  ``keys=["bootstrap"]`` below extracts ONLY bootstrap, so flooring
+        # it has no effect on any other behavior key.
+        behavior_floor={"bootstrap": _BOOTSTRAP_DEFAULT},
+        agent_state=agent_state,
+    )
+    value = settings_launch.effective_behavior(
+        snapshot, active_agent=agent_id, keys=["bootstrap"],
+    ).get("bootstrap")
+    return value if value else _BOOTSTRAP_DEFAULT
+
+
+def _resolve_bootstrap_program(
+    project_dir: str | None = None, explicit_agent: str | None = None,
+) -> str:
+    """Resolve the AGENT-scope ``bootstrap`` program for the host-side default-mode
+    persistence heuristic in ``run_start``.
+
+    ``bootstrap`` relocated from the retired box-scope ``box.bootstrap_program`` to
+    the agent scope (spec §2d L579), so the persistence-mode default decision now
+    needs the box's RESOLVED agent + its agent-scope ``bootstrap`` value.  Resolves
+    them here WITHOUT side effects (``resolve_box_target(initialize=False)``) and
+    reads the effective value off the settings snapshot via :func:`_effective_bootstrap`.
+
+    FAIL-SOFT: any resolution failure (unresolvable box, ambiguous/uninstalled agent
+    — those raise their own typed errors from ``_run_container`` moments later) falls
+    back to the ``tmux`` default, so this cheap pre-flight never itself aborts the
+    launch.  ``_run_container`` re-resolves the authoritative value the same way.
     """
     try:
-        cfg_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        return load_merged_config(cfg_file, None).box_bootstrap_program
+        config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        system_settings_path = std.settings
+        # No side effects: resolve the box's PATHS only (no mkdir / register).
+        proj = resolve_box_target(
+            std, config, project_dir,
+            initialize=False, register=False, warn=False,
+        )
+        merged = load_merged_config(
+            config_file,
+            proj.metadata_path / BOX_META_FILE,
+            workset_path=workset_settings_path(proj.group),
+        )
+        from kanibako.config import resolve_agent
+
+        agent_name = resolve_agent(
+            explicit_agent=explicit_agent,
+            box_agent_name=merged.box_agent_name,
+            workset_agent=None,
+            system_default_path=system_settings_path,
+            project_path=proj.project_path,
+        )
+        # NODE-name (persona identity); the harness keys the target/plugin.
+        target = resolve_target(harness_of(agent_name), proj.project_path)
+        agent_id = with_harness(agent_name, target.name)
+        return _effective_bootstrap(
+            proj, system_settings_path, agent_id,
+            agent_path=agent_settings_path(std.agents, agent_id),
+        )
     except Exception:
-        return "tmux"
+        return _BOOTSTRAP_DEFAULT
 
 
 def _bootstrap_available(program: str = "tmux") -> bool:
@@ -661,7 +780,7 @@ def _check_launch_baseline(runtime, image, bootstrap_program, container_name, st
             f"  A shell IS still available to investigate, e.g.:\n"
             f"      {runtime.cmd} run --rm -it {image} bash\n"
             f"  or, once a box exists:  kanibako shell\n"
-            f"  Install it in the image or set 'box.bootstrap_program' to an "
+            f"  Install it in the image or set 'agent.default.bootstrap' to an "
             f"installed program.",
             file=sys.stderr,
         )
@@ -989,11 +1108,11 @@ def _run_container(
     )
 
     image = merged.box_image
-    # Empty/unset (YAML null/"") coerces to the default tmux; the explicit `none`
-    # opt-out sentinel is a non-empty value and MUST survive this coercion (it is
-    # interpreted below — no bootstrap wrap, no image baseline probe).
-    bootstrap_program = merged.box_bootstrap_program or "tmux"
-    no_bootstrap = _is_no_bootstrap(bootstrap_program)
+    # ``bootstrap`` relocated from the retired box-scope ``box.bootstrap_program``
+    # to the AGENT scope (spec §2d L579), so the authoritative per-launch value is
+    # resolved BELOW — after the agent is resolved (line ~1300) — off the settings
+    # snapshot via :func:`_effective_bootstrap`, together with its ``none``-opt-out
+    # persistence contradiction guard.  It cannot be read here (pre-agent).
 
     # Detach is inherently persistent: the box must survive as a background
     # keep-alive (a tmux session running a bare shell as PID-1) with no attached
@@ -1003,21 +1122,6 @@ def _run_container(
     # `none`-opt-out contradiction below then still fires for a detach launch.
     if detach:
         persistent = True
-
-    # `none` opt-out is fundamentally incompatible with persistence (there is no
-    # bootstrap program to wrap or reattach to).  run_start already turns this
-    # into a clean pre-flight error, but guard here too so no other caller (e.g.
-    # `kanibako shell --persistent` on a box configured `none`) can reach the
-    # bootstrap-wrap with `none` as the program — foreground single-use is the
-    # only meaning of `none`.
-    if persistent and no_bootstrap:
-        print(
-            "Error: box.bootstrap_program=none (foreground opt-out) cannot run "
-            "a persistent session. Unset it or set an installed bootstrap "
-            "program (e.g. tmux) for persistent/reattachable sessions.",
-            file=sys.stderr,
-        )
-        return 1
 
     # Persist image override for new projects so it becomes the default
     def _persist_image_override() -> None:
@@ -1128,6 +1232,46 @@ def _run_container(
             )
             logger.debug("target.detect() returned None for %s", target.name)
 
+    # ``agent_id`` is the NODE-name (persona identity), NOT the bare harness: it keys
+    # the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*`` keyspace slot, and
+    # the active-agent snapshot discriminator.  ``with_harness`` swaps in the
+    # ACTUALLY-resolved target name (a NoAgent/other fallback is reflected while the
+    # persona name is preserved); for a bare agent whose target resolved as
+    # requested node == harness == target.name.  Hoisted HERE (ahead of the baseline
+    # probe) so the agent-scope ``bootstrap`` value can be resolved before the probe
+    # consumes it.  ``general`` for a no-agent / shell launch (target is None) so the
+    # ``agent.default`` bootstrap backstop still applies.
+    agent_id = with_harness(agent_name, target.name) if target else "general"
+    agent_cfg_path = agent_settings_path(std.agents, agent_id)
+
+    # AGENT-scope ``bootstrap`` (spec §2d L579): the AUTHORITATIVE per-launch value,
+    # resolved off the SAME settings snapshot the launch reads for ``model`` /
+    # ``auto_approve`` (single-route, [[settings-must-map-to-keystore-key]]) — via the
+    # active agent + its ``agent.default.bootstrap`` / ``agent.<agent>.bootstrap``
+    # cascade — with the consumer default ``tmux`` when unset (byte-identical to the
+    # retired ``box.bootstrap_program or "tmux"`` for the default case).  Resolved
+    # HERE (before the baseline probe / bootstrap-wrap / reattach that consume it),
+    # NOT pre-agent up top.
+    bootstrap_program = _effective_bootstrap(
+        proj, system_settings_path, agent_id, agent_path=agent_cfg_path,
+    )
+    no_bootstrap = _is_no_bootstrap(bootstrap_program)
+
+    # `none` opt-out is fundamentally incompatible with persistence (there is no
+    # bootstrap program to wrap or reattach to).  run_start already turns this into a
+    # clean pre-flight error, but guard here too so no other caller (e.g. `kanibako
+    # shell --persistent` on a box configured `none`, or the `kanibako code`
+    # auto-start) can reach the bootstrap-wrap with `none` as the program —
+    # foreground single-use is the only meaning of `none`.
+    if persistent and no_bootstrap:
+        print(
+            "Error: agent.default.bootstrap=none (foreground opt-out) cannot run "
+            "a persistent session. Unset it or set an installed bootstrap "
+            "program (e.g. tmux) for persistent/reattachable sessions.",
+            file=sys.stderr,
+        )
+        return 1
+
     # Resolve the rig name to a kind + prep action, then materialize it.
     # Templates BUILD their Containerfile; prefabs/bases are pull-only via
     # ensure_image (inspect -> pull; no local base build).
@@ -1196,14 +1340,10 @@ def _run_container(
         ) is _BOOTSTRAP_MISSING:
             return 1
 
-    # Load agent config.  ``agent_id`` is the NODE-name (persona identity), NOT the
-    # bare harness: it keys the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*``
-    # keyspace slot, and the active-agent snapshot discriminator.  ``with_harness``
-    # swaps in the ACTUALLY-resolved target name (so a NoAgent/other fallback is
-    # reflected while the persona name is preserved).  For a bare agent whose
-    # target resolved as requested, node == harness == target.name -> byte-identical.
-    agent_id = with_harness(agent_name, target.name) if target else "general"
-    agent_cfg_path = agent_settings_path(std.agents, agent_id)
+    # Load agent config.  ``agent_id`` / ``agent_cfg_path`` were hoisted ABOVE (the
+    # agent-scope ``bootstrap`` resolution needs them ahead of the baseline probe);
+    # they name the NODE-scoped ``agents/<node>/`` store + the active-agent snapshot
+    # discriminator.
     # Load or GENERATE the agent config IN MEMORY — do NOT write it yet.  The
     # persona load-or-error pre-flight below MUST resolve loadability BEFORE any
     # artifact for the persona is created (JEI-CRITICAL ordering, dogfood

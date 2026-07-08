@@ -165,7 +165,7 @@ class TestDefaultPersistence:
 
 
 class TestBootstrapNoneAndHostNote:
-    """box.bootstrap_program=none opt-out, the host-absent clue-in note, and the
+    """agent.default.bootstrap=none opt-out, the host-absent clue-in note, and the
     clean --persistent-with-absent-program error (run_start default path)."""
 
     def _make_args(self, persistent=False, ephemeral=False, detach=False):
@@ -228,7 +228,7 @@ class TestBootstrapNoneAndHostNote:
         assert "'tmux' not found on this host" in err  # names the program
         assert "foreground" in err                      # names the consequence
         assert "Install 'tmux'" in err                  # remedy 1: install
-        assert "box.bootstrap_program=none" in err      # remedy 2: explicit opt-out
+        assert "agent.default.bootstrap=none" in err      # remedy 2: explicit opt-out
 
     def test_no_note_when_program_present(self, capsys):
         """Program present on host: persistent default, and NO note at all.
@@ -274,7 +274,7 @@ class TestBootstrapNoneAndHostNote:
         assert "not installed" in err
 
     def test_explicit_persistent_with_none_is_clean_error(self, capsys):
-        """--persistent with box.bootstrap_program=none is a contradiction:
+        """--persistent with agent.default.bootstrap=none is a contradiction:
         clean error (rc=1), _run_container never reached."""
         args = self._make_args(persistent=True)
         with (
@@ -291,7 +291,7 @@ class TestBootstrapNoneAndHostNote:
         m_run.assert_not_called()
         err = capsys.readouterr().err
         assert "--persistent requires a bootstrap program" in err
-        assert "box.bootstrap_program=none" in err
+        assert "agent.default.bootstrap=none" in err
 
 
 # ---------------------------------------------------------------------------

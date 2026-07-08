@@ -280,9 +280,9 @@ class TestResolveBeforeImage:
 
 
 class TestBootstrapNoneInRunContainer:
-    """`none` opt-out at the _run_container consumer: it survives the merged-config
-    coercion (:818 seam) and forces a clean error under persistent mode, so no
-    caller can reach the bootstrap-wrap with `none`."""
+    """`none` opt-out at the _run_container consumer: the AGENT-scope ``bootstrap``
+    value resolves to ``none`` (spec §2d L579) and forces a clean error under
+    persistent mode, so no caller can reach the bootstrap-wrap with `none`."""
 
     def _kwargs(self, **over):
         base = dict(
@@ -297,47 +297,143 @@ class TestBootstrapNoneInRunContainer:
         base.update(over)
         return base
 
-    def test_none_survives_coercion_and_blocks_persistent(self, start_mocks, capsys):
-        """merged box.bootstrap_program='none' must NOT coerce to tmux; under
-        persistent it is a clean error (rc=1) BEFORE the baseline probe/launch.
+    def test_none_blocks_persistent(self, start_mocks, capsys):
+        """Resolved agent-scope ``bootstrap='none'`` under persistent is a clean
+        error (rc=1) BEFORE the baseline probe/launch.
 
-        This pins the :818 `or "tmux"` seam: if `none` were swallowed to tmux,
-        no_bootstrap would be False, the guard would not fire, and the launch
-        would proceed (launch_check called) — so this test goes red on a
-        re-swallow."""
+        Pins the none-guard: if `none` were mishandled to tmux, no_bootstrap would
+        be False, the guard would not fire, and the launch would proceed
+        (launch_check called) — so this goes red on a re-swallow."""
         with start_mocks() as m:
-            m.merged.box_bootstrap_program = "none"
+            m.effective_bootstrap.return_value = "none"
             rc = _run_container(**self._kwargs(persistent=True))
         assert rc == 1
         # Guard fires before the image baseline probe and before any launch.
         m.launch_check.assert_not_called()
         m.runtime.run.assert_not_called()
         err = capsys.readouterr().err
-        assert "box.bootstrap_program=none" in err
+        assert "agent.default.bootstrap=none" in err
         assert "cannot run a persistent session" in err
 
-    def test_empty_bootstrap_still_coerces_to_tmux(self, start_mocks):
-        """An EMPTY/unset value keeps coercing to tmux (default): the none-guard
+    def test_default_bootstrap_is_tmux(self, start_mocks):
+        """The unset/default agent-scope bootstrap resolves to tmux: the none-guard
         does NOT fire, and a persistent launch proceeds to the baseline probe.
 
-        Complement to the seam test above — proves the coercion still applies to
-        empty, so only the exact `none` sentinel is preserved."""
+        Complement to the none test — proves only the exact `none` sentinel opts
+        out (the fixture default is tmux)."""
         with start_mocks() as m:
-            m.merged.box_bootstrap_program = ""
             rc = _run_container(**self._kwargs(persistent=True))
         assert rc == 0
-        # Empty coerced to tmux → not the none-guard → baseline probe ran.
+        # Default tmux → not the none-guard → baseline probe ran.
         m.launch_check.assert_called_once()
 
     def test_none_non_persistent_skips_bootstrap_probe(self, start_mocks):
         """Non-persistent `none` launch proceeds (foreground) and the persistent
         baseline probe is skipped entirely (persistent=False path)."""
         with start_mocks() as m:
-            m.merged.box_bootstrap_program = "none"
+            m.effective_bootstrap.return_value = "none"
             rc = _run_container(**self._kwargs(persistent=False))
         assert rc == 0
         # Non-persistent path never runs the (persistent-only) baseline probe.
         m.launch_check.assert_not_called()
+
+
+class TestEffectiveBootstrapResolution:
+    """`_effective_bootstrap` resolves the AGENT-scope ``bootstrap`` behavior key
+    (spec §2d L579) off the settings snapshot, with the ``tmux`` consumer default —
+    the relocation of the retired box-scope ``box.bootstrap_program``.  It resolves
+    exactly like ``model`` / ``auto_approve``: the ``agent.default`` tier lives in the
+    SYSTEM settings file (a box/workset file's ``agent.*`` is an upward write, dropped
+    by directional enforcement), a per-agent override in the agent's OWN file, and a
+    box-level tweak via the ``box.agent.*`` mirror."""
+
+    def _proj(self, tmp_path):
+        from types import SimpleNamespace
+        box_dir = tmp_path / "box"
+        box_dir.mkdir()
+        # group=None → standalone (no workset-tier file); keeps the test focused
+        # on the system/agent cascade.
+        return SimpleNamespace(metadata_path=box_dir, group=None)
+
+    def test_default_is_tmux_when_unset(self, tmp_path):
+        from kanibako.commands.start import _effective_bootstrap
+        proj = self._proj(tmp_path)
+        # No settings file anywhere → the consumer default.
+        assert _effective_bootstrap(proj, None, "claude") == "tmux"
+
+    def test_system_agent_default_tier_wins(self, tmp_path):
+        """A bare ``bootstrap`` set at system scope lands in the system settings
+        file's ``agent.default`` tier and is the effective value for any agent."""
+        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
+        assert _effective_bootstrap(proj, sys_file, "claude") == "zellij"
+        # And for a no-agent / shell box (agent.default backstop still applies).
+        assert _effective_bootstrap(proj, sys_file, "general") == "zellij"
+
+    def test_none_sentinel_preserved(self, tmp_path):
+        """The ``none`` opt-out is a real value, NOT coerced to the tmux default."""
+        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": "none"}}})
+        assert _effective_bootstrap(proj, sys_file, "claude") == "none"
+
+    def test_box_agent_mirror_override(self, tmp_path):
+        """A box-level tweak via the ``box.agent.bootstrap`` mirror (spec §2b B5)
+        WINS the §2d pick — the box's downward override takes effect."""
+        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
+        dump_doc(
+            proj.metadata_path / "settings.yaml",
+            {"box": {"agent": {"bootstrap": "none"}}},
+        )
+        assert _effective_bootstrap(proj, sys_file, "claude") == "none"
+
+    def test_box_agent_mirror_is_sole_agent_scope_setting(self, tmp_path):
+        """REGRESSION (F1): ``box.agent.bootstrap`` as the SOLE agent-scope setting —
+        NO system ``agent.default.bootstrap``, NO agent-file behavior — must still be
+        honored (the retired ``box.bootstrap_program=none`` worked here).
+
+        Mutation-proof: this only passes because ``_effective_bootstrap`` seeds
+        ``behavior_floor={"bootstrap": tmux}`` so the snapshot's ``agent`` node exists
+        and ``effective_behavior`` reaches the box.agent mirror.  Drop that floor and
+        the snapshot has no ``agent`` node → ``effective_behavior`` early-returns
+        ``{}`` → this returns ``'tmux'`` and the box wrongly launches persistent."""
+        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        # ONLY the box.agent mirror is set — no system file at all.
+        dump_doc(
+            proj.metadata_path / "settings.yaml",
+            {"box": {"agent": {"bootstrap": "none"}}},
+        )
+        assert _effective_bootstrap(proj, None, "claude") == "none"
+
+    def test_per_agent_override_from_agent_file_wins(self, tmp_path):
+        """A per-agent ``agent.<agent>.bootstrap`` stored in the agent's OWN file
+        (flat ``agent:`` state) WINS the §2d active-over-default pick for that
+        agent, over the system-scope ``agent.default`` value."""
+        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
+        agent_file = tmp_path / "agents" / "claude" / "settings.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"agent": {"bootstrap": "none"}})
+        # The active agent (claude) picks its own-file override over the default.
+        assert _effective_bootstrap(
+            proj, sys_file, "claude", agent_path=agent_file,
+        ) == "none"
+        # A DIFFERENT agent (no matching per-agent slot) still sees the default.
+        assert _effective_bootstrap(proj, sys_file, "goose") == "zellij"
 
 
 class TestImageReferenceResolution:

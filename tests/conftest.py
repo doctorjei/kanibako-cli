@@ -309,6 +309,18 @@ def start_mocks():
                 # so default it to "no system default" (bare — today's behavior).
                 # Tests exercising a system-default persona override its return.
                 read_default_agent=DEFAULT,
+                # AGENT-scope ``bootstrap`` resolution (spec §2d L579): the
+                # authoritative per-launch value _run_container reads off the
+                # settings snapshot.  With a MagicMock ``std``/``proj`` the real
+                # resolver would feed MagicMock paths to build_launch_snapshot, so
+                # stub it to the ``tmux`` default; the zellij / ``none`` tests
+                # override ``start_mocks.effective_bootstrap.return_value``.
+                _effective_bootstrap=DEFAULT,
+                # run_start's EARLY persistence-mode heuristic resolves the box +
+                # agent to read the agent-scope bootstrap; stub it to the ``tmux``
+                # default so a run_start unit test does not double-resolve the box.
+                # (Connect tests that exercise the heuristic patch it locally.)
+                _resolve_bootstrap_program=DEFAULT,
             ) as m_launch_mount_stubs,
             patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
@@ -373,6 +385,9 @@ def start_mocks():
             # Default: no system-default agent → non-explicit launches are NOT
             # deferred (byte-identical to today's single materialising resolve).
             m_launch_mount_stubs["read_default_agent"].return_value = None
+            # Default agent-scope bootstrap = tmux (the persistent-session default).
+            m_launch_mount_stubs["_effective_bootstrap"].return_value = "tmux"
+            m_launch_mount_stubs["_resolve_bootstrap_program"].return_value = "tmux"
 
             proj = MagicMock()
             proj.is_new = False
@@ -393,7 +408,6 @@ def start_mocks():
             merged = MagicMock()
             merged.box_image = "test:latest"
             merged.box_agent_name = ""
-            merged.box_bootstrap_program = "tmux"
             merged.box_share_images = False
             m_merged.return_value = merged
 
@@ -615,6 +629,8 @@ def start_mocks():
                 resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
                 seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
                 read_default_agent=m_launch_mount_stubs["read_default_agent"],
+                effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
+                resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
                 virtiofs_check=m_virtiofs_check,
             )
 

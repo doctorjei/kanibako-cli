@@ -73,16 +73,16 @@ class TestLoadConfig:
     def test_null_value_resolves_to_default(self, tmp_path):
         """A lone file with ``foo: null`` resolves foo to its built-in default."""
         path = tmp_path / "n.yaml"
-        path.write_text("box:\n  bootstrap_program: null\n")
+        path.write_text("box:\n  image: null\n")
         cfg = load_config(path)
-        assert cfg.box_bootstrap_program == "tmux"
+        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resolves_to_default(self, tmp_path):
         """An empty ``foo:`` (None) resolves foo to its built-in default."""
         path = tmp_path / "e.yaml"
-        path.write_text("box:\n  bootstrap_program:\n")
+        path.write_text("box:\n  image:\n")
         cfg = load_config(path)
-        assert cfg.box_bootstrap_program == "tmux"
+        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_config_table_populates_config_paths(self, tmp_path):
         """[config] keys land in cfg.config_paths (full dotted names)."""
@@ -488,45 +488,46 @@ class TestScalarOverlayPrecedence:
 
     def test_higher_layer_overrides_lower(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: zellij\n")
+        global_path.write_text("box:\n  image: img:global\n")
         merged = load_merged_config(global_path)
-        assert merged.box_bootstrap_program == "zellij"
+        assert merged.box_image == "img:global"
         # A workset layer overrides the user-global value (presence-based).
         workset_path = tmp_path / "ws-config.yaml"
-        workset_path.write_text("box:\n  bootstrap_program: screen\n")
+        workset_path.write_text("box:\n  image: img:workset\n")
         merged2 = load_merged_config(global_path, workset_path=workset_path)
-        assert merged2.box_bootstrap_program == "screen"
+        assert merged2.box_image == "img:workset"
 
     def test_set_to_default_value_sticks(self, tmp_path):
         """A layer setting a field to the built-in default wins over a lower
         layer's non-default (presence beats the old ``!= default`` guard)."""
+        default_img = "ghcr.io/doctorjei/kanibako-oci:latest"
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: zellij\n")
+        global_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / "settings.yaml"
-        # Explicitly set the built-in default "tmux" — must win.
-        project_path.write_text("box:\n  bootstrap_program: tmux\n")
+        # Explicitly set the built-in default — must win.
+        project_path.write_text(f"box:\n  image: {default_img}\n")
         merged = load_merged_config(global_path, project_path)
-        assert merged.box_bootstrap_program == "tmux"
+        assert merged.box_image == default_img
 
     def test_null_resets_to_default(self, tmp_path):
         """A YAML ``null`` in a more-specific layer resets to the built-in
         default, discarding a lower layer's non-default value."""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: zellij\n")
+        global_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / "settings.yaml"
-        project_path.write_text("box:\n  bootstrap_program: null\n")
+        project_path.write_text("box:\n  image: null\n")
         merged = load_merged_config(global_path, project_path)
-        assert merged.box_bootstrap_program == "tmux"
+        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resets_to_default(self, tmp_path):
         """An empty ``foo:`` (parses to None) also resets to the built-in
         default, same as an explicit ``null``."""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: screen\n")
+        global_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / "settings.yaml"
-        project_path.write_text("box:\n  bootstrap_program:\n")
+        project_path.write_text("box:\n  image:\n")
         merged = load_merged_config(global_path, project_path)
-        assert merged.box_bootstrap_program == "tmux"
+        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_string_is_a_real_value_not_unset(self, tmp_path):
         """``""`` is a real value distinct from ``null``: a lower layer sets a
@@ -547,15 +548,11 @@ class TestScalarOverlayPrecedence:
         """A null reset is not terminal: a higher layer (CLI override) can set a
         concrete value afterward and it wins."""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  bootstrap_program: null\n")
+        global_path.write_text("box:\n  image: null\n")
         merged = load_merged_config(
-            global_path, cli_overrides={"box_bootstrap_program": "screen"}
+            global_path, cli_overrides={"box_image": "img:cli"}
         )
-        assert merged.box_bootstrap_program == "screen"
-
-    def test_bootstrap_program_default(self, tmp_path):
-        merged = load_merged_config(tmp_path / "no-global.yaml")
-        assert merged.box_bootstrap_program == "tmux"
+        assert merged.box_image == "img:cli"
 
 
 class TestFlattenToml:
