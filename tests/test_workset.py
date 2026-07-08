@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import WorksetError
-from kanibako.names import register_name
 from kanibako.paths import BoxMode
 from kanibako.workset import (
     DEFAULT_WORKSET_ALIAS,
