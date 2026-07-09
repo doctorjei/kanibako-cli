@@ -57,6 +57,31 @@ def test_remote_missing_code_cli_errors(capsys):
     assert "code" in capsys.readouterr().err
 
 
+def test_remote_refuses_in_container_shim_before_ssh(capsys):
+    """(t2) The --remote path refuses rc=1 when the local `code` is VS Code's
+    in-container remote shim — BEFORE any ssh/probe work runs."""
+    shim = "/home/u/.vscode-server/bin/abc/bin/remote-cli/code"
+
+    def _which(name):
+        return shim if name == "code" else f"/usr/bin/{name}"
+
+    with (
+        patch("kanibako.commands.code_cmd.shutil.which", side_effect=_which),
+        patch("kanibako.vscode_remote.probe_remote") as m_probe,
+        patch("kanibako.vscode_remote.ensure_tunnel") as m_tunnel,
+        patch("kanibako.vscode_remote.remote_run_kanibako") as m_life,
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    # Refused before any ssh/probe/tunnel/lifecycle work.
+    m_probe.assert_not_called()
+    m_tunnel.assert_not_called()
+    m_life.assert_not_called()
+    err = capsys.readouterr().err
+    assert "remote shim" in err
+    assert "from the host instead" in err
+
+
 def test_remote_missing_local_podman_errors(capsys):
     def _which(name):
         return "/usr/bin/code" if name == "code" else None

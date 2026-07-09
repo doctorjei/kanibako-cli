@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.commands.code_cmd import _attach_uri, run_code
+from kanibako.commands.code_cmd import (
+    _CodeShimError,
+    _attach_uri,
+    _resolve_code_cli,
+    run_code,
+)
 
 # Pinned expectation for container name ``kanibako-foo``:
 #   json  = {"containerName":"kanibako-foo"}   (BARE name — podman rejects the
@@ -71,6 +76,118 @@ def _patched(runtime, cname="kanibako-foo", name="foo"):
 def test_attach_uri_exact():
     """URI construction is exact and deterministic for a known container name."""
     assert _attach_uri("kanibako-foo") == _EXPECTED_URI
+
+
+# --- in-container remote-shim detection (_resolve_code_cli) -----------------
+
+def _make_exec(path):
+    """Create an executable file at *path* (parents made)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\n")
+    path.chmod(0o755)
+    return path
+
+
+def test_resolve_code_cli_refuses_shim_on_path(tmp_path, monkeypatch):
+    """(t1 core) A remote-cli shim resolved on PATH raises _CodeShimError."""
+    shim = _make_exec(
+        tmp_path / ".vscode-server" / "bin" / "abc" / "bin" / "remote-cli" / "code"
+    )
+    monkeypatch.delenv("VSCODE_IPC_HOOK_CLI", raising=False)
+    monkeypatch.setenv("PATH", str(shim.parent))
+    with pytest.raises(_CodeShimError):
+        _resolve_code_cli()
+
+
+def test_resolve_code_cli_refuses_symlink_to_shim(tmp_path, monkeypatch):
+    """(t4) A PATH symlink pointing INTO .vscode-server is detected via resolve()."""
+    real_shim = _make_exec(
+        tmp_path / ".vscode-server" / "bin" / "abc" / "bin" / "remote-cli" / "code"
+    )
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    link = bindir / "code"
+    link.symlink_to(real_shim)
+    monkeypatch.delenv("VSCODE_IPC_HOOK_CLI", raising=False)
+    monkeypatch.setenv("PATH", str(bindir))
+    with pytest.raises(_CodeShimError):
+        _resolve_code_cli()
+
+
+def test_resolve_code_cli_real_binary_proceeds(tmp_path, monkeypatch):
+    """(t3) A real code at a normal location resolves fine (returns its path)."""
+    real = _make_exec(tmp_path / "usr" / "bin" / "code")
+    monkeypatch.delenv("VSCODE_IPC_HOOK_CLI", raising=False)
+    monkeypatch.setenv("PATH", str(real.parent))
+    assert _resolve_code_cli() == str(real)
+
+
+def test_resolve_code_cli_ipc_set_real_binary_does_not_refuse(tmp_path, monkeypatch):
+    """(t5) VSCODE_IPC_HOOK_CLI set but a REAL code on PATH must NOT refuse.
+
+    The env var leaking into a box shell must never, on its own, block a
+    legitimate host-style code binary that resolves outside a shim tree.
+    """
+    real = _make_exec(tmp_path / ".local" / "share" / "code" / "bin" / "code")
+    monkeypatch.setenv("VSCODE_IPC_HOOK_CLI", "/tmp/vscode-ipc.sock")
+    monkeypatch.setenv("PATH", str(real.parent))
+    assert _resolve_code_cli() == str(real)
+
+
+def test_resolve_code_cli_ipc_plus_remote_cli_refuses(tmp_path, monkeypatch):
+    """Prong (b) POSITIVE: IPC var set + a remote-cli dir OUTSIDE any known
+    server tree still refuses (the belt for unknown server-dir layouts)."""
+    shim = _make_exec(
+        tmp_path / ".some-server" / "bin" / "abc" / "bin" / "remote-cli" / "code"
+    )
+    monkeypatch.setenv("VSCODE_IPC_HOOK_CLI", "/tmp/vscode-ipc.sock")
+    monkeypatch.setenv("PATH", str(shim.parent))
+    with pytest.raises(_CodeShimError):
+        _resolve_code_cli()
+
+
+@pytest.mark.parametrize("server_dir", [
+    ".vscode-server-insiders", ".vscode-server-oss", ".cursor-server",
+])
+def test_resolve_code_cli_refuses_variant_server_trees(
+    tmp_path, monkeypatch, server_dir,
+):
+    """Prong (a) covers the known server-dir VARIANTS even with no IPC var
+    (the stale-shell case for Insiders/OSS/Cursor)."""
+    shim = _make_exec(
+        tmp_path / server_dir / "bin" / "abc" / "bin" / "remote-cli" / "code"
+    )
+    monkeypatch.delenv("VSCODE_IPC_HOOK_CLI", raising=False)
+    monkeypatch.setenv("PATH", str(shim.parent))
+    with pytest.raises(_CodeShimError):
+        _resolve_code_cli()
+
+
+def test_resolve_code_cli_missing_returns_none(tmp_path, monkeypatch):
+    """No code on PATH → None (callers print their own 'missing' guidance)."""
+    monkeypatch.delenv("VSCODE_IPC_HOOK_CLI", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    assert _resolve_code_cli() is None
+
+
+def test_local_run_code_refuses_shim(mock_runtime, capsys):
+    """(t1) The LOCAL run_code path refuses rc=1 with the shim message and never
+    launches (or auto-starts) when the resolved code is the remote shim."""
+    stack, _proj = _patched(mock_runtime)
+    shim = "/home/u/.vscode-server/bin/abc/bin/remote-cli/code"
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch("kanibako.commands.code_cmd.shutil.which", return_value=shim),
+        patch("kanibako.commands.start.start_detached") as m_start,
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+    assert rc == 1
+    m_run.assert_not_called()
+    m_start.assert_not_called()
+    err = capsys.readouterr().err
+    assert "remote shim" in err
+    assert "from the host instead" in err
 
 
 def test_happy_path(mock_runtime, capsys):

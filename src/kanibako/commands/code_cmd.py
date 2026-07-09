@@ -11,9 +11,11 @@ from __future__ import annotations
 import argparse
 import binascii
 import json
+import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
@@ -84,6 +86,70 @@ def _attach_uri(container_name: str, context: str | None = None) -> str:
     return f"vscode-remote://attached-container+{hex_name}{workspace_path}"
 
 
+class _CodeShimError(Exception):
+    """The resolved ``code`` CLI is VS Code's in-container remote-cli shim.
+
+    Raised by :func:`_resolve_code_cli` when ``kanibako code`` is (almost
+    certainly) running INSIDE a container that a VS Code client is attached to,
+    where the ``code`` on PATH is the remote shim that dispatches to the
+    attaching desktop client rather than launching a local editor.
+    """
+
+
+_CODE_SHIM_MSG = (
+    "Error: the 'code' found on your PATH is VS Code's in-container remote "
+    "shim.\n"
+    "  You appear to be running 'kanibako code' INSIDE a container that a VS "
+    "Code client is attached to; this 'code' would open windows on the "
+    "ATTACHING desktop, not here.\n"
+    "  Run 'kanibako code' from the host instead."
+)
+
+
+def _resolve_code_cli() -> str | None:
+    """Resolve the host ``code`` CLI path, refusing VS Code's remote-cli shim.
+
+    Returns the ``shutil.which("code")`` path (the ORIGINAL PATH entry, so the
+    launch is byte-for-byte what the user's PATH selects), or ``None`` when no
+    ``code`` is on PATH (callers print their own "missing" guidance).
+
+    Raises :class:`_CodeShimError` when the resolved binary is VS Code's
+    in-container ``remote-cli`` shim.  Detection follows symlinks
+    (``Path.resolve()``) and fires on EITHER prong:
+
+    (a) the resolved path lands inside a remote-server tree —
+        ``.vscode-server`` plus the known variants ``.vscode-server-insiders``,
+        ``.vscode-server-oss``, and ``.cursor-server`` — catching those shims
+        regardless of environment (a stale tmux shell predating the attach has
+        no ``VSCODE_IPC_HOOK_CLI`` yet still resolves the shim);
+    (b) ``VSCODE_IPC_HOOK_CLI`` is set (an attached-terminal shell) AND the
+        resolved path lives in a ``remote-cli`` dir — a belt for server-dir
+        layouts (a) doesn't know about.  A variant client using a different
+        IPC env var AND an unknown server dir slips both prongs; known gap,
+        acceptable for the mainline.
+
+    The env var ALONE never refuses (a box may legitimately carry a real
+    ``code`` on PATH while the var leaks in), and its ABSENCE never skips the
+    path check (prong (a) runs unconditionally).  A real host install
+    (``/usr/bin/code``, ``~/.local/share/code/bin/code``) matches neither prong.
+    """
+    code_bin = shutil.which("code")
+    if code_bin is None:
+        return None
+    try:
+        resolved_parts = Path(code_bin).resolve().parts
+    except OSError:  # symlink loop etc.: not identifiable as a shim; let the
+        return code_bin  # actual launch surface the real error
+    ipc_set = bool(os.environ.get("VSCODE_IPC_HOOK_CLI"))
+    is_server_tree = any(
+        part.startswith(".vscode-server") or part == ".cursor-server"
+        for part in resolved_parts
+    )
+    if is_server_tree or (ipc_set and "remote-cli" in resolved_parts):
+        raise _CodeShimError(_CODE_SHIM_MSG)
+    return code_bin
+
+
 def run_code(args: argparse.Namespace) -> int:
     dest = getattr(args, "remote", None)
     if dest:
@@ -111,9 +177,14 @@ def run_code(args: argparse.Namespace) -> int:
     proj = resolve_box_target(std, config, project_dir, initialize=False)
     cname = container_name_for(proj)
 
-    # Fail fast if the host `code` CLI is missing — BEFORE auto-starting a box, so
-    # a missing prerequisite never leaves a background box behind.
-    code_bin = shutil.which("code")
+    # Fail fast if the host `code` CLI is missing or is the in-container remote
+    # shim — BEFORE auto-starting a box, so a missing/wrong prerequisite never
+    # leaves a background box behind.
+    try:
+        code_bin = _resolve_code_cli()
+    except _CodeShimError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if code_bin is None:
         print(
             "Error: the VS Code 'code' CLI was not found on your PATH.\n"
@@ -480,7 +551,13 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
 
     # (a) Fail fast on the LOCAL prerequisites: the `code` CLI, and podman as
     # the --remote client (podman drives the remote socket; docker is not it).
-    code_bin = shutil.which("code")
+    # This runs BEFORE any ssh/probe work so an in-container remote shim is
+    # refused up front rather than after establishing a tunnel.
+    try:
+        code_bin = _resolve_code_cli()
+    except _CodeShimError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     if code_bin is None:
         print(_MISSING_CODE_MSG, file=sys.stderr)
         return 1
