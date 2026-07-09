@@ -177,7 +177,7 @@ creation.
 
 ## Commands
 
-Kanibako organizes commands into four management groups plus seven top-level
+Kanibako organizes commands into four management groups plus eight top-level
 shortcuts for common operations:
 
 ### Top-Level Shortcuts
@@ -191,6 +191,7 @@ shortcuts for common operations:
 | `kanibako ps [-a] [-q]` | `box ps` | List active (running) boxes |
 | `kanibako create [path]` | `box create` | Create a new project |
 | `kanibako rm <project>` | `box rm` | Remove a project |
+| `kanibako code [project]` | *(top-level only)* | Open VS Code attached to the box (see [VS Code Integration](#vs-code-integration)) |
 
 ### Management Commands
 
@@ -306,6 +307,44 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 | `system set` / `system get` / `system show` / `system reset` | View or modify global configuration |
 | `system upgrade` | Self-update (`--check` for dry run) |
 | `system diagnose` | Check system health (runtime, images, agents, storage) |
+
+## VS Code Integration
+
+`kanibako code [project]` opens your **host** VS Code attached to the box
+(Dev Containers "Attach to Running Container"), at the box's `~/workspace`.
+The box is auto-started detached if it isn't running, and it stays up when
+you close the window. The box agent's editor extension is installed into the
+attached window automatically.
+
+Requirements: the `code` CLI on your PATH, the Dev Containers extension
+(`ms-vscode-remote.remote-containers`), and
+`"dev.containers.dockerPath": "podman"` in your VS Code user settings.
+`kanibako system diagnose` checks all three.
+
+### Remote boxes
+
+```bash
+kanibako code --remote <host> <project>
+```
+
+attaches your **local** VS Code to a box on a **remote** kanibako host —
+no relay service, no VS Code on the remote host. `<host>` is an opaque SSH
+destination resolved by your own `~/.ssh/config` (aliases, ProxyJump, ports,
+and keys all apply); kanibako starts the box over SSH and VS Code drives the
+remote rootless podman socket through a shared SSH connection.
+
+On the remote host you need kanibako (same release train) and the rootless
+podman API socket:
+
+```bash
+systemctl --user enable --now podman.socket
+loginctl enable-linger "$USER"
+```
+
+On first `--remote` use, kanibako asks to point
+`dev.containers.dockerPath` at its dispatch wrapper (local attaches are
+unaffected — the wrapper is a pass-through to `podman` except for remote
+attach windows).
 
 ## Common Flags
 
