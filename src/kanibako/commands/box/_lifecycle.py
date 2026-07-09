@@ -42,9 +42,12 @@ from kanibako.paths import (
     StandardPaths,
     WorksetSpec,
     _find_workset_for_path,
+    _register_workset_box_membership,
     assign_primary_box_name,
+    check_primary_box_name_free,
     detect_project_mode,
     primary_box_name_for_workspace,
+    register_primary_box_name,
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
@@ -143,6 +146,71 @@ def owner_token(mode: BoxMode, ws_name: str | None = None) -> str:
             raise ValueError("workset owner requires a workset name")
         return f"workset:{ws_name}"
     return mode.value
+
+
+def _default_rename_name(
+    state: ProjectState,
+    std: StandardPaths,
+    landing_ws: Path,
+    requested_name: str,
+) -> str | None:
+    """The explicit primary-box name a DEFAULT-mode edge would MINT, or ``None``.
+
+    Returns the user's ``requested_name`` only when it will actually name a NEW
+    primary registration (a true ``--name`` rename edge landing in default mode),
+    else ``None`` — i.e. ``None`` for an auto-derived name (no ``--name``, which
+    keeps the basename-derived auto-suffix) OR the primary-source SAME-PATH REUSE
+    case where ``--name`` equals the current name (the box keeps its existing
+    name, so ``--name`` is moot).
+
+    The returned name is the one the cross-kind (box-vs-workset) name policy must
+    gate: F-7 routes it through :func:`check_primary_box_name_free` /
+    :func:`register_primary_box_name` so a rename obeys the same per-kind policy
+    as ``create`` (workset-name collision refused unless ``--force``; same-kind
+    primary collision unconditional).
+
+    F-3-fix2: for a primary-source SAME-PATH edge an explicit ``--name`` that
+    DIFFERS from the current name would be an in-place RENAME of a primary box —
+    which is NOT supported (the box keeps its ``boxes/<name>`` metadata dir +
+    registration at this path).  Rather than silently drop the different name,
+    REFUSE with an actionable ``ProjectError`` (move the box to rename it).
+    """
+    if not requested_name:
+        return None
+    if state.mode == BoxMode.primary and state.name:
+        existing = primary_box_name_for_workspace(
+            std.primary_workset, str(landing_ws),
+        )
+        if existing is not None:
+            # SAME-PATH (in-place) primary edge: the landing path is already
+            # registered to this box, so no NEW registration is minted.
+            if requested_name != existing:
+                raise ProjectError(
+                    f"In-place rename of a primary (default-mode) box is not "
+                    f"supported: '{existing}' -> '{requested_name}'. Move the box "
+                    f"to rename it (e.g. `box move {existing} <new-path> --name "
+                    f"{requested_name}`), or drop --name to keep the current name."
+                )
+            # --name equals the current name: a moot reuse, not a rename edge.
+            return None
+    return requested_name
+
+
+def _primary_source_own_name(
+    state: ProjectState, std: StandardPaths,
+) -> str | None:
+    """The name the SOURCE primary box is CURRENTLY registered under, else ``None``.
+
+    Reverse-looks-up ``state.workspace_path`` in the PRIMARY membership.  A
+    same-name move/convert reuses THIS entry (source's own name -> its own current
+    path), which the cross-kind/same-kind name guards must exempt: it is not a
+    foreign collision.  ``None`` when the source is not a registered primary box.
+    """
+    if state.mode != BoxMode.primary or not state.name:
+        return None
+    return primary_box_name_for_workspace(
+        std.primary_workset, str(state.workspace_path),
+    )
 
 
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
@@ -628,6 +696,32 @@ def _validate(
                     f"'{target_ws.name}'."
                 )
 
+    # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
+    # An explicit --name that lands a box in primary/default mode is held to the
+    # SAME per-kind name policy as create: a WORKSET-name collision refuses UNLESS
+    # --force (the box would shadow the workset in bare-name resolution); a
+    # SAME-KIND (another primary box) collision refuses UNCONDITIONALLY.  Checked
+    # UP FRONT here so a refusal costs no file copy.  Only a name that actually
+    # mints a new registration is gated (auto-derived names + the primary
+    # same-path reuse are not cross-kind assertions).  NAMED-workset targets are
+    # out of scope (handled by the same-kind workset-membership check above);
+    # standalone targets are excluded from the cross-kind domain.
+    requested_name = (spec.name or "").lower()
+    if target_mode == BoxMode.primary:
+        landing_ws = dest if dest is not None else state.workspace_path
+        mint = _default_rename_name(state, std, landing_ws, requested_name)
+        # FIX1: a relocating move/convert that KEEPS the same name reuses the
+        # SOURCE box's OWN registration (name -> its current path); that is a
+        # self-reuse, not a collision, so exempt it from the same-kind guard
+        # (register_primary_box_name would otherwise see the box's own still-live
+        # entry as "already registered").  Genuine same-kind + cross-kind
+        # collisions (mint names a DIFFERENT box or a workset) still refuse.
+        if mint is not None and mint != _primary_source_own_name(state, std):
+            check_primary_box_name_free(
+                std.primary_workset, std.registry, mint, str(landing_ws),
+                force=force,
+            )
+
     return {
         "target_mode": target_mode,
         "target_ws": target_ws,
@@ -636,11 +730,12 @@ def _validate(
         "relocating": relocating,
         "no_owner_change": no_owner_change,
         "new_name": new_name,
+        "force": force,
         # The user's EXPLICIT --name (empty when not given).  Unlike ``new_name``
         # (which defaults to the source name), this distinguishes "no --name"
         # from "--name <source-name>" so a standalone target only treats a real
         # --name as a user assertion (R1/R3).
-        "requested_name": (spec.name or "").lower(),
+        "requested_name": requested_name,
     }
 
 
@@ -710,6 +805,7 @@ def _run_steps(
     relocating: bool = plan["relocating"]
     new_name: str = plan["new_name"]
     requested_name: str = plan["requested_name"]
+    force: bool = plan["force"]
 
     # ------------------------------------------------------------------
     # STEP 2 — Move files (only when relocating a real workspace tree).
@@ -766,6 +862,7 @@ def _run_steps(
         relocating=relocating,
         dest=dest,
         requested_name=requested_name,
+        force=force,
     )
 
     # ------------------------------------------------------------------
@@ -805,6 +902,7 @@ def _apply_ownership_and_markers(
     relocating: bool,
     dest: Path | None,
     requested_name: str = "",
+    force: bool = False,
 ) -> ProjectState:
     """Re-root metadata/shell/vault into the target owner + rewrite markers.
 
@@ -831,6 +929,7 @@ def _apply_ownership_and_markers(
     return _to_default(
         state, std, config, unwind,
         new_name=new_name, new_workspace=new_workspace,
+        requested_name=requested_name, force=force,
     )
 
 
@@ -955,14 +1054,31 @@ def _to_default(
     *,
     new_name: str,
     new_workspace: Path,
+    requested_name: str = "",
+    force: bool = False,
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
-    # L2 (name reuse on same-name convert): a PRIMARY source's own name is still
-    # registered at this point, so assign_primary_box_name would see the collision
-    # and auto-suffix (foo→foo2), stranding the original entry once _remove_old_
-    # metadata later unregisters it. Unregister the source's name FIRST (only for
-    # a primary source — other modes aren't in the PRIMARY membership) so the same
-    # name is reused; the later _remove_old_metadata unregister then no-ops.
+    # F-7: an explicit --name landing in default mode is HONORED as the box name
+    # (previously silently dropped) and held to the per-kind cross-kind policy.
+    # Decide this BEFORE the reuse unregister below, so the same-path reuse case
+    # is still detectable (the source's name is still registered here).
+    # _default_rename_name returns None for an auto-derived name or the primary
+    # same-path reuse case, which keep the basename-derived auto-suffix path.
+    mint = _default_rename_name(state, std, new_workspace, requested_name)
+    # L2 / FIX1 (name reuse across the register): a PRIMARY source's own name is
+    # still registered at this point, so register/assign would see the source's
+    # OWN entry as a same-kind collision (auto-suffix foo→foo2, or an outright
+    # "already registered" refusal).  Two reuse shapes need the source entry
+    # freed FIRST:
+    #   * SAME-PATH in-place convert — the source is registered AT new_workspace;
+    #     unregister so assign reuses the name verbatim (no suffix).
+    #   * RELOCATING same-name move — the source's OWN name (== mint) is still
+    #     registered at its OLD path (new_workspace is the fresh dest);
+    #     unregister so register_primary_box_name at the new path is not a
+    #     self-collision, and push a FAILURE-WINDOW unwind that RESTORES the
+    #     source's old registration if the re-register (or a later step) fails.
+    # In both, mark the name preserved so _remove_old_metadata neither
+    # re-unregisters it nor deletes the reused ``boxes/<name>`` metadata dir.
     preserved_name: str | None = None
     if state.mode == BoxMode.primary and state.name:
         existing = primary_box_name_for_workspace(
@@ -975,9 +1091,29 @@ def _to_default(
             # reused metadata.
             preserved_name = existing
             _safe_unregister(std, existing)
-    project_name = assign_primary_box_name(
-        std.primary_workset, std.registry, str(new_workspace),
-    )
+        elif mint is not None and mint == _primary_source_own_name(state, std):
+            # RELOCATING same-name move: unregister the source's OLD entry first,
+            # restoring it on the failure window (this unwind runs in reverse
+            # BEFORE any later one, so a failed re-register leaves the source's
+            # name -> old path intact — no orphaned/lost registration).
+            preserved_name = mint
+            old_ws = state.workspace_path
+            _safe_unregister(std, mint)
+            unwind.push(
+                lambda: _safe_register_membership(std, mint, old_ws)
+            )
+    # Register the honored --name (cross-kind refuse-workset-unless-force +
+    # same-kind unconditional via check_primary_box_name_free), else the
+    # basename-derived auto-suffix path.
+    if mint is not None:
+        register_primary_box_name(
+            std.primary_workset, std.registry, mint, new_workspace, force=force,
+        )
+        project_name = mint
+    else:
+        project_name = assign_primary_box_name(
+            std.primary_workset, std.registry, str(new_workspace),
+        )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
@@ -1457,6 +1593,22 @@ def _relocate_channel_partition(
 def _safe_unregister(std: StandardPaths, name: str) -> None:
     try:
         unregister_primary_box_name(std.primary_workset, name)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _safe_register_membership(
+    std: StandardPaths, name: str, workspace: Path,
+) -> None:
+    """Best-effort re-register *name* -> *workspace* in the PRIMARY membership.
+
+    The failure-window restore for FIX1: writes the raw membership entry directly
+    (no cross-kind/same-kind guard) so restoring the source box's OWN prior
+    registration is unconditional.  Swallows errors (the unwind stack is
+    best-effort restore).
+    """
+    try:
+        _register_workset_box_membership(std.primary_workset, name, workspace)
     except Exception:  # noqa: BLE001
         pass
 
