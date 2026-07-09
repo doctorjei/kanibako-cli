@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -74,79 +75,84 @@ def test_ssh_command_dest_cannot_inject_options():
     assert cmd[cmd.index("--") + 1] == "-oProxyCommand=evil"
 
 
-# --- resolve_ssh_dest (ssh -G, mocked) -------------------------------------
+# --- unix-socket tunnel engine (FF-1b) -------------------------------------
 
-def test_resolve_ssh_dest_alias_with_port():
-    # An ssh-config alias resolving to a concrete host + non-default port.
-    out = (
-        "host myalias\n"
-        "hostname real.example.com\n"
-        "user deploy\n"
-        "port 2200\n"
-        "proxycommand none\n"
+def test_remote_socket_path():
+    assert vr.remote_socket_path(1000) == "/run/user/1000/podman/podman.sock"
+    assert vr.remote_socket_path(0) == "/run/user/0/podman/podman.sock"
+
+
+def test_tunnel_socket_path_under_runtime_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+    name = "kanibako-remote-me-host-abc123"
+    assert vr.tunnel_socket_path(name) == tmp_path / "run" / f"{name}.sock"
+
+
+def test_engine_url_is_unix_local_socket():
+    assert vr.engine_url(Path("/run/user/1000/x.sock")) == (
+        "unix:///run/user/1000/x.sock"
     )
-    completed = MagicMock(returncode=0, stdout=out, stderr="")
+
+
+def test_ensure_tunnel_fast_path_when_socket_accepts(tmp_path):
+    # A LIVE AF_UNIX listener → ensure_tunnel returns without any ssh call.
+    sock_path = tmp_path / "live.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(sock_path))
+    listener.listen(1)
+    try:
+        with patch("kanibako.vscode_remote.subprocess.run") as m:
+            vr.ensure_tunnel("me@host", 1000, sock_path)
+        m.assert_not_called()
+    finally:
+        listener.close()
+
+
+def test_ensure_tunnel_missing_socket_builds_ssh_forward(tmp_path):
+    sock_path = tmp_path / "gone.sock"  # nonexistent → establish
+    completed = MagicMock(returncode=0, stdout="", stderr="")
     with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
-        r = vr.resolve_ssh_dest("myalias")
-    assert r == vr.ResolvedDest("real.example.com", "deploy", "2200", False)
-    # `ssh -G -- <dest>`: local-only, `--` guards a `-`-leading dest.
-    assert m.call_args[0][0] == ["ssh", "-G", "--", "myalias"]
+        vr.ensure_tunnel("me@host", 1000, sock_path)
+    argv = m.call_args[0][0]
+    assert argv[0] == "ssh"
+    # The tunnel's ControlPersist=600 lease must come BEFORE the base mux
+    # opts' 60: OpenSSH takes the FIRST obtained value for a repeated option
+    # (ssh_config semantics, `ssh -G`-confirmed) — Editor #3 MAJOR-1.
+    assert "ControlMaster=auto" in argv
+    assert argv.index("ControlPersist=600") < argv.index("ControlPersist=60")
+    assert "ExitOnForwardFailure=yes" in argv
+    assert "StreamLocalBindUnlink=yes" in argv
+    assert "-f" in argv and "-N" in argv
+    assert argv[argv.index("-L") + 1] == (
+        f"{sock_path}:/run/user/1000/podman/podman.sock"
+    )
+    # `--` guards a `-`-leading dest; dest is last.
+    assert argv[-2] == "--"
+    assert argv[-1] == "me@host"
 
 
-def test_resolve_ssh_dest_missing_user_port_uses_defaults():
-    completed = MagicMock(returncode=0, stdout="hostname h\n", stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
-        r = vr.resolve_ssh_dest("h")
-    assert r == vr.ResolvedDest("h", "", "22", False)
+def test_ensure_tunnel_stale_socket_file_reestablishes(tmp_path):
+    # A socket FILE that exists but does NOT accept a connection (stale master):
+    # ensure_tunnel must re-establish rather than take the fast path.
+    sock_path = tmp_path / "stale.sock"
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.bind(str(sock_path))
+    s.close()  # bound file remains, but nothing is listening
+    completed = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+        vr.ensure_tunnel("me@host", 1000, sock_path)
+    m.assert_called_once()
 
 
-def test_resolve_ssh_dest_detects_proxyjump():
-    out = "hostname h\nuser u\nport 22\nproxyjump bastion\n"
-    completed = MagicMock(returncode=0, stdout=out, stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
-        assert vr.resolve_ssh_dest("h").proxied is True
-
-
-def test_resolve_ssh_dest_proxycommand_none_not_proxied():
-    out = "hostname h\nuser u\nport 22\nproxycommand none\n"
-    completed = MagicMock(returncode=0, stdout=out, stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
-        assert vr.resolve_ssh_dest("h").proxied is False
-
-
-def test_resolve_ssh_dest_nonzero_rc_raises():
-    completed = MagicMock(returncode=255, stdout="", stderr="ssh: bad config")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
-        with pytest.raises(KanibakoError) as exc:
-            vr.resolve_ssh_dest("badhost")
-    assert "badhost" in str(exc.value)
-
-
-def test_resolve_ssh_dest_no_hostname_raises():
-    completed = MagicMock(returncode=0, stdout="user u\nport 22\n", stderr="")
+def test_ensure_tunnel_failure_carries_stderr(tmp_path):
+    sock_path = tmp_path / "gone.sock"
+    completed = MagicMock(returncode=255, stdout="", stderr="ssh: connect refused")
     with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
-            vr.resolve_ssh_dest("weird")
-    assert "weird" in str(exc.value)
-
-
-# --- engine_url composed from resolved parts -------------------------------
-
-@pytest.mark.parametrize(
-    "resolved, uid, expected",
-    [
-        (
-            vr.ResolvedDest("host", "me", "22", False), 1000,
-            "ssh://me@host:22/run/user/1000/podman/podman.sock",
-        ),
-        (
-            vr.ResolvedDest("1.2.3.4", "deploy", "2222", False), 0,
-            "ssh://deploy@1.2.3.4:2222/run/user/0/podman/podman.sock",
-        ),
-    ],
-)
-def test_engine_url_composes_from_resolved_parts(resolved, uid, expected):
-    assert vr.engine_url(resolved, uid) == expected
+            vr.ensure_tunnel("me@host", 1000, sock_path)
+    msg = str(exc.value)
+    assert "me@host" in msg
+    assert "ssh: connect refused" in msg
 
 
 # --- slug + context name ----------------------------------------------------
@@ -172,26 +178,34 @@ def test_context_slug_distinct_dests_never_collide():
 
 def test_store_round_trip_and_greppable():
     name = vr.remote_context_name("me@host")
+    sock = "/run/user/1000/kanibako-remote-me-host.sock"
+    remote_sock = "/run/user/1000/podman/podman.sock"
     path = vr.write_context_entry(
         name,
-        url="ssh://me@host/run/user/1000/podman/podman.sock",
+        url=f"unix://{sock}",
         dest="me@host",
         uid=1000,
+        sock=sock,
+        remote_sock=remote_sock,
     )
     assert path == vr.contexts_dir() / name
     got = vr.read_context_entry(name)
     assert got == {
-        "URL": "ssh://me@host/run/user/1000/podman/podman.sock",
+        "URL": f"unix://{sock}",
         "DEST": "me@host",
         "UID": "1000",
+        "SOCK": sock,
+        "REMOTE_SOCK": remote_sock,
     }
     # sh-greppable: one KEY=VALUE per line, no quoting/escaping.
     raw = path.read_text()
-    assert "URL=ssh://me@host/run/user/1000/podman/podman.sock\n" in raw
+    assert f"URL=unix://{sock}\n" in raw
     assert raw.splitlines() == [
-        "URL=ssh://me@host/run/user/1000/podman/podman.sock",
+        f"URL=unix://{sock}",
         "DEST=me@host",
         "UID=1000",
+        f"SOCK={sock}",
+        f"REMOTE_SOCK={remote_sock}",
     ]
 
 
@@ -235,29 +249,26 @@ def test_context_meta_refuses_non_kanibako_name():
 
 # --- RemoteEngine argv prefix + env PATH ------------------------------------
 
-def test_remote_engine_argv_prefix_and_path():
-    url = "ssh://me@host/run/user/1000/podman/podman.sock"
-    eng = vr.RemoteEngine(url, podman="/usr/bin/podman", shim_dir=Path("/shim"))
-    assert eng.argv_prefix == [
-        "/usr/bin/podman", "--remote", "--ssh", "native", "--url", url,
-    ]
-    assert eng._env["PATH"].split(os.pathsep)[0] == "/shim"
+def test_remote_engine_argv_prefix_is_unix_url():
+    url = "unix:///run/user/1000/kanibako-remote-h.sock"
+    eng = vr.RemoteEngine(url, podman="/usr/bin/podman")
+    # No `--ssh native`, no shim PATH: podman dials the LOCAL unix socket.
+    assert eng.argv_prefix == ["/usr/bin/podman", "--remote", "--url", url]
 
 
 def test_remote_engine_is_running_parses_true():
-    url = "ssh://h/sock"
-    eng = vr.RemoteEngine(url, podman="/usr/bin/podman", shim_dir=Path("/shim"))
+    url = "unix:///run/user/1000/x.sock"
+    eng = vr.RemoteEngine(url, podman="/usr/bin/podman")
     completed = MagicMock(returncode=0, stdout="true\n")
     with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
         assert eng.is_running("kanibako-foo") is True
         argv = m.call_args[0][0]
-        assert argv[:6] == eng.argv_prefix
-        assert argv[6:] == ["inspect", "--format", "{{.State.Running}}", "kanibako-foo"]
-        assert m.call_args.kwargs["env"]["PATH"].startswith("/shim")
+        assert argv[:4] == eng.argv_prefix
+        assert argv[4:] == ["inspect", "--format", "{{.State.Running}}", "kanibako-foo"]
 
 
 def test_remote_engine_inspect_env_and_image():
-    eng = vr.RemoteEngine("ssh://h/sock", podman="podman", shim_dir=Path("/shim"))
+    eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
     env_completed = MagicMock(
         returncode=0, stdout='["FOO=bar","KANIBAKO_AGENT=claude"]',
     )
@@ -270,7 +281,7 @@ def test_remote_engine_inspect_env_and_image():
 
 
 def test_remote_engine_running_with_stderr_surfaces_inspect_error():
-    eng = vr.RemoteEngine("ssh://h/sock", podman="podman", shim_dir=Path("/shim"))
+    eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
     completed = MagicMock(
         returncode=125, stdout="", stderr='Error: no such container "kanibako-x"',
     )
@@ -283,7 +294,7 @@ def test_remote_engine_running_with_stderr_surfaces_inspect_error():
 # --- preflight_engine (mocked podman version) ------------------------------
 
 def _preflight_engine():
-    return vr.RemoteEngine("ssh://h/sock", podman="podman", shim_dir=Path("/shim"))
+    return vr.RemoteEngine("unix:///run/x.sock", podman="podman")
 
 
 def test_preflight_engine_ok():
@@ -294,39 +305,25 @@ def test_preflight_engine_ok():
         assert m.call_args[0][0][-1] == "version"
 
 
-def test_preflight_engine_no_such_host_hint():
-    stderr = (
-        "Error: ssh: ... dial tcp: lookup myalias on 1.1.1.1:53: no such host"
+def test_preflight_engine_failure_carries_stderr_and_tunnel_hint():
+    completed = MagicMock(
+        returncode=125, stdout="",
+        stderr="Cannot connect to Podman: dial unix ...: connection refused",
     )
-    completed = MagicMock(returncode=125, stdout="", stderr=stderr)
     with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.preflight_engine(_preflight_engine())
     msg = str(exc.value)
-    assert "no such host" in msg  # podman's stderr verbatim
-    assert "~/.ssh/config" in msg  # targeted hint
+    assert "connection refused" in msg  # podman's stderr verbatim
+    assert "tunnel" in msg.lower()  # generic tunnel remediation
 
 
-def test_preflight_engine_auth_hint():
-    stderr = (
-        "Error: ssh: handshake failed: ssh: unable to authenticate, "
-        "attempted methods [none], no supported methods remain"
-    )
-    completed = MagicMock(returncode=125, stdout="", stderr=stderr)
+def test_preflight_engine_no_output_still_raises():
+    completed = MagicMock(returncode=1, stdout="", stderr="")
     with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.preflight_engine(_preflight_engine())
-    msg = str(exc.value)
-    assert "unable to authenticate" in msg  # verbatim
-    assert "ssh-add" in msg  # targeted hint
-
-
-def test_preflight_engine_unmapped_failure_carries_stderr():
-    completed = MagicMock(returncode=1, stdout="", stderr="some other failure")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
-        with pytest.raises(KanibakoError) as exc:
-            vr.preflight_engine(_preflight_engine())
-    assert "some other failure" in str(exc.value)
+    assert "podman produced no error output" in str(exc.value)
 
 
 # --- probe_remote (mocked ssh) ---------------------------------------------
@@ -365,14 +362,11 @@ def test_probe_remote_ssh_failure_raises():
 
 # --- wrapper + shim idempotent regen ---------------------------------------
 
-def test_wrapper_and_shim_generated_executable_and_idempotent():
+def test_wrapper_generated_executable_and_idempotent():
     wpath = vr.ensure_dispatch_wrapper()
-    spath = vr.ensure_ssh_shim()
     assert wpath == vr.dispatch_wrapper_path()
-    assert spath == vr.ssh_shim_path()
     # 0755
     assert (wpath.stat().st_mode & 0o777) == 0o755
-    assert (spath.stat().st_mode & 0o777) == 0o755
     # POSIX sh, data-driven (baked store dir; no eval/source of store files).
     body = wpath.read_text()
     assert body.startswith("#!/bin/sh")
@@ -381,9 +375,12 @@ def test_wrapper_and_shim_generated_executable_and_idempotent():
     # Data-driven: store files are grepped (sed), never sourced.
     assert "source " not in body
     assert "sed -n 's/^URL=//p'" in body
+    assert "sed -n 's/^SOCK=//p'" in body
+    # The wrapper dials the LOCAL unix socket (no golang ssh: engine URL).
+    assert '--url "unix://$_sock"' in body
+    assert "--ssh native" not in body
     # Idempotent: a second ensure does not rewrite.
     assert vr._write_script(wpath, vr._wrapper_content()) is False
-    assert vr._write_script(spath, vr._shim_content()) is False
 
 
 def test_wrapper_rewritten_when_content_changes():

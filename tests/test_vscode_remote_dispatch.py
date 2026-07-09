@@ -7,6 +7,7 @@ audit-log behavior end-to-end against the actual generated POSIX-sh file.
 
 from __future__ import annotations
 
+import socket
 import subprocess
 from pathlib import Path
 
@@ -19,25 +20,39 @@ from kanibako import vscode_remote as vr
 _CTX = vr.remote_context_name("me@host")
 
 
+def _make_socket_file(path: Path) -> None:
+    """Leave a real AF_UNIX socket FILE at *path* (so the wrapper's `[ -S ]`
+    tunnel check sees a live socket and skips re-establishing)."""
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.bind(str(path))
+    s.close()
+
+
 @pytest.fixture
 def wrapper_env(tmp_path, monkeypatch):
-    """Generate the real wrapper + shim + a stored context, and a fake PATH.
+    """Generate the real wrapper + a stored context + tunnel socket, fake PATH.
 
-    Returns ``(wrapper_path, fake_bin, run)`` where ``run(*argv, env=...)``
+    Returns ``(wrapper_path, fake_bin, run, url)`` where ``run(*argv, env=...)``
     executes the wrapper with the fake podman/ssh first on PATH and returns the
     CompletedProcess.  ``fake_bin`` holds ``podman.log`` / ``ssh.log`` sinks.
+    The forwarded local socket is pre-created so the tunnel fast-path is taken
+    (missing-socket re-establish is covered by its own test).
     """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    (tmp_path / "run").mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
 
     wrapper = vr.ensure_dispatch_wrapper()
-    vr.ensure_ssh_shim()
 
-    url = "ssh://me@host/run/user/1000/podman/podman.sock"
+    sock = vr.tunnel_socket_path(_CTX)
+    remote_sock = vr.remote_socket_path(1000)
+    url = f"unix://{sock}"
     vr.write_context_entry(
-        vr.remote_context_name("me@host"), url=url, dest="me@host", uid=1000,
+        _CTX, url=url, dest="me@host", uid=1000,
+        sock=str(sock), remote_sock=remote_sock,
     )
+    _make_socket_file(sock)
 
     fake_bin = tmp_path / "fakebin"
     fake_bin.mkdir()
@@ -70,6 +85,11 @@ def _podman_lines(fake_bin: Path) -> list[str]:
     return log.read_text().splitlines() if log.exists() else []
 
 
+def _ssh_lines(fake_bin: Path) -> list[str]:
+    log = fake_bin / "ssh.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
 def test_no_token_execs_local_podman_verbatim(wrapper_env):
     _wrapper, fake_bin, run, _url = wrapper_env
     result = run("inspect", "foo", "bar")
@@ -82,7 +102,7 @@ def test_token_via_argv_context_routes_remote_and_strips(wrapper_env):
     result = run("--context", _CTX, "inspect", "foo")
     assert result.returncode == 0
     assert _podman_lines(fake_bin) == [
-        f"--remote --ssh native --url {url} inspect foo"
+        f"--remote --url {url} inspect foo"
     ]
 
 
@@ -91,7 +111,7 @@ def test_token_via_context_equals_form(wrapper_env):
     result = run("inspect", "--context=" + _CTX, "zap")
     assert result.returncode == 0
     assert _podman_lines(fake_bin) == [
-        f"--remote --ssh native --url {url} inspect zap"
+        f"--remote --url {url} inspect zap"
     ]
 
 
@@ -102,7 +122,7 @@ def test_token_via_docker_context_env(wrapper_env):
     )
     assert result.returncode == 0
     assert _podman_lines(fake_bin) == [
-        f"--remote --ssh native --url {url} inspect aa"
+        f"--remote --url {url} inspect aa"
     ]
 
 
@@ -111,7 +131,7 @@ def test_token_via_matching_docker_host_env(wrapper_env):
     result = run("inspect", "bb", env_extra={"DOCKER_HOST": url})
     assert result.returncode == 0
     assert _podman_lines(fake_bin) == [
-        f"--remote --ssh native --url {url} inspect bb"
+        f"--remote --url {url} inspect bb"
     ]
 
 
@@ -128,6 +148,49 @@ def test_unknown_context_name_is_local_passthrough(wrapper_env):
     assert result.returncode == 0
     # Context stripped, routed local (unknown/non-kanibako context).
     assert _podman_lines(fake_bin) == ["inspect qux"]
+
+
+def test_missing_socket_reestablishes_tunnel_then_execs_podman(wrapper_env):
+    _wrapper, fake_bin, run, url = wrapper_env
+    # Remove the pre-created socket so the wrapper must re-establish the tunnel
+    # via the (fake) ssh on PATH before dialing podman.
+    sock = vr.tunnel_socket_path(_CTX)
+    sock.unlink()
+    result = run("--context", _CTX, "inspect", "foo")
+    assert result.returncode == 0
+    # Fake ssh logged the -L forward (with the ControlPersist=600 override) to
+    # the remote podman socket, dest last.
+    ssh = _ssh_lines(fake_bin)
+    assert len(ssh) == 1
+    line = ssh[0]
+    # HEADLESS hardening: never interactive under the extension host.
+    assert "BatchMode=yes" in line
+    assert "ControlPersist=600" in line
+    assert "ExitOnForwardFailure=yes" in line
+    assert "StreamLocalBindUnlink=yes" in line
+    assert f"-L {sock}:{vr.remote_socket_path(1000)}" in line
+    assert "-f -N" in line
+    assert line.strip().endswith("-- me@host")
+    # podman still exec'd against the local unix socket afterwards.
+    assert _podman_lines(fake_bin) == [f"--remote --url {url} inspect foo"]
+
+
+def test_tunnel_establish_failure_logs_and_still_execs_podman(
+    wrapper_env, tmp_path,
+):
+    # The "never swallow" guarantee (spec item 4): ssh re-establish FAILS →
+    # a failure line lands in dispatch.log and podman is STILL exec'd (its own
+    # connection error then surfaces to the extension). Editor #3 NIT-2.
+    _wrapper, fake_bin, run, url = wrapper_env
+    vr.tunnel_socket_path(_CTX).unlink()
+    (fake_bin / "ssh").write_text("#!/bin/sh\nexit 1\n")
+    (fake_bin / "ssh").chmod(0o755)
+    result = run("--context", _CTX, "inspect", "foo")
+    assert result.returncode == 0
+    assert _podman_lines(fake_bin) == [f"--remote --url {url} inspect foo"]
+    log_text = vr.dispatch_log_path().read_text()
+    assert "tunnel-establish-failed" in log_text
+    assert "context=" + _CTX in log_text
 
 
 def test_dispatch_log_line_written(wrapper_env, tmp_path):

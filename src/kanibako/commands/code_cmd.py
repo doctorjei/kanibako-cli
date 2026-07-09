@@ -499,50 +499,47 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
     if rc is not None:
         return rc
 
-    # (c) Install/refresh the wrapper + shim, probe the remote, then write the
-    # docker context meta + connection store entry.
+    # (c) Install/refresh the wrapper, probe the remote, then write the docker
+    # context meta + connection store entry.
     vr.ensure_dispatch_wrapper()
-    vr.ensure_ssh_shim()
     try:
         uid = vr.probe_remote(dest)
     except KanibakoError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    # Resolve the dest to concrete ssh-config parts (`ssh -G`, local-only): the
-    # ENGINE URL must be composed from these because podman's built-in ssh
-    # client DNS-resolves the URL host and ignores ~/.ssh/config aliases.  The
-    # ssh-binary lifecycle legs above/below keep the OPAQUE dest.
-    try:
-        resolved = vr.resolve_ssh_dest(dest)
-    except KanibakoError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
-    if resolved.proxied:
-        print(
-            f"Error: '{dest}' resolves through an ssh ProxyJump/ProxyCommand, "
-            "which podman's built-in ssh client cannot dial (no bastion "
-            "support for --url connections).\n"
-            "  Attach via Remote-SSH to the host instead (Flavor A), then use "
-            "'kanibako code <box>' inside that remote window.",
-            file=sys.stderr,
-        )
-        return 1
-
-    url = vr.engine_url(resolved, uid)
+    # Engine dials the LOCAL end of a kanibako-owned ssh tunnel: podman talks to
+    # `unix://<local.sock>` (never its golang ssh: client), so the REAL ssh
+    # binary makes the tunnel and reads ~/.ssh/config (alias/port/ProxyJump/
+    # key-files all work, no ssh-agent requirement).
     context = vr.remote_context_name(dest)
+    local_sock = vr.tunnel_socket_path(context)
+    url = vr.engine_url(local_sock)
+    remote_sock = vr.remote_socket_path(uid)
     try:
         vr.ensure_docker_context_meta(context, url)
     except Exception:
         get_logger("code").debug(
             "could not write docker context meta", exc_info=True,
         )
-    # Store the RESOLVED url (the wrapper dials it); keep the ORIGINAL dest.
-    vr.write_context_entry(context, url=url, dest=dest, uid=uid)
+    # Store the unix:// url + the pieces the wrapper needs to re-establish the
+    # tunnel (SOCK/REMOTE_SOCK/DEST); keep the ORIGINAL opaque dest.
+    vr.write_context_entry(
+        context, url=url, dest=dest, uid=uid,
+        sock=str(local_sock), remote_sock=remote_sock,
+    )
 
-    # Pre-flight the ENGINE leg before the lifecycle legs run: a bad engine URL
-    # (undialable host / no ssh-agent) surfaces podman's own stderr + a targeted
-    # hint here, instead of a downstream, unexplained "did not come up".
+    # Bring up the ssh tunnel now (idempotent) so the engine dials a live local
+    # socket; the wrapper re-establishes it later on demand.
+    try:
+        vr.ensure_tunnel(dest, uid, local_sock)
+    except KanibakoError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    # Pre-flight the ENGINE leg before the lifecycle legs run: a dead tunnel
+    # surfaces podman's own stderr + a tunnel remediation here, instead of a
+    # downstream, unexplained "did not come up".
     engine = vr.RemoteEngine(url)
     try:
         vr.preflight_engine(engine)
