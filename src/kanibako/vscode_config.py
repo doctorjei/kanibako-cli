@@ -39,8 +39,51 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import urllib.parse
 from pathlib import Path
+
+
+def _strip_jsonc(text: str) -> str:
+    """Best-effort strip of JSONC (comments + trailing commas) to plain JSON.
+
+    VS Code ``settings.json`` is JSONC: it permits ``//`` and ``/* */`` comments
+    and trailing commas, none of which :func:`json.loads` accepts.  This is a
+    light, best-effort pass (not a full JSONC parser): block comments, then
+    WHOLE-LINE ``//`` comments only (so ``"http://..."`` inside a string value
+    is left intact), then trailing commas before ``}`` / ``]``.
+
+    LIMITATION (deliberate, for string-safety): a TRAILING inline ``//`` comment
+    (e.g. ``"...": "podman" // note``) is NOT stripped -- reliably telling a
+    real comment from a ``//`` inside a string value would require a real
+    tokenizer, and a wrong guess would corrupt string values.  Such a
+    hand-edited file therefore fails to parse and degrades to ``None`` in
+    :func:`load_jsonc` rather than risking a false read.
+    """
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    text = re.sub(r"(?m)^\s*//.*$", "", text)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return text
+
+
+def load_jsonc(text: str) -> object | None:
+    """Parse JSONC text, returning the object or ``None`` if unparseable.
+
+    Tries strict :func:`json.loads` first (the common case — VS Code writes
+    valid JSON when edited via the settings UI), falling back to a
+    comment/trailing-comma strip for hand-edited JSONC.  See
+    :func:`_strip_jsonc` for what the fallback does NOT handle (trailing inline
+    ``//`` comments), which degrade to ``None`` here.
+    """
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    try:
+        return json.loads(_strip_jsonc(text))
+    except ValueError:
+        return None
+
 
 # The VS Code Dev Containers global-storage sub-path (relative to the user
 # config home, e.g. ``~/.config`` on Linux) under which per-IMAGE

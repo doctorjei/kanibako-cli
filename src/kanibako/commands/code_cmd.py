@@ -17,7 +17,7 @@ import sys
 
 from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
-from kanibako.errors import ContainerError
+from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.paths import (
     xdg,
@@ -28,6 +28,7 @@ from kanibako.settings_resolve import GUEST_HOME
 from kanibako.utils import container_name_for
 from kanibako.vscode_config import (
     attached_container_config_path,
+    load_jsonc,
     seed_attached_container_config,
 )
 
@@ -46,25 +47,40 @@ def add_code_parser(subparsers: argparse._SubParsersAction) -> None:
         "project", nargs="?", default=None,
         help="Project name or path (default: cwd)",
     )
+    p.add_argument(
+        "--remote", metavar="HOST", default=None,
+        help=(
+            "Attach LOCAL VS Code to a box on a REMOTE host over SSH "
+            "(HOST resolves via your ~/.ssh/config). Requires a box name."
+        ),
+    )
     p.set_defaults(func=run_code)
 
 
-def _attach_uri(container_name: str) -> str:
+def _attach_uri(container_name: str, context: str | None = None) -> str:
     """Build the VS Code ``vscode-remote://`` attach URI for *container_name*.
 
     The container is named by a hex-encoded JSON object
     (``{"containerName":"/<name>"}`` — note the leading slash), followed
-    immediately by the in-box workspace path.
+    immediately by the in-box workspace path.  When *context* is given, a
+    per-window routing token is embedded as ``settings.context`` (the R1
+    context-token dispatch channel for ``--remote``); when it is ``None`` the
+    payload is BYTE-IDENTICAL to the local (non-remote) URI.
     """
-    payload = json.dumps(
-        {"containerName": f"/{container_name}"}, separators=(",", ":")
-    )
+    payload_obj: dict[str, object] = {"containerName": f"/{container_name}"}
+    if context is not None:
+        payload_obj["settings"] = {"context": context}
+    payload = json.dumps(payload_obj, separators=(",", ":"))
     hex_name = binascii.hexlify(payload.encode()).decode()
     workspace_path = GUEST_HOME + "/workspace"
     return f"vscode-remote://attached-container+{hex_name}{workspace_path}"
 
 
 def run_code(args: argparse.Namespace) -> int:
+    dest = getattr(args, "remote", None)
+    if dest:
+        return _run_code_remote(args, dest)
+
     from kanibako.commands.flags import resolve_subject_value
     project_dir = resolve_subject_value(
         getattr(args, "project", None), getattr(args, "box", None),
@@ -144,17 +160,21 @@ def run_code(args: argparse.Namespace) -> int:
     return 0
 
 
-def _extension_for_agent(agent_name: str, proj) -> str | None:
+def _extension_for_agent(agent_name: str, project_path) -> str | None:
     """Resolve *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
 
     ``agent_name`` is a NODE-name; the plugin/target is keyed by its HARNESS
     (``harness_of``), exactly as ``stop.py`` / ``start.py`` resolve a stamped box.
     A descriptor-less target (the no-agent shell) or an unset extension → ``None``.
+
+    *project_path* seeds any project-scoped plugin lookup; ``None`` (the
+    ``--remote`` seed, which has no LOCAL project) skips the project-dependent
+    fallbacks and resolves the plugin from the global/editable finders only.
     """
     from kanibako.agent_ref import harness_of
     from kanibako.targets import resolve_target
 
-    target = resolve_target(harness_of(agent_name), proj.project_path)
+    target = resolve_target(harness_of(agent_name), project_path)
     desc = target.descriptor
     return desc.vscode_extension if desc is not None else None
 
@@ -219,7 +239,7 @@ def _resolve_box_vscode_extension(agent_name: str | None, proj) -> str | None:
     if agent_name is None:
         return None
     try:
-        return _extension_for_agent(agent_name, proj)
+        return _extension_for_agent(agent_name, proj.project_path)
     except Exception:
         get_logger("code").debug(
             "could not resolve box agent VS Code extension; seeding none",
@@ -288,3 +308,254 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
         get_logger("code").debug(
             "failed to seed VS Code attached-container config", exc_info=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# FF-1: `kanibako code --remote <host>` — LOCAL VS Code → REMOTE podman (A').
+# ---------------------------------------------------------------------------
+
+_MISSING_CODE_MSG = (
+    "Error: the VS Code 'code' CLI was not found on your PATH.\n"
+    "  Install VS Code and add its 'code' command to PATH "
+    "(Command Palette: 'Shell Command: Install code command in PATH').\n"
+    "  You also need the Dev Containers extension."
+)
+
+
+def _wire_docker_path(wrapper_path) -> int | None:
+    """Ensure ``dev.containers.dockerPath`` points at the kanibako wrapper.
+
+    Returns ``None`` to PROCEED (already wired, or updated on the user's OK),
+    or a non-zero exit code to abort.  The already-wired CHECK reads the file
+    JSONC-tolerantly (``load_jsonc``, same reader as diagnose); a WRITE is only
+    auto-applied to strict-JSON files (merge-preserving read/modify/write, same
+    pattern as ``seed_claude_bypass_permissions``) — a JSONC file needing a
+    change, an unreadable file, or a non-tty session prints the exact manual
+    snippet and aborts.  NEVER clobbers a file it cannot losslessly rewrite.
+    """
+    wrapper_str = str(wrapper_path)
+    settings_path = (
+        xdg("XDG_CONFIG_HOME", ".config") / "Code" / "User" / "settings.json"
+    )
+    snippet = (
+        f"  Add this to your VS Code user settings.json ({settings_path}):\n"
+        f'      "dev.containers.dockerPath": "{wrapper_str}"'
+    )
+
+    existing_text: str | None = None
+    if settings_path.is_file():
+        try:
+            existing_text = settings_path.read_text(encoding="utf-8")
+        except OSError:
+            print(
+                f"Error: cannot read {settings_path}.\n{snippet}",
+                file=sys.stderr,
+            )
+            return 1
+
+    if existing_text is not None and existing_text.strip():
+        # JSONC-tolerant read for the already-wired CHECK (same reader as
+        # diagnose) — a commented settings.json that already points at the
+        # wrapper must proceed, not dead-end here.
+        data = load_jsonc(existing_text)
+        if not isinstance(data, dict):
+            print(
+                "Error: your VS Code settings.json could not be read as a "
+                "JSON(C) object; refusing to modify it.\n" + snippet,
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        data = {}
+
+    if data.get("dev.containers.dockerPath") == wrapper_str:
+        return None  # already wired
+
+    # A WRITE is needed.  Rewriting via json.dumps drops JSONC comments, so
+    # only auto-modify files that are already strict JSON; otherwise hand the
+    # user the exact snippet (NEVER clobber).
+    if existing_text is not None and existing_text.strip():
+        try:
+            json.loads(existing_text)
+        except ValueError:
+            print(
+                "Error: your VS Code settings.json contains JSONC comments or "
+                "trailing commas; refusing to rewrite it (comments would be "
+                "lost).\n" + snippet,
+                file=sys.stderr,
+            )
+            return 1
+
+    if not sys.stdin.isatty():
+        print(
+            "VS Code 'dev.containers.dockerPath' must point at the kanibako "
+            "dispatch wrapper for --remote.\n" + snippet,
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"Update VS Code 'dev.containers.dockerPath' -> {wrapper_str}? [y/N] ",
+        end="", flush=True,
+    )
+    try:
+        resp = input()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        print(snippet, file=sys.stderr)
+        return 1
+    if resp.strip().lower() not in ("y", "yes"):
+        print(snippet, file=sys.stderr)
+        return 1
+
+    data["dev.containers.dockerPath"] = wrapper_str
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
+    print(f"Updated {settings_path}.", file=sys.stderr)
+    return None
+
+
+def _seed_remote_attached_config(engine, container_name: str) -> None:
+    """Best-effort seed of the LOCAL attached-container config keyed by the
+    REMOTE box's image.  NEVER raises (zero-launch-delta).
+
+    STAMP-ONLY agent resolution (``KANIBAKO_AGENT`` via the RemoteEngine): there
+    is no LOCAL box to run the merged-config cascade against, so a pre-stamp
+    remote box simply seeds no extension (the workspace folder still seeds).
+    """
+    try:
+        image_ref = engine.container_image(container_name)
+        if image_ref is None:
+            return
+        extension = None
+        try:
+            stamp = engine.inspect_env(container_name, "KANIBAKO_AGENT")
+            if stamp:
+                # No LOCAL project → resolve the plugin with project_path=None.
+                extension = _extension_for_agent(stamp, None)
+        except Exception:
+            extension = None
+        path = attached_container_config_path(
+            image_ref, xdg("XDG_CONFIG_HOME", ".config"),
+        )
+        seed_attached_container_config(
+            path,
+            workspace_folder=GUEST_HOME + "/workspace",
+            extension=extension,
+        )
+    except Exception:
+        get_logger("code").debug(
+            "failed to seed remote VS Code attached-container config",
+            exc_info=True,
+        )
+
+
+def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
+    """`kanibako code --remote <host> <box>`: attach LOCAL VS Code to a REMOTE box.
+
+    A' topology: local VS Code drives the remote rootless podman socket over an
+    ssh mux; kanibako lifecycle runs on the remote host over plain ssh.  See
+    :mod:`kanibako.vscode_remote`.
+    """
+    from kanibako import vscode_remote as vr
+
+    # --remote REQUIRES an explicit box (no remote cwd resolution): accept the
+    # positional or the blanket --box flag; error if neither is given.
+    box = getattr(args, "project", None) or getattr(args, "box", None)
+    if not box:
+        print(
+            "Error: 'kanibako code --remote <host> <box>' requires a box "
+            "name (there is no remote cwd to resolve).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # (a) Fail fast on the LOCAL prerequisites: the `code` CLI, and podman as
+    # the --remote client (podman drives the remote socket; docker is not it).
+    code_bin = shutil.which("code")
+    if code_bin is None:
+        print(_MISSING_CODE_MSG, file=sys.stderr)
+        return 1
+    if shutil.which("podman") is None:
+        print(
+            "Error: 'podman' was not found on your PATH.\n"
+            "  --remote uses local podman as the client for the remote "
+            "engine; install podman (https://podman.io/).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # (b) dev.containers.dockerPath must point at the kanibako dispatch wrapper.
+    wrapper_path = vr.dispatch_wrapper_path()
+    rc = _wire_docker_path(wrapper_path)
+    if rc is not None:
+        return rc
+
+    # (c) Install/refresh the wrapper + shim, probe the remote, then write the
+    # docker context meta + connection store entry.
+    vr.ensure_dispatch_wrapper()
+    vr.ensure_ssh_shim()
+    try:
+        uid = vr.probe_remote(dest)
+    except KanibakoError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    url = vr.engine_url(dest, uid)
+    context = vr.remote_context_name(dest)
+    try:
+        vr.ensure_docker_context_meta(context, url)
+    except Exception:
+        get_logger("code").debug(
+            "could not write docker context meta", exc_info=True,
+        )
+    vr.write_context_entry(context, url=url, dest=dest, uid=uid)
+
+    # (d) Lifecycle: start the remote box DETACHED and read back its cname.
+    result = vr.remote_run_kanibako(
+        dest, ["start", "--detach", "--print-container", str(box)],
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        low = stderr.lower()
+        hint = ""
+        if "command not found" in low or "kanibako: not found" in low:
+            hint = (
+                "\n  Hint: is kanibako installed and on PATH on the remote host?"
+            )
+        elif "print-container" in low or "unrecognized arguments" in low:
+            hint = (
+                "\n  Hint: the remote kanibako is too old for "
+                "--print-container; upgrade it (needs >= 1.7.0)."
+            )
+        print(
+            f"Error: remote 'kanibako start --detach' failed on '{dest}'.\n"
+            f"{stderr}{hint}",
+            file=sys.stderr,
+        )
+        return 1
+    lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
+    if not lines:
+        print(
+            f"Error: remote start on '{dest}' printed no container name.",
+            file=sys.stderr,
+        )
+        return 1
+    cname = lines[-1].strip()
+
+    # (e) Verify the remote box is actually running via the remote engine.
+    engine = vr.RemoteEngine(url)
+    if not engine.is_running(cname):
+        print(
+            f"Error: remote box '{cname}' did not come up on '{dest}'.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # (f) Best-effort seed of the LOCAL attached-container config (never blocks).
+    _seed_remote_attached_config(engine, cname)
+
+    # (g)+(h) Build the attach URI with the routing token and launch VS Code.
+    uri = _attach_uri(cname, context=context)
+    print(f"Opening VS Code attached to remote box '{cname}' on '{dest}'...")
+    subprocess.run([code_bin, "--folder-uri", uri])
+    return 0

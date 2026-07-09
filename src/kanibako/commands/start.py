@@ -215,6 +215,11 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(detach=False)
 
     p.add_argument(
+        "--print-container", action="store_true", dest="print_container",
+        help="After the box is up, print its container name as the final "
+             "stdout line (machine-readable; use with --detach)",
+    )
+    p.add_argument(
         "--no-helpers", action="store_true",
         help="Disable helper spawning (no hub socket mounted)",
     )
@@ -298,6 +303,7 @@ def run_start(args: argparse.Namespace) -> int:
     no_auto_auth = getattr(args, "no_auto_auth", False)
     browser = getattr(args, "browser", False)
     share_images = getattr(args, "share_images", False)
+    print_container = getattr(args, "print_container", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
     detach = getattr(args, "detach", False)
@@ -427,6 +433,7 @@ def run_start(args: argparse.Namespace) -> int:
         model_override=model_override,
         cli_env=env_vars,
         explicit_agent=explicit_agent,
+        print_container=print_container,
     )
 
 
@@ -1030,6 +1037,7 @@ def _run_container(
     box_shell_mode: bool = False,
     explicit_agent: str | None = None,
     setup_only: bool = False,
+    print_container: bool = False,
     _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1478,6 +1486,10 @@ def _run_container(
                     f"Box '{proj.name}' is already running.",
                     file=sys.stderr,
                 )
+                # --print-container: emit the cname as the final stdout line so
+                # the remote-code leg parses it even when the box is already up.
+                if print_container:
+                    print(container_name_for(proj))
                 return 0
             # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
             # stream we're about to attach to).
@@ -2488,6 +2500,11 @@ def _run_container(
             )
             _print_launch_issues(std, container_name)
             _print_shadow_issues(std, container_name)
+            # --print-container: the resolved container name as the FINAL stdout
+            # line (all other detach chatter above went to stderr) — the
+            # machine-readable surface `kanibako code --remote` parses.
+            if print_container:
+                print(container_name)
             return 0
         elif persistent:
             # Wait briefly for the detached container to start, then verify
