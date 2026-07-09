@@ -1098,6 +1098,25 @@ class TestSetupNudge:
         err = capsys.readouterr().err
         assert "kanibako isn't set up yet" in err
 
+    def test_absent_marker_nudge_stays_off_stdout(self, tmp_path, capsys):
+        """The 'isn't set up yet' nag must be on STDERR, never STDOUT.
+
+        On the remote machine path, ``kanibako start --print-container`` must
+        keep stdout = the cname only; the setup nag is a warning and belongs on
+        stderr so it cannot precede/pollute the parsed cname (rc7 item 7).
+        """
+        from unittest.mock import patch
+
+        from kanibako.cli import _setup_nudge
+
+        cf = tmp_path / "kanibako_config.yaml"  # absent marker
+        with patch("kanibako.config.config_file_path", return_value=cf), \
+             patch("kanibako.paths.xdg", return_value=tmp_path):
+            _setup_nudge(self._ns("start"))
+        captured = capsys.readouterr()
+        assert "kanibako isn't set up yet" in captured.err
+        assert captured.out == ""
+
     def test_nudge_band_prints_advisory_non_blocking(self, tmp_path, capsys):
         """NUDGE band ([BCV, FCV)) prints 'out of date' on stderr, no raise.
 

@@ -74,18 +74,79 @@ def test_ssh_command_dest_cannot_inject_options():
     assert cmd[cmd.index("--") + 1] == "-oProxyCommand=evil"
 
 
-# --- engine_url passthrough -------------------------------------------------
+# --- resolve_ssh_dest (ssh -G, mocked) -------------------------------------
+
+def test_resolve_ssh_dest_alias_with_port():
+    # An ssh-config alias resolving to a concrete host + non-default port.
+    out = (
+        "host myalias\n"
+        "hostname real.example.com\n"
+        "user deploy\n"
+        "port 2200\n"
+        "proxycommand none\n"
+    )
+    completed = MagicMock(returncode=0, stdout=out, stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+        r = vr.resolve_ssh_dest("myalias")
+    assert r == vr.ResolvedDest("real.example.com", "deploy", "2200", False)
+    # `ssh -G -- <dest>`: local-only, `--` guards a `-`-leading dest.
+    assert m.call_args[0][0] == ["ssh", "-G", "--", "myalias"]
+
+
+def test_resolve_ssh_dest_missing_user_port_uses_defaults():
+    completed = MagicMock(returncode=0, stdout="hostname h\n", stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        r = vr.resolve_ssh_dest("h")
+    assert r == vr.ResolvedDest("h", "", "22", False)
+
+
+def test_resolve_ssh_dest_detects_proxyjump():
+    out = "hostname h\nuser u\nport 22\nproxyjump bastion\n"
+    completed = MagicMock(returncode=0, stdout=out, stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        assert vr.resolve_ssh_dest("h").proxied is True
+
+
+def test_resolve_ssh_dest_proxycommand_none_not_proxied():
+    out = "hostname h\nuser u\nport 22\nproxycommand none\n"
+    completed = MagicMock(returncode=0, stdout=out, stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        assert vr.resolve_ssh_dest("h").proxied is False
+
+
+def test_resolve_ssh_dest_nonzero_rc_raises():
+    completed = MagicMock(returncode=255, stdout="", stderr="ssh: bad config")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        with pytest.raises(KanibakoError) as exc:
+            vr.resolve_ssh_dest("badhost")
+    assert "badhost" in str(exc.value)
+
+
+def test_resolve_ssh_dest_no_hostname_raises():
+    completed = MagicMock(returncode=0, stdout="user u\nport 22\n", stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        with pytest.raises(KanibakoError) as exc:
+            vr.resolve_ssh_dest("weird")
+    assert "weird" in str(exc.value)
+
+
+# --- engine_url composed from resolved parts -------------------------------
 
 @pytest.mark.parametrize(
-    "dest, uid, expected",
+    "resolved, uid, expected",
     [
-        ("host", 1000, "ssh://host/run/user/1000/podman/podman.sock"),
-        ("me@host", 1001, "ssh://me@host/run/user/1001/podman/podman.sock"),
-        ("me@host:2222", 0, "ssh://me@host:2222/run/user/0/podman/podman.sock"),
+        (
+            vr.ResolvedDest("host", "me", "22", False), 1000,
+            "ssh://me@host:22/run/user/1000/podman/podman.sock",
+        ),
+        (
+            vr.ResolvedDest("1.2.3.4", "deploy", "2222", False), 0,
+            "ssh://deploy@1.2.3.4:2222/run/user/0/podman/podman.sock",
+        ),
     ],
 )
-def test_engine_url_embeds_dest_verbatim(dest, uid, expected):
-    assert vr.engine_url(dest, uid) == expected
+def test_engine_url_composes_from_resolved_parts(resolved, uid, expected):
+    assert vr.engine_url(resolved, uid) == expected
 
 
 # --- slug + context name ----------------------------------------------------
@@ -206,6 +267,66 @@ def test_remote_engine_inspect_env_and_image():
     img_completed = MagicMock(returncode=0, stdout="ghcr.io/x/y:latest\n")
     with patch("kanibako.vscode_remote.subprocess.run", return_value=img_completed):
         assert eng.container_image("box") == "ghcr.io/x/y:latest"
+
+
+def test_remote_engine_running_with_stderr_surfaces_inspect_error():
+    eng = vr.RemoteEngine("ssh://h/sock", podman="podman", shim_dir=Path("/shim"))
+    completed = MagicMock(
+        returncode=125, stdout="", stderr='Error: no such container "kanibako-x"',
+    )
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        running, err = eng.running_with_stderr("kanibako-x")
+    assert running is False
+    assert "no such container" in err
+
+
+# --- preflight_engine (mocked podman version) ------------------------------
+
+def _preflight_engine():
+    return vr.RemoteEngine("ssh://h/sock", podman="podman", shim_dir=Path("/shim"))
+
+
+def test_preflight_engine_ok():
+    completed = MagicMock(returncode=0, stdout="Client: ...", stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+        assert vr.preflight_engine(_preflight_engine()) is None
+        # It pre-flights with `version` on the podman remote argv prefix.
+        assert m.call_args[0][0][-1] == "version"
+
+
+def test_preflight_engine_no_such_host_hint():
+    stderr = (
+        "Error: ssh: ... dial tcp: lookup myalias on 1.1.1.1:53: no such host"
+    )
+    completed = MagicMock(returncode=125, stdout="", stderr=stderr)
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        with pytest.raises(KanibakoError) as exc:
+            vr.preflight_engine(_preflight_engine())
+    msg = str(exc.value)
+    assert "no such host" in msg  # podman's stderr verbatim
+    assert "~/.ssh/config" in msg  # targeted hint
+
+
+def test_preflight_engine_auth_hint():
+    stderr = (
+        "Error: ssh: handshake failed: ssh: unable to authenticate, "
+        "attempted methods [none], no supported methods remain"
+    )
+    completed = MagicMock(returncode=125, stdout="", stderr=stderr)
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        with pytest.raises(KanibakoError) as exc:
+            vr.preflight_engine(_preflight_engine())
+    msg = str(exc.value)
+    assert "unable to authenticate" in msg  # verbatim
+    assert "ssh-add" in msg  # targeted hint
+
+
+def test_preflight_engine_unmapped_failure_carries_stderr():
+    completed = MagicMock(returncode=1, stdout="", stderr="some other failure")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+        with pytest.raises(KanibakoError) as exc:
+            vr.preflight_engine(_preflight_engine())
+    assert "some other failure" in str(exc.value)
 
 
 # --- probe_remote (mocked ssh) ---------------------------------------------
