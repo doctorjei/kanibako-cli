@@ -12,10 +12,6 @@ import pytest
 from kanibako import vscode_remote as vr
 from kanibako.commands.code_cmd import _attach_uri, run_code
 
-# A non-proxied `ssh -G` resolution used by the flow tests (real `ssh -G` is
-# never run in unit tests).
-_RESOLVED_OK = vr.ResolvedDest("realhost", "me", "22", False)
-
 
 def _args(project=None, box=None, remote=None) -> argparse.Namespace:
     return argparse.Namespace(project=project, box=box, remote=remote)
@@ -92,7 +88,6 @@ def test_settings_prompt_accept_updates_and_proceeds(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
     sp = _settings_path(tmp_path, monkeypatch)
-    from kanibako import vscode_remote as vr
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     wrapper = str(vr.dispatch_wrapper_path())
 
@@ -160,7 +155,6 @@ def test_settings_already_wired_jsonc_proceeds(
     # proceed — the wired-check read is JSONC-tolerant (Editor MAJOR-1).
     sp = _settings_path(tmp_path, monkeypatch)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-    from kanibako import vscode_remote as vr
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(
         "{\n"
@@ -200,7 +194,6 @@ def test_settings_already_wired_proceeds(
 ):
     sp = _settings_path(tmp_path, monkeypatch)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-    from kanibako import vscode_remote as vr
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(
         {"dev.containers.dockerPath": str(vr.dispatch_wrapper_path())}
@@ -218,7 +211,6 @@ def test_settings_already_wired_proceeds(
 
 def _wire_ok(tmp_path, monkeypatch):
     """Pre-wire settings.json so _wire_docker_path is a no-op."""
-    from kanibako import vscode_remote as vr
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -236,7 +228,7 @@ def test_remote_lifecycle_failure_surfaces_remote_stderr(
     failed = MagicMock(returncode=1, stdout="", stderr="bash: kanibako: command not found")
     with (
         patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.resolve_ssh_dest", return_value=_RESOLVED_OK),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
         patch("kanibako.vscode_remote.preflight_engine"),
         patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
     ):
@@ -268,7 +260,7 @@ def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
 
     with (
         patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.resolve_ssh_dest", return_value=_RESOLVED_OK),
+        patch("kanibako.vscode_remote.ensure_tunnel") as m_tunnel,
         patch("kanibako.vscode_remote.remote_run_kanibako", return_value=started),
         patch("kanibako.vscode_remote.RemoteEngine", return_value=engine),
         patch("kanibako.vscode_remote.ensure_docker_context_meta"),
@@ -296,18 +288,24 @@ def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
     # BARE name for remote (remote podman rejects the docker-style "/name" —
     # e2e-confirmed); the local URI keeps the leading slash.
     assert payload["containerName"] == "kanibako-mybox"
-    from kanibako import vscode_remote as vr
-    assert payload["settings"]["context"] == vr.remote_context_name("host")
+    context = vr.remote_context_name("host")
+    assert payload["settings"]["context"] == context
     # Seed keyed by the REMOTE image, extension from the REMOTE stamp.
     assert "remote-img" in seen["image_keyed_path"]
     assert seen["extension"] == "anthropic.claude-code"
     engine.inspect_env.assert_called_with("kanibako-mybox", "KANIBAKO_AGENT")
     # Engine pre-flight ran before the lifecycle leg.
     engine.version.assert_called_once()
-    # The stored engine URL is the RESOLVED form (user@host:port) the wrapper
-    # dials; the original opaque dest is kept as DEST.
-    entry = vr.read_context_entry(vr.remote_context_name("host"))
-    assert entry["URL"] == "ssh://me@realhost:22/run/user/1000/podman/podman.sock"
+    # The ssh tunnel was ensured (to the LOCAL forwarded socket) before the
+    # engine pre-flight ran.
+    local_sock = vr.tunnel_socket_path(context)
+    m_tunnel.assert_called_once_with("host", 1000, local_sock)
+    # The stored engine URL is the unix:// LOCAL socket the wrapper dials; the
+    # original opaque dest + the remote socket path are kept for re-establish.
+    entry = vr.read_context_entry(context)
+    assert entry["URL"] == f"unix://{local_sock}"
+    assert entry["SOCK"] == str(local_sock)
+    assert entry["REMOTE_SOCK"] == "/run/user/1000/podman/podman.sock"
     assert entry["DEST"] == "host"
 
 
@@ -325,7 +323,7 @@ def test_remote_box_not_running_after_start_errors(
     )
     with (
         patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.resolve_ssh_dest", return_value=_RESOLVED_OK),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
         patch("kanibako.vscode_remote.remote_run_kanibako", return_value=started),
         patch("kanibako.vscode_remote.RemoteEngine", return_value=engine),
         patch("kanibako.vscode_remote.ensure_docker_context_meta"),
@@ -339,44 +337,53 @@ def test_remote_box_not_running_after_start_errors(
     assert "no such container" in err  # podman's own inspect stderr surfaced
 
 
-# --- rc7: proxied dest refusal + engine pre-flight -------------------------
+# --- FF-1b: tunnel establish + engine pre-flight ---------------------------
 
-def test_remote_proxied_dest_refused_before_lifecycle(
+def test_remote_tunnel_failure_refused_before_lifecycle(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
-    # A dest resolving through a ProxyJump/ProxyCommand cannot be dialed by
-    # podman's built-in ssh → refuse cleanly, before the lifecycle leg (item 2).
+    # The ssh tunnel cannot come up → surface ssh's error, before the lifecycle
+    # leg (item 5: ensure_tunnel between store and pre-flight).
+    from kanibako.errors import KanibakoError
+
     _wire_ok(tmp_path, monkeypatch)
-    proxied = vr.ResolvedDest("realhost", "me", "22", True)
     with (
         patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.resolve_ssh_dest", return_value=proxied),
+        patch(
+            "kanibako.vscode_remote.ensure_tunnel",
+            side_effect=KanibakoError(
+                "Could not establish the ssh tunnel to the remote podman "
+                "socket on 'host' (exit 255).\n  ssh: connect refused"
+            ),
+        ),
         patch("kanibako.vscode_remote.remote_run_kanibako") as m_life,
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
     m_life.assert_not_called()
     err = capsys.readouterr().err
-    assert "ProxyJump" in err
-    assert "Remote-SSH" in err  # Flavor A fallback suggested
+    assert "ssh tunnel" in err
+    assert "connect refused" in err
 
 
 def test_remote_preflight_failure_surfaces_podman_stderr(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
-    # A dead engine leg (undialable host) is caught by the pre-flight, which
-    # surfaces podman's own stderr — before the lifecycle leg runs (item 5).
+    # A dead engine leg (tunnel socket not answering) is caught by the
+    # pre-flight, which surfaces podman's own stderr — before the lifecycle
+    # leg runs (item 5).
     from kanibako.errors import KanibakoError
 
     _wire_ok(tmp_path, monkeypatch)
     with (
         patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.resolve_ssh_dest", return_value=_RESOLVED_OK),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
         patch("kanibako.vscode_remote.RemoteEngine"),
         patch(
             "kanibako.vscode_remote.preflight_engine",
             side_effect=KanibakoError(
-                "Could not reach the remote podman engine.\n  ... no such host"
+                "Could not reach the remote podman engine over the ssh "
+                "tunnel.\n  ... connection refused"
             ),
         ),
         patch("kanibako.vscode_remote.remote_run_kanibako") as m_life,
@@ -384,4 +391,4 @@ def test_remote_preflight_failure_surfaces_podman_stderr(
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
     m_life.assert_not_called()  # pre-flight aborts before the lifecycle leg
-    assert "no such host" in capsys.readouterr().err
+    assert "connection refused" in capsys.readouterr().err

@@ -8,27 +8,34 @@ Containers "attach to running container" reach a REMOTE box:
 * the KANIBAKO-OWNED ssh ControlMaster mux options (:func:`mux_ssh_options`) and
   the lifecycle ssh leg (:func:`ssh_command` / :func:`remote_run_kanibako` /
   :func:`probe_remote`);
-* ssh-config dest resolution (:func:`resolve_ssh_dest`) + the remote podman
-  engine URL composed from the resolved parts (:func:`engine_url`) + engine
-  pre-flight (:func:`preflight_engine`) + docker-context naming
+* the unix-socket TUNNEL engine (FF-1b): ONE kanibako-owned OpenSSH master per
+  dest carries a unix-socket forward (:func:`tunnel_socket_path` /
+  :func:`ensure_tunnel`), and podman dials ``unix://<local.sock>`` — the
+  upstream-recommended pattern (podman's built-in ``ssh:`` client hardcodes a
+  golang ssh that cannot mux and ignores ``~/.ssh/config``/ProxyJump).  The real
+  ssh binary makes the tunnel, so alias/port/ProxyJump/key-files all work
+  natively with NO ssh-agent requirement.  Persistence is LEASED from OpenSSH
+  (``ControlPersist``) — kanibako runs no daemon;
+* engine pre-flight (:func:`preflight_engine`) + docker-context naming
   (:func:`context_slug` / :func:`remote_context_name`);
 * a flat, sh-greppable connection store (:func:`write_context_entry` /
   :func:`read_context_entry`) the generated wrapper reads (grep only, NEVER
   sourced — no code execution from data);
 * :class:`RemoteEngine`, a duck-typed subset of
   :class:`~kanibako.container.ContainerRuntime` the attach seed path needs,
-  built on ``podman --remote --ssh native --url <url>`` with a mux-shim-prefixed
-  PATH (it does NOT modify ContainerRuntime);
+  built on ``podman --remote --url unix://<local.sock>`` (it does NOT modify
+  ContainerRuntime);
 * :func:`ensure_docker_context_meta`, writing the docker-CLI-convention
   ``meta.json`` so the ext can resolve the context itself;
-* :func:`ensure_dispatch_wrapper` / :func:`ensure_ssh_shim`, the generated POSIX
-  ``sh`` dispatch wrapper (wired as ``dev.containers.dockerPath``) + ssh mux
-  shim.
+* :func:`ensure_dispatch_wrapper`, the generated POSIX ``sh`` dispatch wrapper
+  (wired as ``dev.containers.dockerPath``) — it re-establishes the tunnel on
+  demand before dialing the local unix socket.
 
 Routing = CONTEXT-TOKEN DISPATCH (R1, 2026-07-09): the wrapper's default branch
 execs local podman verbatim (zero local delta); a stored ``kanibako-remote-*``
 context token — detected via argv ``--context`` / ``$DOCKER_CONTEXT`` / a
-matching ``$DOCKER_HOST`` — routes to ``podman --remote`` against the stored URL.
+matching ``$DOCKER_HOST`` — ensures the ssh tunnel and routes to
+``podman --remote --url unix://<local.sock>``.
 """
 
 from __future__ import annotations
@@ -39,9 +46,9 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 from pathlib import Path
-from typing import NamedTuple
 
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
@@ -54,9 +61,9 @@ logger = get_logger("vscode_remote")
 # context meta — a user's own contexts pass straight through to local podman.
 _CONTEXT_PREFIX = "kanibako-remote-"
 
-# Bump when the generated wrapper/shim body changes so an install refresh
-# rewrites the on-disk scripts (the header records this version).
-_SCRIPT_VERSION = 1
+# Bump when the generated wrapper body changes so an install refresh rewrites
+# the on-disk script (the header records this version).
+_SCRIPT_VERSION = 2
 
 
 # ---------------------------------------------------------------------------
@@ -89,11 +96,12 @@ def _control_path() -> str:
 def mux_ssh_options() -> list[str]:
     """The KANIBAKO-OWNED ssh ControlMaster mux options (BINDING).
 
-    Every ssh leg (lifecycle + the podman ``--ssh native`` shim) uses these:
-    a kanibako-owned ControlMaster (auto), a kanibako-owned ControlPath under
-    the runtime dir, and a 60s ControlPersist.  NEVER the user's ControlMaster
-    (session-kill footgun); NEVER mux-free (the ext shells out dozens of times
-    per attach).
+    Every ssh leg (the lifecycle legs + the unix-socket tunnel master) uses
+    these: a kanibako-owned ControlMaster (auto), a kanibako-owned ControlPath
+    under the runtime dir, and a 60s ControlPersist.  NEVER the user's
+    ControlMaster (session-kill footgun); NEVER mux-free (the ext shells out
+    dozens of times per attach).  The tunnel master overrides ControlPersist to
+    600 (see :func:`ensure_tunnel`); command legs keep 60.
     """
     return [
         "-o", "ControlMaster=auto",
@@ -184,92 +192,88 @@ def probe_remote(dest: str) -> int:
     return int(uid)
 
 
-class ResolvedDest(NamedTuple):
-    """The ssh-config-resolved form of an opaque ssh destination.
+def remote_socket_path(remote_uid: int) -> str:
+    """The rootless podman API socket path on the remote host for *remote_uid*."""
+    return f"/run/user/{remote_uid}/podman/podman.sock"
 
-    Produced by :func:`resolve_ssh_dest` from ``ssh -G``.  *hostname* / *user* /
-    *port* are the concrete values the user's ``~/.ssh/config`` resolves *dest*
-    to; *proxied* is True iff a ``ProxyJump``/``ProxyCommand`` is configured.
+
+def tunnel_socket_path(context_name: str) -> Path:
+    """The LOCAL unix-socket path the ssh tunnel forwards to for *context_name*.
+
+    Lives under the runtime dir (same fallback chain as the ssh ControlPath);
+    *context_name* is already fs-safe (:func:`remote_context_name`).
     """
-
-    hostname: str
-    user: str
-    port: str
-    proxied: bool
+    return Path(_runtime_dir()) / f"{context_name}.sock"
 
 
-def resolve_ssh_dest(dest: str) -> ResolvedDest:
-    """Resolve *dest* to concrete ssh-config parts via ``ssh -G`` (local-only).
+def _socket_accepts(path: Path) -> bool:
+    """Whether a unix socket at *path* accepts a connection (cheap liveness).
 
-    ``ssh -G -- <dest>`` prints the user's fully-resolved ssh config for *dest*
-    WITHOUT connecting.  This matters because podman's built-in golang ssh
-    client (used for ``--url ssh://…`` ENGINE connections) DNS-resolves the URL
-    host directly and does NOT read ``~/.ssh/config`` — so an ssh-config host
-    ALIAS is not dialable by podman, and the engine URL must be composed from
-    these resolved parts (:func:`engine_url`).  The ssh BINARY lifecycle legs
-    (:func:`probe_remote` / :func:`remote_run_kanibako`) keep the opaque *dest*
-    and read the config themselves.
-
-    Returns the first ``hostname ``/``user ``/``port `` line each; *proxied* is
-    True iff a ``proxyjump``/``proxycommand`` directive is set (value not
-    ``none``).  A nonzero rc, an ``ssh`` that cannot be run, or a missing
-    hostname raises :class:`~kanibako.errors.KanibakoError` naming *dest*.
+    A plain ``connect`` — NOT a podman round-trip — so a live tunnel master's
+    forward answers instantly and a stale socket file (master gone) is treated
+    as down so the tunnel is re-established.
     """
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        result = subprocess.run(
-            ["ssh", "-G", "--", dest],
-            capture_output=True, text=True,
-        )
-    except OSError as exc:
-        raise KanibakoError(
-            f"Could not run `ssh -G` to resolve the ssh destination "
-            f"'{dest}': {exc}"
-        ) from exc
+        sock.connect(str(path))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def ensure_tunnel(dest: str, remote_uid: int, local_sock: Path) -> None:
+    """Ensure a kanibako-owned ssh tunnel forwards *local_sock* to the remote
+    podman socket (idempotent).
+
+    Fast path: if *local_sock* already accepts a connection (a live master's
+    forward), return immediately.  Otherwise invoke the REAL ssh binary to
+    background a ControlPersist master carrying the unix-socket forward::
+
+        ssh -o ControlPersist=600 <mux opts> -o ExitOnForwardFailure=yes
+            -o StreamLocalBindUnlink=yes -f -N
+            -L <local_sock>:/run/user/<uid>/podman/podman.sock -- <dest>
+
+    ``ControlPersist=600`` (the tunnel lease) is placed BEFORE the base
+    :func:`mux_ssh_options` — OpenSSH takes the FIRST obtained value for a
+    repeated option (ssh_config semantics, ``ssh -G``-confirmed), so the 600
+    must precede the base options' 60 to win.  ``StreamLocalBindUnlink``
+    clears any stale socket file; the tunnel made by REAL ssh reads the user's
+    ``~/.ssh/config`` (alias/port/ProxyJump/key-files all work, no ssh-agent
+    requirement).  A nonzero rc raises
+    :class:`~kanibako.errors.KanibakoError` carrying ssh's stderr verbatim.
+    """
+    if local_sock.exists() and _socket_accepts(local_sock):
+        return
+    forward = f"{local_sock}:{remote_socket_path(remote_uid)}"
+    argv = [
+        "ssh",
+        "-o", "ControlPersist=600",
+        *mux_ssh_options(),
+        "-o", "ExitOnForwardFailure=yes",
+        "-o", "StreamLocalBindUnlink=yes",
+        "-f", "-N",
+        "-L", forward,
+        "--", dest,
+    ]
+    result = subprocess.run(argv, capture_output=True, text=True)
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
         raise KanibakoError(
-            f"`ssh -G` could not resolve the ssh destination '{dest}'"
-            + (f":\n  {stderr}" if stderr else ".")
+            f"Could not establish the ssh tunnel to the remote podman socket "
+            f"on '{dest}' (exit {result.returncode})."
+            + (f"\n  {stderr}" if stderr else "")
         )
-    hostname: str | None = None
-    user: str | None = None
-    port: str | None = None
-    proxied = False
-    for line in result.stdout.splitlines():
-        if hostname is None and line.startswith("hostname "):
-            hostname = line[len("hostname "):].strip()
-        elif user is None and line.startswith("user "):
-            user = line[len("user "):].strip()
-        elif port is None and line.startswith("port "):
-            port = line[len("port "):].strip()
-        if line.startswith("proxyjump ") or line.startswith("proxycommand "):
-            _, _, val = line.partition(" ")
-            val = val.strip()
-            if val and val.lower() != "none":
-                proxied = True
-    if not hostname:
-        raise KanibakoError(
-            f"`ssh -G` returned no hostname for the ssh destination '{dest}'."
-        )
-    return ResolvedDest(
-        hostname=hostname, user=user or "", port=port or "22", proxied=proxied,
-    )
 
 
-def engine_url(resolved: ResolvedDest, uid: int) -> str:
-    """The podman remote engine URL, composed from RESOLVED ssh parts.
+def engine_url(local_sock: Path) -> str:
+    """The podman remote engine URL for a LOCAL forwarded unix socket.
 
-    ALWAYS built as ``ssh://{user}@{hostname}:{port}/run/user/{uid}/podman/…``
-    from :func:`resolve_ssh_dest`'s output — podman's built-in ssh client
-    DNS-resolves this host and won't apply ssh-config aliases, so the concrete
-    hostname/port MUST be baked into the URL (an alias here fails with
-    ``no such host``).  A proxied *resolved* cannot be served by podman's ssh at
-    all; callers refuse it before reaching here.
+    Always ``unix://<local_sock>`` — podman dials the local end of the ssh
+    tunnel (:func:`ensure_tunnel`), never a golang ``ssh:`` connection.
     """
-    return (
-        f"ssh://{resolved.user}@{resolved.hostname}:{resolved.port}"
-        f"/run/user/{uid}/podman/podman.sock"
-    )
+    return f"unix://{local_sock}"
 
 
 def context_slug(dest: str) -> str:
@@ -303,17 +307,23 @@ def contexts_dir() -> Path:
 
 
 def write_context_entry(
-    name: str, *, url: str, dest: str, uid: int,
+    name: str, *, url: str, dest: str, uid: int, sock: str, remote_sock: str,
 ) -> Path:
     """Write the flat ``KEY=VALUE`` store file for context *name*.
 
-    One line each: ``URL=``, ``DEST=``, ``UID=`` — sh-greppable (the wrapper
-    extracts ``URL`` with ``sed``), NEVER sourced.  Returns the file path.
+    One line each: ``URL=`` (``unix://<local_sock>``), ``DEST=``, ``UID=``,
+    ``SOCK=`` (the local forwarded socket) and ``REMOTE_SOCK=`` (the remote
+    podman socket) — sh-greppable (the wrapper extracts values with ``sed`` to
+    re-establish the tunnel + dial the local socket), NEVER sourced.  Returns
+    the file path.
     """
     d = contexts_dir()
     d.mkdir(parents=True, exist_ok=True)
     path = d / name
-    path.write_text(f"URL={url}\nDEST={dest}\nUID={uid}\n")
+    path.write_text(
+        f"URL={url}\nDEST={dest}\nUID={uid}\n"
+        f"SOCK={sock}\nREMOTE_SOCK={remote_sock}\n"
+    )
     return path
 
 
@@ -338,41 +348,32 @@ def read_context_entry(name: str) -> dict[str, str]:
 
 class RemoteEngine:
     """The subset of :class:`~kanibako.container.ContainerRuntime` the attach
-    seed path needs, driven by ``podman --remote --ssh native --url <url>``.
+    seed path needs, driven by ``podman --remote --url unix://<local.sock>``.
 
-    Built on the podman remote argv prefix with a PATH prefixed by the ssh mux
-    shim dir (so podman's ``--ssh native`` shells out to the KANIBAKO-OWNED mux
-    ssh, not the user's plain ssh).  Does NOT touch :class:`ContainerRuntime`.
+    Built on the podman remote argv prefix dialing the LOCAL end of the ssh
+    tunnel (:func:`ensure_tunnel`) — podman never execs ssh here (the golang
+    ``ssh:`` client is bypassed entirely).  Does NOT touch
+    :class:`ContainerRuntime`.
     """
 
-    def __init__(
-        self, url: str, *, podman: str | None = None, shim_dir: Path | None = None,
-    ) -> None:
+    def __init__(self, url: str, *, podman: str | None = None) -> None:
         self.url = url
         self.podman = podman or shutil.which("podman") or "podman"
-        self.shim_dir = str(shim_dir) if shim_dir is not None else str(
-            vscode_remote_bin_dir()
-        )
-        self.argv_prefix = [
-            self.podman, "--remote", "--ssh", "native", "--url", url,
-        ]
-        env = dict(os.environ)
-        env["PATH"] = f"{self.shim_dir}{os.pathsep}{env.get('PATH', '')}"
-        self._env = env
+        self.argv_prefix = [self.podman, "--remote", "--url", url]
 
     def _run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [*self.argv_prefix, *args],
-            capture_output=True, text=True, env=self._env,
+            capture_output=True, text=True,
         )
 
     def version(self) -> subprocess.CompletedProcess[str]:
         """Pre-flight the engine leg: ``podman --remote … version``.
 
-        Runs against the stored ``--url`` with the mux-shim PATH, so a failure
-        here (unresolvable host, no ssh-agent) is caught before the lifecycle
-        legs run.  Returns the raw CompletedProcess so the caller can surface
-        podman's own stderr (see :func:`preflight_engine`).
+        Runs against the stored ``unix://`` URL, so a dead tunnel (local socket
+        not answering) is caught before the lifecycle legs run.  Returns the raw
+        CompletedProcess so the caller can surface podman's own stderr (see
+        :func:`preflight_engine`).
         """
         return self._run(["version"])
 
@@ -421,27 +422,21 @@ class RemoteEngine:
         return result.stdout.strip() or None
 
 
-_PREFLIGHT_NO_HOST_HINT = (
-    "Hint: podman's built-in ssh client could not resolve this host. It "
-    "DNS-resolves the engine URL host directly and does NOT read your "
-    "~/.ssh/config, so ssh-config host aliases do not apply to the engine "
-    "connection. Use a directly-dialable host, or attach via Remote-SSH to "
-    "the host instead (Flavor A)."
-)
-_PREFLIGHT_AUTH_HINT = (
-    "Hint: start an ssh-agent and `ssh-add` your key — podman's built-in ssh "
-    "client authenticates through the agent and does NOT read key files "
-    "directly."
+_PREFLIGHT_TUNNEL_HINT = (
+    "Hint: the local end of the ssh tunnel to the remote podman socket is not "
+    "answering. Check that the ssh tunnel came up (kanibako owns a "
+    "ControlPersist master; see the dispatch log) and that the remote "
+    "podman.socket is running."
 )
 
 
 def preflight_engine(engine: RemoteEngine) -> None:
     """Pre-flight the remote podman engine leg; raise on a dead connection.
 
-    Runs ``podman --remote --ssh native --url <url> version`` (via
-    :meth:`RemoteEngine.version`) BEFORE the lifecycle legs, so an
-    engine-URL-only failure (undialable host, missing ssh-agent) is caught with
-    podman's OWN stderr plus a targeted hint rather than a downstream
+    Runs ``podman --remote --url unix://<local.sock> version`` (via
+    :meth:`RemoteEngine.version`) BEFORE the lifecycle legs, so a dead tunnel
+    (the local forwarded socket not answering) is caught with podman's OWN
+    stderr plus a generic tunnel remediation rather than a downstream
     "did not come up".  Raises :class:`~kanibako.errors.KanibakoError` carrying
     podman's stderr verbatim; returns None on success.
     """
@@ -449,18 +444,11 @@ def preflight_engine(engine: RemoteEngine) -> None:
     if result.returncode == 0:
         return
     stderr = (result.stderr or "").strip()
-    low = stderr.lower()
-    if "no such host" in low:
-        hint = _PREFLIGHT_NO_HOST_HINT
-    elif "attempted methods [none]" in low or "unable to authenticate" in low:
-        hint = _PREFLIGHT_AUTH_HINT
-    else:
-        hint = ""
     body = stderr or "(podman produced no error output)"
-    msg = f"Could not reach the remote podman engine.\n  {body}"
-    if hint:
-        msg += f"\n  {hint}"
-    raise KanibakoError(msg)
+    raise KanibakoError(
+        f"Could not reach the remote podman engine over the ssh tunnel.\n"
+        f"  {body}\n  {_PREFLIGHT_TUNNEL_HINT}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -524,32 +512,28 @@ def dispatch_wrapper_path() -> Path:
     return vscode_remote_bin_dir() / "podman-dispatch"
 
 
-def ssh_shim_path() -> Path:
-    """Path to the generated ssh mux shim (first on PATH for the remote leg)."""
-    return vscode_remote_bin_dir() / "ssh"
-
-
 def dispatch_log_path() -> Path:
     """Path of the wrapper's one-line-per-invocation audit log."""
     return _vscode_remote_state_dir() / "dispatch.log"
 
 
-# The wrapper + shim are built from templates with @@TOKEN@@ placeholders
-# substituted via str.replace (NOT f-strings / %-format) so the sh body's own
+# The wrapper is built from a template with @@TOKEN@@ placeholders substituted
+# via str.replace (NOT f-strings / %-format) so the sh body's own
 # ``$``/``%``/``{}`` are left untouched.
 
 _WRAPPER_TEMPLATE = """#!/bin/sh
 # kanibako vscode-remote dispatch wrapper (generated) v@@VERSION@@
 # DO NOT EDIT -- regenerated by `kanibako code --remote`.
 # Routes VS Code Dev Containers' podman calls: a stored kanibako-remote context
-# token (argv --context / $DOCKER_CONTEXT / a matching $DOCKER_HOST) execs
-# `podman --remote` at the stored engine URL; everything else execs local podman
-# verbatim (zero local delta). Store files are grepped, NEVER sourced.
+# token (argv --context / $DOCKER_CONTEXT / a matching $DOCKER_HOST) ensures a
+# kanibako-owned ssh tunnel to the remote podman socket, then execs
+# `podman --remote --url unix://<local.sock>`; everything else execs local
+# podman verbatim (zero local delta). Store files are grepped, NEVER sourced.
 set -u
 
 STORE_DIR='@@STORE_DIR@@'
 LOG_FILE='@@LOG_FILE@@'
-SHIM_DIR='@@SHIM_DIR@@'
+CONTROL_PATH='@@CONTROL_PATH@@'
 SENTINEL='__kanibako_dispatch_end__'
 
 # --- strip --context / --context=VAL from argv, capturing the value ---
@@ -627,13 +611,36 @@ printf '%s channel=%s context=%s route=%s argv=%s %s %s\\n' \\
 
 # --- exec ---
 if [ "$route" = 'remote' ]; then
-    PATH="$SHIM_DIR:$PATH"
-    export PATH
+    # Re-establish the kanibako-owned ssh tunnel to the remote podman socket if
+    # the local forwarded socket is gone (the sh -S check is weaker than the
+    # sugar's connect-probe, but the ControlPersist master keeps it warm; a
+    # stale socket file is unlinked by StreamLocalBindUnlink on re-establish).
+    _sock=$(sed -n 's/^SOCK=//p' "$STORE_DIR/$context" 2>/dev/null)
+    _rsock=$(sed -n 's/^REMOTE_SOCK=//p' "$STORE_DIR/$context" 2>/dev/null)
+    _dest=$(sed -n 's/^DEST=//p' "$STORE_DIR/$context" 2>/dev/null)
+    if [ -n "$_sock" ] && [ ! -S "$_sock" ]; then
+        _ssh=$(command -v ssh 2>/dev/null)
+        if [ -n "$_ssh" ] && [ -n "$_rsock" ] && [ -n "$_dest" ]; then
+            # BatchMode: this runs HEADLESS under the editor's extension host --
+            # never let ssh attempt interactive auth (fail fast instead; the
+            # sugar's interactive establish is the strong path).  Output is
+            # kept off stdout so the ext never parses ssh noise as podman's.
+            "$_ssh" -o BatchMode=yes \\
+                -o ControlPersist=600 \\
+                -o ControlMaster=auto -o "ControlPath=$CONTROL_PATH" \\
+                -o ExitOnForwardFailure=yes \\
+                -o StreamLocalBindUnlink=yes -f -N \\
+                -L "$_sock:$_rsock" -- "$_dest" \\
+                >/dev/null 2>>"$LOG_FILE" \\
+                || printf '%s tunnel-establish-failed context=%s\\n' \\
+                    "$_ts" "$context" >> "$LOG_FILE" 2>/dev/null || true
+        fi
+    fi
     _podman=$(command -v podman 2>/dev/null) || {
         echo 'kanibako dispatch: podman not found on PATH' >&2
         exit 127
     }
-    exec "$_podman" --remote --ssh native --url "$url" "$@"
+    exec "$_podman" --remote --url "unix://$_sock" "$@"
 fi
 _podman=$(command -v podman 2>/dev/null) || {
     echo 'kanibako dispatch: podman not found on PATH' >&2
@@ -643,51 +650,12 @@ exec "$_podman" "$@"
 """
 
 
-_SHIM_TEMPLATE = """#!/bin/sh
-# kanibako vscode-remote ssh mux shim (generated) v@@VERSION@@
-# DO NOT EDIT -- regenerated by `kanibako code --remote`.
-# podman `--ssh native` shells out to `ssh`; this shim (first on PATH for the
-# remote leg) injects the KANIBAKO-OWNED ControlMaster mux, then execs real ssh.
-set -u
-SHIM_DIR='@@SHIM_DIR@@'
-CONTROL_PATH='@@CONTROL_PATH@@'
-
-# Drop our own dir from PATH so we resolve the REAL ssh (not this shim).
-_np=''
-_oifs=$IFS
-IFS=':'
-for _d in $PATH; do
-    [ "$_d" = "$SHIM_DIR" ] && continue
-    if [ -z "$_np" ]; then _np=$_d; else _np="$_np:$_d"; fi
-done
-IFS=$_oifs
-PATH=$_np
-export PATH
-
-_ssh=$(command -v ssh 2>/dev/null) || {
-    echo 'kanibako ssh shim: ssh not found on PATH' >&2
-    exit 127
-}
-exec "$_ssh" -o ControlMaster=auto -o "ControlPath=$CONTROL_PATH" \\
-    -o ControlPersist=60 "$@"
-"""
-
-
 def _wrapper_content() -> str:
     return (
         _WRAPPER_TEMPLATE
         .replace("@@VERSION@@", str(_SCRIPT_VERSION))
         .replace("@@STORE_DIR@@", str(contexts_dir()))
         .replace("@@LOG_FILE@@", str(dispatch_log_path()))
-        .replace("@@SHIM_DIR@@", str(vscode_remote_bin_dir()))
-    )
-
-
-def _shim_content() -> str:
-    return (
-        _SHIM_TEMPLATE
-        .replace("@@VERSION@@", str(_SCRIPT_VERSION))
-        .replace("@@SHIM_DIR@@", str(vscode_remote_bin_dir()))
         .replace("@@CONTROL_PATH@@", _control_path())
     )
 
@@ -713,11 +681,4 @@ def ensure_dispatch_wrapper() -> Path:
     """Install/refresh the ``podman-dispatch`` wrapper (idempotent). Returns path."""
     path = dispatch_wrapper_path()
     _write_script(path, _wrapper_content())
-    return path
-
-
-def ensure_ssh_shim() -> Path:
-    """Install/refresh the ssh mux shim (idempotent). Returns path."""
-    path = ssh_shim_path()
-    _write_script(path, _shim_content())
     return path
