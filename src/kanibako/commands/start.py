@@ -59,6 +59,57 @@ from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
 
 
+def _agent_critical_dests() -> list[tuple[str, str]]:
+    """Enumerate AGENT_CRITICAL bind mountpoints across ALL installed plugins.
+
+    Each installed plugin's descriptor declares AGENT_CRITICAL delivery binds
+    whose ``box_dest`` is an in-box absolute path (a ``$GUEST_HOME`` expression
+    expanded to the ``/home/agent`` literal at load).  Map each to a
+    shell_dir-relative path (strip the guest-home prefix) plus its kind
+    ("file"/"dir"), for the per-launch hygiene sweep to reap stale empty stubs
+    (the 0-byte ``.local/bin/<agent>`` decoy).  Enumerated across EVERY plugin,
+    not just this launch's agent: a claude box later ``shell``-launched (no
+    agent) must still have claude's stubs reaped.  Returns [] if nothing
+    matches, which makes the reaper a no-op.
+    """
+    from kanibako.settings_resolve import GUEST_HOME
+    from kanibako.targets import discover_targets
+    from kanibako.targets.base import BindKind, BindScope
+
+    prefix = GUEST_HOME + "/"
+    dests: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for cls in discover_targets().values():
+        try:
+            desc = cls().descriptor
+        except Exception as exc:
+            # A plugin that fails to instantiate/describe cannot contribute
+            # dests; skip it (delivery would fail loudly elsewhere).  Debug-log
+            # so a legit plugin whose stubs then go un-reaped is diagnosable.
+            get_logger("start").debug(
+                "mountpoint enumeration skipped %s: %s", cls, exc
+            )
+            continue
+        if desc is None:
+            continue
+        for b in desc.bindings:
+            if b.scope is not BindScope.AGENT_CRITICAL:
+                continue
+            box_dest = b.box_dest
+            if not box_dest.startswith(prefix):
+                continue
+            rel = box_dest[len(prefix):]
+            if not rel:
+                continue
+            kind = "dir" if b.kind is BindKind.DIR else "file"
+            pair = (rel, kind)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            dests.append(pair)
+    return dests
+
+
 def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     """Point a persona's agent-scope share dirs at the harness's (symlink shim).
 
@@ -1587,9 +1638,16 @@ def _run_container(
         # Upgrade shell (add shell.d support to existing shells).
         _upgrade_shell(proj.shell_path)
 
-        # Shell directory hygiene: remove waste files, compress old logs.
+        # Shell directory hygiene: remove waste files, compress old logs, and
+        # reap stale empty agent-critical bind mountpoints (the 0-byte
+        # ~/.local/bin/<agent> decoy + empty ~/.local/share/<agent> a prior
+        # AGENT launch leaves behind and a no-agent shell launch never overlays
+        # — see _agent_critical_dests / hygiene._reap_stale_agent_mountpoints).
         from kanibako.hygiene import cleanup_shell_dir
-        hygiene_actions = cleanup_shell_dir(proj.shell_path)
+        hygiene_actions = cleanup_shell_dir(
+            proj.shell_path,
+            agent_critical_dests=_agent_critical_dests(),
+        )
         if hygiene_actions:
             for action in hygiene_actions:
                 logger.info(action)
