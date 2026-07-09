@@ -17,6 +17,7 @@ from kanibako.hygiene import (
     _find_claude_binaries,
     _fmt_size,
     _gzip_file,
+    _reap_stale_agent_mountpoints,
     cleanup_shell_dir,
 )
 
@@ -599,3 +600,154 @@ class TestPreservation:
         bashrc = _make_file(tmp_path / ".bashrc", content=b"export PATH=$PATH")
         cleanup_shell_dir(tmp_path)
         assert bashrc.exists()
+
+
+# ---------------------------------------------------------------------------
+# _reap_stale_agent_mountpoints (stale 0-byte agent-critical decoys)
+# ---------------------------------------------------------------------------
+
+# The two claude AGENT_CRITICAL delivery binds, as (rel, kind) pairs.
+_CLAUDE_DESTS = [
+    (".local/bin/claude", "file"),
+    (".local/share/claude", "dir"),
+]
+
+
+class TestReapStaleAgentMountpoints:
+    def _reap(self, shell_dir, dests=_CLAUDE_DESTS, dry_run=False):
+        return _reap_stale_agent_mountpoints(shell_dir, dests, dry_run, object())
+
+    def test_reaps_zero_byte_file(self, tmp_path):
+        """A 0-byte file at a declared agent-critical dest is reaped."""
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        assert stub.exists()
+        actions = self._reap(tmp_path)
+        assert not stub.exists()
+        assert any(".local/bin/claude" in a and "file" in a for a in actions)
+
+    def test_reaps_empty_dir(self, tmp_path):
+        """An empty dir at a declared agent-critical dest is reaped."""
+        stub = tmp_path / ".local" / "share" / "claude"
+        stub.mkdir(parents=True)
+        actions = self._reap(tmp_path)
+        assert not stub.exists()
+        assert any(".local/share/claude" in a and "dir" in a for a in actions)
+
+    def test_leaves_nonempty_dir(self, tmp_path):
+        """A dir that has ANY entry is left untouched (real data)."""
+        stub = tmp_path / ".local" / "share" / "claude"
+        _make_file(stub / "session.json", content=b"{}")
+        actions = self._reap(tmp_path)
+        assert stub.is_dir()
+        assert (stub / "session.json").exists()
+        assert actions == []
+
+    def test_leaves_nonzero_file(self, tmp_path):
+        """A non-zero regular file at a dest is left untouched (real binary)."""
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", content=b"#!/bin/sh\n")
+        actions = self._reap(tmp_path)
+        assert stub.exists()
+        assert stub.read_bytes() == b"#!/bin/sh\n"
+        assert actions == []
+
+    def test_leaves_symlink(self, tmp_path):
+        """A symlink at a dest is skipped even if it looks empty/zero-length."""
+        real = _make_file(tmp_path / "elsewhere" / "claude", content=b"#!/bin/sh\n")
+        link = tmp_path / ".local" / "bin" / "claude"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(real)
+        actions = self._reap(tmp_path)
+        assert link.is_symlink()
+        assert link.exists()  # target still present
+        assert actions == []
+
+    def test_leaves_dangling_symlink(self, tmp_path):
+        """A broken symlink at a dest is skipped, not removed."""
+        link = tmp_path / ".local" / "bin" / "claude"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(tmp_path / "nonexistent")
+        actions = self._reap(tmp_path)
+        assert link.is_symlink()
+        assert actions == []
+
+    def test_missing_dest_no_op(self, tmp_path):
+        """A dest that does not exist on disk is a no-op, no error."""
+        actions = self._reap(tmp_path)
+        assert actions == []
+
+    def test_none_dests_no_op(self, tmp_path):
+        """agent_critical_dests=None makes the reaper do nothing."""
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        actions = _reap_stale_agent_mountpoints(tmp_path, None, False, object())
+        assert actions == []
+        assert stub.exists()  # not reaped without a dest list
+
+    def test_empty_dests_no_op(self, tmp_path):
+        """An empty dest list makes the reaper do nothing."""
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        actions = _reap_stale_agent_mountpoints(tmp_path, [], False, object())
+        assert actions == []
+        assert stub.exists()
+
+    def test_dry_run_removes_nothing(self, tmp_path):
+        """dry_run reports actions but removes nothing."""
+        file_stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        dir_stub = tmp_path / ".local" / "share" / "claude"
+        dir_stub.mkdir(parents=True)
+        actions = self._reap(tmp_path, dry_run=True)
+        assert file_stub.exists()
+        assert dir_stub.exists()
+        assert len(actions) == 2
+        for a in actions:
+            assert a.startswith("[dry-run] ")
+
+    def test_unknown_kind_left_untouched(self, tmp_path):
+        """A dest with an unrecognized kind is never removed."""
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        actions = self._reap(tmp_path, dests=[(".local/bin/claude", "weird")])
+        assert stub.exists()
+        assert actions == []
+
+    def test_traversal_dest_left_untouched(self, tmp_path):
+        """A rel that escapes shell_dir via '..' is blocked by the containment guard."""
+        shell_dir = tmp_path / "box_home"
+        shell_dir.mkdir()
+        outside = _make_file(tmp_path / "outside" / "claude", size=0)
+        actions = self._reap(shell_dir, dests=[("../outside/claude", "file")])
+        assert outside.exists()  # never reaped outside shell_dir
+        assert actions == []
+
+    def test_symlinked_parent_left_untouched(self, tmp_path):
+        """A stub reached through a SYMLINKED PARENT resolves outside shell_dir → skipped."""
+        shell_dir = tmp_path / "box_home"
+        (shell_dir / ".local").mkdir(parents=True)
+        outside_bin = tmp_path / "outside_bin"
+        outside_bin.mkdir()
+        stub = _make_file(outside_bin / "claude", size=0)
+        (shell_dir / ".local" / "bin").symlink_to(outside_bin)
+        actions = self._reap(shell_dir)  # default dests incl .local/bin/claude
+        assert stub.exists()  # containment guard: resolved path escapes shell_dir
+        assert actions == []
+
+
+class TestCleanupReapsStaleStubOnly:
+    """cleanup_shell_dir reaps only the stub, never a real user file."""
+
+    def test_mixed_stub_and_real_user_file(self, tmp_path):
+        # The stale stub: a 0-byte agent-critical mountpoint.
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        # A real user file that happens to sit under .local/ but is NOT a
+        # declared agent-critical dest — must survive.
+        user_file = _make_file(
+            tmp_path / ".local" / "bin" / "mytool", content=b"#!/bin/sh\necho hi\n"
+        )
+        actions = cleanup_shell_dir(tmp_path, agent_critical_dests=_CLAUDE_DESTS)
+        assert not stub.exists()          # stub reaped
+        assert user_file.exists()         # real file untouched
+        assert any("claude" in a for a in actions)
+
+    def test_default_call_does_not_reap(self, tmp_path):
+        """Without agent_critical_dests, cleanup_shell_dir never reaps stubs."""
+        stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
+        cleanup_shell_dir(tmp_path)
+        assert stub.exists()

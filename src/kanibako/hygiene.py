@@ -31,12 +31,20 @@ _COMPRESS_AGE_DAYS = 7
 def cleanup_shell_dir(
     shell_dir: Path,
     dry_run: bool = False,
+    agent_critical_dests: list[tuple[str, str]] | None = None,
 ) -> list[str]:
     """Remove stale/waste files from a persistent shell directory.
 
     Returns a list of human-readable action strings describing what was
     (or would be, in dry_run mode) cleaned up.  The list is empty when
     there is nothing to do.
+
+    ``agent_critical_dests`` is an optional list of ``(rel, kind)`` pairs
+    (``rel`` shell_dir-relative, ``kind`` in {"file","dir"}) naming the
+    AGENT_CRITICAL delivery bind mountpoints of the installed plugins.  When
+    provided, any STALE EMPTY stub at one of those dests is reaped (see
+    :func:`_reap_stale_agent_mountpoints`).  Defaults to None → that step is a
+    no-op, so callers that do not pass it (and existing tests) are unaffected.
     """
     logger = get_logger("hygiene")
     actions: list[str] = []
@@ -55,6 +63,13 @@ def cleanup_shell_dir(
 
     # 4. Compress old conversation logs.
     actions.extend(_compress_old_logs(shell_dir, dry_run, logger))
+
+    # 5. Reap stale EMPTY agent-critical bind mountpoints (0-byte decoys).
+    actions.extend(
+        _reap_stale_agent_mountpoints(
+            shell_dir, agent_critical_dests, dry_run, logger
+        )
+    )
 
     if actions:
         total = len(actions)
@@ -185,6 +200,107 @@ def _find_claude_binaries(shell_dir: Path) -> list[Path]:
             candidates.append(claude_file)
 
     return candidates
+
+
+def _reap_stale_agent_mountpoints(
+    shell_dir: Path,
+    agent_critical_dests: list[tuple[str, str]] | None,
+    dry_run: bool,
+    logger: object,
+) -> list[str]:
+    """Reap stale EMPTY agent-critical bind mountpoints (0-byte decoys).
+
+    A prior AGENT launch pre-creates the box-side mountpoint for each
+    AGENT_CRITICAL delivery bind on the HOST under the persistent shell dir —
+    a 0-byte file for a file bind, an empty dir for a dir bind.  The ro bind
+    overlays them at runtime, but the stub PERSISTS on disk after the container
+    exits.  A subsequent no-agent ``shell`` launch never overlays them, so the
+    bare stub shows through as a misleading "decoy" (e.g. a 0-byte, non-exec
+    ``~/.local/bin/claude`` plus an empty ``~/.local/share/claude/``).  Reap
+    those stubs while they are still EMPTY.
+
+    CONSERVATIVE — never touch real data.  For each ``(rel, kind)``:
+
+    * SYMLINK          -> skip (out of scope; not a stub we created).
+    * ``kind=="file"`` -> reap ONLY a regular file of size 0.
+    * ``kind=="dir"``  -> reap ONLY a directory with no entries.
+    * anything else (missing / non-empty dir / non-zero file / other kind)
+      -> left untouched.
+
+    Safe on EVERY launch: an agent ``start`` re-precreates + overlays its own
+    stubs AFTER this hygiene sweep runs, so a reaped stub is simply recreated.
+    When ``agent_critical_dests`` is None/empty this is a no-op.
+
+    Scope note: reap targets are rooted under *shell_dir* (the box HOME), which
+    is correct for every current AGENT_CRITICAL dest (all under ``~/.local``).
+    A future AGENT_CRITICAL bind whose ``box_dest`` is under
+    ``/home/agent/workspace/`` would be pre-created under the PROJECT dir instead
+    (see ``container._mount_dest_to_host``), so it would silently not be reaped
+    here — a SAFE failure (never mis-reaps); route ``rel`` through the same
+    ``_mount_dest_to_host`` contract if such a dest is ever added.
+    """
+    actions: list[str] = []
+    if not agent_critical_dests:
+        return actions
+
+    # Containment root for the defense-in-depth guard below (this step deletes).
+    try:
+        shell_root = shell_dir.resolve()
+    except OSError:
+        return actions
+
+    for rel, kind in agent_critical_dests:
+        target = shell_dir / rel
+
+        # Defense-in-depth (destructive op): never act on a path that resolves
+        # OUTSIDE shell_dir — a ``..`` in a descriptor's box_dest or a symlinked
+        # ANCESTOR (the final-component symlink is skipped just below; resolve()
+        # also catches an escaping parent).  box_dests come from trusted
+        # installed plugins, so this is belt-and-suspenders.
+        try:
+            target.resolve().relative_to(shell_root)
+        except (OSError, ValueError):
+            continue
+
+        # Never follow or remove a symlink — not a stub we own.
+        if target.is_symlink():
+            continue
+
+        if kind == "file":
+            if not target.is_file():
+                continue
+            try:
+                if target.stat().st_size != 0:
+                    continue
+            except OSError:
+                continue
+        elif kind == "dir":
+            if not target.is_dir():
+                continue
+            try:
+                if any(target.iterdir()):
+                    continue
+            except OSError:
+                continue
+        else:
+            # Unknown kind — leave untouched.
+            continue
+
+        desc = (
+            f"{'[dry-run] ' if dry_run else ''}"
+            f"Reaped stale agent mountpoint {rel} ({kind})"
+        )
+        if not dry_run:
+            try:
+                if kind == "file":
+                    target.unlink()
+                else:
+                    target.rmdir()
+            except OSError:
+                continue
+        actions.append(desc)
+
+    return actions
 
 
 def _compress_old_logs(

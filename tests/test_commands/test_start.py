@@ -4771,3 +4771,113 @@ class TestPersonaLoadOrErrorUnmasked:
         # (real box dir) — proving the gate passed and F7's pre-gate crash is gone.
         std = load_std_paths(load_config(config_file))
         assert (std.boxes / "project").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# _agent_critical_dests: enumerate AGENT_CRITICAL mountpoints across plugins
+# ---------------------------------------------------------------------------
+
+class TestAgentCriticalDests:
+    """`_agent_critical_dests` maps every plugin's AGENT_CRITICAL binds to
+    (shell_dir-relative-path, kind) pairs for the hygiene reaper."""
+
+    def test_maps_across_plugins_strips_guest_home(self):
+        from kanibako.commands.start import _agent_critical_dests
+        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.targets.base import (
+            Binding,
+            BindKind,
+            BindScope,
+            HostSrcOrigin,
+        )
+
+        class _FakeDesc:
+            def __init__(self, bindings):
+                self.bindings = tuple(bindings)
+
+        class _FakeTarget:
+            def __init__(self, desc):
+                self._desc = desc
+
+            @property
+            def descriptor(self):
+                return self._desc
+
+        alpha = _FakeTarget(_FakeDesc([
+            Binding(
+                key="launcher", origin=HostSrcOrigin.LAUNCHER,
+                box_dest=f"{GUEST_HOME}/.local/bin/alpha", kind=BindKind.FILE,
+                scope=BindScope.AGENT_CRITICAL,
+            ),
+            Binding(
+                key="share", origin=HostSrcOrigin.INSTALL_DIR,
+                box_dest=f"{GUEST_HOME}/.local/share/alpha", kind=BindKind.DIR,
+                scope=BindScope.AGENT_CRITICAL,
+            ),
+            # An AGENT-scope (non-critical) bind must be ignored.
+            Binding(
+                key="plugins", origin=HostSrcOrigin.LITERAL,
+                box_dest=f"{GUEST_HOME}/.alpha/plugins", kind=BindKind.DIR,
+                scope=BindScope.AGENT,
+            ),
+        ]))
+        beta = _FakeTarget(_FakeDesc([
+            Binding(
+                key="launcher", origin=HostSrcOrigin.LAUNCHER,
+                box_dest=f"{GUEST_HOME}/.local/bin/beta", kind=BindKind.FILE,
+                scope=BindScope.AGENT_CRITICAL,
+            ),
+        ]))
+        # A descriptor-less target (the no-agent shell) must be skipped.
+        bare = _FakeTarget(None)
+
+        fake = {
+            "alpha": lambda: alpha,
+            "beta": lambda: beta,
+            "bare": lambda: bare,
+        }
+        with patch(
+            "kanibako.targets.discover_targets", return_value=fake
+        ):
+            dests = _agent_critical_dests()
+
+        assert (".local/bin/alpha", "file") in dests
+        assert (".local/share/alpha", "dir") in dests
+        assert (".local/bin/beta", "file") in dests
+        # AGENT-scope bind excluded.
+        assert (".alpha/plugins", "dir") not in dests
+        # No absolute paths leak through.
+        assert all(not rel.startswith("/") for rel, _ in dests)
+
+    def test_dedups_identical_pairs(self):
+        from kanibako.commands.start import _agent_critical_dests
+        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.targets.base import (
+            Binding,
+            BindKind,
+            BindScope,
+            HostSrcOrigin,
+        )
+
+        def _mk():
+            class _D:
+                bindings = (
+                    Binding(
+                        key="launcher", origin=HostSrcOrigin.LAUNCHER,
+                        box_dest=f"{GUEST_HOME}/.local/bin/dup",
+                        kind=BindKind.FILE, scope=BindScope.AGENT_CRITICAL,
+                    ),
+                )
+
+            class _T:
+                descriptor = _D()
+
+            return _T()
+
+        with patch(
+            "kanibako.targets.discover_targets",
+            return_value={"a": _mk, "b": _mk},
+        ):
+            dests = _agent_critical_dests()
+
+        assert dests.count((".local/bin/dup", "file")) == 1
