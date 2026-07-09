@@ -92,6 +92,11 @@ def run(args: argparse.Namespace) -> int:
     from kanibako.templates import install_packaged_templates
 
     install_packaged_templates(load_std_paths(config), target_names)
+    # NOTE: this path is currently DEAD (no `set_defaults(func=run)` wiring — the
+    # live init path is cli._ensure_initialized).  If it is ever re-wired as an
+    # init entry point it MUST also write ``system.templates_stamp`` (mirror
+    # cli._ensure_initialized), or a host initialized through it would hard-error
+    # on its first agent command via config.template_staleness_gate.
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file

@@ -25,6 +25,17 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
             "NAME must be an installed agent plugin (see `kanibako agent list`)."
         ),
     )
+    parser.add_argument(
+        "--refresh-templates",
+        action="store_true",
+        help=(
+            "Force-accept the template refresh non-interactively (headless path "
+            "out of the template-staleness gate): overwrite shipped template "
+            "files with their current packaged versions. The flag is itself the "
+            "informed consent — your OWN files are untouched, but edits you made "
+            "to SHIPPED files are replaced."
+        ),
+    )
 
 
 def _detected_agents() -> list[tuple[str, str]]:
@@ -93,6 +104,106 @@ def _write_setup_marker() -> None:
     cf, _ = _settings_paths()
     cf.parent.mkdir(parents=True, exist_ok=True)
     write_system_value(cf, "setup_completed", __version__)
+
+
+def _write_templates_stamp(names: list[str]) -> None:
+    """Write ``system.templates_stamp`` = the current packaged-template digest.
+
+    Recording the stamp is what CLEARS the hard template-staleness gate — done
+    after a refresh is applied, when nothing is stale, or on an informed decline.
+    """
+    from kanibako.config_interface import write_system_value
+    from kanibako.templates import packaged_templates_digest
+
+    cf, _ = _settings_paths()
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    write_system_value(cf, "templates_stamp", packaged_templates_digest(names))
+
+
+def _run_template_refresh(args: argparse.Namespace) -> None:
+    """Template-update step: refresh shipped templates + stamp (informed consent).
+
+    Branches (ratified brief):
+
+    * ``--refresh-templates`` forced flag → apply refresh + stamp (the flag IS
+      the consent), one-line summary.
+    * nothing to add AND nothing to overwrite → stamp silently (clears the gate).
+    * TTY → warn, show the add/overwrite plan + reassurance + peril, prompt:
+      accept → apply + stamp; decline → STAMP ANYWAY (informed choice; the gate
+      clears) but leave files as-is.
+    * non-TTY, no flag → SKIP WITHOUT stamping (no informed choice possible → the
+      hard gate keeps erroring), point at interactive setup / ``--refresh-templates``.
+    """
+    from kanibako.config import load_config
+    from kanibako.paths import load_std_paths
+    from kanibako.templates import install_packaged_templates, plan_template_refresh
+
+    cf, _ = _settings_paths()
+    std = load_std_paths(load_config(cf))
+    names = _known_target_names()
+
+    added, overwritten = plan_template_refresh(std, names)
+    forced = bool(getattr(args, "refresh_templates", False))
+
+    print("Step 5: Templates")
+
+    if forced:
+        install_packaged_templates(std, names, refresh=True)
+        _write_templates_stamp(names)
+        print(
+            f"  [ok] Templates refreshed "
+            f"({len(added)} added, {len(overwritten)} updated)."
+        )
+        return
+
+    if not added and not overwritten:
+        # Already current: clear the gate silently, no prompt.
+        _write_templates_stamp(names)
+        print("  [ok] Templates are up to date.")
+        return
+
+    if sys.stdin.isatty():
+        print("  Your template store is out of date with this kanibako build.")
+        if added:
+            print(f"  Files to ADD ({len(added)}):")
+            for path in added:
+                print(f"    + {path}")
+        if overwritten:
+            print(f"  Files to UPDATE ({len(overwritten)}):")
+            for path in overwritten:
+                print(f"    ~ {path}")
+        print("  Your OWN template files are untouched.")
+        print("  Edits you made to SHIPPED files will be replaced.")
+        try:
+            answer = input("  Update templates now? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            answer = ""
+        if answer in ("y", "yes"):
+            install_packaged_templates(std, names, refresh=True)
+            _write_templates_stamp(names)
+            print("  [ok] Templates refreshed.")
+        else:
+            # Informed decline: STAMP ANYWAY so the gate clears; files unchanged.
+            _write_templates_stamp(names)
+            print(
+                "  [--] Declining leaves your template store out of date — an "
+                "unblessed state you're choosing knowingly. Re-run "
+                "`kanibako setup` anytime to update."
+            )
+        return
+
+    # Non-TTY, no forced flag: no informed choice possible → skip WITHOUT
+    # stamping, so the hard staleness gate keeps erroring until the user runs an
+    # interactive setup or passes --refresh-templates.
+    print(
+        "  [--] Templates are out of date but cannot be updated non-"
+        "interactively."
+    )
+    print(
+        "       Re-run `kanibako setup` in a terminal, or pass "
+        "`--refresh-templates`."
+    )
 
 
 def _select_agent_interactive(detected: list[tuple[str, str]]) -> str | None:
@@ -237,6 +348,10 @@ def run_setup(args: argparse.Namespace) -> int:
     # Step 4: Default agent selection (the ONLY interactive place in the CLI).
     print("Step 4: Default Agent")
     selected = _run_agent_selection(args)
+    print()
+
+    # Step 5: Template refresh (TRUE REFRESH; clears the staleness gate).
+    _run_template_refresh(args)
     print()
 
     # Mark setup complete (always — a graceful non-TTY skip still counts as a

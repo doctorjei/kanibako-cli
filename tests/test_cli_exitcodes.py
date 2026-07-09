@@ -17,6 +17,7 @@ class TestMainExitCodes:
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
             patch("kanibako.cli._ensure_initialized"),
+            patch("kanibako.cli._setup_nudge"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -32,6 +33,7 @@ class TestMainExitCodes:
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
             patch("kanibako.cli._ensure_initialized"),
+            patch("kanibako.cli._setup_nudge"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -47,6 +49,7 @@ class TestMainExitCodes:
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
             patch("kanibako.cli._ensure_initialized"),
+            patch("kanibako.cli._setup_nudge"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -62,6 +65,7 @@ class TestMainExitCodes:
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
             patch("kanibako.cli._ensure_initialized"),
+            patch("kanibako.cli._setup_nudge"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -77,6 +81,7 @@ class TestMainExitCodes:
         with (
             patch("kanibako.cli.build_parser") as mock_parser,
             patch("kanibako.cli._ensure_initialized"),
+            patch("kanibako.cli._setup_nudge"),
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
@@ -93,6 +98,7 @@ class TestMainExitCodes:
         with (
             patch("kanibako.cli.build_parser") as mock_bp,
             patch("kanibako.cli._ensure_initialized"),
+            patch("kanibako.cli._setup_nudge"),
             pytest.raises(SystemExit) as exc_info,
         ):
             parser = MagicMock()
