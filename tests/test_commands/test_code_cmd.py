@@ -11,11 +11,13 @@ import pytest
 from kanibako.commands.code_cmd import _attach_uri, run_code
 
 # Pinned expectation for container name ``kanibako-foo``:
-#   json  = {"containerName":"/kanibako-foo"}
+#   json  = {"containerName":"kanibako-foo"}   (BARE name — podman rejects the
+#           docker-convention "/<name>" on local CLI and remote API alike;
+#           live-confirmed on a Raiju local attach 2026-07-09)
 #   hex   = binascii.hexlify(json.encode()).decode()
 #   uri   = vscode-remote://attached-container+<hex>/home/agent/workspace
 _EXPECTED_HEX = (
-    "7b22636f6e7461696e65724e616d65223a222f6b616e6962616b6f2d666f6f227d"
+    "7b22636f6e7461696e65724e616d65223a226b616e6962616b6f2d666f6f227d"
 )
 _EXPECTED_URI = (
     f"vscode-remote://attached-container+{_EXPECTED_HEX}/home/agent/workspace"

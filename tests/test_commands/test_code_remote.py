@@ -23,12 +23,14 @@ def _args(project=None, box=None, remote=None) -> argparse.Namespace:
 
 # --- _attach_uri context extension -----------------------------------------
 
-def test_attach_uri_local_payload_unchanged():
-    """Without a context, the payload is byte-identical to the local URI."""
+def test_attach_uri_local_payload_bare_name():
+    """The local payload carries the BARE name — podman (local CLI and remote
+    API alike) rejects the docker-convention "/<name>"; live-confirmed on a
+    Raiju local attach 2026-07-09."""
     uri = _attach_uri("kanibako-foo")
     hexpart = uri.split("attached-container+", 1)[1].split("/home", 1)[0]
     payload = binascii.unhexlify(hexpart).decode()
-    assert payload == '{"containerName":"/kanibako-foo"}'
+    assert payload == '{"containerName":"kanibako-foo"}'
 
 
 def test_attach_uri_embeds_context_token():
