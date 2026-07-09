@@ -260,10 +260,13 @@ def start_mocks():
                 "kanibako.config.resolve_agent", return_value="claude",
             ) as m_resolve_agent,
             patch("kanibako.commands.start._upgrade_shell"),
-            # The stage+seed itself is patched (a no-op); template_layer_specs is
-            # left REAL but only does read-only ``.is_dir()`` probes against the
-            # MagicMock std/proj here (no mkdir → no MagicMock-named CWD leak).
-            patch("kanibako.templates.stage_and_seed_templates"),
+            # The layered template seed now flows through the keystore-routed
+            # ``_apply_init_seeds`` (Q1: the separate on-disk staging route
+            # retired). Its ``stage_layers`` apply is patched to a no-op here so a
+            # MagicMock std/proj cannot mkdir/copy MagicMock-named paths; the real
+            # layered-seed behavior is covered by tests/test_templates.py with a
+            # REAL std/proj.
+            patch("kanibako.templates.stage_layers"),
             # Block 7b: the launch-time CATEGORY resolution now runs through ONE
             # snapshot + ONE reconcile (``_resolve_launch_snapshot``) for the
             # always-available families (core / kani / channel / shares / seeds),
@@ -332,8 +335,8 @@ def start_mocks():
             # run for an ordinary relaunch test.  ``_seed_box_home`` itself is left
             # REAL so the credsync-routing tests (which set ``is_new = True``) can
             # observe its inner ``seed_cred_files`` call; its FS-touching steps are
-            # already neutralized by the ``stage_and_seed_templates`` / ``credsync``
-            # / ``_resolve_launch_snapshot`` patches above.
+            # already neutralized by the ``stage_layers`` / ``credsync`` /
+            # ``_resolve_launch_snapshot`` patches above.
             # Credential-sync engine (descriptor path).  Default to a no-op mock
             # so descriptor-bearing targets driven through _run_container don't
             # perform real filesystem credential ops against MagicMock project

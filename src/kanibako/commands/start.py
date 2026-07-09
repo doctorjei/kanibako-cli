@@ -3907,26 +3907,22 @@ def _seed_box_home(
     The SINGLE seed implementation, shared by `box create` (`run_create`) and the
     `start` auto-create path.  Runs ATOMICALLY-after registration (the caller
     gates on the just-registered signal, ``proj.is_new``); it is NEVER run on a
-    relaunch of an existing box.  Three ordered, create-if-absent steps (so a
+    relaunch of an existing box.  Two ordered, create-if-absent steps (so a
     re-create into a leftover dir never clobbers user content):
 
-    1. layered ``seeded.template`` copy (base -> agent -> workset; later overlays
-       earlier, per-file last-wins in a temp staging dir).  The base layer is
-       always present; the agent layer applies iff an agent target is bound; the
-       workset layer is ``<None>`` for STANDALONE (skipped).  Absent layers are
-       skipped by ``template_layer_specs``.
-    2. the descriptor's one-time credential seed (descriptor-bearing targets
+    1. the descriptor's one-time credential seed (descriptor-bearing targets
        only; a descriptor-less / no-agent target has nothing to seed here).
-    3. the configured copy-once-at-init ``seeded`` category winners.
+    2. the configured copy-once-at-init ``seeded`` category winners — INCLUDING
+       the layered ``seeded.template`` trio (system/base -> agent -> workset;
+       later overlays earlier, per-file last-wins). The separate on-disk template
+       staging route RETIRED (Q1): the template layers are now ordinary keystore
+       ``seeded`` keys resolved off the committed snapshot in
+       :func:`_apply_init_seeds`, which stages the ``~``-targeted layers in scope
+       order there.
 
     The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
     per-launch mechanisms and are NOT part of this one-time seed.
     """
-    from kanibako.templates import stage_and_seed_templates, template_layer_specs
-
-    stage_and_seed_templates(
-        proj.shell_path, template_layer_specs(target, proj, std)
-    )
     if target and desc is not None:
         credsync.seed_box_credentials(
             desc, target, auth=auth_src, host_home=Path.home(),
@@ -4220,8 +4216,17 @@ def _apply_init_seeds(
     Routes the category config through the reconcile model
     (:func:`_resolve_launch_categories`) and applies the COPY winners whose
     category is ``seeded``, translating each guest_dest (/home/agent/X) to a host
-    path under proj.shell_path and copying host_src -> that path once (dir ->
-    copytree dirs_exist_ok; file -> copy2).
+    path under proj.shell_path and copying host_src -> that path once.
+
+    The LAYERED ``seeded.template`` trio (system/base -> agent -> workset; spec
+    §2a, Q1) flows through THIS route too — no separate on-disk staging pass. The
+    template layers all target ``~`` (the create-time home); the seeded-category
+    reconcile keeps every same-dest COPY (copies OVERLAY, they do not shadow —
+    :func:`kanibako.settings_categories.reconcile_categories`), so here the
+    ``~``-group is a list of layer sources in scope apply order that
+    :func:`kanibako.templates.stage_layers` stages PER-FILE LAST-WINS then copies
+    into home CREATE-IF-ABSENT (never clobbering user content). A layer whose
+    source dir is absent (e.g. an unpopulated ``@workset.template``) is skipped.
 
     The credential gate (D-M4) is applied during reconcile: a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*shares* False).
@@ -4229,9 +4234,17 @@ def _apply_init_seeds(
     import shutil
 
     from kanibako.settings_resolve import GUEST_HOME
-    from kanibako.templates import copy_resource_tree_if_absent
+    from kanibako.templates import (
+        copy_resource_tree_if_absent,
+        stage_layers,
+        template_seed_defaults,
+    )
 
     default_seeds = target.default_seeds() if target is not None else {}
+    # The layered template seeds (spec §2a) as ordinary keystore ``seeded`` keys —
+    # folded in alongside the target's cred seeds so they resolve + apply through
+    # the SAME single seeded-category route (Q1: everything through the keystore).
+    template_seeds = template_seed_defaults(proj, agent_name)
 
     # Single-route (7c): resolve the seed COPY winners off the ONE committed
     # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
@@ -4239,12 +4252,10 @@ def _apply_init_seeds(
     # (the retired by-name category resolver, now the frozen
     # ``tests/support/flawed_oracle.py`` baseline).
     # NARROW injection: ``include_base_families=False`` +
-    # ``extra_default_categories=default_seeds`` injects ONLY the target's declared
-    # seeds (matching the old agent-level ``defaults=default_seeds``) — it does NOT
-    # pull in the unrelated core/channel/share families. The agent-binding inputs
-    # (``desc``/``install``) are omitted — they feed only
-    # ``agent.bindings.*`` MOUNTs, never the seeded COPY winners — so the resulting
-    # ``reconciled.copies`` seeded set is byte-for-byte the old narrow resolve's.
+    # ``extra_default_categories`` injects ONLY the target's declared seeds + the
+    # template layer keys (NOT the unrelated core/channel/share families). The
+    # agent-binding inputs (``desc``/``install``) are omitted — they feed only
+    # ``agent.bindings.*`` MOUNTs, never the seeded COPY winners.
     _snapshot, reconciled = _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -4256,26 +4267,49 @@ def _apply_init_seeds(
         target=target,
         agent_cfg=None,
         include_base_families=False,
-        extra_default_categories=default_seeds,
+        extra_default_categories={**default_seeds, **template_seeds},
         shares=shares,
     )
 
+    def _host_dest(guest_dest: str) -> "Path | None":
+        gd = guest_dest.rstrip("/")
+        if gd == GUEST_HOME:
+            return proj.shell_path
+        if gd.startswith(GUEST_HOME + "/"):
+            return proj.shell_path / gd[len(GUEST_HOME) + 1:]
+        return None
+
+    # Group the seeded COPY winners by resolved guest dest, PRESERVING the reconcile
+    # apply order (system -> agent -> workset -> box) within each dest — so a dest
+    # targeted by multiple layers (the template trio at ``~``) is staged in that
+    # order, later overlaying earlier.
+    by_dest: dict[str, list] = {}
     for seed in reconciled.copies:
         if seed.category != "seeded":
             continue  # synced copies are applied by _apply_synced_copies.
-        assert seed.host_src is not None  # seeds always have a source.
-        gd = seed.box_dest.rstrip("/")
-        if gd == GUEST_HOME:
-            dest = proj.shell_path
-        elif gd.startswith(GUEST_HOME + "/"):
-            rel = gd[len(GUEST_HOME) + 1:]
-            dest = proj.shell_path / rel
-        else:
+        by_dest.setdefault(seed.box_dest, []).append(seed)
+
+    for box_dest, group in by_dest.items():
+        dest = _host_dest(box_dest)
+        if dest is None:
             logger.warning(
                 "seed %s: guest_dest %r is outside %s; skipping",
-                seed.name, seed.box_dest, GUEST_HOME,
+                group[0].name, box_dest, GUEST_HOME,
             )
             continue
+        if len(group) > 1:
+            # A LAYERED dest (the ``seeded.template`` trio at ``~``): stage the
+            # layer sources IN ORDER (per-file last-wins) then seed into home
+            # create-if-absent. ``stage_layers`` skips any absent-dir source
+            # (skip-if-absent — e.g. an unpopulated @workset.template).
+            for e in group:
+                assert e.host_src is not None  # seeds always have a source.
+            dest.mkdir(parents=True, exist_ok=True)
+            stage_layers(dest, [Path(e.host_src) for e in group])
+            continue
+        # Single-source dest — the ordinary per-seed copy (unchanged behavior).
+        seed = group[0]
+        assert seed.host_src is not None  # seeds always have a source.
         src = Path(seed.host_src)
         if not src.exists():
             logger.warning(

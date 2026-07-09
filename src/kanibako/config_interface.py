@@ -155,6 +155,13 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.channels.commons",
     "workset.channels.chat",
     "workset.channels.share",
+    # Per-workset template SOURCE (template-trio, spec §2c L507; Q3 2026-07-09).
+    # A NORMAL settable STRING-path key (default ``@meta.workset.path/template``);
+    # the layer-3 seed source ``workset.seeded.template = (@workset.template, ~)``
+    # reads it, so repointing this key reroutes the workset template seed. Routed
+    # to the ``workset:`` nested slot (same pattern as ``workset.registry``); a
+    # STRING path (no KEY_TYPES). STANDALONE has no workset tier (source <None>).
+    "workset.template",
     # Workset kuid + advisory-check toggle (settings-conformance P6d). ``workset.
     # kuid`` is the workset's stable id (Crockford-base32; sentinel ``"00000"``
     # for primary/named unless set — a STANDALONE box GENERATES a real one at
@@ -285,6 +292,10 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "workset.channels.commons": (("workset", "channels"), "commons"),
     "workset.channels.chat": (("workset", "channels"), "chat"),
     "workset.channels.share": (("workset", "channels"), "share"),
+    # Per-workset template SOURCE (template-trio, spec §2c L507; Q3): the layer-3
+    # seed source, routed to the ``workset:`` table slot (same nested-settings
+    # pattern as ``workset.registry``). STRING path (no KEY_TYPES / no bool coerce).
+    "workset.template": (("workset",), "template"),
     # Workset kuid + advisory-check toggle (P6d): the same nested-settings pattern
     # as ``workset.registry`` — routed to the ``workset:`` table slot. ``workset.
     # kuid`` is a STRING (no KEY_TYPES entry); ``workset.skip_kuid_check`` is a bool
@@ -440,7 +451,16 @@ def _resolve_key(raw: str) -> str:
 # ``_is_agent_node_secret_key`` → ``_node_secret_target``, NOT here — a clean break;
 # ``env_file`` only shipped rc0-rc2, no alias).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
-    {"endpoint", "model", "continue_mode", "auto_approve", "allow_helpers", "bootstrap"}
+    {
+        "endpoint", "model", "continue_mode", "auto_approve", "allow_helpers",
+        "bootstrap",
+        # Per-agent template SOURCE (template-trio, spec §2a/§2d L598; Q2 2026-07-09
+        # "agent = persona + harness"). A settable STRING-path leaf on the agent
+        # (persona+harness) node — default @config.agents/<harness>/template — read
+        # by the layer-2 seed ``agent.<a>.seeded.template = (@agent.<a>.template, ~)``,
+        # so repointing it reroutes the agent template seed.
+        "template",
+    }
 )
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
