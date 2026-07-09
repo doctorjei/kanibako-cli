@@ -232,7 +232,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
     """Best-effort rollback of a default-mode name registration + partial dir.
 
-    Used when a copy fails after :func:`assign_name` has already registered the
+    Used when a copy fails after :func:`~kanibako.paths.assign_primary_box_name` has already registered the
     duplicate's name (and possibly created a partial metadata dir), to avoid
     leaving a "registered but no metadata" orphan.  Each step is independently
     guarded so one failure does not mask the rest.
@@ -275,7 +275,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
         src_meta_dir = src_proj.metadata_path
         src_settings = src_proj.metadata_path / BOX_META_FILE
 
-    # Failure-consistency: a crash AFTER assign_name (which registers the name)
+    # Failure-consistency: a crash AFTER assign_primary_box_name (which registers it)
     # but DURING the metadata/shell copy below would otherwise strand a
     # "registered but no metadata" orphan.  Unwind the registration + any partial
     # dest dir on failure, then re-raise — duplicate either fully succeeds or
@@ -598,7 +598,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 1
     new_project_dir = std.boxes / dup_name
 
-    # Failure-consistency: a crash AFTER assign_name but DURING the metadata copy
+    # Failure-consistency: a crash AFTER assign_primary_box_name but DURING the metadata copy
     # would otherwise strand a "registered but no metadata" orphan.  Unwind the
     # registration + any partial dest dir on failure, then re-raise.  (The
     # workspace copytree above runs BEFORE registration, so it is intentionally

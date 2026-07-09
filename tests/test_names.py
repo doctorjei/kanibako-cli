@@ -16,7 +16,6 @@ from pathlib import Path
 
 from kanibako.errors import ProjectError
 from kanibako.names import (
-    assign_name,
     lookup_by_path,
     read_names,
     register_name,
@@ -312,42 +311,6 @@ class TestResolveQualifiedName:
     def test_not_qualified_raises(self, registry: Path) -> None:
         with pytest.raises(ProjectError, match="Not a qualified name"):
             resolve_qualified_name(registry, "bare-name")
-
-
-# ---------------------------------------------------------------------------
-# assign_name / pick_name (worksets domain)
-# ---------------------------------------------------------------------------
-
-class TestAssignName:
-    def test_assigns_to_worksets_section(self, registry: Path) -> None:
-        name = assign_name(registry, "/ws/root", section="worksets")
-        assert name == "root"
-        names = read_names(registry)
-        assert names["worksets"]["root"] == "/ws/root"
-
-    def test_collision_numbering(self, registry: Path) -> None:
-        register_name(registry, "myws", "/first", section="worksets")
-        name = assign_name(registry, "/second/myws", section="worksets")
-        assert name == "myws2"
-
-    def test_empty_basename_fallback(self, registry: Path) -> None:
-        name = assign_name(registry, "/", section="worksets")
-        assert name == "project"
-
-
-class TestPickName:
-    def test_picks_basename_without_writing(self, registry: Path) -> None:
-        from kanibako.names import pick_name
-
-        name = pick_name(registry, "/home/user/ws/myws", section="worksets")
-        assert name == "myws"
-        assert read_names(registry)["worksets"] == {}
-
-    def test_collision_numbering_matches_assign(self, registry: Path) -> None:
-        from kanibako.names import pick_name
-
-        register_name(registry, "myws", "/first", section="worksets")
-        assert pick_name(registry, "/second/myws", section="worksets") == "myws2"
 
 
 # ---------------------------------------------------------------------------

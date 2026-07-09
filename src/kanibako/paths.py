@@ -1682,7 +1682,7 @@ def primary_box_name_for_workspace(
 def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]:
     """The PRIMARY-box name collision domain: primary membership ∪ global worksets.
 
-    Preserves the old ``pick_name``/``register_name`` cross-section domain
+    Preserves the retired ``names.py`` auto-name pair's cross-section domain
     (``projects ∪ worksets``) with ``projects`` replaced by the primary
     membership.  *registry* is ``std.registry`` (for the global ``worksets:``
     names); *primary_workset* is ``std.primary_workset``.
@@ -1748,7 +1748,7 @@ def pick_primary_box_name(
 ) -> str:
     """Pick a collision-free PRIMARY box name from *workspace*'s basename (no write).
 
-    The membership-domain counterpart of :func:`names.pick_name`: collisions
+    The membership-domain counterpart of the retired ``names.py`` picker: collisions
     append a number (``name``, ``name2``, ...); a candidate is rejected when it
     is in the PRIMARY-box domain (primary membership ∪ global worksets) OR —
     when *boxes_dir* is supplied — when ``boxes_dir/<candidate>`` already exists
@@ -1820,8 +1820,8 @@ def assign_primary_box_name(
     """Auto-assign + register a PRIMARY box name from *workspace*'s basename.
 
     Equivalent to :func:`pick_primary_box_name` followed by
-    :func:`register_primary_box_name` — the membership counterpart of
-    :func:`names.assign_name`.
+    :func:`register_primary_box_name` — the membership counterpart of the
+    retired ``names.py`` auto-namer.
     """
     candidate = pick_primary_box_name(
         primary_workset, registry, str(workspace), boxes_dir=boxes_dir,
