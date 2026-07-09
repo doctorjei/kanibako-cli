@@ -843,6 +843,150 @@ class TestBoxDuplicateCrossMode:
         assert not dst_dir.exists()
         assert load_primary_boxes(std.primary_workset) == names_before
 
+    def test_duplicate_cross_mode_oserror_mid_copy_rolls_back_clean(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """F-3: an OSError mid workspace-copy on a FRESH dest is caught (rc=1, no
+        traceback) and the partial dir THIS call created is rolled back.
+
+        Pre-fix the workspace copytree ran BEFORE (and outside) the only catch,
+        which caught ProjectError alone — so an OSError propagated UNCAUGHT and
+        left the partial ``new_path`` behind.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "oserr_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('src')")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        dst_dir = tmp_home / "oserr_dst"  # fresh: absent + unregistered
+        names_before = load_primary_boxes(std.primary_workset)
+
+        def _copytree_oserror(src, dst, *a, **kw):
+            # Materialize the destination dir, then fail — mimics a copy that
+            # dies partway and strands residue.
+            from pathlib import Path
+            Path(dst).mkdir(parents=True, exist_ok=True)
+            raise OSError("disk full")
+
+        with patch(
+            "kanibako.commands.box._duplicate.shutil.copytree",
+            side_effect=_copytree_oserror,
+        ):
+            rc = run_duplicate(self._make_args(src_dir, dst_dir, "default"))
+
+        assert rc == 1
+        # No stray dir created by this call; no orphan name registered.
+        assert not dst_dir.exists()
+        assert load_primary_boxes(std.primary_workset) == names_before
+        assert not (std.boxes / "oserr_dst").exists()
+
+    def test_duplicate_cross_mode_registered_dest_no_force_refuses_clean(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """F-3 (guard-before-copy): a --to primary onto an ALREADY-registered
+        primary workspace refuses CLEANLY (rc=1) even WITHOUT --force.
+
+        Pre-fix, without --force the workspace copytree (dirs_exist_ok=False) ran
+        first and raised FileExistsError (an OSError) UNCAUGHT — a traceback
+        instead of the Guard-1 refusal.  The up-front guard now refuses before any
+        copy/prompt.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "regdst_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('src')")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        dst_dir = tmp_home / "regdst_dst"
+        dst_dir.mkdir()
+        (dst_dir / "keep.txt").write_text("preexisting")
+        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+
+        names_before = load_primary_boxes(std.primary_workset)
+
+        # No --force → pre-fix would prompt then hit copytree's FileExistsError;
+        # mock the prompt so the pre-fix path would reach the copy (post-fix the
+        # guard refuses before the prompt, so this mock is simply unused).
+        with patch(
+            "kanibako.commands.box._duplicate.confirm_prompt",
+            return_value=None,
+        ):
+            rc = run_duplicate(
+                self._make_args(src_dir, dst_dir, "default", force=False)
+            )
+
+        assert rc == 1
+        # Pre-existing registration + dir/content untouched; no stray box dir.
+        assert load_primary_boxes(std.primary_workset) == names_before
+        assert (dst_dir / "keep.txt").read_text() == "preexisting"
+        assert not (std.boxes / "regdst_dst2").exists()
+
+    def test_duplicate_cross_mode_preexisting_dir_no_force_friendly_msg(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """F-3 (NIT): duplicating onto a pre-existing UNREGISTERED dir without
+        --force refuses with the friendly destination-exists message, NOT the raw
+        ``[Errno 17] File exists`` errno from copytree's FileExistsError.
+
+        The dest dir exists on disk but is NOT a registered primary box, so the
+        up-front guard-before-copy does not fire; copytree(dirs_exist_ok=False)
+        raises FileExistsError, which the caught-and-translated branch now renders
+        as the run_duplicate-style message.  rc=1, dir untouched, no deletion.
+        """
+        import io
+        from contextlib import redirect_stderr
+
+        from kanibako.commands.box import run_duplicate
+        from kanibako.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "friendly_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('src')")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        # Pre-existing but UNREGISTERED destination dir (not a kanibako box).
+        dst_dir = tmp_home / "friendly_dst"
+        dst_dir.mkdir()
+        (dst_dir / "keep.txt").write_text("preexisting")
+        names_before = load_primary_boxes(std.primary_workset)
+
+        # Unregistered dest → the guard-before-copy does NOT fire, so the confirm
+        # prompt is reached (no --force); accept it so the copy runs and hits the
+        # FileExistsError → friendly refusal.
+        buf = io.StringIO()
+        with redirect_stderr(buf), patch(
+            "kanibako.commands.box._duplicate.confirm_prompt",
+            return_value=None,
+        ):
+            rc = run_duplicate(
+                self._make_args(src_dir, dst_dir, "default", force=False)
+            )
+
+        assert rc == 1
+        err = buf.getvalue()
+        # Friendly message (matches run_duplicate's non-cross-mode style); NOT the
+        # raw errno traceback text.
+        assert "destination already exists" in err
+        assert "--force" in err
+        assert "Errno 17" not in err
+        # No deletion of the pre-existing dir / content; registry untouched.
+        assert (dst_dir / "keep.txt").read_text() == "preexisting"
+        assert load_primary_boxes(std.primary_workset) == names_before
+
     def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
 
