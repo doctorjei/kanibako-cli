@@ -30,8 +30,10 @@ def test_attach_uri_embeds_context_token():
     uri = _attach_uri("kanibako-foo", context="kanibako-remote-h")
     hexpart = uri.split("attached-container+", 1)[1].split("/home", 1)[0]
     payload = binascii.unhexlify(hexpart).decode()
+    # Remote payload: BARE name (no leading slash — remote podman rejects the
+    # docker-style "/name"; e2e-confirmed) + the context token.
     assert payload == (
-        '{"containerName":"/kanibako-foo",'
+        '{"containerName":"kanibako-foo",'
         '"settings":{"context":"kanibako-remote-h"}}'
     )
 
@@ -280,7 +282,9 @@ def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
     uri = launched[2]
     hexpart = uri.split("attached-container+", 1)[1].split("/home", 1)[0]
     payload = json.loads(binascii.unhexlify(hexpart).decode())
-    assert payload["containerName"] == "/kanibako-mybox"
+    # BARE name for remote (remote podman rejects the docker-style "/name" —
+    # e2e-confirmed); the local URI keeps the leading slash.
+    assert payload["containerName"] == "kanibako-mybox"
     from kanibako import vscode_remote as vr
     assert payload["settings"]["context"] == vr.remote_context_name("host")
     # Seed keyed by the REMOTE image, extension from the REMOTE stamp.

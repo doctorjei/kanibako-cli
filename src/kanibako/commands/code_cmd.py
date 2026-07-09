@@ -66,8 +66,16 @@ def _attach_uri(container_name: str, context: str | None = None) -> str:
     per-window routing token is embedded as ``settings.context`` (the R1
     context-token dispatch channel for ``--remote``); when it is ``None`` the
     payload is BYTE-IDENTICAL to the local (non-remote) URI.
+
+    Remote payloads carry the BARE name: the remote podman engine rejects the
+    docker-convention leading slash (``Error: no such container "/<name>"`` —
+    e2e-confirmed against podman 5.4.2 server-side), while the extension
+    accepts a bare name or ID.  The local payload keeps the slash unchanged
+    (the rc4-shipped local attach is validated with it).
     """
-    payload_obj: dict[str, object] = {"containerName": f"/{container_name}"}
+    is_remote = context is not None
+    cname_ref = container_name if is_remote else f"/{container_name}"
+    payload_obj: dict[str, object] = {"containerName": cname_ref}
     if context is not None:
         payload_obj["settings"] = {"context": context}
     payload = json.dumps(payload_obj, separators=(",", ":"))
