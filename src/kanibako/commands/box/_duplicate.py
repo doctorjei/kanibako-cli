@@ -18,6 +18,7 @@ from kanibako.paths import (
     xdg,
     detect_project_mode,
     load_std_paths,
+    primary_box_name_for_workspace,
     resolve_standalone_project,
     resolve_project,
     resolve_workset_project,
@@ -98,6 +99,28 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # Confirm with user.
     target_mode = BoxMode.standalone if to_mode_str == "standalone" else BoxMode.primary
+
+    # F-3 (guard-before-copy): for a PRIMARY (local) target, front-run the
+    # one-box-per-workspace-path (Guard-1) refusal BEFORE prompting or copying, so
+    # a duplicate onto an ALREADY-registered primary workspace costs no prompt and
+    # no copy.  assign_primary_box_name raises this same ProjectError, but only
+    # AFTER the workspace copy — and a no-force copy onto an existing dir would
+    # first raise FileExistsError (an OSError), stranding the copy uncaught.
+    # Standalone targets mint a fresh <kuid> identity outside the primary
+    # membership, so the guard does not apply to them.
+    if target_mode == BoxMode.primary:
+        existing_box = primary_box_name_for_workspace(
+            std.primary_workset, str(new_path),
+        )
+        if existing_box is not None:
+            print(
+                f"Error: Workspace {str(new_path)!r} is already registered as "
+                f"box {existing_box!r}; refusing to duplicate onto it "
+                f"(one box per workspace path).",
+                file=sys.stderr,
+            )
+            return 1
+
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -117,34 +140,45 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # files land in the destination's ``workspace/`` subdir (drift H), since the
     # destination root holds the standalone artifacts (settings.yaml, box_data/,
     # vault/).
-    # F2: capture whether the destination dir pre-existed BEFORE the workspace
-    # copy, so a late Guard-1 refusal in _duplicate_to_local (the dest workspace
-    # is ALREADY a registered primary box — one box per workspace path) can roll
-    # back a copy THIS call created without deleting a pre-existing dir.
+    # F2/F-3: capture whether the destination dir pre-existed BEFORE the workspace
+    # copy, so a refusal/OSError can roll back a copy THIS call created without
+    # deleting a pre-existing dir.
     new_path_existed = new_path.is_dir()
 
     workspace_src = src_proj.project_path
-    if not args.bare and workspace_src.is_dir():
-        if target_mode == BoxMode.standalone:
+
+    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
+    if target_mode == BoxMode.standalone:
+        if not args.bare and workspace_src.is_dir():
             shutil.copytree(
                 workspace_src, new_path / "workspace", dirs_exist_ok=args.force,
             )
-        else:
-            shutil.copytree(workspace_src, new_path, dirs_exist_ok=args.force)
-
-    # Copy metadata into target mode layout.
-    # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
-    if target_mode == BoxMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
-        # Guard 1 (one box per workspace path) can refuse here when the dest
-        # workspace is ALREADY a registered primary box — mirror run_duplicate's
-        # clean catch (rc=1) and roll back a workspace copy THIS call created so
-        # the refusal leaves no partial residue (F2).
+        # PRIMARY (local) target.  F-3: copy the workspace and lay down the
+        # metadata inside ONE try that catches BOTH a Guard-1 ProjectError (a late
+        # defense-in-depth re-check inside _duplicate_to_local) AND any OSError
+        # mid copy/metadata, so a partial dir THIS call created never survives.
+        # Roll back only when new_path did NOT pre-exist (F2: never delete a dir
+        # the user already had); _duplicate_to_local's own unwind already cleans
+        # the boxes/<name> metadata dir + its registration.
         from kanibako.errors import ProjectError
         try:
+            if not args.bare and workspace_src.is_dir():
+                shutil.copytree(workspace_src, new_path, dirs_exist_ok=args.force)
             _duplicate_to_local(src_proj, new_path, std, config, args.force)
-        except ProjectError as e:
+        except FileExistsError:
+            # F-3 (NIT): a no-force copy onto a pre-existing (unregistered) dir
+            # raises FileExistsError from copytree — surface the friendly
+            # destination-exists guidance (matching run_duplicate's non-cross-mode
+            # message) instead of the raw ``[Errno 17] File exists`` traceback.
+            # The dir pre-existed, so new_path_existed is True → no deletion.
+            print(f"Error: destination already exists: {new_path}", file=sys.stderr)
+            print("  Use --force to overwrite.", file=sys.stderr)
+            if not new_path_existed and new_path.is_dir():
+                shutil.rmtree(new_path, ignore_errors=True)
+            return 1
+        except (ProjectError, OSError) as e:
             print(f"Error: {e}", file=sys.stderr)
             if not new_path_existed and new_path.is_dir():
                 shutil.rmtree(new_path, ignore_errors=True)
