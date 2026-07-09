@@ -131,6 +131,20 @@ jobs:
       - name: Install build tooling
         run: pip install build
 
+      - name: Pin meta -> kanibako-cli to the release version
+        # The in-tree meta dep is a RANGE so a source checkout / dev flow never
+        # breaks; pin it to the EXACT release version ($VER, from the tag) at
+        # build time so a stale meta/cli pair can NEVER install during PyPI
+        # index propagation (meta 1.7.0 + cli 1.6.x silently mixed). The in-tree
+        # base version already matches the tag (bump2version stamps then tags),
+        # so only the dep line needs pinning here. Anchored on the indented
+        # "kanibako-cli" dep line — matches ONLY it (agent deps are
+        # "kanibako-agent-*"). Contract asserted by test_meta_pin.py.
+        run: |
+          sed -i -E "s|^([[:space:]]*)\"kanibako-cli[^\"]*\"|\1\"kanibako-cli==$VER\"|" packages/meta/pyproject.toml
+          echo "Pinned meta -> kanibako-cli:"
+          grep -n 'kanibako-cli==' packages/meta/pyproject.toml
+
       - name: Build all distributable packages
         # Mirrors scripts/build-all.sh's package list. agent-goose and
         # agent-codex are built/published here too; they version independently
@@ -225,8 +239,18 @@ jobs:
           for f in src/kanibako/__init__.py packages/agent-claude/src/kanibako/plugins/claude/__init__.py; do
             sed -i -E "s/^__version__ = \"[^\"]+\"/__version__ = \"$DEV_VERSION\"/" "$f"
           done
+          # Pin the meta package's kanibako-cli dependency to the EXACT stamped
+          # version so a stale meta/cli pair can NEVER install during the PyPI
+          # index-propagation window (meta rcN + cli rcN-1 silently mixed). The
+          # in-tree line stays a RANGE (source checkout / dev flow unbroken); we
+          # pin only at build time. Anchored on the indented "kanibako-cli" dep
+          # line — matches ONLY it (agent deps are "kanibako-agent-*"), never the
+          # top-level `version = "..."`. Contract asserted by test_meta_pin.py.
+          sed -i -E "s|^([[:space:]]*)\"kanibako-cli[^\"]*\"|\1\"kanibako-cli==$DEV_VERSION\"|" packages/meta/pyproject.toml
           echo "Stamped version $DEV_VERSION:"
           grep -n '^version = ' pyproject.toml packages/*/pyproject.toml
+          echo "Pinned meta -> kanibako-cli:"
+          grep -n 'kanibako-cli==' packages/meta/pyproject.toml
 
       - name: Build all distributable packages
         # The 1.5.x train (cli + agent-claude + meta) is dev-stamped above and
