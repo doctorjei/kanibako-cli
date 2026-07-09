@@ -127,12 +127,33 @@ def ssh_command(dest: str, remote_argv: list[str]) -> list[str]:
     ]
 
 
+# A CONSTANT, user-data-free preamble prepended to the remote kanibako command
+# so a per-user pipx/uv install (``~/.local/bin``) is found: a non-interactive
+# ssh command does NOT source ``~/.profile``, so ``$HOME/.local/bin`` is often
+# absent from PATH and a per-user install is invisible (rc=127 "kanibako:
+# command not found").  It rides INSIDE ``sh -c`` (never through
+# :func:`shlex.quote`), so ``$HOME``/``$PATH`` stay live and are expanded by the
+# remote shell — a naively quoted preamble would make ``$HOME`` a literal.
+_REMOTE_PATH_PREAMBLE = 'PATH="$HOME/.local/bin:$PATH" '
+
+
 def remote_run_kanibako(
     dest: str, args: list[str],
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``kanibako <args...>`` on *dest* over the mux ssh leg (captured)."""
+    """Run ``kanibako <args...>`` on *dest* over the mux ssh leg (captured).
+
+    The remote command is prefixed with a CONSTANT PATH preamble
+    (:data:`_REMOTE_PATH_PREAMBLE`) that puts ``$HOME/.local/bin`` — where
+    pipx/uv install kanibako per-user — on PATH, since a non-interactive ssh
+    command does not source ``~/.profile``.  The kanibako argv is
+    individually :func:`shlex.quote`-d and joined, then the constant preamble is
+    prepended; the whole string runs via ``sh -c`` (same channel as
+    :func:`probe_remote`) so the remote shell expands the preamble while every
+    user-supplied arg stays quoted (a hostile box name cannot break out).
+    """
+    remote_cmd = _REMOTE_PATH_PREAMBLE + shlex.join(["kanibako", *args])
     return subprocess.run(
-        ssh_command(dest, ["kanibako", *args]),
+        ssh_command(dest, ["sh", "-c", remote_cmd]),
         capture_output=True, text=True,
     )
 

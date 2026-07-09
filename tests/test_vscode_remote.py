@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import socket
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -73,6 +74,55 @@ def test_ssh_command_dest_cannot_inject_options():
     # destination, never as an option.
     cmd = vr.ssh_command("-oProxyCommand=evil", ["kanibako", "start"])
     assert cmd[cmd.index("--") + 1] == "-oProxyCommand=evil"
+
+
+# --- remote_run_kanibako PATH preamble (~/.local/bin fallback) --------------
+
+def test_remote_run_kanibako_injects_path_preamble():
+    # The lifecycle leg rides `sh -c` with a CONSTANT PATH preamble so a
+    # per-user pipx/uv install (~/.local/bin) is found even though a
+    # non-interactive ssh command does not source ~/.profile.
+    completed = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+        vr.remote_run_kanibako("me@host", ["start", "--detach", "mybox"])
+    argv = m.call_args[0][0]
+    assert argv[0] == "ssh"
+    dashdash = argv.index("--")
+    assert argv[dashdash + 1] == "me@host"
+    # ssh joins the trailing args with spaces and hands them to the remote login
+    # shell; recover what that shell re-parses (ssh_command shlex-quotes each).
+    remote_words = shlex.split(" ".join(argv[dashdash + 2:]))
+    assert remote_words[:2] == ["sh", "-c"]
+    remote_cmd = remote_words[2]
+    # The preamble is present EXACTLY once, unquoted (so $HOME expands on the
+    # remote shell), immediately before the kanibako argv.
+    assert remote_cmd.count('PATH="$HOME/.local/bin:$PATH"') == 1
+    assert remote_cmd == (
+        'PATH="$HOME/.local/bin:$PATH" kanibako start --detach mybox'
+    )
+
+
+def test_remote_run_kanibako_hostile_box_name_cannot_escape_quoting():
+    # A box name laden with shell metacharacters must stay fully quoted: it can
+    # neither expand nor break out into a new command.
+    completed = MagicMock(returncode=0, stdout="", stderr="")
+    hostile = "mybox; rm -rf ~ $(touch /pwned)"
+    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+        vr.remote_run_kanibako("me@host", ["start", hostile])
+    argv = m.call_args[0][0]
+    dashdash = argv.index("--")
+    # Layer 1: the remote LOGIN shell re-parses ssh's trailing args → sh -c CMD.
+    remote_words = shlex.split(" ".join(argv[dashdash + 2:]))
+    assert remote_words[:2] == ["sh", "-c"]
+    remote_cmd = remote_words[2]
+    assert remote_cmd.startswith('PATH="$HOME/.local/bin:$PATH" kanibako start ')
+    # The hostile arg survives only inside a single shlex-quoted token.
+    assert remote_cmd.endswith("kanibako start " + shlex.quote(hostile))
+    # Layer 2: `sh -c` re-parses CMD. No injection: the preamble is a var
+    # assignment and the metachars are one inert token, never new words.
+    parts = shlex.split(remote_cmd)
+    assert parts[0] == "PATH=$HOME/.local/bin:$PATH"  # assignment, not a command
+    assert parts[1:] == ["kanibako", "start", hostile]
 
 
 # --- unix-socket tunnel engine (FF-1b) -------------------------------------

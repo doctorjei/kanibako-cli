@@ -557,7 +557,9 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
         hint = ""
         if "command not found" in low or "kanibako: not found" in low:
             hint = (
-                "\n  Hint: is kanibako installed and on PATH on the remote host?"
+                "\n  Hint: kanibako was not found on the remote host "
+                "(its ~/.local/bin is already put on PATH). Is kanibako "
+                "installed for your user there (pipx/uv/pip --user)?"
             )
         elif "print-container" in low or "unrecognized arguments" in low:
             hint = (
