@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1111,11 +1112,29 @@ class TestCheckVscode:
         assert str(tmp_path / "Code" / "User" / "settings.json") in detail
 
     def test_dockerpath_podman_ok(self, tmp_path: Path) -> None:
-        """dockerPath == podman -> [ok]."""
+        """dockerPath == podman -> [ok] with a local-only note (FF-1 widening)."""
         self._settings(tmp_path, '{"dev.containers.dockerPath": "podman"}')
         status, _label, detail = self._vscode_with_settings(tmp_path)
         assert status == "ok"
         assert "podman" in detail
+        assert "local only" in detail
+        assert "--remote" in detail
+
+    def test_dockerpath_kanibako_wrapper_ok(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        """dockerPath == the kanibako dispatch wrapper path -> [ok] (FF-1)."""
+        from kanibako import vscode_remote as vr
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        wrapper = str(vr.dispatch_wrapper_path())
+        self._settings(
+            tmp_path,
+            json.dumps({"dev.containers.dockerPath": wrapper}),
+        )
+        status, _label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "ok"
+        assert "kanibako dispatch wrapper" in detail
 
     def test_dockerpath_other_value(self, tmp_path: Path) -> None:
         """dockerPath set to something else -> [!!] naming the wrong value."""

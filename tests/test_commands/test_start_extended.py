@@ -598,6 +598,38 @@ class TestPersistentMode:
             assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
             assert "/bin/bash" in cli_args
 
+    def test_detach_print_container_is_final_stdout_line(
+        self, start_mocks, capsys,
+    ):
+        """--detach --print-container: the cname is the FINAL stdout line."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+                print_container=True,
+            )
+            assert rc == 0
+            cname = m.runtime.run.call_args.kwargs["name"]
+            out = capsys.readouterr().out
+            stdout_lines = [ln for ln in out.splitlines() if ln.strip()]
+            assert stdout_lines[-1] == cname
+
+    def test_detach_without_print_container_no_stdout_cname(
+        self, start_mocks, capsys,
+    ):
+        """Absent the flag, detach prints no container name to stdout."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            cname = m.runtime.run.call_args.kwargs["name"]
+            out = capsys.readouterr().out
+            assert cname not in out
+
     def test_persistent_returns_exec_exit_code(self, start_mocks):
         """Return code comes from exec, not from detached run."""
         with start_mocks() as m:

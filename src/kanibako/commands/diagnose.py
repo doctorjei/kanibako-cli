@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
 from kanibako.targets.base import _validate_agent_binary
+from kanibako.vscode_config import load_jsonc as _load_jsonc
 
 
 def _format_check(status: str, label: str, detail: str) -> str:
@@ -274,57 +274,21 @@ def _check_storage(data_path: Path) -> tuple[str, str]:
 _DEVCONTAINERS_EXT_ID = "ms-vscode-remote.remote-containers"
 
 
-def _strip_jsonc(text: str) -> str:
-    """Best-effort strip of JSONC (comments + trailing commas) to plain JSON.
-
-    VS Code ``settings.json`` is JSONC: it permits ``//`` and ``/* */`` comments
-    and trailing commas, none of which :func:`json.loads` accepts.  This is a
-    light, best-effort pass (not a full JSONC parser): block comments, then
-    WHOLE-LINE ``//`` comments only (so ``"http://..."`` inside a string value
-    is left intact), then trailing commas before ``}`` / ``]``.
-
-    LIMITATION (deliberate, for string-safety): a TRAILING inline ``//`` comment
-    (e.g. ``"...": "podman" // note``) is NOT stripped -- reliably telling a
-    real comment from a ``//`` inside a string value would require a real
-    tokenizer, and a wrong guess would corrupt string values.  Such a
-    hand-edited file therefore fails to parse and degrades to the honest ``--``
-    ("could not be parsed") line rather than risking a false read.
-    """
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    text = re.sub(r"(?m)^\s*//.*$", "", text)
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return text
-
-
-def _load_jsonc(text: str) -> object | None:
-    """Parse JSONC text, returning the object or ``None`` if unparseable.
-
-    Tries strict :func:`json.loads` first (the common case — VS Code writes
-    valid JSON when edited via the settings UI), falling back to a
-    comment/trailing-comma strip for hand-edited JSONC.  See
-    :func:`_strip_jsonc` for what the fallback does NOT handle (trailing inline
-    ``//`` comments), which degrade to ``None`` here.
-    """
-    import json
-
-    try:
-        return json.loads(text)
-    except ValueError:
-        pass
-    try:
-        return json.loads(_strip_jsonc(text))
-    except ValueError:
-        return None
 
 
 def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
-    """Check ``dev.containers.dockerPath == "podman"`` in the user settings.
+    """Check ``dev.containers.dockerPath`` in the user settings.
 
     Rootless podman is not Docker, so VS Code's Dev Containers must be told to
-    drive ``podman`` explicitly.  Returns a single ``(status, label, detail)``
-    line: ``ok`` when set to ``podman``; ``!!`` (with remediation) when the file
-    or key is absent or holds another value; ``--`` when the file exists but is
-    unreadable / unparseable.
+    drive ``podman`` explicitly.  Two settings are OK:
+
+    * ``"podman"`` — local attach works (a NOTE flags that ``kanibako code
+      --remote`` needs the kanibako dispatch wrapper instead);
+    * the kanibako dispatch wrapper path — both local AND ``--remote`` work.
+
+    Returns a single ``(status, label, detail)`` line: ``ok`` for either of the
+    above; ``!!`` (with remediation) when the file or key is absent or holds
+    another value; ``--`` when the file exists but is unreadable / unparseable.
     """
     label = "VS Code dockerPath"
     remediation = (
@@ -350,7 +314,20 @@ def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
         )
     value = data.get("dev.containers.dockerPath")
     if value == "podman":
-        return ("ok", label, '"dev.containers.dockerPath": "podman"')
+        return (
+            "ok",
+            label,
+            '"dev.containers.dockerPath": "podman" '
+            "(local only; 'kanibako code --remote' needs the kanibako wrapper)",
+        )
+    from kanibako.vscode_remote import dispatch_wrapper_path
+
+    if value is not None and value == str(dispatch_wrapper_path()):
+        return (
+            "ok",
+            label,
+            f'"dev.containers.dockerPath": "{value}" (kanibako dispatch wrapper)',
+        )
     if value is None:
         return ("!!", label, f'"dev.containers.dockerPath" not set -- {remediation}')
     return (
