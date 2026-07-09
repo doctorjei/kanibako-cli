@@ -253,8 +253,12 @@ class ReconciledCategories:
     deterministic order.  *envs* are the ENV entries (no box_dest collision —
     their "dest" is a VAR name), in deterministic order.
 
-    Each path ``box_dest`` appears at most once across *mounts* + *copies*
-    combined: identical-dest collisions were resolved by category authority.
+    Each MOUNT ``box_dest`` appears at most once (mounts SHADOW, so an
+    identical-dest collision is resolved to one authority winner). COPIES OVERLAY
+    rather than shadow, so a dest targeted by copies ONLY keeps every copy (in
+    apply order) — the layered ``seeded.template`` trio all seed into ``~`` and
+    last-wins-merge there. A dest shared by a mount and copies reverts to the
+    single mount winner (the copy cannot survive under a live shadow mount).
     """
 
     mounts: list[CategoryEntry]
@@ -349,6 +353,21 @@ def reconcile_categories(
                 f"override a live mount — resolve by removing one (e.g. drop the "
                 f"binding or point the synced copy elsewhere)."
             )
+        # SEEDS OVERLAY, MOUNTS SHADOW. A ``seeded`` COPY merges its tree into the
+        # dest PER-FILE (later scope overlays earlier — the module's "most-specific
+        # scope lands LAST" apply order); it does NOT physically shadow the whole
+        # dest the way a MOUNT does. So when a dest is targeted by ``seeded`` copies
+        # ONLY, KEEP THEM ALL, in apply order (``group`` preserves the input order =
+        # system, agent, workset, box). This is what lets the layered
+        # ``seeded.template`` trio (system+agent+workset, all seeding into ``~``)
+        # co-exist and last-wins-merge at the seam that applies them
+        # (:func:`kanibako.commands.start._apply_init_seeds` stages same-dest seeds
+        # in this order). Restricted to a PURE ``seeded`` group so the ``synced``↔
+        # ``seeded`` / mount authority ordering (a cred sync or a shadow mount at
+        # the same dest) is untouched — those revert to the single-winner pick.
+        if all(e.category == "seeded" for e in group):
+            winners.extend(group)
+            continue
         # Highest authority wins; tie -> box scope wins (apply order); then the
         # stable input order. ``enumerate`` index keeps the original sequence.
         winner = max(

@@ -10,126 +10,135 @@ from pathlib import Path
 
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
-    from kanibako.targets.base import Target
 
 
 # ---------------------------------------------------------------------------
-# Layered-template path resolution (Phase 7a).
+# Layered home-seed (spec §2a "Template seed (LAYERED, ordered)").
 #
-# The 1.6.0 home-seed model layers three ordered template sources into the box
-# home at creation (base -> agent -> workset; later overlays earlier).  These
-# pure helpers DERIVE each layer's on-disk source root; ``stage_and_seed_templates``
-# below stages them, in order, then seeds the merged tree into the box home
-# (the key-route TEMP-STORE design).
+# The 1.6.0 home-seed model layers three ordered ``seeded.template`` sources into
+# the box home at creation (base -> agent -> workset; later overlays earlier).
+# The layer SOURCES are NO LONGER derived on disk here — they are ORDINARY
+# keystore ``seeded`` category keys resolved through the launch snapshot (spec
+# §2a; ruled 2026-07-09 Q1: everything goes through the keystore + seeding, no
+# bespoke template route). :func:`template_seed_defaults` declares those keys as
+# default-category entries; the seed seam (``commands.start._apply_init_seeds``)
+# resolves them off the committed snapshot, then applies each ``~``-targeted
+# layer, IN ORDER, via :func:`stage_layers` (the per-file last-wins + create-if-
+# absent staging that used to be ``stage_and_seed_templates``).
 #
-#   layer 1  base    @system.base_template      = @system.global/base_template (FLAT)
-#   layer 2  agent   @agent.<agent>.template    = @config.agents/<agent>/template
-#   layer 3  workset @workset.template          = @meta.workset.path/template
+#   layer 1  system.seeded.template  | (@system.base_template, ~)   base (global)
+#   layer 2  agent.<a>.seeded.template| (@agent.<a>.template, ~)     per-agent (persona+harness)
+#   layer 3  workset.seeded.template  | (@workset.template, ~)       per-workset (primary/named)
 #
-# Layers 2/3 are runtime-dependent (agent name / workset mode), so they are
-# free functions rather than ``StandardPaths`` properties — mirroring the
-# channels helpers (``channels.workset_root`` / ``workset_channel_paths``).
+# Sources: @system.base_template (system.* settings tier) · @agent.<a>.template =
+# @config.agents/<harness>/template · @workset.template = @meta.workset.path/template
+# (skip-if-absent — the seeded category drops a layer whose source dir is absent).
 # ---------------------------------------------------------------------------
 
 
-def base_template_dir(std: StandardPaths) -> Path:
-    """Return the layer-1 base-template source root ``@system.base_template``.
+def template_seed_defaults(
+    proj: ProjectPaths, agent_id: str | None
+) -> dict[str, object]:
+    """Return the layered ``seeded.template`` DEFAULT-category table (spec §2a).
 
-    FLAT: the base template is read directly from ``@system.base_template/*``
-    (no ``general/`` or variant subdir — the 1.6.0 model drops those).
+    The three template layers as ORDINARY keystore keys, ready to fold into the
+    seed-time snapshot's ``default_categories`` (``commands.start._apply_init_seeds``)
+    so they resolve + apply through the SAME single seeded-category route as every
+    other seed — no bespoke template plumbing (Q1). Each is a ``seeded`` COPY into
+    ``~`` (create-time home), sourced from an ``@``-ref SETTINGS key so the source
+    stays user-repointable through the cascade (setting ``workset.template`` /
+    ``agent.<a>.template`` reroutes the seed):
+
+    * ``system.seeded.template``   = ``(@system.base_template, ~)`` — ALWAYS (Q4:
+      no carve-out; the base template rides the seed system like every layer, so
+      every file in it is seeded).
+    * ``agent.<a>.seeded.template`` = ``(@agent.<a>.template, ~)`` — only when an
+      agent is bound; the source key ``agent.<a>.template`` defaults to
+      ``@config.agents/<harness>/template`` (spec §2a/§2d; ``<a>`` = the persona+
+      harness node, Q2). Absent for a NO-AGENT box.
+    * ``workset.seeded.template`` = ``(@workset.template, ~)`` — only for a
+      PRIMARY/NAMED box (a workset tier exists); the source key
+      ``workset.template`` defaults to ``@meta.workset.path/template`` (Q3, was
+      ``<None>``). STANDALONE has no workset tier, so the layer is OMITTED (spec
+      §2c L483 ``workset.template <None>``). The layer is SKIPPED when the source
+      dir is absent — the seeded category's ordinary missing-source semantics.
+
+    The returned dict mixes the SEED tuple keys with their SOURCE scalar keys
+    (``workset.template`` / ``agent.<a>.template``) so both land in the snapshot
+    floor: the scalar resolves the ``@``-ref, and a user override of the scalar
+    (config set / settings file) wins by cascade precedence and reroutes the seed.
+    ``system.base_template`` is already floor-materialized (it is a ``system.*``
+    settings-tier path), so it is NOT re-declared here.
     """
-    return std.base_template
+    from kanibako.agent_ref import harness_of
+    from kanibako.channels import has_workset_channels
+
+    # box_dest ``~`` (NOT ``~/``) so it expands to exactly ``/home/agent`` (GUEST_HOME,
+    # no trailing slash) — the create-time home the seed seam maps to proj.shell_path,
+    # matching the core ``box.bindings.rw.home`` dest.
+    defs: dict[str, object] = {
+        "system.seeded.template": ("@system.base_template", "~"),
+    }
+    if agent_id:
+        harness = harness_of(agent_id)
+        # SOURCE key (spec §2a/§2d): the per-agent template dir under the agent's
+        # (harness) store — the same @config.agents/<harness>/template the retired
+        # on-disk deriver produced, now a resolvable/settable keystore key.
+        defs[f"agent.{agent_id}.template"] = f"@config.agents/{harness}/template"
+        defs[f"agent.{agent_id}.seeded.template"] = (
+            f"@agent.{agent_id}.template", "~",
+        )
+    if has_workset_channels(proj):
+        # SOURCE key (spec §2c L507; Q3 default @meta.workset.path/template): the
+        # workset-local template dir. STANDALONE (no workset channels) omits BOTH
+        # the source and the layer (its workset tier is <None>).
+        defs["workset.template"] = "@meta.workset.path/template"
+        defs["workset.seeded.template"] = ("@workset.template", "~")
+    return defs
 
 
-def agent_template_dir(std: StandardPaths, agent_name: str) -> Path:
-    """Return the layer-2 agent-template source root ``@agent.<agent>.template``.
+def stage_layers(dest: Path, layers: list[Path]) -> None:
+    """Seed *dest* once from the ordered *layers* via a TEMP staging dir.
 
-    Derived as ``@config.agents/<agent_name>/template``.  Per-agent, so it
-    depends on the runtime agent name (hence a derived helper, not a
-    ``StandardPaths`` property).
-    """
-    return std.agents / agent_name / "template"
-
-
-def workset_template_dir(proj: ProjectPaths, std: StandardPaths) -> Path | None:
-    """Return the layer-3 workset-template source root ``@workset.template``.
-
-    Derived as ``@meta.workset.path/template`` for PRIMARY/NAMED worksets,
-    reusing :func:`kanibako.channels.workset_root`.  Returns ``None`` for
-    STANDALONE boxes (no workset-local template layer).
-    """
-    from kanibako.channels import has_workset_channels, workset_root
-
-    if not has_workset_channels(proj):
-        return None
-    return workset_root(proj, std) / "template"
-
-
-def template_layer_specs(
-    target: Target | None,
-    proj: ProjectPaths,
-    std: StandardPaths,
-) -> list[Path]:
-    """Return the ordered template-layer source roots, LOWEST -> HIGHEST.
-
-    The 1.6.0 home-seed model layers ordered template sources into the box home
-    at creation (base -> agent -> workset; later overlays earlier — §2a).  This
-    pure helper RESOLVES each layer's on-disk source root, in authority order::
-
-        1. base    @system.base_template       (always present)
-        2. agent   @agent.<agent>.template      (only when an agent target binds)
-        3. workset @workset.template            (None / absent for STANDALONE)
-
-    Layers whose source is ``None`` (no agent target; standalone has no workset
-    layer) or whose directory is absent on disk are SKIPPED, so the returned list
-    contains only real, existing layer roots ready to stage.  Reuses the existing
-    per-layer resolvers (:func:`base_template_dir`, :func:`agent_template_dir`,
-    :func:`workset_template_dir`) — no path logic is reinvented here.
-    """
-    candidates: list[Path | None] = [base_template_dir(std)]
-    if target is not None:
-        candidates.append(agent_template_dir(std, target.name))
-    candidates.append(workset_template_dir(proj, std))
-    return [layer for layer in candidates if layer is not None and layer.is_dir()]
-
-
-def stage_and_seed_templates(home: Path, layers: list[Path]) -> None:
-    """Seed *home* once from the ordered template *layers* via a TEMP staging dir.
-
-    Realises the key-route TEMP-STORE design (PLAN "R1/R4 RESOLVED ... TEMP-STORE
-    STAGE"): the per-file LAST-WINS merge across layers is resolved entirely in a
+    The per-file LAST-WINS merge across the ordered layer dirs is resolved in a
     temporary staging dir (where overwrite is intended), and the merged tree is
-    then copied into *home* with CREATE-IF-ABSENT (an existing home file is NEVER
-    overwritten).  Two phases:
+    then copied into *dest* with CREATE-IF-ABSENT (an existing *dest* file is
+    NEVER overwritten). Two phases:
 
     1. **Stage.** Copy each layer's files into a temporary dir in order
        (LOWEST -> HIGHEST).  Overwrite WITHIN staging is intended, so a later
        layer's file at the same relative path wins (per-file last-wins).
 
-    2. **Seed.** Copy the merged staged tree into *home* with
-       :func:`_copy_resource_tree_if_absent` — a pre-existing home file survives
+    2. **Seed.** Copy the merged staged tree into *dest* with
+       :func:`_copy_resource_tree_if_absent` — a pre-existing *dest* file survives
        untouched.  This is the load-bearing failsafe against re-seed DATA LOSS.
 
-    SEED-ONCE: the caller invokes this only at box CREATE (atomic with
-    registration; ``proj.is_new``), never on a relaunch — registry MEMBERSHIP is
-    the seed signal (keyspace spec §0/§5).  No file is special-cased or merged —
-    every file is a plain ordered copy (the CLAUDE.md merge special-case is gone,
-    D-B5).
+    SKIP-IF-ABSENT: a *layers* entry that is not an existing directory is silently
+    skipped (the spec §2a "layer skipped if the source dir is absent" — e.g. an
+    unpopulated ``@workset.template``). SEED-ONCE: the caller invokes this only at
+    box CREATE (registry MEMBERSHIP is the seed signal, spec §0/§5), never on a
+    relaunch. No file is special-cased or merged — every file is a plain ordered
+    copy (no CLAUDE.md merge, D-B5).
+
+    This is the layered-copy MECHANISM only; the layer dirs are resolved through
+    the keystore by the caller (``commands.start._apply_init_seeds``), NOT derived
+    on disk here — the "sole intermediary is the keystore" invariant (Q1/Q3/Q4).
     """
-    if not layers:
+    present = [layer for layer in layers if layer.is_dir()]
+    if not present:
         return
     with tempfile.TemporaryDirectory(prefix="kanibako-seed-") as staging:
         staged = Path(staging)
-        for layer in layers:
+        for layer in present:
             for entry in sorted(layer.rglob("*")):
                 if not entry.is_file():
                     continue
                 rel = entry.relative_to(layer)
-                dest = staged / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest_file = staged / rel
+                dest_file.parent.mkdir(parents=True, exist_ok=True)
                 # Overwrite within staging is intended (per-file last-wins).
-                shutil.copy2(str(entry), str(dest))
-        _copy_resource_tree_if_absent(staged, home)
+                shutil.copy2(str(entry), str(dest_file))
+        _copy_resource_tree_if_absent(staged, dest)
 
 
 # ---------------------------------------------------------------------------
@@ -239,5 +248,9 @@ def install_packaged_templates(std: StandardPaths, agent_names: list[str]) -> No
         agent_src = _packaged_agent_template(agent_name)
         if agent_src is None:
             continue
-        dest = agent_template_dir(std, agent_name)
+        # Runtime per-agent template store dir (@config.agents/<agent>/template) —
+        # the install DEST for the packaged content the layered seed later reads via
+        # the ``@agent.<agent>.template`` key (this is a packaged->runtime install,
+        # not the seed-SOURCE resolution the keystore owns).
+        dest = std.agents / agent_name / "template"
         _copy_resource_tree_if_absent(agent_src, dest)

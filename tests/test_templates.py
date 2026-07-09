@@ -1,8 +1,11 @@
-"""Tests for kanibako.templates."""
+"""Tests for kanibako.templates (the layered home-seed / template trio)."""
 
 from __future__ import annotations
 
+import logging
+
 import pytest
+import yaml
 
 from kanibako.paths import (
     WorksetSpec,
@@ -11,18 +14,17 @@ from kanibako.paths import (
     resolve_workset_project,
 )
 from kanibako.templates import (
-    agent_template_dir,
-    base_template_dir,
-    stage_and_seed_templates,
-    template_layer_specs,
-    workset_template_dir,
+    install_packaged_templates,
+    stage_layers,
+    template_seed_defaults,
 )
 from kanibako.workset import add_project, create_workset
 
 
-class TestStageAndSeedTemplates:
-    """The TEMP-STORE stage+seed: per-file last-wins merged in staging, then
-    seeded into home with create-if-absent (never clobbers an existing file)."""
+class TestStageLayers:
+    """The staging primitive: per-file last-wins merged in a temp dir, then
+    seeded into the dest with create-if-absent (never clobbers an existing file);
+    an absent-dir layer is skipped."""
 
     def _layer(self, root, name, files):
         d = root / name
@@ -52,7 +54,7 @@ class TestStageAndSeedTemplates:
             "shared.txt": "workset version",
         })
 
-        stage_and_seed_templates(home, [base, agent, workset])
+        stage_layers(home, [base, agent, workset])
 
         # Each layer's unique files all land.
         assert (home / "base-only.txt").read_text() == "base"
@@ -66,9 +68,8 @@ class TestStageAndSeedTemplates:
     def test_existing_home_file_survives_reseed(self, tmp_path):
         """THE CLOBBER REGRESSION: a pre-existing home file survives a re-seed.
 
-        A marker-less migrated box has a home full of user-edited files; a layer
-        shipping the same relative path must NOT overwrite the user's content
-        (create-if-absent seed).  This is the load-bearing data-loss guard.
+        A layer shipping the same relative path must NOT overwrite the user's
+        content (create-if-absent seed).  This is the load-bearing data-loss guard.
         """
         home = tmp_path / "home"
         home.mkdir()
@@ -78,7 +79,7 @@ class TestStageAndSeedTemplates:
             "base-only.txt": "base",
         })
 
-        stage_and_seed_templates(home, [base])
+        stage_layers(home, [base])
 
         # Pre-existing file preserved (NOT clobbered by the layer's same-path file).
         assert (home / "shared.txt").read_text() == "user changes"
@@ -93,27 +94,9 @@ class TestStageAndSeedTemplates:
         (nested / "settings.json").write_text("user settings")
         agent = self._layer(tmp_path, "agent", {".claude/settings.json": "shipped"})
 
-        stage_and_seed_templates(home, [agent])
+        stage_layers(home, [agent])
 
         assert (home / ".claude" / "settings.json").read_text() == "user settings"
-
-    def test_new_layer_files_land_in_nonempty_home(self, tmp_path):
-        """Files unique to a layer are seeded into an existing non-empty home."""
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "user-edited.txt").write_text("user changes")
-        base = self._layer(tmp_path, "base", {
-            "base-only.txt": "base",
-            "nested/deep.txt": "deep",
-        })
-
-        stage_and_seed_templates(home, [base])
-
-        # Pre-existing user file untouched.
-        assert (home / "user-edited.txt").read_text() == "user changes"
-        # New unique files (including nested) land.
-        assert (home / "base-only.txt").read_text() == "base"
-        assert (home / "nested" / "deep.txt").read_text() == "deep"
 
     def test_nested_directories(self, tmp_path):
         """Layers with nested directory structure are seeded correctly."""
@@ -124,24 +107,46 @@ class TestStageAndSeedTemplates:
         nested.mkdir(parents=True)
         (nested / "CLAUDE.md").write_text("# Instructions")
 
-        stage_and_seed_templates(home, [agent])
+        stage_layers(home, [agent])
 
         assert (home / ".claude" / "CLAUDE.md").read_text() == "# Instructions"
 
     def test_no_layers_is_noop(self, tmp_path):
-        """No layers -> home is untouched."""
+        """No layers -> dest is untouched."""
         home = tmp_path / "home"
         home.mkdir()
         (home / "existing.txt").write_text("untouched")
 
-        stage_and_seed_templates(home, [])
+        stage_layers(home, [])
 
         assert (home / "existing.txt").read_text() == "untouched"
         assert sorted(p.name for p in home.iterdir()) == ["existing.txt"]
 
+    def test_absent_layer_dir_skipped(self, tmp_path):
+        """A layer whose source dir does not exist is silently skipped (skip-if-
+        absent, spec §2a) — the remaining present layers still seed."""
+        home = tmp_path / "home"
+        home.mkdir()
+        base = self._layer(tmp_path, "base", {"base-only.txt": "base"})
+        missing = tmp_path / "nope"  # never created
+
+        stage_layers(home, [base, missing])
+
+        assert (home / "base-only.txt").read_text() == "base"
+
+    def test_all_layers_absent_is_noop(self, tmp_path):
+        """Every layer absent -> nothing staged, dest untouched (no temp dir churn)."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "keep.txt").write_text("keep")
+
+        stage_layers(home, [tmp_path / "a", tmp_path / "b"])
+
+        assert sorted(p.name for p in home.iterdir()) == ["keep.txt"]
+
 
 # ---------------------------------------------------------------------------
-# Layered-template path resolution (Phase 7a) — pure derivations, no apply.
+# The layered ``seeded.template`` DEFAULT-category table (spec §2a; Q1-Q4).
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -168,107 +173,207 @@ def standalone_proj(std, config, project_dir, credentials_dir):
     )
 
 
-class TestBaseTemplateDir:
-    def test_is_flat_base_template_root(self, std):
-        """Layer 1 reads @system.base_template FLAT (no general/ subdir)."""
-        assert base_template_dir(std) == std.base_template
+class TestTemplateSeedDefaults:
+    """``template_seed_defaults`` declares the three layers as ordinary keystore
+    ``seeded`` keys (+ their ``@``-ref SOURCE keys), gated per mode / agent."""
+
+    def test_system_layer_always_present(self, primary_proj):
+        defs = template_seed_defaults(primary_proj, "claude")
+        # Layer 1 (base) rides the seed system with NO carve-out (Q4).
+        assert defs["system.seeded.template"] == ("@system.base_template", "~")
+
+    def test_agent_layer_sources_harness_store(self, primary_proj):
+        """Layer 2: agent.<node>.seeded.template reads @agent.<node>.template,
+        which defaults to @config.agents/<harness>/template (Q2: node = persona+
+        harness; the SOURCE dir is the harness store)."""
+        defs = template_seed_defaults(primary_proj, "claude")
+        assert defs["agent.claude.template"] == "@config.agents/claude/template"
+        assert defs["agent.claude.seeded.template"] == ("@agent.claude.template", "~")
+
+    def test_no_agent_omits_agent_layer(self, primary_proj):
+        defs = template_seed_defaults(primary_proj, None)
+        assert not any(k.startswith("agent.") for k in defs)
+        # system + workset layers still declared.
+        assert "system.seeded.template" in defs
+        assert "workset.seeded.template" in defs
+
+    def test_workset_layer_default_points_at_workset_template(self, primary_proj):
+        """Layer 3 default = @meta.workset.path/template (Q3, was <None>)."""
+        defs = template_seed_defaults(primary_proj, "claude")
+        assert defs["workset.template"] == "@meta.workset.path/template"
+        assert defs["workset.seeded.template"] == ("@workset.template", "~")
+
+    def test_named_includes_workset_layer(self, named_proj):
+        defs = template_seed_defaults(named_proj, "claude")
+        assert "workset.seeded.template" in defs
+
+    def test_standalone_omits_workset_layer(self, standalone_proj):
+        """STANDALONE has no workset tier -> no workset.template source/layer
+        (spec §2c L483 workset.template <None>)."""
+        defs = template_seed_defaults(standalone_proj, "claude")
+        assert "workset.template" not in defs
+        assert "workset.seeded.template" not in defs
+        # base + agent layers still present.
+        assert "system.seeded.template" in defs
+        assert "agent.claude.seeded.template" in defs
 
 
-class TestAgentTemplateDir:
-    def test_derived_under_agents_store(self, std):
-        """Layer 2 = @system.agents/<agent>/template."""
-        assert agent_template_dir(std, "claude") == std.agents / "claude" / "template"
-
-    def test_agent_name_varies(self, std):
-        assert agent_template_dir(std, "goose") == std.agents / "goose" / "template"
-
-
-class TestWorksetTemplateDir:
-    def test_primary_roots_at_primary_workset(self, primary_proj, std):
-        assert (
-            workset_template_dir(primary_proj, std)
-            == std.primary_workset / "template"
-        )
-
-    def test_named_roots_at_workset_root(self, named_proj, std):
-        assert (
-            workset_template_dir(named_proj, std)
-            == named_proj.group.root / "template"
-        )
-
-    def test_standalone_is_none(self, standalone_proj, std):
-        assert workset_template_dir(standalone_proj, std) is None
-
+# ---------------------------------------------------------------------------
+# End-to-end layered home-seed through the keystore (_apply_init_seeds).
+# ---------------------------------------------------------------------------
 
 class _FakeTarget:
-    """Minimal stand-in for a resolved agent ``Target`` (only ``.name`` is read)."""
+    """Minimal resolved-agent stand-in: only ``.name`` + ``default_seeds()``
+    (empty) are read by the seed seam for a non-descriptor test target."""
 
-    def __init__(self, name):
-        self.name = name
+    name = "claude"
+
+    def default_seeds(self):
+        return {}
 
 
-class TestTemplateLayerSpecs:
-    """The pure ordered-layer resolver: LOWEST -> HIGHEST = base, agent, workset;
-    any layer whose source is None/absent is skipped."""
+def _seed(std, proj, *, agent="claude", shares=True):
+    """Drive the one-time home seed (the unified keystore-routed route)."""
+    from kanibako.commands.start import _apply_init_seeds
 
-    def _mk(self, path):
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+    _apply_init_seeds(
+        std=std,
+        proj=proj,
+        agent_name=agent,
+        target=_FakeTarget() if agent else None,
+        global_config_path=std.settings,
+        agent_config_path=std.agents / "claude" / "settings.yaml",
+        logger=logging.getLogger("test-seed"),
+        shares=shares,
+    )
 
-    def test_primary_orders_base_agent_workset(self, primary_proj, std):
-        """All three layers present -> [base, agent, workset] in that order."""
-        target = _FakeTarget("claude")
-        base = self._mk(base_template_dir(std))
-        agent = self._mk(agent_template_dir(std, "claude"))
-        workset = self._mk(workset_template_dir(primary_proj, std))
 
-        specs = template_layer_specs(target, primary_proj, std)
+class TestLayeredHomeSeed:
+    """The template trio seeded through the SINGLE keystore ``seeded`` route
+    (``_apply_init_seeds``) — base -> agent -> workset, per-file last-wins,
+    create-if-absent, skip-if-absent, credential-gate-exempt."""
 
-        assert specs == [base, agent, workset]
+    def _populate(self, std, primary_proj):
+        install_packaged_templates(std, ["claude"])
+        (std.base_template / "base-only.txt").write_text("base")
+        (std.base_template / "shared.txt").write_text("base")
+        agent_tpl = std.agents / "claude" / "template"
+        (agent_tpl / "agent-only.txt").write_text("agent")
+        (agent_tpl / "shared.txt").write_text("agent")
+        ws_tpl = std.primary_workset / "template"
+        ws_tpl.mkdir(parents=True, exist_ok=True)
+        (ws_tpl / "workset-only.txt").write_text("workset")
+        (ws_tpl / "shared.txt").write_text("workset")
+        return ws_tpl
 
-    def test_no_agent_target_skips_agent_layer(self, primary_proj, std):
-        """A None target (no-agent box) omits the layer-2 agent template."""
-        base = self._mk(base_template_dir(std))
-        workset = self._mk(workset_template_dir(primary_proj, std))
-        # Agent dir exists on disk but no target -> still skipped.
-        self._mk(agent_template_dir(std, "claude"))
+    def test_all_three_layers_seed_every_file(self, std, config, primary_proj):
+        """Q4: every file present in EACH layer dir is seeded — base + agent +
+        workset, packaged content included (not an enumerated subset)."""
+        self._populate(std, primary_proj)
+        _seed(std, primary_proj)
+        home = primary_proj.shell_path
+        # Base layer — the packaged INSTRUCTIONS.md AND the custom marker.
+        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / "base-only.txt").read_text() == "base"
+        # Agent layer — the packaged .claude.json/settings AND the custom marker.
+        assert (home / ".claude.json").is_file()
+        assert (home / ".claude" / "settings.json").is_file()
+        assert (home / "agent-only.txt").read_text() == "agent"
+        # Workset layer.
+        assert (home / "workset-only.txt").read_text() == "workset"
 
-        specs = template_layer_specs(None, primary_proj, std)
+    def test_layer_order_last_wins_per_file(self, std, config, primary_proj):
+        """base -> agent -> workset: the highest layer to ship a file wins."""
+        self._populate(std, primary_proj)
+        _seed(std, primary_proj)
+        assert (primary_proj.shell_path / "shared.txt").read_text() == "workset"
 
-        assert specs == [base, workset]
+    def test_agent_overlays_base_when_workset_silent(self, std, config, primary_proj):
+        """A file shipped by base + agent (not workset) resolves to the AGENT
+        version (later layer overlays earlier) — the create-if-absent-per-seed
+        FIRST-wins bug this route replaced would have kept the base version."""
+        install_packaged_templates(std, ["claude"])
+        (std.base_template / "two.txt").write_text("base two")
+        (std.agents / "claude" / "template" / "two.txt").write_text("agent two")
+        _seed(std, primary_proj)
+        assert (primary_proj.shell_path / "two.txt").read_text() == "agent two"
 
-    def test_standalone_skips_workset_layer(self, standalone_proj, std):
-        """STANDALONE: workset_template_dir() is None -> only [base, agent]."""
-        target = _FakeTarget("claude")
-        base = self._mk(base_template_dir(std))
-        agent = self._mk(agent_template_dir(std, "claude"))
+    def test_existing_home_file_never_clobbered(self, std, config, primary_proj):
+        """A user-owned home file survives the layered seed (create-if-absent)."""
+        self._populate(std, primary_proj)
+        home = primary_proj.shell_path
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "shared.txt").write_text("USER OWNED")
+        _seed(std, primary_proj)
+        assert (home / "shared.txt").read_text() == "USER OWNED"
 
-        specs = template_layer_specs(target, standalone_proj, std)
+    def test_absent_workset_template_skipped(self, std, config, primary_proj):
+        """No @workset.template dir on disk -> the layer is skipped (skip-if-
+        absent) and base + agent still seed (no crash)."""
+        install_packaged_templates(std, ["claude"])
+        # Deliberately do NOT create std.primary_workset/template.
+        _seed(std, primary_proj)
+        home = primary_proj.shell_path
+        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / ".claude.json").is_file()
 
-        assert specs == [base, agent]
+    def test_standalone_has_no_workset_layer(self, std, config, standalone_proj):
+        """STANDALONE seeds base + agent only (no workset tier)."""
+        install_packaged_templates(std, ["claude"])
+        _seed(std, standalone_proj)
+        home = standalone_proj.shell_path
+        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / ".claude.json").is_file()
 
-    def test_absent_layer_dir_skipped(self, primary_proj, std):
-        """A layer whose source dir does not exist on disk is skipped."""
-        target = _FakeTarget("claude")
-        base = self._mk(base_template_dir(std))
-        # agent + workset dirs deliberately NOT created -> absent -> skipped.
+    def test_no_agent_box_seeds_base_only(self, std, config, primary_proj):
+        """A NO-AGENT box seeds the base layer but NOT the agent layer."""
+        install_packaged_templates(std, ["claude"])
+        (std.base_template / "base-only.txt").write_text("base")
+        _seed(std, primary_proj, agent="")
+        home = primary_proj.shell_path
+        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / "base-only.txt").is_file()
+        # No agent template layer.
+        assert not (home / ".claude.json").exists()
 
-        specs = template_layer_specs(target, primary_proj, std)
+    def test_private_box_keeps_template_layers(self, std, config, primary_proj):
+        """shares=False (PRIVATE box) suppresses CREDENTIAL seeds only — the
+        template layers are non-credential and STILL seed (D-M4 gate exemption)."""
+        self._populate(std, primary_proj)
+        _seed(std, primary_proj, shares=False)
+        home = primary_proj.shell_path
+        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / ".claude.json").is_file()
+        assert (home / "workset-only.txt").is_file()
 
-        assert specs == [base]
+    def test_workset_template_repoint_reroutes_seed(self, std, config, primary_proj, tmp_path):
+        """MUTATION PROOF (settable source): setting ``workset.template`` in the
+        workset settings file reroutes the layer-3 seed to the new dir — the seed
+        reads the KEY, not a hardcoded path."""
+        install_packaged_templates(std, ["claude"])
+        custom = tmp_path / "custom-tpl"
+        custom.mkdir()
+        (custom / "CUSTOM.txt").write_text("custom")
+        # Default dir populated too — to prove the OVERRIDE wins over the default.
+        ws_default = std.primary_workset / "template"
+        ws_default.mkdir(parents=True, exist_ok=True)
+        (ws_default / "DEFAULT.txt").write_text("default")
 
-    def test_empty_when_no_layer_dirs_exist(self, primary_proj, std):
-        """No layer dirs on disk at all -> empty list (nothing to seed)."""
-        target = _FakeTarget("claude")
-        assert template_layer_specs(target, primary_proj, std) == []
+        wsf = std.primary_workset / "settings.yaml"
+        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+        doc.setdefault("workset", {})["template"] = str(custom)
+        wsf.write_text(yaml.safe_dump(doc))
+
+        _seed(std, primary_proj)
+        home = primary_proj.shell_path
+        assert (home / "CUSTOM.txt").read_text() == "custom"
+        # The default workset dir is NOT used once the key is repointed.
+        assert not (home / "DEFAULT.txt").exists()
 
 
 # ---------------------------------------------------------------------------
-# Packaged curated-template install + fresh-box seeding (Phase 9c).
+# Packaged curated-template install (Phase 9c) — the packaged->runtime copy.
 # ---------------------------------------------------------------------------
-
-from kanibako.templates import install_packaged_templates  # noqa: E402
-
 
 class TestInstallPackagedTemplates:
     def test_base_instructions_landed(self, std):
@@ -279,51 +384,28 @@ class TestInstallPackagedTemplates:
     def test_claude_template_landed(self, std):
         """The claude agent template (.claude.json stub + settings + AGENTS.md) is copied."""
         install_packaged_templates(std, ["claude"])
-        dest = agent_template_dir(std, "claude")
+        dest = std.agents / "claude" / "template"
         assert (dest / ".claude.json").is_file()
         assert (dest / ".claude" / "settings.json").is_file()
-        # STEP 2b — the editable user-instructions stub the loader @import's.
         assert (dest / ".claude" / "AGENTS.md").is_file()
-        # The old home-root CLAUDE.md "Project notes" stub is gone (its user-notes
-        # role moved to ~/.claude/AGENTS.md; the ~/.claude/CLAUDE.md loader is an RO
-        # bind, NOT a seeded template file).
         assert not (dest / "CLAUDE.md").exists()
-        # The onboarding stub marks onboarding complete.
         import json
         data = json.loads((dest / ".claude.json").read_text())
         assert data.get("hasCompletedOnboarding") is True
 
-    def test_claude_agents_md_seeds_create_if_absent(self, std, tmp_path):
-        """STEP 2b — the editable ~/.claude/AGENTS.md seeds once, never clobbering edits.
-
-        It lands in a fresh box home via the agent template layer, and a subsequent
-        re-seed leaves a user's edits intact (create-if-absent).
-        """
-        install_packaged_templates(std, ["claude"])
-        home = tmp_path / "box-home"
-        layers = [agent_template_dir(std, "claude")]
-        stage_and_seed_templates(home, layers)
-        seeded = home / ".claude" / "AGENTS.md"
-        assert seeded.is_file()
-
-        # User edits their instructions; a re-seed must NOT overwrite them.
-        seeded.write_text("MY AGENT NOTES")
-        stage_and_seed_templates(home, layers)
-        assert seeded.read_text() == "MY AGENT NOTES"
-
     def test_goose_and_codex_templates_landed(self, std):
         install_packaged_templates(std, ["goose", "codex"])
         assert (
-            agent_template_dir(std, "goose") / ".config" / "goose" / "config.yaml"
+            std.agents / "goose" / "template" / ".config" / "goose" / "config.yaml"
         ).is_file()
         assert (
-            agent_template_dir(std, "codex") / ".codex" / "config.toml"
+            std.agents / "codex" / "template" / ".codex" / "config.toml"
         ).is_file()
 
     def test_unknown_agent_is_skipped(self, std):
         """An agent with no packaged template (e.g. no_agent) is a no-op."""
         install_packaged_templates(std, ["no_agent"])
-        assert not (agent_template_dir(std, "no_agent")).exists()
+        assert not (std.agents / "no_agent" / "template").exists()
 
     def test_create_if_absent_does_not_clobber(self, std):
         """A user-edited template file survives a re-install (create-if-absent)."""
@@ -339,7 +421,6 @@ class TestInstallPackagedTemplates:
         install_packaged_templates(std, ["claude"])
         assert std.instructions.is_file()
         assert std.instructions == std.data / "global" / "KANIBAKO.md"
-        # Verbatim shipped content (header line of the packaged default).
         assert std.instructions.read_text().startswith(
             "# KANIBAKO.md — Operating Guide for Agents in a Kanibako Box"
         )
@@ -350,20 +431,3 @@ class TestInstallPackagedTemplates:
         std.instructions.write_text("MY BOX GUIDE")
         install_packaged_templates(std, ["claude"])
         assert std.instructions.read_text() == "MY BOX GUIDE"
-
-    def test_fresh_box_seeds_base_and_agent(self, std, tmp_path):
-        """End-to-end: install packaged templates, then the layered seed-once
-        stage+seed lands the base INSTRUCTIONS.md + the agent files into a box
-        home (standalone: no workset layer -> only base + agent are present)."""
-        install_packaged_templates(std, ["claude"])
-        home = tmp_path / "box-home"
-        layers = [
-            base_template_dir(std),
-            agent_template_dir(std, "claude"),
-        ]
-        stage_and_seed_templates(home, layers)
-        # Base layer seeded.
-        assert (home / "INSTRUCTIONS.md").is_file()
-        # Agent layer seeded.
-        assert (home / ".claude.json").is_file()
-        assert (home / ".claude" / "settings.json").is_file()

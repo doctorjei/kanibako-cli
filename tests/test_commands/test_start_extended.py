@@ -425,7 +425,9 @@ class TestAgentConfigFirstUse:
             m.target.generate_agent_config.assert_not_called()
 
     def test_template_layers_applied_for_new_box(self, start_mocks):
-        """A new box stages+seeds the ordered template layers once."""
+        """A new box seeds the ordered template layers once — now through the
+        keystore-routed ``_apply_init_seeds`` (Q1): the ``~``-targeted template
+        trio is staged via ``templates.stage_layers`` into the box home."""
         import kanibako.templates
         with start_mocks() as m:
             # B7 seed-at-create / membership model: the one-time home seed is
@@ -439,9 +441,10 @@ class TestAgentConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The already-patched stage_and_seed_templates should have been
-            # called once, seeding the box home from the resolved layer specs.
-            mock_fn = kanibako.templates.stage_and_seed_templates
+            # The patched stage_layers seeds the layered template trio into the box
+            # home (proj.shell_path): the three seeded.template layers all target
+            # ``~`` and reconcile to one same-dest COPY group applied here.
+            mock_fn = kanibako.templates.stage_layers
             mock_fn.assert_called_once()
             # First positional arg = the box home (proj.shell_path).
             assert mock_fn.call_args[0][0] is m.proj.shell_path
