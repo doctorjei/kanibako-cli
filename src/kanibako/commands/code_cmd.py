@@ -61,21 +61,21 @@ def _attach_uri(container_name: str, context: str | None = None) -> str:
     """Build the VS Code ``vscode-remote://`` attach URI for *container_name*.
 
     The container is named by a hex-encoded JSON object
-    (``{"containerName":"/<name>"}`` — note the leading slash), followed
-    immediately by the in-box workspace path.  When *context* is given, a
-    per-window routing token is embedded as ``settings.context`` (the R1
-    context-token dispatch channel for ``--remote``); when it is ``None`` the
-    payload is BYTE-IDENTICAL to the local (non-remote) URI.
+    (``{"containerName":"<name>"}``), followed immediately by the in-box
+    workspace path.  When *context* is given, a per-window routing token is
+    embedded as ``settings.context`` (the R1 context-token dispatch channel
+    for ``--remote``).
 
-    Remote payloads carry the BARE name: the remote podman engine rejects the
-    docker-convention leading slash (``Error: no such container "/<name>"`` —
-    e2e-confirmed against podman 5.4.2 server-side), while the extension
-    accepts a bare name or ID.  The local payload keeps the slash unchanged
-    (the rc4-shipped local attach is validated with it).
+    The name is BARE — never the docker-API-convention ``/<name>``: podman
+    rejects the leading slash on both local CLI and remote API lookups
+    (``Error: no such container /<name>`` — confirmed on 4.9.3 local, 5.4.2
+    local AND 5.4.2 remote, plus a live local-attach failure on Raiju), while
+    the Dev Containers extension accepts a bare name or ID.  The slash form
+    shipped in rc4-rc7 local URIs but was never exercised end-to-end against
+    podman until 2026-07-09 (the picker flow, which the earlier validations
+    used, never goes through this payload).
     """
-    is_remote = context is not None
-    cname_ref = container_name if is_remote else f"/{container_name}"
-    payload_obj: dict[str, object] = {"containerName": cname_ref}
+    payload_obj: dict[str, object] = {"containerName": container_name}
     if context is not None:
         payload_obj["settings"] = {"context": context}
     payload = json.dumps(payload_obj, separators=(",", ":"))
