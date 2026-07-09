@@ -329,22 +329,40 @@ kanibako code --remote <host> <project>
 
 attaches your **local** VS Code to a box on a **remote** kanibako host —
 no relay service, no VS Code on the remote host. `<host>` is an opaque SSH
-destination resolved by your own `~/.ssh/config` (aliases, ProxyJump, ports,
-and keys all apply); kanibako starts the box over SSH and VS Code drives the
-remote rootless podman socket through a shared SSH connection.
+destination resolved by your own `~/.ssh/config`. kanibako runs the box
+lifecycle on the remote host over plain SSH, and the container-engine leg
+rides a kanibako-owned SSH tunnel: one OpenSSH `ControlPersist` master
+forwards the remote rootless podman socket to a local unix socket, and local
+podman dials that socket. podman's own golang `ssh:` transport is **not**
+used, so no `ssh-agent` is required, your `~/.ssh/config` is fully honored
+(aliases, ProxyJump, ports, `IdentityFile`), and per-call SSH handshake
+overhead is gone once the first call warms the tunnel.
 
-On the remote host you need kanibako (same release train) and the rootless
-podman API socket:
+Requirements:
 
-```bash
-systemctl --user enable --now podman.socket
-loginctl enable-linger "$USER"
-```
+- the same kanibako **version** on both hosts, plus a local `code` CLI and
+  local `podman` (the `--remote` client);
+- the rootless podman API socket on the remote host:
+
+  ```bash
+  systemctl --user enable --now podman.socket
+  loginctl enable-linger "$USER"
+  ```
 
 On first `--remote` use, kanibako asks to point
 `dev.containers.dockerPath` at its dispatch wrapper (local attaches are
 unaffected — the wrapper is a pass-through to `podman` except for remote
 attach windows).
+
+If a remote attach fails, check the dispatch log at
+`~/.local/state/kanibako/vscode-remote/dispatch.log` (or under
+`$XDG_STATE_HOME`) — one line per engine call showing the resolved route and
+context.
+
+> **First attach:** the first time VS Code attaches to a given container it
+> shows a workspace-trust dialog you must click through. In headless or
+> automated setups this can look like a silent hang — bring the VS Code
+> window forward and confirm the trust prompt to proceed.
 
 ## Common Flags
 
