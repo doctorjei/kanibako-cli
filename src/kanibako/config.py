@@ -530,6 +530,64 @@ def read_setup_completed(config_path: Path | None) -> str | None:
     return value or None
 
 
+def read_templates_stamp(config_path: Path | None) -> str | None:
+    """Read the ``system.templates_stamp`` content-manifest hash from the CONFIG file.
+
+    A sibling of :func:`read_setup_completed`: ``system.templates_stamp`` is a
+    plain ``[system]`` leaf in ``~/.config/kanibako_config.yaml`` recording the
+    packaged-template content digest at which the runtime template dirs were last
+    installed/refreshed (first-run init or ``kanibako setup``).  The typed loader
+    ignores unknown ``[system]`` leaves, so this RAW reader is required for the
+    template-staleness gate to read it back.  *config_path* is the
+    kanibako_config.yaml CONFIG file.
+
+    Returns the stored digest string, or ``None`` when the file/key is absent or
+    empty (a host that predates the stamp — the gate treats that as STALE).
+    """
+    if config_path is None or not config_path.exists():
+        return None
+    data = load_doc(config_path)
+    system = data.get("system")
+    if not isinstance(system, dict):
+        return None
+    value = str(system.get("templates_stamp", "")).strip()
+    return value or None
+
+
+def template_staleness_gate(config_path: Path | None) -> None:
+    """HARD template-staleness gate: raise :class:`ConfigError` when stale.
+
+    STALE ⟺ the recorded ``system.templates_stamp`` differs from the CURRENT
+    packaged-template digest (:func:`kanibako.templates.packaged_templates_digest`
+    over the INSTALLED agent plugins, ``sorted(discover_targets())`` — matching
+    first-run ``target_names``).  A host that predates the stamp reads ``None``,
+    which is likewise ``!= digest`` → stale.  Returns ``None`` when current.
+
+    An UNINITIALIZED host (no config file yet) is NOT gated: first-run init
+    (``cli._ensure_initialized``) installs the templates and writes the stamp, and
+    the nudge runs BEFORE init on that very first invocation — hard-blocking it
+    would break first run.  Only an already-initialized host (config file present)
+    with a missing/stale stamp trips the gate.  The comparison is over the PACKAGED
+    src digest + the recorded stamp, so it needs no host-side template dirs.
+    """
+    from kanibako.errors import ConfigError
+
+    if config_path is None or not config_path.exists():
+        return
+
+    from kanibako.targets import discover_targets
+    from kanibako.templates import packaged_templates_digest
+
+    agent_names = sorted(discover_targets().keys())
+    current = packaged_templates_digest(agent_names)
+    stored = read_templates_stamp(config_path)
+    if stored != current:
+        raise ConfigError(
+            "kanibako's bundled templates changed since setup was last run. "
+            "Run 'kanibako setup' to update them."
+        )
+
+
 def setup_compat_gate(config_path: Path | None) -> str | None:
     """Run the 5-band setup/config compatibility gate for *config_path*.
 

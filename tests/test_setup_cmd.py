@@ -254,3 +254,130 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
     assert "Shell" in out
     assert "not found on this system" not in out
     assert "image default" in out
+
+
+# --- Step 5: template-refresh step (informed-consent flow) -----------------
+
+
+def _read_stamp(tmp_home):
+    from kanibako.config import read_templates_stamp
+
+    cf, _ = _config_paths(tmp_home)
+    return read_templates_stamp(cf)
+
+
+def _current_digest():
+    from kanibako.targets import discover_targets
+    from kanibako.templates import packaged_templates_digest
+
+    return packaged_templates_digest(sorted(discover_targets()))
+
+
+def _resolve_std():
+    from kanibako.config import load_config
+    from kanibako.paths import load_std_paths
+
+    cf, _ = setup_cmd._settings_paths()
+    return load_std_paths(load_config(cf))
+
+
+def test_template_step_forced_flag_applies_and_stamps(tmp_home, config_file):
+    """--refresh-templates: apply refresh + stamp non-interactively (no prompt)."""
+    setup_cmd._run_template_refresh(_ns(refresh_templates=True))
+    std = _resolve_std()
+    assert std.instructions.is_file()  # applied
+    assert (std.agents / "claude" / "template" / ".claude.json").is_file()
+    assert _read_stamp(tmp_home) == _current_digest()  # gate clears
+
+
+def test_template_step_nothing_to_do_stamps_silently(tmp_home, config_file, capsys):
+    """Already current → stamp silently (clears the gate), no prompt."""
+    from kanibako.templates import install_packaged_templates
+
+    std = _resolve_std()
+    install_packaged_templates(std, setup_cmd._known_target_names())
+    setup_cmd._run_template_refresh(_ns())
+    assert _read_stamp(tmp_home) == _current_digest()
+    assert "up to date" in capsys.readouterr().out
+
+
+def test_template_step_tty_accept_applies_and_stamps(tmp_home, config_file, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    setup_cmd._run_template_refresh(_ns())
+    std = _resolve_std()
+    assert std.instructions.is_file()  # applied
+    assert _read_stamp(tmp_home) == _current_digest()
+
+
+def test_template_step_tty_decline_stamps_without_applying(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """Decline: do NOT apply, but STAMP ANYWAY so the hard gate clears."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    setup_cmd._run_template_refresh(_ns())
+    std = _resolve_std()
+    # Not applied — the shipped files were NOT written.
+    assert not std.instructions.exists()
+    # Stamp written anyway (informed consent → gate clears).
+    assert _read_stamp(tmp_home) == _current_digest()
+    assert "unblessed state" in capsys.readouterr().out
+
+
+def test_template_step_non_tty_no_flag_skips_without_stamping(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """Non-tty, no forced flag → SKIP without stamping (gate keeps erroring)."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    def _boom(*a, **k):
+        raise AssertionError("input() must not be called in non-TTY mode")
+
+    monkeypatch.setattr("builtins.input", _boom)
+    setup_cmd._run_template_refresh(_ns())
+    std = _resolve_std()
+    assert not std.instructions.exists()  # not applied
+    assert _read_stamp(tmp_home) is None  # NOT stamped → gate still errors
+    assert "cannot be updated non-interactively" in capsys.readouterr().out
+
+
+def test_template_step_decline_clears_the_gate(tmp_home, config_file, monkeypatch):
+    """End-to-end: after a TTY decline the template_staleness_gate no longer raises."""
+    from kanibako.config import config_file_path, template_staleness_gate
+    from kanibako.paths import xdg
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    setup_cmd._run_template_refresh(_ns())
+    cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    # Gate now passes (returns None, no raise).
+    assert template_staleness_gate(cf) is None
+
+
+def test_setup_refresh_templates_flag_parsed(monkeypatch):
+    """`setup --refresh-templates` parses to args.refresh_templates = True."""
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    setup_cmd.add_arguments(parser)
+    args = parser.parse_args(["--refresh-templates"])
+    assert args.refresh_templates is True
+    args = parser.parse_args([])
+    assert args.refresh_templates is False
+
+
+def test_full_setup_with_refresh_flag_stamps(tmp_home, config_file, monkeypatch):
+    """`setup --refresh-templates` (full run) writes marker AND template stamp."""
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    monkeypatch.setattr(
+        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
+    )
+    monkeypatch.setattr(
+        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
+    )
+    rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
+    assert rc == 0
+    cf, _ = _config_paths(tmp_home)
+    assert read_setup_completed(cf) == __version__
+    assert _read_stamp(tmp_home) == _current_digest()

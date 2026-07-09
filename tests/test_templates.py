@@ -14,7 +14,12 @@ from kanibako.paths import (
     resolve_workset_project,
 )
 from kanibako.templates import (
+    _packaged_base_template,
+    _packaged_instructions,
+    copy_resource_tree_if_absent,
     install_packaged_templates,
+    packaged_templates_digest,
+    plan_template_refresh,
     stage_layers,
     template_seed_defaults,
 )
@@ -431,3 +436,175 @@ class TestInstallPackagedTemplates:
         std.instructions.write_text("MY BOX GUIDE")
         install_packaged_templates(std, ["claude"])
         assert std.instructions.read_text() == "MY BOX GUIDE"
+
+
+# ---------------------------------------------------------------------------
+# Template-update setup-gate arc: content-manifest digest, TRUE-REFRESH copy,
+# and the refresh plan partition.
+# ---------------------------------------------------------------------------
+
+class TestPackagedTemplatesDigest:
+    """``packaged_templates_digest`` — deterministic content hash over the
+    packaged base + KANIBAKO.md + each agent template tree."""
+
+    def _fake_trees(self, monkeypatch, tmp_path, *, base="B", instr="I", claude="C"):
+        base_dir = tmp_path / "pbase"
+        base_dir.mkdir()
+        (base_dir / "INSTRUCTIONS.md").write_text(base)
+        instr_f = tmp_path / "KANIBAKO.md"
+        instr_f.write_text(instr)
+        claude_dir = tmp_path / "pclaude"
+        claude_dir.mkdir()
+        (claude_dir / ".claude.json").write_text(claude)
+        monkeypatch.setattr(
+            "kanibako.templates._packaged_base_template", lambda: base_dir
+        )
+        monkeypatch.setattr(
+            "kanibako.templates._packaged_instructions", lambda: instr_f
+        )
+        monkeypatch.setattr(
+            "kanibako.templates._packaged_agent_template",
+            lambda name: claude_dir if name == "claude" else None,
+        )
+        return base_dir, instr_f, claude_dir
+
+    def test_deterministic_and_order_independent(self, monkeypatch, tmp_path):
+        self._fake_trees(monkeypatch, tmp_path)
+        d1 = packaged_templates_digest(["claude", "no_agent"])
+        d2 = packaged_templates_digest(["no_agent", "claude"])
+        assert d1 == d2
+        assert len(d1) == 64  # sha256 hex
+
+    def test_changes_when_base_file_changes(self, monkeypatch, tmp_path):
+        base_dir, _, _ = self._fake_trees(monkeypatch, tmp_path)
+        before = packaged_templates_digest(["claude"])
+        (base_dir / "INSTRUCTIONS.md").write_text("CHANGED")
+        assert packaged_templates_digest(["claude"]) != before
+
+    def test_changes_when_instructions_change(self, monkeypatch, tmp_path):
+        _, instr_f, _ = self._fake_trees(monkeypatch, tmp_path)
+        before = packaged_templates_digest(["claude"])
+        instr_f.write_text("NEW GUIDE")
+        assert packaged_templates_digest(["claude"]) != before
+
+    def test_changes_when_agent_template_changes(self, monkeypatch, tmp_path):
+        _, _, claude_dir = self._fake_trees(monkeypatch, tmp_path)
+        before = packaged_templates_digest(["claude"])
+        (claude_dir / ".claude.json").write_text("NEW")
+        assert packaged_templates_digest(["claude"]) != before
+
+    def test_agent_membership_changes_digest(self, monkeypatch, tmp_path):
+        self._fake_trees(monkeypatch, tmp_path)
+        # ``claude`` contributes a packaged tree; ``no_agent`` contributes none.
+        assert packaged_templates_digest(["claude"]) != packaged_templates_digest(
+            ["no_agent"]
+        )
+
+    def test_real_packaged_digest_stable(self):
+        """Over the REAL packaged data the digest is stable across calls."""
+        from kanibako.targets import discover_targets
+
+        names = sorted(discover_targets())
+        assert packaged_templates_digest(names) == packaged_templates_digest(names)
+        assert len(packaged_templates_digest(names)) == 64
+
+
+class TestInstallPackagedTemplatesRefresh:
+    """``install_packaged_templates(..., refresh=True)`` = TRUE REFRESH: shipped
+    files overwritten to current packaged versions; user-only files untouched."""
+
+    def test_refresh_overwrites_changed_shipped_file(self, std):
+        install_packaged_templates(std, ["claude"])
+        instr = std.base_template / "INSTRUCTIONS.md"
+        instr.write_text("STALE USER EDIT")
+        install_packaged_templates(std, ["claude"], refresh=True)
+        packaged = (_packaged_base_template() / "INSTRUCTIONS.md").read_text()
+        assert instr.read_text() == packaged
+        assert instr.read_text() != "STALE USER EDIT"
+
+    def test_refresh_adds_missing_shipped_file(self, std):
+        """A never-installed host: refresh ADDS every shipped file."""
+        install_packaged_templates(std, ["claude"], refresh=True)
+        assert (std.base_template / "INSTRUCTIONS.md").is_file()
+        assert (std.agents / "claude" / "template" / ".claude.json").is_file()
+
+    def test_refresh_leaves_user_only_file(self, std):
+        install_packaged_templates(std, ["claude"])
+        user_file = std.base_template / "MY_NOTES.md"
+        user_file.write_text("user only")
+        install_packaged_templates(std, ["claude"], refresh=True)
+        assert user_file.read_text() == "user only"
+
+    def test_refresh_overwrites_kanibako_md(self, std):
+        install_packaged_templates(std, ["claude"])
+        std.instructions.write_text("STALE GUIDE")
+        install_packaged_templates(std, ["claude"], refresh=True)
+        assert std.instructions.read_text() == _packaged_instructions().read_text()
+        assert std.instructions.read_text() != "STALE GUIDE"
+
+    def test_refresh_overwrites_agent_file(self, std):
+        install_packaged_templates(std, ["claude"])
+        stub = std.agents / "claude" / "template" / ".claude.json"
+        stub.write_text("{}")
+        install_packaged_templates(std, ["claude"], refresh=True)
+        assert stub.read_text() != "{}"
+
+
+class TestCreateIfAbsentRegression:
+    """The create-if-absent default (box-seed path) is UNCHANGED by the refresh
+    variant — it must still skip existing files."""
+
+    def test_install_default_still_create_if_absent(self, std):
+        install_packaged_templates(std, ["claude"])
+        instr = std.base_template / "INSTRUCTIONS.md"
+        instr.write_text("MY EDITS")
+        install_packaged_templates(std, ["claude"])  # refresh defaults False
+        assert instr.read_text() == "MY EDITS"
+
+    def test_public_alias_still_skips_existing(self, tmp_path):
+        """``copy_resource_tree_if_absent`` (the box-seed apply reuses it) must
+        still leave an existing dest file untouched (the data-loss guard)."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("shipped")
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        (dest / "a.txt").write_text("USER OWNED")
+        copy_resource_tree_if_absent(src, dest)
+        assert (dest / "a.txt").read_text() == "USER OWNED"
+
+
+class TestPlanTemplateRefresh:
+    """``plan_template_refresh`` → (added, overwritten) partition; unchanged
+    files and user-only files never appear."""
+
+    def test_all_added_on_empty_host(self, std):
+        added, overwritten = plan_template_refresh(std, ["claude"])
+        assert overwritten == []
+        assert std.instructions in added
+        assert any(p.name == "INSTRUCTIONS.md" for p in added)
+
+    def test_unchanged_after_install_is_empty(self, std):
+        install_packaged_templates(std, ["claude"])
+        added, overwritten = plan_template_refresh(std, ["claude"])
+        assert added == []
+        assert overwritten == []
+
+    def test_changed_file_is_overwritten_partition(self, std):
+        install_packaged_templates(std, ["claude"])
+        (std.base_template / "INSTRUCTIONS.md").write_text("changed")
+        added, overwritten = plan_template_refresh(std, ["claude"])
+        assert (std.base_template / "INSTRUCTIONS.md") in overwritten
+        assert added == []
+
+    def test_missing_file_is_added_partition(self, std):
+        install_packaged_templates(std, ["claude"])
+        std.instructions.unlink()
+        added, overwritten = plan_template_refresh(std, ["claude"])
+        assert std.instructions in added
+
+    def test_user_only_file_absent_from_plan(self, std):
+        install_packaged_templates(std, ["claude"])
+        (std.base_template / "USER.md").write_text("mine")
+        added, overwritten = plan_template_refresh(std, ["claude"])
+        assert all(p.name != "USER.md" for p in added + overwritten)

@@ -304,9 +304,19 @@ def _ensure_initialized() -> None:
     # ``templates.stage_layers``) then copies them into each new box home at
     # creation.
     from kanibako.paths import load_std_paths
-    from kanibako.templates import install_packaged_templates
+    from kanibako.templates import (
+        install_packaged_templates,
+        packaged_templates_digest,
+    )
 
-    install_packaged_templates(load_std_paths(config), target_names)
+    std_paths = load_std_paths(config)
+    install_packaged_templates(std_paths, target_names)
+    # Record the template content stamp so the staleness gate never trips on a
+    # freshly-initialized host (install + stamp are one atomic first-run step).
+    # ``target_names`` matches the gate's ``sorted(discover_targets())`` set.
+    from kanibako.config_interface import write_system_value
+
+    write_system_value(cf, "templates_stamp", packaged_templates_digest(target_names))
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file
@@ -355,11 +365,21 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         return
 
     try:
-        from kanibako.config import config_file_path, setup_compat_gate
+        from kanibako.config import (
+            config_file_path,
+            setup_compat_gate,
+            template_staleness_gate,
+        )
         from kanibako.paths import xdg
 
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         message = setup_compat_gate(cf)
+        # Template-staleness gate (HARD error, rc1): fires only on an already-
+        # initialized host whose recorded stamp != the current packaged-template
+        # digest.  Kept INSIDE this defensive try so any unexpected failure
+        # (missing packaged data, hash error) is swallowed like every other
+        # non-deliberate fault; only the deliberate ConfigError propagates.
+        template_staleness_gate(cf)
     except KanibakoError:
         # Deliberate ERROR band — propagate so the CLI surfaces rc1.
         raise

@@ -151,6 +151,77 @@ class TestReadSetupCompleted:
         assert data["box"]["agent_name"] != "none"
 
 
+class TestReadTemplatesStamp:
+    """read_templates_stamp: raw [system] templates_stamp reader (template gate)."""
+
+    def test_reads_stored_string(self, tmp_path):
+        from kanibako.config import read_templates_stamp
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "templates_stamp", "deadbeef")
+        assert read_templates_stamp(cf) == "deadbeef"
+
+    def test_absent_key_returns_none(self, tmp_path):
+        from kanibako.config import read_templates_stamp
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_global_config(cf)  # has [system] but no templates_stamp
+        assert read_templates_stamp(cf) is None
+
+    def test_missing_file_returns_none(self, tmp_path):
+        from kanibako.config import read_templates_stamp
+
+        assert read_templates_stamp(tmp_path / "nope.yaml") is None
+        assert read_templates_stamp(None) is None
+
+
+class TestTemplateStalenessGate:
+    """template_staleness_gate: HARD rc1 gate on packaged-template drift."""
+
+    def _current_digest(self):
+        from kanibako.targets import discover_targets
+        from kanibako.templates import packaged_templates_digest
+
+        return packaged_templates_digest(sorted(discover_targets()))
+
+    def test_absent_stamp_on_initialized_host_raises(self, tmp_path):
+        """Initialized host (config file present) with NO stamp → hard error."""
+        from kanibako.config import template_staleness_gate
+        from kanibako.errors import ConfigError
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_global_config(cf)  # initialized, but predates the stamp
+        with pytest.raises(ConfigError) as exc:
+            template_staleness_gate(cf)
+        assert "bundled templates changed" in str(exc.value)
+
+    def test_current_stamp_passes(self, tmp_path):
+        from kanibako.config import template_staleness_gate
+        from kanibako.config_interface import write_system_value
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "templates_stamp", self._current_digest())
+        assert template_staleness_gate(cf) is None
+
+    def test_stale_stamp_raises(self, tmp_path):
+        from kanibako.config import template_staleness_gate
+        from kanibako.config_interface import write_system_value
+        from kanibako.errors import ConfigError
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_system_value(cf, "templates_stamp", "stale-digest")
+        with pytest.raises(ConfigError):
+            template_staleness_gate(cf)
+
+    def test_uninitialized_host_not_gated(self, tmp_path):
+        """No config file yet → first-run init owns the stamp; never hard-block."""
+        from kanibako.config import template_staleness_gate
+
+        assert template_staleness_gate(tmp_path / "nope.yaml") is None
+        assert template_staleness_gate(None) is None
+
+
 class TestSetupCompatGate:
     """setup_compat_gate: the 5-band setup/config compatibility gate.
 

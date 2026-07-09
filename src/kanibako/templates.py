@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.resources
 import shutil
 import tempfile
@@ -160,12 +161,21 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _copy_resource_tree_if_absent(src: Path, dest: Path) -> None:
+def _copy_resource_tree_if_absent(
+    src: Path, dest: Path, *, overwrite: bool = False,
+) -> None:
     """Copy every file under *src* into *dest*, skipping files that exist.
 
     Mirrors the relative tree of *src* into *dest*.  Existing destination files
     are left untouched (create-if-absent) so user edits to a seeded template
     survive a later kanibako upgrade.  Directories are created as needed.
+
+    When *overwrite* is True (the TRUE-REFRESH path used by
+    ``install_packaged_templates(..., refresh=True)``) an existing destination
+    file IS replaced with the packaged version.  The default (False) preserves
+    the load-bearing create-if-absent contract — the public alias
+    :data:`copy_resource_tree_if_absent` (reused by the box-SEED apply in
+    ``commands.start``) must NEVER clobber a per-box home file.
     """
     if not src.is_dir():
         return
@@ -174,7 +184,7 @@ def _copy_resource_tree_if_absent(src: Path, dest: Path) -> None:
             continue
         rel = entry.relative_to(src)
         target = dest / rel
-        if target.exists():
+        if target.exists() and not overwrite:
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(entry), str(target))
@@ -221,26 +231,34 @@ def _packaged_instructions() -> Path | None:
     return path if path.is_file() else None
 
 
-def install_packaged_templates(std: StandardPaths, agent_names: list[str]) -> None:
+def install_packaged_templates(
+    std: StandardPaths, agent_names: list[str], refresh: bool = False,
+) -> None:
     """Copy packaged curated-template content into the runtime template dirs.
 
     Populates ``@system.base_template`` from the packaged base content and each
     ``@config.agents/<agent>/template`` from the agent plugin's packaged
     ``template/``.  Also installs the shipped default box-guidance file to
-    ``@system.instructions`` (``<data>/global/KANIBAKO.md``).  Create-if-absent
-    (never clobbers user edits).  Called from first-run init; safe to re-run
-    (idempotent for unchanged trees).
+    ``@system.instructions`` (``<data>/global/KANIBAKO.md``).  Called from
+    first-run init; safe to re-run (idempotent for unchanged trees).
+
+    Default (``refresh=False``) is CREATE-IF-ABSENT (never clobbers user edits) —
+    the first-run behaviour.  ``refresh=True`` is the TRUE-REFRESH path (``kanibako
+    setup``): shipped files (base tree, each agent tree, and KANIBAKO.md) are
+    OVERWRITTEN to their current packaged versions.  User-only files are never in
+    the packaged src loop, so they stay untouched either way.
     """
     base_src = _packaged_base_template()
     if base_src is not None:
-        _copy_resource_tree_if_absent(base_src, std.base_template)
+        _copy_resource_tree_if_absent(base_src, std.base_template, overwrite=refresh)
 
     # Agent-agnostic box-guidance source (@system.instructions): a single
-    # shipped default installed create-if-absent, resolved via the keyspace so a
-    # user who repoints/edits the key or the file keeps their copy.  Plugins bind
-    # this host source read-only into each harness slot (delivery = plugin layer).
+    # shipped default installed create-if-absent (or overwritten on refresh),
+    # resolved via the keyspace so a user who repoints/edits the key or the file
+    # keeps their copy on first-run.  Plugins bind this host source read-only
+    # into each harness slot (delivery = plugin layer).
     instr_src = _packaged_instructions()
-    if instr_src is not None and not std.instructions.exists():
+    if instr_src is not None and (refresh or not std.instructions.exists()):
         std.instructions.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(instr_src), str(std.instructions))
 
@@ -253,4 +271,98 @@ def install_packaged_templates(std: StandardPaths, agent_names: list[str]) -> No
         # the ``@agent.<agent>.template`` key (this is a packaged->runtime install,
         # not the seed-SOURCE resolution the keystore owns).
         dest = std.agents / agent_name / "template"
-        _copy_resource_tree_if_absent(agent_src, dest)
+        _copy_resource_tree_if_absent(agent_src, dest, overwrite=refresh)
+
+
+def packaged_templates_digest(agent_names: list[str]) -> str:
+    """Return a content-manifest sha256 over the packaged template src trees.
+
+    Hashes exactly the packaged content that :func:`install_packaged_templates`
+    would install — the base tree (``_packaged_base_template``), the shipped
+    KANIBAKO.md (``_packaged_instructions``), and each installed agent's
+    ``template/`` (``_packaged_agent_template``).  Each file contributes a
+    ``(namespaced-relative-path, file-bytes)`` pair; the pairs are SORTED before
+    hashing so the digest is deterministic across runs and machines regardless
+    of filesystem walk order.
+
+    This is a CONTENT hash, not a version marker: it trips ONLY when packaged
+    template content actually changes (so the staleness gate never hard-errors
+    on a version bump that doesn't touch templates), and it is immune to the
+    ``setup_completed`` silent forward-bump that would mask template drift.
+    """
+    entries: list[tuple[str, bytes]] = []
+
+    base_src = _packaged_base_template()
+    if base_src is not None:
+        for entry in base_src.rglob("*"):
+            if entry.is_file():
+                rel = entry.relative_to(base_src).as_posix()
+                entries.append((f"base/{rel}", entry.read_bytes()))
+
+    instr_src = _packaged_instructions()
+    if instr_src is not None:
+        entries.append(("instructions/KANIBAKO.md", instr_src.read_bytes()))
+
+    for agent_name in sorted(agent_names):
+        agent_src = _packaged_agent_template(agent_name)
+        if agent_src is None:
+            continue
+        for entry in agent_src.rglob("*"):
+            if entry.is_file():
+                rel = entry.relative_to(agent_src).as_posix()
+                entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
+
+    entries.sort(key=lambda item: item[0])
+    digest = hashlib.sha256()
+    for key, data in entries:
+        digest.update(key.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(data).digest())
+    return digest.hexdigest()
+
+
+def plan_template_refresh(
+    std: StandardPaths, agent_names: list[str],
+) -> tuple[list[Path], list[Path]]:
+    """Classify every packaged src file by its host target for the prompt preview.
+
+    Returns ``(added, overwritten)`` lists of HOST target paths:
+
+    * ADDED — the packaged file has no host counterpart yet (create).
+    * OVERWRITTEN — a host file exists but its bytes DIFFER from the packaged
+      version (a true-refresh replaces it).
+    * unchanged (host bytes == packaged bytes) — skipped, in neither list.
+
+    User-only files never appear (they are not in the packaged src loop).  This
+    is a pure classification (no writes) driving the ``kanibako setup`` preview.
+    """
+    added: list[Path] = []
+    overwritten: list[Path] = []
+
+    def _classify(src_file: Path, target: Path) -> None:
+        if not target.exists():
+            added.append(target)
+        elif target.read_bytes() != src_file.read_bytes():
+            overwritten.append(target)
+        # else: byte-identical -> unchanged, skipped.
+
+    base_src = _packaged_base_template()
+    if base_src is not None:
+        for entry in base_src.rglob("*"):
+            if entry.is_file():
+                _classify(entry, std.base_template / entry.relative_to(base_src))
+
+    instr_src = _packaged_instructions()
+    if instr_src is not None:
+        _classify(instr_src, std.instructions)
+
+    for agent_name in agent_names:
+        agent_src = _packaged_agent_template(agent_name)
+        if agent_src is None:
+            continue
+        dest = std.agents / agent_name / "template"
+        for entry in agent_src.rglob("*"):
+            if entry.is_file():
+                _classify(entry, dest / entry.relative_to(agent_src))
+
+    return added, overwritten

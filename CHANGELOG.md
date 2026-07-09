@@ -45,6 +45,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active agent's category entries (seeds, binds, caches, masks) through the
   §2b mirror as ordinary box-scope writes — including `null` suppression —
   resolved through the one cascade merge rather than a post-expansion overlay.
+- **Bundled templates are refreshed through `kanibako setup`.** Curated
+  template content (the base tree, each agent's `template/`, and the shipped
+  `KANIBAKO.md`) was only ever installed on a host's first run, so a host set
+  up under an older build never received later-shipped or updated template
+  files. When the packaged templates differ from what a host last installed,
+  the agent commands (`start`, `box start`, `agent reauth`) now stop with
+  "run `kanibako setup`" until setup is run. `kanibako setup` shows the files
+  it would add or replace, asks before applying, and refreshes them — your own
+  (non-shipped) template files are never touched, but edits to a *shipped* file
+  are replaced. Declining is remembered as an informed choice and clears the
+  block; `kanibako setup --refresh-templates` applies the update non-
+  interactively for headless hosts. A first run installs the templates and
+  records their stamp silently, as before.
 
 ### Fixed
 
