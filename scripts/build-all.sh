@@ -98,6 +98,16 @@ if $UPLOAD; then
     echo ""
     echo "=== Uploading to PyPI ==="
     for pkg in "${PACKAGES[@]}"; do
+        # The meta package must never publish with a RANGE dep on kanibako-cli:
+        # PyPI propagates packages independently, so an unpinned meta can pair
+        # with a stale cli at install time. release.yml stamps the ==-pin at
+        # build time; this manual path cannot, so it refuses meta unpinned.
+        if [ "$pkg" = "packages/meta" ] && \
+           ! grep -Eq '^[[:space:]]*"kanibako-cli==' "$REPO_ROOT/$pkg/pyproject.toml"; then
+            echo "SKIPPING meta upload: kanibako-cli dep is not ==-pinned." >&2
+            echo "  Publish the train via release.yml (it pins meta -> cli)." >&2
+            continue
+        fi
         twine upload --skip-existing "$REPO_ROOT/$pkg/dist/"*
     done
     echo ""
