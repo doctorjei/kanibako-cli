@@ -508,7 +508,28 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
     except KanibakoError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    url = vr.engine_url(dest, uid)
+
+    # Resolve the dest to concrete ssh-config parts (`ssh -G`, local-only): the
+    # ENGINE URL must be composed from these because podman's built-in ssh
+    # client DNS-resolves the URL host and ignores ~/.ssh/config aliases.  The
+    # ssh-binary lifecycle legs above/below keep the OPAQUE dest.
+    try:
+        resolved = vr.resolve_ssh_dest(dest)
+    except KanibakoError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if resolved.proxied:
+        print(
+            f"Error: '{dest}' resolves through an ssh ProxyJump/ProxyCommand, "
+            "which podman's built-in ssh client cannot dial (no bastion "
+            "support for --url connections).\n"
+            "  Attach via Remote-SSH to the host instead (Flavor A), then use "
+            "'kanibako code <box>' inside that remote window.",
+            file=sys.stderr,
+        )
+        return 1
+
+    url = vr.engine_url(resolved, uid)
     context = vr.remote_context_name(dest)
     try:
         vr.ensure_docker_context_meta(context, url)
@@ -516,7 +537,18 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
         get_logger("code").debug(
             "could not write docker context meta", exc_info=True,
         )
+    # Store the RESOLVED url (the wrapper dials it); keep the ORIGINAL dest.
     vr.write_context_entry(context, url=url, dest=dest, uid=uid)
+
+    # Pre-flight the ENGINE leg before the lifecycle legs run: a bad engine URL
+    # (undialable host / no ssh-agent) surfaces podman's own stderr + a targeted
+    # hint here, instead of a downstream, unexplained "did not come up".
+    engine = vr.RemoteEngine(url)
+    try:
+        vr.preflight_engine(engine)
+    except KanibakoError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     # (d) Lifecycle: start the remote box DETACHED and read back its cname.
     result = vr.remote_run_kanibako(
@@ -550,11 +582,14 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
         return 1
     cname = lines[-1].strip()
 
-    # (e) Verify the remote box is actually running via the remote engine.
-    engine = vr.RemoteEngine(url)
-    if not engine.is_running(cname):
+    # (e) Verify the remote box is actually running via the remote engine
+    # (reusing the pre-flighted engine).  On failure, surface podman's own
+    # inspect stderr — it names the underlying problem a bare bool would hide.
+    running, inspect_err = engine.running_with_stderr(cname)
+    if not running:
+        detail = f"\n{inspect_err}" if inspect_err else ""
         print(
-            f"Error: remote box '{cname}' did not come up on '{dest}'.",
+            f"Error: remote box '{cname}' did not come up on '{dest}'.{detail}",
             file=sys.stderr,
         )
         return 1

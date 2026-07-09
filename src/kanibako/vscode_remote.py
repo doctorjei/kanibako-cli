@@ -8,8 +8,10 @@ Containers "attach to running container" reach a REMOTE box:
 * the KANIBAKO-OWNED ssh ControlMaster mux options (:func:`mux_ssh_options`) and
   the lifecycle ssh leg (:func:`ssh_command` / :func:`remote_run_kanibako` /
   :func:`probe_remote`);
-* the remote podman engine URL + docker-context naming (:func:`engine_url` /
-  :func:`context_slug` / :func:`remote_context_name`);
+* ssh-config dest resolution (:func:`resolve_ssh_dest`) + the remote podman
+  engine URL composed from the resolved parts (:func:`engine_url`) + engine
+  pre-flight (:func:`preflight_engine`) + docker-context naming
+  (:func:`context_slug` / :func:`remote_context_name`);
 * a flat, sh-greppable connection store (:func:`write_context_entry` /
   :func:`read_context_entry`) the generated wrapper reads (grep only, NEVER
   sourced — no code execution from data);
@@ -39,6 +41,7 @@ import shlex
 import shutil
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
@@ -181,12 +184,92 @@ def probe_remote(dest: str) -> int:
     return int(uid)
 
 
-def engine_url(dest: str, uid: int) -> str:
-    """The podman remote engine URL for *dest*'s rootless socket.
+class ResolvedDest(NamedTuple):
+    """The ssh-config-resolved form of an opaque ssh destination.
 
-    *dest* is embedded VERBATIM (opaque; ``user@`` and ``:port`` pass through).
+    Produced by :func:`resolve_ssh_dest` from ``ssh -G``.  *hostname* / *user* /
+    *port* are the concrete values the user's ``~/.ssh/config`` resolves *dest*
+    to; *proxied* is True iff a ``ProxyJump``/``ProxyCommand`` is configured.
     """
-    return f"ssh://{dest}/run/user/{uid}/podman/podman.sock"
+
+    hostname: str
+    user: str
+    port: str
+    proxied: bool
+
+
+def resolve_ssh_dest(dest: str) -> ResolvedDest:
+    """Resolve *dest* to concrete ssh-config parts via ``ssh -G`` (local-only).
+
+    ``ssh -G -- <dest>`` prints the user's fully-resolved ssh config for *dest*
+    WITHOUT connecting.  This matters because podman's built-in golang ssh
+    client (used for ``--url ssh://…`` ENGINE connections) DNS-resolves the URL
+    host directly and does NOT read ``~/.ssh/config`` — so an ssh-config host
+    ALIAS is not dialable by podman, and the engine URL must be composed from
+    these resolved parts (:func:`engine_url`).  The ssh BINARY lifecycle legs
+    (:func:`probe_remote` / :func:`remote_run_kanibako`) keep the opaque *dest*
+    and read the config themselves.
+
+    Returns the first ``hostname ``/``user ``/``port `` line each; *proxied* is
+    True iff a ``proxyjump``/``proxycommand`` directive is set (value not
+    ``none``).  A nonzero rc, an ``ssh`` that cannot be run, or a missing
+    hostname raises :class:`~kanibako.errors.KanibakoError` naming *dest*.
+    """
+    try:
+        result = subprocess.run(
+            ["ssh", "-G", "--", dest],
+            capture_output=True, text=True,
+        )
+    except OSError as exc:
+        raise KanibakoError(
+            f"Could not run `ssh -G` to resolve the ssh destination "
+            f"'{dest}': {exc}"
+        ) from exc
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise KanibakoError(
+            f"`ssh -G` could not resolve the ssh destination '{dest}'"
+            + (f":\n  {stderr}" if stderr else ".")
+        )
+    hostname: str | None = None
+    user: str | None = None
+    port: str | None = None
+    proxied = False
+    for line in result.stdout.splitlines():
+        if hostname is None and line.startswith("hostname "):
+            hostname = line[len("hostname "):].strip()
+        elif user is None and line.startswith("user "):
+            user = line[len("user "):].strip()
+        elif port is None and line.startswith("port "):
+            port = line[len("port "):].strip()
+        if line.startswith("proxyjump ") or line.startswith("proxycommand "):
+            _, _, val = line.partition(" ")
+            val = val.strip()
+            if val and val.lower() != "none":
+                proxied = True
+    if not hostname:
+        raise KanibakoError(
+            f"`ssh -G` returned no hostname for the ssh destination '{dest}'."
+        )
+    return ResolvedDest(
+        hostname=hostname, user=user or "", port=port or "22", proxied=proxied,
+    )
+
+
+def engine_url(resolved: ResolvedDest, uid: int) -> str:
+    """The podman remote engine URL, composed from RESOLVED ssh parts.
+
+    ALWAYS built as ``ssh://{user}@{hostname}:{port}/run/user/{uid}/podman/…``
+    from :func:`resolve_ssh_dest`'s output — podman's built-in ssh client
+    DNS-resolves this host and won't apply ssh-config aliases, so the concrete
+    hostname/port MUST be baked into the URL (an alias here fails with
+    ``no such host``).  A proxied *resolved* cannot be served by podman's ssh at
+    all; callers refuse it before reaching here.
+    """
+    return (
+        f"ssh://{resolved.user}@{resolved.hostname}:{resolved.port}"
+        f"/run/user/{uid}/podman/podman.sock"
+    )
 
 
 def context_slug(dest: str) -> str:
@@ -283,12 +366,33 @@ class RemoteEngine:
             capture_output=True, text=True, env=self._env,
         )
 
-    def is_running(self, name: str) -> bool:
-        """Whether the remote container *name* is currently running."""
+    def version(self) -> subprocess.CompletedProcess[str]:
+        """Pre-flight the engine leg: ``podman --remote … version``.
+
+        Runs against the stored ``--url`` with the mux-shim PATH, so a failure
+        here (unresolvable host, no ssh-agent) is caught before the lifecycle
+        legs run.  Returns the raw CompletedProcess so the caller can surface
+        podman's own stderr (see :func:`preflight_engine`).
+        """
+        return self._run(["version"])
+
+    def running_with_stderr(self, name: str) -> tuple[bool, str]:
+        """Whether remote container *name* is running, plus podman's stderr.
+
+        The stderr is the honest surface for the "did not come up" path — an
+        ``inspect`` that fails (no such container, engine unreachable) names the
+        underlying problem, which a bare bool would swallow.
+        """
         result = self._run(
             ["inspect", "--format", "{{.State.Running}}", name],
         )
-        return result.returncode == 0 and result.stdout.strip() == "true"
+        running = result.returncode == 0 and result.stdout.strip() == "true"
+        return running, (result.stderr or "").strip()
+
+    def is_running(self, name: str) -> bool:
+        """Whether the remote container *name* is currently running."""
+        running, _ = self.running_with_stderr(name)
+        return running
 
     def inspect_env(self, name: str, key: str) -> str | None:
         """The value of env var *key* on remote container *name*, or None."""
@@ -315,6 +419,48 @@ class RemoteEngine:
         if result.returncode != 0:
             return None
         return result.stdout.strip() or None
+
+
+_PREFLIGHT_NO_HOST_HINT = (
+    "Hint: podman's built-in ssh client could not resolve this host. It "
+    "DNS-resolves the engine URL host directly and does NOT read your "
+    "~/.ssh/config, so ssh-config host aliases do not apply to the engine "
+    "connection. Use a directly-dialable host, or attach via Remote-SSH to "
+    "the host instead (Flavor A)."
+)
+_PREFLIGHT_AUTH_HINT = (
+    "Hint: start an ssh-agent and `ssh-add` your key — podman's built-in ssh "
+    "client authenticates through the agent and does NOT read key files "
+    "directly."
+)
+
+
+def preflight_engine(engine: RemoteEngine) -> None:
+    """Pre-flight the remote podman engine leg; raise on a dead connection.
+
+    Runs ``podman --remote --ssh native --url <url> version`` (via
+    :meth:`RemoteEngine.version`) BEFORE the lifecycle legs, so an
+    engine-URL-only failure (undialable host, missing ssh-agent) is caught with
+    podman's OWN stderr plus a targeted hint rather than a downstream
+    "did not come up".  Raises :class:`~kanibako.errors.KanibakoError` carrying
+    podman's stderr verbatim; returns None on success.
+    """
+    result = engine.version()
+    if result.returncode == 0:
+        return
+    stderr = (result.stderr or "").strip()
+    low = stderr.lower()
+    if "no such host" in low:
+        hint = _PREFLIGHT_NO_HOST_HINT
+    elif "attempted methods [none]" in low or "unable to authenticate" in low:
+        hint = _PREFLIGHT_AUTH_HINT
+    else:
+        hint = ""
+    body = stderr or "(podman produced no error output)"
+    msg = f"Could not reach the remote podman engine.\n  {body}"
+    if hint:
+        msg += f"\n  {hint}"
+    raise KanibakoError(msg)
 
 
 # ---------------------------------------------------------------------------
