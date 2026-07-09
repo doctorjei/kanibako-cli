@@ -436,29 +436,28 @@ class TestConvertInPlace:
         assert pdir.is_dir()
         assert not (pdir / "box_data").exists()
 
-    def test_default_inplace_reuses_name_no_suffix(self, env):
-        """L2: an in-place default convert reuses the registered name, not foo2.
+    def test_default_inplace_different_name_refuses(self, env):
+        """Fix-2: an in-place default convert with a DIFFERENT --name is REFUSED.
 
-        Pre-fix, ``_to_default`` ran ``assign_name`` while the box's own name was
-        still registered, so the unchanged-path convert auto-suffixed (foo→foo2)
-        and stranded the original entry. The path is unchanged here, so the
-        existing name must be reused and there must be no ``proj2``.
+        This test PREVIOUSLY passed ``name="proj2"`` and asserted the box silently
+        reused "proj" (dropping the different name) — the old-wrong behavior Fix-2
+        removes.  An in-place rename of a primary (default-mode) box is not
+        supported, so the engine now raises ``ProjectError`` and the registry is
+        left unchanged (name -> path preserved, no stray ``proj2``).
         """
         config, std, tmp_home = env
         pdir = _make_default(env)  # registers "proj" → pdir
         state = resolve_lifecycle_target(str(pdir), std, config)
-        new = execute_lifecycle(
-            state, TargetSpec(location=INPLACE, ownership="default", name="proj2"),
-            std, config, confirm=_conf_yes(),
-        )
-        assert new.mode == BoxMode.primary
-        # Name reused (no auto-suffix), path unchanged.
-        assert new.name == "proj"
+        with pytest.raises(ProjectError, match="rename of a primary"):
+            execute_lifecycle(
+                state,
+                TargetSpec(location=INPLACE, ownership="default", name="proj2"),
+                std, config, confirm=_conf_yes(),
+            )
         projects = load_primary_boxes(std.primary_workset)
+        # Registry unchanged: original name still maps to the path, no new entry.
         assert projects.get("proj") == str(pdir)
-        # No stranded suffixed entry.
         assert "proj2" not in projects
-        # Exactly one registry entry points at this workspace.
         assert sum(1 for v in projects.values() if v == str(pdir)) == 1
 
     def test_workset_to_default(self, env):

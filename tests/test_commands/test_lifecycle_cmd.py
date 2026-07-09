@@ -394,6 +394,230 @@ class TestLockGuard:
 
 
 # ---------------------------------------------------------------------------
+# F-7: cross-kind (box-vs-workset) name policy on DEFAULT-mode rename edges
+# ---------------------------------------------------------------------------
+
+class TestConvertMoveCrossKindName:
+    """``box convert/move --default --name <X>`` enforces the SAME per-kind name
+    policy as ``create`` (spec §5 cross-kind name semantics, Jei 2026-07-08).
+
+    A ``--name`` that lands a box in primary/default mode and collides with a
+    WORKSET name shadows that workset in bare-name resolution, so it REFUSES
+    unless ``--force``; a SAME-KIND (another primary box) collision refuses
+    UNCONDITIONALLY.  Pre-fix these rename edges ignored ``--name`` and routed
+    through ``assign_primary_box_name`` (basename auto-suffix only), never
+    consulting the cross-kind arm.
+    """
+
+    def test_convert_default_name_collides_workset_refuses(self, env):
+        """t1: convert --default --name <workset> without --force → clean rc=1,
+        teaches --force, and mints NO box (refused before any copy)."""
+        config, std, tmp_home = env
+        create_workset("shared", tmp_home / "ws_root", std)
+        pdir = _standalone(env)  # standalone source → true mint path
+
+        import io
+        from contextlib import redirect_stderr
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            rc = run_convert(
+                _convert_args(pdir, to_default=True, name="shared", force=False)
+            )
+        assert rc == 1
+        assert "--force" in buf.getvalue()
+        # No primary box minted under the workset name; workset intact; source
+        # still standalone (nothing copied/registered on refusal).
+        assert "shared" not in load_primary_boxes(std.primary_workset)
+        assert not (std.boxes / "shared").exists()
+        from kanibako import registry_store
+        assert "shared" in registry_store.load_section(std.registry, "worksets")
+        assert (pdir / "box_data").is_dir()
+
+    def test_convert_default_name_collides_workset_force_shadows(self, env):
+        """t2: with --force the box takes the workset name (deliberate shadow);
+        both coexist and a bare resolve now hits the BOX."""
+        config, std, tmp_home = env
+        create_workset("shared", tmp_home / "ws_root", std)
+        pdir = _standalone(env)
+
+        rc = run_convert(
+            _convert_args(pdir, to_default=True, name="shared", force=True)
+        )
+        assert rc == 0
+        # Box registered under the shadowed name; workset still registered.
+        assert "shared" in load_primary_boxes(std.primary_workset)
+        from kanibako import registry_store
+        assert "shared" in registry_store.load_section(std.registry, "worksets")
+        # Bare resolution is deterministic — the primary box wins (shadow).
+        from pathlib import Path
+
+        from kanibako.paths import resolve_name
+        _resolved, kind = resolve_name(
+            std.registry, "shared", cwd=Path(tmp_home),
+            primary_workset=std.primary_workset,
+        )
+        assert kind == "project"
+
+    def test_convert_default_name_collides_primary_box_force_still_refuses(
+        self, env,
+    ):
+        """t3: --force NEVER bypasses SAME-KIND uniqueness — a --name already
+        owned by another PRIMARY box refuses even with --force."""
+        config, std, tmp_home = env
+        # An existing primary box owns the name "taken".
+        taken_dir = _default(env, name="taken")
+        pdir = _standalone(env, name="src")
+
+        import io
+        from contextlib import redirect_stderr
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            rc = run_convert(
+                _convert_args(pdir, to_default=True, name="taken", force=True)
+            )
+        assert rc == 1
+        # Pre-existing "taken" box unchanged (still maps to its own workspace);
+        # source still standalone.
+        assert load_primary_boxes(std.primary_workset).get("taken") == str(taken_dir)
+        assert (pdir / "box_data").is_dir()
+
+    def test_move_default_name_collides_workset_refuses(self, env):
+        """t4: box move --default --name <workset> mirror of t1 — refuses without
+        --force and moves no files."""
+        config, std, tmp_home = env
+        create_workset("shared", tmp_home / "ws_root", std)
+        pdir = _default(env, name="mvsrc")
+        dest = tmp_home / "mv_dest"
+
+        import io
+        from contextlib import redirect_stderr
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            rc = run_move(
+                _move_args(pdir, dest, to_default=True, name="shared", force=False)
+            )
+        assert rc == 1
+        assert "--force" in buf.getvalue()
+        # No copy performed (refused up front); dest absent, source intact.
+        assert not dest.exists()
+        assert pdir.is_dir()
+        assert "shared" not in load_primary_boxes(std.primary_workset)
+
+    def test_convert_named_workset_name_equals_global_workset_succeeds(self, env):
+        """t5: the cross-kind guard must NOT reach a NAMED-workset target — a
+        project named the same as a global workset still converts."""
+        config, std, tmp_home = env
+        create_workset("tw", tmp_home / "tw_root", std)
+        create_workset("gname", tmp_home / "g_root", std)
+        pdir = _default(env, name="cbox")
+
+        rc = run_convert(
+            _convert_args(pdir, to_workset="tw", name="gname")
+        )
+        assert rc == 0
+        ws2 = load_workset(tmp_home / "tw_root")
+        assert any(p.name == "gname" for p in ws2.projects)
+
+    def test_move_default_same_name_relocates_registration(self, env):
+        """t-a (FIX1): move --default --name <current-name> to a NEW dir succeeds —
+        the source's OWN registration is a self-reuse, not a collision.
+
+        The old path is unregistered, the SAME name is registered at the new path,
+        the files move, and the ``boxes/<name>`` metadata dir is preserved intact.
+        Pre-fix this refused ("already registered") because the source's own entry
+        tripped the same-kind guard at BOTH the validate gate and the register.
+        """
+        config, std, tmp_home = env
+        pdir = _default(env, name="movesame")
+        boxes0 = load_primary_boxes(std.primary_workset)
+        name = next(n for n, p in boxes0.items() if p == str(pdir))
+        meta_before = std.boxes / name
+        assert meta_before.is_dir()
+
+        dest = tmp_home / "moved_here"
+        rc = run_move(
+            _move_args(pdir, dest, to_default=True, name=name, force=True)
+        )
+        assert rc == 0
+
+        boxes1 = load_primary_boxes(std.primary_workset)
+        # Same name, now at the new path; old path fully unregistered.
+        assert boxes1.get(name) == str(dest)
+        assert str(pdir) not in boxes1.values()
+        # Exactly one entry points at the new workspace (no strand).
+        assert sum(1 for v in boxes1.values() if v == str(dest)) == 1
+        # Files relocated; old workspace removed.
+        assert (dest / "file.txt").read_text() == "hi"
+        assert not pdir.exists()
+        # Metadata dir preserved (reused in place, never deleted).
+        assert (std.boxes / name).is_dir()
+
+    def test_move_default_same_name_register_failure_restores_old(self, env):
+        """t-a (FIX1 failure window): if the re-register fails AFTER the source's
+        old entry was unregistered, the unwind restores name -> OLD path.
+
+        Mocks ``register_primary_box_name`` (as bound in ``_lifecycle``) to raise
+        after the pre-register unregister; the op must roll back to the source's
+        original registration, leave nothing at the dest, and keep the original
+        workspace dir (STEP 5 rmtree never reached).
+        """
+        from unittest.mock import patch
+
+        from kanibako.errors import ProjectError
+
+        config, std, tmp_home = env
+        pdir = _default(env, name="movefail")
+        boxes0 = load_primary_boxes(std.primary_workset)
+        name = next(n for n, p in boxes0.items() if p == str(pdir))
+
+        dest = tmp_home / "fail_dest"
+        with patch(
+            "kanibako.commands.box._lifecycle.register_primary_box_name",
+            side_effect=ProjectError("boom"),
+        ):
+            rc = run_move(
+                _move_args(pdir, dest, to_default=True, name=name, force=True)
+            )
+        assert rc == 1
+
+        boxes1 = load_primary_boxes(std.primary_workset)
+        # Source registration restored to its OLD path; dest not left registered.
+        assert boxes1.get(name) == str(pdir)
+        assert str(dest) not in boxes1.values()
+        # Original workspace preserved; the rolled-back dest copy removed.
+        assert pdir.is_dir()
+        assert not dest.exists()
+
+    def test_convert_inplace_different_name_refuses(self, env):
+        """t-b (FIX2): in-place primary->default convert with a DIFFERENT --name
+        REFUSES (rc=1) rather than silently dropping the name.
+
+        The friendly message teaches the supported route (move to rename / drop
+        --name); the registry is unchanged (original name -> path, no new name)."""
+        import io
+        from contextlib import redirect_stderr
+
+        config, std, tmp_home = env
+        pdir = _default(env, name="renbox")
+        boxes0 = load_primary_boxes(std.primary_workset)
+        name = next(n for n, p in boxes0.items() if p == str(pdir))
+
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            rc = run_convert(
+                _convert_args(pdir, to_default=True, name="somethingelse")
+            )
+        assert rc == 1
+        err = buf.getvalue().lower()
+        assert "rename" in err
+        assert "not supported" in err
+        # Registry unchanged: original name still maps to the path; no new name.
+        boxes1 = load_primary_boxes(std.primary_workset)
+        assert boxes1.get(name) == str(pdir)
+        assert "somethingelse" not in boxes1
+
+
+# ---------------------------------------------------------------------------
 # parser: migrate is gone
 # ---------------------------------------------------------------------------
 
