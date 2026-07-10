@@ -427,6 +427,11 @@ class TestDescriptor:
     def test_command(self):
         assert GooseTarget().descriptor.command == ("goose",)
 
+    def test_vscode_extension_id(self):
+        # FF-4: Block's official ACP extension id (Marketplace-only, not on
+        # Open VSX); auto-installed on `kanibako code` attach.
+        assert GooseTarget().descriptor.vscode_extension == "block.vscode-goose"
+
     def test_binary_binding(self):
         d = GooseTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
