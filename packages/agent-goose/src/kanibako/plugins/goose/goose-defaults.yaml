@@ -130,6 +130,22 @@ descriptor:
   # RO / plugin-set → meta.agent.goose.auth.share_support.
   auth_share_support: true
 
+  # VS Code Marketplace extension id auto-installed into the box on `kanibako
+  # code` attach (FF-4).  `block.vscode-goose` is Block's official ACP-based
+  # extension (supersedes the older `michaelneale.goose-vscode`); it is a thin
+  # ACP client that spawns the in-container `goose` CLI (requires goose >= 1.16.0
+  # in the box) and runs container-side, with auth in `~/.config/goose/config.yaml`
+  # shared with the CLI.
+  # ⚑ CAVEATS (still EXPERIMENTAL upstream):
+  #   - Marketplace ONLY — NOT published to Open VSX (verified 404), so a
+  #     code-server / Open-VSX-based attach flow CANNOT auto-install it; that path
+  #     falls back to running `goose` in the integrated terminal (a VSIX sideload
+  #     is the manual alternative).  Under an MS-Marketplace attach the id installs
+  #     normally like claude/codex.
+  #   - `GOOSE_MODE` (permission parity) is seeded into the box's config.yaml from
+  #     auto_approve so the panel-spawned goose reflects the box's yolo.
+  vscode_extension: block.vscode-goose
+
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →
 # ~/.config/goose/KANIBAKO.md) is RETIRED: the box guide now reaches the box via the
 # RO `~/playbook/kanibako/` bundle + the flattened per-agent FINAL file (seeded by

@@ -414,6 +414,11 @@ class TestDescriptor:
     def test_command(self):
         assert CodexTarget().descriptor.command == ("codex",)
 
+    def test_vscode_extension_id(self):
+        # FF-4: the official OpenAI "Codex" extension id is `openai.chatgpt`
+        # (NOT `openai.codex`); auto-installed on `kanibako code` attach.
+        assert CodexTarget().descriptor.vscode_extension == "openai.chatgpt"
+
     def test_binary_binding(self):
         d = CodexTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
