@@ -6,6 +6,8 @@ import json
 import tomllib
 from pathlib import Path
 
+import yaml
+
 from kanibako.vscode_config import (
     _CODEX_EVENT_KEY,
     _SESSION_START_COMMAND,
@@ -17,6 +19,7 @@ from kanibako.vscode_config import (
     codex_trusted_hash,
     deliver_claude_panel_permissions,
     deliver_directive_session_hook,
+    deliver_goose_panel_permissions,
     merge_attached_container_config,
     merge_bypass_permissions,
     merge_codex_config,
@@ -779,3 +782,98 @@ def test_deliver_directive_other_agent_is_inert(tmp_path):
     ) is False
     assert not (tmp_path / ".codex").exists()
     assert not (tmp_path / ".claude").exists()
+
+
+# --- FF-5 permission parity: deliver_goose_panel_permissions ----------------
+
+def _goose_cfg(tmp_path) -> Path:
+    return tmp_path / "config.yaml"
+
+
+def test_deliver_goose_on_writes_auto(tmp_path):
+    """auto_approve ON + goose → GOOSE_MODE: auto."""
+    wrote = deliver_goose_panel_permissions(
+        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
+    )
+    assert wrote is True
+    assert yaml.safe_load(_goose_cfg(tmp_path).read_text()) == {
+        "GOOSE_MODE": "auto",
+    }
+
+
+def test_deliver_goose_off_writes_approve(tmp_path):
+    """auto_approve OFF + goose → GOOSE_MODE: approve (EXPLICIT secure value, not
+    cleared — an unset GOOSE_MODE defaults to permissive ``auto``)."""
+    wrote = deliver_goose_panel_permissions(
+        auto_approve=False, is_goose=True, goose_config_dir=tmp_path,
+    )
+    assert wrote is True
+    assert yaml.safe_load(_goose_cfg(tmp_path).read_text()) == {
+        "GOOSE_MODE": "approve",
+    }
+
+
+def test_deliver_goose_non_goose_is_inert(tmp_path):
+    """Non-goose agent → NOTHING written in EITHER direction."""
+    assert deliver_goose_panel_permissions(
+        auto_approve=True, is_goose=False, goose_config_dir=tmp_path,
+    ) is False
+    assert deliver_goose_panel_permissions(
+        auto_approve=False, is_goose=False, goose_config_dir=tmp_path,
+    ) is False
+    assert not _goose_cfg(tmp_path).exists()
+
+
+def test_deliver_goose_absent_file_created_with_just_goose_mode(tmp_path):
+    """An absent config.yaml is created with ONLY the GOOSE_MODE key."""
+    path = _goose_cfg(tmp_path)
+    assert not path.exists()
+    assert deliver_goose_panel_permissions(
+        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
+    ) is True
+    assert yaml.safe_load(path.read_text()) == {"GOOSE_MODE": "auto"}
+
+
+def test_deliver_goose_preserves_unrelated_keys(tmp_path):
+    """Pre-existing unrelated keys are preserved across the write."""
+    path = _goose_cfg(tmp_path)
+    path.write_text(yaml.safe_dump({
+        "GOOSE_PROVIDER": "anthropic",
+        "extensions": {"foo": {"enabled": True}},
+    }))
+    assert deliver_goose_panel_permissions(
+        auto_approve=False, is_goose=True, goose_config_dir=tmp_path,
+    ) is True
+    written = yaml.safe_load(path.read_text())
+    assert written["GOOSE_PROVIDER"] == "anthropic"
+    assert written["extensions"] == {"foo": {"enabled": True}}
+    assert written["GOOSE_MODE"] == "approve"
+
+
+def test_deliver_goose_is_idempotent(tmp_path):
+    """A second call with the same state returns False and does not rewrite."""
+    assert deliver_goose_panel_permissions(
+        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
+    ) is True
+    before = _goose_cfg(tmp_path).read_text()
+    assert deliver_goose_panel_permissions(
+        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
+    ) is False
+    assert _goose_cfg(tmp_path).read_text() == before
+
+
+def test_deliver_goose_overwrites_conflicting_existing_value(tmp_path):
+    """A pre-existing GOOSE_MODE with a DIFFERENT value is OVERWRITTEN to the
+    desired one (guards against a setdefault-style mutant that would leave a
+    stale permissive ``auto`` in place for an OFF box)."""
+    path = _goose_cfg(tmp_path)
+    path.write_text(yaml.safe_dump({
+        "GOOSE_MODE": "auto",
+        "GOOSE_PROVIDER": "anthropic",
+    }))
+    assert deliver_goose_panel_permissions(
+        auto_approve=False, is_goose=True, goose_config_dir=tmp_path,
+    ) is True
+    written = yaml.safe_load(path.read_text())
+    assert written["GOOSE_MODE"] == "approve"
+    assert written["GOOSE_PROVIDER"] == "anthropic"

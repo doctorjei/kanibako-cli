@@ -44,6 +44,10 @@ import re
 import urllib.parse
 from pathlib import Path
 
+import yaml
+
+from kanibako.config_io import load_doc
+
 
 def _strip_jsonc(text: str) -> str:
     """Best-effort strip of JSONC (comments + trailing commas) to plain JSON.
@@ -774,3 +778,72 @@ def deliver_claude_panel_permissions(
     if auto_approve:
         return seed_claude_bypass_permissions(settings_path)
     return clear_claude_bypass_permissions(settings_path)
+
+
+# ---------------------------------------------------------------------------
+# FF-5 permission parity (goose surface): in-box goose config.yaml GOOSE_MODE.
+#
+# kanibako's per-agent ``auto_approve`` reaches the CLI goose via the
+# ``GOOSE_MODE`` env var it sets on its own launch entrypoint, but NOT the VS
+# Code goose EXTENSION panel (``block.vscode-goose``), which spawns its OWN
+# in-container goose WITHOUT kanibako's launch env — so the panel goose never
+# sees ``GOOSE_MODE``.  ``GOOSE_MODE`` is also a valid top-level goose
+# ``config.yaml`` key, so persisting it into the box's in-box
+# ``~/.config/goose/config.yaml`` (PER-BOX, the box home mount) gives the panel
+# the box's configured yolo.
+#
+# ASYMMETRIC vs claude (which CLEARS off): goose's UNSET ``GOOSE_MODE`` default
+# is ``auto`` (permissive), so an OFF box MUST persist the secure ``approve``
+# value EXPLICITLY — clearing the key would silently restore permissive.
+# ---------------------------------------------------------------------------
+
+# The exact top-level ``GOOSE_MODE`` values kanibako owns for the panel-yolo
+# delivery: ON → ``auto`` (approvals off), OFF → ``approve`` (approvals on).
+_GOOSE_MODE_ON = "auto"
+_GOOSE_MODE_OFF = "approve"
+
+
+def deliver_goose_panel_permissions(
+    *, auto_approve: bool, is_goose: bool, goose_config_dir: Path,
+) -> bool:
+    """GATE + deliver the goose panel-permission (GOOSE_MODE) parity, returning
+    whether a write occurred.
+
+    Driven by the box's resolved goose ``auto_approve`` and mirroring
+    :func:`deliver_claude_panel_permissions`, EXCEPT it writes the OFF value
+    explicitly rather than clearing:
+
+    * non-goose box → inert, does NOTHING (returns ``False``).
+    * goose + ``auto_approve`` ON  → SET ``GOOSE_MODE: "auto"``.
+    * goose + ``auto_approve`` OFF → SET ``GOOSE_MODE: "approve"`` — an UNSET
+      ``GOOSE_MODE`` defaults to ``auto`` (permissive), so OFF must persist the
+      secure value explicitly, NOT clear the key.
+
+    Merge-preserving (only the top-level ``GOOSE_MODE`` key is set; every other
+    key in ``<goose_config_dir>/config.yaml`` is preserved; an absent file is
+    created with just ``GOOSE_MODE``) and idempotent (no write when the key
+    already equals the desired value).  Returns whether a write occurred.
+    Callers wrap this best-effort so a failure never blocks the launch.
+    """
+    if not is_goose:
+        return False
+    config_path = goose_config_dir / "config.yaml"
+    desired = _GOOSE_MODE_ON if auto_approve else _GOOSE_MODE_OFF
+    existing = load_doc(config_path)
+    if existing.get("GOOSE_MODE") == desired:
+        return False
+    merged = dict(existing)
+    merged["GOOSE_MODE"] = desired
+    # Write through the config_path's own methods (like the claude/codex sibling
+    # deliveries), NOT config_io.dump_doc: dump_doc's atomic_write_text coerces
+    # the path via Path()/mkstemp and does a real mkdir, which on a mocked
+    # proj.shell_path would materialize a stray on-disk dir — the siblings stay
+    # mock-safe by writing via the Path object.  A best-effort re-seed is
+    # idempotent, so plain (non-atomic) write parity with the siblings is fine.
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump(
+            merged, sort_keys=False, default_flow_style=False, allow_unicode=True,
+        )
+    )
+    return True
