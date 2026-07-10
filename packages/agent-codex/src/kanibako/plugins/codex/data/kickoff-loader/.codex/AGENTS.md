@@ -1,0 +1,2 @@
+<!-- kanibako-managed loader — do NOT edit; kanibako owns this file. Delivered read-only to ~/.config/kanibako/kickoff.md as the SEED the box-start flattener resolves into codex's native slot (~/.codex/AGENTS.md, loaded every session). Its sole job is to pull in the kickoff file for kanibako in the playbook: KANIBAKO.md (the kanibako-owned box environment guide, bound read-only by kanibako) and then user-configured directives. -->
+@~/playbook/kanibako/directives/KANIBAKO.md

@@ -87,8 +87,8 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
     enums; ``ro`` defaults to True.
 
     A ``literal`` origin's fixed host source is named EITHER as a
-    ``literal_src_pkg`` (a *package*-relative resource — e.g. claude's shipped
-    ``~/.claude/CLAUDE.md`` loader file — resolved here to its installed host path
+    ``literal_src_pkg`` (a *package*-relative resource — e.g. a plugin's shipped
+    kickoff-loader SEED file — resolved here to its installed host path
     via :mod:`importlib.resources`, the same seam :func:`_load_doc` uses) OR as a
     plain ``literal_src`` filesystem path.  ``literal_src_pkg`` wins when both are
     present.
@@ -170,7 +170,9 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         },
         safe_bypass=_build_safe_bypass(desc.get("safe_bypass")),
         settings=tuple(_build_setting_arg(s) for s in desc.get("settings", [])),
-        container_env=dict(desc.get("container_env", {})),
+        container_env={
+            k: _expand(v) for k, v in desc.get("container_env", {}).items()
+        },
         cred_files=tuple(_build_cred_file(c) for c in desc.get("cred_files", [])),
         host_prep=bool(desc.get("host_prep", False)),
         init_dirs=tuple(desc.get("init_dirs", ())),

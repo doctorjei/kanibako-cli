@@ -1,21 +1,20 @@
-"""E2e: the default box-guidance file (KANIBAKO.md) is delivered to each
-harness's native instruction slot on real podman.
+"""E2e: the per-agent kickoff-loader SEED is delivered on real podman.
 
-Covers the DEFAULT-PLUGIN-CONFIG delivery path end-to-end: the packaged default
-``KANIBAKO.md`` is installed to ``<data>/global/KANIBAKO.md`` and bound read-only
-into each agent's config-dir slot, the claude loader + editable ``AGENTS.md`` seed
-land, goose's ``CONTEXT_FILE_NAMES`` env is set, and podman auto-creates the
-(absent) mount-parent dirs. The unit-level bind wiring is in
-``tests/test_instructions_bind.py``; this proves the real mount/env/seed outcome.
+Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.  Each agent
+plugin ships a kickoff-loader (the flattener SEED, a single
+``@~/playbook/kanibako/directives/KANIBAKO.md`` import) declared as a best-effort
+descriptor ``managed_pointer`` bind delivered read-only to
+``~/.config/kanibako/kickoff.md``; goose's ``CONTEXT_FILE_NAMES`` env still lists
+AGENTS.md (its native slot the FINAL flatten will land in).  This proves the real
+mount/env outcome end-to-end and that podman auto-creates the (absent)
+mount-parent dir.  The unit-level bind wiring is in
+``tests/test_instructions_bind.py``.
 
-Scope: boxes exit immediately in e2e (the agent can't auth) — that's expected;
-we inspect the exited container's Mounts/Env plus the host-side seeded files.
-Whether a *running* agent actually reads the file (claude secure-mode import,
-codex 0.77.0 global-load) is agent-internal runtime behavior, out of scope here.
+The box-start FLATTEN of the SEED into each agent's native instruction slot (the
+FINAL file) is a LATER increment and is NOT asserted here.
 
-Codex delivery uses the identical ``meta_ref`` bind machinery as goose (unit-
-covered in ``test_instructions_bind.py``); there is no codex stub fixture, so it
-is not exercised here.
+Scope: boxes exit immediately in e2e (the agent can't auth) — that's expected; we
+inspect the exited container's Mounts/Env.
 
 ⚑ The ``e2e_env`` / ``goose_e2e_env`` fixtures pre-write the bootstrap config, so
 ``_ensure_initialized`` early-returns and the packaged-template install (which
@@ -36,14 +35,12 @@ from tests.e2e.conftest import (
     _active_env,
     _podman,
     e2e_requires,
-    resolve_box_dir,
     run_kanibako,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
 GUEST_HOME = "/home/agent"
-GUIDE_HEADER = "# KANIBAKO.md — Operating Guide for Agents in a Kanibako Box"
 
 
 def container_name(box: str) -> str:
@@ -97,10 +94,13 @@ def run_install(env: dict) -> None:
         install_packaged_templates(std, list(discover_targets()))
 
 
-def test_claude_kanibako_md_delivery(e2e_env):
-    """claude: guide bound ro to ~/.claude/KANIBAKO.md, loader bound ro to
-    ~/.claude/CLAUDE.md (@KANIBAKO.md + @AGENTS.md), editable ~/.claude/AGENTS.md
-    seeded; mount-parent .claude auto-created by podman."""
+KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
+DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
+
+
+def test_claude_kickoff_loader_delivery(e2e_env):
+    """claude: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md
+    (single directive import); mount-parent .config/kanibako auto-created by podman."""
     env, project, box = e2e_env["env"], e2e_env["project"], "instr-claude"
     run_install(env)
 
@@ -109,9 +109,6 @@ def test_claude_kanibako_md_delivery(e2e_env):
 
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"
-
-    seeded = resolve_box_dir(env, project) / "home" / ".claude" / "AGENTS.md"
-    assert seeded.is_file(), "editable ~/.claude/AGENTS.md was not seeded"
 
     res = run_kanibako(
         ["start", box, "--agent", "claude", "-e", "CLAUDE_STUB_MODE=long-running"],
@@ -123,24 +120,18 @@ def test_claude_kanibako_md_delivery(e2e_env):
         f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
     )
     try:
-        gm = find_mount(cfg, f"{GUEST_HOME}/.claude/KANIBAKO.md")
-        assert gm is not None, "KANIBAKO.md not bound into ~/.claude"
-        assert gm.get("RW") is False, "guide bind must be read-only"
-        assert str(gm["Source"]).endswith("global/KANIBAKO.md")
-        assert Path(gm["Source"]).read_text().startswith(GUIDE_HEADER)
-
-        lm = find_mount(cfg, f"{GUEST_HOME}/.claude/CLAUDE.md")
-        assert lm is not None, "loader not bound to ~/.claude/CLAUDE.md"
-        assert lm.get("RW") is False, "loader bind must be read-only"
-        loader = Path(lm["Source"]).read_text()
-        assert "@KANIBAKO.md" in loader and "@AGENTS.md" in loader, loader
+        km = find_mount(cfg, KICKOFF_DEST)
+        assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
+        assert km.get("RW") is False, "kickoff-loader bind must be read-only"
+        assert DIRECTIVE_IMPORT in Path(km["Source"]).read_text()
     finally:
         rm(container_name(box))
 
 
-def test_goose_kanibako_md_delivery(goose_e2e_env):
-    """goose: guide bound ro to ~/.config/goose/KANIBAKO.md and CONTEXT_FILE_NAMES
-    set so goose loads it; mount-parent .config/goose auto-created by podman."""
+def test_goose_kickoff_loader_delivery(goose_e2e_env):
+    """goose: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md and
+    CONTEXT_FILE_NAMES lists AGENTS.md (its native FINAL slot); mount-parent
+    .config/kanibako auto-created by podman."""
     env, project, box = (
         goose_e2e_env["env"],
         goose_e2e_env["project"],
@@ -161,13 +152,12 @@ def test_goose_kanibako_md_delivery(goose_e2e_env):
         f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
     )
     try:
-        gm = find_mount(cfg, f"{GUEST_HOME}/.config/goose/KANIBAKO.md")
-        assert gm is not None, "KANIBAKO.md not bound into ~/.config/goose"
-        assert gm.get("RW") is False, "guide bind must be read-only"
-        assert str(gm["Source"]).endswith("global/KANIBAKO.md")
-        assert (
-            env_of(cfg).get("CONTEXT_FILE_NAMES")
-            == '["KANIBAKO.md","AGENTS.md",".goosehints"]'
+        km = find_mount(cfg, KICKOFF_DEST)
+        assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
+        assert km.get("RW") is False, "kickoff-loader bind must be read-only"
+        assert DIRECTIVE_IMPORT in Path(km["Source"]).read_text()
+        assert "AGENTS.md" in json.loads(
+            env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")
         )
     finally:
         rm(container_name(box))

@@ -1,18 +1,22 @@
-"""STEP 2a — the PLUGIN-declared instructions bind (spec §2d L608).
+"""Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.
 
-Each agent plugin declares an AGENT-scope ``@``-ref-sourced category bind
-``agent.<agent>.bindings.ro.instructions = (@system.instructions, <harness slot>)``
-via its ``<agent>-defaults.yaml`` ``category_binds:`` section, read by
-:func:`kanibako.agent_defaults.load_category_binds` and exposed as
-``target.default_category_binds()``.  These tests prove:
+Each agent plugin ships a KICKOFF-LOADER (the flattener SEED): a tiny static file
+whose whole content is a single ``@~/playbook/kanibako/directives/KANIBAKO.md``
+import.  The plugin declares it as a best-effort descriptor ``managed_pointer``
+binding delivered read-only to ``~/.config/kanibako/kickoff.md``, and names the
+native instruction slot the box-start flattener will write the flattened per-agent
+FINAL file to via the ``KANIBAKO_DIRECTIVE_FINAL`` container env var.  These tests
+prove that declaration for all three first-party agents:
 
-* the loader emits the RAW ``@system.instructions`` ref (NOT a fixed path), so core
-  stays agent-agnostic; and
-* the launch category cascade (``build_launch_snapshot`` fold →
-  ``snapshot_category_entries`` → ``reconcile_categories``) RESOLVES that ref to the
-  concrete ``<data>/global/KANIBAKO.md`` path, mounted read-only at the correct
-  per-harness slot.  A mount whose source is still the literal ``@system.instructions``
-  string (unexpanded) or whose dest/options are wrong would redden these.
+* the ``managed_pointer`` binding resolves its shipped kickoff-loader source and,
+  driven through ``descriptor_mounts``, mounts RO at the kickoff slot;
+* the kickoff-loader content is exactly the single directive import; and
+* ``descriptor.container_env["KANIBAKO_DIRECTIVE_FINAL"]`` is the right native slot.
+
+The former Route-A ``@system.instructions`` → native-slot category bind is RETIRED
+(the guide now reaches the box via the RO ``~/playbook/kanibako/`` bundle + the
+flattened FINAL file), so we also prove no plugin still emits it.  The start-time
+flatten + hook is a LATER increment and is NOT exercised here.
 """
 
 from __future__ import annotations
@@ -23,9 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings_categories import reconcile_categories
-from kanibako.settings_launch import build_launch_snapshot, snapshot_category_entries
-from kanibako.settings_resolve import GUEST_HOME, ResolveCtx
+from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
 from kanibako.targets.base import (
@@ -35,187 +37,147 @@ from kanibako.targets.base import (
     PluginDescriptor,
 )
 
-# Per-harness expected box-side slot (spec §2d L608 / default-plugin-config DESIGN).
-# ``~`` is resolved box-side to the guest home by the adapter.
-_EXPECTED_DEST = {
-    "claude": f"{GUEST_HOME}/.claude/KANIBAKO.md",
-    "goose": f"{GUEST_HOME}/.config/goose/KANIBAKO.md",
+_AGENTS = ["claude", "codex", "goose"]
+
+# The single box-side kickoff slot the SEED is delivered to (uniform across agents).
+_KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
+
+# The kickoff-loader's whole content: one @import of the RO directive bundle.
+_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
+
+# The native instruction slot the box-start flattener writes the FINAL file to.
+_EXPECTED_FINAL = {
+    "claude": f"{GUEST_HOME}/.claude/CLAUDE.md",
     "codex": f"{GUEST_HOME}/.codex/AGENTS.md",
+    "goose": f"{GUEST_HOME}/.config/goose/.additionalContext.md",
 }
 
-# A concrete resolved value for system.instructions (what ``std.instructions`` yields
-# at launch = ``@config.data/global/KANIBAKO.md`` resolved).  The @-ref must expand
-# to EXACTLY this.
-_RESOLVED_INSTRUCTIONS = "/data/global/KANIBAKO.md"
+
+def _kickoff_binding(agent: str):
+    """The plugin descriptor's ``managed_pointer`` kickoff-loader binding."""
+    desc = resolve_target(agent, None).descriptor
+    assert desc is not None
+    ptrs = [b for b in desc.bindings if b.key == "managed_pointer"]
+    assert len(ptrs) == 1, f"{agent}: expected exactly one managed_pointer binding"
+    return ptrs[0]
 
 
-def _ctx(agent: str) -> ResolveCtx:
-    return ResolveCtx(
-        agent_name=agent,
-        workset_name=None,
-        host_home="/home/host",
-        xdg={"XDG_DATA_HOME": "/data"},
+def _dummy_install(agent: str) -> AgentInstall:
+    # The kickoff-loader binding is LITERAL-origin, so descriptor_mounts never
+    # consults these install fields for it (they matter only for the
+    # AGENT_CRITICAL binary/launcher/share binds we isolate away below).
+    p = Path("/nonexistent")
+    return AgentInstall(name=agent, binary=p, install_dir=p, launcher=p)
+
+
+# --- the kickoff-loader binding (the flattener SEED) -------------------------
+
+
+@pytest.mark.parametrize("agent", _AGENTS)
+def test_kickoff_binding_shape(agent: str):
+    """Each plugin's ``managed_pointer`` is a best-effort RO literal at the kickoff slot."""
+    b = _kickoff_binding(agent)
+    assert b.origin is HostSrcOrigin.LITERAL
+    assert b.scope is BindScope.AGENT  # best-effort, NOT agent_critical
+    assert b.ro is True
+    assert b.box_dest == _KICKOFF_DEST
+    # The literal source is the plugin's shipped kickoff-loader file and resolves.
+    assert b.literal_src is not None
+    assert b.literal_src.is_file(), f"{agent}: kickoff-loader source missing"
+
+
+@pytest.mark.parametrize("agent", _AGENTS)
+def test_kickoff_content_is_single_directive_import(agent: str):
+    """The shipped kickoff-loader content is exactly the one directive @import."""
+    b = _kickoff_binding(agent)
+    assert b.literal_src is not None
+    text = b.literal_src.read_text()
+    import_lines = [
+        ln.strip()
+        for ln in text.splitlines()
+        if ln.strip() and not ln.strip().startswith("<!--")
+    ]
+    assert import_lines == [_DIRECTIVE_IMPORT], (
+        f"{agent}: kickoff-loader must be the single directive import, got {import_lines!r}"
     )
 
 
-@pytest.mark.parametrize("agent", ["claude", "goose", "codex"])
-def test_loader_emits_raw_ref_and_slot(agent: str):
-    """``default_category_binds`` emits the RAW @-ref source + per-harness slot, ro."""
-    target = resolve_target(agent, None)
-    binds = target.default_category_binds()
-    key = "agent.bindings.ro.instructions"
-    assert key in binds, f"{agent}: missing instructions category bind"
-    tup = binds[key]
-    # Element 0 is the RAW @-ref STRING — core carries no per-harness path knowledge.
-    assert tup[0] == "@system.instructions"
-    assert tup[1] == _EXPECTED_DEST[agent].replace(GUEST_HOME, "~", 1)
-    assert tup[2] == "ro"
+@pytest.mark.parametrize("agent", _AGENTS)
+def test_kickoff_delivered_ro_at_kickoff_slot(agent: str):
+    """Through the plugin's own delivery path the SEED mounts RO at the kickoff slot.
 
-
-@pytest.mark.parametrize("agent", ["claude", "goose", "codex"])
-def test_instructions_ref_resolves_through_cascade(agent: str):
-    """The @-ref RESOLVES to the concrete KANIBAKO.md path at the harness slot, ro.
-
-    Mirrors ``start._build_launch_snapshot``: the plugin's category binds are unioned
-    into ``default_categories`` alongside the resolved ``system.instructions`` floor
-    entry, then adapted + reconciled.  The winning mount's source MUST be the resolved
-    path (NOT the literal ``@system.instructions``) — the proof the ref expands.
+    Isolating the kickoff binding (the AGENT_CRITICAL binary binds would need a real
+    install) and running it through ``descriptor_mounts`` proves the shipped source
+    resolves and mounts read-only at the exact box-side kickoff slot, carrying the
+    directive import.  A wrong dest, rw options, or an unresolvable source reddens.
     """
-    target = resolve_target(agent, None)
-    default_categories: dict[str, object] = dict(target.default_category_binds())
-    # The resolved system.* floor entry the @-ref views (start.py folds resolved_sys).
-    default_categories["system.instructions"] = _RESOLVED_INSTRUCTIONS
-
-    snap = build_launch_snapshot(
-        agent_name=agent,
-        ctx=_ctx(agent),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        default_categories=default_categories,
-    )
-    entries = snapshot_category_entries(snap, active_agent=agent, box_ctx=_ctx(agent))
-    rec = reconcile_categories(entries)
-
-    by_name = {m.name: m for m in rec.mounts}
-    assert "instructions" in by_name, f"{agent}: instructions bind not reconciled"
-    m = by_name["instructions"]
-    assert m.scope == "agent"
-    assert m.category == "bindings.ro"
-    # PROOF: the @-ref expanded to the resolved path (not the literal ref string).
-    assert m.host_src == _RESOLVED_INSTRUCTIONS
-    assert m.host_src != "@system.instructions"
-    # Correct per-harness slot (box-side resolved) + read-only.
-    assert m.box_dest == _EXPECTED_DEST[agent]
+    b = _kickoff_binding(agent)
+    d = PluginDescriptor(command=(agent,), bindings=(b,), mode={"start": ()})
+    mounts = descriptor_mounts(d, _dummy_install(agent))
+    assert len(mounts) == 1
+    m = mounts[0]
+    assert m.destination == _KICKOFF_DEST
     assert m.options == "ro"
+    assert _DIRECTIVE_IMPORT in Path(m.source).read_text()
 
 
-def test_goose_context_file_names_env():
-    """goose ships CONTEXT_FILE_NAMES so it loads the bound KANIBAKO.md file.
+@pytest.mark.parametrize("agent", _AGENTS)
+def test_kickoff_is_best_effort_missing_source_skipped(agent: str):
+    """A missing kickoff source is SKIPPED (not raised) — a launch can't crash.
 
-    The value is a JSON array STRING (goose's expected format) that re-includes the
-    default context filenames so a user's own files still load alongside ours.
+    Repointing the LITERAL source at a nonexistent path and running
+    ``descriptor_mounts`` must yield NO mount and NO ``BindingSourceError`` — the
+    AGENT (best-effort) scope contract.
+    """
+    b = _kickoff_binding(agent)
+    broken = replace(b, literal_src=Path("/nonexistent/kanibako/kickoff-loader"))
+    d = PluginDescriptor(command=(agent,), bindings=(broken,), mode={"start": ()})
+    assert descriptor_mounts(d, _dummy_install(agent)) == []
+
+
+# --- the FINAL-slot env var --------------------------------------------------
+
+
+@pytest.mark.parametrize("agent", _AGENTS)
+def test_directive_final_env_names_native_slot(agent: str):
+    """``KANIBAKO_DIRECTIVE_FINAL`` names the agent's native instruction slot."""
+    desc = resolve_target(agent, None).descriptor
+    assert desc is not None
+    assert desc.container_env.get("KANIBAKO_DIRECTIVE_FINAL") == _EXPECTED_FINAL[agent]
+
+
+def test_goose_context_file_names_lists_additional_context_md():
+    """goose loads its FINAL file because CONTEXT_FILE_NAMES lists its name.
+
+    The FINAL flattened guide lands at ~/.config/goose/.additionalContext.md (a
+    deliberately conspicuous name — a stopgap breadcrumb until goose gains hook
+    additionalContext injection).  goose only reads the filenames in
+    CONTEXT_FILE_NAMES, so `.additionalContext.md` must be listed, and the retired
+    KANIBAKO.md must be gone.  The existing keyring disable is untouched.
     """
     desc = resolve_target("goose", None).descriptor
     assert desc is not None
     val = desc.container_env.get("CONTEXT_FILE_NAMES")
     assert val is not None, "goose descriptor missing CONTEXT_FILE_NAMES"
-    # Valid JSON array with our file first + the re-included defaults.
-    assert json.loads(val) == ["KANIBAKO.md", "AGENTS.md", ".goosehints"]
-    # The existing keyring disable is untouched.
+    names = json.loads(val)
+    assert ".additionalContext.md" in names, names
+    assert "KANIBAKO.md" not in names, names
+    assert desc.container_env["KANIBAKO_DIRECTIVE_FINAL"].endswith(
+        "/.config/goose/.additionalContext.md"
+    )
     assert desc.container_env.get("GOOSE_DISABLE_KEYRING") == "true"
 
 
-# --- STEP 2b — the claude LOADER (~/.claude/CLAUDE.md) -----------------------
-#
-# 2a delivers the KANIBAKO.md CONTENT (bound RO to ~/.claude/KANIBAKO.md).  2b
-# delivers the claude-only LOADER that makes claude READ it: a tiny shipped static
-# file bound RO to ~/.claude/CLAUDE.md (claude's user-memory slot, loaded every
-# session) whose whole content is TWO RELATIVE imports — `@KANIBAKO.md` +
-# `@AGENTS.md` — resolved by claude next to the file in ~/.claude/.  RELATIVE (not
-# `@$HOME/...`, not `@~/...`): verified to load both on real claude in both secure
-# and skip-permissions modes (the earlier managed /etc/claude-code pointer was
-# dropped — its @import only expanded under skip-permissions, not for ~).  It flows
-# through the plugin's OWN delivery path (a descriptor `bindings:` entry →
-# `descriptor_mounts`), NOT the @-ref category cascade, and is BEST-EFFORT (scope
-# AGENT, never AGENT_CRITICAL) so a missing source is skipped, not crash-inducing.
-
-_LOADER_DEST = f"{GUEST_HOME}/.claude/CLAUDE.md"
-_LOADER_IMPORTS = ["@KANIBAKO.md", "@AGENTS.md"]
+# --- the retired Route-A category bind ---------------------------------------
 
 
-def _loader_binding():
-    """The claude descriptor's ~/.claude/CLAUDE.md loader binding (claude-only)."""
-    desc = resolve_target("claude", None).descriptor
-    assert desc is not None
-    ptrs = [b for b in desc.bindings if b.box_dest == _LOADER_DEST]
-    assert len(ptrs) == 1, "claude descriptor missing the ~/.claude/CLAUDE.md loader bind"
-    return ptrs[0]
-
-
-def _dummy_install() -> AgentInstall:
-    # The loader binding is LITERAL-origin, so descriptor_mounts never consults
-    # these install fields for it (they matter only for the AGENT_CRITICAL binds).
-    p = Path("/nonexistent")
-    return AgentInstall(name="claude", binary=p, install_dir=p, launcher=p)
-
-
-def test_loader_content_is_relative_imports():
-    """The shipped loader's content is EXACTLY the two RELATIVE imports (not ~/$HOME)."""
-    b = _loader_binding()
-    assert b.literal_src is not None
-    text = b.literal_src.read_text()
-    lines = text.splitlines()
-    # Both relative import lines MUST be present verbatim…
-    for imp in _LOADER_IMPORTS:
-        assert imp in lines, f"loader missing relative import {imp!r}"
-    # …and NO absolute/home-anchored import form may ship (those would not resolve
-    # relative to ~/.claude/ the way the verified design requires).
-    assert "@$HOME/" not in text
-    assert "@~/" not in text
-    assert "@/home/" not in text
-
-
-def test_loader_delivered_ro_at_user_memory_slot():
-    """Through the plugin's own delivery path, the loader is a RO mount at ~/.claude/CLAUDE.md.
-
-    Isolating the loader binding (the AGENT_CRITICAL delivery binds need a real
-    install) and running it through ``descriptor_mounts`` proves the shipped source
-    resolves and mounts read-only at the exact user-memory slot, carrying the two
-    relative imports.  A wrong dest, rw options, or an absolute/`~` import reddens.
-    """
-    b = _loader_binding()
-    d = PluginDescriptor(command=("claude",), bindings=(b,), mode={"start": ()})
-    mounts = descriptor_mounts(d, _dummy_install())
-    assert len(mounts) == 1
-    m = mounts[0]
-    assert m.destination == _LOADER_DEST
-    assert m.options == "ro"
-    delivered = Path(m.source).read_text().splitlines()
-    for imp in _LOADER_IMPORTS:
-        assert imp in delivered
-
-
-def test_loader_is_best_effort_missing_source_skipped():
-    """A missing loader source is SKIPPED (not raised) — a launch can't crash.
-
-    Repointing the LITERAL source at a nonexistent path and running
-    ``descriptor_mounts`` must yield NO mount and NO ``BindingSourceError`` — the
-    AGENT (best-effort) scope contract, mirroring 2a's non-critical bind.
-    """
-    b = _loader_binding()
-    assert b.scope is BindScope.AGENT  # NOT agent_critical
-    assert b.origin is HostSrcOrigin.LITERAL
-    broken = replace(b, literal_src=Path("/nonexistent/kanibako/claude-md-loader"))
-    d = PluginDescriptor(command=("claude",), bindings=(broken,), mode={"start": ()})
-    # No raise, empty mounts — the best-effort skip.
-    assert descriptor_mounts(d, _dummy_install()) == []
-
-
-@pytest.mark.parametrize("agent", ["goose", "codex"])
-def test_only_claude_ships_the_loader(agent: str):
-    """The ~/.claude/CLAUDE.md loader is claude-ONLY (goose/codex slots are natively read)."""
-    desc = resolve_target(agent, None).descriptor
-    assert desc is not None
-    assert not any(b.box_dest == _LOADER_DEST for b in desc.bindings)
+@pytest.mark.parametrize("agent", _AGENTS)
+def test_route_a_instructions_bind_retired(agent: str):
+    """No plugin emits the old ``@system.instructions`` → native-slot category bind."""
+    binds = resolve_target(agent, None).default_category_binds()
+    assert "agent.bindings.ro.instructions" not in binds
+    # And nothing left points a category bind at @system.instructions.
+    assert not any(
+        isinstance(v, tuple) and v and v[0] == "@system.instructions"
+        for v in binds.values()
+    ), f"{agent}: a category bind still references @system.instructions: {binds!r}"

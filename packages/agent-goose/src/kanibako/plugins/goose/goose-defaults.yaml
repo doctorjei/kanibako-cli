@@ -28,6 +28,24 @@ descriptor:
       kind: file
       scope: agent_critical
       ro: true
+    # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
+    # delivered RO to ~/.config/kanibako/kickoff.md.  Its whole content is a single
+    # `@~/playbook/kanibako/directives/KANIBAKO.md` import — the entrypoint the
+    # box-start flattener resolves into the flattened per-agent FINAL file at goose's
+    # native slot ~/.config/goose/AGENTS.md (named by KANIBAKO_DIRECTIVE_FINAL below;
+    # goose loads it via CONTEXT_FILE_NAMES, which lists AGENTS.md).  The start-time
+    # flatten + hook is a LATER increment; this declaration only ships the SEED and
+    # the FINAL-slot env.  `origin: literal` + `literal_src_pkg` names a
+    # package-relative resource (resolved to its shipped host path via
+    # importlib.resources).  scope `agent` = BEST-EFFORT: a missing/unresolvable
+    # source is SKIPPED, never raised, so a missing SEED can NOT crash a launch.
+    - key: managed_pointer
+      origin: literal
+      literal_src_pkg: "data/kickoff-loader/.config/goose/AGENTS.md"
+      box_dest: "$GUEST_HOME/.config/kanibako/kickoff.md"
+      kind: file
+      scope: agent
+      ro: true
 
   # goose 1.37.0: bare `session` (new) / `session --resume` (continue-last).
   # The removed `session start`/`session resume` subcommands are NOT used.
@@ -66,14 +84,24 @@ descriptor:
   # keyring/D-Bus secret-service is unavailable, so goose stores secrets in the
   # file ~/.config/goose/secrets.yaml instead (the file kanibako syncs).
   #
-  # CONTEXT_FILE_NAMES makes goose load the kanibako box-guidance file (bound RO to
-  # ~/.config/goose/KANIBAKO.md by the instructions bind below) — goose only reads
-  # the filenames in this list.  The value is a JSON array STRING (goose's expected
-  # format); the defaults (AGENTS.md / .goosehints) are re-included so a user's own
-  # context files still load alongside ours.
+  # CONTEXT_FILE_NAMES makes goose load the flattened per-agent FINAL guidance file
+  # the box-start flattener writes to ~/.config/goose/.additionalContext.md
+  # (KANIBAKO_DIRECTIVE_FINAL below) — goose only reads the filenames in this list, so
+  # `.additionalContext.md` must be listed.  The value is a JSON array STRING (goose's
+  # expected format); AGENTS.md / .goosehints stay so a user's own context files still
+  # load alongside ours.
   container_env:
     GOOSE_DISABLE_KEYRING: "true"
-    CONTEXT_FILE_NAMES: '["KANIBAKO.md","AGENTS.md",".goosehints"]'
+    CONTEXT_FILE_NAMES: '[".additionalContext.md","AGENTS.md",".goosehints"]'
+    # The native instruction slot the box-start flattener writes the flattened
+    # per-agent FINAL file to.  goose reads it via CONTEXT_FILE_NAMES.
+    # ⚑ STOPGAP + breadcrumb: goose CANNOT inject additionalContext from a hook today
+    # (its hooks only do `{decision,reason}` deny — verified block/goose v1.42; the
+    # capability is open/unmerged in aaif-goose/goose#10361).  So we deliver directives
+    # as a context FILE and name it `.additionalContext.md` DELIBERATELY so it sticks
+    # out: once goose gains hook additionalContext injection, migrate goose to the
+    # claude/codex SessionStart-hook path and drop this file + its CONTEXT_FILE_NAMES entry.
+    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.config/goose/.additionalContext.md"
 
   # Two-way SYNC of three things so in-box `goose configure` persists to the host
   # (host check_auth then passes -> no re-prompt).  All unfiltered (key-by-NAME):
@@ -102,21 +130,8 @@ descriptor:
   # RO / plugin-set → meta.agent.goose.auth.share_support.
   auth_share_support: true
 
-# AGENT-scope @-ref-sourced category binds (spec §2d L608).  Each entry becomes an
-# `agent.<category>.<key>` default whose VALUE is the structured bind tuple
-# (<@-ref host_src>, <box_dest>, <options>) — the AGENT-scope mirror of
-# core-defaults.yaml's `meta_ref` bind shape.  `meta_ref` is emitted VERBATIM as the
-# host_src (NOT a fixed path), which the launch category cascade / `expand` resolves
-# from the snapshot floor — so the plugin declares its harness slot WITHOUT any
-# per-harness path knowledge leaking into core.  Read by the thin loader
-# `kanibako.agent_defaults.load_category_binds`.
-category_binds:
-  # Instructions bind: the shared box-guidance doc delivered RO into a dedicated,
-  # namespaced goose config-dir slot (~/.config/goose/KANIBAKO.md) — no collision
-  # with the user's own goose context files; loaded via CONTEXT_FILE_NAMES above.
-  # Source = the single shared @system.instructions.
-  - key: instructions
-    category: bindings.ro
-    meta_ref: "@system.instructions"
-    box_dest: "~/.config/goose/KANIBAKO.md"
-    ro: true
+# The former Route-A `category_binds:` `instructions` entry (@system.instructions →
+# ~/.config/goose/KANIBAKO.md) is RETIRED: the box guide now reaches the box via the
+# RO `~/playbook/kanibako/` bundle + the flattened per-agent FINAL file (seeded by
+# the `managed_pointer` kickoff-loader above), arriving at ~/.config/goose/AGENTS.md
+# (still listed in CONTEXT_FILE_NAMES), not a per-agent KANIBAKO.md native-slot bind.

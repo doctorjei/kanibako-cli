@@ -1,9 +1,0 @@
-<!-- kanibako-managed loader — do NOT edit; kanibako owns this file.  Delivered
-     read-only to ~/.claude/CLAUDE.md (claude's user-memory slot, loaded every
-     session).  Its sole job is to make claude load two files that sit next to it
-     in ~/.claude/: KANIBAKO.md (the kanibako-owned box environment guide, bound
-     read-only by kanibako) and AGENTS.md (the user's own editable instructions,
-     seeded once).  The imports are RELATIVE (resolved next to this file in
-     ~/.claude/) — verified to load both on real claude. -->
-@KANIBAKO.md
-@AGENTS.md

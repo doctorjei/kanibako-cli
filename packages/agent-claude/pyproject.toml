@@ -25,8 +25,12 @@ include = ["kanibako.plugins.claude*"]
     # Declarative agent defaults (P6c) — read at import time via importlib.resources.
     "claude-defaults.yaml",
     # Static claude-specific data delivered by descriptor binds (e.g. the
-    # ~/.claude/CLAUDE.md loader file) — read via importlib.resources at load.
-    "data/*",
+    # kickoff-loader SEED under data/kickoff-loader/.claude/) — read via
+    # importlib.resources at load.  The SEED lives in a nested dot-dir, so the same
+    # recursive dot-dir patterns as template/ are needed (data/* would miss it).
+    "data/*", "data/**/*", "data/**/.*",
+    "data/.*/**/*", "data/.*/*",
+    "data/**/.*/**/*", "data/**/.*/*",
     "template/**/*", "template/**/.*",
     "template/.*/**/*", "template/.*/*",
     "template/**/.*/**/*", "template/**/.*/*",

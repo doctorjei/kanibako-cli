@@ -38,6 +38,7 @@ Our ``kanibako code`` launcher passes an explicit ``--folder-uri`` anyway, so
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import urllib.parse
@@ -323,6 +324,430 @@ def clear_claude_bypass_permissions(settings_path: Path) -> bool:
     return _write_if_changed(
         settings_path, existing, clear_bypass_permissions(existing),
     )
+
+
+# ---------------------------------------------------------------------------
+# Increment 2b: the instruction-delivery SessionStart hook (claude + codex).
+#
+# The kickoff SEED (~/.config/kanibako/kickoff.md) is a single ``@import`` chain;
+# the flattener (RO-bound at ~/playbook/kanibako/scripts/import-directives.py)
+# resolves it and, in ``--additional-context`` mode, prints a SessionStart hook
+# payload whose ``hookSpecificOutput.additionalContext`` is the flattened text.
+# A ``SessionStart`` hook runs the flattener and injects that as context — the
+# claude+codex delivery (both agents nest a ``SessionStart`` group of
+# ``{matcher, hooks:[{type:"command", command}]}``).  Claude reads its memory
+# file BEFORE hooks fire, so a file-rewrite would be too late; the hook's
+# additionalContext is the delivery instead.
+#
+# DELIVERY SURFACE differs by agent:
+#   * claude → ``~/.claude/settings.json`` (JSON ``hooks.SessionStart``); see
+#     :func:`seed_session_start_hook`.
+#   * codex  → ``~/.codex/config.toml`` (INLINE ``[hooks]`` in config.toml, NOT a
+#     separate ``hooks.json`` — verified against codex-cli 0.141.0).  codex ALSO
+#     gates a hook behind a content-hash trust; the codex config manager
+#     (:func:`seed_codex_config`) writes the hook group, the pre-computed
+#     trusted_hash, and the directory trust together so the FIRST launch fires
+#     the hook with no ``/hooks`` prompt.
+#
+# The command is SILENT-SAFE (``|| true``): a missing SEED or flattener error
+# never aborts the session.  ``$HOME``/``$KANIBAKO_DIRECTIVE_SEED`` expand at
+# hook-run time in-box.  Schemas verified against code.claude.com/docs/en/hooks.md
+# and learn.chatgpt.com/docs/hooks (codex): both accept an OR-pattern matcher
+# (``startup|resume|clear|compact``).
+# ---------------------------------------------------------------------------
+
+_SESSION_START_MATCHER = "startup|resume|clear|compact"
+_SESSION_START_COMMAND = (
+    'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
+    '--additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'
+)
+
+
+def merge_session_start_hook(settings: dict) -> dict:
+    """UNION-MERGE kanibako's instruction-delivery ``SessionStart`` hook into a
+    claude JSON hooks dict, returning a NEW dict (input never mutated).
+
+    * ``hooks`` — created if absent; if present, its OTHER event keys
+      (``PreToolUse``/…) are preserved.
+    * ``hooks.SessionStart`` — a list of matcher-groups; every EXISTING group is
+      preserved.  Our managed group (matcher ``startup|resume|clear|compact``
+      running the flattener in ``--additional-context`` mode) is APPENDED iff no
+      existing group already carries our exact command — so a re-run never
+      duplicates it (idempotent).
+    * every OTHER top-level key is preserved untouched.
+    """
+    merged = copy.deepcopy(settings)
+    current_hooks = merged.get("hooks")
+    hooks = dict(current_hooks) if isinstance(current_hooks, dict) else {}
+    current_ss = hooks.get("SessionStart")
+    groups = list(current_ss) if isinstance(current_ss, list) else []
+    already = any(
+        isinstance(g, dict)
+        and isinstance(g.get("hooks"), list)
+        and any(
+            isinstance(h, dict) and h.get("command") == _SESSION_START_COMMAND
+            for h in g["hooks"]
+        )
+        for g in groups
+    )
+    if not already:
+        groups = groups + [
+            {
+                "matcher": _SESSION_START_MATCHER,
+                "hooks": [
+                    {"type": "command", "command": _SESSION_START_COMMAND},
+                ],
+            }
+        ]
+    hooks["SessionStart"] = groups
+    merged["hooks"] = hooks
+    return merged
+
+
+def seed_session_start_hook(settings_path: Path) -> bool:
+    """Read-modify-write UNION-MERGE the instruction-delivery ``SessionStart`` hook
+    into the box's in-box claude ``~/.claude/settings.json`` (host path
+    *settings_path*).
+
+    The CLAUDE surface (JSON hooks).  codex does NOT use this — its hook lives in
+    ``~/.codex/config.toml`` via :func:`seed_codex_config`.  Reads the existing
+    file tolerantly (absent/corrupt → ``{}``), merges via
+    :func:`merge_session_start_hook`, and writes it back as pretty JSON (creating
+    parent dirs) iff it changed (idempotent).  Returns ``True`` iff it wrote the
+    file.  Callers wrap this best-effort so a failure never blocks the launch.
+    """
+    existing = _read_existing_config(settings_path)
+    return _write_if_changed(
+        settings_path, existing, merge_session_start_hook(existing),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Increment 2b (codex surface): the ~/.codex/config.toml MANAGER.
+#
+# codex-cli 0.141.0 fires a ``[hooks.SessionStart]`` hook defined INLINE in
+# ``~/.codex/config.toml`` and injects its additionalContext in-session — the
+# SAME delivery as claude, a DIFFERENT file/format (TOML, not JSON; NOT a
+# separate ``hooks.json`` — that path was openai/codex#17532 speculation and is
+# wrong for 0.141.0).  codex additionally gates a config-defined hook behind a
+# content-hash trust (``[hooks.state]``) PLUS a directory trust
+# (``[projects."<cwd>"] trust_level``); pre-seeding both makes the FIRST launch
+# fire the hook with no interactive ``/hooks`` prompt.
+#
+# This is the SINGLE place kanibako's managed codex config.toml writes happen —
+# it reconciles the hook group, the trust hash, the directory trust, AND the
+# permission-parity keys (approval_policy/sandbox_mode) together.  A later
+# increment (goose / auth-parity) builds on this shape.
+#
+# NO tomlkit dependency (kanibako ships stdlib-only: argcomplete/PyYAML/packaging).
+# tomllib is read-only and cannot round-trip comments, and re-serialising an
+# arbitrary user config through a hand-rolled emitter risks corrupting exotic
+# TOML (multiline strings, datetimes, floats).  So the manager is SURGICAL, not a
+# round-trip: it edits ONLY kanibako-managed lines and leaves every other byte of
+# the user's file (all comments + all data) untouched.
+#   * the hook group + trust-hash + directory-trust TABLES live in a single
+#     clearly-delimited kanibako-managed REGION regenerated at the file's end;
+#   * the two TOP-LEVEL scalar keys (approval_policy/sandbox_mode) are reconciled
+#     by in-place ROOT-SECTION line surgery (a bare key after a ``[table]`` header
+#     would bind to that table, so managed root keys can NOT live in the trailing
+#     region — they are edited where top-level keys legally belong: before the
+#     first table header).
+# ---------------------------------------------------------------------------
+
+# The codex INTERNAL event id for the SessionStart hook (snake_case), as used in
+# the trust state-table key ``<cfg>:<event>:<group>:<handler>`` and in the trust
+# hash identity's ``event_name``.  The config.toml table key is PascalCase
+# (``[hooks.SessionStart]``); codex maps it to this event id internally.
+_CODEX_EVENT_KEY = "session_start"
+
+# kanibako's managed permission-parity values, driven by the box's resolved codex
+# ``auto_approve`` (yolo).  ON → SET both; OFF → CLEAR each ONLY when it still
+# equals the managed value (symmetric with :func:`clear_bypass_permissions`; a
+# user-chosen approval_policy/sandbox_mode is never touched).
+_CODEX_APPROVAL_ON = {
+    "approval_policy": "never",
+    "sandbox_mode": "workspace-write",
+}
+
+# Delimiters bounding the regenerated kanibako-managed region (hook group + trust
+# hash + directory trust).  Everything OUTSIDE this region is preserved verbatim.
+_CODEX_REGION_BEGIN = (
+    "# >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>"
+)
+_CODEX_REGION_END = "# <<< kanibako-managed (instruction-delivery hook + trust) <<<"
+
+
+def codex_trusted_hash(
+    event_key: str,
+    matcher: str | None,
+    command: str,
+    timeout_sec: int = 600,
+) -> str:
+    """Return codex's content-trust hash for a single command hook.
+
+    Reproduces codex's ``command_hook_hash`` (codex-rs/hooks discovery +
+    config/fingerprint): a canonical, key-sorted, whitespace-free JSON encoding
+    of the hook IDENTITY, SHA-256'd and prefixed ``sha256:``.  The identity is::
+
+        {"event_name": <event_key>,
+         "matcher": <matcher>,                       # key OMITTED when None
+         "hooks": [{"type": "command",
+                    "command": <RAW command, pre-${ENV} expansion>,
+                    "timeout": <timeout_sec, default 600>,
+                    "async": false}]}
+
+    ``command`` is the RAW string BEFORE any ``${ENV}`` expansion (codex hashes
+    the config text, not the expanded command), and ``timeout`` normalises to the
+    600 s default.  Pinned to a real-oracle vector in the tests.
+    """
+    identity: dict[str, object] = {
+        "event_name": event_key,
+        "hooks": [
+            {
+                "type": "command",
+                "command": command,
+                "timeout": timeout_sec,
+                "async": False,
+            }
+        ],
+    }
+    if matcher is not None:
+        identity["matcher"] = matcher
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _toml_basic_string(value: str) -> str:
+    """Encode *value* as a TOML basic (double-quoted) string.
+
+    Also used for quoted KEYS (``[hooks.state."a:b"]``), which share basic-string
+    escaping.  Escapes backslash, double-quote and the common control chars — the
+    only cases our managed values (commands with ``"`` and ``$``, colon/slash
+    paths) can hit.
+    """
+    out = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    return f'"{out}"'
+
+
+def _first_table_index(lines: list[str]) -> int:
+    """Index of the first TOML table/array-of-tables header line (``[`` / ``[[``),
+    i.e. the end of the root section.  Returns ``len(lines)`` when there is none.
+    """
+    for i, line in enumerate(lines):
+        if re.match(r"\s*\[", line):
+            return i
+    return len(lines)
+
+
+def _strip_codex_region(text: str) -> str:
+    """Remove the kanibako-managed region (BEGIN..END markers, inclusive).
+
+    Idempotence + re-run safety: the region is regenerated each write, so it is
+    stripped first so the surviving text is pure user content.  A malformed
+    region missing its END marker is stripped to end-of-file.  No markers → text
+    unchanged.
+    """
+    lines = text.split("\n")
+    begins = [i for i, ln in enumerate(lines) if ln.strip() == _CODEX_REGION_BEGIN]
+    if not begins:
+        return text
+    b = begins[0]
+    ends = [i for i, ln in enumerate(lines) if ln.strip() == _CODEX_REGION_END and i >= b]
+    e = ends[0] if ends else len(lines) - 1
+    del lines[b : e + 1]
+    return "\n".join(lines)
+
+
+def _reconcile_codex_approval(text: str, auto_approve: bool) -> str:
+    """Reconcile the managed TOP-LEVEL ``approval_policy``/``sandbox_mode`` keys.
+
+    ON (yolo) → SET each to its managed value (in place if a root-section line
+    already exists, else inserted before the first table header).  OFF → REMOVE
+    each root-section line ONLY when it still equals the managed value; a
+    user-chosen value is left intact (symmetric with
+    :func:`clear_bypass_permissions`).  Only the ROOT section (before the first
+    ``[table]`` header) is considered, so a same-named key inside a user table
+    (e.g. a ``[profiles.x]`` override) is never touched.
+    """
+    lines = text.split("\n")
+    for key, managed_val in _CODEX_APPROVAL_ON.items():
+        lines = _apply_root_key(lines, key, managed_val, auto_approve)
+    return "\n".join(lines)
+
+
+def _apply_root_key(
+    lines: list[str], key: str, managed_val: str, auto_approve: bool
+) -> list[str]:
+    """Apply the ON/OFF discipline for one managed root key.  Returns NEW list."""
+    result = list(lines)
+    table = _first_table_index(result)
+    key_re = re.compile(r"\s*" + re.escape(key) + r"\s*=")
+    found = next((i for i in range(table) if key_re.match(result[i])), None)
+    if auto_approve:
+        new_line = f"{key} = {_toml_basic_string(managed_val)}"
+        if found is not None:
+            result[found] = new_line
+        else:
+            result.insert(table, new_line)
+        return result
+    # OFF: remove ONLY our managed value; leave a user-chosen one.
+    if found is not None:
+        val_re = re.compile(r"\s*" + re.escape(key) + r'\s*=\s*"([^"]*)"')
+        m = val_re.match(result[found])
+        if m is not None and m.group(1) == managed_val:
+            del result[found]
+    return result
+
+
+def _count_session_start_groups(text: str) -> int:
+    """Count user ``[[hooks.SessionStart]]`` array-of-table groups in *text*.
+
+    The kanibako-managed group is APPENDED after all user groups, so its group
+    index (for the trust state-table key) equals this count.  Text-based (not
+    tomllib) so a corrupt user file still yields a usable index (0 for the empty
+    template — the common case, matching the oracle ``:0:0``).
+    """
+    header = re.compile(r"\s*\[\[\s*hooks\.SessionStart\s*\]\]\s*$")
+    return sum(1 for ln in text.split("\n") if header.match(ln))
+
+
+def _build_codex_managed_region(
+    *, box_config_path: str, codex_cwd: str, group_index: int
+) -> str:
+    """Build the regenerated kanibako-managed TOML region.
+
+    Holds the managed ``[[hooks.SessionStart]]`` group (the flattener in
+    ``--additional-context`` mode), the pre-computed ``[hooks.state]`` trusted
+    hash keyed on ``<box_config_path>:session_start:<group_index>:0``, and the
+    ``[projects."<codex_cwd>"] trust_level = "trusted"`` directory trust.
+    ``box_config_path`` is the BOX-absolute config path
+    (``/home/agent/.codex/config.toml``), NOT the host write path — codex keys
+    trust by the path it reads in-box.
+    """
+    state_key = f"{box_config_path}:{_CODEX_EVENT_KEY}:{group_index}:0"
+    thash = codex_trusted_hash(
+        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _SESSION_START_COMMAND,
+    )
+    return "\n".join(
+        [
+            _CODEX_REGION_BEGIN,
+            "[[hooks.SessionStart]]",
+            f"matcher = {_toml_basic_string(_SESSION_START_MATCHER)}",
+            "",
+            "[[hooks.SessionStart.hooks]]",
+            'type = "command"',
+            f"command = {_toml_basic_string(_SESSION_START_COMMAND)}",
+            "",
+            f"[hooks.state.{_toml_basic_string(state_key)}]",
+            f"trusted_hash = {_toml_basic_string(thash)}",
+            "",
+            f"[projects.{_toml_basic_string(codex_cwd)}]",
+            'trust_level = "trusted"',
+            _CODEX_REGION_END,
+        ]
+    )
+
+
+def merge_codex_config(
+    text: str, *, box_config_path: str, codex_cwd: str, auto_approve: bool
+) -> str:
+    """Return *text* with kanibako's managed codex config MERGED in (pure).
+
+    Strips any prior managed region, reconciles the managed root keys
+    (approval_policy/sandbox_mode per *auto_approve*), then regenerates the
+    managed region at the file's end.  All other user content — comments and data
+    alike — is preserved byte-for-byte.  Idempotent: re-merging its own output
+    reproduces it exactly.
+    """
+    # rstrip the region separator immediately so re-merges do not accumulate
+    # blank lines (idempotence); reconcile + region append operate on the clean
+    # user body.
+    body = _strip_codex_region(text).rstrip("\n")
+    body = _reconcile_codex_approval(body, auto_approve)
+    group_index = _count_session_start_groups(body)
+    region = _build_codex_managed_region(
+        box_config_path=box_config_path,
+        codex_cwd=codex_cwd,
+        group_index=group_index,
+    )
+    if body:
+        return body + "\n\n" + region + "\n"
+    return region + "\n"
+
+
+def seed_codex_config(
+    config_path: Path,
+    *,
+    box_config_path: str,
+    codex_cwd: str,
+    auto_approve: bool,
+) -> bool:
+    """Read-modify-write the box's in-box ``~/.codex/config.toml`` (host path
+    *config_path*): merge kanibako's managed hook group, trust hash, directory
+    trust, and approval/sandbox parity.
+
+    Reads tolerantly (absent → empty; the file is TEXT, so a "corrupt" TOML file
+    is handled at the text level and never crashes), merges via
+    :func:`merge_codex_config`, and writes iff it changed (idempotent).
+    ``box_config_path`` is the BOX-absolute config path used for the trust key;
+    ``codex_cwd`` is the in-box directory codex runs in (the trusted project).
+    Returns ``True`` iff it wrote.  Callers wrap best-effort so a failure never
+    blocks the launch.
+    """
+    try:
+        existing = config_path.read_text()
+    except OSError:
+        existing = ""
+    merged = merge_codex_config(
+        existing,
+        box_config_path=box_config_path,
+        codex_cwd=codex_cwd,
+        auto_approve=auto_approve,
+    )
+    if config_path.exists() and merged == existing:
+        return False
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(merged)
+    return True
+
+
+def deliver_directive_session_hook(
+    *,
+    agent_name: str,
+    config_root: Path,
+    box_codex_config_path: str,
+    codex_cwd: str,
+    auto_approve: bool,
+) -> bool:
+    """Route the instruction-delivery SessionStart hook to the agent's NATIVE
+    config surface, returning whether a write occurred.
+
+    * ``claude`` → ``<config_root>/.claude/settings.json`` (JSON hooks, unchanged
+      — the hook is unconditional, orthogonal to *auto_approve*).
+    * ``codex``  → ``<config_root>/.codex/config.toml`` (the codex config manager:
+      hook + trust + approval/sandbox parity, the SINGLE managed-write site).
+    * any other agent → inert (``False``).
+
+    The single dispatch point for the launch-side directive-hook delivery (mirrors
+    :func:`deliver_claude_panel_permissions`); callers wrap best-effort so a
+    failure never blocks the launch.
+    """
+    if agent_name == "claude":
+        return seed_session_start_hook(config_root / ".claude" / "settings.json")
+    if agent_name == "codex":
+        return seed_codex_config(
+            config_root / ".codex" / "config.toml",
+            box_config_path=box_codex_config_path,
+            codex_cwd=codex_cwd,
+            auto_approve=auto_approve,
+        )
+    return False
 
 
 def deliver_claude_panel_permissions(

@@ -466,8 +466,8 @@ class TestDescriptorMounts:
         """descriptor_mounts delivers share + launcher + the loader (ro), skips plugins.
 
         Replaces the former equivalence-with-``binary_mounts`` check (the legacy
-        hook was removed for the descriptor-only public release).  STEP 2b adds the
-        best-effort ~/.claude/CLAUDE.md loader (shipped source exists).
+        hook was removed for the descriptor-only public release).  Adds the
+        best-effort kickoff-loader SEED (shipped source exists).
         """
         target = ClaudeTarget()
         install = self._install(tmp_path)
@@ -476,14 +476,14 @@ class TestDescriptorMounts:
             target.descriptor, install,
         )
 
-        # Deliver the share (install_dir) + launcher + loader, ro; SKIP plugins.
+        # Deliver the share (install_dir) + launcher + kickoff SEED, ro; SKIP plugins.
         assert len(new) == 3
         assert all(m.options == "ro" for m in new)
         dests = {m.destination for m in new}
         assert dests == {
             "/home/agent/.local/share/claude",
             "/home/agent/.local/bin/claude",
-            "/home/agent/.claude/CLAUDE.md",
+            "/home/agent/.config/kanibako/kickoff.md",
         }
 
     def test_plugins_not_a_descriptor_binding(self, tmp_path):

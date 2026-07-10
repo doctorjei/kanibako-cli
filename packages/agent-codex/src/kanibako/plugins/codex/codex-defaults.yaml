@@ -30,6 +30,23 @@ descriptor:
       kind: file
       scope: agent_critical
       ro: true
+    # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
+    # delivered RO to ~/.config/kanibako/kickoff.md.  Its whole content is a single
+    # `@~/playbook/kanibako/directives/KANIBAKO.md` import — the entrypoint the
+    # box-start flattener resolves into the flattened per-agent FINAL file at codex's
+    # native slot ~/.codex/AGENTS.md (named by KANIBAKO_DIRECTIVE_FINAL below).  The
+    # start-time flatten + hook is a LATER increment; this declaration only ships the
+    # SEED and the FINAL-slot env.  `origin: literal` + `literal_src_pkg` names a
+    # package-relative resource (resolved to its shipped host path via
+    # importlib.resources).  scope `agent` = BEST-EFFORT: a missing/unresolvable
+    # source is SKIPPED, never raised, so a missing SEED can NOT crash a launch.
+    - key: managed_pointer
+      origin: literal
+      literal_src_pkg: "data/kickoff-loader/.codex/AGENTS.md"
+      box_dest: "$GUEST_HOME/.config/kanibako/kickoff.md"
+      kind: file
+      scope: agent
+      ro: true
 
   # codex 0.140.0: new session = bare `codex` (start -> []); continue-last =
   # `codex resume --last`.  No dedicated resume picker (-R falls through to
@@ -56,7 +73,10 @@ descriptor:
       channel: flag
       flag: ["--model"]
 
-  container_env: {}
+  # The native instruction slot the box-start flattener writes the flattened
+  # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).
+  container_env:
+    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.codex/AGENTS.md"
 
   # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
   # filtered=True + add a transform_cred allowlist ONLY if E2E proves auth.json
@@ -75,20 +95,7 @@ descriptor:
   # RO / plugin-set → meta.agent.codex.auth.share_support.
   auth_share_support: true
 
-# AGENT-scope @-ref-sourced category binds (spec §2d L608).  Each entry becomes an
-# `agent.<category>.<key>` default whose VALUE is the structured bind tuple
-# (<@-ref host_src>, <box_dest>, <options>) — the AGENT-scope mirror of
-# core-defaults.yaml's `meta_ref` bind shape.  `meta_ref` is emitted VERBATIM as the
-# host_src (NOT a fixed path), which the launch category cascade / `expand` resolves
-# from the snapshot floor — so the plugin declares its harness slot WITHOUT any
-# per-harness path knowledge leaking into core.  Read by the thin loader
-# `kanibako.agent_defaults.load_category_binds`.
-category_binds:
-  # Instructions bind: the shared box-guidance doc delivered RO into codex's global
-  # AGENTS.md slot (codex reads ~/.codex/AGENTS.md natively; additive concat under a
-  # project-level AGENTS.md).  Source = the single shared @system.instructions.
-  - key: instructions
-    category: bindings.ro
-    meta_ref: "@system.instructions"
-    box_dest: "~/.codex/AGENTS.md"
-    ro: true
+# The former Route-A `category_binds:` `instructions` entry (@system.instructions →
+# ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box via the RO
+# `~/playbook/kanibako/` bundle + the flattened per-agent FINAL file (seeded by the
+# `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.

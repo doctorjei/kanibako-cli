@@ -1078,6 +1078,78 @@ class TestDescriptorLaunchPath:
             assert "/home/agent/.local/bin/claude" in dests
 
 
+class TestInstructionDeliveryActivation:
+    """Increment 2b: the SEED env var (global) + the goose launch-flatten gate."""
+
+    def _drive_claude(self, m):
+        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+        m.target.name = "claude"
+        m.target.descriptor = _CLAUDE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        m.agent_cfg.state = {"model": "opus"}
+        m.load_agent_config.return_value = m.agent_cfg
+
+    def _drive_goose(self, m):
+        from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
+        m.target.name = "goose"
+        m.target.descriptor = _GOOSE_DESCRIPTOR
+        m.target.default_entrypoint = "goose"
+        m.target.setting_descriptors.return_value = []
+        m.agent_cfg.state = {}
+        m.load_agent_config.return_value = m.agent_cfg
+
+    def test_seed_env_var_injected_absolute(self, start_mocks):
+        """KANIBAKO_DIRECTIVE_SEED is stamped GLOBALLY as a box-ABSOLUTE path."""
+        with start_mocks() as m:
+            self._drive_claude(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            env = m.runtime.run.call_args.kwargs.get("env") or {}
+            assert (
+                env.get("KANIBAKO_DIRECTIVE_SEED")
+                == "/home/agent/.config/kanibako/kickoff.md"
+            )
+
+    def test_goose_launch_wraps_entrypoint_with_flatten(self, start_mocks):
+        """goose launch nests the flatten shim: entrypoint→sh, script flattens the
+        SEED into the FINAL slot, then exec's goose."""
+        with start_mocks() as m:
+            self._drive_goose(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            kw = m.runtime.run.call_args.kwargs
+            assert kw.get("entrypoint") == "sh"
+            cli_args = kw.get("cli_args") or []
+            assert cli_args[0] == "-c"
+            script = cli_args[1]
+            assert "import-directives.py" in script
+            assert '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"' in script
+            assert "--additional-context" not in script  # goose = FILE-write mode
+            assert 'exec "$@"' in script
+            # $@ still runs goose after the flatten.
+            assert "goose" in cli_args[2:]
+
+    def test_claude_launch_has_no_flatten_shim(self, start_mocks):
+        """claude (additionalContext via hook, not launch-flatten) is NOT wrapped."""
+        with start_mocks() as m:
+            self._drive_claude(m)
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            kw = m.runtime.run.call_args.kwargs
+            assert kw.get("entrypoint") != "sh"
+            cli_args = kw.get("cli_args") or []
+            assert not any("import-directives.py" in str(a) for a in cli_args)
+
+
 class TestPluginsAndCacheShares:
     """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``shared``
     category entries (the plugin's ``default_shares()``), rooted at
@@ -2463,8 +2535,8 @@ class TestApplyInitSeeds:
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",
-            # STEP 2a: the @system.instructions source folded into resolved_sys so
-            # the plugin instructions binds resolve from the snapshot.
+            # The @system.instructions source folded into resolved_sys (the
+            # keyspace floor; the retired plugin instructions bind no longer reads it).
             instructions=tmp_path / "data" / "global" / "KANIBAKO.md",
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
@@ -2708,8 +2780,8 @@ class TestApplySyncedCopies:
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",
-            # STEP 2a: the @system.instructions source folded into resolved_sys so
-            # the plugin instructions binds resolve from the snapshot.
+            # The @system.instructions source folded into resolved_sys (the
+            # keyspace floor; the retired plugin instructions bind no longer reads it).
             instructions=tmp_path / "data" / "global" / "KANIBAKO.md",
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
@@ -4061,6 +4133,33 @@ class TestSecretExportShim:
         _ep, args = _secret_export_shim("claude", [], ["A_TOK", "B_TOK"])
         script = args[1]
         assert "export A_TOK=" in script and "export B_TOK=" in script
+
+
+class TestDirectiveFlattenShim:
+    """The goose launch-flatten shim (``_directive_flatten_shim``) — increment 2b."""
+
+    def test_shim_flattens_seed_to_final_then_exec(self):
+        from kanibako.commands.start import _directive_flatten_shim
+        ep, args = _directive_flatten_shim("goose", ["session"])
+        assert ep == "sh"
+        assert args[0] == "-c"
+        script = args[1]
+        # Runs the RO-bundle flattener in SOURCE->DEST file mode, silent-safe,
+        # then execs the agent with its args intact.
+        assert (
+            '"$HOME/playbook/kanibako/scripts/import-directives.py"' in script
+        )
+        assert '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"' in script
+        assert "|| true" in script
+        assert 'exec "$@"' in script
+        # $0=sh, $@=goose session (exec runs the agent with its args intact).
+        assert args[2:] == ["sh", "goose", "session"]
+
+    def test_shim_no_additional_context_flag(self):
+        """goose gets the FILE-write mode, NOT --additional-context (no hook)."""
+        from kanibako.commands.start import _directive_flatten_shim
+        _ep, args = _directive_flatten_shim("goose", [])
+        assert "--additional-context" not in args[1]
 
 
 # ===========================================================================

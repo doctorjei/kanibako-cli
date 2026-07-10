@@ -24,6 +24,13 @@ include = ["kanibako.plugins.codex*"]
     "py.typed",
     # Declarative agent defaults (P6c) — read at import time via importlib.resources.
     "codex-defaults.yaml",
+    # Static codex-specific data delivered by descriptor binds (the kickoff-loader
+    # SEED under data/kickoff-loader/.codex/) — read via importlib.resources.  The
+    # SEED lives in a nested dot-dir, so the same recursive dot-dir patterns as
+    # template/ are needed (data/* would miss it).
+    "data/*", "data/**/*", "data/**/.*",
+    "data/.*/**/*", "data/.*/*",
+    "data/**/.*/**/*", "data/**/.*/*",
     "template/**/*", "template/**/.*",
     "template/.*/**/*", "template/.*/*",
     "template/**/.*/**/*", "template/**/.*/*",

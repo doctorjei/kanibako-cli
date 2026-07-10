@@ -196,9 +196,42 @@ copy_resource_tree_if_absent = _copy_resource_tree_if_absent
 
 
 def _packaged_base_template() -> Path | None:
-    """Locate the packaged base-template content (``kanibako.data/templates/base``)."""
+    """Locate the packaged base-template SEED content.
+
+    Repointed (instruction-delivery redesign) from the retired
+    ``kanibako.data/templates/base`` (which shipped only ``INSTRUCTIONS.md``) to
+    ``kanibako.data/global/base/template`` — the SEEDED, writable user tree
+    (``playbook/CONTENTS.md`` + the scoped directive skeleton).  Because that dir
+    contains ``playbook/...``, installing it into ``@system.base_template`` and
+    seeding that layer at box home ``~`` deposits ``~/playbook/...`` (create-if-
+    absent).  It carries NO ``kanibako/`` subdir, so it never collides with the RO
+    built-in bundle bound live at ``~/playbook/kanibako``.
+    """
     try:
-        ref = importlib.resources.files("kanibako.data").joinpath("templates", "base")
+        ref = importlib.resources.files("kanibako.data").joinpath(
+            "global", "base", "template"
+        )
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+    path = Path(str(ref))
+    return path if path.is_dir() else None
+
+
+def _packaged_shared_bundle() -> Path | None:
+    """Locate the packaged read-only built-in directive bundle.
+
+    ``kanibako.data/global/base/shared/playbook/kanibako`` — the KANIBAKO.md +
+    flattener scripts that the launch path bind-mounts LIVE (ro) at
+    ``~/playbook/kanibako`` (see ``core_defaults.kani_default_categories`` /
+    ``core-defaults.yaml`` ``playbook_kanibako``).  It is NOT copied/seeded to a
+    host runtime dir, so it has no ``install``/``plan_template_refresh`` target;
+    it is enumerated only for the staleness DIGEST so the setup gate still trips
+    when the shipped bundle content drifts.
+    """
+    try:
+        ref = importlib.resources.files("kanibako.data").joinpath(
+            "global", "base", "shared", "playbook", "kanibako"
+        )
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))
@@ -222,12 +255,19 @@ def _packaged_agent_template(agent_name: str) -> Path | None:
 
 
 def _packaged_instructions() -> Path | None:
-    """Locate the packaged default box-guidance file (``kanibako.data/global/KANIBAKO.md``)."""
-    try:
-        ref = importlib.resources.files("kanibako.data").joinpath("global", "KANIBAKO.md")
-    except (ModuleNotFoundError, FileNotFoundError):
+    """Locate the packaged default box-guidance file (``KANIBAKO.md``).
+
+    Repointed (instruction-delivery redesign) from the retired
+    ``kanibako.data/global/KANIBAKO.md`` to the KANIBAKO.md inside the built-in
+    directive bundle (``.../global/base/shared/playbook/kanibako/directives``).
+    This keeps the EXISTING ``@system.instructions`` delivery (the per-agent
+    ``bindings.ro.instructions`` @-ref binds, not yet retired) sourcing a real
+    installed file while the redesign's live ``~/playbook/kanibako`` bind lands.
+    """
+    bundle = _packaged_shared_bundle()
+    if bundle is None:
         return None
-    path = Path(str(ref))
+    path = bundle / "directives" / "KANIBAKO.md"
     return path if path.is_file() else None
 
 
@@ -239,7 +279,8 @@ def install_packaged_templates(
     Populates ``@system.base_template`` from the packaged base content and each
     ``@config.agents/<agent>/template`` from the agent plugin's packaged
     ``template/``.  Also installs the shipped default box-guidance file to
-    ``@system.instructions`` (``<data>/global/KANIBAKO.md``).  Called from
+    ``@system.instructions`` (the built-in bundle's
+    ``directives/KANIBAKO.md``, via ``_packaged_instructions``).  Called from
     first-run init; safe to re-run (idempotent for unchanged trees).
 
     Default (``refresh=False``) is CREATE-IF-ABSENT (never clobbers user edits) —
@@ -274,13 +315,37 @@ def install_packaged_templates(
         _copy_resource_tree_if_absent(agent_src, dest, overwrite=refresh)
 
 
+def _is_shipped_content(entry: Path) -> bool:
+    """True iff *entry* is a real shipped file (not a build/editor artifact).
+
+    The RO built-in bundle is the first digest source to contain ``.py`` files,
+    so a dev/editable checkout (or the repo's own test suite, which
+    ``exec_module``s ``import-directives.py``) can drop a ``__pycache__/*.pyc``
+    beside them.  Those never ship in a wheel, so hashing them would make the
+    staleness digest non-deterministic across environments/Python versions and
+    spuriously trip the setup gate.  Exclude Python bytecode caches and common
+    editor/OS junk from the CONTENT manifest.
+    """
+    if not entry.is_file():
+        return False
+    if "__pycache__" in entry.parts:
+        return False
+    if entry.suffix in (".pyc", ".pyo"):
+        return False
+    if entry.name == ".DS_Store":
+        return False
+    return True
+
+
 def packaged_templates_digest(agent_names: list[str]) -> str:
     """Return a content-manifest sha256 over the packaged template src trees.
 
-    Hashes exactly the packaged content that :func:`install_packaged_templates`
-    would install — the base tree (``_packaged_base_template``), the shipped
-    KANIBAKO.md (``_packaged_instructions``), and each installed agent's
-    ``template/`` (``_packaged_agent_template``).  Each file contributes a
+    Hashes the packaged content the setup gate must watch — the base seed tree
+    (``_packaged_base_template``), the shipped KANIBAKO.md
+    (``_packaged_instructions``), each installed agent's ``template/``
+    (``_packaged_agent_template``), AND the RO built-in bundle
+    (``_packaged_shared_bundle``, which is bind-mounted rather than installed but
+    still needs drift detection).  Each file contributes a
     ``(namespaced-relative-path, file-bytes)`` pair; the pairs are SORTED before
     hashing so the digest is deterministic across runs and machines regardless
     of filesystem walk order.
@@ -295,7 +360,7 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
     base_src = _packaged_base_template()
     if base_src is not None:
         for entry in base_src.rglob("*"):
-            if entry.is_file():
+            if _is_shipped_content(entry):
                 rel = entry.relative_to(base_src).as_posix()
                 entries.append((f"base/{rel}", entry.read_bytes()))
 
@@ -303,12 +368,22 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
     if instr_src is not None:
         entries.append(("instructions/KANIBAKO.md", instr_src.read_bytes()))
 
+    # The RO built-in bundle (bound live at ~/playbook/kanibako, never installed)
+    # is enumerated here ONLY so the setup gate still trips when the shipped
+    # KANIBAKO.md/flattener-script content drifts — it has no install target.
+    bundle_src = _packaged_shared_bundle()
+    if bundle_src is not None:
+        for entry in bundle_src.rglob("*"):
+            if _is_shipped_content(entry):
+                rel = entry.relative_to(bundle_src).as_posix()
+                entries.append((f"shared/{rel}", entry.read_bytes()))
+
     for agent_name in sorted(agent_names):
         agent_src = _packaged_agent_template(agent_name)
         if agent_src is None:
             continue
         for entry in agent_src.rglob("*"):
-            if entry.is_file():
+            if _is_shipped_content(entry):
                 rel = entry.relative_to(agent_src).as_posix()
                 entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
 

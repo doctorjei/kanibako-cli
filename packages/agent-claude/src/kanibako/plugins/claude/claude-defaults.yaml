@@ -43,24 +43,24 @@ descriptor:
       kind: file
       scope: agent_critical
       ro: true
-    # STEP 2b — the claude LOADER.  A tiny plugin-shipped static file (constant,
-    # claude-specific — NOT an @system.instructions keyspace source) delivered RO
-    # to ~/.claude/CLAUDE.md (claude's user-memory slot, loaded every session).  Its
-    # whole content is two RELATIVE imports, `@KANIBAKO.md` + `@AGENTS.md`, which
-    # claude resolves next to this file in ~/.claude/ — so it loads the box guide
-    # that STEP 2a binds RO to ~/.claude/KANIBAKO.md AND the user's editable
-    # ~/.claude/AGENTS.md (seeded once).  (The earlier managed /etc/claude-code
-    # pointer was dropped: its @import only expanded under skip-permissions and not
-    # for ~ — the native user-memory slot with relative imports works in both modes.)
-    # `origin: literal` + `literal_src_pkg` names a package-relative resource
-    # (resolved to its shipped host path by the loader via importlib.resources).
-    # scope `agent` = BEST-EFFORT: a missing/unresolvable source is SKIPPED, never
-    # raised (unlike agent_critical), so a failed loader can NOT crash a launch —
-    # mirrors 2a's best-effort bind.
+    # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
+    # (constant, claude-specific — NOT an @system.instructions keyspace source)
+    # delivered RO to ~/.config/kanibako/kickoff.md.  Its whole content is a single
+    # `@~/playbook/kanibako/directives/KANIBAKO.md` import — the entrypoint the
+    # box-start flattener resolves (following the @import chain) into the flattened
+    # per-agent FINAL file at claude's native user-memory slot ~/.claude/CLAUDE.md
+    # (named by KANIBAKO_DIRECTIVE_FINAL in container_env below).  The start-time
+    # flatten + hook is a LATER increment; this declaration only ships the SEED and
+    # the FINAL-slot env.  `origin: literal` + `literal_src_pkg` names a
+    # package-relative resource (resolved to its shipped host path by the loader via
+    # importlib.resources).  scope `agent` = BEST-EFFORT: a missing/unresolvable
+    # source is SKIPPED, never raised (unlike agent_critical), so a missing SEED can
+    # NOT crash a launch.  (Key name kept `managed_pointer` to avoid a keystore-key
+    # rename.)
     - key: managed_pointer
       origin: literal
-      literal_src_pkg: "data/claude-md-loader"
-      box_dest: "$GUEST_HOME/.claude/CLAUDE.md"
+      literal_src_pkg: "data/kickoff-loader/.claude/CLAUDE.md"
+      box_dest: "$GUEST_HOME/.config/kanibako/kickoff.md"
       kind: file
       scope: agent
       ro: true
@@ -101,6 +101,9 @@ descriptor:
   container_env:
     DISABLE_AUTOUPDATER: "1"
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+    # The native instruction slot the box-start flattener writes the flattened
+    # per-agent FINAL file to (claude's user-memory slot, loaded every session).
+    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.claude/CLAUDE.md"
 
   # Only auth remains host-sourced (.claude.json import removed in 1.6.0): the
   # synced .credentials.json (filtered -> transform_cred merges claudeAiOauth).
@@ -134,22 +137,7 @@ shares:
     host_src: cache
     box_dest: "$GUEST_HOME/.claude/cache"
 
-# AGENT-scope @-ref-sourced category binds (spec §2d L608).  Each entry becomes an
-# `agent.<category>.<key>` default whose VALUE is the structured bind tuple
-# (<@-ref host_src>, <box_dest>, <options>) — the AGENT-scope mirror of
-# core-defaults.yaml's `meta_ref` bind shape.  `meta_ref` is emitted VERBATIM as the
-# host_src (NOT a fixed path), which the launch category cascade / `expand` resolves
-# from the snapshot floor — so the plugin declares its harness slot WITHOUT any
-# per-harness path knowledge leaking into core.  Read by the thin loader
-# `kanibako.agent_defaults.load_category_binds`.
-category_binds:
-  # Instructions bind: the shared box-guidance doc delivered RO into claude's config
-  # dir at ~/.claude/KANIBAKO.md (uniform namespaced slot w/ goose; discoverable).
-  # STEP 2a delivers the CONTENT only — the ~/.claude/CLAUDE.md loader that makes
-  # claude @import this file is the descriptor `managed_pointer` bind above (STEP
-  # 2b).  Source = the single shared @system.instructions.
-  - key: instructions
-    category: bindings.ro
-    meta_ref: "@system.instructions"
-    box_dest: "~/.claude/KANIBAKO.md"
-    ro: true
+# The former Route-A `category_binds:` `instructions` entry (@system.instructions →
+# ~/.claude/KANIBAKO.md) is RETIRED: the box guide now reaches the box via the RO
+# `~/playbook/kanibako/` bundle + the flattened per-agent FINAL file (seeded by the
+# `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
