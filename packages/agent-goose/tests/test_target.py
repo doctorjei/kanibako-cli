@@ -213,10 +213,18 @@ class TestDescriptorDeliveryMounts:
             GooseTarget().descriptor, install,
         )
 
-        assert len(mounts) == 1
-        assert mounts[0].source == binary
-        assert mounts[0].destination == "/home/agent/.local/bin/goose"
-        assert mounts[0].options == "ro"
+        # Two mounts now: the binary + the instruction-delivery kickoff-loader
+        # SEED (``managed_pointer``, RO to ~/.config/kanibako/kickoff.md).
+        assert len(mounts) == 2
+        by_dest = {m.destination: m for m in mounts}
+        binary_mount = by_dest["/home/agent/.local/bin/goose"]
+        assert binary_mount.source == binary
+        assert binary_mount.options == "ro"
+        kickoff = by_dest["/home/agent/.config/kanibako/kickoff.md"]
+        assert str(kickoff.source).endswith(
+            "data/kickoff-loader/.config/goose/AGENTS.md"
+        )
+        assert kickoff.options == "ro"
 
     def test_safe_fails_when_binary_missing(self, tmp_path: Path):
         from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
@@ -422,7 +430,10 @@ class TestDescriptor:
     def test_binary_binding(self):
         d = GooseTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
-        assert set(bindings) == {"binary"}
+        # ``managed_pointer`` is the instruction-delivery kickoff-loader SEED
+        # (delivered RO to ~/.config/kanibako/kickoff.md) added alongside the
+        # binary bind.
+        assert set(bindings) == {"binary", "managed_pointer"}
         binary = bindings["binary"]
         assert binary.origin == HostSrcOrigin.BINARY
         assert binary.box_dest == "/home/agent/.local/bin/goose"
@@ -475,11 +486,14 @@ class TestDescriptor:
         # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
         # setting): the in-box OS keyring/D-Bus secret-service is unavailable, so
         # goose must store secrets in the file ~/.config/goose/secrets.yaml.
-        # CONTEXT_FILE_NAMES (STEP 2a) makes goose load the bound KANIBAKO.md file;
-        # its value is a JSON array STRING re-including the default context filenames.
+        # CONTEXT_FILE_NAMES (STEP 2a) now lists the instruction-delivery FINAL
+        # slot ``.additionalContext.md`` (the flattened per-agent guide the
+        # box-start flattener writes) alongside the default context filenames;
+        # KANIBAKO_DIRECTIVE_FINAL names that slot for the flattener.
         assert GooseTarget().descriptor.container_env == {
             "GOOSE_DISABLE_KEYRING": "true",
-            "CONTEXT_FILE_NAMES": '["KANIBAKO.md","AGENTS.md",".goosehints"]',
+            "CONTEXT_FILE_NAMES": '[".additionalContext.md","AGENTS.md",".goosehints"]',
+            "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.config/goose/.additionalContext.md",
         }
 
     def test_cred_files(self):

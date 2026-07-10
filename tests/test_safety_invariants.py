@@ -380,8 +380,8 @@ class TestBinaryMountContract:
     def test_delivery_mounts_all_exist(self, tmp_path):
         """When sources exist, all ro delivery binds are returned.
 
-        Two AGENT_CRITICAL delivery binds (share + launcher) plus the STEP 2b
-        best-effort ~/.claude/CLAUDE.md loader (its shipped source exists).
+        Two AGENT_CRITICAL delivery binds (share + launcher) plus the best-effort
+        kickoff-loader SEED (its shipped source exists).
         """
         from kanibako.targets.assembly import descriptor_mounts
 

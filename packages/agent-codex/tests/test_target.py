@@ -417,7 +417,10 @@ class TestDescriptor:
     def test_binary_binding(self):
         d = CodexTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
-        assert set(bindings) == {"binary"}
+        # ``managed_pointer`` is the instruction-delivery kickoff-loader SEED
+        # (delivered RO to ~/.config/kanibako/kickoff.md) added alongside the
+        # binary bind.
+        assert set(bindings) == {"binary", "managed_pointer"}
         binary = bindings["binary"]
         assert binary.origin == HostSrcOrigin.BINARY
         assert binary.box_dest == "/home/agent/.local/bin/codex"
@@ -455,8 +458,14 @@ class TestDescriptor:
         assert settings["model"].channel == Channel.FLAG
         assert settings["model"].flag == ("--model",)
 
-    def test_container_env_empty(self):
-        assert CodexTarget().descriptor.container_env == {}
+    def test_container_env_directive_final_slot(self):
+        # container_env now carries the instruction-delivery FINAL slot the
+        # box-start flattener writes codex's flattened per-agent guide to
+        # (codex reads ~/.codex/AGENTS.md natively); $GUEST_HOME is expanded by
+        # the loader.
+        assert CodexTarget().descriptor.container_env == {
+            "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",
+        }
 
     def test_cred_files(self):
         # The host config.toml IMPORT (SEED_ONCE) was removed in 1.6.0; only the
@@ -573,8 +582,10 @@ class TestDescriptorAssembly:
         )
         assert argv == ["exec", "do the thing"]
 
-    def test_env_is_empty(self):
+    def test_env_carries_directive_final_slot(self):
         d = CodexTarget().descriptor
         env = assembly.assemble_env(d, safe_mode_off=True, setting_values={"model": "gpt-5.5"})
-        # model is a FLAG (argv), not env; no container_env; bypass is a flag.
-        assert env == {}
+        # model is a FLAG (argv), not env; bypass is a flag.  The only
+        # container_env is the instruction-delivery FINAL slot (codex's native
+        # ~/.codex/AGENTS.md the box-start flattener writes the guide to).
+        assert env == {"KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md"}

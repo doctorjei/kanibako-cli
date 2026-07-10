@@ -1896,6 +1896,46 @@ def _run_container(
                         "failed to seed claude bypassPermissions settings",
                         exc_info=True,
                     )
+                # Increment 2b: the instruction-delivery SessionStart hook, routed
+                # to each agent's NATIVE config surface by
+                # ``deliver_directive_session_hook``.  The hook runs the flattener
+                # in ``--additional-context`` mode, injecting the flattened
+                # directive chain as session context.  claude →
+                # ~/.claude/settings.json (JSON hooks).  codex →
+                # ~/.codex/config.toml: codex 0.141.0 defines hooks INLINE in
+                # config.toml (NOT a separate ~/.codex/hooks.json), and gates a
+                # config hook behind a content-hash trust + a directory trust — the
+                # codex manager pre-seeds both so the FIRST launch fires with no
+                # ``/hooks`` prompt, and it folds in the codex approval/sandbox
+                # permission parity (driven by the SAME persisted ``auto_approve``
+                # the claude panel delivery uses above).  The HOOK itself is
+                # UNCONDITIONAL (orthogonal to yolo).  box_config_path/codex_cwd are
+                # the BOX-absolute paths codex reads/runs at in-box (GUEST_HOME);
+                # the workspace WORKDIR is codex's cwd (tmux new-session inherits
+                # it; see _bootstrap_wrap — no ``-c`` override).  Merge never
+                # clobbers a user's own config; idempotent; best-effort so a failure
+                # NEVER blocks the launch.
+                if target is not None and target.name in ("claude", "codex"):
+                    try:
+                        from kanibako.settings_resolve import GUEST_HOME
+                        from kanibako.vscode_config import (
+                            deliver_directive_session_hook,
+                        )
+                        deliver_directive_session_hook(
+                            agent_name=target.name,
+                            config_root=proj.shell_path,
+                            box_codex_config_path=(
+                                f"{GUEST_HOME}/.codex/config.toml"
+                            ),
+                            codex_cwd=f"{GUEST_HOME}/workspace",
+                            auto_approve=auto_approve,
+                        )
+                    except Exception:
+                        logger.debug(
+                            "failed to seed %s SessionStart directive hook",
+                            target.name,
+                            exc_info=True,
+                        )
                 safe_off = assembly.effective_safe_mode_off(
                     secure=safe_mode,
                     autonomous=autonomous,
@@ -2148,6 +2188,18 @@ def _run_container(
         # Inject instance identity for peer communication.
         if proj.name:
             container_env["KANIBAKO_NAME"] = proj.name
+
+        # Instruction-delivery SEED (increment 2b): the box-absolute path to the
+        # per-agent kickoff SEED, RO-bound at ~/.config/kanibako/kickoff.md.  The
+        # SessionStart hooks (claude/codex) and the goose launch-flatten shim
+        # reference this to flatten the ``@import`` directive chain into the
+        # agent's native slot.  ABSOLUTE (not ``~``) so it resolves identically in
+        # a hook shell and at exec time.  Global (agent-independent): the per-agent
+        # FINAL-slot path arrives via each descriptor's KANIBAKO_DIRECTIVE_FINAL.
+        from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME
+        container_env["KANIBAKO_DIRECTIVE_SEED"] = (
+            f"{_GUEST_HOME}/.config/kanibako/kickoff.md"
+        )
 
         # Stamp the resolved agent ON THE CONTAINER (NOT durable config — keeps
         # `--agent` ephemeral).  On a later `kanibako start` against this running
@@ -2464,6 +2516,13 @@ def _run_container(
                 inner_cmd, inner_args = _secret_export_shim(
                     inner_cmd, inner_args, secret_export_vars,
                 )
+            # goose-only launch-flatten (increment 2b): write goose's
+            # ``.additionalContext.md`` before ``exec goose`` (goose injects from
+            # no hook).  Nests OUTSIDE any secret shim; runs at container start.
+            if target is not None and target.name == "goose":
+                inner_cmd, inner_args = _directive_flatten_shim(
+                    inner_cmd, inner_args,
+                )
             entrypoint, cli_args = _bootstrap_wrap(
                 bootstrap_program, inner_cmd, inner_args,
             )
@@ -2475,6 +2534,11 @@ def _run_container(
             if secret_export_vars and entrypoint:
                 entrypoint, cli_args = _secret_export_shim(
                     entrypoint, list(cli_args or []), secret_export_vars,
+                )
+            # goose-only launch-flatten (increment 2b); see the persistent path.
+            if target is not None and target.name == "goose" and entrypoint:
+                entrypoint, cli_args = _directive_flatten_shim(
+                    entrypoint, list(cli_args or []),
                 )
 
         # Preflight: rootless podman cannot overlay/pivot_root on a virtiofs
@@ -3021,6 +3085,36 @@ def _secret_export_shim(
             f'export {var}="$(cat {shlex.quote(mount_path)})"'
         )
     script = "; ".join(lines) + '; exec "$@"'
+    return "sh", ["-c", script, "sh", program, *args]
+
+
+def _directive_flatten_shim(
+    program: str, args: list[str],
+) -> "tuple[str, list[str]]":
+    """Wrap ``(program, args)`` in an ``sh -c`` shim that FLATTENS the instruction
+    SEED into goose's native context slot, then ``exec``s the agent — the goose
+    half of the instruction-delivery (increment 2b).
+
+    goose can inject context from NO hook (verified), so kanibako WRITES goose's
+    ``.additionalContext.md`` at launch: the shim runs, before ``exec goose``,
+    ``python3 <flattener> "$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"``
+    (the flattener's SOURCE→DEST file mode) so the file exists before goose reads
+    its ``CONTEXT_FILE_NAMES``.  Runs IN-BOX (the flattener is at the RO bundle
+    path ``$HOME/playbook/kanibako/scripts/import-directives.py``); no sudo — the
+    dest under ``~/.config/goose`` is agent-owned.  SILENT-SAFE (``|| true``): a
+    missing SEED/FINAL or flattener error never aborts the launch.
+
+    Returns ``("sh", ["-c", <script>, "sh", program, *args])`` so ``sh -c`` sets
+    ``$0=sh`` and ``$@=program args`` and ``exec "$@"`` runs the agent with its
+    args intact — nesting inside the tmux/bootstrap wrap exactly like
+    :func:`_secret_export_shim`.  Per-``/clear`` regen is OUT OF SCOPE (goose's
+    hook timing is unverified); launch-flatten is the reliable baseline.
+    """
+    script = (
+        'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
+        '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL" || true; '
+        'exec "$@"'
+    )
     return "sh", ["-c", script, "sh", program, *args]
 
 

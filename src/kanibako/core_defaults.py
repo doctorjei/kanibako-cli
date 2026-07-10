@@ -266,10 +266,19 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
         "kanibako-entry"
     )
     entry_path = Path(str(entry_ref))
+    # Built-in directive bundle (instruction-delivery redesign): the read-only
+    # kanibako-provided directive tree bind-mounted LIVE at ~/playbook/kanibako.
+    # Import-resolved from the installed package (kanibako.data →
+    # global/base/shared/playbook/kanibako) exactly as the kani_pkg source above.
+    bundle_ref = importlib.resources.files("kanibako.data").joinpath(
+        "global", "base", "shared", "playbook", "kanibako"
+    )
+    bundle_path = Path(str(bundle_ref))
 
     sources: dict[str, str] = {
         "kani_pkg": str(pkg_dir),
         "kani_bin": str(entry_path),
+        "playbook_kanibako": str(bundle_path),
     }
 
     binds: dict[str, tuple[str, str, str]] = {}

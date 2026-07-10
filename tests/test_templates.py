@@ -277,8 +277,8 @@ class TestLayeredHomeSeed:
         self._populate(std, primary_proj)
         _seed(std, primary_proj)
         home = primary_proj.shell_path
-        # Base layer — the packaged INSTRUCTIONS.md AND the custom marker.
-        assert (home / "INSTRUCTIONS.md").is_file()
+        # Base layer — the packaged playbook/CONTENTS.md AND the custom marker.
+        assert (home / "playbook" / "CONTENTS.md").is_file()
         assert (home / "base-only.txt").read_text() == "base"
         # Agent layer — the packaged .claude.json/settings AND the custom marker.
         assert (home / ".claude.json").is_file()
@@ -319,7 +319,7 @@ class TestLayeredHomeSeed:
         # Deliberately do NOT create std.primary_workset/template.
         _seed(std, primary_proj)
         home = primary_proj.shell_path
-        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / "playbook" / "CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
 
     def test_standalone_has_no_workset_layer(self, std, config, standalone_proj):
@@ -327,7 +327,7 @@ class TestLayeredHomeSeed:
         install_packaged_templates(std, ["claude"])
         _seed(std, standalone_proj)
         home = standalone_proj.shell_path
-        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / "playbook" / "CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
 
     def test_no_agent_box_seeds_base_only(self, std, config, primary_proj):
@@ -336,7 +336,7 @@ class TestLayeredHomeSeed:
         (std.base_template / "base-only.txt").write_text("base")
         _seed(std, primary_proj, agent="")
         home = primary_proj.shell_path
-        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / "playbook" / "CONTENTS.md").is_file()
         assert (home / "base-only.txt").is_file()
         # No agent template layer.
         assert not (home / ".claude.json").exists()
@@ -347,7 +347,7 @@ class TestLayeredHomeSeed:
         self._populate(std, primary_proj)
         _seed(std, primary_proj, shares=False)
         home = primary_proj.shell_path
-        assert (home / "INSTRUCTIONS.md").is_file()
+        assert (home / "playbook" / "CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
         assert (home / "workset-only.txt").is_file()
 
@@ -381,18 +381,18 @@ class TestLayeredHomeSeed:
 # ---------------------------------------------------------------------------
 
 class TestInstallPackagedTemplates:
-    def test_base_instructions_landed(self, std):
-        """The packaged base INSTRUCTIONS.md is copied to @system.base_template."""
+    def test_base_playbook_landed(self, std):
+        """The packaged base playbook tree is copied to @system.base_template."""
         install_packaged_templates(std, ["claude", "goose", "codex"])
-        assert (std.base_template / "INSTRUCTIONS.md").is_file()
+        assert (std.base_template / "playbook" / "CONTENTS.md").is_file()
 
     def test_claude_template_landed(self, std):
-        """The claude agent template (.claude.json stub + settings + AGENTS.md) is copied."""
+        """The claude agent template (.claude.json stub + settings + playbook AGENTS) is copied."""
         install_packaged_templates(std, ["claude"])
         dest = std.agents / "claude" / "template"
         assert (dest / ".claude.json").is_file()
         assert (dest / ".claude" / "settings.json").is_file()
-        assert (dest / ".claude" / "AGENTS.md").is_file()
+        assert (dest / "playbook" / "agents" / "directives" / "AGENTS.md").is_file()
         assert not (dest / "CLAUDE.md").exists()
         import json
         data = json.loads((dest / ".claude.json").read_text())
@@ -515,17 +515,19 @@ class TestInstallPackagedTemplatesRefresh:
 
     def test_refresh_overwrites_changed_shipped_file(self, std):
         install_packaged_templates(std, ["claude"])
-        instr = std.base_template / "INSTRUCTIONS.md"
-        instr.write_text("STALE USER EDIT")
+        shipped = std.base_template / "playbook" / "CONTENTS.md"
+        shipped.write_text("STALE USER EDIT")
         install_packaged_templates(std, ["claude"], refresh=True)
-        packaged = (_packaged_base_template() / "INSTRUCTIONS.md").read_text()
-        assert instr.read_text() == packaged
-        assert instr.read_text() != "STALE USER EDIT"
+        packaged = (
+            _packaged_base_template() / "playbook" / "CONTENTS.md"
+        ).read_text()
+        assert shipped.read_text() == packaged
+        assert shipped.read_text() != "STALE USER EDIT"
 
     def test_refresh_adds_missing_shipped_file(self, std):
         """A never-installed host: refresh ADDS every shipped file."""
         install_packaged_templates(std, ["claude"], refresh=True)
-        assert (std.base_template / "INSTRUCTIONS.md").is_file()
+        assert (std.base_template / "playbook" / "CONTENTS.md").is_file()
         assert (std.agents / "claude" / "template" / ".claude.json").is_file()
 
     def test_refresh_leaves_user_only_file(self, std):
@@ -582,7 +584,7 @@ class TestPlanTemplateRefresh:
         added, overwritten = plan_template_refresh(std, ["claude"])
         assert overwritten == []
         assert std.instructions in added
-        assert any(p.name == "INSTRUCTIONS.md" for p in added)
+        assert any(p.name == "CONTENTS.md" for p in added)
 
     def test_unchanged_after_install_is_empty(self, std):
         install_packaged_templates(std, ["claude"])
@@ -592,9 +594,9 @@ class TestPlanTemplateRefresh:
 
     def test_changed_file_is_overwritten_partition(self, std):
         install_packaged_templates(std, ["claude"])
-        (std.base_template / "INSTRUCTIONS.md").write_text("changed")
+        (std.base_template / "playbook" / "CONTENTS.md").write_text("changed")
         added, overwritten = plan_template_refresh(std, ["claude"])
-        assert (std.base_template / "INSTRUCTIONS.md") in overwritten
+        assert (std.base_template / "playbook" / "CONTENTS.md") in overwritten
         assert added == []
 
     def test_missing_file_is_added_partition(self, std):
