@@ -1896,6 +1896,30 @@ def _run_container(
                         "failed to seed claude bypassPermissions settings",
                         exc_info=True,
                     )
+                # FF-5 permission parity (goose): the ``block.vscode-goose`` panel
+                # spawns its OWN in-box goose WITHOUT kanibako's launch env, so it
+                # never sees the ``GOOSE_MODE`` env var the CLI entrypoint sets.
+                # Persist the box's configured yolo into the box's in-box
+                # ``~/.config/goose/config.yaml`` (``GOOSE_MODE`` is a valid goose
+                # config key) so the panel reflects it.  Keys on the SAME persisted
+                # ``auto_approve`` resolved above (NOT the per-launch flags).
+                # goose-only + best-effort: OFF writes the secure ``approve``
+                # explicitly (unset GOOSE_MODE defaults to permissive ``auto``);
+                # non-goose is inert; a failure here NEVER blocks the launch.
+                try:
+                    from kanibako.vscode_config import (
+                        deliver_goose_panel_permissions,
+                    )
+                    deliver_goose_panel_permissions(
+                        auto_approve=auto_approve,
+                        is_goose=(target is not None and target.name == "goose"),
+                        goose_config_dir=proj.shell_path / ".config" / "goose",
+                    )
+                except Exception:
+                    logger.debug(
+                        "failed to seed goose GOOSE_MODE panel permissions",
+                        exc_info=True,
+                    )
                 # Increment 2b: the instruction-delivery SessionStart hook, routed
                 # to each agent's NATIVE config surface by
                 # ``deliver_directive_session_hook``.  The hook runs the flattener
