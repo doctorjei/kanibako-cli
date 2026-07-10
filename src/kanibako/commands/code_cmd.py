@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from kanibako.box_lifecycle import is_vscode_server_path_part
 from kanibako.config import config_file_path, load_config
 from kanibako.container import ContainerRuntime
 from kanibako.errors import ContainerError, KanibakoError
@@ -142,8 +143,7 @@ def _resolve_code_cli() -> str | None:
         return code_bin  # actual launch surface the real error
     ipc_set = bool(os.environ.get("VSCODE_IPC_HOOK_CLI"))
     is_server_tree = any(
-        part.startswith(".vscode-server") or part == ".cursor-server"
-        for part in resolved_parts
+        is_vscode_server_path_part(part) for part in resolved_parts
     )
     if is_server_tree or (ipc_set and "remote-cli" in resolved_parts):
         raise _CodeShimError(_CODE_SHIM_MSG)
