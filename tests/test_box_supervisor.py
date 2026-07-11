@@ -424,8 +424,71 @@ def test_self_heal_budget_resets_across_separate_deaths():
 
 
 # ---------------------------------------------------------------------------
+# on_agent_exit policy (E2c) — launch-intent-aware teardown vs self-heal.
+# ---------------------------------------------------------------------------
+
+def test_run_forever_teardown_policy_closes_box_on_agent_exit():
+    # Foreground CLI 'teardown' policy: agent alive at startup, dead on tick1 → the
+    # loop RETURNS 0 (box closes) WITHOUT any self-heal restart (no self-heal loop
+    # while a human-driven CLI is the surface).
+    fake = FakeRun(rc={"has-session": [0, 1]})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
+    restarts: list[int] = []
+    sup.restart_agent_session = (  # type: ignore[method-assign]
+        lambda: restarts.append(1) or True
+    )
+    assert sup.run_forever() == 0
+    assert restarts == []                       # never self-healed
+    assert fake.sub_calls("new-session") == []  # and never restarted the agent
+
+
+def test_run_forever_teardown_initial_start_failure_returns_and_closes():
+    # Foreground 'teardown': the INITIAL agent start fails (new-session rc!=0) → the
+    # loop returns NON-ZERO so the box closes and the host surfaces the start error,
+    # rather than self-healing (design §86-88 cold-start-error-human-direct).
+    fake = FakeRun(rc={"has-session": 1, "new-session": 1})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
+    assert sup.run_forever() == 1
+    assert len(fake.sub_calls("new-session")) == 1  # one start attempt, no retry loop
+
+
+def test_run_forever_self_heal_policy_does_not_teardown_on_agent_exit():
+    # REGRESSION guard: the DEFAULT (self-heal) policy keeps E2b's always-on
+    # behavior — a dead agent is RESTARTED with the continue grammar, NOT torn down.
+    fake = FakeRun(rc={"has-session": [0, 1, 0, 0]})
+    sup = BoxSupervisor(_config(), run=fake, proc_cmdlines=[])  # default self-heal
+    assert sup.config.on_agent_exit == "self-heal"
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert fake.sub_calls("new-session") == [
+        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
+    ]
+
+
+# ---------------------------------------------------------------------------
 # main / argparse.
 # ---------------------------------------------------------------------------
+
+def test_config_from_argv_default_on_agent_exit_is_self_heal():
+    cfg = config_from_argv(["--session", "s", "--marker", "m", "--", "claude"])
+    assert cfg.on_agent_exit == "self-heal"
+
+
+def test_config_from_argv_parses_on_agent_exit_teardown():
+    cfg = config_from_argv(
+        ["--session", "s", "--marker", "m", "--on-agent-exit", "teardown",
+         "--", "claude"]
+    )
+    assert cfg.on_agent_exit == "teardown"
+
+
+def test_config_from_argv_rejects_unknown_on_agent_exit():
+    with pytest.raises(SystemExit):
+        config_from_argv(
+            ["--session", "s", "--marker", "m", "--on-agent-exit", "bogus",
+             "--", "claude"]
+        )
+
 
 def test_config_from_argv_parses_session_marker_and_start_argv():
     cfg = config_from_argv(

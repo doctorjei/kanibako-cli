@@ -87,6 +87,13 @@ class SupervisorConfig:
     * *backoff_base* — base seconds for the exponential self-heal backoff.
     * *send_keys_retries* / *send_keys_delay* — bounded retry so ``send-keys`` lands
       after the freshly created pane is ready.
+    * *on_agent_exit* — the LAUNCH-INTENT-AWARE policy for what happens when the
+      agent exits (design ``split-brain-persistence-DESIGN.md`` §85-96, E2c):
+      ``"self-heal"`` (the default, detached / future-panel launches) keeps the
+      always-on bounded-retry restart; ``"teardown"`` (a FOREGROUND CLI launch, where
+      a human is the driver) treats an agent EXIT as a NORMAL termination and lets
+      PID-1 return so the box closes — no self-heal loop while a CLI is the surface.
+      Any value other than ``"teardown"`` is treated as ``"self-heal"`` (safe default).
     """
 
     session: str
@@ -98,6 +105,7 @@ class SupervisorConfig:
     backoff_base: float = 0.5
     send_keys_retries: int = 3
     send_keys_delay: float = 0.1
+    on_agent_exit: str = "self-heal"
 
 
 # ---------------------------------------------------------------------------
@@ -368,24 +376,46 @@ class BoxSupervisor:
     # -- the watch loop ------------------------------------------------------
 
     def run_forever(self) -> int:
-        """Run the supervise loop until teardown or self-heal exhaustion.
+        """Run the supervise loop until teardown, agent-exit, or self-heal exhaustion.
 
         Installs the SIGTERM handler, starts the agent if absent (the warm-box 1b case
         leaves a live agent alone), then loops: snapshot → :func:`decide` → act (fire
-        the detach hook, self-heal a dead agent).  Each tick's body is guarded so a
-        raising probe/action is logged and the loop CONTINUES (PID-1 must not die on a
-        transient error); a self-heal that exhausts its retries is the one clean exit
-        (returns 0 so the box can stop).  Returns a process exit code.
+        the detach hook, then respond to a dead agent per the launch-intent policy).
+        Each tick's body is guarded so a raising probe/action is logged and the loop
+        CONTINUES (PID-1 must not die on a transient error).
+
+        The response to a DEAD agent is LAUNCH-INTENT AWARE (``config.on_agent_exit``,
+        E2c) — the pure :func:`decide` still just reports the SELF_HEAL signal (a
+        transition/liveness fact); this loop decides what to DO with it, keeping decide
+        byte-identical and the policy in exactly one place:
+
+        * ``"self-heal"`` (default; detached / future panel) → today's behavior:
+          bounded-retry restart, and the one clean exit is a self-heal that EXHAUSTS
+          its retries (returns 0 so the box can stop).
+        * ``"teardown"`` (foreground CLI, human present) → an agent exit is a NORMAL
+          termination: return 0 immediately so PID-1 exits and the box closes (no
+          self-heal loop while a CLI is the driver).  A failed INITIAL start likewise
+          returns (non-zero) so the start error surfaces via the host path.
+
+        Returns a process exit code.
         """
         self.install_signal_handlers()
+        teardown_on_exit = self.config.on_agent_exit == "teardown"
         # Startup runs BEFORE the per-tick guard, so guard it too: a probe raising
         # here (e.g. an unexpected snapshot failure) must not kill PID-1 before the
         # loop even begins.  On any startup hiccup, degrade to "no attach" and enter
-        # the loop — it will self-heal a missing agent on its first tick.
+        # the loop — it self-heals (or, under teardown, closes on) a missing agent on
+        # its first tick.
         try:
             if not self.agent_session_alive():
                 log.info("no live agent session at startup; starting one detached")
-                self.start_agent_session()
+                if not self.start_agent_session() and teardown_on_exit:
+                    # Foreground CLI launch-intent: a failed INITIAL start is a start
+                    # error to surface via the host (the human is present) — do NOT
+                    # self-heal, let PID-1 exit non-zero so the box closes and the host
+                    # reports it (design §86-88, cold-start-error-human-direct).
+                    log.error("initial agent start failed under teardown policy; exiting")
+                    return 1
             prev = self._snapshot()
         except Exception:
             log.exception("supervisor startup probe raised; entering loop defensively")
@@ -398,8 +428,12 @@ class BoxSupervisor:
                 action = decide(prev, cur, alive)
                 if action.fire_detach_hook:
                     self._safe_on_detach()
-                if action.kind is ActionKind.SELF_HEAL and not self._self_heal():
-                    return 0
+                if action.kind is ActionKind.SELF_HEAL:
+                    if teardown_on_exit:
+                        log.info("agent exited under teardown policy; closing box")
+                        return 0
+                    if not self._self_heal():
+                        return 0
                 prev = cur
             except Exception:
                 log.exception("supervisor tick failed; continuing")
@@ -436,6 +470,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="agent grammar (shlex) for a self-heal restart; defaults to the start argv",
     )
+    parser.add_argument(
+        "--on-agent-exit",
+        choices=("self-heal", "teardown"),
+        default="self-heal",
+        help=(
+            "policy when the agent exits: 'self-heal' (default; detached — bounded-retry "
+            "restart) or 'teardown' (foreground CLI — close the box on agent exit)"
+        ),
+    )
     return parser
 
 
@@ -464,6 +507,7 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
         marker=ns.marker,
         poll_interval=ns.poll,
         max_restart_retries=ns.max_retries,
+        on_agent_exit=ns.on_agent_exit,
     )
 
 
@@ -471,7 +515,8 @@ def main(argv: list[str] | None = None) -> int:
     """CLI: parse args, build the supervisor, run the watch loop forever.
 
     ``python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
-    [--max-retries N] [--continue-cmd 'ARGV'] -- <agent entrypoint + argv...>``
+    [--max-retries N] [--continue-cmd 'ARGV'] [--on-agent-exit self-heal|teardown]
+    -- <agent entrypoint + argv...>``
     """
     args = list(sys.argv[1:] if argv is None else argv)
     config = config_from_argv(args)
