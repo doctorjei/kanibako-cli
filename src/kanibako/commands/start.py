@@ -547,18 +547,26 @@ def run_shell(args: argparse.Namespace) -> int:
 
 def start_detached(
     project_dir: str | None, *, explicit_agent: str | None = None,
+    warm_only: bool = True,
 ) -> int:
-    """Start a box DETACHED with a bare keep-alive PID-1 — no terminal attach.
+    """Start a box DETACHED and AGENT-INDEPENDENT — no terminal attach, no CLI agent.
 
-    Public entry reused by ``kanibako code`` auto-start.  Runs the FULL
-    persistent box assembly (mounts / credentials / agent delivery binds / env /
-    the ``KANIBAKO_AGENT`` stamp) exactly as a normal persistent launch, but the
-    tmux PID-1 session runs a SHELL keep-alive (NOT the agent) and the caller's
-    terminal is NOT attached.  The box therefore stays Up for a later VS Code
-    exec terminal, a ``tmux attach``, or a subsequent ``kanibako start``.
+    Public entry reused by ``kanibako code`` auto-start.  Runs the FULL persistent
+    box assembly (mounts / credentials / agent delivery binds / env / the
+    ``KANIBAKO_AGENT`` stamp) exactly as a normal persistent launch, and the
+    caller's terminal is NOT attached.
 
-    Returns 0 once the box is confirmed running in the background, non-zero on a
-    launch failure (with the container logs surfaced).
+    *warm_only* (default ``True``) selects the E2f AGENT-INDEPENDENT warm-up: PID-1
+    is the box_supervisor in PANEL-WATCH mode — it starts NO CLI agent (the VS Code
+    panel is the sole agent, avoiding a two-agent split-brain on one ``~/.claude``),
+    watches the panel-agent liveness marker + the vscode_server surface, and
+    self-heals a CLI agent only if the panel agent dies with the panel still
+    connected.  A caller that instead wants the E2b supervised-agent keep-alive can
+    pass ``warm_only=False`` (then a background CLI agent runs, self-healed).
+
+    The box stays Up for a later VS Code attach, a ``tmux attach``, or a subsequent
+    ``kanibako start``.  Returns 0 once the box is confirmed running in the
+    background, non-zero on a launch failure (with the container logs surfaced).
     """
     return _run_container(
         project_dir=project_dir,
@@ -572,6 +580,7 @@ def start_detached(
         persistent=True,
         detach=True,
         explicit_agent=explicit_agent,
+        warm_only=warm_only,
     )
 
 
@@ -590,6 +599,19 @@ _BOOTSTRAP_NONE = "none"
 # an unset value (no scope sets ``bootstrap``) resolves to ``tmux`` and every shipped
 # agent (which declares NO bootstrap override, spec §2d L640/658/683) inherits it.
 _BOOTSTRAP_DEFAULT = "tmux"
+
+# E2f — the box-local PANEL-AGENT LIVENESS MARKER path (the pidfile contract).
+# Defined ONCE and shared between the two ends of the contract: the supervisor's
+# ``--agent-pidfile`` value (E2f, read side) and the ``KANIBAKO_AGENT_PIDFILE`` env
+# the box seeds for the panel agent's start hook (E2g, write side).  It MUST be a
+# LITERAL box-local path, byte-identical on both ends: podman sets the env value
+# verbatim (no shell expansion) and the supervisor reads ``--agent-pidfile`` verbatim
+# (no ``os.path`` expansion), so a shell expression like ``${XDG_RUNTIME_DIR:-/tmp}``
+# would only resolve in a shell context and otherwise become a literal ``${...}``
+# filename — the two ends would then disagree.  ``/tmp`` is a box-local tmpfs; a
+# pidfile is tiny, so it is a safe universal home (the dir is created by the E2g
+# writer; the reader treats an absent dir/file as "no panel agent yet").
+AGENT_PIDFILE_PATH = "/tmp/kanibako/agent.pid"
 
 
 def _is_no_bootstrap(program: str | None) -> bool:
@@ -1118,6 +1140,7 @@ def _run_container(
     explicit_agent: str | None = None,
     setup_only: bool = False,
     print_container: bool = False,
+    warm_only: bool = False,
     _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -2292,6 +2315,14 @@ def _run_container(
             # is needed. Bare node == harness == target.name (byte-identical).
             container_env["KANIBAKO_AGENT"] = agent_id
 
+        # E2f: on an AGENT-INDEPENDENT warm-up (`kanibako code` → start_detached,
+        # warm_only) seed the panel-agent liveness MARKER path so the panel agent's
+        # start hook (E2g) writes its PID there; the panel-watch supervisor watches
+        # the SAME path via --agent-pidfile.  Only for warm-up — the E2b supervised-
+        # agent path (`kanibako start --detach`) does not watch a marker.
+        if warm_only:
+            container_env["KANIBAKO_AGENT_PIDFILE"] = AGENT_PIDFILE_PATH
+
         # Helper hub: start listener before director, mount socket
         hub = None
         helpers_enabled = not no_helpers and helpers_allowed
@@ -2622,13 +2653,16 @@ def _run_container(
                 # supervisor manages tmux itself.
                 assert box_shell is not None
                 assert entrypoint is not None  # supervise_agent guarantees it
-                # 1. Supervised AGENT command = entrypoint + cli_args + shims.
+                # 1. Supervised AGENT command = entrypoint + cli_args + shims.  On a
+                #    WARM-ONLY launch (E2f) NO agent runs at start (the panel is the
+                #    agent), so this is used only as the SELF-HEAL grammar fallback.
                 agent_ep, agent_argv = _apply_persistent_shims(
                     entrypoint, list(cli_args or []),
                 )
                 # 2. Fallback bare-shell keep-alive = TODAY'S EXACT detached command
                 #    (box.shell + the same shims + tmux/bootstrap wrap), preserved
-                #    byte-for-byte as the forward-compat `|| exec` degrade path.
+                #    byte-for-byte as the forward-compat `|| exec` degrade path.  For
+                #    warm-only this is the correct case-3a floor (agent-INDEPENDENT).
                 fb_cmd, fb_args = _apply_persistent_shims(box_shell, [])
                 fallback_ep, fallback_argv = _bootstrap_wrap(
                     bootstrap_program, fb_cmd, fb_args,
@@ -2637,13 +2671,26 @@ def _run_container(
                 #    itself).  --session "kanibako" keeps attach/reattach compat.
                 #    --on-agent-exit encodes the launch-intent policy: DETACHED
                 #    self-heals (always-on), FOREGROUND tears down on agent exit
-                #    (the attaching human is the driver).
+                #    (the attaching human is the driver).  (In warm-only PANEL-WATCH
+                #    the policy is inert — the panel-watch loop ignores on-agent-exit
+                #    — but it is passed for a uniform, forward-compatible argv.)
                 supervisor_argv = [
                     "python3", "-m", "kanibako.box_supervisor",
                     "--session", "kanibako",
                     "--marker", CONTINUE_MARKER,
                     "--on-agent-exit", "self-heal" if detach else "teardown",
                 ]
+                if warm_only:
+                    # E2f — AGENT-INDEPENDENT warm-up: front the box with the
+                    # supervisor in PANEL-WATCH mode.  It starts NO CLI agent, watches
+                    # the panel-agent marker (--agent-pidfile, the SAME path seeded as
+                    # KANIBAKO_AGENT_PIDFILE above) + the vscode_server surface, and
+                    # self-heals a CLI agent ONLY when the panel agent dies with the
+                    # panel still connected (design §89-96).  The panel is the sole
+                    # agent — no two-agent split-brain on one ~/.claude.
+                    supervisor_argv += [
+                        "--panel-watch", "--agent-pidfile", AGENT_PIDFILE_PATH,
+                    ]
                 if agent_continue_argv is not None:
                     # Self-heal RESUMES: shim the continue command the SAME way so a
                     # resurrected agent still gets its secrets + goose directives.
@@ -2654,7 +2701,19 @@ def _run_container(
                     supervisor_argv += [
                         "--continue-cmd", shlex.join([cont_ep, *cont_argv]),
                     ]
-                supervisor_argv += ["--", agent_ep, *agent_argv]
+                elif warm_only:
+                    # Panel-watch has NO trailing `-- start argv` to fall back on for
+                    # self-heal, so it ALWAYS needs an explicit self-heal grammar —
+                    # use the (shimmed) START grammar when the descriptor exposes no
+                    # continue mode, so a panel-death self-heal still launches the box's
+                    # agent.
+                    supervisor_argv += [
+                        "--continue-cmd", shlex.join([agent_ep, *agent_argv]),
+                    ]
+                if not warm_only:
+                    # Non-warm (E2b/E2c): the supervised agent runs at start, as the
+                    # `-- <agent argv>` payload.  Warm-only OMITS it (agentless start).
+                    supervisor_argv += ["--", agent_ep, *agent_argv]
                 # 4. Compose PID-1 as an import-gated `sh -c` (forward-compat: an
                 #    old image lacking the supervisor module degrades to the
                 #    fallback).  SKIPS _bootstrap_wrap — the supervisor IS PID-1.

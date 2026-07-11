@@ -18,9 +18,12 @@ from kanibako.box_lifecycle import AttachState
 from kanibako.box_supervisor import (
     ActionKind,
     BoxSupervisor,
+    PanelActionKind,
+    PanelAgentState,
     SupervisorConfig,
     config_from_argv,
     decide,
+    decide_panel,
     main,
 )
 
@@ -767,3 +770,266 @@ def test_main_wires_config_and_runs_the_loop(monkeypatch):
     assert isinstance(cfg, SupervisorConfig)
     assert cfg.session == "kanibako"
     assert cfg.start_argv == ["claude", "--continue"]
+
+
+# ---------------------------------------------------------------------------
+# E2f — panel-watch: decide_panel (the pure state machine), the marker probe,
+#       and the agent-independent `code` warm-up loop.
+# ---------------------------------------------------------------------------
+
+# The full decide_panel truth table, one row per distinct edge.  Two DISTINCT
+# surface signals (principle B / the E2e FF-8 fix): `server` (the PANEL) gates
+# SELF_HEAL_CLI; `any_attached` (panel OR tmux terminal) gates keep-alive/teardown.
+# `server=True` implies `any_attached=True` (the panel IS a surface); `server=False,
+# any=True` is a bare tmux terminal.  Each row's expected value differs from a
+# neighbour that flips exactly ONE input, so the parametrization is mutation-proof.
+@pytest.mark.parametrize(
+    "tmux_alive,panel,server,any_attached,seen,expected",
+    [
+        # An agent IS running → hands-off (NONE), regardless of the rest.
+        (True, PanelAgentState.NONE, False, False, True, PanelActionKind.NONE),
+        (True, PanelAgentState.DEAD, True, True, True, PanelActionKind.NONE),   # tmux wins over dead marker + panel
+        (False, PanelAgentState.ALIVE, False, False, True, PanelActionKind.NONE),
+        (False, PanelAgentState.ALIVE, False, False, False, PanelActionKind.NONE),
+        # panel DEAD + PANEL connected → self-heal the CLI agent (§89-96), seen irrelevant.
+        (False, PanelAgentState.DEAD, True, True, True, PanelActionKind.SELF_HEAL_CLI),
+        (False, PanelAgentState.DEAD, True, True, False, PanelActionKind.SELF_HEAL_CLI),
+        # panel DEAD + NO panel: keep-alive while ANY surface (a terminal) stays;
+        # else teardown-iff-seen.  A terminal (server=False, any=True) MUST keep the
+        # box up (the FF-8-class bug: never tear down under an attached terminal).
+        (False, PanelAgentState.DEAD, False, True, True, PanelActionKind.NONE),      # terminal attached → keep-alive
+        (False, PanelAgentState.DEAD, False, False, True, PanelActionKind.TEARDOWN),  # no surface, seen → teardown
+        (False, PanelAgentState.DEAD, False, False, False, PanelActionKind.NONE),     # grace (never seen)
+        # panel NONE + PANEL connected → keep-alive (the panel will (re)bring an agent).
+        (False, PanelAgentState.NONE, True, True, True, PanelActionKind.NONE),
+        (False, PanelAgentState.NONE, True, True, False, PanelActionKind.NONE),
+        # panel NONE + no panel: keep-alive while a terminal stays; teardown-iff-seen.
+        (False, PanelAgentState.NONE, False, True, True, PanelActionKind.NONE),       # terminal attached → keep-alive
+        (False, PanelAgentState.NONE, False, False, True, PanelActionKind.TEARDOWN),  # no surface, seen → teardown
+        (False, PanelAgentState.NONE, False, False, False, PanelActionKind.NONE),     # grace
+    ],
+)
+def test_decide_panel_table(tmux_alive, panel, server, any_attached, seen, expected):
+    assert decide_panel(tmux_alive, panel, server, any_attached, seen).kind is expected
+
+
+def test_decide_panel_seen_latch_flips_teardown_vs_grace():
+    # Isolate the seen_surface input: identical no-live-agent/no-surface state,
+    # only the latch differs → TEARDOWN vs NONE (the grace).  Mutation-proof for a
+    # mutant that ignores seen_surface.
+    assert decide_panel(
+        False, PanelAgentState.NONE, False, False, True,
+    ).kind is PanelActionKind.TEARDOWN
+    assert decide_panel(
+        False, PanelAgentState.NONE, False, False, False,
+    ).kind is PanelActionKind.NONE
+
+
+def test_decide_panel_server_gates_self_heal_vs_teardown():
+    # Isolate the server (PANEL) input: DEAD panel, seen, no OTHER surface, only the
+    # panel differs → SELF_HEAL_CLI (panel up) vs TEARDOWN (panel gone).  Mutation-
+    # proof for a mutant that ignores vscode_server.
+    assert decide_panel(
+        False, PanelAgentState.DEAD, True, True, True,
+    ).kind is PanelActionKind.SELF_HEAL_CLI
+    assert decide_panel(
+        False, PanelAgentState.DEAD, False, False, True,
+    ).kind is PanelActionKind.TEARDOWN
+
+
+def test_decide_panel_terminal_surface_prevents_teardown():
+    # THE FF-8-class bug this fix closes: the CLI agent is dead and the PANEL is
+    # closed (vscode_server=False), but a tmux TERMINAL is still attached
+    # (any_attached=True) → must NOT tear down.  Keying teardown on the panel alone
+    # (the pre-fix bug) would close the box out from under the terminal.
+    assert decide_panel(
+        False, PanelAgentState.DEAD, False, True, True,
+    ).kind is PanelActionKind.NONE
+    assert decide_panel(
+        False, PanelAgentState.NONE, False, True, True,
+    ).kind is PanelActionKind.NONE
+
+
+# -- panel_agent_state (the tolerant, injectable marker probe) ---------------
+
+def _panel_sup(
+    *,
+    pidfile: str | None = "/run/kanibako/agent.pid",
+    contents: str | None = "4242\n",
+    alive=lambda pid: True,
+    raise_read: bool = False,
+    raise_alive: bool = False,
+) -> BoxSupervisor:
+    def read(path: str) -> str | None:
+        if raise_read:
+            raise OSError("pidfile read boom")
+        return contents
+
+    def pid_alive(pid: int) -> bool:
+        if raise_alive:
+            raise OSError("kill(0) boom")
+        return alive(pid)
+
+    return BoxSupervisor(
+        _config(agent_pidfile=pidfile),
+        run=FakeRun(),
+        read_pidfile=read,
+        pid_alive=pid_alive,
+    )
+
+
+def test_panel_agent_state_none_when_no_pidfile_configured():
+    assert _panel_sup(pidfile=None).panel_agent_state() is PanelAgentState.NONE
+
+
+def test_panel_agent_state_none_when_absent():
+    assert _panel_sup(contents=None).panel_agent_state() is PanelAgentState.NONE
+
+
+@pytest.mark.parametrize("contents", ["", "   \n", "notapid", "12x", "-1", "0"])
+def test_panel_agent_state_none_on_empty_or_garbage(contents):
+    assert _panel_sup(contents=contents).panel_agent_state() is PanelAgentState.NONE
+
+
+def test_panel_agent_state_alive_for_live_pid():
+    assert _panel_sup(contents="777", alive=lambda pid: True).panel_agent_state() is (
+        PanelAgentState.ALIVE
+    )
+
+
+def test_panel_agent_state_dead_for_stale_pid():
+    assert _panel_sup(contents="777", alive=lambda pid: False).panel_agent_state() is (
+        PanelAgentState.DEAD
+    )
+
+
+def test_panel_agent_state_tolerates_a_raising_reader_and_probe():
+    # A raising file read OR liveness probe must never propagate (PID-1 immortality):
+    # both degrade to NONE ("no live panel agent").
+    assert _panel_sup(raise_read=True).panel_agent_state() is PanelAgentState.NONE
+    assert _panel_sup(raise_alive=True).panel_agent_state() is PanelAgentState.NONE
+
+
+# -- the panel-watch loop (agent-independent `code` warm-up) ------------------
+
+def _panel_watch_sup(fake: FakeRun, *, contents=None, alive=lambda pid: True) -> BoxSupervisor:
+    """A panel-watch supervisor with an injected marker reader/liveness probe."""
+    return BoxSupervisor(
+        _config(panel_watch=True, agent_pidfile="/run/kanibako/agent.pid"),
+        run=fake,
+        proc_cmdlines=[],
+        read_pidfile=lambda _p: contents,
+        pid_alive=alive,
+    )
+
+
+def test_panel_watch_startup_is_agentless_and_stays_up():
+    # MUTATION-PROOF (the regression this arc closes): panel-watch startup starts NO
+    # CLI agent.  A never-attached box (no surface, no marker) stays up through the
+    # grace until the harness stops it — and NEVER emits a tmux new-session.
+    fake = FakeRun(rc={"has-session": 1})  # no tmux agent present
+    sup = _panel_watch_sup(fake, contents=None)  # panel marker absent → NONE
+    _script_snapshots(sup, [_NONE])
+    slept = _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    assert fake.sub_calls("new-session") == []   # never started an agent
+    assert len(slept) == 3                        # stayed up (grace) to the harness bound
+
+
+def test_panel_watch_dead_marker_with_server_self_heals_a_cli_agent():
+    # The §89-96 fallback: the panel agent DIED (stale marker) with the panel still
+    # connected (vscode_server) → self-heal a CLI agent.  Stub _self_heal to record.
+    fake = FakeRun(rc={"has-session": 1})
+    sup = _panel_watch_sup(fake, contents="4242", alive=lambda pid: False)  # DEAD marker
+    _script_snapshots(sup, [_VS])  # panel/server present throughout
+    healed: list[int] = []
+    sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
+    _stop_after(sup, 1)
+    assert sup.run_forever() == 0
+    assert healed == [1]  # self-heal fired on the DEAD-marker + server tick
+
+
+def test_panel_watch_live_panel_agent_is_hands_off():
+    # A LIVE panel agent (marker names a live PID) → the loop never self-heals or
+    # tears down; the panel is the sole agent.
+    fake = FakeRun(rc={"has-session": 1})
+    sup = _panel_watch_sup(fake, contents="999", alive=lambda pid: True)  # ALIVE marker
+    _script_snapshots(sup, [_VS])
+    healed: list[int] = []
+    sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
+    slept = _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    assert healed == []                          # never self-healed while the panel is live
+    assert fake.sub_calls("new-session") == []
+    assert len(slept) == 3                        # stayed up
+
+
+def test_panel_watch_tears_down_after_last_surface_detaches():
+    # All-gone-after-seen: prev has a panel (seen latches True); tick1 the panel is
+    # GONE and the marker is absent → TEARDOWN returns 0.  MUTATION-PROOF: teardown
+    # fires on tick1 BEFORE the first poll sleep, so `slept == []`; a mutant that
+    # ignores the seen-latch (never tears down) would sleep to the harness bound.
+    fake = FakeRun(rc={"has-session": 1})
+    sup = _panel_watch_sup(fake, contents=None)  # panel marker absent → NONE
+    _script_snapshots(sup, [_VS, _NONE])
+    healed: list[int] = []
+    sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
+    slept = _stop_after(sup, 5)  # bound a would-be never-tears-down mutant
+    assert sup.run_forever() == 0
+    assert slept == []           # tore down at tick1, before any poll sleep
+    assert healed == []
+
+
+def test_panel_watch_dead_marker_no_server_tears_down_without_self_heal():
+    # DEAD marker but NO server (the surface detached) + seen → TEARDOWN, NOT
+    # self-heal.  Proves self-heal REQUIRES the server surface.
+    fake = FakeRun(rc={"has-session": 1})
+    sup = _panel_watch_sup(fake, contents="4242", alive=lambda pid: False)  # DEAD marker
+    _script_snapshots(sup, [_VS, _NONE])  # seen, then no surface
+    healed: list[int] = []
+    sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
+    slept = _stop_after(sup, 5)
+    assert sup.run_forever() == 0
+    assert slept == []    # teardown at tick1 (surface gone, seen)
+    assert healed == []   # DEAD marker but no server → no self-heal
+
+
+def test_panel_watch_fires_detach_hook_on_surface_loss():
+    # The DETACH hook (D's cred-writeback point) still fires on a surface loss in
+    # panel-watch mode.  A LIVE panel keeps the box up so the hook is observable.
+    fake = FakeRun(rc={"has-session": 1})
+    sup = _panel_watch_sup(fake, contents="999", alive=lambda pid: True)  # ALIVE → hands-off
+    _script_snapshots(sup, [_BOTH, _VS])  # tmux terminal detaches, panel stays
+    fired: list[int] = []
+    sup._on_detach = lambda: fired.append(1)  # type: ignore[method-assign]
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert fired == [1]  # exactly one detach hook when the terminal surface dropped
+
+
+# -- config_from_argv (panel-watch flags) ------------------------------------
+
+def test_config_from_argv_panel_watch_allows_no_trailing_agent_argv():
+    # Panel-watch starts NO agent, so an EMPTY start_argv is allowed (the "no agent
+    # argv" error is suppressed); --continue-cmd carries the self-heal grammar.
+    cfg = config_from_argv(
+        ["--session", "kanibako", "--marker", _MARKER, "--panel-watch",
+         "--agent-pidfile", "/run/kanibako/agent.pid",
+         "--continue-cmd", "claude --continue"]
+    )
+    assert cfg.panel_watch is True
+    assert cfg.agent_pidfile == "/run/kanibako/agent.pid"
+    assert cfg.start_argv == []
+    assert cfg.continue_argv == ["claude", "--continue"]
+
+
+def test_config_from_argv_defaults_panel_watch_off_and_no_pidfile():
+    cfg = config_from_argv(["--session", "s", "--marker", "m", "--", "claude"])
+    assert cfg.panel_watch is False
+    assert cfg.agent_pidfile is None
+
+
+def test_config_from_argv_non_panel_watch_still_requires_trailing_argv():
+    # The empty-argv relaxation is SCOPED to --panel-watch; the E2b path still errors.
+    with pytest.raises(SystemExit):
+        config_from_argv(["--session", "s", "--marker", "m"])
