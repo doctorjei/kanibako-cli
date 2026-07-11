@@ -1199,3 +1199,174 @@ def test_config_from_argv_non_panel_watch_still_requires_trailing_argv():
     # The empty-argv relaxation is SCOPED to --panel-watch; the E2b path still errors.
     with pytest.raises(SystemExit):
         config_from_argv(["--session", "s", "--marker", "m"])
+
+
+# ---------------------------------------------------------------------------
+# PYTHONPATH scrub (the host-mount entry must not reach the agent/tmux children).
+# ---------------------------------------------------------------------------
+
+def test_scrub_pythonpath_drops_var_when_only_mount_root():
+    from kanibako.box_supervisor import (
+        KANIBAKO_PKG_MOUNT_ROOT,
+        scrub_bootstrap_pythonpath,
+    )
+
+    env = {"PYTHONPATH": KANIBAKO_PKG_MOUNT_ROOT}
+    scrub_bootstrap_pythonpath(env)
+    # Nothing else remained -> the var is dropped entirely, not left empty.
+    assert "PYTHONPATH" not in env
+
+
+def test_scrub_pythonpath_preserves_other_entries():
+    from kanibako.box_supervisor import (
+        KANIBAKO_PKG_MOUNT_ROOT,
+        scrub_bootstrap_pythonpath,
+    )
+
+    env = {"PYTHONPATH": f"{KANIBAKO_PKG_MOUNT_ROOT}:/opt/other:/x/y"}
+    scrub_bootstrap_pythonpath(env)
+    # Exactly the mount-root element is removed; the image's own entries survive.
+    assert env["PYTHONPATH"] == "/opt/other:/x/y"
+
+
+def test_scrub_pythonpath_removes_mount_root_in_any_position():
+    from kanibako.box_supervisor import (
+        KANIBAKO_PKG_MOUNT_ROOT,
+        scrub_bootstrap_pythonpath,
+    )
+
+    env = {"PYTHONPATH": f"/a:{KANIBAKO_PKG_MOUNT_ROOT}:/b"}
+    scrub_bootstrap_pythonpath(env)
+    assert env["PYTHONPATH"] == "/a:/b"
+
+
+def test_scrub_pythonpath_noop_when_unset():
+    from kanibako.box_supervisor import scrub_bootstrap_pythonpath
+
+    env: dict[str, str] = {}
+    scrub_bootstrap_pythonpath(env)
+    assert env == {}
+
+
+# ---------------------------------------------------------------------------
+# GUARD: box_supervisor's import chain must stay third-party-free (LOAD-BEARING).
+# ---------------------------------------------------------------------------
+
+def test_box_supervisor_import_chain_is_stdlib_only():
+    """box_supervisor + its kanibako.* import chain must import ONLY stdlib.
+
+    WHY THIS GUARD EXISTS — do NOT weaken it without understanding the consequence:
+    the box supervisor is exec'd as box PID-1 from the HOST kanibako package that
+    ``commands/start.py`` bind-mounts read-only at ``KANIBAKO_PKG_MOUNT_ROOT`` and
+    injects as PYTHONPATH.  That mount carries ONLY the kanibako package SOURCE — none
+    of the host venv's third-party dependencies (PyYAML, packaging, ...).  So every
+    module reached while importing ``kanibako.box_supervisor`` must resolve with NO
+    third-party package present: it may import the stdlib, or an ALLOWLISTED
+    intra-kanibako module that is ITSELF stdlib-only.  The instant a future edit adds
+    e.g. ``import yaml`` here (or pulls in a kanibako module that imports a third-party
+    package), the supervisor would ImportError as PID-1 on a published image and EVERY
+    real launch would silently degrade to the bare-shell fallback (no agent).  This
+    walk fails LOUDLY at that moment, naming the offending module + import, so the
+    author extends the mount contract (add the dep to the image) or the allowlist
+    deliberately — never by accident.
+    """
+    import ast
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    # The intra-kanibako modules the chain is ALLOWED to reach today.  ``kanibako`` is
+    # the package __init__ (implicitly executed when a submodule is imported); the
+    # other three are the module + its two direct, stdlib-only helpers.  Each is
+    # verified stdlib-only by the recursion below — this set only bounds WHICH kanibako
+    # modules may participate, so an accidental new intra-kanibako dependency (which
+    # might drag in third-party code) trips the guard.
+    allowed_kanibako = {
+        "kanibako",
+        "kanibako.box_supervisor",
+        "kanibako.box_lifecycle",
+        "kanibako.log",
+    }
+
+    def source_of(mod_name: str) -> "str | None":
+        spec = importlib.util.find_spec(mod_name)
+        if spec is None or spec.origin in (None, "built-in", "frozen"):
+            return None
+        origin = spec.origin
+        if not origin.endswith(".py"):
+            return None
+        return Path(origin).read_text()
+
+    def ancestors(mod_name: str) -> "list[str]":
+        """Package __init__ modules implicitly executed when importing *mod_name*."""
+        parts = mod_name.split(".")
+        return [".".join(parts[:i]) for i in range(1, len(parts))]
+
+    visited: set[str] = set()
+    external_tops: set[str] = set()
+    queue = ["kanibako.box_supervisor"]
+    while queue:
+        mod = queue.pop()
+        if mod in visited:
+            continue
+        visited.add(mod)
+        # Importing this module implicitly runs its ancestor package __init__s.
+        for anc in ancestors(mod):
+            assert anc in allowed_kanibako, (
+                f"box_supervisor import chain reaches non-allowlisted kanibako "
+                f"package {anc!r} (ancestor of {mod!r}); see this test's docstring"
+            )
+            if anc not in visited:
+                queue.append(anc)
+        src = source_of(mod)
+        if src is None:
+            continue
+        tree = ast.parse(src, filename=mod)
+        for node in ast.walk(tree):
+            candidates: list[str] = []
+            if isinstance(node, ast.Import):
+                candidates = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                # No relative imports are expected in this chain; a level>0 import
+                # would resolve against the package and is flagged here so it cannot
+                # sneak a dependency past the walk.
+                assert node.level == 0, (
+                    f"unexpected relative import in {mod!r} (level={node.level}); "
+                    "the guard walks only absolute imports"
+                )
+                base = node.module or ""
+                if base:
+                    candidates.append(base)
+                    # `from pkg import sub` may name a SUBMODULE (not just an attr);
+                    # include the candidate so a kanibako submodule is followed.
+                    candidates += [f"{base}.{a.name}" for a in node.names]
+            for name in candidates:
+                top = name.split(".")[0]
+                if top == "kanibako":
+                    # An intra-kanibako reference.  Only FOLLOW it if it resolves to a
+                    # real module (``kanibako.log.get_logger`` is an attribute, not a
+                    # module, and find_spec raises for it — skip those).
+                    try:
+                        spec = importlib.util.find_spec(name)
+                    except ModuleNotFoundError:
+                        spec = None
+                    if spec is None:
+                        continue
+                    assert name in allowed_kanibako, (
+                        f"box_supervisor import chain reaches non-allowlisted "
+                        f"kanibako module {name!r} (imported by {mod!r}); adding it "
+                        "may drag third-party deps into box PID-1 — see docstring"
+                    )
+                    if name not in visited:
+                        queue.append(name)
+                else:
+                    external_tops.add(top)
+
+    # Every non-kanibako top-level module the chain imports must be stdlib.
+    non_stdlib = sorted(t for t in external_tops if t not in sys.stdlib_module_names)
+    assert not non_stdlib, (
+        f"box_supervisor import chain imports non-stdlib package(s) {non_stdlib}; "
+        "the host-package mount carries NO third-party deps, so box PID-1 would "
+        "ImportError and every launch would degrade to the bare-shell fallback — "
+        "see this test's docstring"
+    )

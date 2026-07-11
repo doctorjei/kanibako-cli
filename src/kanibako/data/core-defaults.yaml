@@ -201,7 +201,11 @@ core:
 # `importlib.resources` `kanibako-entry`) and injected into each keyed entry (the
 # file names them SYMBOLICALLY).  box-side destinations + options are STATIC here.
 kani:
-  # Package dir → /opt/kanibako/kanibako (ro).
+  # Package dir → /opt/kanibako/kanibako (ro).  Must equal
+  # KANIBAKO_PKG_MOUNT_ROOT + "/kanibako" (kanibako.box_supervisor): the launcher
+  # injects that root as PYTHONPATH so PID-1 imports the supervisor from THIS
+  # mount — YAML cannot reference the constant, so keep the literal in sync
+  # (drift = supervisor import fails = silent bare-shell degradation).
   - key: kani_pkg
     category: bindings.ro
     source: kani_pkg

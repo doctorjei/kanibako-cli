@@ -501,7 +501,7 @@ class TestPersistentMode:
             cli_args = run_kwargs.get("cli_args") or []
             assert cli_args[0] == "-c"
             script = cli_args[1]
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             # Foreground launch → teardown-on-agent-exit policy.
             assert "--on-agent-exit teardown" in script
             assert "claude" in script
@@ -1944,7 +1944,7 @@ class TestDetachedSupervisor:
             assert "import kanibako.box_supervisor" in script
             assert "2>/dev/null" in script
             # Supervisor PID-1 invocation (NOT tmux-wrapped).
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "--session kanibako" in script
             assert CONTINUE_MARKER in script
             # The supervised agent entrypoint appears in the -- payload.
@@ -2037,7 +2037,7 @@ class TestDetachedSupervisor:
             script = self._detach_script(m)
             assert "--continue-cmd" not in script
             # Still the supervisor PID-1.
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
 
     def test_detached_goose_agent_payload_carries_directive_flatten(self, start_mocks):
         """goose detached agent → the supervised payload runs the directive flatten."""
@@ -2058,7 +2058,7 @@ class TestDetachedSupervisor:
             # The goose directive-flatten shim wraps the supervised agent payload.
             assert "import-directives.py" in script
             # ... and it is still supervised as PID-1.
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "goose" in script
 
     def test_detached_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
@@ -2079,8 +2079,16 @@ class TestDetachedSupervisor:
             # The export STATEMENT (referencing the mount path) is in the payload.
             assert "export MY_SECRET=" in script
             # Still supervised; the secret VALUE never reaches the argv.
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "sk-bearer-value" not in script
+
+
+# The exact PYTHONPATH-injection token _build_supervisor_pid1 prepends to the probe
+# + supervisor exec: the host kanibako mount root FIRST, other entries kept.  The
+# whole assignment is DOUBLE-QUOTED in the script so the shell expands ${PYTHONPATH:+…}
+# without word-splitting/globbing the result — so the token as it appears in the
+# script carries the surrounding quotes.
+_PP = '"PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}"'
 
 
 class TestBuildSupervisorPid1:
@@ -2101,8 +2109,30 @@ class TestBuildSupervisorPid1:
         script = args[1]
         assert "python3 -c 'import kanibako.box_supervisor'" in script
         assert "2>/dev/null" in script
-        assert "&& exec python3 -m kanibako.box_supervisor" in script
+        assert f"&& exec env {_PP} python3 -m kanibako.box_supervisor" in script
+        # Fallback exec is UNCHANGED — bare-shell keep-alive, no PYTHONPATH injected.
         assert "|| exec tmux new-session -s kanibako -- sh" in script
+
+    def test_probe_and_supervisor_exec_carry_pythonpath_fallback_does_not(self):
+        """BOTH the import probe and the supervisor exec run with the host-mount
+        PYTHONPATH prepended (so PID-1 imports the FRESH host supervisor, not the
+        image's baked copy); the `|| exec` fallback keeps NO PYTHONPATH (it never
+        imports kanibako)."""
+        from kanibako.commands.start import _build_supervisor_pid1
+
+        ep, args = _build_supervisor_pid1(
+            ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
+            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+        )
+        script = args[1]
+        # Probe carries the PYTHONPATH.
+        assert f"env {_PP} python3 -c 'import kanibako.box_supervisor'" in script
+        # Supervisor exec carries the PYTHONPATH.
+        assert f"exec env {_PP} python3 -m kanibako.box_supervisor" in script
+        # The fallback (after `|| exec `) does NOT inject PYTHONPATH.
+        fb = script.split(" || exec ", 1)[1]
+        assert "PYTHONPATH" not in fb
+        assert fb == "tmux new-session -s kanibako -- sh"
 
     def test_quotes_agent_args_with_spaces_round_trip(self):
         """Agent args with spaces / quotes survive the shlex quoting round-trip."""
@@ -2120,12 +2150,18 @@ class TestBuildSupervisorPid1:
         ep, args = _build_supervisor_pid1(supervisor_argv, fallback_argv)
         assert ep == "sh"
         script = args[1]
-        # The exact shlex.join of each argv appears verbatim after its `exec`.
-        assert f"exec {shlex.join(supervisor_argv)}" in script
+        # The exact shlex.join of each argv appears verbatim after its `exec` (the
+        # supervisor exec is prefixed by the PYTHONPATH-injecting `env`).
+        assert f"exec env {_PP} {shlex.join(supervisor_argv)}" in script
         assert f"exec {shlex.join(fallback_argv)}" in script
-        # And the supervisor command round-trips back to the original argv.
+        # And the supervisor command round-trips back to the original argv once the
+        # `env "PYTHONPATH=..."` prefix (two tokens) is stripped.  shlex.split strips
+        # the shell quotes off the assignment, so compare against the unquoted value.
         after = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
-        assert shlex.split(after) == supervisor_argv
+        after_tokens = shlex.split(after)
+        assert after_tokens[0] == "env"
+        assert after_tokens[1] == _PP.strip('"')
+        assert after_tokens[2:] == supervisor_argv
         fb = script.split(" || exec ", 1)[1]
         assert shlex.split(fb) == fallback_argv
 
@@ -2315,7 +2351,7 @@ class TestForegroundSupervisor:
             assert rc == 0
             script = self._script(m)
             assert "import kanibako.box_supervisor" in script
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "--session kanibako" in script
             assert CONTINUE_MARKER in script
             assert "claude" in script
@@ -2422,7 +2458,7 @@ class TestForegroundSupervisor:
             assert rc == 0
             script = self._script(m)
             assert "import-directives.py" in script
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "--on-agent-exit teardown" in script
 
     def test_foreground_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
@@ -2441,5 +2477,5 @@ class TestForegroundSupervisor:
             assert rc == 0
             script = self._script(m)
             assert "export MY_SECRET=" in script
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "sk-bearer-value" not in script
