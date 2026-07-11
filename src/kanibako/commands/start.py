@@ -1654,7 +1654,7 @@ def _run_container(
                 else:
                     target.refresh_credentials(proj.shell_path)
             reattach_rc = runtime.exec(
-                container_name, _bootstrap_attach(bootstrap_program)
+                container_name, _bootstrap_attach(bootstrap_program), attach=True
             )
             # FIX 1: the reattach session has ended (detach or in-box exit).
             # An in-box login during this attach must reach the host, so write
@@ -3001,7 +3001,7 @@ def _run_container(
                         time.sleep(0.5)
                     continue
                 rc = runtime.exec(
-                    container_name, _bootstrap_attach(bootstrap_program)
+                    container_name, _bootstrap_attach(bootstrap_program), attach=True
                 )
                 if rc == 0:
                     break

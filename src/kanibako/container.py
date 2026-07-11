@@ -353,15 +353,28 @@ class ContainerRuntime:
         command: list[str],
         *,
         env: dict[str, str] | None = None,
+        attach: bool = False,
     ) -> int:
         """Run a command inside a running container. Interactive (inherits stdio).
 
         Returns the exit code of the exec'd process.
+
+        *attach* marks this exec as a BOOTSTRAP ATTACH (a ``tmux attach`` handoff)
+        rather than a command whose output is the user's payload.  It only changes
+        the NON-tty case: an attach has no session to render without a terminal, and
+        the caller surfaces the agent's real logs/exit via ``podman logs``, so the
+        runtime's own raw race error — e.g. ``container state improper`` when a
+        supervised box tore down between the readiness probe and this exec — is
+        CAPTURED instead of leaking to the caller's stderr as if it were agent
+        output.  A NON-attach exec (the default; the one-off ``kanibako shell <box>
+        -- <cmd>`` path) always inherits stdio so its output reaches the user, tty or
+        not.
         """
         # Allocate a pty only when stdin is a real terminal. In scripted /
         # subprocess contexts (CI, e2e tests), -t causes interactive commands
         # like ``tmux attach`` to render but never return.
-        tty_flag = "-it" if sys.stdin.isatty() else "-i"
+        interactive = sys.stdin.isatty()
+        tty_flag = "-it" if interactive else "-i"
         cmd: list[str] = [self.cmd, "exec", tty_flag]
         if env:
             for k, v in sorted(env.items()):
@@ -370,7 +383,32 @@ class ContainerRuntime:
         cmd.extend(command)
 
         logger.debug("Container exec: %s", cmd)
-        result = subprocess.run(cmd)
+        if not attach:
+            # A NON-attach exec whose output IS the user's payload (the one-off
+            # ``kanibako shell <box> -- <cmd>`` path): inherit all stdio so the
+            # output reaches the user, tty or not.
+            return subprocess.run(cmd).returncode
+        # Bootstrap ATTACH (a ``tmux attach`` handoff).  In BOTH cases we capture
+        # stderr so the runtime's raw race error (``container state improper`` / ``can
+        # only create exec sessions on running containers`` when a supervised box tore
+        # down between the readiness probe and this attach) does NOT leak to the
+        # caller's stderr as if it were agent output — the caller re-checks liveness
+        # and surfaces the agent's real logs/exit, so that noise is debug-only.
+        if interactive:
+            # Real terminal: keep stdin/stdout on the TTY so the interactive tmux
+            # session renders and the user drives it (tmux draws to stdout, errors to
+            # stderr).  stdout is a terminal, so it drains itself — no deadlock.
+            result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
+        else:
+            # Scripted / non-tty: there is no session to render, so capture BOTH
+            # streams.  ⚑ Capturing stdout is REQUIRED, not just tidy: inheriting it
+            # to the caller's (undrained) pipe lets a live ``tmux attach`` fill the
+            # pipe buffer and DEADLOCK until the caller's timeout.  Draining it here
+            # both prevents that wedge and keeps the raw error off the caller's stdio.
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        err = (result.stderr or "").strip()
+        if err:
+            logger.debug("attach exec rc=%s stderr=%s", result.returncode, err)
         return result.returncode
 
     def exec_ready(self, name: str) -> bool:

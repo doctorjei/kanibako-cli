@@ -114,6 +114,22 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
+    # Record the template-staleness stamp the way first-run init does — this
+    # fixture pre-seeds the config instead of running init, so without the stamp
+    # template_staleness_gate hard-errors every `kanibako start` with "bundled
+    # templates changed since setup was last run" and no container is created
+    # (see e2e_env).  The digest is CONTENT-based over the installed agents'
+    # packaged templates; the testing-only dead/live directory-plugins ship no
+    # packaged template, so they contribute nothing and the host-computed stamp
+    # matches what the subprocess gate recomputes with them discovered.
+    from kanibako.config_interface import write_system_value
+    from kanibako.targets import discover_targets
+    from kanibako.templates import packaged_templates_digest
+    write_system_value(
+        kanibako_config,
+        "templates_stamp",
+        packaged_templates_digest(sorted(discover_targets().keys())),
+    )
 
     # System settings: default agent = dead, so resolve_agent picks DeadTarget
     # (mirrors e2e_env's claude pin; the configured-default tier wins in the
@@ -273,6 +289,22 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     kanibako_config = config_home / "kanibako_config.yaml"
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
+    )
+    # Record the template-staleness stamp the way first-run init does — this
+    # fixture pre-seeds the config instead of running init, so without the stamp
+    # template_staleness_gate hard-errors every `kanibako start` with "bundled
+    # templates changed since setup was last run" and no container is created
+    # (see e2e_env).  The digest is CONTENT-based over the installed agents'
+    # packaged templates; the testing-only dead/live directory-plugins ship no
+    # packaged template, so they contribute nothing and the host-computed stamp
+    # matches what the subprocess gate recomputes with them discovered.
+    from kanibako.config_interface import write_system_value
+    from kanibako.targets import discover_targets
+    from kanibako.templates import packaged_templates_digest
+    write_system_value(
+        kanibako_config,
+        "templates_stamp",
+        packaged_templates_digest(sorted(discover_targets().keys())),
     )
 
     # System settings: default agent = live, so resolve_agent picks LiveTarget

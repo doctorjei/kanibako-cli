@@ -6,8 +6,21 @@
 # image" step: it builds a wheel into ./e2e-wheels and points BASE at the pulled
 # :latest tagged as kanibako-oci:base.  Force-reinstall --no-deps: the base
 # already carries kanibako-cli's runtime deps, so only the package is replaced.
+#
+# ⚑ Install as ROOT into the SYSTEM site-packages (/usr/local/lib/.../dist-
+# packages), NOT the agent user's ~/.local.  The published base image installs
+# kanibako system-wide, but at launch kanibako bind-mounts the box home OVER
+# /home/agent, which SHADOWS ~/.local — so an overlay installed to the agent's
+# user-site is invisible in-box (the in-box `import kanibako.box_supervisor`
+# probe fails and PID-1 degrades to the bare-shell fallback).  A default (agent-
+# user) pip install lands in ~/.local and reproduces exactly that silent
+# regression, which is why the supervisor never appeared in any launch.  USER
+# root makes pip target the system path the launch actually imports from; the
+# USER agent switch-back restores the base image's runtime user.
 ARG BASE=kanibako-oci:base
 FROM ${BASE}
+USER root
 COPY e2e-wheels/ /tmp/e2e-wheels/
 RUN pip install --break-system-packages --force-reinstall --no-deps \
         /tmp/e2e-wheels/kanibako_cli-*.whl
+USER agent
