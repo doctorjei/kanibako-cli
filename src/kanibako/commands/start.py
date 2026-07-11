@@ -2310,8 +2310,18 @@ def _run_container(
         )
         # DETACH also needs the resolved box shell: its PID-1 keep-alive runs a
         # bare SHELL (not the agent), so resolve box.shell even for an agent
-        # launch (where no_agent_launch is False).
-        if no_agent_launch or helpers_enabled or detach:
+        # launch (where no_agent_launch is False).  E2c: a SUPERVISED foreground
+        # agent (persistent, not detach) likewise needs it — the supervisor PID-1's
+        # forward-compat FALLBACK is the same bare-shell keep-alive.  is_agent_mode
+        # guarantees entrypoint becomes target.default_entrypoint below, so a target
+        # with a default entrypoint is exactly the supervised case.
+        supervised_agent_launch = (
+            persistent
+            and is_agent_mode
+            and target is not None
+            and target.default_entrypoint is not None
+        )
+        if no_agent_launch or helpers_enabled or detach or supervised_agent_launch:
             from kanibako.shells import resolve_box_shell
             box_shell, _box_shell_source = resolve_box_shell(
                 merged, std, runtime=runtime, image=image,
@@ -2582,26 +2592,36 @@ def _run_container(
                     prog, prog_args = _directive_flatten_shim(prog, prog_args)
                 return prog, prog_args
 
-            detach_agent = (
-                detach
+            supervise_agent = (
+                persistent
                 and is_agent_mode
                 and target is not None
                 and entrypoint is not None
             )
-            if detach_agent:
-                # ALWAYS-ON SUPERVISOR PID-1 (E2b, design §189/§217): a detached
-                # AGENT box makes the box_supervisor PID-1, which runs the AGENT in
-                # a detached tmux session ("kanibako") and SELF-HEALS it (restart
-                # with the --continue grammar + a continue-marker) when it dies — so
-                # the box persists INDEPENDENT of any one agent session (principle
-                # B).  ⚑ SEMANTICS CHANGE vs. the old bare-shell keep-alive: reattach
-                # (`kanibako start` → `tmux attach -t kanibako`) now attaches to the
-                # AGENT's session; Ctrl-B D leaves it running; the agent EXITING
-                # self-heals instead of tearing the box down (teardown = explicit
-                # `kanibako stop`).  box_shell is resolved above whenever detach is
-                # set, and a real agent guarantees a non-None entrypoint.
+            if supervise_agent:
+                # ALWAYS-ON SUPERVISOR PID-1 (E2b + E2c, design §189/§217 + §85-96):
+                # a persistent AGENT box makes the box_supervisor PID-1, which runs
+                # the AGENT in a detached tmux session ("kanibako") and watches it —
+                # so the box persists INDEPENDENT of any one agent session (principle
+                # B).  E2c UNIFIES the foreground and detached launches through this
+                # ONE supervisor: it fires for a real agent under `persistent`
+                # whether or not `--detach`.  The LAUNCH-INTENT exit policy differs:
+                #   * DETACHED (E2b) → `--on-agent-exit self-heal`: a background
+                #     agent death restarts (with the --continue grammar + a
+                #     continue-marker), always-on, no human watching.
+                #   * FOREGROUND (E2c) → `--on-agent-exit teardown`: this terminal
+                #     ATTACHES after launch, so an agent EXIT is a normal termination
+                #     → the supervisor returns and the box closes (a human is present
+                #     to see any error); no self-heal loop while a CLI is the driver.
+                # ⚑ SEMANTICS (both): reattach (`kanibako start` → `tmux attach -t
+                # kanibako`) attaches to the AGENT's session; Ctrl-B D leaves it
+                # running.  In DETACHED mode the agent exiting self-heals; teardown
+                # is an explicit `kanibako stop`.  box_shell is resolved above for the
+                # supervised launch (fallback keep-alive), and a real agent
+                # guarantees a non-None entrypoint.  _bootstrap_wrap is SKIPPED — the
+                # supervisor manages tmux itself.
                 assert box_shell is not None
-                assert entrypoint is not None  # detach_agent guarantees it
+                assert entrypoint is not None  # supervise_agent guarantees it
                 # 1. Supervised AGENT command = entrypoint + cli_args + shims.
                 agent_ep, agent_argv = _apply_persistent_shims(
                     entrypoint, list(cli_args or []),
@@ -2615,10 +2635,14 @@ def _run_container(
                 )
                 # 3. Supervisor invocation — NOT tmux-wrapped (it manages tmux
                 #    itself).  --session "kanibako" keeps attach/reattach compat.
+                #    --on-agent-exit encodes the launch-intent policy: DETACHED
+                #    self-heals (always-on), FOREGROUND tears down on agent exit
+                #    (the attaching human is the driver).
                 supervisor_argv = [
                     "python3", "-m", "kanibako.box_supervisor",
                     "--session", "kanibako",
                     "--marker", CONTINUE_MARKER,
+                    "--on-agent-exit", "self-heal" if detach else "teardown",
                 ]
                 if agent_continue_argv is not None:
                     # Self-heal RESUMES: shim the continue command the SAME way so a
@@ -2649,12 +2673,15 @@ def _run_container(
                     bootstrap_program, inner_cmd, inner_args,
                 )
             else:
-                # Foreground persistent (attach): the agent IS the tmux session
-                # command, so exiting it ends the session and tears the box down —
-                # unchanged.  box_shell is None only on a real-agent launch, but
-                # that path guarantees a non-None entrypoint (set above), so
-                # inner_cmd is always a str; mypy can't track that cross-variable
-                # invariant.
+                # Foreground persistent NO-AGENT (attach): a shell / NoAgentTarget /
+                # custom --entrypoint box — nothing to supervise, so it stays the
+                # agent-as-session / shell-as-session tmux wrap: the command IS the
+                # tmux session, so exiting it ends the session and tears the box down
+                # (UNCHANGED — E2c only rerouted the real-AGENT foreground case
+                # through the supervisor above).  box_shell is None only on a real-
+                # agent launch, which the supervise_agent branch already handled, so a
+                # non-None entrypoint is always set here; mypy can't track that
+                # cross-variable invariant.
                 fg_cmd = entrypoint or box_shell
                 assert fg_cmd is not None
                 inner_cmd, inner_args = _apply_persistent_shims(

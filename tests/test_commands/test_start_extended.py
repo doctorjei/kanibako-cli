@@ -486,7 +486,8 @@ class TestPersistentMode:
     """Verify persistent mode (tmux wrapping, reattach, lifecycle)."""
 
     def test_persistent_launches_detached_with_tmux(self, start_mocks):
-        """Persistent mode: container runs detached with tmux entrypoint."""
+        """Persistent AGENT mode (E2c): the container runs detached; PID-1 is the
+        SUPERVISOR (foreground `teardown` policy), which manages the tmux session."""
         with start_mocks() as m:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -495,10 +496,15 @@ class TestPersistentMode:
             )
             run_kwargs = m.runtime.run.call_args.kwargs
             assert run_kwargs["detach"] is True
-            assert run_kwargs["entrypoint"] == "tmux"
+            # Supervisor PID-1 (import-gated `sh -c`), not a bare tmux wrap.
+            assert run_kwargs["entrypoint"] == "sh"
             cli_args = run_kwargs.get("cli_args") or []
-            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
-            assert "claude" in cli_args
+            assert cli_args[0] == "-c"
+            script = cli_args[1]
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            # Foreground launch → teardown-on-agent-exit policy.
+            assert "--on-agent-exit teardown" in script
+            assert "claude" in script
 
     def test_persistent_attaches_after_launch(self, start_mocks):
         """After detached launch, exec attaches to the tmux session."""
@@ -1109,7 +1115,10 @@ class TestSecureAutonomousFlags:
             )
             run_start(args)
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--dangerously-skip-permissions" in cli_args
+            # The default box mode is persistent → the AGENT command is nested in the
+            # supervisor PID-1 `sh -c` script (E2c), so match the flag anywhere in the
+            # launch argv rather than as a bare top-level list element.
+            assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
 
     def test_default_is_autonomous(self, start_mocks):
         """Without -A or -S, default behavior is autonomous."""
@@ -1127,7 +1136,9 @@ class TestSecureAutonomousFlags:
             )
             run_start(args)
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--dangerously-skip-permissions" in cli_args
+            # Default box mode is persistent → the flag rides inside the supervisor
+            # PID-1 `sh -c` script (E2c); match it anywhere in the launch argv.
+            assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
 
 
 # ---------------------------------------------------------------------------
@@ -1208,7 +1219,14 @@ class TestVaultTmpfsMode:
 
 
 class TestConfigurableBootstrap:
-    """PART C: the persistent bootstrap program is configurable (default tmux)."""
+    """PART C: the persistent bootstrap program is configurable (default tmux).
+
+    ⚑ E2c: the configurable bootstrap program governs the NO-AGENT persistent path
+    (and the supervisor's forward-compat FALLBACK keep-alive) — a supervised AGENT
+    launch runs its session under the supervisor's OWN tmux (:mod:`box_lifecycle` is
+    tmux-based), so these tests drive the no-agent (``box_shell_mode``) path where the
+    bootstrap program still wraps the inner command directly.
+    """
 
     def test_default_bootstrap_is_tmux(self, start_mocks):
         with start_mocks() as m:
@@ -1216,7 +1234,7 @@ class TestConfigurableBootstrap:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
+                extra_args=[], persistent=True, box_shell_mode=True,
             )
             run_kwargs = m.runtime.run.call_args.kwargs
             assert run_kwargs["entrypoint"] == "tmux"
@@ -1232,7 +1250,7 @@ class TestConfigurableBootstrap:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
+                extra_args=[], persistent=True, box_shell_mode=True,
             )
             run_kwargs = m.runtime.run.call_args.kwargs
             # Non-tmux: program is exec'd with the inner command + args (no
@@ -1240,7 +1258,7 @@ class TestConfigurableBootstrap:
             assert run_kwargs["entrypoint"] == "zellij"
             cli_args = run_kwargs["cli_args"]
             assert "new-session" not in cli_args
-            assert cli_args[0] == "claude"  # inner command (default entrypoint)
+            assert cli_args[0] == "sh"  # inner command (resolved box shell)
             # Reattach uses the program bare (no -t kanibako session contract).
             exec_args = m.runtime.exec.call_args[0]
             assert exec_args[1] == ["zellij"]
@@ -1988,3 +2006,172 @@ class TestBuildSupervisorPid1:
         assert shlex.split(after) == supervisor_argv
         fb = script.split(" || exec ", 1)[1]
         assert shlex.split(fb) == fallback_argv
+
+
+class TestForegroundSupervisor:
+    """FOREGROUND AGENT `start` routes through the supervisor too (E2c).
+
+    E2c unifies the launch model: a persistent AGENT launch makes the box_supervisor
+    PID-1 whether or not ``--detach``.  They differ ONLY in the launch-intent exit
+    policy — FOREGROUND (attaching) passes ``--on-agent-exit teardown`` (an agent exit
+    closes the box, a human is present); DETACHED keeps ``--on-agent-exit self-heal``
+    (always-on).  A NO-AGENT foreground box keeps the unchanged agent-as-session /
+    shell tmux wrap (nothing to supervise), and the attach stays ``tmux attach``.
+    """
+
+    @staticmethod
+    def _script(m) -> str:
+        """The PID-1 ``sh -c`` script the container was launched with."""
+        kw = m.runtime.run.call_args.kwargs
+        assert kw["entrypoint"] == "sh"
+        cli_args = kw.get("cli_args") or []
+        assert cli_args[0] == "-c"
+        return cli_args[1]
+
+    @staticmethod
+    def _supervisor_argv(script: str) -> list[str]:
+        """Parse the supervisor argv out of the import-gated ``sh -c`` script."""
+        import shlex
+
+        sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        return shlex.split(sup)
+
+    def test_foreground_agent_launches_supervisor_pid1(self, start_mocks):
+        """Foreground agent → sh -c import-gated supervisor with a tmux fallback."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,  # NOT detach
+            )
+            assert rc == 0
+            script = self._script(m)
+            assert "import kanibako.box_supervisor" in script
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "--session kanibako" in script
+            assert CONTINUE_MARKER in script
+            assert "claude" in script
+            # Forward-compat fallback keep-alive present.
+            assert "|| exec" in script
+            assert "new-session -s kanibako" in script
+
+    def test_foreground_agent_carries_teardown_policy(self, start_mocks):
+        """FOREGROUND → --on-agent-exit teardown (agent exit closes the box)."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            argv = self._supervisor_argv(self._script(m))
+            assert argv[argv.index("--on-agent-exit") + 1] == "teardown"
+
+    def test_detached_agent_carries_self_heal_policy_regression(self, start_mocks):
+        """REGRESSION: DETACHED (E2b) still carries --on-agent-exit self-heal."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = TestDetachedSupervisor._detach_script(m)
+            argv = self._supervisor_argv(script)
+            assert argv[argv.index("--on-agent-exit") + 1] == "self-heal"
+
+    def test_foreground_agent_attaches_kanibako_session(self, start_mocks):
+        """Foreground supervised launch still attaches via `tmux attach -t kanibako`."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            exec_args = m.runtime.exec.call_args[0]
+            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+
+    def test_foreground_agent_supervisor_carries_continue_cmd(self, start_mocks):
+        """A descriptor with a continue mode threads --continue-cmd (foreground)."""
+        import shlex
+
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            argv = self._supervisor_argv(self._script(m))
+            cont_val = argv[argv.index("--continue-cmd") + 1]
+            assert "--continue" in shlex.split(cont_val)
+
+    def test_foreground_no_agent_keeps_bare_shell_wrap(self, start_mocks):
+        """Foreground NO-AGENT (box_shell_mode) → unchanged tmux wrap, NO supervisor."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, box_shell_mode=True,
+            )
+            assert rc == 0
+            kw = m.runtime.run.call_args.kwargs
+            assert kw["entrypoint"] == "tmux"
+            cli_args = kw.get("cli_args") or []
+            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+            assert not any("box_supervisor" in str(a) for a in cli_args)
+
+    def test_foreground_custom_entrypoint_keeps_bare_wrap(self, start_mocks):
+        """A foreground custom --entrypoint box is not a real agent → tmux wrap."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint="/bin/bash", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            kw = m.runtime.run.call_args.kwargs
+            assert kw["entrypoint"] == "tmux"
+            cli_args = kw.get("cli_args") or []
+            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+            assert not any("box_supervisor" in str(a) for a in cli_args)
+
+    def test_foreground_goose_agent_payload_carries_directive_flatten(self, start_mocks):
+        """goose foreground agent → the supervised payload runs the directive flatten."""
+        from kanibako.plugins.goose.target import GooseTarget
+
+        with start_mocks() as m:
+            m.target.name = "goose"
+            m.target.default_entrypoint = "goose"
+            m.target.descriptor = GooseTarget().descriptor
+            m.target.has_resumable_session.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            script = self._script(m)
+            assert "import-directives.py" in script
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "--on-agent-exit teardown" in script
+
+    def test_foreground_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
+        """A secret-bearing foreground agent → the supervised payload exports the
+        secret from its ro mount (never the VALUE on the argv)."""
+        tok = tmp_path / "token"
+        tok.write_text("sk-bearer-value\n")
+        with start_mocks() as m:
+            m.agent_cfg.secret_path = {"MY_SECRET": str(tok)}
+            m.load_agent_config.return_value = m.agent_cfg
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            script = self._script(m)
+            assert "export MY_SECRET=" in script
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "sk-bearer-value" not in script

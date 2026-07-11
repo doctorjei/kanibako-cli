@@ -2997,8 +2997,12 @@ class TestBoxShellLaunch:
             assert kwargs.get("runtime") is m.runtime
             assert kwargs.get("image") == "test:latest"
 
-    def test_real_agent_persistent_uses_agent_entrypoint_not_shell(self, start_mocks):
-        """A real agent (default_entrypoint set) keeps its entrypoint; resolver unused."""
+    def test_real_agent_persistent_supervises_agent_with_shell_fallback(self, start_mocks):
+        """E2c: a real agent under persistent is SUPERVISED — the agent binary is the
+        supervised payload; box.shell IS resolved, but only as the supervisor's
+        forward-compat FALLBACK keep-alive (never the agent's own entrypoint)."""
+        import shlex
+
         with start_mocks() as m:
             # Default fixture target has default_entrypoint == "claude".
             with patch(
@@ -3015,11 +3019,18 @@ class TestBoxShellLaunch:
                     extra_args=[],
                     persistent=True,
                 )
-            m_resolve.assert_not_called()
+            # box.shell is now resolved for the supervisor's fallback keep-alive.
+            m_resolve.assert_called_once()
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            # Agent binary "claude" is the inner_cmd, not /bin/zsh.
-            assert cli_args[cli_args.index("--") + 1] == "claude"
-            assert "/bin/zsh" not in cli_args
+            assert cli_args[0] == "-c"
+            script = cli_args[1]
+            # The agent binary rides the supervisor's `-- <agent>` payload...
+            sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+            sup_argv = shlex.split(sup)
+            assert sup_argv[sup_argv.index("--") + 1] == "claude"
+            # ...and /bin/zsh is ONLY the `|| exec` fallback keep-alive, not the agent.
+            fb = script.split(" || exec ", 1)[1]
+            assert "/bin/zsh" in fb
 
     def test_real_agent_nonpersistent_uses_agent_entrypoint(self, start_mocks):
         """A real agent ephemeral launch passes the agent entrypoint, not box.shell."""
@@ -3155,8 +3166,9 @@ class TestDetachKeepAlive:
             m.runtime.exec.assert_not_called()
 
     def test_default_persistent_attaches_mutation_anchor(self, start_mocks):
-        """MUTATION ANCHOR: the DEFAULT persistent path (detach=False) is
-        unchanged — it wraps the AGENT and ATTACHES (calls ``runtime.exec``)."""
+        """MUTATION ANCHOR (E2c): the DEFAULT persistent path (detach=False) SUPERVISES
+        the agent with the FOREGROUND `teardown` policy and ATTACHES (``runtime.exec``)
+        — distinguishing it from the detached path's `self-heal` policy."""
         with start_mocks() as m:
             rc = _run_container(
                 project_dir=None,
@@ -3171,8 +3183,12 @@ class TestDetachKeepAlive:
             )
             assert rc == 0
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            # Agent is the inner_cmd (unchanged default behavior)...
-            assert cli_args[cli_args.index("--") + 1] == "claude"
+            assert cli_args[0] == "-c"
+            script = cli_args[1]
+            # Supervised as PID-1 with the FOREGROUND teardown policy...
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "--on-agent-exit teardown" in script
+            assert "claude" in script
             # ...and the terminal IS attached.
             m.runtime.exec.assert_called_once()
 
