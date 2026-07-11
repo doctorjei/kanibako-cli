@@ -3043,16 +3043,18 @@ class TestBoxShellLaunch:
 
 
 class TestDetachKeepAlive:
-    """Phase 4: `--detach` starts a background KEEP-ALIVE box.
+    """Phase 4 + E2b: `--detach` starts a background KEEP-ALIVE box.
 
-    The load-bearing lifecycle guarantee: the tmux PID-1 session runs a bare
-    SHELL, NOT the agent (so exiting a later exec terminal can't stop the box),
-    and the caller's terminal is NOT attached (no ``runtime.exec``).
+    E2b makes PID-1 on a detached AGENT box the always-on SUPERVISOR
+    (``kanibako.box_supervisor``), which runs the agent in a detached tmux
+    session and self-heals it — an import-GATED ``sh -c`` that degrades to the
+    bare-shell keep-alive on an old image.  The caller's terminal is NOT attached
+    (no ``runtime.exec``), and the box stays Up independent of the agent.
     """
 
-    def test_detach_pid1_is_shell_not_agent(self, start_mocks):
-        """Detach launches tmux wrapping the resolved SHELL as inner_cmd — even
-        for a real agent (default_entrypoint='claude')."""
+    def test_detach_pid1_supervises_agent(self, start_mocks):
+        """E2b: detach makes PID-1 the SUPERVISOR running the AGENT (import-gated),
+        with the resolved SHELL as the forward-compat fallback keep-alive."""
         with start_mocks() as m:
             with patch(
                 "kanibako.shells.resolve_box_shell",
@@ -3070,16 +3072,21 @@ class TestDetachKeepAlive:
                     detach=True,
                 )
             assert rc == 0
-            # box.shell was resolved despite this being a real-agent launch.
+            # box.shell was resolved — it is the forward-compat fallback keep-alive.
             m_resolve.assert_called_once()
             call = m.runtime.run.call_args
             # Detached at the podman layer.
             assert call.kwargs.get("detach") is True
-            # PID-1 = tmux wrapping the SHELL keep-alive, NOT the agent.
-            assert call.kwargs.get("entrypoint") == "tmux"
+            # PID-1 = an import-gated `sh -c`: supervisor(agent) || fallback(shell).
+            assert call.kwargs.get("entrypoint") == "sh"
             cli_args = call.kwargs.get("cli_args") or []
-            assert cli_args[cli_args.index("--") + 1] == "/bin/bash"
-            assert "claude" not in cli_args
+            assert cli_args[0] == "-c"
+            script = cli_args[1]
+            # The supervisor runs the AGENT as PID-1...
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "claude" in script
+            # ...and the resolved shell is the `|| exec` degrade path.
+            assert "/bin/bash" in script
 
     def test_detach_does_not_attach_terminal(self, start_mocks):
         """Detach returns WITHOUT an interactive attach (no ``runtime.exec``)."""
