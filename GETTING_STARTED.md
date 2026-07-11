@@ -34,17 +34,24 @@ A little vocabulary you'll see throughout:
 
 ## Install
 
-Kanibako is currently a pre-release, so pin the current release candidate:
+Kanibako is currently a pre-release, so include `--pre` to get the current
+release candidate (this always installs the newest rc — no version to keep in
+sync):
 
 ```bash
-# with pip
-pip install --pre kanibako==1.7.0rc2
+# with uv (recommended — isolated tool install)
+uv tool install --prerelease allow kanibako
 
-# or with pipx (isolated CLI install)
-pipx install --pip-args=--pre kanibako==1.7.0rc2
+# with pipx (isolated CLI install)
+pipx install --pip-args=--pre kanibako
+
+# or with pip
+pip install --pre kanibako
 ```
 
-Once the stable `1.7.0` is out, `pip install kanibako` will just work.
+To pin an exact candidate instead, append the version, e.g.
+`pip install --pre kanibako==1.7.0rc12`. Once the stable `1.7.0` is out,
+`pip install kanibako` (no `--pre`) will just work.
 
 The `kanibako` meta-package installs the CLI **plus all three agent plugins**
 (Claude, Codex, Goose). Because more than one agent ends up installed, you'll
