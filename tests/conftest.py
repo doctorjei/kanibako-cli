@@ -412,6 +412,11 @@ def start_mocks():
             merged.box_image = "test:latest"
             merged.box_agent_name = ""
             merged.box_share_images = False
+            # A REAL box_shell string (not an auto MagicMock): resolve_box_shell
+            # reads ``config.box_shell`` and the detach/no-agent launch paths feed
+            # the result into shell command assembly (E2b's supervisor PID-1 shlex-
+            # joins it), so it must stringify.  "sh" mirrors the real fallback shell.
+            merged.box_shell = "sh"
             m_merged.return_value = merged
 
             runtime = MagicMock()

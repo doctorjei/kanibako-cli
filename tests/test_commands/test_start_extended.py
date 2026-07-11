@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.box_supervisor import CONTINUE_MARKER
 from kanibako.commands.start import _run_container
 from kanibako.errors import ContainerError
 
@@ -1764,3 +1765,226 @@ class TestAllowHelpersGate:
                     extra_args=[], no_helpers=False,
                 )
             m_shell.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# E2b — always-on box supervisor as PID-1 on a detached AGENT launch.
+# ---------------------------------------------------------------------------
+
+class TestDetachedSupervisor:
+    """Detached AGENT boxes make ``kanibako.box_supervisor`` PID-1 (E2b).
+
+    A detached AGENT box no longer runs a bare-shell keep-alive: PID-1 is the
+    always-on supervisor, which runs the agent in a detached ``kanibako`` tmux
+    session and self-heals it.  PID-1 is an import-GATED ``sh -c`` so an old box
+    image lacking the supervisor module degrades to today's bare-shell keep-alive.
+    A NO-AGENT detached box keeps the unchanged bare-shell keep-alive.
+    """
+
+    @staticmethod
+    def _detach_script(m) -> str:
+        """The PID-1 ``sh -c`` script the container was launched with."""
+        kw = m.runtime.run.call_args.kwargs
+        assert kw["entrypoint"] == "sh"
+        cli_args = kw.get("cli_args") or []
+        assert cli_args[0] == "-c"
+        return cli_args[1]
+
+    def test_detached_agent_launches_supervisor_pid1(self, start_mocks):
+        """Detached agent → sh -c import-gated supervisor with a tmux fallback."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = self._detach_script(m)
+            # Forward-compat import gate.
+            assert "import kanibako.box_supervisor" in script
+            assert "2>/dev/null" in script
+            # Supervisor PID-1 invocation (NOT tmux-wrapped).
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "--session kanibako" in script
+            assert CONTINUE_MARKER in script
+            # The supervised agent entrypoint appears in the -- payload.
+            assert "claude" in script
+            # `|| exec` degrade path = today's bare-shell tmux keep-alive.
+            assert "|| exec" in script
+            assert "new-session -s kanibako" in script
+
+    def test_detached_no_agent_keeps_bare_shell_keepalive(self, start_mocks):
+        """Detached NO-AGENT box → unchanged bare-shell tmux keep-alive."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True, box_shell_mode=True,
+            )
+            assert rc == 0
+            kw = m.runtime.run.call_args.kwargs
+            assert kw["entrypoint"] == "tmux"
+            cli_args = kw.get("cli_args") or []
+            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+            # No supervisor anywhere in the launch command.
+            assert not any("box_supervisor" in str(a) for a in cli_args)
+
+    def test_detached_custom_entrypoint_keeps_bare_shell_keepalive(self, start_mocks):
+        """A detached custom --entrypoint box is not a real agent → bare shell."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint="/bin/bash", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            kw = m.runtime.run.call_args.kwargs
+            assert kw["entrypoint"] == "tmux"
+            cli_args = kw.get("cli_args") or []
+            assert cli_args[:4] == ["new-session", "-s", "kanibako", "--"]
+            assert not any("box_supervisor" in str(a) for a in cli_args)
+
+    def test_reattach_to_running_box_attaches_kanibako_session(self, start_mocks):
+        """Reattach to a running (detached) box still `tmux attach -t kanibako`."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            m.runtime.run.assert_not_called()
+            exec_args = m.runtime.exec.call_args[0]
+            assert exec_args[1] == ["tmux", "attach", "-t", "kanibako"]
+
+    def test_detached_agent_supervisor_carries_continue_cmd(self, start_mocks):
+        """A descriptor with a continue mode threads --continue-cmd to the supervisor."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = self._detach_script(m)
+            assert "--continue-cmd" in script
+            # claude's continue grammar (`claude --continue`) rides in the VALUE of
+            # --continue-cmd (parse it back out — a bare ``"--continue" in script``
+            # would pass on the flag NAME alone, proving nothing about the value).
+            import shlex
+
+            sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+            argv = shlex.split(sup)
+            cont_val = argv[argv.index("--continue-cmd") + 1]
+            assert "--continue" in shlex.split(cont_val)
+
+    def test_detached_agent_omits_continue_cmd_when_no_continue_mode(self, start_mocks):
+        """No continue mode in the descriptor → --continue-cmd omitted (supervisor
+        safely defaults its self-heal restart to the start grammar)."""
+        import dataclasses
+
+        with start_mocks() as m:
+            m.target.descriptor = dataclasses.replace(
+                m.target.descriptor, mode={"start": ()},
+            )
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = self._detach_script(m)
+            assert "--continue-cmd" not in script
+            # Still the supervisor PID-1.
+            assert "exec python3 -m kanibako.box_supervisor" in script
+
+    def test_detached_goose_agent_payload_carries_directive_flatten(self, start_mocks):
+        """goose detached agent → the supervised payload runs the directive flatten."""
+        from kanibako.plugins.goose.target import GooseTarget
+
+        with start_mocks() as m:
+            m.target.name = "goose"
+            m.target.default_entrypoint = "goose"
+            m.target.descriptor = GooseTarget().descriptor
+            m.target.has_resumable_session.return_value = True
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = self._detach_script(m)
+            # The goose directive-flatten shim wraps the supervised agent payload.
+            assert "import-directives.py" in script
+            # ... and it is still supervised as PID-1.
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "goose" in script
+
+    def test_detached_agent_payload_carries_secret_export(self, start_mocks, tmp_path):
+        """A secret-bearing detached agent → the supervised payload exports the
+        secret from its ro mount (never the VALUE on the argv)."""
+        tok = tmp_path / "token"
+        tok.write_text("sk-bearer-value\n")
+        with start_mocks() as m:
+            m.agent_cfg.secret_path = {"MY_SECRET": str(tok)}
+            m.load_agent_config.return_value = m.agent_cfg
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = self._detach_script(m)
+            # The export STATEMENT (referencing the mount path) is in the payload.
+            assert "export MY_SECRET=" in script
+            # Still supervised; the secret VALUE never reaches the argv.
+            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert "sk-bearer-value" not in script
+
+
+class TestBuildSupervisorPid1:
+    """The pure PID-1 composition helper (unit-tested without _run_container)."""
+
+    def test_returns_sh_c_import_gated_script(self):
+        from kanibako.commands.start import _build_supervisor_pid1
+
+        ep, args = _build_supervisor_pid1(
+            [
+                "python3", "-m", "kanibako.box_supervisor",
+                "--session", "kanibako", "--", "claude", "--continue",
+            ],
+            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+        )
+        assert ep == "sh"
+        assert args[0] == "-c"
+        script = args[1]
+        assert "python3 -c 'import kanibako.box_supervisor'" in script
+        assert "2>/dev/null" in script
+        assert "&& exec python3 -m kanibako.box_supervisor" in script
+        assert "|| exec tmux new-session -s kanibako -- sh" in script
+
+    def test_quotes_agent_args_with_spaces_round_trip(self):
+        """Agent args with spaces / quotes survive the shlex quoting round-trip."""
+        import shlex
+
+        from kanibako.commands.start import _build_supervisor_pid1
+
+        supervisor_argv = [
+            "python3", "-m", "kanibako.box_supervisor",
+            "--marker", "[Agent handoff - Continue prior task(s)]",
+            "--continue-cmd", "claude --continue",
+            "--", "claude", "-p", "do a thing with 'quotes' and spaces",
+        ]
+        fallback_argv = ["tmux", "new-session", "-s", "kanibako", "--", "sh"]
+        ep, args = _build_supervisor_pid1(supervisor_argv, fallback_argv)
+        assert ep == "sh"
+        script = args[1]
+        # The exact shlex.join of each argv appears verbatim after its `exec`.
+        assert f"exec {shlex.join(supervisor_argv)}" in script
+        assert f"exec {shlex.join(fallback_argv)}" in script
+        # And the supervisor command round-trips back to the original argv.
+        after = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        assert shlex.split(after) == supervisor_argv
+        fb = script.split(" || exec ", 1)[1]
+        assert shlex.split(fb) == fallback_argv

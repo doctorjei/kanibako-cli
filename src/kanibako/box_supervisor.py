@@ -46,6 +46,13 @@ from kanibako.log import get_logger
 
 log = get_logger("box_supervisor")
 
+#: The continue-marker string a self-heal restart delivers (via ``tmux send-keys``)
+#: as a real acting turn so a resurrected agent autonomously resumes the prior
+#: task(s) (design ``split-brain-persistence-DESIGN.md`` §108).  Defined ONCE here so
+#: the host-side launch wiring (``commands/start.py`` → ``--marker``) and the
+#: in-box supervisor share a single source of truth — never a duplicated literal.
+CONTINUE_MARKER = "[Agent handoff - Continue prior task(s)]"
+
 # The subprocess-runner signature the tmux actions call.  ``subprocess.run``
 # matches it; tests inject a fake so nothing touches a real tmux server.  Shared
 # in spirit with box_lifecycle's ``_Runner``.

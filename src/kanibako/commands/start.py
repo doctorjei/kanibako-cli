@@ -6,6 +6,7 @@ import argparse
 import fcntl
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from kanibako.agent_config import (
     load_agent_config,
     write_agent_config,
 )
+from kanibako.box_supervisor import CONTINUE_MARKER
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import (
     BOX_META_FILE,
@@ -958,6 +960,33 @@ def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[
     return program, [inner_cmd, *cli_args]
 
 
+def _build_supervisor_pid1(
+    supervisor_argv: list[str], fallback_argv: list[str],
+) -> tuple[str, list[str]]:
+    """Compose the PID-1 ``(entrypoint, args)`` for a DETACHED agent box (E2b).
+
+    The always-on supervisor (:mod:`kanibako.box_supervisor`) runs the agent in a
+    detached tmux session and self-heals it, so a detached AGENT box makes the
+    supervisor PID-1 instead of a bare-shell keep-alive.  Forward-compat (design
+    §221-225): an OLD box image may ship a kanibako WITHOUT the supervisor module,
+    so PID-1 is an import-GATED ``sh -c`` — it ``exec``s the supervisor only when
+    ``import kanibako.box_supervisor`` succeeds, else ``exec``s the *fallback*
+    bare-shell keep-alive (today's exact behavior), degrading gracefully.
+
+    *supervisor_argv* and *fallback_argv* are FULL argv lists (the program at index
+    0); both are ``shlex``-quoted into the single ``sh -c`` script so agent args
+    carrying spaces / quotes survive intact through the nested shell.  Returns
+    ``("sh", ["-c", <script>])``.
+    """
+    probe = shlex.join(["python3", "-c", "import kanibako.box_supervisor"])
+    script = (
+        f"{probe} 2>/dev/null "
+        f"&& exec {shlex.join(supervisor_argv)} "
+        f"|| exec {shlex.join(fallback_argv)}"
+    )
+    return "sh", ["-c", script]
+
+
 def _bootstrap_attach(program: str) -> list[str]:
     """Build the in-container command that re-attaches to the bootstrap session.
 
@@ -1834,6 +1863,13 @@ def _run_container(
         )
         helpers_allowed = True if _ah is None else _ah
 
+        # E2b: the CONTINUE-mode agent grammar for a detached box's always-on
+        # supervisor self-heal restart (threaded to the detach branch below via
+        # ``--continue-cmd``).  Populated only for a descriptor-bearing agent whose
+        # descriptor exposes a ``continue`` mode; ``None`` otherwise (the supervisor
+        # then safely defaults its restart to the start grammar).
+        agent_continue_argv: list[str] | None = None
+
         # Build CLI args via target, merging agent run_args and state
         if target:
             # The LIVE behavior read (block 7b — ruling A): off the ONE snapshot via
@@ -2026,6 +2062,23 @@ def _run_container(
                     op=None,
                     extra_args=all_extra,
                 )
+                # E2b: ALSO assemble the CONTINUE-mode grammar (when the descriptor
+                # exposes it) for the always-on supervisor's self-heal restart — a
+                # resurrected agent RESUMES (``--continue`` re-reads the box session
+                # history) instead of starting fresh (design §207).  This is the
+                # PERSISTED continue form, INDEPENDENT of the per-launch mode
+                # resolved above: the per-launch ``-N``/``-C``/``-R`` flags are
+                # consumed into new_session/continue_override/resume_mode (not
+                # ``all_extra``), so none of them leak into the continue grammar.
+                if "continue" in desc.mode:
+                    agent_continue_argv = assembly.assemble_argv(
+                        desc,
+                        mode_key="continue",
+                        safe_mode_off=safe_off,
+                        setting_values=effective_state,
+                        op=None,
+                        extra_args=all_extra,
+                    )
                 state_env = assembly.assemble_env(
                     desc,
                     safe_mode_off=safe_off,
@@ -2499,57 +2552,117 @@ def _run_container(
         # Delivery is agent-INDEPENDENT: a no-agent shell launch with a box secret
         # still gets the exports (the shim wraps box.shell).
         #
-        # ⚑ DETACH CAVEAT (Finding 3): in detach mode the shim wraps the keep-alive
-        # SHELL (PID-1), so the secret/persona VARs are exported into PID-1's env
-        # ONLY.  A later `podman exec` (a VS Code integrated terminal, the
-        # claude-code panel's terminal) is a SEPARATE process that does NOT inherit
-        # PID-1's shell env, so an agent a user launches THERE won't see the
-        # exported secrets — a pre-existing limitation of the arm's-length shim,
-        # amplified by detach because exec is now the primary way to reach the
-        # agent.  This does not affect the VS Code PANEL, which self-serves auth
-        # host-side (decoupled from the in-box CLI creds).
+        # ⚑ DETACH CAVEAT (Finding 3): the shim wraps whatever PID-1 exec's — the
+        # supervised AGENT on a detached AGENT box (E2b, so the always-on agent DOES
+        # see its secrets), or the keep-alive SHELL on a no-agent detached box.  A
+        # later `podman exec` (a VS Code integrated terminal, the claude-code panel's
+        # terminal) is a SEPARATE process that does NOT inherit PID-1's shell env, so
+        # an agent a user launches THERE won't see the exported secrets — a
+        # pre-existing limitation of the arm's-length shim.  This does not affect the
+        # VS Code PANEL, which self-serves auth host-side (decoupled from the in-box
+        # CLI creds).
         #
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
-            if detach:
-                # KEEP-ALIVE PID-1 (the load-bearing lifecycle guarantee): the
-                # tmux session runs a BARE SHELL, never the agent.  The container
-                # stays Up as long as this shell (PID-1's only tmux session)
-                # lives, which is INDEPENDENT of the agent.  The point of Ph4:
-                # separate `podman exec` processes — VS Code integrated terminals,
-                # the claude-code panel, and even closing VS Code — do NOT touch
-                # PID-1, so they never stop the box (contrast the default
-                # attaching path, where the agent IS the session command, so its
-                # exit ends the session and tears the box down).  An EXPLICIT
-                # terminal reattach (`kanibako start`/`shell` → `tmux attach -t
-                # kanibako`) DOES share this keep-alive session, so exiting it
-                # (typing `exit`) tears the box down — that is the INTENDED
-                # "I'm done" gesture, not a footgun.  box_shell is resolved above
-                # whenever detach is set, so it is never None here.
-                inner_cmd = box_shell
-                assert inner_cmd is not None
-                inner_args: list[str] = []
-            else:
-                # box_shell is None only on a real-agent launch, but that path
-                # guarantees a non-None entrypoint (set above), so inner_cmd is
-                # always a str; mypy can't track that cross-variable invariant.
-                inner_cmd = entrypoint or box_shell
-                assert inner_cmd is not None
-                inner_args = list(cli_args or [])
-            if secret_export_vars:
-                inner_cmd, inner_args = _secret_export_shim(
-                    inner_cmd, inner_args, secret_export_vars,
-                )
-            # goose-only launch-flatten (increment 2b): write goose's
-            # ``.additionalContext.md`` before ``exec goose`` (goose injects from
-            # no hook).  Nests OUTSIDE any secret shim; runs at container start.
-            if target is not None and target.name == "goose":
-                inner_cmd, inner_args = _directive_flatten_shim(
-                    inner_cmd, inner_args,
-                )
-            entrypoint, cli_args = _bootstrap_wrap(
-                bootstrap_program, inner_cmd, inner_args,
+            # Shim application shared by the persistent paths: the SECRET export
+            # shim (iff the box has secret_path winners) and the goose directive-
+            # flatten shim (iff goose), nested INNERMOST so they wrap the actual
+            # program (agent or box.shell) before any tmux/bootstrap/supervisor wrap.
+            def _apply_persistent_shims(
+                prog: str, prog_args: list[str],
+            ) -> "tuple[str, list[str]]":
+                if secret_export_vars:
+                    prog, prog_args = _secret_export_shim(
+                        prog, prog_args, secret_export_vars,
+                    )
+                # goose-only launch-flatten (increment 2b): write goose's
+                # ``.additionalContext.md`` before ``exec goose`` (goose injects
+                # from no hook).  Nests OUTSIDE any secret shim; runs at start.
+                if target is not None and target.name == "goose":
+                    prog, prog_args = _directive_flatten_shim(prog, prog_args)
+                return prog, prog_args
+
+            detach_agent = (
+                detach
+                and is_agent_mode
+                and target is not None
+                and entrypoint is not None
             )
+            if detach_agent:
+                # ALWAYS-ON SUPERVISOR PID-1 (E2b, design §189/§217): a detached
+                # AGENT box makes the box_supervisor PID-1, which runs the AGENT in
+                # a detached tmux session ("kanibako") and SELF-HEALS it (restart
+                # with the --continue grammar + a continue-marker) when it dies — so
+                # the box persists INDEPENDENT of any one agent session (principle
+                # B).  ⚑ SEMANTICS CHANGE vs. the old bare-shell keep-alive: reattach
+                # (`kanibako start` → `tmux attach -t kanibako`) now attaches to the
+                # AGENT's session; Ctrl-B D leaves it running; the agent EXITING
+                # self-heals instead of tearing the box down (teardown = explicit
+                # `kanibako stop`).  box_shell is resolved above whenever detach is
+                # set, and a real agent guarantees a non-None entrypoint.
+                assert box_shell is not None
+                assert entrypoint is not None  # detach_agent guarantees it
+                # 1. Supervised AGENT command = entrypoint + cli_args + shims.
+                agent_ep, agent_argv = _apply_persistent_shims(
+                    entrypoint, list(cli_args or []),
+                )
+                # 2. Fallback bare-shell keep-alive = TODAY'S EXACT detached command
+                #    (box.shell + the same shims + tmux/bootstrap wrap), preserved
+                #    byte-for-byte as the forward-compat `|| exec` degrade path.
+                fb_cmd, fb_args = _apply_persistent_shims(box_shell, [])
+                fallback_ep, fallback_argv = _bootstrap_wrap(
+                    bootstrap_program, fb_cmd, fb_args,
+                )
+                # 3. Supervisor invocation — NOT tmux-wrapped (it manages tmux
+                #    itself).  --session "kanibako" keeps attach/reattach compat.
+                supervisor_argv = [
+                    "python3", "-m", "kanibako.box_supervisor",
+                    "--session", "kanibako",
+                    "--marker", CONTINUE_MARKER,
+                ]
+                if agent_continue_argv is not None:
+                    # Self-heal RESUMES: shim the continue command the SAME way so a
+                    # resurrected agent still gets its secrets + goose directives.
+                    # Passed as one shlex string the supervisor shlex-splits back.
+                    cont_ep, cont_argv = _apply_persistent_shims(
+                        entrypoint, list(agent_continue_argv),
+                    )
+                    supervisor_argv += [
+                        "--continue-cmd", shlex.join([cont_ep, *cont_argv]),
+                    ]
+                supervisor_argv += ["--", agent_ep, *agent_argv]
+                # 4. Compose PID-1 as an import-gated `sh -c` (forward-compat: an
+                #    old image lacking the supervisor module degrades to the
+                #    fallback).  SKIPS _bootstrap_wrap — the supervisor IS PID-1.
+                entrypoint, cli_args = _build_supervisor_pid1(
+                    supervisor_argv, [fallback_ep, *fallback_argv],
+                )
+            elif detach:
+                # NO real agent to supervise (shell / NoAgentTarget / custom
+                # --entrypoint): today's BARE-SHELL keep-alive, UNCHANGED.  The tmux
+                # session runs a bare shell as PID-1; separate `podman exec`
+                # processes (VS Code terminals, the panel) don't touch it, so they
+                # never stop the box.  box_shell is resolved above for any detach.
+                assert box_shell is not None
+                inner_cmd, inner_args = _apply_persistent_shims(box_shell, [])
+                entrypoint, cli_args = _bootstrap_wrap(
+                    bootstrap_program, inner_cmd, inner_args,
+                )
+            else:
+                # Foreground persistent (attach): the agent IS the tmux session
+                # command, so exiting it ends the session and tears the box down —
+                # unchanged.  box_shell is None only on a real-agent launch, but
+                # that path guarantees a non-None entrypoint (set above), so
+                # inner_cmd is always a str; mypy can't track that cross-variable
+                # invariant.
+                fg_cmd = entrypoint or box_shell
+                assert fg_cmd is not None
+                inner_cmd, inner_args = _apply_persistent_shims(
+                    fg_cmd, list(cli_args or []),
+                )
+                entrypoint, cli_args = _bootstrap_wrap(
+                    bootstrap_program, inner_cmd, inner_args,
+                )
         else:
             if not entrypoint:
                 # Non-persistent no-agent launch: run box.shell explicitly instead
