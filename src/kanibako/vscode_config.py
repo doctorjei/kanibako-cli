@@ -367,6 +367,51 @@ _SESSION_START_COMMAND = (
 )
 
 
+def _merge_managed_command_hook(
+    settings: dict, *, event: str, matcher: str | None, command: str,
+) -> dict:
+    """UNION-MERGE ONE kanibako-managed ``type:command`` hook into ``hooks.<event>``.
+
+    The shared idempotent-append primitive behind every claude JSON hook kanibako
+    seeds (instruction-delivery + the E2g pidfile write/remove).  Returns a NEW
+    dict (input never mutated):
+
+    * ``hooks`` — created if absent; if present, its OTHER event keys are preserved.
+    * ``hooks.<event>`` — a list of matcher-groups; every EXISTING group is
+      preserved.  A managed group carrying *command* is APPENDED iff no existing
+      group already carries a hook with our EXACT *command* — so a re-run never
+      duplicates it (idempotent, keyed on the command string, NOT the matcher).
+      When *matcher* is ``None`` the appended group omits the ``matcher`` key.
+    * every OTHER top-level key is preserved untouched.
+
+    Keying on the command string keeps each managed command its OWN independent
+    group: the pidfile-WRITE hook and the instruction-delivery hook coexist under
+    ``SessionStart`` without either's idempotency swallowing the other.
+    """
+    merged = copy.deepcopy(settings)
+    current_hooks = merged.get("hooks")
+    hooks = dict(current_hooks) if isinstance(current_hooks, dict) else {}
+    current = hooks.get(event)
+    groups = list(current) if isinstance(current, list) else []
+    already = any(
+        isinstance(g, dict)
+        and isinstance(g.get("hooks"), list)
+        and any(
+            isinstance(h, dict) and h.get("command") == command
+            for h in g["hooks"]
+        )
+        for g in groups
+    )
+    if not already:
+        group: dict = {"hooks": [{"type": "command", "command": command}]}
+        if matcher is not None:
+            group = {"matcher": matcher, **group}
+        groups = groups + [group]
+    hooks[event] = groups
+    merged["hooks"] = hooks
+    return merged
+
+
 def merge_session_start_hook(settings: dict) -> dict:
     """UNION-MERGE kanibako's instruction-delivery ``SessionStart`` hook into a
     claude JSON hooks dict, returning a NEW dict (input never mutated).
@@ -380,50 +425,125 @@ def merge_session_start_hook(settings: dict) -> dict:
       duplicates it (idempotent).
     * every OTHER top-level key is preserved untouched.
     """
-    merged = copy.deepcopy(settings)
-    current_hooks = merged.get("hooks")
-    hooks = dict(current_hooks) if isinstance(current_hooks, dict) else {}
-    current_ss = hooks.get("SessionStart")
-    groups = list(current_ss) if isinstance(current_ss, list) else []
-    already = any(
-        isinstance(g, dict)
-        and isinstance(g.get("hooks"), list)
-        and any(
-            isinstance(h, dict) and h.get("command") == _SESSION_START_COMMAND
-            for h in g["hooks"]
-        )
-        for g in groups
+    return _merge_managed_command_hook(
+        settings,
+        event="SessionStart",
+        matcher=_SESSION_START_MATCHER,
+        command=_SESSION_START_COMMAND,
     )
-    if not already:
-        groups = groups + [
-            {
-                "matcher": _SESSION_START_MATCHER,
-                "hooks": [
-                    {"type": "command", "command": _SESSION_START_COMMAND},
-                ],
-            }
-        ]
-    hooks["SessionStart"] = groups
-    merged["hooks"] = hooks
-    return merged
+
+
+# ---------------------------------------------------------------------------
+# E2g — claude panel-agent LIVENESS MARKER (pidfile) write side.
+#
+# The box_supervisor's panel-watch mode (E2f) READS a box-local pidfile to detect
+# a dead VS-Code-panel claude agent; this is the WRITE side.  We seed a claude
+# ``SessionStart`` hook that writes the session's PID to that pidfile and a
+# ``SessionEnd`` hook that removes it on a clean exit — so a live panel agent keeps
+# the marker present and a clean shutdown clears it.  Both are MANAGED as their own
+# groups, idempotent + preserving of user hooks, exactly like the directive hook.
+#
+# SINGLE SOURCE OF TRUTH for the path: :data:`AGENT_PIDFILE_PATH` is defined HERE
+# (the low-level module) and imported by ``commands/start.py`` for BOTH the
+# supervisor's ``--agent-pidfile`` (read end) and the ``KANIBAKO_AGENT_PIDFILE`` env
+# it seeds (write end), so the two ends of the contract can never desync.  The hook
+# command prefers the seeded env (``${KANIBAKO_AGENT_PIDFILE:-...}``) and falls back
+# to the SAME literal built from the constant — so it also works where a
+# ``podman exec`` panel agent does not inherit the podman-set env.  It MUST be a
+# LITERAL box-local path (byte-identical on both ends): podman sets the env verbatim
+# and the supervisor reads ``--agent-pidfile`` verbatim, so a shell expression like
+# ``${XDG_RUNTIME_DIR:-/tmp}`` would only resolve in a shell context and otherwise
+# become a literal ``${...}`` filename — the ends would then disagree.  ``/tmp`` is a
+# box-local tmpfs; a pidfile is tiny, so it is a safe universal home (the dir is
+# created by the write hook; the reader treats an absent dir/file as "no panel yet").
+#
+# ⚑ VALIDATION-PENDING (do NOT claim these hold — check at the bifrost e2e):
+#   1. ``$PPID`` inside a claude SessionStart ``command`` hook == the claude agent
+#      PID.  A ``type:command`` hook is spawned by claude so ``$PPID`` is PLAUSIBLY
+#      claude, but this is UNDOCUMENTED/UNVERIFIED; if wrong, swap the write command
+#      for a ``/proc`` scan at the e2e.
+#   2. The VS Code panel claude executes the box's seeded ``~/.claude/settings.json``
+#      hooks at all.  LIKELY but only checkable on a real claude-in-podman box.
+# ---------------------------------------------------------------------------
+
+# The box-local panel-agent liveness MARKER path — the SINGLE source of truth for
+# both ends of the E2f/E2g contract (supervisor ``--agent-pidfile`` read + the
+# ``KANIBAKO_AGENT_PIDFILE`` env write); ``commands/start.py`` imports THIS.
+AGENT_PIDFILE_PATH = "/tmp/kanibako/agent.pid"
+
+# claude SessionEnd sources (per the E2g spike): a broad OR so the marker is cleaned
+# up on ANY clean session end.
+_SESSION_END_MATCHER = "clear|logout|prompt_input_exit|other"
+
+# The pidfile WRITE (SessionStart) + REMOVE (SessionEnd) commands.  Silent-safe
+# (``|| true``): a failure NEVER aborts the session.  The default-path portion is
+# built FROM :data:`AGENT_PIDFILE_PATH` (not a second literal) so it stays in sync
+# with the supervisor's ``--agent-pidfile``.  See the VALIDATION-PENDING note above
+# re: ``$PPID`` being the agent PID.
+_AGENT_PIDFILE_WRITE_COMMAND = (
+    f'f="${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}"; '
+    'mkdir -p "$(dirname "$f")" && printf %s "$PPID" > "$f" || true'
+)
+_AGENT_PIDFILE_REMOVE_COMMAND = (
+    f'rm -f "${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}" || true'
+)
+
+
+def merge_pidfile_write_hook(settings: dict) -> dict:
+    """UNION-MERGE the E2g pidfile-WRITE ``SessionStart`` hook (its own managed
+    group, keyed on the exact command) into a claude JSON hooks dict.
+
+    A SEPARATE managed group from :func:`merge_session_start_hook` — the two
+    ``SessionStart`` commands coexist and each is independently idempotent.  Returns
+    a NEW dict (input never mutated); preserves all user/other-event hooks.
+    """
+    return _merge_managed_command_hook(
+        settings,
+        event="SessionStart",
+        matcher=_SESSION_START_MATCHER,
+        command=_AGENT_PIDFILE_WRITE_COMMAND,
+    )
+
+
+def merge_session_end_hook(settings: dict) -> dict:
+    """UNION-MERGE the E2g pidfile-REMOVE ``SessionEnd`` hook into a claude JSON
+    hooks dict, returning a NEW dict (input never mutated).
+
+    Mirrors :func:`merge_session_start_hook`: a managed ``hooks.SessionEnd`` group
+    (broad matcher, cleaning up the marker on any clean end) is APPENDED iff no
+    existing group already carries our exact remove command (idempotent).  Preserves
+    ``hooks`` siblings, existing ``SessionEnd`` groups, and every other top-level key.
+    """
+    return _merge_managed_command_hook(
+        settings,
+        event="SessionEnd",
+        matcher=_SESSION_END_MATCHER,
+        command=_AGENT_PIDFILE_REMOVE_COMMAND,
+    )
 
 
 def seed_session_start_hook(settings_path: Path) -> bool:
-    """Read-modify-write UNION-MERGE the instruction-delivery ``SessionStart`` hook
-    into the box's in-box claude ``~/.claude/settings.json`` (host path
-    *settings_path*).
+    """Read-modify-write UNION-MERGE the box's full claude MANAGED hook set into the
+    in-box ``~/.claude/settings.json`` (host path *settings_path*).
+
+    Seeds all three managed claude hooks in ONE read-modify-write, idempotently and
+    preserving every user/other-event hook:
+
+    * the instruction-delivery ``SessionStart`` hook (:func:`merge_session_start_hook`);
+    * the E2g pidfile-WRITE ``SessionStart`` hook (:func:`merge_pidfile_write_hook`);
+    * the E2g pidfile-REMOVE ``SessionEnd`` hook (:func:`merge_session_end_hook`).
 
     The CLAUDE surface (JSON hooks).  codex does NOT use this — its hook lives in
-    ``~/.codex/config.toml`` via :func:`seed_codex_config`.  Reads the existing
-    file tolerantly (absent/corrupt → ``{}``), merges via
-    :func:`merge_session_start_hook`, and writes it back as pretty JSON (creating
+    ``~/.codex/config.toml`` via :func:`seed_codex_config`.  Reads the existing file
+    tolerantly (absent/corrupt → ``{}``) and writes back as pretty JSON (creating
     parent dirs) iff it changed (idempotent).  Returns ``True`` iff it wrote the
     file.  Callers wrap this best-effort so a failure never blocks the launch.
     """
     existing = _read_existing_config(settings_path)
-    return _write_if_changed(
-        settings_path, existing, merge_session_start_hook(existing),
-    )
+    merged = merge_session_start_hook(existing)
+    merged = merge_pidfile_write_hook(merged)
+    merged = merge_session_end_hook(merged)
+    return _write_if_changed(settings_path, existing, merged)
 
 
 # ---------------------------------------------------------------------------
@@ -732,8 +852,10 @@ def deliver_directive_session_hook(
     """Route the instruction-delivery SessionStart hook to the agent's NATIVE
     config surface, returning whether a write occurred.
 
-    * ``claude`` → ``<config_root>/.claude/settings.json`` (JSON hooks, unchanged
-      — the hook is unconditional, orthogonal to *auto_approve*).
+    * ``claude`` → ``<config_root>/.claude/settings.json`` (the full managed JSON
+      hook set: instruction-delivery ``SessionStart`` + the E2g pidfile write/remove
+      hooks; all unconditional, orthogonal to *auto_approve* — see
+      :func:`seed_session_start_hook`).
     * ``codex``  → ``<config_root>/.codex/config.toml`` (the codex config manager:
       hook + trust + approval/sandbox parity, the SINGLE managed-write site).
     * any other agent → inert (``False``).

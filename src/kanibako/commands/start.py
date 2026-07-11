@@ -59,6 +59,7 @@ from kanibako.agent_ref import (
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
+from kanibako.vscode_config import AGENT_PIDFILE_PATH
 
 
 def _agent_critical_dests() -> list[tuple[str, str]]:
@@ -600,18 +601,14 @@ _BOOTSTRAP_NONE = "none"
 # agent (which declares NO bootstrap override, spec §2d L640/658/683) inherits it.
 _BOOTSTRAP_DEFAULT = "tmux"
 
-# E2f — the box-local PANEL-AGENT LIVENESS MARKER path (the pidfile contract).
-# Defined ONCE and shared between the two ends of the contract: the supervisor's
-# ``--agent-pidfile`` value (E2f, read side) and the ``KANIBAKO_AGENT_PIDFILE`` env
-# the box seeds for the panel agent's start hook (E2g, write side).  It MUST be a
-# LITERAL box-local path, byte-identical on both ends: podman sets the env value
-# verbatim (no shell expansion) and the supervisor reads ``--agent-pidfile`` verbatim
-# (no ``os.path`` expansion), so a shell expression like ``${XDG_RUNTIME_DIR:-/tmp}``
-# would only resolve in a shell context and otherwise become a literal ``${...}``
-# filename — the two ends would then disagree.  ``/tmp`` is a box-local tmpfs; a
-# pidfile is tiny, so it is a safe universal home (the dir is created by the E2g
-# writer; the reader treats an absent dir/file as "no panel agent yet").
-AGENT_PIDFILE_PATH = "/tmp/kanibako/agent.pid"
+# E2f/E2g — the box-local PANEL-AGENT LIVENESS MARKER path (the pidfile contract).
+# The canonical constant lives in :mod:`kanibako.vscode_config` (the low-level module
+# that owns the E2g write-side hook command); it is imported here (see the module
+# imports) so this file's ``--agent-pidfile`` value (read side) and the
+# ``KANIBAKO_AGENT_PIDFILE`` env it seeds are byte-identical to the seeded hook's
+# default path — the two ends of the contract can never desync.  Re-exported from
+# this module for existing importers (``from kanibako.commands.start import
+# AGENT_PIDFILE_PATH``).
 
 
 def _is_no_bootstrap(program: str | None) -> bool:
