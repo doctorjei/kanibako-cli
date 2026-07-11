@@ -2908,6 +2908,16 @@ def _run_container(
             # If agent exited, show container logs so the user can
             # see why (tmux swallows output on exit).
             if not runtime.is_running(container_name):
+                # The supervised/foreground box has STOPPED after (or during) the
+                # attach.  The tmux-attach exec's rc does NOT reflect the agent's
+                # real code: under `--on-agent-exit teardown` the supervisor
+                # propagates the agent's exit code as the CONTAINER's exit code
+                # (E2d), but `tmux attach` returns its own (client) status — a
+                # supervised agent crash after a brief attach would otherwise leave
+                # rc=0.  Adopt the container's true exit code so a crash surfaces as
+                # a non-zero kanibako rc; `or rc` is non-zero-ONLY, so a clean exit
+                # keeps its rc and we never fabricate a failure.
+                rc = _container_exit_code(runtime, container_name) or rc
                 logs = _container_logs(runtime, container_name)
                 if logs:
                     print(logs, file=sys.stderr)
@@ -4904,11 +4914,20 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str:
 
 
 def _container_exit_code(runtime: ContainerRuntime, name: str) -> int:
-    """Return the container's last exit code, or 0 if undeterminable."""
-    result = subprocess.run(
-        [runtime.cmd, "inspect", "--format", "{{.State.ExitCode}}", name],
-        capture_output=True, text=True,
-    )
+    """Return the container's last exit code, or 0 if undeterminable.
+
+    Best-effort: a runtime whose ``inspect`` fails to run (missing binary /
+    ``OSError``), returns non-zero, or emits unparseable output all resolve to 0
+    (undeterminable) — this reads a code for error surfacing (E2d) and must never
+    itself raise, so a callers' ``_container_exit_code(...) or rc`` fallback holds.
+    """
+    try:
+        result = subprocess.run(
+            [runtime.cmd, "inspect", "--format", "{{.State.ExitCode}}", name],
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return 0
     if result.returncode != 0:
         return 0
     try:

@@ -217,19 +217,64 @@ class BoxSupervisor:
             return None
         return proc.returncode
 
+    def _tmux_output(self, args: list[str]) -> str | None:
+        """Run ``tmux <args>`` via the injected runner; return its STDOUT, or ``None``.
+
+        The stdout sibling of :meth:`_run_tmux`, for the probes that read a tmux
+        FORMAT string (``display-message``) rather than only its rc.  Same tolerance:
+        a missing tmux binary / ``OSError`` OR a non-zero rc all resolve to ``None``
+        (never an exception), so a tmux hiccup can never crash the loop.
+        """
+        try:
+            proc = self._run(
+                ["tmux", *args],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except (FileNotFoundError, OSError) as exc:
+            log.debug("tmux %s failed to run: %s", args[0] if args else "", exc)
+            return None
+        if proc.returncode != 0:
+            return None
+        return proc.stdout
+
+    def _set_remain_on_exit(self) -> None:
+        """Enable ``remain-on-exit`` for the agent session so a DEAD pane PERSISTS.
+
+        Without this, a pane whose agent process exits is destroyed and tmux exposes
+        no exit status; WITH it on, the pane becomes a DEAD pane carrying the real
+        exit code in ``#{pane_dead_status}`` — which SURVIVES the ``exec`` in the
+        secret-export shim (a naive ``agent; echo $?`` wrapper would not fire).
+        :meth:`agent_pane_dead_status` reads that code.  Issued as a SEPARATE
+        ``set-option`` right after ``new-session`` so the start/restart argv stays
+        byte-stable (the exact-argv unit tests keep matching).  Best-effort and
+        tolerant: a tmux that rejects the option merely degrades liveness to
+        has-session-only (the pre-E2d behavior) — never a crash.
+        """
+        rc = self._run_tmux(
+            ["set-option", "-t", self.config.session, "remain-on-exit", "on"]
+        )
+        if rc not in (0, None):
+            log.debug("_set_remain_on_exit: tmux set-option rc=%s", rc)
+
     def start_agent_session(self) -> bool:
         """Start the agent DETACHED: ``tmux new-session -d -s <session> -- <start_argv>``.
 
         The ``-d`` starts the session detached (agent executing, no client attached);
         ``--`` terminates tmux option parsing so the agent grammar is taken verbatim.
-        Returns ``True`` on rc 0.
+        On success, arms ``remain-on-exit`` (:meth:`_set_remain_on_exit`) so the
+        agent's real exit code survives its death as a dead-pane status.  Returns
+        ``True`` on rc 0.
         """
         rc = self._run_tmux(
             ["new-session", "-d", "-s", self.config.session, "--", *self.config.start_argv]
         )
         if rc != 0:
             log.warning("start_agent_session: tmux new-session rc=%s", rc)
-        return rc == 0
+            return False
+        self._set_remain_on_exit()
+        return True
 
     def restart_agent_session(self) -> bool:
         """Restart the agent for self-heal, with the CONTINUE grammar + marker.
@@ -239,13 +284,21 @@ class BoxSupervisor:
         the continue-marker via :meth:`_send_marker` so the successor gets it as a
         REAL acting turn (autonomous resume, no human needed).  Returns ``True`` when
         the new-session started (rc 0); marker delivery is best-effort and logged.
+
+        With ``remain-on-exit`` a dead agent leaves its session PRESENT (a dead pane)
+        still holding the canonical name, so a fresh ``new-session`` with the same
+        name would COLLIDE.  Kill the (dead) session FIRST — tolerant no-op when
+        nothing is there — so the restart can reuse the ``kanibako`` name, then arm
+        ``remain-on-exit`` again for the successor.
         """
+        self.kill_agent_session()
         rc = self._run_tmux(
             ["new-session", "-d", "-s", self.config.session, "--", *self.config.continue_argv]
         )
         if rc != 0:
             log.warning("restart_agent_session: tmux new-session rc=%s", rc)
             return False
+        self._set_remain_on_exit()
         if not self._send_marker():
             log.warning("restart_agent_session: continue-marker send-keys did not land")
         return True
@@ -268,13 +321,48 @@ class BoxSupervisor:
                 self._sleep(self.config.send_keys_delay)
         return False
 
-    def agent_session_alive(self) -> bool:
-        """True iff the agent's tmux session exists: ``tmux has-session -t <session>`` rc 0.
+    def agent_pane_dead_status(self) -> int | None:
+        """Return the agent pane's DEAD exit status, or ``None`` when it is not dead.
 
-        Tolerant — a missing tmux / dead server / no such session all resolve to
+        With ``remain-on-exit on`` (armed at start/restart) a pane whose agent process
+        exits stays in the session as a DEAD pane, and tmux exposes its real exit code
+        via ``#{pane_dead_status}``.  Read it with ``tmux display-message -p -t
+        <session> '#{pane_dead_status}'``: tmux prints the integer exit code for a
+        DEAD pane and an EMPTY string for a live one.
+
+        Tolerant like every probe here (PID-1 must never die on a tmux hiccup): a
+        missing tmux / dead server / no session (non-zero rc → ``None`` output) OR
+        empty / unparseable output all resolve to ``None`` — treated by callers as
+        "not dead / unknown" — never an exception.  Returns the parsed ``int`` only
+        for a genuinely dead pane.
+        """
+        out = self._tmux_output(
+            ["display-message", "-p", "-t", self.config.session, "#{pane_dead_status}"]
+        )
+        if out is None:
+            return None
+        out = out.strip()
+        if not out:
+            return None
+        try:
+            return int(out)
+        except ValueError:
+            log.debug("agent_pane_dead_status: unparseable pane_dead_status %r", out)
+            return None
+
+    def agent_session_alive(self) -> bool:
+        """True iff the agent session EXISTS and its pane is NOT dead.
+
+        ``tmux has-session`` alone is no longer sufficient: with ``remain-on-exit on``
+        the session PERSISTS after the agent process exits (a dead pane), so
+        ``has-session`` stays rc 0.  Liveness is therefore has-session (rc 0) AND
+        :meth:`agent_pane_dead_status` is ``None`` (no dead pane).  Tolerant
+        throughout — a missing tmux / dead server / no such session all resolve to
         ``False`` (not alive), never an exception.
         """
-        return self._run_tmux(["has-session", "-t", self.config.session]) == 0
+        if self._run_tmux(["has-session", "-t", self.config.session]) != 0:
+            return False
+        return self.agent_pane_dead_status() is None
 
     def kill_agent_session(self) -> None:
         """Kill the agent session: ``tmux kill-session -t <session>`` (teardown only).
@@ -393,9 +481,12 @@ class BoxSupervisor:
           bounded-retry restart, and the one clean exit is a self-heal that EXHAUSTS
           its retries (returns 0 so the box can stop).
         * ``"teardown"`` (foreground CLI, human present) → an agent exit is a NORMAL
-          termination: return 0 immediately so PID-1 exits and the box closes (no
-          self-heal loop while a CLI is the driver).  A failed INITIAL start likewise
-          returns (non-zero) so the start error surfaces via the host path.
+          termination: return the AGENT's own exit code (from the dead pane's
+          ``#{pane_dead_status}``; 0 for a clean exit, 1 when dead-but-unknown) so
+          PID-1 exits with a TRUTHFUL code and the box closes — a supervised agent
+          CRASH surfaces via the host path instead of masquerading as success (E2d).
+          No self-heal loop while a CLI is the driver.  A failed INITIAL start
+          likewise returns non-zero so the start error surfaces via the host path.
 
         Returns a process exit code.
         """
@@ -430,8 +521,22 @@ class BoxSupervisor:
                     self._safe_on_detach()
                 if action.kind is ActionKind.SELF_HEAL:
                     if teardown_on_exit:
-                        log.info("agent exited under teardown policy; closing box")
-                        return 0
+                        # Propagate the agent's TRUE exit code as PID-1's own, so the
+                        # container's exit code (and thus the host's foreground error
+                        # handling) is TRUTHFUL — a supervised agent CRASH surfaces
+                        # instead of masquerading as a clean exit (E2d).  Read the
+                        # dead pane's ``#{pane_dead_status}``; a clean status-0 exit
+                        # ⇒ 0, and a dead-but-unknown agent (status unreadable, or the
+                        # session vanished entirely) ⇒ 1 — a failure, not a success.
+                        status = self.agent_pane_dead_status()
+                        code = 1 if status is None else status
+                        log.info(
+                            "agent exited under teardown policy (dead_status=%s); "
+                            "closing box with rc %d",
+                            status,
+                            code,
+                        )
+                        return code
                     if not self._self_heal():
                         return 0
                 prev = cur

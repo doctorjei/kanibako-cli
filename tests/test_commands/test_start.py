@@ -3192,6 +3192,46 @@ class TestDetachKeepAlive:
             # ...and the terminal IS attached.
             m.runtime.exec.assert_called_once()
 
+    def test_foreground_supervised_crash_surfaces_container_exit_code(self, start_mocks):
+        """E2d: a SUPERVISED foreground box that EXITED non-zero (the agent crashed
+        and the teardown-policy supervisor propagated its code, stopping the
+        container) surfaces a NON-ZERO kanibako rc — the tmux-attach exec's own (0)
+        status is NOT the truth, so the post-attach path adopts the container's real
+        exit code."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=42,
+        ):
+            # After the interactive attach returns, the container has EXITED.
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            assert rc == 42
+
+    def test_foreground_supervised_clean_exit_keeps_zero(self, start_mocks):
+        """E2d control: a CLEAN container exit (code 0) keeps rc 0 — the non-zero-only
+        ``or rc`` adoption never fabricates a failure from a clean supervised exit."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=0,
+        ):
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            assert rc == 0
+
     def test_detach_implies_persistent_from_nonpersistent_arg(self, start_mocks):
         """detach=True forces the persistent/detached launch even if a caller
         passes persistent=False (defensive guard)."""
