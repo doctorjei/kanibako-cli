@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -805,15 +806,92 @@ def _precreate_mount_stubs(
         except OSError as exc:
             logger.debug("stub clear-symlink FAILED: %s (%s)", p, exc)
 
-    def _ensure_dir(p: Path) -> None:
+    def _loosen_parents(stub: Path, root: Path) -> None:
+        """Add SEARCH bits to *stub*'s parent dirs up to (not incl.) *root*.
+
+        WHY: crun's openat2 destination resolution must TRAVERSE every parent of
+        a bind dest.  A pre-existing box home commonly ships XDG dirs like
+        ``~/.config`` at 0700 (gh/podman/XDG tools create them private); a file
+        bind placed under such a dir (the agent kickoff SEED at
+        ``~/.config/kanibako/kickoff.md``, new in rc12) then dies at launch with
+        ``crun: creating ... openat2 home/agent/.config: Permission denied``
+        (exit 126).  Fresh boxes never hit it because our own mkdir makes
+        ``.config`` traversable; pre-existing homes do.
+
+        WHY only ``0o011`` (g+x, o+x — the SEARCH bits, no read): +x alone makes
+        a directory TRAVERSABLE without exposing a listing, so directory contents
+        stay unlistable/private.  It is the MINIMUM that makes the path resolve.
+
+        Containment (load-bearing — this mutates user-visible modes in the box
+        home, so it is deliberately narrow):
+          * *root* is *shell_path* ONLY; callers never pass a project_path
+            (workspace) dest — that is the user's real tree and loosening its
+            modes is a policy call we are not making this increment.
+          * Never chmod AT or ABOVE *root*: the walk stops when it reaches root,
+            so root itself and its ancestors are untouched.
+          * A SYMLINKED parent stops the walk — we must not follow a symlink OUT
+            of the box home and chmod a target elsewhere (belt-and-suspenders:
+            ``resolve().relative_to`` below also catches an escaping ancestor).
+          * Only parents of ACTUAL bind dests are visited, so a private 0700 dir
+            with no bind under it (e.g. ``~/.ssh``) is never touched.
+
+        Best-effort like the sibling stub helpers: any ``OSError`` is
+        debug-logged and swallowed — a pre-create hiccup must never abort a
+        launch (crun may still succeed, or the real error surfaces there).
+        """
+        try:
+            root_resolved = root.resolve()
+        except OSError as exc:
+            logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
+            return
+        # Start at the stub's PARENT: the stub's own mode is owned by the bind.
+        # Walk LEXICAL parents upward and test each against *root*.
+        current = stub.parent
+        while True:
+            # Stop AT root (and never above it).  ``resolve()`` collapses any
+            # symlinked ancestor, so an escape resolves OUTSIDE root -> ValueError
+            # -> we stop rather than chmod something beyond the box home.
+            try:
+                rel = current.resolve().relative_to(root_resolved)
+            except (OSError, ValueError):
+                break
+            if rel == Path("."):
+                # Reached root itself — off-limits, and nothing above it either.
+                break
+            try:
+                # A symlinked parent would let the chmod escape the box home even
+                # if its target resolves back inside — stop the walk here.
+                if current.is_symlink():
+                    logger.debug("loosen stop at symlink parent: %s", current)
+                    break
+                perm = stat.S_IMODE(current.stat().st_mode)
+                if perm & 0o011 != 0o011:
+                    new_perm = perm | 0o011
+                    current.chmod(new_perm)
+                    logger.info(
+                        "loosened box-home dir for bind traversal: %s %04o -> %04o",
+                        current, perm, new_perm,
+                    )
+            except OSError as exc:
+                # Tolerant like the sibling stub helpers: an unreadable/vanished
+                # parent must never abort the launch.  Stop the walk — we can no
+                # longer safely reason about ancestors we cannot probe.
+                logger.debug("loosen probe/chmod FAILED: %s (%s)", current, exc)
+                break
+            current = current.parent
+
+    def _ensure_dir(p: Path, traverse_root: Path | None = None) -> None:
         _clear_symlink(p)
         try:
             p.mkdir(parents=True, exist_ok=True)
             logger.debug("stub mkdir: %s", p)
         except OSError as exc:
             logger.debug("stub mkdir FAILED: %s (%s)", p, exc)
+        # Loosen only home-side (shell_path) parents; project_path dests pass None.
+        if traverse_root is not None:
+            _loosen_parents(p, traverse_root)
 
-    def _ensure_file(p: Path) -> None:
+    def _ensure_file(p: Path, traverse_root: Path | None = None) -> None:
         _clear_symlink(p)
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -824,15 +902,28 @@ def _precreate_mount_stubs(
                 logger.debug("stub exists: %s", p)
         except OSError as exc:
             logger.debug("stub touch FAILED: %s (%s)", p, exc)
+        # Loosen only home-side (shell_path) parents; project_path dests pass None.
+        if traverse_root is not None:
+            _loosen_parents(p, traverse_root)
 
-    # Built-in directory mounts.
-    _ensure_dir(shell_path / "workspace")
+    # A dest maps to the shell_path (box HOME) side unless it lives under
+    # ``/home/agent/workspace/`` (the project tree).  Only home-side parents are
+    # loosened for traversal; workspace parents are the user's real tree (see
+    # ``_loosen_parents``), so they pass ``traverse_root=None``.
+    workspace_prefix = GUEST_HOME + "/workspace/"
+
+    def _home_root(dest: str) -> Path | None:
+        return None if dest.startswith(workspace_prefix) else shell_path
+
+    # Built-in directory mounts.  These are all shell_path-side; the workspace
+    # stub's only parent IS shell_path, so its loosen walk is a no-op.
+    _ensure_dir(shell_path / "workspace", traverse_root=shell_path)
     if enable_vault:
         # Vault is UNIVERSAL unless disabled: the host source dirs are created
         # if missing by the core-defaults resolver, so the box-side dest stubs
         # are always made whenever vault is enabled.
-        _ensure_dir(shell_path / "vault" / "ro")
-        _ensure_dir(shell_path / "vault" / "rw")
+        _ensure_dir(shell_path / "vault" / "ro", traverse_root=shell_path)
+        _ensure_dir(shell_path / "vault" / "rw", traverse_root=shell_path)
         # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
         # Map each box-dest to its host side the same way extra mounts are
         # mapped (under project_path for workspace dests, shell_path for other
@@ -842,7 +933,7 @@ def _precreate_mount_stubs(
             if host_path is None:
                 logger.debug("mask stub skip (not under home): %s", mask)
                 continue
-            _ensure_dir(host_path)
+            _ensure_dir(host_path, traverse_root=_home_root(mask))
 
     # Extra mounts: pre-create destination stubs.
     if not extra_mounts:
@@ -856,10 +947,10 @@ def _precreate_mount_stubs(
             continue
 
         if src.is_dir():
-            _ensure_dir(host_path)
+            _ensure_dir(host_path, traverse_root=_home_root(dest))
         else:
             logger.debug(
                 "stub file: src=%s is_file=%s is_dir=%s exists=%s → %s",
                 src, src.is_file(), src.is_dir(), src.exists(), host_path,
             )
-            _ensure_file(host_path)
+            _ensure_file(host_path, traverse_root=_home_root(dest))

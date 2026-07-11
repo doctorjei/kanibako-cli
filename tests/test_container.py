@@ -1065,6 +1065,249 @@ class TestPrecreateMountStubs:
         assert not link.is_symlink()
         assert link.is_dir()
 
+    # --- Parent-dir traversal loosening (crun openat2 needs +x on every parent
+    # of a bind dest; pre-existing box homes ship XDG dirs like ~/.config at
+    # 0700, which crun cannot traverse -> exit-126 launch death). ---
+
+    @staticmethod
+    def _mount(destination, source):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        return FakeMount(source=source, destination=destination)
+
+    def test_private_parent_loosened_for_file_bind(self, tmp_path):
+        """A file bind under a pre-existing 0700 parent -> parent becomes 0711."""
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # Pre-existing private XDG dir (as gh/podman/XDG tools leave it).
+        cfg = shell / ".config"
+        cfg.mkdir()
+        cfg.chmod(0o700)
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        _precreate_mount_stubs(
+            shell, project,
+            [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        import stat as _stat
+        assert _stat.S_IMODE(cfg.stat().st_mode) == 0o711
+        assert (shell / ".config" / "kanibako" / "kickoff.md").is_file()
+
+    def test_multi_level_private_parents_all_loosened(self, tmp_path):
+        """Both a 0700 grandparent and 0700 parent on the bind path loosen."""
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        cfg = shell / ".config"
+        cfg.mkdir()
+        sub = cfg / "kanibako"
+        sub.mkdir()
+        cfg.chmod(0o700)
+        sub.chmod(0o700)
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        _precreate_mount_stubs(
+            shell, project,
+            [self._mount("/home/agent/.config/kanibako/seed/kickoff.md", src_file)],
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        import stat as _stat
+        assert _stat.S_IMODE(cfg.stat().st_mode) == 0o711
+        assert _stat.S_IMODE(sub.stat().st_mode) == 0o711
+        assert (shell / ".config" / "kanibako" / "seed" / "kickoff.md").is_file()
+
+    def test_private_dir_off_bind_path_untouched(self, tmp_path):
+        """A 0700 dir with NO bind under it (e.g. ~/.ssh) stays 0700."""
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        ssh = shell / ".ssh"
+        ssh.mkdir()
+        ssh.chmod(0o700)
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        _precreate_mount_stubs(
+            shell, project,
+            [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        import stat as _stat
+        # Off the bind path -> never visited -> mode preserved.
+        assert _stat.S_IMODE(ssh.stat().st_mode) == 0o700
+
+    def test_shell_path_root_never_chmodded(self, tmp_path):
+        """shell_path itself is off-limits: it stays 0700 even as a bind root."""
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        cfg = shell / ".config"
+        cfg.mkdir()
+        cfg.chmod(0o700)
+        shell.chmod(0o700)
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        try:
+            _precreate_mount_stubs(
+                shell, project,
+                [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
+                enable_vault=False,
+                vault_ro_path=tmp_path / "x",
+                vault_rw_path=tmp_path / "y",
+                tmpfs_masks=[],
+            )
+            import stat as _stat
+            # The walk stops AT the root; root's own mode is untouched.
+            assert _stat.S_IMODE(shell.stat().st_mode) == 0o700
+            # ...while a private parent BELOW the root is still loosened.
+            assert _stat.S_IMODE(cfg.stat().st_mode) == 0o711
+        finally:
+            shell.chmod(0o755)
+
+    def test_symlinked_parent_stops_walk_target_untouched(self, tmp_path):
+        """A symlinked parent halts the walk; the symlink target is not chmodded."""
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # A private dir the .config symlink points at, INSIDE the box home.
+        target = shell / "realtarget"
+        target.mkdir()
+        target.chmod(0o700)
+        link = shell / ".config"
+        link.symlink_to("realtarget")
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        _precreate_mount_stubs(
+            shell, project,
+            [self._mount("/home/agent/.config/kickoff.md", src_file)],
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        import stat as _stat
+        # Walk stops at the symlinked parent -> the target dir keeps its 0700 mode.
+        assert link.is_symlink()
+        assert _stat.S_IMODE(target.stat().st_mode) == 0o700
+
+    def test_loosening_logged_at_info(self, tmp_path, caplog):
+        """The permission change is discoverable in the logs at INFO."""
+        import logging
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        cfg = shell / ".config"
+        cfg.mkdir()
+        cfg.chmod(0o700)
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        with caplog.at_level(logging.INFO, logger="kanibako.container"):
+            _precreate_mount_stubs(
+                shell, project,
+                [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
+                enable_vault=False,
+                vault_ro_path=tmp_path / "x",
+                vault_rw_path=tmp_path / "y",
+                tmpfs_masks=[],
+            )
+        assert any(
+            "loosened box-home dir for bind traversal" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_already_traversable_parent_not_rechmodded(self, tmp_path, caplog):
+        """A parent that already has search bits is left alone: no chmod, no log.
+
+        Guards the ``perm & 0o011 != 0o011`` idempotence gate — a fresh-box
+        0755 XDG dir must not be spuriously re-chmodded (and mode stays 0755, not
+        widened) nor emit the loosen INFO line.
+        """
+        import logging
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        cfg = shell / ".config"
+        cfg.mkdir()
+        cfg.chmod(0o755)  # already traversable (fresh-box mkdir default).
+        src_file = tmp_path / "kickoff-src"
+        src_file.touch()
+        from kanibako.container import _precreate_mount_stubs
+        with caplog.at_level(logging.INFO, logger="kanibako.container"):
+            _precreate_mount_stubs(
+                shell, project,
+                [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
+                enable_vault=False,
+                vault_ro_path=tmp_path / "x",
+                vault_rw_path=tmp_path / "y",
+                tmpfs_masks=[],
+            )
+        import stat as _stat
+        # Mode is untouched (not widened past its existing search bits)...
+        assert _stat.S_IMODE(cfg.stat().st_mode) == 0o755
+        # ...and no loosen was logged, since nothing was chmodded.
+        assert not any(
+            "loosened box-home dir for bind traversal" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_dir_bind_under_private_parent_loosened(self, tmp_path):
+        """A DIR bind (not just a file bind) under a 0700 parent loosens it too.
+
+        ``_ensure_dir`` and ``_ensure_file`` share the loosen call, but the dir
+        branch is otherwise untested; a dir-source extra mount must also make its
+        private parent traversable.
+        """
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        cfg = shell / ".config"
+        cfg.mkdir()
+        cfg.chmod(0o700)
+        src_dir = tmp_path / "seed-dir"
+        src_dir.mkdir()
+        from kanibako.container import _precreate_mount_stubs
+        _precreate_mount_stubs(
+            shell, project,
+            [self._mount("/home/agent/.config/kanibako/seed", src_dir)],
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        import stat as _stat
+        assert _stat.S_IMODE(cfg.stat().st_mode) == 0o711
+        assert (shell / ".config" / "kanibako" / "seed").is_dir()
+
 
 class TestDetectShadowedMounts:
     """Test detect_shadowed_mounts: pure detection of binds shadowing content."""
