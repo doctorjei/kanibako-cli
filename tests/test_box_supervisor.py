@@ -306,10 +306,58 @@ def test_self_heal_stops_retrying_on_recovery():
 # detach hook contract.
 # ---------------------------------------------------------------------------
 
-def test_on_detach_noop_does_nothing_and_never_raises():
+def test_on_detach_noop_when_no_creds_flag_configured():
+    # No --creds-flag threaded (old launcher): _on_detach signals nothing, never raises.
     sup = BoxSupervisor(_config(), run=FakeRun())
     assert sup._on_detach() is None
     sup._safe_on_detach()  # no exception
+
+
+def test_on_detach_writes_the_creds_dirty_flag(tmp_path):
+    # D Part 1: with a creds-flag configured, a detach WRITES the flag (mkdir -p'ing
+    # its parent) so the trusted host watcher can act on the signal.
+    flag = tmp_path / "boxhome" / ".kanibako" / "creds-dirty"
+    sup = BoxSupervisor(_config(creds_flag=str(flag)), run=FakeRun())
+    assert not flag.exists()
+    sup._on_detach()
+    assert flag.is_file()
+    assert flag.read_text()  # non-empty edge-trigger marker
+
+
+def test_on_detach_is_idempotent(tmp_path):
+    # Edge-trigger: firing twice leaves the flag set (idempotent), never raises.
+    flag = tmp_path / ".kanibako" / "creds-dirty"
+    sup = BoxSupervisor(_config(creds_flag=str(flag)), run=FakeRun())
+    sup._on_detach()
+    sup._on_detach()
+    assert flag.is_file()
+
+
+def test_on_detach_tolerates_an_unwritable_flag_path(tmp_path):
+    # PID-1 must never die on a flag-write error: an unwritable path is swallowed.
+    # Point the flag at a path whose "parent" is a FILE, so mkdir/write fails.
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("i am a file")
+    flag = blocker / "creds-dirty"
+    sup = BoxSupervisor(_config(creds_flag=str(flag)), run=FakeRun())
+    sup._on_detach()  # must not raise
+    sup._safe_on_detach()  # must not raise
+    assert not flag.exists()
+
+
+def test_run_forever_detach_writes_the_real_flag(tmp_path):
+    # End-to-end through the loop: a real DETACH transition fires the REAL _on_detach
+    # (not a monkeypatched hook), which writes the flag — proving the wiring.
+    flag = tmp_path / ".kanibako" / "creds-dirty"
+    fake = FakeRun(
+        rc={"has-session": 0},
+        # prev-snapshot=attached, tick1=attached, tick2=detached => a DETACH on tick2.
+        stdout={"list-clients": ["/dev/pts/1: ...\n", "/dev/pts/1: ...\n", ""]},
+    )
+    sup = BoxSupervisor(_config(creds_flag=str(flag)), run=fake, proc_cmdlines=[])
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert flag.is_file()  # the real _on_detach wrote the signal
 
 
 def test_safe_on_detach_swallows_a_raising_hook():
@@ -1027,6 +1075,16 @@ def test_config_from_argv_defaults_panel_watch_off_and_no_pidfile():
     cfg = config_from_argv(["--session", "s", "--marker", "m", "--", "claude"])
     assert cfg.panel_watch is False
     assert cfg.agent_pidfile is None
+    assert cfg.creds_flag is None  # D: absent --creds-flag -> _on_detach no-ops
+
+
+def test_config_from_argv_threads_creds_flag():
+    # D Part 1: --creds-flag flows into the config so _on_detach signals on detach.
+    cfg = config_from_argv(
+        ["--session", "s", "--marker", "m",
+         "--creds-flag", "/home/agent/.kanibako/creds-dirty", "--", "claude"]
+    )
+    assert cfg.creds_flag == "/home/agent/.kanibako/creds-dirty"
 
 
 def test_config_from_argv_non_panel_watch_still_requires_trailing_argv():

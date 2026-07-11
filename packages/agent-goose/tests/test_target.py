@@ -506,7 +506,9 @@ class TestDescriptor:
         # As of the 2026-06-24 config-persistence fix, goose two-way SYNCs three
         # things: secrets.yaml + config.yaml (files) and custom_providers/ (dir),
         # so in-box ``goose configure`` persists back to the host (host check_auth
-        # then passes -> no re-prompt).  All unfiltered.
+        # then passes -> no re-prompt).  secrets.yaml + custom_providers/ are
+        # unfiltered; config.yaml is FILTERED (D Part 4) so the box-local
+        # panel-parity GOOSE_MODE is not written back over the host's own.
         d = GooseTarget().descriptor
         specs = {s.home_rel: s for s in d.cred_files}
         assert set(specs) == {
@@ -525,7 +527,7 @@ class TestDescriptor:
         config = specs[".config/goose/config.yaml"]
         assert config.host_rel == ".config/goose/config.yaml"
         assert config.cadence == Cadence.SYNC
-        assert config.filtered is False
+        assert config.filtered is True
         assert config.is_dir is False
 
         providers = specs[".config/goose/custom_providers"]
@@ -541,22 +543,26 @@ class TestDescriptor:
 
 
 class TestTransformCred:
-    """transform_cred — goose no longer overrides it (1.6.0).
+    """transform_cred — goose FILTERS config.yaml (D Part 4), plain-copies the rest.
 
-    The host config.yaml IMPORT (the extensions/instructions allowlist filter)
-    was removed, so goose inherits the base no-filter plain-copy.  Its only cred
-    file is the unfiltered secrets.yaml (the engine wholesale-copies it without
-    ever calling transform_cred), but the inherited hook still plain-copies a
-    filtered spec if one is passed.
+    The host config.yaml IMPORT (the extensions/instructions allowlist filter) stays
+    removed, but goose now overrides transform_cred for ONE reason: config.yaml is a
+    two-way SYNC file, and the box seeds a PANEL-parity ``GOOSE_MODE`` into it (for the
+    VS Code panel's yolo).  That box-local value must NOT be written back over the
+    host's own GOOSE_MODE.  A non-config.yaml filtered spec still plain-copies.
     """
 
     _SECRETS_SPEC = CredFileSpec(
         ".config/goose/secrets.yaml", ".config/goose/secrets.yaml",
         cadence=Cadence.SYNC, mtime_gate=True, filtered=False,
     )
+    _CONFIG_SPEC = CredFileSpec(
+        ".config/goose/config.yaml", ".config/goose/config.yaml",
+        cadence=Cadence.SYNC, mtime_gate=True, filtered=True,
+    )
 
-    def test_inherits_base_plain_copy(self, tmp_path):
-        """The inherited base transform_cred plain-copies the source."""
+    def test_non_config_spec_plain_copies(self, tmp_path):
+        """A non-config.yaml filtered spec still gets a plain wholesale copy."""
         src = tmp_path / "secrets.yaml"
         src.write_text("api_key: secret123\n")
         dst = tmp_path / "home" / ".config" / "goose" / "secrets.yaml"
@@ -565,6 +571,79 @@ class TestTransformCred:
 
         assert dst.is_file()
         assert dst.read_text() == "api_key: secret123\n"
+
+    def test_config_in_wholesale_copies(self, tmp_path):
+        """direction 'in' (host->box): config.yaml is copied verbatim."""
+        src = tmp_path / "config.yaml"
+        src.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n")
+        dst = tmp_path / "box" / ".config" / "goose" / "config.yaml"
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, src, dst, "in")
+
+        import yaml
+        got = yaml.safe_load(dst.read_text())
+        assert got == {"GOOSE_PROVIDER": "openai", "GOOSE_MODE": "approve"}
+
+    def test_config_out_preserves_host_goose_mode(self, tmp_path):
+        """direction 'out' (writeback): the HOST's GOOSE_MODE is preserved.
+
+        Mutation-proof: the box has a DIFFERENT (panel-parity) GOOSE_MODE plus a real
+        user change (provider); writeback must carry the provider change but keep the
+        host's own GOOSE_MODE untouched.
+        """
+        import yaml
+        box = tmp_path / "config.yaml"
+        box.write_text("GOOSE_PROVIDER: anthropic\nGOOSE_MODE: auto\n")  # box: auto (panel yolo)
+        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
+        host.parent.mkdir(parents=True)
+        host.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n")  # host: approve
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
+
+        got = yaml.safe_load(host.read_text())
+        assert got["GOOSE_MODE"] == "approve"       # host's OWN mode preserved
+        assert got["GOOSE_PROVIDER"] == "anthropic"  # real user change still flowed
+
+    def test_config_out_drops_box_mode_when_host_has_none(self, tmp_path):
+        """direction 'out': when the host has NO GOOSE_MODE, the box-local one is dropped."""
+        import yaml
+        box = tmp_path / "config.yaml"
+        box.write_text("GOOSE_PROVIDER: anthropic\nGOOSE_MODE: auto\n")
+        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
+        host.parent.mkdir(parents=True)
+        host.write_text("GOOSE_PROVIDER: openai\n")  # no GOOSE_MODE
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
+
+        got = yaml.safe_load(host.read_text())
+        assert "GOOSE_MODE" not in got               # box-local mode NOT introduced
+        assert got["GOOSE_PROVIDER"] == "anthropic"
+
+    def test_config_out_noop_when_only_goose_mode_differs(self, tmp_path):
+        """direction 'out': if only the box-local GOOSE_MODE differs, host is untouched."""
+        box = tmp_path / "config.yaml"
+        box.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: auto\n")   # box: auto
+        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
+        host.parent.mkdir(parents=True)
+        original = "GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n"     # host: approve
+        host.write_text(original)
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
+
+        assert host.read_text() == original          # byte-identical: true no-op
+
+    def test_config_out_malformed_box_does_not_clobber_host(self, tmp_path):
+        """direction 'out': an unparseable box config.yaml must NOT wipe the host file."""
+        box = tmp_path / "config.yaml"
+        box.write_text("this: is: not: valid: yaml\n  - broken")  # read_yaml -> {}
+        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
+        host.parent.mkdir(parents=True)
+        original = "GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n"
+        host.write_text(original)
+
+        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
+
+        assert host.read_text() == original          # host preserved, not truncated
 
 
 class TestDescriptorAssembly:

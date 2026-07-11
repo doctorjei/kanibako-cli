@@ -2677,6 +2677,18 @@ def _run_container(
                     "--marker", CONTINUE_MARKER,
                     "--on-agent-exit", "self-heal" if detach else "teardown",
                 ]
+                # D Part 1: thread the box-local credential-writeback SIGNAL flag path
+                # so the supervisor edge-triggers it on EVERY detach (all modes).  The
+                # in-box path is GUEST_HOME/<relpath> — the SAME file the host reads at
+                # proj.shell_path/<relpath> via the box-home bind mount (one relpath
+                # constant, :data:`kanibako.creds_watcher.CREDS_DIRTY_RELPATH`).  The
+                # box only ever touches its OWN home; the trusted HOST watcher does the
+                # privileged store writeback (the load-bearing trust invariant).
+                from kanibako.creds_watcher import CREDS_DIRTY_RELPATH
+                from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME_D
+                supervisor_argv += [
+                    "--creds-flag", f"{_GUEST_HOME_D}/{CREDS_DIRTY_RELPATH}",
+                ]
                 if warm_only:
                     # E2f — AGENT-INDEPENDENT warm-up: front the box with the
                     # supervisor in PANEL-WATCH mode.  It starts NO CLI agent, watches
@@ -2840,6 +2852,12 @@ def _run_container(
                 f"  Stop it:   kanibako stop {proj.name}",
                 file=sys.stderr,
             )
+            # D Part 2: a detached launch leaves no foreground host process to write
+            # back the creds the box signals on detach, so spawn the trusted per-box
+            # HOST watcher — but ONLY for a SHARED-tier box (a private box never
+            # propagates creds, so there is nothing to watch).
+            if auth_src.shares:
+                _spawn_creds_watcher(proj)
             _print_launch_issues(std, container_name)
             _print_shadow_issues(std, container_name)
             # --print-container: the resolved container name as the FINAL stdout
@@ -3075,6 +3093,37 @@ def _print_setup_did_not_take(target) -> None:
     )
 
 
+def _spawn_creds_watcher(proj) -> None:
+    """Spawn the per-box HOST credential-writeback watcher, DETACHED (D Part 2).
+
+    On a DETACHED launch (``kanibako code`` warm-up / ``kanibako start --detach``) the
+    ``kanibako`` command RETURNS, so no foreground host process lingers to run the
+    post-detach credential writeback the box's supervisor signals.  This spawns the
+    trusted :mod:`kanibako.creds_watcher` daemon to do it: it watches the box's
+    creds-dirty flag and does the privileged store writeback promptly.
+
+    DETACHED via ``start_new_session=True`` (its own session / no controlling tty) +
+    detached std streams, so it survives this command returning — like the box itself.
+    It re-resolves the host config from the box SUBJECT (``proj.project_path``), the
+    same way ``kanibako stop`` does, so cwd is irrelevant.  The watcher itself skips a
+    private box + holds a single-instance lock, but the caller ALSO gates on
+    ``auth_src.shares`` (don't even spawn for a private box — cheaper).  Best-effort:
+    a spawn failure is logged, never crashes the launch (the flag's lazy fallback on
+    the next host op still covers the writeback).
+    """
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "kanibako.creds_watcher",
+             "--box", str(proj.project_path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as exc:
+        get_logger("start").debug("could not spawn creds watcher: %s", exc)
+
+
 def writeback_session_credentials(
     target, proj, *, auth_src
 ) -> None:
@@ -3104,37 +3153,48 @@ def writeback_session_credentials(
         return
     desc = target.descriptor
     host_home = Path.home()
+    from kanibako.creds_watcher import clear_creds_dirty, creds_store_lock
     try:
-        if desc is not None:
-            credsync.writeback_box_credentials(
-                desc, target, auth=auth_src, host_home=host_home,
-                project_home=proj.shell_path,
-            )
-        else:
-            target.writeback_credentials(proj.shell_path)
-        # Plugin-specific writeback beyond the cred_files specs (e.g. claude's
-        # .claude.json oauthAccount merge-back, not modelled as a cred_file
-        # because its host->project IMPORT was removed in 1.6.0). Route it to the
-        # SELECTED tier source root (the SAME destination the cred_files writeback
-        # used), NOT unconditionally to host home — otherwise a workset-tier box
-        # (which explicitly isolated its identity to the workset store) would leak
-        # its oauthAccount to GLOBAL. The private/box tier is already excluded by
-        # the ``auth_src.shares`` guard above.
-        extra_dest = credsync.selected_source_root(auth_src, host_home=host_home)
-        if extra_dest is not None:
-            target.writeback_extra(
-                project_home=proj.shell_path, host_home=extra_dest
-            )
-            # global_sync: mirror the workset store's .claude.json UP to global,
-            # matching the cred_files bottom-up hop (box→workset→global).
-            if (
-                auth_src.tier == "workset"
-                and auth_src.global_sync
-                and extra_dest != host_home
-            ):
-                target.writeback_extra(
-                    project_home=extra_dest, host_home=host_home
+        # Serialize the store write against a concurrent host op / the D watcher
+        # (the shared STORE-write lock lives in creds_watcher so the daemon and every
+        # host writeback site funnel through the SAME mutex).
+        with creds_store_lock():
+            if desc is not None:
+                credsync.writeback_box_credentials(
+                    desc, target, auth=auth_src, host_home=host_home,
+                    project_home=proj.shell_path,
                 )
+            else:
+                target.writeback_credentials(proj.shell_path)
+            # Plugin-specific writeback beyond the cred_files specs (e.g. claude's
+            # .claude.json oauthAccount merge-back, not modelled as a cred_file
+            # because its host->project IMPORT was removed in 1.6.0). Route it to the
+            # SELECTED tier source root (the SAME destination the cred_files writeback
+            # used), NOT unconditionally to host home — otherwise a workset-tier box
+            # (which explicitly isolated its identity to the workset store) would leak
+            # its oauthAccount to GLOBAL. The private/box tier is already excluded by
+            # the ``auth_src.shares`` guard above.
+            extra_dest = credsync.selected_source_root(auth_src, host_home=host_home)
+            if extra_dest is not None:
+                target.writeback_extra(
+                    project_home=proj.shell_path, host_home=extra_dest
+                )
+                # global_sync: mirror the workset store's .claude.json UP to global,
+                # matching the cred_files bottom-up hop (box→workset→global).
+                if (
+                    auth_src.tier == "workset"
+                    and auth_src.global_sync
+                    and extra_dest != host_home
+                ):
+                    target.writeback_extra(
+                        project_home=extra_dest, host_home=host_home
+                    )
+            # D Part 3 (flag hygiene / lazy fallback): a SUCCESSFUL writeback clears
+            # the box's creds-dirty flag, so it never goes stale or gets double-
+            # processed.  This covers EVERY host writeback path (start detach / clean
+            # exit / reattach, stop) AND the watcher itself (it calls this) — a
+            # universal safety net for foreground / old-image / dead-watcher boxes.
+            clear_creds_dirty(proj.shell_path)
     except Exception as exc:  # never crash a teardown path on writeback
         get_logger("start").warning("Credential writeback failed: %s", exc)
 
