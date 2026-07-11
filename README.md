@@ -70,14 +70,19 @@ by the `kanibako` meta-package); other agents can be added as plugins.
 
 ## Installation
 
+> **Pre-release:** the current line (`1.7.0`) is still in release candidates, so
+> add `--pre` (pip/pipx) or `--prerelease allow` (uv) to get the newest rc. Plain
+> `pip install kanibako` gets the last *stable* release (`1.6.0`). Once `1.7.0`
+> ships, drop the flag.
+
 ```bash
-# Standard install (cli + Claude, Codex, and Goose plugins)
-uv tool install kanibako
+# Standard install (cli + Claude, Codex, and Goose plugins) -- current rc
+uv tool install --prerelease allow kanibako
 # -- or --
-pip install kanibako
+pip install --pre kanibako
 
 # Base only (no agent plugins -- agent-agnostic shell mode)
-pip install kanibako-cli
+pip install --pre kanibako-cli
 
 # Development install
 git clone https://github.com/doctorjei/kanibako.git
@@ -124,8 +129,8 @@ gh, nano, jq, ripgrep, tmux, Podman, and common dev tools.  This is enough for
 most Python, JavaScript, and general scripting work.
 
 ```bash
-# 1. Install kanibako
-pip install kanibako
+# 1. Install kanibako (--pre while 1.7.0 is in rc; see Installation)
+pip install --pre kanibako
 
 # 2. Create or clone a project
 mkdir ~/my-flask-app && cd ~/my-flask-app

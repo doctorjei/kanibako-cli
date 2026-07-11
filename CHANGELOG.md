@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **1.7.0 candidate.** The entries below (plus the already-dated `[1.7.0]`
+> section) are the changes shipping in the `1.7.0` release candidates (`1.7.0rcN`
+> on PyPI). They fold into a single `[1.7.0]` on the stable release.
+
+### Added
+- **VS Code integration — `kanibako code`.** Attach a local VS Code window to a
+  box's running container (via the Dev Containers "Attach to Running Container"
+  flow), with your chosen agent available in the integrated panel and the
+  workspace opened at the project. `kanibako code --remote <ssh-host>` attaches a
+  *local* VS Code to a box on a remote machine by tunneling the remote container
+  socket over a single owned SSH connection. `kanibako system diagnose` gained
+  VS Code host-prerequisite checks.
+- **Always-on boxes and session persistence.** A box's agent now runs under a
+  small in-box supervisor as PID-1, so the box's lifetime is decoupled from any
+  one agent session. `kanibako start --detach` (alias `--background`) launches a
+  box in the background and self-heals a crashed agent (resuming with
+  `--continue` and a handoff marker); a foreground `kanibako start` still runs
+  interactively and now exits with the agent's *true* exit code; reattach with
+  `kanibako start` (a `tmux attach` under the hood). `kanibako start --warm-only`
+  brings a box up with no CLI agent (for a VS Code panel to drive).
+- **Private boxes — `kanibako create --private`.** Create a box that does *not*
+  receive your host agent credentials, for self-contained or throwaway auth.
+- **Layered instruction delivery.** A shipped `KANIBAKO.md` operating guide is
+  delivered into each agent's instruction slot (Claude `~/.claude/CLAUDE.md`,
+  Codex, Goose) through a flatten processor, so an agent gets consistent guidance
+  about the box environment it is running in. `system.instructions` locates it.
+- **Credential writeback on detach.** Detaching from a shared box writes any
+  refreshed agent credentials back to the host store (via a trusted host-side
+  watcher), so a token rotation inside one box no longer locks out the others.
+- **Agent editor extensions on attach.** Attaching VS Code to a box auto-installs
+  the Codex (`openai.chatgpt`) and Goose (`block.vscode-goose`) extensions, and
+  Goose's `GOOSE_MODE` permission is mirrored into the box for panel parity.
+
 ### Changed
 
 - **A higher scope can now set defaults for the scopes it contains.** The
