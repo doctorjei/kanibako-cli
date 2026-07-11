@@ -87,6 +87,7 @@ class TestDefaultPersistence:
         args.persistent = persistent
         args.ephemeral = ephemeral
         args.detach = detach
+        args.warm_only = False
         args.new_session = False
         args.continue_session = False
         args.resume_session = False
@@ -173,6 +174,7 @@ class TestBootstrapNoneAndHostNote:
         args.persistent = persistent
         args.ephemeral = ephemeral
         args.detach = detach
+        args.warm_only = False
         args.new_session = False
         args.continue_session = False
         args.resume_session = False

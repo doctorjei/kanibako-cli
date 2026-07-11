@@ -258,15 +258,27 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     # stays Up for a later reattach / `kanibako code` / VS Code exec terminal.
     attach_group = p.add_mutually_exclusive_group()
     attach_group.add_argument(
-        "--detach", "--background", action="store_true", dest="detach",
+        "--detach", "--background", action="store_const", const=True, dest="detach",
         help="Start a keep-alive box in the background without attaching the "
              "terminal (box stays running; reattach later with 'kanibako start')",
     )
     attach_group.add_argument(
-        "--attach", action="store_false", dest="detach",
+        "--attach", action="store_const", const=False, dest="detach",
         help="Attach the terminal into the session (default)",
     )
-    p.set_defaults(detach=False)
+    # Tri-state default None = neither --detach nor --attach given (the attach
+    # default).  run_start normalises None -> attach and distinguishes an EXPLICIT
+    # --attach (False) from the unset default so it can reject a contradictory
+    # --warm-only --attach.
+    p.set_defaults(detach=None)
+
+    p.add_argument(
+        "--warm-only", action="store_true", dest="warm_only",
+        help="Warm the box AGENT-INDEPENDENT in the background (panel-watch "
+             "supervisor, no CLI agent); implies --detach. Used by "
+             "'kanibako code' so the VS Code panel is the sole agent (no "
+             "two-agent split-brain on one ~/.claude).",
+    )
 
     p.add_argument(
         "--print-container", action="store_true", dest="print_container",
@@ -360,7 +372,13 @@ def run_start(args: argparse.Namespace) -> int:
     print_container = getattr(args, "print_container", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
-    detach = getattr(args, "detach", False)
+    warm_only = getattr(args, "warm_only", False)
+    # --detach/--attach tri-state: True (--detach/--background), False (an EXPLICIT
+    # --attach), or None (neither given -> the attach default).  Distinguishing an
+    # explicit --attach lets --warm-only reject a contradictory foreground/attach
+    # request; None and False both mean "do not detach" for every other path.
+    detach_raw = getattr(args, "detach", None)
+    detach = detach_raw is True
     # Reconcile the positional subject with the blanket --box flag (same → warn,
     # differ → error).  Computed HERE (ahead of the persistence-mode heuristic)
     # because ``bootstrap`` is now an AGENT-scope key (spec §2d L579): resolving its
@@ -373,6 +391,26 @@ def run_start(args: argparse.Namespace) -> int:
     explicit_agent = getattr(args, "agent", None)  # Phase D seam (--agent flag)
     bootstrap_program = _resolve_bootstrap_program(project_dir, explicit_agent)
     no_bootstrap = _is_no_bootstrap(bootstrap_program)
+    if warm_only:
+        # --warm-only warms the box AGENT-INDEPENDENT (panel-watch supervisor, no
+        # CLI agent) — the same launch shape as start_detached(warm_only=True),
+        # exposed as a first-class `start` flag for the `code --remote` leg (and
+        # direct users).  There is no CLI agent to attach to, so it is inherently a
+        # DETACHED/background persistent launch: force --detach and reject a
+        # contradictory foreground/attach request, mirroring the --detach +
+        # --ephemeral conflict handled below.  (A no-agent / shell box with
+        # --warm-only is a harmless no-op: warm_only is inert in _run_container when
+        # there is no agent to keep independent; it still detaches as a keep-alive.)
+        if explicit_ephemeral or detach_raw is False:
+            other = "--ephemeral" if explicit_ephemeral else "--attach"
+            print(
+                f"Error: --warm-only cannot be combined with {other} "
+                "(warm-only starts a persistent background box with no CLI "
+                "agent to attach to).",
+                file=sys.stderr,
+            )
+            return 1
+        detach = True
     if detach:
         # Detach is inherently a persistent/tmux mode (the box must survive as a
         # keep-alive with no attached terminal).  --ephemeral is a direct
@@ -484,6 +522,7 @@ def run_start(args: argparse.Namespace) -> int:
         share_images=share_images,
         persistent=persistent,
         detach=detach,
+        warm_only=warm_only,
         model_override=model_override,
         cli_env=env_vars,
         explicit_agent=explicit_agent,

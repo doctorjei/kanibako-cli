@@ -362,6 +362,69 @@ def test_remote_box_not_running_after_start_errors(
     assert "no such container" in err  # podman's own inspect stderr surfaced
 
 
+def test_remote_start_argv_is_detached_warm_only_print_container(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    """E2h: the remote lifecycle warms the box AGENT-INDEPENDENT — the remote
+    `start` argv carries --detach --warm-only --print-container (the panel is the
+    sole agent; no two-agent split-brain on the remote leg)."""
+    _wire_ok(tmp_path, monkeypatch)
+    started = MagicMock(returncode=0, stdout="kanibako-mybox\n", stderr="")
+    engine = MagicMock()
+    engine.running_with_stderr.return_value = (True, "")
+    engine.version.return_value = MagicMock(returncode=0, stderr="")
+    engine.container_image.return_value = "ghcr.io/x/img:latest"
+    engine.inspect_env.return_value = "claude"
+    with (
+        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode_remote.preflight_engine"),
+        patch(
+            "kanibako.vscode_remote.remote_run_kanibako", return_value=started,
+        ) as m_life,
+        patch("kanibako.vscode_remote.RemoteEngine", return_value=engine),
+        patch("kanibako.vscode_remote.ensure_docker_context_meta"),
+        patch(
+            "kanibako.commands.code_cmd._extension_for_agent",
+            return_value="anthropic.claude-code",
+        ),
+        patch("kanibako.commands.code_cmd.seed_attached_container_config"),
+        patch("kanibako.commands.code_cmd.subprocess.run"),
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 0
+    argv = m_life.call_args[0][1]
+    assert argv[0] == "start"
+    assert "--detach" in argv
+    assert "--warm-only" in argv
+    assert "--print-container" in argv
+    assert argv[-1] == "mybox"
+
+
+def test_remote_warm_only_unrecognized_surfaces_upgrade_hint(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    """An OLD remote kanibako that does not understand --warm-only surfaces the
+    agent-independent-`code` upgrade hint (not a silent two-agent fallback)."""
+    _wire_ok(tmp_path, monkeypatch)
+    failed = MagicMock(
+        returncode=2, stdout="",
+        stderr="usage: kanibako start ...\nkanibako start: error: "
+               "unrecognized arguments: --warm-only",
+    )
+    with (
+        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "too old for --warm-only" in err
+    assert "agent-independent" in err
+
+
 # --- FF-1b: tunnel establish + engine pre-flight ---------------------------
 
 def test_remote_tunnel_failure_refused_before_lifecycle(

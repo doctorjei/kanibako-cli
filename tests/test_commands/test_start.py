@@ -3282,7 +3282,7 @@ class TestRunStartDetachFlag:
             autonomous=False, secure=False, model=None, env=None,
             no_helpers=False, no_auto_auth=False, browser=False,
             share_images=False, persistent=False, ephemeral=False,
-            detach=False, agent=None,
+            detach=None, warm_only=False, agent=None,
         )
         for k, v in over.items():
             setattr(ns, k, v)
@@ -3321,6 +3321,75 @@ class TestRunStartDetachFlag:
         assert rc == 1
         m_run.assert_not_called()
         assert "cannot be combined with --ephemeral" in capsys.readouterr().err
+
+    def test_explicit_attach_routes_detach_false(self):
+        """An EXPLICIT --attach (detach=False) still routes as a foreground/attach
+        launch (detach=False) — the tri-state default None must not change this."""
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            run_start(self._args(detach=False))
+        assert m_run.call_args.kwargs.get("detach") is False
+
+    def test_warm_only_forces_detach_and_threads_warm_only(self):
+        """E2h: --warm-only forces a DETACHED/persistent launch AND threads
+        warm_only=True into _run_container.  Mutation-proof: fails if warm_only is
+        dropped or detach/persistent is not forced."""
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            rc = run_start(self._args(warm_only=True))
+        assert rc == 0
+        assert m_run.call_args.kwargs.get("warm_only") is True
+        assert m_run.call_args.kwargs.get("detach") is True
+        assert m_run.call_args.kwargs.get("persistent") is True
+
+    def test_non_warm_only_threads_warm_only_false(self):
+        """REGRESSION GUARD: a normal (non-warm) start threads warm_only=False, so
+        the E2b/E2c supervised-agent path is unchanged."""
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            run_start(self._args(detach=True))
+        assert m_run.call_args.kwargs.get("warm_only") is False
+
+    def test_warm_only_with_ephemeral_is_error(self, capsys):
+        """--warm-only + --ephemeral is a clean error (a background keep-alive vs a
+        foreground single-use box), mirroring --detach + --ephemeral."""
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            rc = run_start(self._args(warm_only=True, ephemeral=True))
+        assert rc == 1
+        m_run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "--warm-only cannot be combined with --ephemeral" in err
+
+    def test_warm_only_with_explicit_attach_is_error(self, capsys):
+        """--warm-only + an EXPLICIT --attach (detach=False) is a clean error: there
+        is no CLI agent to attach to on a warm-only box."""
+        from kanibako.commands.start import run_start
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            rc = run_start(self._args(warm_only=True, detach=False))
+        assert rc == 1
+        m_run.assert_not_called()
+        assert "--warm-only cannot be combined with --attach" in capsys.readouterr().err
 
 
 class TestRunShellBoxShell:

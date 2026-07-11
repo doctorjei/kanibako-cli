@@ -624,9 +624,14 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    # (d) Lifecycle: start the remote box DETACHED and read back its cname.
+    # (d) Lifecycle: start the remote box DETACHED + WARM-ONLY and read back its
+    # cname.  --warm-only fronts the remote box with the panel-watch supervisor and
+    # NO CLI agent, so the local VS Code panel is the SOLE agent — matching the local
+    # `code` warm-up and closing the two-agent ~/.claude split-brain on the remote
+    # leg.  Hard-required (no silent fall back to a plain `start --detach`
+    # supervised-agent box: a split-brain is worse than a clear upgrade error).
     result = vr.remote_run_kanibako(
-        dest, ["start", "--detach", "--print-container", str(box)],
+        dest, ["start", "--detach", "--warm-only", "--print-container", str(box)],
     )
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
@@ -638,13 +643,20 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
                 "(its ~/.local/bin is already put on PATH). Is kanibako "
                 "installed for your user there (pipx/uv/pip --user)?"
             )
+        elif "warm-only" in low:
+            hint = (
+                "\n  Hint: the remote kanibako is too old for --warm-only "
+                "(agent-independent `code`); upgrade it so the VS Code panel is "
+                "the sole agent (no two-agent split-brain on the remote box)."
+            )
         elif "print-container" in low or "unrecognized arguments" in low:
             hint = (
                 "\n  Hint: the remote kanibako is too old for "
                 "--print-container; upgrade it (needs >= 1.7.0)."
             )
         print(
-            f"Error: remote 'kanibako start --detach' failed on '{dest}'.\n"
+            f"Error: remote 'kanibako start --detach --warm-only' failed on "
+            f"'{dest}'.\n"
             f"{stderr}{hint}",
             file=sys.stderr,
         )
