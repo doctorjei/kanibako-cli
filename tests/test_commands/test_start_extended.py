@@ -2236,6 +2236,45 @@ class TestWarmOnlyPanelWatch:
             # No panel-agent marker env on the E2b path (nothing watches it).
             assert "KANIBAKO_AGENT_PIDFILE" not in m.runtime.run.call_args.kwargs["env"]
 
+    @staticmethod
+    def _warm_only_args(**over):
+        """A full `start` Namespace with --warm-only (detach unset = attach default)."""
+        import argparse
+
+        ns = argparse.Namespace(
+            project=None, box=None, agent_args=[], entrypoint=None, image=None,
+            new_session=False, continue_session=False, resume_session=False,
+            autonomous=False, secure=False, model=None, env=None,
+            no_helpers=False, no_auto_auth=False, browser=False,
+            share_images=False, persistent=False, ephemeral=False,
+            detach=None, warm_only=True, agent=None, print_container=False,
+        )
+        for k, v in over.items():
+            setattr(ns, k, v)
+        return ns
+
+    def test_run_start_warm_only_matches_start_detached_panel_watch(self, start_mocks):
+        """E2h: `kanibako start --warm-only` yields the SAME launch shape as
+        start_detached(warm_only=True) — the panel-watch supervisor argv (agentless,
+        --agent-pidfile), the seeded KANIBAKO_AGENT_PIDFILE env, and NO attach.
+        Mutation-proof: fails if run_start does not thread warm_only through."""
+        from kanibako.commands.start import AGENT_PIDFILE_PATH, run_start
+
+        with start_mocks() as m:
+            rc = run_start(self._warm_only_args())
+            assert rc == 0
+            argv = self._supervisor_argv(self._pid1_script(m))
+            # Panel-watch, agent-independent — the start_detached(warm_only=True) shape.
+            assert "--panel-watch" in argv
+            assert argv[argv.index("--agent-pidfile") + 1] == AGENT_PIDFILE_PATH
+            # Agentless: no standalone `--` agent payload runs at start.
+            assert "--" not in argv
+            # The shared marker env is seeded (E2g write side == this read side).
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert env["KANIBAKO_AGENT_PIDFILE"] == AGENT_PIDFILE_PATH
+            # A warm-only launch is DETACHED: this terminal never attaches.
+            m.runtime.exec.assert_not_called()
+
 
 class TestForegroundSupervisor:
     """FOREGROUND AGENT `start` routes through the supervisor too (E2c).

@@ -100,6 +100,33 @@ class TestParser:
         args = parser.parse_args(["start", "--ephemeral"])
         assert args.ephemeral is True
 
+    def test_start_detach_tristate(self):
+        """E2h regression lock: --detach/--attach is a store_const tri-state.
+        Byte-safe with the pre-change store_true/store_false: unset -> None (the
+        attach default), --detach/--background -> True, --attach -> False (still
+        'do not detach').  run_start normalises None/False -> no detach and uses
+        the explicit False only to reject a contradictory --warm-only --attach."""
+        parser = build_parser()
+        assert parser.parse_args(["start"]).detach is None
+        assert parser.parse_args(["start", "--detach"]).detach is True
+        assert parser.parse_args(["start", "--background"]).detach is True
+        assert parser.parse_args(["start", "--attach"]).detach is False
+
+    def test_start_warm_only_flag(self):
+        """E2h: --warm-only is a plain store_true (default False), independent of
+        the detach tri-state (the semantic conflict is enforced in run_start)."""
+        parser = build_parser()
+        assert parser.parse_args(["start"]).warm_only is False
+        args = parser.parse_args(["start", "--warm-only"])
+        assert args.warm_only is True
+        assert args.detach is None  # --warm-only does not touch the detach flag
+
+    def test_start_detach_attach_mutually_exclusive(self):
+        """--detach and --attach remain mutually exclusive at the parser."""
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["start", "--detach", "--attach"])
+
     def test_start_entrypoint_flag(self):
         parser = build_parser()
         args = parser.parse_args(["start", "--entrypoint", "/bin/zsh"])
