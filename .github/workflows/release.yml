@@ -113,6 +113,50 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Gate promote on a GREEN e2e for this commit
+        # STRUCTURAL FIX for the CI-e2e "disaster": release.yml (this promote) and
+        # test.yml (the Tests workflow, which owns the `e2e` job) are SEPARATE
+        # workflows both fired by the v* tag, so a RED e2e never blocked a prod
+        # publish — rc10..rc12 shipped while the e2e had been broken for weeks.
+        # REFUSE to publish unless the Tests workflow's `e2e` job SUCCEEDED for THIS
+        # exact commit. Both workflows start together on the tag push, so poll the
+        # Tests run for this SHA until it concludes, then require e2e == success.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$GITHUB_SHA"
+          echo "Requiring a green Tests/e2e for $sha before publishing…"
+          deadline=$(( $(date +%s) + 45*60 ))   # e2e ~13m + queue/runner headroom
+          while :; do
+            run_id=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$sha&per_page=1" \
+              --jq '.workflow_runs[0].id // empty')
+            if [ -n "$run_id" ]; then
+              status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status')
+              if [ "$status" = "completed" ]; then
+                e2e=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+                  --jq '.jobs[] | select(.name=="e2e") | .conclusion' | head -n1)
+                echo "Tests run $run_id completed; e2e conclusion: ${e2e:-<none>}"
+                if [ "$e2e" = "success" ]; then
+                  echo "e2e is green — proceeding with the publish."
+                  break
+                fi
+                echo "REFUSING to publish: the e2e job is '${e2e:-missing}', not success." >&2
+                echo "Fix the e2e (see plans/e2e-restoration-MUSTFIX.md) and re-tag." >&2
+                exit 1
+              fi
+              echo "  Tests run $run_id status=$status; waiting…"
+            else
+              echo "  no Tests run for $sha yet; waiting…"
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "Timed out waiting for the Tests/e2e job to conclude." >&2
+              exit 1
+            fi
+            sleep 30
+          done
+
       - name: Fetch tags
         run: git fetch --tags --force
 

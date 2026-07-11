@@ -53,24 +53,45 @@ jobs:
         # mapped copy of layer" errors on ubuntu-latest runners.
         run: sudo apt-get install -y tmux fuse-overlayfs
       - name: Install kanibako
-        run: pip install -e '.[dev]' -e packages/agent-claude/
+        # Install ALL agent plugins the e2e exercises: agent-claude (stub claude
+        # tests), agent-goose (the goose cred-sync + kickoff-loader tests, which
+        # otherwise fail "Agent 'goose' is not installed"), agent-codex for parity.
+        run: pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
       - name: Build HEAD-kanibako e2e image (overlay on :latest)
         run: |
           # The published :latest carries all box deps + an OLD in-box kanibako.
           # Overlay the HEAD kanibako-cli under test so the in-box box_supervisor
           # is the code being validated (else the launch's forward-compat
           # fallback runs a bare shell and the supervisor e2e tests can't
-          # exercise it). Pull the base, build a HEAD wheel, reinstall it in-box,
-          # retag as :latest (the tag the e2e's E2E_IMAGE resolves to).
+          # exercise it). Pull the base, build a HEAD wheel, reinstall it in-box
+          # (as root → system site-packages; see Containerfile.head).
           set -euo pipefail
           podman pull ghcr.io/doctorjei/kanibako-oci:latest
           podman tag ghcr.io/doctorjei/kanibako-oci:latest kanibako-oci:base
           pip wheel --no-deps -w e2e-wheels .
           podman build -t kanibako-oci:latest -f tests/e2e/Containerfile.head .
-          # Fail fast if the in-box supervisor is not actually HEAD.
-          podman run --rm --entrypoint python3 kanibako-oci:latest \
+          # ⚑ The LAUNCH resolves the box's bare `kanibako-oci:latest` image to
+          # the OFFICIAL registry ref via resolve_image_reference() — and its
+          # top-precedence rule is "official-and-local", so a locally-present
+          # ghcr.io/doctorjei/kanibako-oci:latest ALWAYS wins over the bare
+          # localhost build.  The base pull put the OLD image at exactly that
+          # official ref, so without this retag the launch silently uses the OLD
+          # image and the HEAD overlay is built-but-never-used (the supervisor
+          # never appears in any launch — the whole e2e "disaster").  Overwrite
+          # the official ref with HEAD so the launch actually runs the code under
+          # test.  Keep the bare tag too (the pre-warm fixture's existence check).
+          podman tag kanibako-oci:latest ghcr.io/doctorjei/kanibako-oci:latest
+          # Fail fast if the in-box supervisor is not actually HEAD — and verify
+          # it the way the LAUNCH sees it: as root is not enough, because the box
+          # bind-mounts its home over /home/agent, shadowing ~/.local.  Mount an
+          # empty dir over /home/agent so a user-site-only install (the bug this
+          # step guards against) is caught here instead of silently falling back
+          # in every launch.
+          emptyhome="$(mktemp -d)"
+          podman run --rm -v "$emptyhome":/home/agent --entrypoint python3 \
+            ghcr.io/doctorjei/kanibako-oci:latest \
             -m kanibako.box_supervisor --help | grep -q -- --panel-watch
-          echo "OK: in-box box_supervisor is HEAD (understands --panel-watch)"
+          echo "OK: in-box box_supervisor is HEAD + visible under the box-home mount"
       - name: Run e2e tests
         # Explicit `-m e2e` because pyproject.toml's default addopts
         # is `-m 'not integration and not e2e'` — without overriding,

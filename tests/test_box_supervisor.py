@@ -36,6 +36,25 @@ _BOTH = AttachState(vscode_server=True, tmux_terminal=True)
 
 _MARKER = "[Agent handoff - Continue prior task(s)]"
 
+# The agent start/restart arms ``remain-on-exit`` in ONE tmux invocation that:
+# global-arms BEFORE new-session (to win the instant-crash race), starts the
+# detached session, pins the option SESSION-LOCAL, then REVERTS the global (so
+# sibling windows in the box's tmux server don't accumulate dead panes).  These are
+# the exact combined argvs the supervisor emits.
+_START_CALL = [
+    "tmux", "set-option", "-g", "remain-on-exit", "on", ";",
+    "new-session", "-d", "-s", "kanibako", "--",
+    "claude", "--dangerously-skip-permissions", ";",
+    "set-option", "-t", "kanibako", "remain-on-exit", "on", ";",
+    "set-option", "-g", "remain-on-exit", "off",
+]
+_CONTINUE_CALL = [
+    "tmux", "set-option", "-g", "remain-on-exit", "on", ";",
+    "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue", ";",
+    "set-option", "-t", "kanibako", "remain-on-exit", "on", ";",
+    "set-option", "-g", "remain-on-exit", "off",
+]
+
 
 def _config(**over: object) -> SupervisorConfig:
     base: dict[str, object] = dict(
@@ -76,25 +95,42 @@ class FakeRun:
         self.calls: list[list[str]] = []
 
     @staticmethod
-    def _take(prog: object, sub: str) -> object:
+    def _take(prog: object) -> object:
         if isinstance(prog, list):
             if not prog:
                 return None
             return prog[0] if len(prog) == 1 else prog.pop(0)
         return prog
 
+    @staticmethod
+    def _match(args, table: dict[str, object]) -> str | None:
+        """Return the first arg token that keys into *table*.
+
+        A single tmux invocation can now carry MORE THAN ONE subcommand (the agent
+        start arms ``remain-on-exit`` globally in the same call: ``set-option -g … ;
+        new-session …``), so dispatch/matching scans every token rather than only
+        ``args[1]`` — a combined call is matched by either ``set-option`` or
+        ``new-session``.  The subcommand tokens are distinct, so there is no
+        cross-match.
+        """
+        for tok in args[1:]:
+            if tok in table:
+                return tok
+        return None
+
     def __call__(self, args, **kwargs):
         assert args and args[0] == "tmux"
-        sub = args[1] if len(args) > 1 else ""
         self.calls.append(list(args))
-        if self._raise_on is not None and sub == self._raise_on:
+        if self._raise_on is not None and self._raise_on in args[1:]:
             raise FileNotFoundError("tmux not found")
-        rc = self._take(self._rc.get(sub, 0), sub)
-        out = self._take(self._stdout.get(sub, ""), sub)
+        rc_key = self._match(args, self._rc)
+        out_key = self._match(args, self._stdout)
+        rc = self._take(self._rc[rc_key]) if rc_key is not None else 0
+        out = self._take(self._stdout[out_key]) if out_key is not None else ""
         return subprocess.CompletedProcess(args, returncode=int(rc), stdout=str(out), stderr="")
 
     def sub_calls(self, sub: str) -> list[list[str]]:
-        return [c for c in self.calls if len(c) > 1 and c[1] == sub]
+        return [c for c in self.calls if sub in c[1:]]
 
 
 # ---------------------------------------------------------------------------
@@ -150,10 +186,8 @@ def test_start_agent_session_emits_new_session_detached():
     fake = FakeRun()
     sup = BoxSupervisor(_config(), run=fake)
     assert sup.start_agent_session() is True
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--",
-         "claude", "--dangerously-skip-permissions"]
-    ]
+    # ONE invocation arms remain-on-exit globally then starts the detached session.
+    assert fake.sub_calls("new-session") == [_START_CALL]
 
 
 def test_start_agent_session_reports_failure_on_nonzero_rc():
@@ -162,13 +196,32 @@ def test_start_agent_session_reports_failure_on_nonzero_rc():
     assert sup.start_agent_session() is False
 
 
+def test_start_agent_session_semicolon_in_argv_falls_back_to_plain_form():
+    # A standalone ';' token in the agent argv would be mis-read by tmux as a
+    # command separator in the COMBINED arm+start invocation, breaking the launch.
+    # Guard: fall back to a plain new-session (';' is safe as a plain agent arg) then
+    # a best-effort per-session arm — launch stays correct.
+    fake = FakeRun()
+    sup = BoxSupervisor(
+        _config(start_argv=["claude", ";", "--model", "opus"]), run=fake
+    )
+    assert sup.start_agent_session() is True
+    # NOT the combined form (no leading set-option -g in the new-session call).
+    assert fake.sub_calls("new-session") == [
+        ["tmux", "new-session", "-d", "-s", "kanibako", "--",
+         "claude", ";", "--model", "opus"]
+    ]
+    # arm is a SEPARATE per-session set-option (best-effort) after the start.
+    assert fake.sub_calls("set-option") == [
+        ["tmux", "set-option", "-t", "kanibako", "remain-on-exit", "on"]
+    ]
+
+
 def test_restart_agent_session_uses_continue_argv_and_sends_marker():
     fake = FakeRun()
     sup = BoxSupervisor(_config(), run=fake)
     assert sup.restart_agent_session() is True
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
-    ]
+    assert fake.sub_calls("new-session") == [_CONTINUE_CALL]
     assert fake.sub_calls("send-keys") == [
         ["tmux", "send-keys", "-t", "kanibako", _MARKER, "Enter"]
     ]
@@ -200,6 +253,26 @@ def test_agent_session_alive_true_on_rc0_false_on_nonzero():
     assert dead._run.sub_calls("has-session") == [  # type: ignore[attr-defined]
         ["tmux", "has-session", "-t", "kanibako"]
     ]
+
+
+def test_capture_agent_output_reads_full_history_and_strips_padding():
+    # capture-pane must reach the END OF HISTORY (-E -) — for a dead pane the
+    # visible screen is tmux's "Pane is dead" overlay, so the agent's real output
+    # only lives in scrollback.
+    fake = FakeRun(stdout={"capture-pane": "No conversation found\n\n\n"})
+    sup = BoxSupervisor(_config(capture_history=200), run=fake)
+    assert sup.capture_agent_output() == "No conversation found"
+    assert fake.sub_calls("capture-pane") == [
+        ["tmux", "capture-pane", "-p", "-S", "-200", "-E", "-", "-t", "kanibako"]
+    ]
+
+
+def test_capture_agent_output_tolerant_and_empty_to_none():
+    # non-zero rc / missing tmux -> None (tolerant, never raises).
+    assert BoxSupervisor(_config(), run=FakeRun(rc={"capture-pane": 1})).capture_agent_output() is None
+    assert BoxSupervisor(_config(), run=FakeRun(raise_on="capture-pane")).capture_agent_output() is None
+    # an all-blank pane -> None (nothing meaningful to surface).
+    assert BoxSupervisor(_config(), run=FakeRun(stdout={"capture-pane": "\n\n"})).capture_agent_output() is None
 
 
 def test_agent_pane_dead_status_parses_int_none_and_is_tolerant():
@@ -241,34 +314,45 @@ def test_agent_session_alive_false_on_dead_pane_true_when_live():
     assert gone._run.sub_calls("display-message") == []  # type: ignore[attr-defined]
 
 
-def test_start_agent_session_arms_remain_on_exit():
+def test_start_agent_session_arms_remain_on_exit_globally_before_new_session():
     fake = FakeRun()
     sup = BoxSupervisor(_config(), run=fake)
     assert sup.start_agent_session() is True
-    # remain-on-exit is armed as a SEPARATE set-option after new-session, so the
-    # dead-pane status survives the agent's exit (and exec in the secret shim).
-    assert fake.sub_calls("set-option") == [
-        ["tmux", "set-option", "-t", "kanibako", "remain-on-exit", "on"]
-    ]
+    # remain-on-exit is armed GLOBALLY in the SAME invocation as new-session, and
+    # BEFORE it (the ``;`` command separator precedes ``new-session``), so the
+    # option is active when the agent pane is born — an instant crash still leaves a
+    # capturable dead pane.  It is the SAME call new-session lives in.
+    call = fake.sub_calls("set-option")
+    assert call == [_START_CALL]
+    i_opt = call[0].index("set-option")
+    i_new = call[0].index("new-session")
+    assert i_opt < i_new  # arm BEFORE start
 
 
-def test_start_agent_session_skips_remain_on_exit_when_new_session_fails():
-    fake = FakeRun(rc={"new-session": 1})
+def test_start_agent_session_arms_remain_on_exit_in_a_single_invocation():
+    # The arm and the start MUST share one tmux process (a separate ``set-option
+    # -g`` on a not-yet-running server starts a server that immediately exits, so the
+    # global would be lost).  There is therefore exactly ONE tmux call on a clean
+    # start, carrying both subcommands.
+    fake = FakeRun()
     sup = BoxSupervisor(_config(), run=fake)
-    assert sup.start_agent_session() is False
-    assert fake.sub_calls("set-option") == []
+    assert sup.start_agent_session() is True
+    assert fake.calls == [_START_CALL]
 
 
 def test_restart_agent_session_kills_dead_session_then_arms_remain():
     fake = FakeRun()
     sup = BoxSupervisor(_config(), run=fake)
     assert sup.restart_agent_session() is True
-    # kill-session PRECEDES the fresh new-session so the dead-pane name is reusable.
-    kinds = [c[1] for c in fake.calls if c[1] in ("kill-session", "new-session")]
-    assert kinds == ["kill-session", "new-session"]
-    assert fake.sub_calls("set-option") == [
-        ["tmux", "set-option", "-t", "kanibako", "remain-on-exit", "on"]
+    # kill-session PRECEDES the fresh start call (which arms remain-on-exit globally
+    # then new-sessions in one invocation) so the dead-pane name is reusable.
+    kinds = [
+        "kill-session" if c[1] == "kill-session" else "start"
+        for c in fake.calls
+        if c[1] == "kill-session" or "new-session" in c
     ]
+    assert kinds == ["kill-session", "start"]
+    assert fake.sub_calls("new-session") == [_CONTINUE_CALL]
 
 
 def test_kill_agent_session_emits_kill_session():
@@ -457,9 +541,7 @@ def test_run_forever_self_heals_a_dead_agent_and_continues():
     _stop_after(sup, 2)
     assert sup.run_forever() == 0
     # one self-heal restart happened (continue grammar)
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
-    ]
+    assert fake.sub_calls("new-session") == [_CONTINUE_CALL]
 
 
 def test_run_forever_exits_when_self_heal_exhausts():
@@ -586,6 +668,36 @@ def test_run_forever_teardown_returns_agent_dead_status():
     assert fake.sub_calls("new-session") == []
 
 
+def test_run_forever_teardown_echoes_agent_output_to_stdout(capsys):
+    # On teardown the supervisor is PID-1, so the crashed agent's output (living in
+    # its tmux pane) never reaches podman logs unless the supervisor echoes it.  The
+    # host reads podman logs to (a) show the user WHY the agent died and (b) detect a
+    # recoverable "no conversation" retry — so the captured pane MUST be printed to
+    # stdout before the box closes.
+    fake = FakeRun(
+        rc={"has-session": [0, 0]},
+        stdout={
+            "display-message": ["", "1", "1"],
+            "capture-pane": "No conversation found to continue\n",
+        },
+    )
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
+    assert sup.run_forever() == 1
+    assert "No conversation found to continue" in capsys.readouterr().out
+
+
+def test_run_forever_teardown_tolerates_empty_capture(capsys):
+    # A capture that yields nothing (pane already gone / tmux hiccup) must NOT crash
+    # teardown or fabricate output — the truthful exit code is still returned.
+    fake = FakeRun(
+        rc={"has-session": [0, 0]},
+        stdout={"display-message": ["", "3", "3"]},  # capture-pane -> "" (default)
+    )
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
+    assert sup.run_forever() == 3
+    assert capsys.readouterr().out == ""
+
+
 def test_run_forever_teardown_returns_one_when_dead_status_unknown():
     # E2d: under 'teardown', the session VANISHES entirely (has-session != 0), so no
     # pane_dead_status is readable → a dead-but-unknown agent is a FAILURE, not a
@@ -610,9 +722,7 @@ def test_run_forever_self_heal_restarts_after_dead_pane():
     sup = BoxSupervisor(_config(), run=fake, proc_cmdlines=[])
     _stop_after(sup, 2)
     assert sup.run_forever() == 0
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
-    ]
+    assert fake.sub_calls("new-session") == [_CONTINUE_CALL]
     assert fake.sub_calls("kill-session") == [
         ["tmux", "kill-session", "-t", "kanibako"]
     ]
@@ -636,9 +746,7 @@ def test_run_forever_self_heal_policy_does_not_teardown_on_agent_exit():
     assert sup.config.on_agent_exit == "self-heal"
     _stop_after(sup, 2)
     assert sup.run_forever() == 0
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
-    ]
+    assert fake.sub_calls("new-session") == [_CONTINUE_CALL]
 
 
 # ---------------------------------------------------------------------------

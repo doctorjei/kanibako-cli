@@ -169,6 +169,10 @@ class SupervisorConfig:
     panel_watch: bool = False
     agent_pidfile: str | None = None
     creds_flag: str | None = None
+    # Bounded scrollback (lines) captured from the dead agent pane on a foreground
+    # teardown and echoed to PID-1's stdout so ``podman logs`` surfaces the agent's
+    # final output to the host (:meth:`BoxSupervisor.capture_agent_output`).
+    capture_history: int = 200
 
 
 # ---------------------------------------------------------------------------
@@ -406,47 +410,85 @@ class BoxSupervisor:
             return None
         return proc.stdout
 
-    def _set_remain_on_exit(self) -> None:
-        """Enable ``remain-on-exit`` for the agent session so a DEAD pane PERSISTS.
+    def _start_session_argv(self, session_argv: list[str]) -> list[str]:
+        """tmux argv that arms ``remain-on-exit``, starts the detached session, and SCOPES the arm.
 
-        Without this, a pane whose agent process exits is destroyed and tmux exposes
-        no exit status; WITH it on, the pane becomes a DEAD pane carrying the real
-        exit code in ``#{pane_dead_status}`` — which SURVIVES the ``exec`` in the
-        secret-export shim (a naive ``agent; echo $?`` wrapper would not fire).
-        :meth:`agent_pane_dead_status` reads that code.  Issued as a SEPARATE
-        ``set-option`` right after ``new-session`` so the start/restart argv stays
-        byte-stable (the exact-argv unit tests keep matching).  Best-effort and
-        tolerant: a tmux that rejects the option merely degrades liveness to
-        has-session-only (the pre-E2d behavior) — never a crash.
+        A SINGLE tmux invocation runs four commands in order:
+
+          1. ``set-option -g remain-on-exit on`` — the server-global default, set
+             BEFORE the pane exists so it is effective the instant the agent pane is
+             born.  This is what lets an INSTANT-crashing agent still leave a
+             capturable DEAD pane (real exit code in ``#{pane_dead_status}``, final
+             output in scrollback).  Arming AFTER a bare ``new-session -- <agent>``
+             (the pre-fix approach) loses the race essentially always — empirically
+             0/20 instant crashes left a dead pane — while this arm-before-birth won
+             20/20 on real tmux.
+          2. ``new-session -d -s <session> -- <agent>`` — ``-d`` detached (agent
+             executing, no client); ``--`` ends new-session's option parsing so the
+             agent grammar is verbatim.
+          3. ``set-option -t <session> remain-on-exit on`` — pin the option SESSION-
+             LOCAL so it outlives step 4.
+          4. ``set-option -g remain-on-exit off`` — REVERT the global default.  So
+             the global is ``on`` only across the pane's birth (steps 1→3); any OTHER
+             window sharing this box's tmux server (a user's own ``tmux`` windows, a
+             VS Code integrated terminal running tmux) keeps the normal default and
+             does NOT accumulate lingering dead panes.  At every instant the AGENT
+             pane is covered — by the global (steps 2→3) then by its session-local
+             value (after step 3) — so there is no gap (verified: 20/20 instant
+             crashes still captured; a sibling session's pane is destroyed normally).
+
+        All four MUST share one invocation: a separate ``set-option -g`` on a
+        not-yet-running server starts a server that immediately exits (no session),
+        so the global would be gone before ``new-session`` runs.  Each ``;`` is a
+        standalone argument — tmux's command separator.
         """
+        return [
+            "set-option", "-g", "remain-on-exit", "on", ";",
+            "new-session", "-d", "-s", self.config.session, "--", *session_argv, ";",
+            "set-option", "-t", self.config.session, "remain-on-exit", "on", ";",
+            "set-option", "-g", "remain-on-exit", "off",
+        ]
+
+    def _arm_and_start_session(self, session_argv: list[str]) -> int | None:
+        """Arm remain-on-exit + start the detached session; return the tmux rc.
+
+        Normally ONE combined invocation (:meth:`_start_session_argv`).  GUARD: a
+        standalone ``;`` token in the agent argv would be read by tmux as a top-level
+        command separator in that combined form (``--`` ends new-session's OWN option
+        parsing, not tmux's command splitting), so it would break the launch.  That
+        essentially never occurs in a real agent grammar, but to avoid making a rare
+        input WORSE than the pre-fix behavior, fall back to a plain ``new-session``
+        then a best-effort per-session arm — LAUNCH stays correct; only the
+        instant-crash dead-pane capture is not guaranteed for this edge.
+        """
+        if ";" not in session_argv:
+            return self._run_tmux(self._start_session_argv(session_argv))
         rc = self._run_tmux(
-            ["set-option", "-t", self.config.session, "remain-on-exit", "on"]
+            ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
         )
-        if rc not in (0, None):
-            log.debug("_set_remain_on_exit: tmux set-option rc=%s", rc)
+        if rc == 0:
+            self._run_tmux(
+                ["set-option", "-t", self.config.session, "remain-on-exit", "on"]
+            )
+        return rc
 
     def start_agent_session(self) -> bool:
-        """Start the agent DETACHED: ``tmux new-session -d -s <session> -- <start_argv>``.
+        """Start the agent DETACHED with ``remain-on-exit`` armed globally first.
 
-        The ``-d`` starts the session detached (agent executing, no client attached);
-        ``--`` terminates tmux option parsing so the agent grammar is taken verbatim.
-        On success, arms ``remain-on-exit`` (:meth:`_set_remain_on_exit`) so the
-        agent's real exit code survives its death as a dead-pane status.  Returns
-        ``True`` on rc 0.
+        See :meth:`_start_session_argv` for why the arm+start share one invocation.
+        Returns ``True`` on rc 0.
         """
-        rc = self._run_tmux(
-            ["new-session", "-d", "-s", self.config.session, "--", *self.config.start_argv]
-        )
+        rc = self._arm_and_start_session(self.config.start_argv)
         if rc != 0:
             log.warning("start_agent_session: tmux new-session rc=%s", rc)
             return False
-        self._set_remain_on_exit()
         return True
 
     def restart_agent_session(self) -> bool:
         """Restart the agent for self-heal, with the CONTINUE grammar + marker.
 
-        Starts ``tmux new-session -d -s <session> -- <continue_argv>`` (the
+        Arms ``remain-on-exit`` globally and starts ``new-session -d -s <session> --
+        <continue_argv>`` in one invocation (:meth:`_start_session_argv`; the
         ``--continue`` form re-reads the box's ``~/.claude`` history), then delivers
         the continue-marker via :meth:`_send_marker` so the successor gets it as a
         REAL acting turn (autonomous resume, no human needed).  Returns ``True`` when
@@ -455,17 +497,13 @@ class BoxSupervisor:
         With ``remain-on-exit`` a dead agent leaves its session PRESENT (a dead pane)
         still holding the canonical name, so a fresh ``new-session`` with the same
         name would COLLIDE.  Kill the (dead) session FIRST — tolerant no-op when
-        nothing is there — so the restart can reuse the ``kanibako`` name, then arm
-        ``remain-on-exit`` again for the successor.
+        nothing is there — so the restart can reuse the ``kanibako`` name.
         """
         self.kill_agent_session()
-        rc = self._run_tmux(
-            ["new-session", "-d", "-s", self.config.session, "--", *self.config.continue_argv]
-        )
+        rc = self._arm_and_start_session(self.config.continue_argv)
         if rc != 0:
             log.warning("restart_agent_session: tmux new-session rc=%s", rc)
             return False
-        self._set_remain_on_exit()
         if not self._send_marker():
             log.warning("restart_agent_session: continue-marker send-keys did not land")
         return True
@@ -516,6 +554,54 @@ class BoxSupervisor:
         except ValueError:
             log.debug("agent_pane_dead_status: unparseable pane_dead_status %r", out)
             return None
+
+    def capture_agent_output(self) -> str | None:
+        """Return the agent pane's captured MAIN-screen text (scrollback), or None.
+
+        ``tmux capture-pane -p -S -<n> -E - -t <session>`` prints the pane's content
+        through the END of history.  With ``remain-on-exit on`` the pane PERSISTS
+        after the agent exits (a dead pane), so this recovers the exited agent's
+        main-screen output — which the FOREGROUND host relies on (via ``podman
+        logs``) to show the user WHY the agent died and to detect a recoverable "no
+        conversation" retry (:meth:`Target.should_retry_new_session`).  Under the
+        supervisor PID-1 that output lives in the tmux pane, NOT PID-1's own stdout,
+        so without echoing it here ``podman logs`` would be empty and both surfaces
+        would silently break (the E2c/E2d observability residual).
+
+        ⚑ SCOPE: this recovers MAIN-screen output — an early cold-start error the
+        agent prints before any TUI (e.g. claude's "No conversation found", a config
+        error, an immediate crash) — which is the class the host actually acts on.
+        An agent that dies while in the tmux ALTERNATE screen (a running full-screen
+        TUI mid-session) leaves only tmux's "Pane is dead" overlay behind, which
+        capture cannot see past; that output is not recoverable here.  This is a
+        best-effort improvement over the pre-fix state (nothing surfaced at all), not
+        a total transcript.
+
+        Tolerant like every probe (PID-1 must never die on a tmux hiccup): a missing
+        tmux / dead server / no session (``None`` output) resolves to ``None``.  The
+        history is BOUNDED (``-S -<capture_history>`) so a chatty agent can't make PID-1
+        dump an unbounded log; the host tails it anyway.
+        """
+        out = self._tmux_output(
+            [
+                "capture-pane", "-p",
+                "-S", f"-{self.config.capture_history}",
+                # ⚑ ``-E -`` = capture through the END OF HISTORY.  Without it the
+                # end defaults to the VISIBLE screen, which for a dead pane is tmux's
+                # "Pane is dead (status N)" overlay — so the agent's actual output is
+                # NOT returned.  ``-E -`` reaches past that overlay into the pane's
+                # scrollback where the exited agent's final output lives (verified on
+                # real tmux: 20/20 instant crashes captured with ``-E -``, 0/20
+                # without).
+                "-E", "-",
+                "-t", self.config.session,
+            ]
+        )
+        if out is None:
+            return None
+        # Strip trailing blank lines tmux pads the region with, but keep the
+        # meaningful body verbatim (the host greps it for target-specific sentinels).
+        return out.rstrip("\n") or None
 
     def agent_session_alive(self) -> bool:
         """True iff the agent session EXISTS and its pane is NOT dead.
@@ -815,6 +901,18 @@ class BoxSupervisor:
                             # vanished entirely) ⇒ 1 — a failure, not a success.
                             status = self.agent_pane_dead_status()
                             code = 1 if status is None else status
+                            # Surface the dead agent's final output to the HOST before
+                            # closing.  The host's foreground path reads ``podman logs``
+                            # (PID-1's stdout) to show WHY the agent died and to detect a
+                            # recoverable "no conversation" retry — but the agent ran in a
+                            # tmux pane, so its output never reached PID-1's stdout.  Echo
+                            # the captured pane here so both host paths work again (the
+                            # E2c/E2d observability residual).  Best-effort: a failed
+                            # capture just means the old (empty-logs) behavior, never a
+                            # crash or a masked exit code.
+                            captured = self.capture_agent_output()
+                            if captured:
+                                print(captured, flush=True)
                             log.info(
                                 "agent exited under teardown policy (dead_status=%s); "
                                 "no other surface attached — closing box with rc %d",
