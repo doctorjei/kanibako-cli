@@ -591,6 +591,111 @@ def test_run_forever_self_heal_policy_does_not_teardown_on_agent_exit():
 
 
 # ---------------------------------------------------------------------------
+# surface-aware teardown (E2e) — CLI↔panel ref-count (principle B / FF-8).
+# ---------------------------------------------------------------------------
+
+def test_other_surface_attached_is_the_panel_slice():
+    sup = BoxSupervisor(_config(), run=FakeRun())
+    # The VS Code panel is the "other" surface (beyond the CLI's own tmux terminal).
+    assert sup._other_surface_attached(_VS) is True
+    assert sup._other_surface_attached(_BOTH) is True
+    # A tmux terminal (the CLI's own surface) or nothing is NOT an "other" surface.
+    assert sup._other_surface_attached(_TM) is False
+    assert sup._other_surface_attached(_NONE) is False
+
+
+def _script_snapshots(sup: BoxSupervisor, states: list[AttachState]) -> None:
+    """Wire ``_snapshot`` to a fixed script of :class:`AttachState`s (last sticks).
+
+    The panel-presence signal comes from :attr:`AttachState.vscode_server`, which
+    :func:`snapshot_attach_state` derives from ``/proc`` cmdlines — awkward to vary
+    per tick via construction — so tests drive the surface directly by scripting the
+    snapshot, exactly as other tests stub ``restart_agent_session`` / ``_on_detach``.
+    """
+    seq = list(states)
+
+    def fake_snapshot() -> AttachState:
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    sup._snapshot = fake_snapshot  # type: ignore[method-assign]
+
+
+def test_run_forever_teardown_stays_up_while_panel_attached_then_closes():
+    # MUTATION-PROVE (E2e, the core test): under 'teardown', the agent is DEAD from
+    # tick1 on.  tick1 has a panel attached (vscode_server=True) → the box must NOT
+    # tear down (stay an agentless keep-alive, no restart); tick2 the panel is GONE
+    # → the box tears down and returns the dead-pane code.
+    #   snapshots: prev=panel, tick1=panel, tick2=no-surface.
+    #   display-message (pane_dead_status) is consumed once per liveness check AND
+    #   once per teardown re-read, so the script distinguishes WHEN teardown fires:
+    #     startup=""(alive); tick1 liveness="1"(dead); tick2 liveness="3"(dead);
+    #     tick2 teardown re-read="5" (last sticks).
+    # A mutant that IGNORES the surface tears down at tick1: its tick1 teardown
+    # re-read is the NEXT value after tick1's "1" liveness read → "3", so it returns
+    # 3 (not 5).  A mutant that NEVER tears down keeps the keep-alive past tick2 →
+    # stopped by the bounded-tick harness → returns 0 (not 5).  Only the truthful
+    # code — no teardown at tick1, teardown at tick2 — returns exactly 5, so
+    # asserting == 5 catches BOTH mutants in this one test.
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", "1", "3", "5"]})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    _script_snapshots(sup, [_VS, _VS, _NONE])
+    _stop_after(sup, 5)  # bound a would-be never-tears-down mutant
+    restarts: list[int] = []
+    sup.restart_agent_session = (  # type: ignore[method-assign]
+        lambda: restarts.append(1) or True
+    )
+    assert sup.run_forever() == 5           # closed at tick2, with the tick2 code
+    assert restarts == []                   # never self-healed while the panel was up
+    assert fake.sub_calls("new-session") == []  # and never restarted the agent
+
+
+def test_run_forever_teardown_no_surface_closes_immediately():
+    # Regression (E2d intact): agent dead + NO other surface on the first tick →
+    # tears down at once and returns the truthful dead-pane code (here 42).
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", "42", "42"]})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    _script_snapshots(sup, [_NONE, _NONE])
+    restarts: list[int] = []
+    sup.restart_agent_session = (  # type: ignore[method-assign]
+        lambda: restarts.append(1) or True
+    )
+    assert sup.run_forever() == 42
+    assert restarts == []
+    assert fake.sub_calls("new-session") == []
+
+
+def test_run_forever_teardown_keepalive_logs_once_not_per_tick(caplog):
+    # The agentless keep-alive state must log ONCE on entry, not every poll tick.
+    import logging
+
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", "1"]})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    _script_snapshots(sup, [_VS])  # panel present on every snapshot (never detaches)
+    _stop_after(sup, 4)            # several ticks of dead-agent + panel
+    with caplog.at_level(logging.INFO, logger="kanibako.box_supervisor"):
+        assert sup.run_forever() == 0  # never tears down; stopped by the harness
+    entries = [r for r in caplog.records if "agentless keep-alive" in r.getMessage()]
+    assert len(entries) == 1  # logged exactly once despite multiple keep-alive ticks
+
+
+def test_run_forever_teardown_initial_start_failure_stays_up_with_panel():
+    # Surface-aware failed INITIAL start: the agent never starts (new-session rc!=0),
+    # but a panel is attached → the box does NOT close (agentless keep-alive), it keeps
+    # polling.  Exactly ONE start attempt (the failed initial one); no self-heal restart.
+    fake = FakeRun(rc={"has-session": 1, "new-session": 1})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    _script_snapshots(sup, [_VS])  # panel present throughout
+    _stop_after(sup, 3)
+    restarts: list[int] = []
+    sup.restart_agent_session = (  # type: ignore[method-assign]
+        lambda: restarts.append(1) or True
+    )
+    assert sup.run_forever() == 0                    # stayed up (no teardown return)
+    assert len(fake.sub_calls("new-session")) == 1   # one start attempt, no retries
+    assert restarts == []
+
+
+# ---------------------------------------------------------------------------
 # main / argparse.
 # ---------------------------------------------------------------------------
 

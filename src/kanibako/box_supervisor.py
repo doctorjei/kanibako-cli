@@ -386,6 +386,26 @@ class BoxSupervisor:
             proc_cmdlines=self._proc_cmdlines,
         )
 
+    def _other_surface_attached(self, state: AttachState) -> bool:
+        """True when a surface OTHER than the foreground CLI's own terminal is attached.
+
+        The CLI↔panel REF-COUNT SLICE (E2e, design principle B): a FOREGROUND launch's
+        OWN surface is the tmux TERMINAL it attached, so the "other" surface whose
+        presence must keep the box alive AFTER that CLI agent exits is the VS Code
+        PANEL — :attr:`AttachState.vscode_server`.  While the panel is attached, an
+        agent exit stays an agentless keep-alive (the box persists for the panel)
+        instead of tearing the box down; the box closes only once this last other
+        surface ALSO detaches — a poll-based ref-count where the box stops when the
+        LAST surface goes.
+
+        Deliberately the CLI↔panel slice, not a full N-terminal ref-count (multiple
+        independent CLI terminals) — that generalization is a noted extension (E2e
+        brief, "Out of scope"); this slice covers the stated FF-8 bug (a CLI agent
+        exit must not demolish a box a panel is concurrently using).  Reads only the
+        already-probed :class:`AttachState`, so it is as tolerant as the snapshot.
+        """
+        return state.vscode_server
+
     # -- self-heal -----------------------------------------------------------
 
     def _self_heal(self) -> bool:
@@ -481,17 +501,27 @@ class BoxSupervisor:
           bounded-retry restart, and the one clean exit is a self-heal that EXHAUSTS
           its retries (returns 0 so the box can stop).
         * ``"teardown"`` (foreground CLI, human present) → an agent exit is a NORMAL
-          termination: return the AGENT's own exit code (from the dead pane's
+          termination, but SURFACE-AWARE (E2e, principle B / ref-count): PID-1 closes
+          the box ONLY when no OTHER client surface is still attached.  With no other
+          surface, return the AGENT's own exit code (from the dead pane's
           ``#{pane_dead_status}``; 0 for a clean exit, 1 when dead-but-unknown) so
           PID-1 exits with a TRUTHFUL code and the box closes — a supervised agent
           CRASH surfaces via the host path instead of masquerading as success (E2d).
-          No self-heal loop while a CLI is the driver.  A failed INITIAL start
-          likewise returns non-zero so the start error surfaces via the host path.
+          But when a VS Code PANEL is attached (:meth:`_other_surface_attached`), do
+          NOT tear down: stay an AGENTLESS keep-alive (the box persists for the
+          panel; do NOT self-heal a CLI agent while the panel is the live surface —
+          the one-agent invariant) and keep polling, closing on a LATER tick once
+          that last surface also detaches.  No self-heal loop while a CLI is the
+          driver.  A failed INITIAL start is handled UNIFORMLY by the loop's first
+          tick (below), so it too is surface-aware.
 
         Returns a process exit code.
         """
         self.install_signal_handlers()
         teardown_on_exit = self.config.on_agent_exit == "teardown"
+        # One-shot guard so the agentless keep-alive state (E2e: agent dead but a
+        # panel keeps the box up) logs ONCE on entry, not per poll tick.
+        keepalive_announced = False
         # Startup runs BEFORE the per-tick guard, so guard it too: a probe raising
         # here (e.g. an unexpected snapshot failure) must not kill PID-1 before the
         # loop even begins.  On any startup hiccup, degrade to "no attach" and enter
@@ -500,13 +530,16 @@ class BoxSupervisor:
         try:
             if not self.agent_session_alive():
                 log.info("no live agent session at startup; starting one detached")
-                if not self.start_agent_session() and teardown_on_exit:
-                    # Foreground CLI launch-intent: a failed INITIAL start is a start
-                    # error to surface via the host (the human is present) — do NOT
-                    # self-heal, let PID-1 exit non-zero so the box closes and the host
-                    # reports it (design §86-88, cold-start-error-human-direct).
-                    log.error("initial agent start failed under teardown policy; exiting")
-                    return 1
+                if not self.start_agent_session():
+                    # A failed INITIAL start is handled UNIFORMLY by the loop's first
+                    # tick (E2e factoring): under 'self-heal' the loop self-heals a
+                    # missing agent; under 'teardown' the loop's SURFACE-AWARE branch
+                    # closes the box (rc from the dead pane, 1 when unknown) UNLESS a
+                    # panel is attached — in which case it stays up as an agentless
+                    # keep-alive.  No special-case return here (one start attempt, then
+                    # the loop's ref-count policy decides) keeps the teardown decision
+                    # in exactly ONE place (design §86-88, cold-start-error-human-direct).
+                    log.warning("initial agent start failed; deferring to the loop policy")
             prev = self._snapshot()
         except Exception:
             log.exception("supervisor startup probe raised; entering loop defensively")
@@ -521,23 +554,41 @@ class BoxSupervisor:
                     self._safe_on_detach()
                 if action.kind is ActionKind.SELF_HEAL:
                     if teardown_on_exit:
-                        # Propagate the agent's TRUE exit code as PID-1's own, so the
-                        # container's exit code (and thus the host's foreground error
-                        # handling) is TRUTHFUL — a supervised agent CRASH surfaces
-                        # instead of masquerading as a clean exit (E2d).  Read the
-                        # dead pane's ``#{pane_dead_status}``; a clean status-0 exit
-                        # ⇒ 0, and a dead-but-unknown agent (status unreadable, or the
-                        # session vanished entirely) ⇒ 1 — a failure, not a success.
-                        status = self.agent_pane_dead_status()
-                        code = 1 if status is None else status
-                        log.info(
-                            "agent exited under teardown policy (dead_status=%s); "
-                            "closing box with rc %d",
-                            status,
-                            code,
-                        )
-                        return code
-                    if not self._self_heal():
+                        # SURFACE-AWARE teardown (E2e, principle B / ref-count): the
+                        # agent is dead, but a box must PERSIST while any OTHER client
+                        # surface (a VS Code panel) is still attached — an FF-8 bug is
+                        # a CLI agent exit demolishing a box a panel is using.
+                        if self._other_surface_attached(cur):
+                            # Stay an AGENTLESS keep-alive: do NOT tear down, and do
+                            # NOT self-heal a CLI agent while the panel is the live
+                            # surface (the one-agent invariant).  Log ONCE on entry
+                            # (guard the per-tick spam), then fall through to keep
+                            # polling; a LATER tick tears down once the panel detaches.
+                            if not keepalive_announced:
+                                log.info(
+                                    "agent exited but another client surface (panel) "
+                                    "is attached; staying up as an agentless keep-alive"
+                                )
+                                keepalive_announced = True
+                        else:
+                            # No other surface → today's E2d teardown: propagate the
+                            # agent's TRUE exit code as PID-1's own, so the container's
+                            # exit code (and thus the host's foreground error handling)
+                            # is TRUTHFUL — a supervised agent CRASH surfaces instead of
+                            # masquerading as a clean exit.  Read the dead pane's
+                            # ``#{pane_dead_status}``; a clean status-0 exit ⇒ 0, and a
+                            # dead-but-unknown agent (status unreadable, or the session
+                            # vanished entirely) ⇒ 1 — a failure, not a success.
+                            status = self.agent_pane_dead_status()
+                            code = 1 if status is None else status
+                            log.info(
+                                "agent exited under teardown policy (dead_status=%s); "
+                                "no other surface attached — closing box with rc %d",
+                                status,
+                                code,
+                            )
+                            return code
+                    elif not self._self_heal():
                         return 0
                 prev = cur
             except Exception:
