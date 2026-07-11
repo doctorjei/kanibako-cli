@@ -1,0 +1,13 @@
+# e2e ONLY: overlay the HEAD kanibako-cli under test onto the published base
+# box image, so the in-box box_supervisor is the version being tested rather
+# than the OLD one baked into the published image (otherwise the launch's
+# forward-compat fallback runs a bare shell and the supervisor e2e tests can't
+# exercise the code under test).  Driven by test.yml's "Build HEAD-kanibako e2e
+# image" step: it builds a wheel into ./e2e-wheels and points BASE at the pulled
+# :latest tagged as kanibako-oci:base.  Force-reinstall --no-deps: the base
+# already carries kanibako-cli's runtime deps, so only the package is replaced.
+ARG BASE=kanibako-oci:base
+FROM ${BASE}
+COPY e2e-wheels/ /tmp/e2e-wheels/
+RUN pip install --break-system-packages --force-reinstall --no-deps \
+        /tmp/e2e-wheels/kanibako_cli-*.whl
