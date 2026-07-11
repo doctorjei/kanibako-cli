@@ -855,6 +855,128 @@ class TestPersistentMode:
             m.runtime.rm.assert_not_called()
 
 
+class TestCredsWatcherSpawnAndFlagHygiene:
+    """Increment D: the detached-launch creds-watcher spawn + writeback flag hygiene."""
+
+    def test_writeback_clears_creds_dirty_flag(self, tmp_path, monkeypatch):
+        """D Part 3: a successful host writeback clears the box's creds-dirty flag."""
+        from kanibako.commands.start import writeback_session_credentials
+        from kanibako.creds_watcher import creds_dirty_flag_path
+        from tests.test_commands.test_start import _SHARED_AUTH
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        home = tmp_path / "home"
+        flag = creds_dirty_flag_path(home)
+        flag.parent.mkdir(parents=True)
+        flag.write_text("1")
+
+        proj = MagicMock()
+        proj.shell_path = home
+        target = MagicMock()
+        target.descriptor = MagicMock()  # non-None -> credsync path
+
+        with patch("kanibako.commands.start.credsync") as mc:
+            mc.selected_source_root.return_value = None  # skip writeback_extra
+            writeback_session_credentials(target, proj, auth_src=_SHARED_AUTH)
+
+        assert not flag.exists()  # cleared after the successful writeback
+
+    def test_writeback_private_box_leaves_flag_untouched(self, tmp_path, monkeypatch):
+        """A PRIVATE box writeback is a no-op (early return) — the flag is not cleared."""
+        from kanibako.commands.start import writeback_session_credentials
+        from kanibako.creds_watcher import creds_dirty_flag_path
+        from tests.test_commands.test_start import _PRIVATE_AUTH
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        home = tmp_path / "home"
+        flag = creds_dirty_flag_path(home)
+        flag.parent.mkdir(parents=True)
+        flag.write_text("1")
+
+        proj = MagicMock()
+        proj.shell_path = home
+        target = MagicMock()
+        target.descriptor = MagicMock()
+
+        writeback_session_credentials(target, proj, auth_src=_PRIVATE_AUTH)
+        assert flag.exists()  # private box never propagates -> flag left as-is
+
+    def test_spawn_creds_watcher_builds_a_detached_popen(self, tmp_path):
+        """D Part 2: the watcher is spawned DETACHED with the box subject argv."""
+        import kanibako.commands.start as start_mod
+
+        proj = MagicMock()
+        proj.project_path = tmp_path / "proj"
+
+        with patch.object(start_mod.subprocess, "Popen") as popen:
+            start_mod._spawn_creds_watcher(proj)
+
+        popen.assert_called_once()
+        argv = popen.call_args.args[0]
+        assert argv[1:4] == ["-m", "kanibako.creds_watcher", "--box"]
+        assert argv[4] == str(proj.project_path)
+        # Detached: own session + no inherited std streams.
+        assert popen.call_args.kwargs["start_new_session"] is True
+        assert popen.call_args.kwargs["stdout"] == start_mod.subprocess.DEVNULL
+
+    def test_spawn_creds_watcher_tolerates_popen_failure(self, tmp_path):
+        """A spawn failure is swallowed — it must never crash the launch."""
+        import kanibako.commands.start as start_mod
+
+        proj = MagicMock()
+        proj.project_path = tmp_path / "proj"
+        with patch.object(start_mod.subprocess, "Popen", side_effect=OSError("nope")):
+            start_mod._spawn_creds_watcher(proj)  # no raise
+
+    def test_detached_shared_box_spawns_the_watcher(self, start_mocks):
+        """A DETACHED shared-tier launch spawns the creds watcher."""
+        with start_mocks():
+            # Harness default: is_running False at the reattach check, then True after
+            # run() -> a FRESH detached launch that the detach block confirms is up.
+            spawn = MagicMock()
+            with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, detach=True,
+                )
+            assert rc == 0
+            spawn.assert_called_once()
+
+    def test_detached_private_box_does_not_spawn_the_watcher(self, start_mocks):
+        """A DETACHED private box does NOT spawn a watcher (nothing to write back)."""
+        from tests.test_commands.test_start import _PRIVATE_AUTH
+
+        with start_mocks(), patch(
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_PRIVATE_AUTH, None),
+        ):
+            spawn = MagicMock()
+            with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, detach=True,
+                )
+            assert rc == 0
+            spawn.assert_not_called()
+
+    def test_foreground_start_does_not_spawn_the_watcher(self, start_mocks):
+        """A FOREGROUND persistent start does NOT spawn a watcher (its attach-return
+        writeback already covers the session)."""
+        with start_mocks() as m:
+            TestPersistentMode._drive_fresh_exit(m)
+            spawn = MagicMock()
+            with patch("kanibako.commands.start._spawn_creds_watcher", spawn):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True,
+                )
+            assert rc == 0
+            spawn.assert_not_called()
+
+
 class TestNoConversationHint:
     """Hint when agent exits non-zero with --continue/--resume."""
 

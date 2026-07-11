@@ -146,6 +146,14 @@ class SupervisorConfig:
     * *agent_pidfile* — box-local path to the panel-agent liveness marker (the panel
       agent's start hook writes its PID here; E2g).  Read tolerantly by
       :meth:`BoxSupervisor.panel_agent_state`.  Only consulted under *panel_watch*.
+    * *creds_flag* — box-local ABSOLUTE path to the credential-writeback SIGNAL flag
+      (increment D).  On EVERY detach transition (all modes) :meth:`_on_detach`
+      writes this flag into the supervisor's OWN box-home (already host-visible via
+      the box-home bind mount), so a TRUSTED HOST watcher (:mod:`kanibako.creds_watcher`)
+      can do the privileged box-home → store credential writeback.  The box NEVER
+      touches the host credential store itself (the load-bearing trust invariant).
+      ``None`` (the default) leaves :meth:`_on_detach` a no-op — an old host launcher
+      that threads no flag simply signals nothing.
     """
 
     session: str
@@ -160,6 +168,7 @@ class SupervisorConfig:
     on_agent_exit: str = "self-heal"
     panel_watch: bool = False
     agent_pidfile: str | None = None
+    creds_flag: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -631,15 +640,38 @@ class BoxSupervisor:
     # -- detach hook (best-effort POINT filled by increment D) ---------------
 
     def _on_detach(self) -> None:
-        """Best-effort HOOK POINT fired on a DETACH tick — a NO-OP here.
+        """Best-effort HOOK fired on a DETACH tick — write the creds-dirty SIGNAL flag.
 
-        Increment D (GAP-1 credential writeback) fills this in to write a
-        panel-refreshed token back to the host store on client detach.  E2a ships only
-        the point so D wires in WITHOUT touching the loop.  Contract: best-effort and
-        idempotent — the loop calls it through :meth:`_safe_on_detach`, so a raising
-        implementation is swallowed and never breaks the supervisor.
+        Increment D (GAP-1 credential writeback): a client detached, so an in-box
+        panel/agent may have refreshed a shared credential.  The load-bearing TRUST
+        invariant is that the box NEVER writes the host credential store (a mount is
+        not process-scoped → the untrusted agent would inherit any store-write
+        handle).  So the supervisor only SIGNALS: it edge-triggers a flag in its OWN
+        box-home (``config.creds_flag``, already host-visible via the box-home bind
+        mount), and a TRUSTED HOST watcher (:mod:`kanibako.creds_watcher`) does the
+        privileged box-home → store copy via the existing host writeback.
+
+        Universal across supervisor modes (foreground teardown, detached self-heal,
+        panel-watch) — the flag means only "a client detached, creds may have
+        refreshed", which the host resolves (writeback is a no-op for a private box).
+        Best-effort and idempotent: ``None`` flag ⇒ no-op (an old launcher threading
+        no ``--creds-flag``); a missing parent dir is created; ANY ``OSError`` is
+        swallowed here (and the loop also calls this via :meth:`_safe_on_detach`, so
+        even an unexpected raise can never break the supervisor).
         """
-        log.debug("on-detach hook (no-op in E2a)")
+        path = self.config.creds_flag
+        if not path:
+            log.debug("on-detach: no creds-flag configured; nothing to signal")
+            return
+        try:
+            flag = Path(path)
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            # A tiny edge-trigger MARKER — the host watcher only checks EXISTENCE, so
+            # the contents are immaterial; a single byte keeps it a non-empty file.
+            flag.write_text("1")
+            log.debug("on-detach: wrote creds-dirty flag %s", path)
+        except OSError as exc:
+            log.debug("on-detach: could not write creds-dirty flag %r: %s", path, exc)
 
     def _safe_on_detach(self) -> None:
         """Call :meth:`_on_detach`, swallowing ANY exception (the loop must not die)."""
@@ -921,6 +953,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="box-local path to the panel-agent liveness marker (read under --panel-watch)",
     )
+    parser.add_argument(
+        "--creds-flag",
+        default=None,
+        help=(
+            "box-local path to the credential-writeback SIGNAL flag (increment D): "
+            "written on EVERY detach so a trusted HOST watcher does the privileged "
+            "store writeback; omit to signal nothing"
+        ),
+    )
     return parser
 
 
@@ -955,6 +996,7 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
         on_agent_exit=ns.on_agent_exit,
         panel_watch=ns.panel_watch,
         agent_pidfile=ns.agent_pidfile,
+        creds_flag=ns.creds_flag,
     )
 
 
@@ -963,7 +1005,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ``python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
     [--max-retries N] [--continue-cmd 'ARGV'] [--on-agent-exit self-heal|teardown]
-    [--panel-watch --agent-pidfile PATH] -- <agent entrypoint + argv...>``
+    [--panel-watch --agent-pidfile PATH] [--creds-flag PATH]
+    -- <agent entrypoint + argv...>``
 
     In ``--panel-watch`` mode (E2f) the trailing ``-- <agent argv>`` is OMITTED (no
     agent starts at launch); ``--continue-cmd`` carries the self-heal grammar.

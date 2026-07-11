@@ -104,19 +104,26 @@ descriptor:
     KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.config/goose/.additionalContext.md"
 
   # Two-way SYNC of three things so in-box `goose configure` persists to the host
-  # (host check_auth then passes -> no re-prompt).  All unfiltered (key-by-NAME):
-  #   secrets.yaml + config.yaml (files) and custom_providers/ (dir).
+  # (host check_auth then passes -> no re-prompt):
+  #   secrets.yaml + custom_providers/ (unfiltered, key-by-NAME) and config.yaml
+  #   (FILTERED via transform_cred so the box-local panel-parity GOOSE_MODE is not
+  #   written back over the host's own GOOSE_MODE).
   cred_files:
     - home_rel: ".config/goose/secrets.yaml"
       host_rel: ".config/goose/secrets.yaml"
       cadence: sync
       mtime_gate: true
       filtered: false
+    # config.yaml is a two-way SYNC file (in-box `goose configure` -> host), BUT it
+    # is FILTERED (transform_cred) so the box-local panel-parity GOOSE_MODE
+    # (seeded by deliver_goose_panel_permissions for the VS Code panel's yolo) is
+    # NOT written back over the host's own GOOSE_MODE.  On writeback the host's
+    # GOOSE_MODE is preserved; every other key the user changed in-box still flows.
     - home_rel: ".config/goose/config.yaml"
       host_rel: ".config/goose/config.yaml"
       cadence: sync
       mtime_gate: true
-      filtered: false
+      filtered: true
     - home_rel: ".config/goose/custom_providers"
       host_rel: ".config/goose/custom_providers"
       cadence: sync

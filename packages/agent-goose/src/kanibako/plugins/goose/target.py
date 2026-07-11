@@ -11,6 +11,7 @@ from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
+    CredFileSpec,
     PluginDescriptor,
     Target,
     TargetSetting,
@@ -72,11 +73,65 @@ class GooseTarget(Target):
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
-    # NOTE: no ``transform_cred`` override.  The old host config.yaml IMPORT
-    # (extensions/instructions allowlist filter) stays removed; all of goose's
-    # cred specs are UNFILTERED SYNC entries — secrets.yaml + config.yaml (files)
-    # and custom_providers/ (dir) — which the credsync engine wholesale-copies +
-    # chmods 0600 without ever calling transform_cred.
+    def transform_cred(
+        self,
+        spec: "CredFileSpec",
+        src: "Path | None",
+        dst: Path,
+        direction: str,
+    ) -> None:
+        """Filter goose ``config.yaml`` so the box-local GOOSE_MODE is not written back.
+
+        Only ``config.yaml`` is FILTERED (secrets.yaml + custom_providers/ stay
+        unfiltered wholesale-copies); the engine calls this hook for that spec alone.
+
+        * ``"in"`` (host->box seed/refresh): wholesale copy — the box gets the host's
+          config.yaml verbatim (its box-local panel-parity GOOSE_MODE is (re)seeded
+          separately by ``deliver_goose_panel_permissions`` at attach).
+        * ``"out"`` (box->host writeback): merge the box's config.yaml back to the
+          host BUT preserve the host's OWN GOOSE_MODE.  ``GOOSE_MODE`` in the box is a
+          box-local PANEL-parity value (the panel's yolo), NOT user config, so it must
+          never overwrite the host's setting.  Every OTHER key the user changed
+          in-box (provider/model/extensions/...) still flows to the host.
+
+        Defensive throughout (matches the warn-and-skip credential helpers): a missing
+        source or a malformed YAML degrades to a safe no-op / empty dict, never raises.
+        """
+        import shutil
+
+        from kanibako.plugins.goose.credentials import read_yaml, write_yaml
+
+        if src is None or not Path(src).is_file():
+            return
+        if not spec.home_rel.endswith("config.yaml"):
+            # Defensive: only config.yaml is flagged filtered, but any other filtered
+            # spec falls back to a plain wholesale copy (the base-class default).
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+            return
+        if direction == "in":
+            # host->box: wholesale copy (panel-parity GOOSE_MODE re-seeded at attach).
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+            return
+        # direction "out": box->host writeback, preserving the host's own GOOSE_MODE.
+        box_cfg = read_yaml(Path(src))
+        if not box_cfg:
+            # An empty / unparseable box config.yaml (``read_yaml`` degrades to ``{}``)
+            # must NOT clobber the host's real config down to an empty file — a
+            # malformed box file is a no-op writeback, never data loss on the host.
+            return
+        host_cfg = read_yaml(dst)
+        if "GOOSE_MODE" in host_cfg:
+            box_cfg["GOOSE_MODE"] = host_cfg["GOOSE_MODE"]
+        else:
+            # Host had no GOOSE_MODE: drop the box-local one rather than introduce it.
+            box_cfg.pop("GOOSE_MODE", None)
+        if box_cfg == host_cfg:
+            # Nothing but the box-local GOOSE_MODE differed — leave the host file (and
+            # its mtime) untouched so the writeback is a true no-op.
+            return
+        write_yaml(dst, box_cfg)
 
     @property
     def name(self) -> str:
