@@ -2008,6 +2008,113 @@ class TestBuildSupervisorPid1:
         assert shlex.split(fb) == fallback_argv
 
 
+class TestWarmOnlyPanelWatch:
+    """`kanibako code` warm-up fronts the box AGENT-INDEPENDENTLY (E2f).
+
+    ``start_detached`` (the ``code`` auto-start entry) launches the box_supervisor
+    PID-1 in PANEL-WATCH mode: it starts NO CLI agent (the panel is the sole agent —
+    no two-agent split-brain on one ``~/.claude``), watches the panel-agent liveness
+    marker (``--agent-pidfile`` / ``KANIBAKO_AGENT_PIDFILE``), and self-heals a CLI
+    agent only if the panel agent dies with the panel still connected.  ``kanibako
+    start --detach`` (no ``warm_only``) stays the E2b supervised-agent path.
+    """
+
+    @staticmethod
+    def _pid1_script(m) -> str:
+        """The PID-1 ``sh -c`` script the container was launched with."""
+        kw = m.runtime.run.call_args.kwargs
+        assert kw["entrypoint"] == "sh"
+        cli_args = kw.get("cli_args") or []
+        assert cli_args[0] == "-c"
+        return cli_args[1]
+
+    @staticmethod
+    def _supervisor_argv(script: str) -> list[str]:
+        """shlex-split the supervisor invocation out of the import-gated script."""
+        import shlex
+
+        sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        return shlex.split(sup)
+
+    def test_start_detached_warm_up_is_agentless_panel_watch(self, start_mocks):
+        """REGRESSION-PIN (the bug no test caught): the warm-up supervisor is
+        AGENTLESS — panel-watch, NO agent runs at start.  Mutation-proof: a warm-up
+        that ran the CLI agent would emit a trailing ``-- <agent argv>`` payload."""
+        from kanibako.commands.start import AGENT_PIDFILE_PATH, start_detached
+
+        with start_mocks() as m:
+            rc = start_detached(None)
+            assert rc == 0
+            script = self._pid1_script(m)
+            argv = self._supervisor_argv(script)
+            # Panel-watch, agent-independent warm-up.
+            assert "--panel-watch" in argv
+            assert argv[argv.index("--agent-pidfile") + 1] == AGENT_PIDFILE_PATH
+            # MUTATION-PROOF: NO agent runs at start — there is NO standalone `--`
+            # payload separator, so the supervisor starts agentless.
+            assert "--" not in argv
+
+    def test_warm_up_self_heal_grammar_is_the_box_agent(self, start_mocks):
+        """The panel-death self-heal launches the BOX's agent: --continue-cmd carries
+        claude's grammar (a panel-watch box has no start-argv fallback, so an explicit
+        self-heal grammar is mandatory)."""
+        import shlex
+
+        from kanibako.commands.start import start_detached
+
+        with start_mocks() as m:
+            assert start_detached(None) == 0
+            argv = self._supervisor_argv(self._pid1_script(m))
+            assert "--continue-cmd" in argv
+            cont = argv[argv.index("--continue-cmd") + 1]
+            assert "claude" in shlex.split(cont)
+
+    def test_warm_up_forward_compat_fallback_is_agent_independent_bare_shell(
+        self, start_mocks,
+    ):
+        """The `|| exec` degrade path (old image, no supervisor module) is the
+        bare-shell tmux keep-alive — still AGENT-INDEPENDENT (the case-3a floor)."""
+        from kanibako.commands.start import start_detached
+
+        with start_mocks() as m:
+            assert start_detached(None) == 0
+            script = self._pid1_script(m)
+            fallback = script.split(" || exec ", 1)[1]
+            assert "box_supervisor" not in fallback       # no agent, no supervisor
+            assert "new-session -s kanibako" in fallback   # bare-shell tmux keep-alive
+
+    def test_warm_up_seeds_agent_pidfile_env(self, start_mocks):
+        """The box seeds KANIBAKO_AGENT_PIDFILE (E2g's write side) = the supervisor's
+        --agent-pidfile (this read side): ONE shared marker path."""
+        from kanibako.commands.start import AGENT_PIDFILE_PATH, start_detached
+
+        with start_mocks() as m:
+            assert start_detached(None) == 0
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert env["KANIBAKO_AGENT_PIDFILE"] == AGENT_PIDFILE_PATH
+
+    def test_start_detach_stays_supervised_agent_not_panel_watch(self, start_mocks):
+        """REGRESSION GUARD (no over-reach): `kanibako start --detach` (no warm_only)
+        is UNCHANGED — the E2b supervised agent runs at start, no panel-watch, no
+        marker env."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,  # NO warm_only
+            )
+            assert rc == 0
+            script = self._pid1_script(m)
+            argv = self._supervisor_argv(script)
+            assert "--panel-watch" not in argv
+            # The supervised agent runs at start: a standalone `--` payload with the
+            # agent entrypoint after it.
+            assert "--" in argv
+            assert "claude" in argv[argv.index("--") + 1:]
+            # No panel-agent marker env on the E2b path (nothing watches it).
+            assert "KANIBAKO_AGENT_PIDFILE" not in m.runtime.run.call_args.kwargs["env"]
+
+
 class TestForegroundSupervisor:
     """FOREGROUND AGENT `start` routes through the supervisor too (E2c).
 

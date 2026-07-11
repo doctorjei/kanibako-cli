@@ -26,6 +26,7 @@ probe or action that crashed the loop would take the whole box down with it.
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import signal
 import subprocess
@@ -34,6 +35,7 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from types import FrameType
 
 from kanibako.box_lifecycle import (
@@ -61,6 +63,47 @@ _Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 # The ``time.sleep`` signature the loop / backoff use; injectable so tests never
 # actually wait.
 _Sleeper = Callable[[float], None]
+
+# The panel-agent liveness probes (E2f), injectable so unit tests never touch the
+# real FS / os: ``_PidAlive`` answers "is this PID a live process?" and
+# ``_PidfileReader`` reads the marker file's text (``None`` when it is absent /
+# unreadable).  Defaults below are the real PID-1 implementations.
+_PidAlive = Callable[[int], bool]
+_PidfileReader = Callable[[str], "str | None"]
+
+
+def _default_pid_alive(pid: int) -> bool:
+    """Real ``_PidAlive``: is *pid* a live process? (``os.kill(pid, 0)``).
+
+    Shared PID namespace (the supervisor is PID-1, so it sees the panel agent):
+    ``os.kill(pid, 0)`` sends no signal but raises when the PID is not a live,
+    signalable process.  ``ProcessLookupError`` ⇒ dead; ``PermissionError`` ⇒
+    ALIVE (the process exists, we merely may not signal it); any other ``OSError``
+    ⇒ treated as not-live (tolerant — the panel-watch caller degrades to "no live
+    panel agent" rather than crashing PID-1).
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _default_read_pidfile(path: str) -> str | None:
+    """Real ``_PidfileReader``: return the marker file's text, or ``None``.
+
+    Tolerant (PID-1 must never die on a missing/racing pidfile): an absent file,
+    an unreadable one, or any other ``OSError`` resolves to ``None`` — read by the
+    caller as "no panel agent yet" — never an exception.
+    """
+    try:
+        return Path(path).read_text()
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +137,15 @@ class SupervisorConfig:
       a human is the driver) treats an agent EXIT as a NORMAL termination and lets
       PID-1 return so the box closes — no self-heal loop while a CLI is the surface.
       Any value other than ``"teardown"`` is treated as ``"self-heal"`` (safe default).
+    * *panel_watch* — PANEL-WATCH mode (E2f, design cases 3a/3b): when ``True`` the
+      supervisor starts NO CLI agent (the VS Code panel is the agent), watches the
+      *agent_pidfile* liveness MARKER + the vscode_server surface, and self-heals a
+      CLI agent ONLY when the panel agent DIES with the panel still connected (the
+      §89-96 fallback).  ``False`` (default) is the E2b-E2e tmux-agent path,
+      byte-unchanged.  This is the ``kanibako code`` AGENT-INDEPENDENT warm-up.
+    * *agent_pidfile* — box-local path to the panel-agent liveness marker (the panel
+      agent's start hook writes its PID here; E2g).  Read tolerantly by
+      :meth:`BoxSupervisor.panel_agent_state`.  Only consulted under *panel_watch*.
     """
 
     session: str
@@ -106,6 +158,8 @@ class SupervisorConfig:
     send_keys_retries: int = 3
     send_keys_delay: float = 0.1
     on_agent_exit: str = "self-heal"
+    panel_watch: bool = False
+    agent_pidfile: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +215,104 @@ def decide(
 
 
 # ---------------------------------------------------------------------------
+# PANEL-WATCH model (E2f) — the agent-independent `code` warm-up path.
+# ---------------------------------------------------------------------------
+
+class PanelAgentState(Enum):
+    """Liveness of the PANEL-launched agent, from the marker pidfile (E2f).
+
+    * :data:`NONE` — no marker yet (file absent / empty / unparseable): no panel
+      agent has started, OR one exited cleanly and removed its marker.
+    * :data:`ALIVE` — the marker names a LIVE process (``os.kill(pid, 0)`` ok).
+    * :data:`DEAD` — the marker names a process that is NOT live (a crash left the
+      pidfile STALE): the panel agent exited.
+    """
+
+    NONE = "none"
+    ALIVE = "alive"
+    DEAD = "dead"
+
+
+class PanelActionKind(Enum):
+    """What a PANEL-WATCH tick must DO (besides the detach hook)."""
+
+    NONE = "none"
+    SELF_HEAL_CLI = "self_heal_cli"
+    TEARDOWN = "teardown"
+
+
+@dataclass(frozen=True)
+class PanelAction:
+    """The decision a single panel-watch tick produces.
+
+    * *kind* — :data:`PanelActionKind.SELF_HEAL_CLI` when the panel agent died with
+      the panel still connected (launch a CLI agent in tmux, the §89-96 fallback);
+      :data:`PanelActionKind.TEARDOWN` when every surface + agent is gone
+      (ref-count / principle B); otherwise :data:`PanelActionKind.NONE` (keep-alive).
+    """
+
+    kind: PanelActionKind = PanelActionKind.NONE
+
+
+def decide_panel(
+    tmux_alive: bool,
+    panel: PanelAgentState,
+    vscode_server: bool,
+    any_attached: bool,
+    seen_surface: bool,
+) -> PanelAction:
+    """PURE: decide a panel-watch tick's action (E2f state machine, design 3a/3b).
+
+    Two DISTINCT surface signals combine (design principle B / the E2e FF-8 fix):
+
+    * *vscode_server* — the PANEL specifically.  It gates SELF_HEAL_CLI, which is the
+      panel-specific §89-96 fallback ("the PANEL died while the panel is connected →
+      launch a CLI agent").  A tmux terminal is NOT a panel, so it cannot trigger a
+      panel-death self-heal.
+    * *any_attached* — ANY client surface (panel OR tmux terminal).  It gates the
+      ref-count KEEP-ALIVE / TEARDOWN: a box must persist while ANY surface is
+      attached, so tearing down keys on "no surface AT ALL is attached" — never on
+      the panel alone (else a box could close out from under an attached terminal,
+      the exact FF-8-class bug E2e fixed for the CLI path).
+
+    The state machine:
+
+    * ``tmux_alive`` OR ``panel == ALIVE`` → :data:`PanelActionKind.NONE` — an agent
+      IS running (a self-healed CLI agent in tmux, or the live panel agent); hands-off.
+    * No live agent:
+
+      * ``panel == DEAD`` AND ``vscode_server`` → :data:`PanelActionKind.SELF_HEAL_CLI`
+        — the panel agent died but the PANEL is STILL connected, so launch a CLI
+        agent in tmux (the §89-96 fallback).  Thereafter a tmux agent exists and the
+        first branch keeps it hands-off / self-healed.
+      * Else (``panel`` is ``NONE``, or ``DEAD`` with no panel):
+
+        * ``any_attached`` (ANY surface — panel OR terminal — is present) →
+          :data:`PanelActionKind.NONE` — keep-alive (principle B: a live surface
+          keeps the box up; a panel will (re)bring an agent, a terminal is a human).
+        * No surface AND ``seen_surface`` (a surface was present earlier, now gone)
+          → :data:`PanelActionKind.TEARDOWN` — ref-count / principle B: ALL surfaces
+          and agents are gone, close the box.
+        * No surface AND NOT ``seen_surface`` (never attached — a freshly warmed box)
+          → :data:`PanelActionKind.NONE` — keep-alive through the STARTUP GRACE so we
+          do not tear down before VS Code first attaches.  (Known: a ``code`` box
+          that is NEVER attached lingers until ``kanibako stop`` — acceptable.)
+
+    Deterministic and side-effect free over its inputs, so the whole panel-watch
+    loop's logic is exhaustively unit-testable without any tmux / FS / os.
+    """
+    if tmux_alive or panel is PanelAgentState.ALIVE:
+        return PanelAction(PanelActionKind.NONE)
+    if panel is PanelAgentState.DEAD and vscode_server:
+        return PanelAction(PanelActionKind.SELF_HEAL_CLI)
+    if any_attached:
+        return PanelAction(PanelActionKind.NONE)
+    if seen_surface:
+        return PanelAction(PanelActionKind.TEARDOWN)
+    return PanelAction(PanelActionKind.NONE)
+
+
+# ---------------------------------------------------------------------------
 # The supervisor.
 # ---------------------------------------------------------------------------
 
@@ -186,6 +338,8 @@ class BoxSupervisor:
         run: _Runner = subprocess.run,
         sleep: _Sleeper = time.sleep,
         proc_cmdlines: Iterable[str] | None = None,
+        pid_alive: _PidAlive = _default_pid_alive,
+        read_pidfile: _PidfileReader = _default_read_pidfile,
     ) -> None:
         self.config = config
         self._run = run
@@ -194,6 +348,10 @@ class BoxSupervisor:
         # snapshot_attach_state (tests inject it to skip the real ``/proc`` walk);
         # ``None`` ⇒ each snapshot collects fresh from ``/proc`` (the real PID-1 path).
         self._proc_cmdlines = None if proc_cmdlines is None else list(proc_cmdlines)
+        # Panel-agent liveness probes (E2f), injectable so unit tests never touch the
+        # real FS / os; defaults are the real PID-1 implementations.
+        self._pid_alive = pid_alive
+        self._read_pidfile = read_pidfile
         self._stop = False
 
     # -- tmux action helpers (impure; tolerant; injectable ``run``) ----------
@@ -406,6 +564,45 @@ class BoxSupervisor:
         """
         return state.vscode_server
 
+    # -- panel-agent liveness (E2f) ------------------------------------------
+
+    def panel_agent_state(self) -> PanelAgentState:
+        """Liveness of the PANEL-launched agent from the marker pidfile (E2f).
+
+        Reads ``config.agent_pidfile`` via the injected reader and checks the PID
+        via the injected liveness probe (defaults: real FS read + ``os.kill(pid,
+        0)``).  TOLERANT throughout — PID-1 must never die on a bad marker:
+
+        * no ``agent_pidfile`` configured, file absent / empty / unparseable, or a
+          probe that raises → :data:`PanelAgentState.NONE` ("no live panel agent");
+        * a parseable positive PID that is a LIVE process → :data:`PanelAgentState.ALIVE`;
+        * a parseable positive PID that is NOT live (a stale marker a crash left
+          behind) → :data:`PanelAgentState.DEAD`.
+        """
+        path = self.config.agent_pidfile
+        if not path:
+            return PanelAgentState.NONE
+        try:
+            raw = self._read_pidfile(path)
+        except Exception:
+            log.debug("panel_agent_state: pidfile read raised for %r; treating as NONE", path)
+            return PanelAgentState.NONE
+        if not raw or not raw.strip():
+            return PanelAgentState.NONE
+        try:
+            pid = int(raw.strip())
+        except ValueError:
+            log.debug("panel_agent_state: unparseable pidfile contents %r", raw)
+            return PanelAgentState.NONE
+        if pid <= 0:
+            return PanelAgentState.NONE
+        try:
+            alive = self._pid_alive(pid)
+        except Exception:
+            log.debug("panel_agent_state: liveness probe raised for pid %d; treating as NONE", pid)
+            return PanelAgentState.NONE
+        return PanelAgentState.ALIVE if alive else PanelAgentState.DEAD
+
     # -- self-heal -----------------------------------------------------------
 
     def _self_heal(self) -> bool:
@@ -518,6 +715,11 @@ class BoxSupervisor:
         Returns a process exit code.
         """
         self.install_signal_handlers()
+        if self.config.panel_watch:
+            # E2f: the `code` AGENT-INDEPENDENT warm-up runs a distinct loop that
+            # starts NO CLI agent and watches the panel-agent marker + surface.  The
+            # E2b-E2e path below is untouched (only reached when NOT panel_watch).
+            return self._run_panel_watch()
         teardown_on_exit = self.config.on_agent_exit == "teardown"
         # One-shot guard so the agentless keep-alive state (E2e: agent dead but a
         # panel keeps the box up) logs ONCE on entry, not per poll tick.
@@ -596,6 +798,76 @@ class BoxSupervisor:
             self._sleep(self.config.poll_interval)
         return 0
 
+    def _run_panel_watch(self) -> int:
+        """The PANEL-WATCH loop (E2f): agent-independent ``code`` warm-up.
+
+        Unlike :meth:`run_forever`'s tmux-agent path, startup starts NO CLI agent —
+        the VS Code panel is the agent.  Each tick snapshots the surfaces, tracks a
+        ``seen_surface`` LATCH (set once any surface has ever been attached — so a
+        never-attached freshly warmed box stays up through the startup grace), and
+        drives the pure :func:`decide_panel` over (tmux liveness, panel-agent marker,
+        vscode_server, seen_surface):
+
+        * :data:`PanelActionKind.SELF_HEAL_CLI` → the panel agent DIED with the panel
+          still connected: run :meth:`_self_heal` (continue grammar + marker) to
+          launch a CLI agent in tmux.  Thereafter that tmux agent is live, so
+          ``decide_panel`` returns NONE and the loop leaves it be (self-healing it
+          again if IT later dies while the panel is up).  A self-heal that EXHAUSTS
+          its retries returns 0 (principle B: let the box stop).
+        * :data:`PanelActionKind.TEARDOWN` → every surface + agent is gone: return 0.
+        * :data:`PanelActionKind.NONE` → keep-alive; keep polling.
+
+        The DETACH hook (:meth:`_safe_on_detach`, D's cred-writeback point) still
+        fires on a DETACH transition, computed exactly as the E2b loop does via
+        :func:`classify_transition` over the prev→cur snapshot.  Every tick's body is
+        guarded so a raising probe/action is logged and the loop CONTINUES (PID-1 must
+        not die on a transient error).
+        """
+        log.info("panel-watch mode: agentless keep-alive fronting the VS Code panel")
+        # ``seen_surface`` LATCHES True once any surface has ever been attached, so a
+        # box that IS attached and later fully detaches tears down (ref-count), while
+        # a never-yet-attached box stays up through the startup grace.  The pre-loop
+        # snapshot is guarded like run_forever's startup (a raise must not kill PID-1).
+        seen_surface = False
+        try:
+            prev = self._snapshot()
+            if prev.any_attached:
+                seen_surface = True
+        except Exception:
+            log.exception("panel-watch startup snapshot raised; entering loop defensively")
+            prev = AttachState()
+
+        while not self._stop:
+            try:
+                cur = self._snapshot()
+                if cur.any_attached:
+                    seen_surface = True
+                if classify_transition(prev, cur) is LifecycleEvent.DETACH:
+                    self._safe_on_detach()
+                tmux_alive = self.agent_session_alive()
+                panel = self.panel_agent_state()
+                action = decide_panel(
+                    tmux_alive, panel, cur.vscode_server, cur.any_attached, seen_surface,
+                )
+                if action.kind is PanelActionKind.SELF_HEAL_CLI:
+                    log.info(
+                        "panel agent died with the panel still connected; "
+                        "self-healing a CLI agent in tmux (the §89-96 fallback)"
+                    )
+                    if not self._self_heal():
+                        return 0
+                elif action.kind is PanelActionKind.TEARDOWN:
+                    log.info(
+                        "all client surfaces and agents gone; "
+                        "tearing down the warmed panel-watch box"
+                    )
+                    return 0
+                prev = cur
+            except Exception:
+                log.exception("panel-watch tick failed; continuing")
+            self._sleep(self.config.poll_interval)
+        return 0
+
 
 # ---------------------------------------------------------------------------
 # CLI entry point.
@@ -635,6 +907,20 @@ def _build_parser() -> argparse.ArgumentParser:
             "restart) or 'teardown' (foreground CLI — close the box on agent exit)"
         ),
     )
+    parser.add_argument(
+        "--panel-watch",
+        action="store_true",
+        help=(
+            "PANEL-WATCH mode (E2f): start NO CLI agent; watch the panel-agent marker "
+            "(--agent-pidfile) + the VS Code server surface and self-heal a CLI agent "
+            "only when the panel agent dies with the panel still connected"
+        ),
+    )
+    parser.add_argument(
+        "--agent-pidfile",
+        default=None,
+        help="box-local path to the panel-agent liveness marker (read under --panel-watch)",
+    )
     return parser
 
 
@@ -644,7 +930,10 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
     Splits on the first standalone ``--``: everything before it is parsed as options,
     everything after is the agent ``start_argv``.  ``--continue-cmd`` is shlex-split
     into ``continue_argv`` (defaulting to a copy of ``start_argv`` when absent).  A
-    missing ``--`` / empty trailing argv is an error (there is no agent to run).
+    missing ``--`` / empty trailing argv is an error (there is no agent to run) —
+    EXCEPT under ``--panel-watch`` (E2f), which starts NO agent at launch, so it
+    takes an empty ``start_argv`` and relies on ``--continue-cmd`` for its self-heal
+    grammar (the host always threads one through).
     """
     parser = _build_parser()
     if "--" in argv:
@@ -653,7 +942,7 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
     else:
         opt_args, start_argv = list(argv), []
     ns = parser.parse_args(opt_args)
-    if not start_argv:
+    if not start_argv and not ns.panel_watch:
         parser.error("no agent argv given after '--'")
     continue_argv = shlex.split(ns.continue_cmd) if ns.continue_cmd else list(start_argv)
     return SupervisorConfig(
@@ -664,6 +953,8 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
         poll_interval=ns.poll,
         max_restart_retries=ns.max_retries,
         on_agent_exit=ns.on_agent_exit,
+        panel_watch=ns.panel_watch,
+        agent_pidfile=ns.agent_pidfile,
     )
 
 
@@ -672,7 +963,10 @@ def main(argv: list[str] | None = None) -> int:
 
     ``python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
     [--max-retries N] [--continue-cmd 'ARGV'] [--on-agent-exit self-heal|teardown]
-    -- <agent entrypoint + argv...>``
+    [--panel-watch --agent-pidfile PATH] -- <agent entrypoint + argv...>``
+
+    In ``--panel-watch`` mode (E2f) the trailing ``-- <agent argv>`` is OMITTED (no
+    agent starts at launch); ``--continue-cmd`` carries the self-heal grammar.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     config = config_from_argv(args)
