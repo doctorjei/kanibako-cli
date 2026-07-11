@@ -3,6 +3,10 @@
 
 Bind-mounted into containers at /home/agent/.local/bin/kanibako.
 The kanibako package directory is bind-mounted at /opt/kanibako/kanibako/.
+
+The /opt/kanibako literal is the single-source ``KANIBAKO_PKG_MOUNT_ROOT``
+(kanibako.box_supervisor) elsewhere; this script runs BEFORE kanibako is
+importable, so it must repeat the literal — keep the two in sync.
 """
 import sys
 

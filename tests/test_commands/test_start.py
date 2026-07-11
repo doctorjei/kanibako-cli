@@ -3094,7 +3094,7 @@ class TestDetachKeepAlive:
             assert cli_args[0] == "-c"
             script = cli_args[1]
             # The supervisor runs the AGENT as PID-1...
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "claude" in script
             # ...and the resolved shell is the `|| exec` degrade path.
             assert "/bin/bash" in script
@@ -3186,7 +3186,7 @@ class TestDetachKeepAlive:
             assert cli_args[0] == "-c"
             script = cli_args[1]
             # Supervised as PID-1 with the FOREGROUND teardown policy...
-            assert "exec python3 -m kanibako.box_supervisor" in script
+            assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "--on-agent-exit teardown" in script
             assert "claude" in script
             # ...and the terminal IS attached.

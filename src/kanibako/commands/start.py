@@ -22,7 +22,7 @@ from kanibako.agent_config import (
     load_agent_config,
     write_agent_config,
 )
-from kanibako.box_supervisor import CONTINUE_MARKER
+from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import (
     BOX_META_FILE,
@@ -1035,11 +1035,33 @@ def _build_supervisor_pid1(
     0); both are ``shlex``-quoted into the single ``sh -c`` script so agent args
     carrying spaces / quotes survive intact through the nested shell.  Returns
     ``("sh", ["-c", <script>])``.
+
+    Both the import PROBE and the supervisor ``exec`` run with the HOST kanibako
+    (bind-mounted read-only at :data:`KANIBAKO_PKG_MOUNT_ROOT` by
+    :func:`_kanibako_mounts`) FIRST on ``sys.path`` via an injected ``PYTHONPATH`` —
+    so the supervisor that runs is the FRESH host version (== the host CLI), never
+    the image's baked copy.  Published images ship an OLD kanibako WITHOUT the
+    supervisor module, so probing/exec'ing the baked copy would silently degrade
+    every real launch to the bare-shell fallback (design §221-225).  ``PYTHONPATH``
+    is PREPENDED (``${PYTHONPATH:+:$PYTHONPATH}``), never clobbered, so any value the
+    image sets survives after our entry; the supervisor scrubs its OWN mount-root
+    entry back out before spawning the agent/tmux children
+    (:func:`kanibako.box_supervisor.scrub_bootstrap_pythonpath`).  The FALLBACK
+    ``exec`` is left UNCHANGED (no PYTHONPATH): it is a bare-shell keep-alive that
+    never imports kanibako, and runs only when even the host supervisor import fails.
+    The whole ``PYTHONPATH=…`` assignment is DOUBLE-QUOTED so the shell still expands
+    ``${PYTHONPATH:+…}`` but the RESULT is never word-split or glob-expanded — an image
+    whose own PYTHONPATH held a space or ``*`` would otherwise split the env assignment
+    into extra ``env`` operands (``env`` treats the tail as a command and fails),
+    silently degrading the probe to the bare-shell fallback.  The
+    ``KANIBAKO_PKG_MOUNT_ROOT`` literal is itself a fixed, shell-safe path; the argv
+    lists stay ``shlex``-quoted verbatim after each ``exec``.
     """
+    pythonpath = f'"PYTHONPATH={KANIBAKO_PKG_MOUNT_ROOT}${{PYTHONPATH:+:$PYTHONPATH}}"'
     probe = shlex.join(["python3", "-c", "import kanibako.box_supervisor"])
     script = (
-        f"{probe} 2>/dev/null "
-        f"&& exec {shlex.join(supervisor_argv)} "
+        f"env {pythonpath} {probe} 2>/dev/null "
+        f"&& exec env {pythonpath} {shlex.join(supervisor_argv)} "
         f"|| exec {shlex.join(fallback_argv)}"
     )
     return "sh", ["-c", script]
@@ -4985,8 +5007,12 @@ def _kanibako_mounts():
     """Build bind mounts for the kanibako CLI inside containers.
 
     Returns two mounts:
-      1. Package dir → /opt/kanibako/kanibako/ (ro)
+      1. Package dir → ``{KANIBAKO_PKG_MOUNT_ROOT}/kanibako`` (ro)
       2. Entry script → /home/agent/.local/bin/kanibako (ro)
+
+    The package-dir dest is derived from :data:`KANIBAKO_PKG_MOUNT_ROOT` — the SAME
+    constant the supervisor PID-1 injects as PYTHONPATH and scrubs back out — so the
+    mount location and the import path can never drift.
     """
     import importlib.resources
 
@@ -4999,7 +5025,7 @@ def _kanibako_mounts():
     entry_path = Path(str(entry_ref))
 
     return [
-        Mount(pkg_dir, "/opt/kanibako/kanibako", "ro"),
+        Mount(pkg_dir, f"{KANIBAKO_PKG_MOUNT_ROOT}/kanibako", "ro"),
         Mount(entry_path, "/home/agent/.local/bin/kanibako", "ro"),
     ]
 

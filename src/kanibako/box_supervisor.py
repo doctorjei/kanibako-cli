@@ -32,7 +32,7 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, MutableMapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -54,6 +54,54 @@ log = get_logger("box_supervisor")
 #: the host-side launch wiring (``commands/start.py`` → ``--marker``) and the
 #: in-box supervisor share a single source of truth — never a duplicated literal.
 CONTINUE_MARKER = "[Agent handoff - Continue prior task(s)]"
+
+#: In-box read-only bind-mount ROOT of the HOST kanibako package.  ``_kanibako_mounts``
+#: (``commands/start.py``) lands the host package dir at ``f"{KANIBAKO_PKG_MOUNT_ROOT}/
+#: kanibako"`` and the in-box ``kanibako`` CLI puts this dir on ``sys.path``; the host
+#: launcher (``_build_supervisor_pid1``) also injects it as ``PYTHONPATH`` so PID-1
+#: imports THIS supervisor from the fresh host package (version == host CLI) rather
+#: than the image's baked copy — published images ship an OLD kanibako WITHOUT the
+#: supervisor module, so importing the baked copy would silently degrade every real
+#: launch to the bare-shell fallback.  Single-sourced HERE (the lowest module that
+#: needs it: ``start.py`` imports it, and :func:`scrub_bootstrap_pythonpath` strips it
+#: back out) so the mount dest and the injected/scrubbed PYTHONPATH can never drift.
+#: NOTE: ``scripts/kanibako-entry`` and ``data/core-defaults.yaml`` also carry this
+#: literal (the entry script runs BEFORE kanibako is importable, and a YAML data
+#: file cannot reference a constant); keep those literals in sync with this value.
+KANIBAKO_PKG_MOUNT_ROOT = "/opt/kanibako"
+
+
+def scrub_bootstrap_pythonpath(
+    environ: MutableMapping[str, str] | None = None,
+) -> None:
+    """Strip the injected :data:`KANIBAKO_PKG_MOUNT_ROOT` entry from PYTHONPATH.
+
+    The host launcher prepends :data:`KANIBAKO_PKG_MOUNT_ROOT` to ``PYTHONPATH`` so
+    PID-1 imports the supervisor from the fresh host-mounted kanibako, not the image's
+    baked copy.  But the supervisor's CHILDREN — the tmux server and, under it, the
+    AGENT — must NOT inherit that entry: the agent runs with its own environment and
+    has no business importing kanibako from our host mount (an inherited
+    ``/opt/kanibako`` on the agent's path could also shadow an unrelated package in
+    the agent's own tree).  ``PYTHONPATH`` is read by CPython only at interpreter
+    STARTUP, so mutating the env now cannot disturb THIS already-running supervisor's
+    ``sys.path`` — it affects only processes spawned AFTER this call.  Call it once,
+    before the watch loop spawns anything.
+
+    Removes EXACTLY the mount-root path element, preserving every other entry the
+    image set, and drops ``PYTHONPATH`` entirely when nothing else remains.  Defaults
+    to :data:`os.environ` (the real child-inheritance source); a caller may pass an
+    explicit mapping (tests).
+    """
+    env = os.environ if environ is None else environ
+    raw = env.get("PYTHONPATH")
+    if raw is None:
+        return
+    kept = [p for p in raw.split(os.pathsep) if p != KANIBAKO_PKG_MOUNT_ROOT]
+    if kept:
+        env["PYTHONPATH"] = os.pathsep.join(kept)
+    else:
+        env.pop("PYTHONPATH", None)
+
 
 # The subprocess-runner signature the tmux actions call.  ``subprocess.run``
 # matches it; tests inject a fake so nothing touches a real tmux server.  Shared
@@ -1111,6 +1159,11 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = list(sys.argv[1:] if argv is None else argv)
     config = config_from_argv(args)
+    # Strip the host-package mount from PYTHONPATH before the loop spawns tmux / the
+    # agent, so those children do not inherit our import path (see
+    # :func:`scrub_bootstrap_pythonpath`).  Safe here: this process's own imports are
+    # already resolved, and PYTHONPATH only affects newly spawned processes.
+    scrub_bootstrap_pythonpath()
     supervisor = BoxSupervisor(config)
     return supervisor.run_forever()
 
