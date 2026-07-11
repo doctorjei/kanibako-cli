@@ -576,6 +576,17 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
+    # Record the template stamp the way first-run init does — this fixture
+    # pre-seeds the config instead of running init, so without the stamp
+    # template_staleness_gate hard-errors every `kanibako start` (see e2e_env).
+    from kanibako.config_interface import write_system_value
+    from kanibako.targets import discover_targets
+    from kanibako.templates import packaged_templates_digest
+    write_system_value(
+        kanibako_config,
+        "templates_stamp",
+        packaged_templates_digest(sorted(discover_targets().keys())),
+    )
 
     names_dir = data_home / "kanibako"
     names_dir.mkdir(parents=True)
