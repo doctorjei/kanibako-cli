@@ -9,9 +9,13 @@ from pathlib import Path
 import yaml
 
 from kanibako.vscode_config import (
+    _AGENT_PIDFILE_REMOVE_COMMAND,
+    _AGENT_PIDFILE_WRITE_COMMAND,
     _CODEX_EVENT_KEY,
+    _SESSION_END_MATCHER,
     _SESSION_START_COMMAND,
     _SESSION_START_MATCHER,
+    AGENT_PIDFILE_PATH,
     _encode_image_ref,
     attached_container_config_path,
     clear_bypass_permissions,
@@ -23,6 +27,8 @@ from kanibako.vscode_config import (
     merge_attached_container_config,
     merge_bypass_permissions,
     merge_codex_config,
+    merge_pidfile_write_hook,
+    merge_session_end_hook,
     merge_session_start_hook,
     seed_attached_container_config,
     seed_claude_bypass_permissions,
@@ -417,6 +423,32 @@ def _managed_group() -> dict:
     }
 
 
+def _pidfile_write_group() -> dict:
+    """The E2g pidfile-WRITE managed group (its own SessionStart group)."""
+    return {
+        "matcher": _SESSION_START_MATCHER,
+        "hooks": [{"type": "command", "command": _AGENT_PIDFILE_WRITE_COMMAND}],
+    }
+
+
+def _pidfile_remove_group() -> dict:
+    """The E2g pidfile-REMOVE managed group (the SessionEnd group)."""
+    return {
+        "matcher": _SESSION_END_MATCHER,
+        "hooks": [{"type": "command", "command": _AGENT_PIDFILE_REMOVE_COMMAND}],
+    }
+
+
+def _full_managed_hooks() -> dict:
+    """The full claude managed hook set seed_session_start_hook writes: the
+    directive + pidfile-write SessionStart groups and the pidfile-remove SessionEnd
+    group."""
+    return {
+        "SessionStart": [_managed_group(), _pidfile_write_group()],
+        "SessionEnd": [_pidfile_remove_group()],
+    }
+
+
 def test_merge_session_start_into_empty_creates_hooks_block():
     merged = merge_session_start_hook({})
     assert merged == {"hooks": {"SessionStart": [_managed_group()]}}
@@ -500,11 +532,12 @@ def test_merge_session_start_tolerates_non_dict_hooks():
 # codex no longer uses this JSON path — it has its own config.toml manager below.
 
 def test_seed_session_start_writes_and_is_idempotent(tmp_path):
-    """First seed writes; a re-run is a no-op (claude settings.json)."""
+    """First seed writes the FULL managed set (directive + pidfile write/remove);
+    a re-run is a no-op (claude settings.json)."""
     path = tmp_path / "settings.json"
     assert seed_session_start_hook(path) is True
     data = json.loads(path.read_text())
-    assert data == {"hooks": {"SessionStart": [_managed_group()]}}
+    assert data == {"hooks": _full_managed_hooks()}
     # Idempotent: second call writes nothing.
     assert seed_session_start_hook(path) is False
 
@@ -518,7 +551,10 @@ def test_seed_session_start_merges_into_existing_user_hooks(tmp_path):
     assert seed_session_start_hook(path) is True
     data = json.loads(path.read_text())
     assert data["hooks"]["PreToolUse"] == [{"matcher": "*", "hooks": []}]
-    assert data["hooks"]["SessionStart"] == [_managed_group()]
+    assert data["hooks"]["SessionStart"] == [
+        _managed_group(), _pidfile_write_group(),
+    ]
+    assert data["hooks"]["SessionEnd"] == [_pidfile_remove_group()]
 
 
 def test_seed_session_start_tolerates_corrupt(tmp_path):
@@ -527,7 +563,133 @@ def test_seed_session_start_tolerates_corrupt(tmp_path):
     path.write_text("{not json")
     assert seed_session_start_hook(path) is True
     data = json.loads(path.read_text())
-    assert data == {"hooks": {"SessionStart": [_managed_group()]}}
+    assert data == {"hooks": _full_managed_hooks()}
+
+
+# --- E2g pidfile marker: write (SessionStart) + remove (SessionEnd) --------
+
+def test_pidfile_commands_default_path_is_the_single_source_constant():
+    """SINGLE SOURCE OF TRUTH guard: the hook commands' default path is built FROM
+    AGENT_PIDFILE_PATH, so it cannot drift from the supervisor's --agent-pidfile."""
+    default = "${KANIBAKO_AGENT_PIDFILE:-" + AGENT_PIDFILE_PATH + "}"
+    assert default in _AGENT_PIDFILE_WRITE_COMMAND
+    assert default in _AGENT_PIDFILE_REMOVE_COMMAND
+    # The write command writes $PPID after ensuring the dir exists; silent-safe.
+    assert _AGENT_PIDFILE_WRITE_COMMAND == (
+        f'f="${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}"; '
+        'mkdir -p "$(dirname "$f")" && printf %s "$PPID" > "$f" || true'
+    )
+    assert _AGENT_PIDFILE_REMOVE_COMMAND == (
+        f'rm -f "${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}" || true'
+    )
+
+
+def test_pidfile_path_agrees_with_supervisor_agent_pidfile():
+    """The two ends of the E2f/E2g contract read ONE constant: the E2g write side
+    (vscode_config.AGENT_PIDFILE_PATH) IS the value start.py passes to the
+    supervisor's --agent-pidfile / seeds as KANIBAKO_AGENT_PIDFILE (read side)."""
+    from kanibako.commands.start import AGENT_PIDFILE_PATH as START_PIDFILE_PATH
+
+    assert START_PIDFILE_PATH is AGENT_PIDFILE_PATH
+
+
+def test_merge_pidfile_write_into_empty_creates_own_sessionstart_group():
+    merged = merge_pidfile_write_hook({})
+    assert merged == {"hooks": {"SessionStart": [_pidfile_write_group()]}}
+
+
+def test_merge_session_end_into_empty_creates_sessionend_group():
+    merged = merge_session_end_hook({})
+    assert merged == {"hooks": {"SessionEnd": [_pidfile_remove_group()]}}
+
+
+def test_all_three_managed_commands_coexist():
+    """Directive + pidfile-write (both SessionStart) + pidfile-remove (SessionEnd)
+    all coexist when merged together — no group swallows another."""
+    merged = merge_session_start_hook({})
+    merged = merge_pidfile_write_hook(merged)
+    merged = merge_session_end_hook(merged)
+    assert merged["hooks"]["SessionStart"] == [
+        _managed_group(), _pidfile_write_group(),
+    ]
+    assert merged["hooks"]["SessionEnd"] == [_pidfile_remove_group()]
+
+
+def test_pidfile_merges_are_idempotent():
+    """Merging all three twice does NOT duplicate any command."""
+    once = merge_session_end_hook(
+        merge_pidfile_write_hook(merge_session_start_hook({}))
+    )
+    twice = merge_session_end_hook(
+        merge_pidfile_write_hook(merge_session_start_hook(once))
+    )
+    assert twice == once
+    assert len(twice["hooks"]["SessionStart"]) == 2
+    assert len(twice["hooks"]["SessionEnd"]) == 1
+
+
+def test_pidfile_write_idempotent_keys_on_command_not_matcher():
+    """A pre-existing group carrying our exact write command (any matcher)
+    suppresses a duplicate append."""
+    pre = {
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "startup",
+                    "hooks": [
+                        {"type": "command", "command": _AGENT_PIDFILE_WRITE_COMMAND},
+                    ],
+                }
+            ]
+        }
+    }
+    assert merge_pidfile_write_hook(pre) == pre
+
+
+def test_pidfile_merges_preserve_user_hooks_on_every_event():
+    """A user's own SessionStart, SessionEnd, and unrelated-event hooks survive."""
+    user_ss = {"matcher": "startup", "hooks": [{"type": "command", "command": "u1"}]}
+    user_se = {"matcher": "clear", "hooks": [{"type": "command", "command": "u2"}]}
+    existing = {
+        "$schema": "x",
+        "hooks": {
+            "SessionStart": [user_ss],
+            "SessionEnd": [user_se],
+            "PreToolUse": [{"matcher": "*", "hooks": []}],
+        },
+    }
+    merged = merge_session_end_hook(
+        merge_pidfile_write_hook(merge_session_start_hook(existing))
+    )
+    assert merged["$schema"] == "x"
+    assert merged["hooks"]["PreToolUse"] == [{"matcher": "*", "hooks": []}]
+    # User groups kept, ours appended after them.
+    assert merged["hooks"]["SessionStart"] == [
+        user_ss, _managed_group(), _pidfile_write_group(),
+    ]
+    assert merged["hooks"]["SessionEnd"] == [user_se, _pidfile_remove_group()]
+
+
+def test_pidfile_merges_do_not_mutate_input():
+    src = {"hooks": {"SessionStart": [], "SessionEnd": []}}
+    merge_pidfile_write_hook(src)
+    merge_session_end_hook(src)
+    assert src == {"hooks": {"SessionStart": [], "SessionEnd": []}}
+
+
+def test_seed_session_start_preserves_user_sessionend_and_is_idempotent(tmp_path):
+    """seed writes all three managed hooks into a file with a pre-existing user
+    SessionEnd hook, preserving it, and is idempotent."""
+    path = tmp_path / "settings.json"
+    user_se = {"matcher": "logout", "hooks": [{"type": "command", "command": "bye"}]}
+    path.write_text(json.dumps({"hooks": {"SessionEnd": [user_se]}}))
+    assert seed_session_start_hook(path) is True
+    data = json.loads(path.read_text())
+    assert data["hooks"]["SessionStart"] == [
+        _managed_group(), _pidfile_write_group(),
+    ]
+    assert data["hooks"]["SessionEnd"] == [user_se, _pidfile_remove_group()]
+    assert seed_session_start_hook(path) is False
 
 
 # --- codex_trusted_hash (pure; oracle-pinned) ------------------------------
@@ -769,10 +931,11 @@ def test_deliver_directive_claude_writes_settings_json(tmp_path):
     assert settings.exists()
     assert not (tmp_path / ".codex" / "config.toml").exists()
     data = json.loads(settings.read_text())
-    assert data["hooks"]["SessionStart"] == [_managed_group()]
+    assert data["hooks"] == _full_managed_hooks()
 
 
 def test_deliver_directive_other_agent_is_inert(tmp_path):
+    """A non-claude agent (goose) gets NO claude hooks — no pidfile write/remove."""
     assert deliver_directive_session_hook(
         agent_name="goose",
         config_root=tmp_path,
