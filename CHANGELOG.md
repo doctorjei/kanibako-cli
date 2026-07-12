@@ -189,6 +189,14 @@ equivalence-preserving for launches.
   A persona shares the bare harness's plugins/cache (via a symlink shim into the
   harness store) rather than starting empty.
 
+  **⚠️ Experimental — harness coverage.** Personas are **experimental** in this
+  release, and coverage is uneven across harnesses. The path is most complete for
+  the **claude** harness (the endpoint fork + secret-token delivery above);
+  persona support for **goose** and **codex** is **not yet complete** — treat
+  personas on those harnesses as early/incomplete and expect gaps. Bare
+  `--agent claude` / `--agent goose` / `--agent codex` (no persona) is unaffected
+  and stable.
+
   **⚠️ Known limitation.** The OAuth credential fork *skips syncing* but does
   **not scrub** a credential already seeded into a box. Converting an **existing**
   bare box into a persona (creating it bare, then `start --agent persona+harness`)
