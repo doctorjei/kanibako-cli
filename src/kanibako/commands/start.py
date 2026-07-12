@@ -61,7 +61,7 @@ from kanibako.agent_ref import (
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
-from kanibako.vscode_config import AGENT_PIDFILE_PATH
+from kanibako.vscode_config import AGENT_MARKERS_DIR
 
 
 def _agent_critical_dests() -> list[tuple[str, str]]:
@@ -642,14 +642,14 @@ _BOOTSTRAP_NONE = "none"
 # agent (which declares NO bootstrap override, spec §2d L640/658/683) inherits it.
 _BOOTSTRAP_DEFAULT = "tmux"
 
-# E2f/E2g — the box-local PANEL-AGENT LIVENESS MARKER path (the pidfile contract).
+# E2g / increment 4a — the box-local AGENT LIVENESS MARKERS directory (per-PID).
 # The canonical constant lives in :mod:`kanibako.vscode_config` (the low-level module
-# that owns the E2g write-side hook command); it is imported here (see the module
-# imports) so this file's ``--agent-pidfile`` value (read side) and the
-# ``KANIBAKO_AGENT_PIDFILE`` env it seeds are byte-identical to the seeded hook's
-# default path — the two ends of the contract can never desync.  Re-exported from
+# that owns the marker write-side hook command); it is imported here (see the module
+# imports) so this file's ``--agent-markers-dir`` value (read side) and the
+# ``KANIBAKO_AGENT_MARKERS_DIR`` env it seeds are byte-identical to the seeded hook's
+# default dir — the two ends of the contract can never desync.  Re-exported from
 # this module for existing importers (``from kanibako.commands.start import
-# AGENT_PIDFILE_PATH``).
+# AGENT_MARKERS_DIR``).
 
 
 def _is_no_bootstrap(program: str | None) -> bool:
@@ -2459,13 +2459,15 @@ def _run_container(
             # is needed. Bare node == harness == target.name (byte-identical).
             container_env["KANIBAKO_AGENT"] = agent_id
 
-        # E2f: on an AGENT-INDEPENDENT warm-up (`kanibako code` → start_detached,
-        # warm_only) seed the panel-agent liveness MARKER path so the panel agent's
-        # start hook (E2g) writes its PID there; the panel-watch supervisor watches
-        # the SAME path via --agent-pidfile.  Only for warm-up — the E2b supervised-
-        # agent path (`kanibako start --detach`) does not watch a marker.
-        if warm_only:
-            container_env["KANIBAKO_AGENT_PIDFILE"] = AGENT_PIDFILE_PATH
+        # E2g / increment 4a: seed the per-agent liveness MARKERS DIR so every agent
+        # session's start hook writes a per-PID marker ``<dir>/$PPID`` there; the
+        # supervisor reads the SAME dir via --agent-markers-dir.  Seeded UNCONDITIONALLY
+        # (not just warm-up): the E2b/E2c supervised-agent path (`kanibako start
+        # [--detach]`) now ALSO enumerates the dir so run_forever detects a panel
+        # newcomer (increment 4a), and the warm-up panel-watch path enumerates it for
+        # panel-agent liveness.  Harmless for a non-claude/no-agent box (no marker hook
+        # is seeded, so nothing writes it).
+        container_env["KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
 
         # Helper hub: start listener before director, mount socket
         hub = None
@@ -2845,17 +2847,20 @@ def _run_container(
                 supervisor_argv += [
                     "--creds-flag", f"{_GUEST_HOME_D}/{CREDS_DIRTY_RELPATH}",
                 ]
+                # E2g / increment 4a: thread the per-agent liveness MARKERS DIR (the
+                # SAME dir seeded as KANIBAKO_AGENT_MARKERS_DIR above) to BOTH modes.
+                # run_forever (E2b/E2c) enumerates it to DETECT a panel newcomer
+                # (increment 4a, LOG-ONLY); panel-watch (E2f) enumerates it for
+                # panel-agent liveness + newcomer detection.  One dir, one scheme.
+                supervisor_argv += ["--agent-markers-dir", AGENT_MARKERS_DIR]
                 if warm_only:
                     # E2f — AGENT-INDEPENDENT warm-up: front the box with the
                     # supervisor in PANEL-WATCH mode.  It starts NO CLI agent, watches
-                    # the panel-agent marker (--agent-pidfile, the SAME path seeded as
-                    # KANIBAKO_AGENT_PIDFILE above) + the vscode_server surface, and
+                    # the per-PID markers dir + the vscode_server surface, and
                     # self-heals a CLI agent ONLY when the panel agent dies with the
                     # panel still connected (design §89-96).  The panel is the sole
                     # agent — no two-agent split-brain on one ~/.claude.
-                    supervisor_argv += [
-                        "--panel-watch", "--agent-pidfile", AGENT_PIDFILE_PATH,
-                    ]
+                    supervisor_argv += ["--panel-watch"]
                 if agent_continue_argv is not None:
                     # Self-heal RESUMES: shim the continue command the SAME way so a
                     # resurrected agent still gets its secrets + goose directives.

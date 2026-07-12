@@ -15,16 +15,20 @@ import subprocess
 import pytest
 
 from kanibako.box_lifecycle import AttachState
+from kanibako import box_supervisor as bs
 from kanibako.box_supervisor import (
     ActionKind,
     BoxSupervisor,
     PanelActionKind,
     PanelAgentState,
     SupervisorConfig,
+    _default_list_marker_pids,
     config_from_argv,
     decide,
     decide_panel,
     main,
+    newcomer_pids,
+    scan_marker_pids,
 )
 
 # --- attach-state fixtures (mirror box_lifecycle's surfaces) ----------------
@@ -1006,20 +1010,59 @@ def test_decide_panel_terminal_surface_prevents_teardown():
     ).kind is PanelActionKind.NONE
 
 
-# -- panel_agent_state (the tolerant, injectable marker probe) ---------------
+# -- scan_marker_pids / newcomer_pids (pure-ish 4a helpers) ------------------
+
+def test_scan_marker_pids_partitions_live_and_stale():
+    live, stale = scan_marker_pids(
+        "/d", list_pids=lambda _p: [10, 20, 30], pid_alive=lambda pid: pid != 20,
+    )
+    assert live == {10, 30}
+    assert stale == {20}
+
+
+def test_scan_marker_pids_drops_non_positive_and_tolerates_raising_probe():
+    def alive(pid: int) -> bool:
+        if pid == 40:
+            raise OSError("kill(0) boom")
+        return True
+
+    # 0 / -1 dropped up front; a probe that raises for 40 skips ONLY that pid.
+    live, stale = scan_marker_pids(
+        "/d", list_pids=lambda _p: [0, -1, 40, 50], pid_alive=alive,
+    )
+    assert live == {50}
+    assert stale == set()
+
+
+def test_default_list_marker_pids_parses_filenames_and_tolerates_absent(tmp_path):
+    d = tmp_path / "agents"
+    d.mkdir()
+    (d / "123").write_text("123")
+    (d / "456").write_text("456")
+    (d / "not-a-pid").write_text("x")  # skipped (non-integer name)
+    assert set(_default_list_marker_pids(str(d))) == {123, 456}
+    # An ABSENT dir is tolerated as "no agents yet" (never raises).
+    assert _default_list_marker_pids(str(tmp_path / "missing")) == []
+
+
+def test_newcomer_pids_is_live_minus_own():
+    assert newcomer_pids({1, 2, 3}, {2}) == {1, 3}
+    assert newcomer_pids({5}, {5}) == set()
+    assert newcomer_pids(set(), {9}) == set()
+
+
+# -- panel_agent_state (dir enumeration; injectable lister + probe) -----------
 
 def _panel_sup(
     *,
-    pidfile: str | None = "/run/kanibako/agent.pid",
-    contents: str | None = "4242\n",
+    markers_dir: str | None = "/run/kanibako/agents",
+    marker_pids: list[int] | None = None,
     alive=lambda pid: True,
-    raise_read: bool = False,
     raise_alive: bool = False,
+    panes: str = "",
 ) -> BoxSupervisor:
-    def read(path: str) -> str | None:
-        if raise_read:
-            raise OSError("pidfile read boom")
-        return contents
+    def list_pids(path: str) -> list[int]:
+        return list(marker_pids or [])
 
     def pid_alive(pid: int) -> bool:
         if raise_alive:
@@ -1027,54 +1070,78 @@ def _panel_sup(
         return alive(pid)
 
     return BoxSupervisor(
-        _config(agent_pidfile=pidfile),
-        run=FakeRun(),
-        read_pidfile=read,
+        _config(agent_markers_dir=markers_dir),
+        run=FakeRun(stdout={"list-panes": panes}),
+        list_marker_pids=list_pids,
         pid_alive=pid_alive,
     )
 
 
-def test_panel_agent_state_none_when_no_pidfile_configured():
-    assert _panel_sup(pidfile=None).panel_agent_state() is PanelAgentState.NONE
+def test_panel_agent_state_none_when_no_markers_dir_configured():
+    assert _panel_sup(markers_dir=None).panel_agent_state() is PanelAgentState.NONE
 
 
-def test_panel_agent_state_none_when_absent():
-    assert _panel_sup(contents=None).panel_agent_state() is PanelAgentState.NONE
+def test_panel_agent_state_none_when_dir_empty():
+    assert _panel_sup(marker_pids=[]).panel_agent_state() is PanelAgentState.NONE
 
 
-@pytest.mark.parametrize("contents", ["", "   \n", "notapid", "12x", "-1", "0"])
-def test_panel_agent_state_none_on_empty_or_garbage(contents):
-    assert _panel_sup(contents=contents).panel_agent_state() is PanelAgentState.NONE
+def test_panel_agent_state_alive_for_live_marker():
+    assert _panel_sup(
+        marker_pids=[777], alive=lambda pid: True,
+    ).panel_agent_state() is PanelAgentState.ALIVE
 
 
-def test_panel_agent_state_alive_for_live_pid():
-    assert _panel_sup(contents="777", alive=lambda pid: True).panel_agent_state() is (
-        PanelAgentState.ALIVE
+def test_panel_agent_state_dead_for_stale_marker():
+    assert _panel_sup(
+        marker_pids=[777], alive=lambda pid: False,
+    ).panel_agent_state() is PanelAgentState.DEAD
+
+
+def test_panel_agent_state_tolerates_a_raising_probe():
+    # A liveness probe that raises must never propagate (PID-1 immortality): the
+    # per-pid skip leaves no live/stale marker → NONE.
+    assert _panel_sup(
+        marker_pids=[777], raise_alive=True,
+    ).panel_agent_state() is PanelAgentState.NONE
+
+
+def test_panel_agent_state_excludes_own_tmux_pane_marker():
+    # A marker whose PID is the supervisor's OWN tmux pane (a self-healed CLI writes a
+    # marker too) is NOT a panel agent → excluded, so a lone own-pane marker reads as
+    # NONE, not ALIVE.  Proves the read side is over ONE scheme (no double-count).
+    sup = _panel_sup(marker_pids=[555], alive=lambda pid: True, panes="555\n")
+    assert sup.panel_agent_state() is PanelAgentState.NONE
+
+
+# -- _own_agent_pids (the tmux pane PIDs = the supervisor's own agent) --------
+
+def test_own_agent_pids_parses_list_panes_pane_pid():
+    sup = BoxSupervisor(
+        _config(), run=FakeRun(stdout={"list-panes": "100\n101\n"}),
     )
+    assert sup._own_agent_pids() == {100, 101}
+    assert sup._run.sub_calls("list-panes") == [  # type: ignore[attr-defined]
+        ["tmux", "list-panes", "-s", "-t", "kanibako", "-F", "#{pane_pid}"]
+    ]
 
 
-def test_panel_agent_state_dead_for_stale_pid():
-    assert _panel_sup(contents="777", alive=lambda pid: False).panel_agent_state() is (
-        PanelAgentState.DEAD
-    )
-
-
-def test_panel_agent_state_tolerates_a_raising_reader_and_probe():
-    # A raising file read OR liveness probe must never propagate (PID-1 immortality):
-    # both degrade to NONE ("no live panel agent").
-    assert _panel_sup(raise_read=True).panel_agent_state() is PanelAgentState.NONE
-    assert _panel_sup(raise_alive=True).panel_agent_state() is PanelAgentState.NONE
+def test_own_agent_pids_empty_when_no_session():
+    # tmux non-zero (no session) → _tmux_output None → empty set (never raises).
+    sup = BoxSupervisor(_config(), run=FakeRun(rc={"list-panes": 1}))
+    assert sup._own_agent_pids() == set()
 
 
 # -- the panel-watch loop (agent-independent `code` warm-up) ------------------
 
-def _panel_watch_sup(fake: FakeRun, *, contents=None, alive=lambda pid: True) -> BoxSupervisor:
-    """A panel-watch supervisor with an injected marker reader/liveness probe."""
+def _panel_watch_sup(
+    fake: FakeRun, *, marker_pids=None, alive=lambda pid: True,
+) -> BoxSupervisor:
+    """A panel-watch supervisor with an injected markers lister + liveness probe."""
     return BoxSupervisor(
-        _config(panel_watch=True, agent_pidfile="/run/kanibako/agent.pid"),
+        _config(panel_watch=True, agent_markers_dir="/run/kanibako/agents"),
         run=fake,
         proc_cmdlines=[],
-        read_pidfile=lambda _p: contents,
+        list_marker_pids=lambda _p: list(marker_pids or []),
         pid_alive=alive,
     )
 
@@ -1084,7 +1151,7 @@ def test_panel_watch_startup_is_agentless_and_stays_up():
     # CLI agent.  A never-attached box (no surface, no marker) stays up through the
     # grace until the harness stops it — and NEVER emits a tmux new-session.
     fake = FakeRun(rc={"has-session": 1})  # no tmux agent present
-    sup = _panel_watch_sup(fake, contents=None)  # panel marker absent → NONE
+    sup = _panel_watch_sup(fake, marker_pids=None)  # panel marker absent → NONE
     _script_snapshots(sup, [_NONE])
     slept = _stop_after(sup, 3)
     assert sup.run_forever() == 0
@@ -1096,7 +1163,7 @@ def test_panel_watch_dead_marker_with_server_self_heals_a_cli_agent():
     # The §89-96 fallback: the panel agent DIED (stale marker) with the panel still
     # connected (vscode_server) → self-heal a CLI agent.  Stub _self_heal to record.
     fake = FakeRun(rc={"has-session": 1})
-    sup = _panel_watch_sup(fake, contents="4242", alive=lambda pid: False)  # DEAD marker
+    sup = _panel_watch_sup(fake, marker_pids=[4242], alive=lambda pid: False)  # DEAD marker
     _script_snapshots(sup, [_VS])  # panel/server present throughout
     healed: list[int] = []
     sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
@@ -1109,7 +1176,7 @@ def test_panel_watch_live_panel_agent_is_hands_off():
     # A LIVE panel agent (marker names a live PID) → the loop never self-heals or
     # tears down; the panel is the sole agent.
     fake = FakeRun(rc={"has-session": 1})
-    sup = _panel_watch_sup(fake, contents="999", alive=lambda pid: True)  # ALIVE marker
+    sup = _panel_watch_sup(fake, marker_pids=[999], alive=lambda pid: True)  # ALIVE marker
     _script_snapshots(sup, [_VS])
     healed: list[int] = []
     sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
@@ -1126,7 +1193,7 @@ def test_panel_watch_tears_down_after_last_surface_detaches():
     # fires on tick1 BEFORE the first poll sleep, so `slept == []`; a mutant that
     # ignores the seen-latch (never tears down) would sleep to the harness bound.
     fake = FakeRun(rc={"has-session": 1})
-    sup = _panel_watch_sup(fake, contents=None)  # panel marker absent → NONE
+    sup = _panel_watch_sup(fake, marker_pids=None)  # panel marker absent → NONE
     _script_snapshots(sup, [_VS, _NONE])
     healed: list[int] = []
     sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
@@ -1140,7 +1207,7 @@ def test_panel_watch_dead_marker_no_server_tears_down_without_self_heal():
     # DEAD marker but NO server (the surface detached) + seen → TEARDOWN, NOT
     # self-heal.  Proves self-heal REQUIRES the server surface.
     fake = FakeRun(rc={"has-session": 1})
-    sup = _panel_watch_sup(fake, contents="4242", alive=lambda pid: False)  # DEAD marker
+    sup = _panel_watch_sup(fake, marker_pids=[4242], alive=lambda pid: False)  # DEAD marker
     _script_snapshots(sup, [_VS, _NONE])  # seen, then no surface
     healed: list[int] = []
     sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
@@ -1154,13 +1221,140 @@ def test_panel_watch_fires_detach_hook_on_surface_loss():
     # The DETACH hook (D's cred-writeback point) still fires on a surface loss in
     # panel-watch mode.  A LIVE panel keeps the box up so the hook is observable.
     fake = FakeRun(rc={"has-session": 1})
-    sup = _panel_watch_sup(fake, contents="999", alive=lambda pid: True)  # ALIVE → hands-off
+    sup = _panel_watch_sup(fake, marker_pids=[999], alive=lambda pid: True)  # ALIVE → hands-off
     _script_snapshots(sup, [_BOTH, _VS])  # tmux terminal detaches, panel stays
     fired: list[int] = []
     sup._on_detach = lambda: fired.append(1)  # type: ignore[method-assign]
     _stop_after(sup, 2)
     assert sup.run_forever() == 0
     assert fired == [1]  # exactly one detach hook when the terminal surface dropped
+
+
+# -- increment 4a: LOG-ONLY newcomer detection (both loops) ------------------
+
+def _capture_warnings(monkeypatch) -> list[str]:
+    """Capture ``box_supervisor.log.warning`` messages (formatted) into a list."""
+    msgs: list[str] = []
+
+    def warn(msg, *args):
+        msgs.append(msg % args if args else msg)
+
+    monkeypatch.setattr(bs.log, "warning", warn)
+    return msgs
+
+
+def test_run_forever_detects_newcomer_log_only(monkeypatch):
+    # A LIVE own agent (tmux pane 100) with a NEWCOMER marker (PID 200) on the session
+    # (e.g. the VS Code panel auto-`--resume`).  4a LOGS the newcomer exactly ONCE
+    # across ticks and takes NO action.
+    fake = FakeRun(
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents"),
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [100, 200],  # own pane 100 + newcomer 200
+        pid_alive=lambda pid: True,
+    )
+    _script_snapshots(sup, [_NONE])
+    warnings = _capture_warnings(monkeypatch)
+    _stop_after(sup, 3)  # several ticks; the newcomer must log ONCE, not per tick
+    assert sup.run_forever() == 0
+    hits = [m for m in warnings if "newcomer agent PID 200" in m]
+    assert len(hits) == 1
+
+
+def test_run_forever_no_newcomer_when_only_own_agent_marker(monkeypatch):
+    # The own tmux agent writes a marker too (== its pane PID).  It must NOT be
+    # mistaken for a newcomer — zero warnings.
+    fake = FakeRun(rc={"has-session": 0}, stdout={"list-panes": "100\n", "display-message": ""})
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents"),
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [100],  # only the own pane's marker
+        pid_alive=lambda pid: True,
+    )
+    _script_snapshots(sup, [_NONE])
+    warnings = _capture_warnings(monkeypatch)
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert [m for m in warnings if "newcomer" in m] == []
+
+
+def test_run_forever_no_detection_without_markers_dir(monkeypatch):
+    # Byte-unchanged path: no markers dir configured → detection is skipped entirely
+    # (no list-panes probe, no warnings).
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ""})
+    sup = BoxSupervisor(_config(), run=fake, proc_cmdlines=[])  # agent_markers_dir None
+    _script_snapshots(sup, [_NONE])
+    warnings = _capture_warnings(monkeypatch)
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert [m for m in warnings if "newcomer" in m] == []
+    assert fake.sub_calls("list-panes") == []  # no own-pid probe when disabled
+
+
+def test_panel_watch_detects_second_panel_as_newcomer_log_only(monkeypatch):
+    # Panel-watch: the fronted panel (PID 900) is the incumbent; a SECOND live non-own
+    # marker (PID 901, a concurrent resume) is the newcomer.  LOG-ONLY, once.
+    fake = FakeRun(rc={"has-session": 1})  # no tmux agent (agentless warm)
+    sup = _panel_watch_sup(fake, marker_pids=[900, 901], alive=lambda pid: True)
+    _script_snapshots(sup, [_VS])
+    warnings = _capture_warnings(monkeypatch)
+    _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    # The lower PID latches as the fronted incumbent → only 901 is a newcomer, once.
+    assert [m for m in warnings if "newcomer agent PID 901" in m] == [
+        "newcomer agent PID 901 detected on session "
+        "(increment 4a: detection only, no action)"
+    ]
+    assert [m for m in warnings if "newcomer agent PID 900" in m] == []
+
+
+def test_4a_detection_takes_no_destructive_or_signal_action(monkeypatch):
+    # OVER-REACH GUARD: with a LIVE own agent + a newcomer marker, 4a must take NO
+    # eviction/signal op — no kill_agent_session, no _self_heal, no tmux
+    # kill-session/kill-pane/send-keys, and it never signals a process (os.kill is
+    # only ever the injected liveness probe here, which we replace with a spy that
+    # FAILS the test if called with any nonzero signal).
+    fake = FakeRun(
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents"),
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [100, 200],  # own + newcomer
+        pid_alive=lambda pid: True,
+    )
+    killed: list[int] = []
+    healed: list[int] = []
+    sup.kill_agent_session = lambda: killed.append(1)  # type: ignore[method-assign]
+    sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
+
+    signalled: list[tuple[int, int]] = []
+
+    def spy_kill(pid, sig):
+        signalled.append((pid, sig))
+        if sig != 0:
+            raise AssertionError(f"4a signalled pid {pid} with signal {sig}")
+
+    monkeypatch.setattr(bs.os, "kill", spy_kill)
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    # No eviction/handoff primitive fired (4a is detection substrate ONLY).
+    assert killed == []
+    assert healed == []
+    assert fake.sub_calls("kill-session") == []
+    assert fake.sub_calls("kill-pane") == []
+    assert fake.sub_calls("send-keys") == []
+    # And no real signal was ever sent (only signal 0 liveness, if any).
+    assert all(sig == 0 for _pid, sig in signalled)
 
 
 # -- config_from_argv (panel-watch flags) ------------------------------------
@@ -1170,19 +1364,19 @@ def test_config_from_argv_panel_watch_allows_no_trailing_agent_argv():
     # argv" error is suppressed); --continue-cmd carries the self-heal grammar.
     cfg = config_from_argv(
         ["--session", "kanibako", "--marker", _MARKER, "--panel-watch",
-         "--agent-pidfile", "/run/kanibako/agent.pid",
+         "--agent-markers-dir", "/run/kanibako/agents",
          "--continue-cmd", "claude --continue"]
     )
     assert cfg.panel_watch is True
-    assert cfg.agent_pidfile == "/run/kanibako/agent.pid"
+    assert cfg.agent_markers_dir == "/run/kanibako/agents"
     assert cfg.start_argv == []
     assert cfg.continue_argv == ["claude", "--continue"]
 
 
-def test_config_from_argv_defaults_panel_watch_off_and_no_pidfile():
+def test_config_from_argv_defaults_panel_watch_off_and_no_markers_dir():
     cfg = config_from_argv(["--session", "s", "--marker", "m", "--", "claude"])
     assert cfg.panel_watch is False
-    assert cfg.agent_pidfile is None
+    assert cfg.agent_markers_dir is None
     assert cfg.creds_flag is None  # D: absent --creds-flag -> _on_detach no-ops
 
 
