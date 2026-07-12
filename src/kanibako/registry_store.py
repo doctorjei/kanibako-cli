@@ -16,6 +16,14 @@ The file has these top-level sections::
     standalone:
       # box.name → root, populated by sub-step 5d; empty for now.
 
+    deregistered:
+      # box.name → retained-recovery blob for a box removed by ``rm`` (no
+      # ``--purge``); its metadata is kept on disk so a later ``rm <name>
+      # --purge`` can find it BY NAME (the active membership is already gone).
+      # Each entry: {kind: primary|standalone, workspace, metadata, image?,
+      # deregistered_at?}.  Self-heals: a list/purge that finds an entry whose
+      # metadata dir is gone drops it.
+
     # NOTE: there is NO ``seeded`` section.  Registry MEMBERSHIP is itself the
     # seed signal — a box present here (STANDALONE ``standalone`` / NAMED
     # workset-local list / PRIMARY per-workset ``boxes:`` membership) was seeded
@@ -75,12 +83,19 @@ from kanibako.config_io import dump_doc, load_doc
 _SECTIONS: tuple[str, ...] = (
     "worksets",
     "standalone",
+    "deregistered",
     "rigs",
     "image_shells",
 )
 # Name → path sections whose keys are sorted on write (legacy names.yaml shape).
 _NAME_SECTIONS: frozenset[str] = frozenset(
     {"worksets"}
+)
+# Sections whose keys are sorted on write for stable diffs (name-keyed, but the
+# value may be a blob rather than a bare path — ``deregistered`` is name → entry
+# dict, so it sorts like a name section without the path-string coercion).
+_SORTED_BLOB_SECTIONS: frozenset[str] = frozenset(
+    {"deregistered"}
 )
 
 
@@ -103,6 +118,9 @@ def load_registry(registry: Path) -> dict[str, dict]:
             k: str(v) for k, v in dict(data.get("worksets", {})).items()
         },
         "standalone": dict(data.get("standalone", {})),
+        "deregistered": {
+            k: dict(v) for k, v in dict(data.get("deregistered", {})).items()
+        },
         "rigs": dict(data.get("rigs", {})),
         "image_shells": dict(data.get("image_shells", {})),
     }
@@ -122,6 +140,8 @@ def save_registry(registry: Path, sections: dict[str, dict]) -> None:
         entries = sections.get(section, {}) or {}
         if section in _NAME_SECTIONS:
             data[section] = {name: entries[name] for name in sorted(entries)}
+        elif section in _SORTED_BLOB_SECTIONS:
+            data[section] = {name: dict(entries[name]) for name in sorted(entries)}
         else:
             data[section] = dict(entries)
     dump_doc(registry, data)
@@ -192,3 +212,112 @@ def standalone_name_for_root(registry: Path, root: Path) -> str | None:
         if root_str == target:
             return name
     return None
+
+
+# ---------------------------------------------------------------------------
+# Deregistered-box helpers (``deregistered`` section: box.name → retained blob)
+# ---------------------------------------------------------------------------
+#
+# When ``rm`` (no ``--purge``) deregisters a box, its metadata is retained on
+# disk and a small blob is parked here so a later ``--purge`` (or, in I2, a
+# ``register`` readopt) can find it BY NAME — the active membership is already
+# gone, so name → path resolution against the live registry would miss it.
+#
+# KEYING: a single flat map keyed by the bare box NAME, with ``kind``
+# (``primary`` | ``standalone``) stored INSIDE each entry.  Box names come from a
+# single validated namespace (primary boxes in the primary-workset ``boxes:``
+# membership; standalone boxes as canonical ``<kuid>_<leaf>`` names), and the
+# user-facing recovery verbs (``rm <name> --purge`` / ``register <name>``) are
+# keyed by that bare name — so a flat name → entry map matches the lookup exactly
+# and keeps the YAML round-trip clean (tuple keys do not serialise).  The
+# per-kind teardown/readopt routing reads ``kind`` from the entry, so no
+# composite key is needed; if a real primary/standalone name collision domain
+# ever emerges the entry already carries ``kind`` and the key can be promoted to
+# ``"<kind>/<name>"`` locally.
+#
+# Each entry: ``kind``, ``workspace`` (project/workspace path), ``metadata`` (box
+# dir — primary ``std.boxes/<name>``; standalone in-tree root), optional
+# ``image`` and ``deregistered_at`` (stamped at the CLI seam).
+
+
+def load_deregistered(registry: Path) -> dict[str, dict]:
+    """Return the ``deregistered`` section as ``{box_name: entry_dict}``."""
+    return {
+        k: dict(v) for k, v in load_section(registry, "deregistered").items()
+    }
+
+
+def register_deregistered(
+    registry: Path,
+    box_name: str,
+    *,
+    kind: str,
+    workspace: str | None,
+    metadata: str,
+    image: str | None = None,
+    deregistered_at: str | None = None,
+) -> None:
+    """Park a deregistered box's recovery blob under *box_name*.
+
+    Overwrites any existing entry for *box_name* (a re-``rm`` refreshes the
+    retained blob).  *metadata* is the box dir a later ``--purge`` deletes
+    (primary ``std.boxes/<name>``; standalone in-tree root); *workspace* is the
+    project path (for readopt / create-conflict detection in later increments).
+    """
+    entries = load_deregistered(registry)
+    entry: dict = {
+        "kind": kind,
+        "workspace": str(workspace) if workspace is not None else None,
+        "metadata": str(metadata),
+    }
+    if image is not None:
+        entry["image"] = str(image)
+    if deregistered_at is not None:
+        entry["deregistered_at"] = str(deregistered_at)
+    entries[box_name] = entry
+    save_section(registry, "deregistered", entries)
+
+
+def unregister_deregistered(registry: Path, box_name: str) -> bool:
+    """Drop *box_name* from the ``deregistered`` section.
+
+    Returns ``True`` if an entry was removed, ``False`` if none was present
+    (a no-op — supports idempotent purge).
+    """
+    entries = load_deregistered(registry)
+    if entries.pop(box_name, None) is not None:
+        save_section(registry, "deregistered", entries)
+        return True
+    return False
+
+
+def lookup_deregistered(registry: Path, box_name: str) -> dict | None:
+    """Return the deregistered entry for *box_name*, or ``None``.
+
+    A pure read — self-healing (dropping entries whose metadata dir is gone)
+    happens at the ``list`` / ``purge`` seam (:func:`list_deregistered` and the
+    purge handler), never here, so callers get a predictable lookup.
+    """
+    entry = load_deregistered(registry).get(box_name)
+    return dict(entry) if entry is not None else None
+
+
+def list_deregistered(registry: Path) -> dict[str, dict]:
+    """Return the deregistered entries, self-healing stale ones.
+
+    Any entry whose ``metadata`` path is empty or no longer exists on disk is
+    dropped (the box was deleted out-of-band); the pruned section is persisted
+    when anything is removed.  This is the ``list`` self-heal from the design.
+    """
+    entries = load_deregistered(registry)
+    live: dict[str, dict] = {}
+    dropped = False
+    for name, entry in entries.items():
+        meta = entry.get("metadata")
+        if meta and Path(str(meta)).exists():
+            live[name] = entry
+        else:
+            dropped = True
+    if dropped:
+        save_section(registry, "deregistered", live)
+    return live
