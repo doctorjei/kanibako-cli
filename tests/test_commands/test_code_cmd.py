@@ -450,3 +450,51 @@ def test_stamp_first_wins_over_cascade(mock_runtime, _isolate_seed_path):
     mock_runtime.inspect_env.assert_called_once_with("kanibako-foo", "KANIBAKO_AGENT")
     written = json.loads(seed_path.read_text())
     assert written["extensions"] == ["anthropic.claude-code"]
+
+
+# --- `code --remote` on an ABSENT remote box: surface the REMOTE "no box" ------
+def test_remote_no_box_surfaces_remote_create_hint(capsys):
+    """Explicit-create (Jei 2026-07-11g): when the REMOTE `kanibako start` errors
+    with "no box" (the remote box does not exist), `code --remote` surfaces it as a
+    REMOTE-box problem — create must be run ON THE REMOTE host — not a generic
+    failure."""
+    from types import SimpleNamespace
+    from pathlib import Path
+
+    from kanibako.commands.code_cmd import _run_code_remote
+
+    dest = "myhost"
+    args = argparse.Namespace(project="webapp", box=None, remote=dest)
+
+    failed = SimpleNamespace(
+        returncode=1,
+        stderr="Error: no box at /home/u/webapp. To create a new box, run 'kanibako create webapp'",
+        stdout="",
+    )
+
+    with (
+        patch("kanibako.commands.code_cmd._resolve_code_cli", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/podman"),
+        patch("kanibako.commands.code_cmd._wire_docker_path", return_value=None),
+        patch("kanibako.vscode_remote.dispatch_wrapper_path", return_value=Path("/w")),
+        patch("kanibako.vscode_remote.ensure_dispatch_wrapper"),
+        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode_remote.remote_context_name", return_value="ctx"),
+        patch("kanibako.vscode_remote.tunnel_socket_path", return_value=Path("/tmp/s.sock")),
+        patch("kanibako.vscode_remote.engine_url", return_value="unix:///tmp/s.sock"),
+        patch("kanibako.vscode_remote.remote_socket_path", return_value="/run/x.sock"),
+        patch("kanibako.vscode_remote.ensure_docker_context_meta"),
+        patch("kanibako.vscode_remote.write_context_entry"),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode_remote.RemoteEngine", return_value=MagicMock()),
+        patch("kanibako.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+    ):
+        rc = _run_code_remote(args, dest)
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    # The verbatim remote stderr is shown AND a remote-oriented hint is added.
+    assert "no box at /home/u/webapp" in err
+    assert "does not exist on the remote host" in err
+    assert f"ssh {dest} kanibako create webapp" in err

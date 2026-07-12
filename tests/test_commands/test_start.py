@@ -3987,6 +3987,12 @@ class TestWritebackAllPaths:
 # The one-time home seed runs ONLY when `proj.is_new` (the box was just
 # materialized + registered by this resolve call — registry MEMBERSHIP is the
 # seed signal).  `start` on an existing box (is_new False) NEVER seeds.
+#
+# EXPLICIT-CREATE (Jei 2026-07-11g): a real launch no longer materializes a box,
+# so in production ``proj.is_new`` is always False here (the explicit-create gate
+# errors out for a non-existent box before this point).  The ``if proj.is_new:``
+# seed block is retained as the correct action IF a box were ever materialized on
+# this path, and is the seam these unit tests drive with a forced-is_new mock proj.
 # ---------------------------------------------------------------------------
 
 
@@ -4006,8 +4012,13 @@ class TestLaunchSeedGate:
             assert rc == 0
             m_seed.assert_not_called()
 
-    def test_new_box_launch_seeds_once(self, start_mocks):
-        """A box auto-created by `start` (is_new True) seeds exactly once."""
+    def test_is_new_box_seeds_once(self, start_mocks):
+        """The seed seam: a resolve reporting ``is_new`` seeds exactly once.
+
+        (In production the explicit-create gate makes ``is_new`` unreachable on a
+        launch — creation goes through ``kanibako create`` — but the forced-is_new
+        mock proj here exercises the seed-routing that a materialization would use.)
+        """
         with start_mocks() as m:
             m.proj.is_new = True
             with patch("kanibako.commands.start._seed_box_home") as m_seed:
@@ -4018,6 +4029,29 @@ class TestLaunchSeedGate:
                 )
             assert rc == 0
             m_seed.assert_called_once()
+
+    def test_launch_never_completes_interrupted_create(self, start_mocks):
+        """Explicit-create: the launch path no longer resurrects a half-created
+        box.  Even with a PENDING create journal entry (and is_new False — the
+        existing-box relaunch shape), the launch does NOT seed / register / clear —
+        forward-recovery of an interrupted create belongs to ``kanibako create``."""
+        with start_mocks() as m:
+            m.proj.is_new = False
+            # A stale pending create entry would, pre-change, have driven the
+            # launch-side "or _pending_create_entry(...)" resurrection.
+            m.pending_create_entry.return_value = {
+                "op": "create", "name": "testproject",
+            }
+            with patch("kanibako.commands.start._seed_box_home") as m_seed:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m_seed.assert_not_called()
+            m.register_new_box.assert_not_called()
+            m.write_create_entry.assert_not_called()
 
     def test_relaunch_still_refreshes_credentials(self, start_mocks):
         """The per-launch credsync REFRESH is SEPARATE — it still runs on a
@@ -4895,19 +4929,19 @@ class TestPersonaLoadOrErrorIntegration:
 class TestPersonaLoadOrErrorUnmasked:
     """UNMASKED real-path regression for F5/F7 (Director F5+F7 ruling, 2026-07-03).
 
-    These drive a brand-NEW box persona START through the REAL resolver + the REAL
+    These drive a persona START through the REAL resolver + the REAL
     ``_resolve_box_launch_decisions`` (NO ``_resolve_box_launch_decisions`` patch,
-    real ``std``/``proj``), so the deferred probe's ``proj.name`` is genuinely ''.
-    Only the container-execution boundary (runtime / rig / image) is stubbed — just
-    enough to REACH the persona gate on a real filesystem.
+    real ``std``/``proj``).  Only the container-execution boundary (runtime / rig /
+    image) is stubbed — just enough to REACH the persona gate on a real filesystem.
 
-    F7 was: the inherited option-b probe fed a NAMELESS brand-new box to
-    ``box_channel_addresses`` → ``ValueError('box has no name')`` BEFORE the gate,
-    crashing Jei's dogfood flow (loadable OR not).  The fix carries a
-    ``pick_name()``'d name onto the probe (``_name_new_box_probe``).  MUTATION
-    PROOF: revert that naming → these tests ERROR with the ValueError (loadable and
-    unloadable both hit ``box_channel_addresses``) instead of the clean rc==1 /
-    gate-pass.
+    EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER materialises a NEW box, so the
+    launch-time persona load-or-error gate now applies to an EXISTING box (the box
+    is pre-created bare here, then launched with the persona).  The BRAND-NEW-box F7
+    proof (a nameless probe fed to ``box_channel_addresses``) moved to the create
+    path — see ``tests/test_create_recovery.py`` ``TestPersonaCreateLoadOrError``
+    (``_name_new_box_probe`` is still load-bearing there).  What these still prove:
+    an existing box launched with a persona resolves load-or-error (unloadable →
+    clean rc==1, NOT a ValueError/traceback; loadable → past the gate to launch).
     """
 
     @contextmanager
@@ -4932,13 +4966,31 @@ class TestPersonaLoadOrErrorUnmasked:
         ):
             yield runtime
 
-    def test_unloadable_persona_start_errors_no_box_real_path(
+    @staticmethod
+    def _precreate_bare_box(config_file):
+        """Materialise + register a BARE box at cwd so a persona launch passes the
+        explicit-create gate and reaches the persona load-or-error gate.  (No agent
+        seed is needed — the persona gate runs before the home seed; the launch only
+        requires the box dir + home + registry membership to exist.)"""
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_box_target
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        resolve_box_target(
+            std, config, None, initialize=True, register=True, warn=False,
+        )
+
+    def test_unloadable_persona_start_errors_real_path(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        # cwd is tmp_home/project (a brand-new box → real resolver yields name='').
-        # XDG_CONFIG_HOME (tmp_home/config) has NO persona host dir → unloadable.
+        # cwd is tmp_home/project; pre-create a BARE box there (launch no longer
+        # auto-creates).  XDG_CONFIG_HOME (tmp_home/config) has NO persona host dir
+        # → 'navigator+claude' is unloadable.
         from kanibako.config import load_config
-        from kanibako.paths import load_primary_boxes, load_std_paths
+        from kanibako.paths import load_std_paths
+
+        self._precreate_bare_box(config_file)
 
         with self._preamble():
             rc = _run_container(
@@ -4946,18 +4998,16 @@ class TestPersonaLoadOrErrorUnmasked:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], explicit_agent="navigator+claude",
             )
-        # (1) the persona ERROR (rc==1), NOT a ValueError/traceback — the named
-        #     probe let ``box_channel_addresses`` resolve so the gate could verdict.
+        # The persona ERROR (rc==1), NOT a ValueError/traceback — the named probe
+        # let ``box_channel_addresses`` resolve so the gate could verdict.
         assert rc == 1
         err = capsys.readouterr().err
         assert "cannot be loaded" in err
         assert "navigator+claude" in err
 
         std = load_std_paths(load_config(config_file))
-        # (3) TRUE PRE-FLIGHT: the box was NEVER materialised (deferred probe only)
-        #     → no box dir / settings.yaml, membership untouched, no agent store.
-        assert not std.boxes.exists() or not any(std.boxes.iterdir())
-        assert load_primary_boxes(std.primary_workset) == {}
+        # An unloadable persona materialises NO persona agent store (the box itself
+        # was pre-created bare and legitimately exists).
         assert not (std.agents / "navigator℘claude").exists()
 
     def test_loadable_persona_start_passes_gate_real_path(
@@ -4977,13 +5027,15 @@ class TestPersonaLoadOrErrorUnmasked:
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths
 
+        self._precreate_bare_box(config_file)
+
         class _PastGate(Exception):
             pass
 
         # ``ensure_persona_share_symlinks`` is the first artifact step AFTER the
-        # gate + the deferred materialise; raise a sentinel there to observe that a
-        # LOADABLE persona (2) got PAST the gate cleanly (no ValueError) and the box
-        # materialised — without spinning a real container for the full launch.
+        # gate; raise a sentinel there to observe that a LOADABLE persona got PAST
+        # the gate cleanly (no ValueError) — without spinning a real container for
+        # the full launch.
         with self._preamble():
             with (
                 patch("kanibako.commands.start.write_agent_config"),
@@ -4998,8 +5050,8 @@ class TestPersonaLoadOrErrorUnmasked:
                         new_session=False, safe_mode=False, resume_mode=False,
                         extra_args=[], explicit_agent="navigator+claude",
                     )
-        # The loadable persona proceeded to launch: the deferred box materialised
-        # (real box dir) — proving the gate passed and F7's pre-gate crash is gone.
+        # The loadable persona proceeded to launch on the pre-created box — proving
+        # the gate passed and F7's pre-gate crash is gone.
         std = load_std_paths(load_config(config_file))
         assert (std.boxes / "project").is_dir()
 

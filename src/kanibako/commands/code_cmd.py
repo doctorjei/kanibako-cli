@@ -174,7 +174,28 @@ def run_code(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    proj = resolve_box_target(std, config, project_dir, initialize=False)
+    # EXPLICIT-CREATE gate (Jei 2026-07-11g): `code` never auto-CREATES a box —
+    # only auto-STARTS an existing one.  Resolve NON-materialisingly (``initialize=
+    # False`` → no mkdir/seed; ``register=True`` so a half-created, not-yet-
+    # registered box does NOT resurrect off the create journal) and, when no
+    # EXISTING registered box resolves, surface the SAME "no box; run create" error
+    # the launch path uses — one clean message instead of the generic auto-start
+    # failure.  Registration is the existence signal (non-empty ``proj.name``); a
+    # bare token naming nothing makes the resolver refuse (ProjectError).  (The
+    # start_detached leg below re-gates identically at ``_run_container`` for
+    # defense in depth.)
+    from kanibako.commands.start import _no_box_error
+    from kanibako.errors import ProjectError
+    try:
+        proj = resolve_box_target(
+            std, config, project_dir,
+            initialize=False, register=True, warn=False,
+        )
+    except ProjectError:
+        proj = None
+    if proj is None or not proj.name:
+        print(_no_box_error(project_dir), file=sys.stderr)
+        return 1
     cname = container_name_for(proj)
 
     # Fail fast if the host `code` CLI is missing or is the in-container remote
@@ -215,8 +236,10 @@ def run_code(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return rc
-        # Re-resolve: a brand-new box was just materialised (name/registration now
-        # exist), so recompute proj/cname before seeding + attaching.
+        # Re-resolve the (existing) box after the auto-START so proj/cname reflect
+        # its now-running state before seeding + attaching.  (The box already
+        # existed — the explicit-create gate above guaranteed it — so this is a
+        # refresh, not a materialisation.)
         proj = resolve_box_target(std, config, project_dir, initialize=False)
         cname = container_name_for(proj)
         if not runtime.is_running(cname):
@@ -653,6 +676,16 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
             hint = (
                 "\n  Hint: the remote kanibako is too old for "
                 "--print-container; upgrade it (needs >= 1.7.0)."
+            )
+        elif "no box at" in low:
+            # Explicit-create (Jei 2026-07-11g): the REMOTE box does not exist and
+            # a launch never auto-creates one.  `create` must be run ON THE REMOTE
+            # host — make that unambiguous (the bare "run 'kanibako create'" in the
+            # remote stderr reads as a local suggestion otherwise).
+            hint = (
+                f"\n  Hint: box '{box}' does not exist on the remote host "
+                f"'{dest}'.  Create it THERE first, e.g.: "
+                f"ssh {dest} kanibako create {box}"
             )
         print(
             f"Error: remote 'kanibako start --detach --warm-only' failed on "

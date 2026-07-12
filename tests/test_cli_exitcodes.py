@@ -229,7 +229,7 @@ class TestStandaloneLaunch:
             )
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_start_standalone_creates_lock(self, start_mocks, tmp_path):
         """kanibako/.kanibako.lock is used during run."""
@@ -329,7 +329,7 @@ class TestStandaloneLaunch:
             rc = run_shell(args)
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_resume_works_with_standalone(self, start_mocks, tmp_path):
         """start -R auto-detects standalone mode via resolve_any_project."""
@@ -348,7 +348,7 @@ class TestStandaloneLaunch:
             )
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_start_local_still_works(self, start_mocks, tmp_path):
         """Non-standalone dir falls through to local."""
@@ -366,7 +366,7 @@ class TestStandaloneLaunch:
             )
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_start_standalone_no_orphan_hint(self, start_mocks, tmp_path, capsys):
         """No orphan hint printed for standalone projects."""
@@ -439,7 +439,7 @@ class TestWorksetLaunch:
             )
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_start_workset_creates_lock(self, start_mocks, tmp_path):
         """projects/{name}/.kanibako.lock is used during run."""
@@ -539,7 +539,7 @@ class TestWorksetLaunch:
             rc = run_shell(args)
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_resume_works_with_workset(self, start_mocks, tmp_path):
         """start -R auto-detects workset mode via resolve_any_project."""
@@ -561,7 +561,7 @@ class TestWorksetLaunch:
             )
 
         assert rc == 0
-        m.resolve_any_project.assert_called_once()
+        m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
     def test_start_workset_no_orphan_hint(self, start_mocks, tmp_path, capsys):
         """No orphan hint printed for workset projects."""

@@ -690,10 +690,18 @@ def run_create(args: argparse.Namespace) -> int:
     _clear_create_entry(std, proj)
 
     mode = "standalone" if args.standalone else "default"
+    # Explicit-create (Jei 2026-07-11g): `create` MAKES the box but does NOT launch
+    # it — a launch (`start` / bare `kanibako` / `code` / `shell`) no longer
+    # auto-creates, so tell the user exactly how to start what they just made.
+    start_hint = (
+        "Start the box by executing 'kanibako' (shortcuts to 'kanibako start') "
+        "from its path (or add a path argument)."
+    )
     if is_recovery:
         print(f"Resumed interrupted {mode} project in {proj.project_path}")
     else:
         print(f"Created {mode} project in {proj.project_path}")
+    print(start_hint)
     return 0
 
 
