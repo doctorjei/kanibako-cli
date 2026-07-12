@@ -1230,14 +1230,15 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
     return std.primary_logs / f"{box}.jsonl"
 
 
-# ⚠ PROVISIONAL / UNDOCUMENTED — do NOT build on `.shell.d`. This drop-in dir is
-# sourced ONLY by an interactive `.bashrc` (a human attaching to the box); it does
-# NOT reach the agent (exec'd directly), the agent's `bash -c` tool calls
-# (non-interactive), or the launch env. It currently has NO producers and is NOT a
-# documented feature. Its fate — keep + document as interactive-shell ergonomics
-# (populated via the seed/template system) vs remove — is a BACKLOG DISCUSSION item
-# (see tasks.md 🧰 Codebase health). Do NOT add code that depends on `.shell.d` until
-# that is decided; to deliver env to the AGENT use `env.<VAR>` / `secret_path` (§2a/§2d).
+# `~/.shell.d/*.sh` is a user/template extension point for customizing a box's
+# INTERACTIVE shell.  A box user (or a seed/template) drops `*.sh` scripts into
+# `~/.shell.d/` and kanibako guarantees `.bashrc` sources them on every interactive
+# shell startup — see README "Init scripts".  This is an intentional seam with no
+# first-party producers by design: kanibako seeds the source line but never writes
+# the scripts themselves.  Scope note: the source line runs ONLY for an interactive
+# `.bashrc` (a human attaching to the box); it does NOT reach the agent (exec'd
+# directly), the agent's `bash -c` tool calls (non-interactive), or the launch env.
+# To deliver env to the AGENT, use `env.<VAR>` / `secret_path` (§2a/§2d) instead.
 _SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
 
 
@@ -1264,11 +1265,12 @@ def _bootstrap_shell(shell_path: Path) -> None:
 
 
 def _upgrade_shell(shell_path: Path) -> None:
-    """Patch an existing shell directory to add shell.d support.
+    """Keep the ``.shell.d`` sourcing seam current on an existing shell directory.
 
-    Idempotent — safe to call every launch.  Creates ``.shell.d/`` if missing
-    and appends the source line to ``.bashrc`` if absent.  No-op if
-    *shell_path* does not exist yet.
+    Ensures the user/template extension point stays wired on every launch,
+    including shells created before this seam existed.  Idempotent — safe to
+    call every launch.  Creates ``.shell.d/`` if missing and appends the source
+    line to ``.bashrc`` if absent.  No-op if *shell_path* does not exist yet.
     """
     if not shell_path.is_dir():
         return
