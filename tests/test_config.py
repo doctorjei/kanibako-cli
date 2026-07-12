@@ -11,15 +11,12 @@ from kanibako.config import (
     load_config,
     load_merged_config,
     read_box_enable_vault,
-    read_resource_overrides,
     read_setup_completed,
     read_agent_settings,
-    remove_resource_override,
     remove_agent_setting,
     write_box_enable_vault,
     write_global_config,
     write_project_config,
-    write_resource_override,
     write_agent_setting,
 )
 
@@ -749,61 +746,6 @@ class TestConfigFilePath:
         old.write_text("paths:\n")
         result = config_file_path(tmp_path)
         assert result == tmp_path / "kanibako_config.yaml"
-
-
-class TestResourceOverrides:
-    """Tests for resource scope override storage in settings.yaml."""
-
-    def _write_base_toml(self, path):
-        """Write a minimal settings.yaml for testing."""
-        write_project_config(path, "base:image")
-
-    def test_round_trip(self, tmp_path):
-        """Write and read back resource overrides."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-        write_resource_override(p, "plugins/", "project")
-        write_resource_override(p, "settings.json", "shared")
-
-        overrides = read_resource_overrides(p)
-        assert overrides == {"plugins/": "project", "settings.json": "shared"}
-
-    def test_backward_compat_no_section(self, tmp_path):
-        """Old settings.yaml without [resource_overrides] returns empty dict."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-
-        overrides = read_resource_overrides(p)
-        assert overrides == {}
-
-    def test_remove_override(self, tmp_path):
-        """remove_resource_override removes a single override."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-        write_resource_override(p, "plugins/", "project")
-        write_resource_override(p, "cache/", "project")
-
-        assert remove_resource_override(p, "plugins/") is True
-        overrides = read_resource_overrides(p)
-        assert "plugins/" not in overrides
-        assert "cache/" in overrides
-
-    def test_remove_nonexistent(self, tmp_path):
-        """remove_resource_override returns False for missing key."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-
-        assert remove_resource_override(p, "nonexistent/") is False
-
-    def test_preserves_other_sections(self, tmp_path):
-        """Writing resource overrides doesn't clobber other sections."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-        write_resource_override(p, "plugins/", "project")
-
-        # The base box section should still be intact.
-        cfg = load_config(p)
-        assert cfg.box_image == "base:image"
 
 
 class TestTargetSettings:
