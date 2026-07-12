@@ -26,16 +26,11 @@ import subprocess
 from pathlib import Path
 
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_HOME
-from kanibako.targets.base import Mount
 
 logger = get_logger("image_sharing")
 
 # Well-known mount point inside child containers.
 SHARED_STORE_CONTAINER_PATH = "/var/lib/shared-images"
-
-# Container-side storage.conf path (rootless podman).
-_STORAGE_CONF_CONTAINER_PATH = f"{GUEST_HOME}/.config/containers/storage.conf"
 
 
 def detect_graph_root(runtime_cmd: str) -> Path | None:
@@ -247,42 +242,3 @@ def prepare_image_sharing_sources(
     storage_conf_path.write_text(storage_conf_content)
 
     return graph_root, storage_conf_path
-
-
-def build_image_sharing_mounts(
-    runtime_cmd: str,
-    staging_dir: Path,
-) -> list[Mount]:
-    """Build the bind-mounts needed for image sharing.
-
-    Returns a list of mounts (may be empty if detection fails or the
-    storage path doesn't exist).  On success returns two mounts:
-
-    1. Host graph root -> ``/var/lib/shared-images`` (read-only)
-    2. Generated ``storage.conf`` -> child's config dir (read-only)
-
-    Parameters
-    ----------
-    runtime_cmd:
-        Path to the container runtime binary (``podman`` or ``docker``).
-    staging_dir:
-        A host-side directory where the generated ``storage.conf`` will be
-        written.  Should be under the project's metadata or cache path.
-    """
-    sources = prepare_image_sharing_sources(runtime_cmd, staging_dir)
-    if sources is None:
-        return []
-    graph_root, storage_conf_path = sources
-
-    return [
-        Mount(
-            source=graph_root,
-            destination=SHARED_STORE_CONTAINER_PATH,
-            options="ro",
-        ),
-        Mount(
-            source=storage_conf_path,
-            destination=_STORAGE_CONF_CONTAINER_PATH,
-            options="ro",
-        ),
-    ]
