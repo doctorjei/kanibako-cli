@@ -3254,6 +3254,135 @@ class TestDetachKeepAlive:
             )
             assert rc == 0
 
+    def test_foreground_tty_suppresses_raw_logs_but_still_retries(
+        self, start_mocks, capsys
+    ):
+        """FF-10 (b): on an INTERACTIVE tty foreground exit the raw captured pane is
+        NOT echoed at the human, yet ``logs`` is still read by the retry gate — the
+        auto-retry stays wired.  Terminal restore (a) fires on the same path."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._interactive_host", return_value=True,
+        ), patch(
+            "kanibako.commands.start._restore_host_terminal",
+        ) as m_restore, patch(
+            "kanibako.commands.start._container_logs",
+            return_value="No conversation found to continue",
+        ):
+            # Isolate: no recursion this test — just prove logs reaches the gate.
+            m.target.should_retry_new_session.return_value = False
+            m.target.should_run_setup.return_value = False
+
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            # (b) the retry gate STILL receives the (unchanged) logs...
+            m.target.should_retry_new_session.assert_called_once_with(
+                "No conversation found to continue"
+            )
+            # ...but the raw pane was NOT echoed at the human's tty.
+            assert "No conversation found to continue" not in capsys.readouterr().err
+            # (a) the host terminal was restored on the tty path.
+            m_restore.assert_called_once()
+
+    def test_foreground_tty_retry_still_fires(self, start_mocks):
+        """FF-10 (b): the new-session auto-retry fires on the interactive tty exit
+        path exactly as before — ``logs`` drives ``should_retry_new_session`` and the
+        container is rm'd + relaunched (the loop-guard ``_is_retry`` still bounds it)."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._interactive_host", return_value=True,
+        ), patch(
+            "kanibako.commands.start._restore_host_terminal",
+        ), patch(
+            "kanibako.commands.start._container_logs",
+            return_value="No conversation found to continue",
+        ):
+            m.target.should_retry_new_session.return_value = True
+            m.target.should_run_setup.return_value = False
+
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            # The retry branch fired: container removed and a fresh launch recursed.
+            m.runtime.rm.assert_called()
+            assert m.resolve_agent.call_count >= 2
+
+    def test_foreground_tty_setup_gate_fires_and_suppresses_logs(
+        self, start_mocks, capsys
+    ):
+        """FF-10 (b): on the interactive tty exit path the launch-validation gate
+        ``should_run_setup`` still receives the (unchanged) logs and errors (rc==1),
+        while the raw captured pane is NOT echoed at the human — proving the tty
+        suppression drops ONLY the raw echo, not the diagnostics logs drive."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._interactive_host", return_value=True,
+        ), patch(
+            "kanibako.commands.start._restore_host_terminal",
+        ), patch(
+            "kanibako.commands.start._container_logs",
+            return_value="Please run setup",
+        ), patch(
+            "kanibako.commands.start.writeback_session_credentials",
+        ), patch(
+            "kanibako.commands.start._print_setup_did_not_take",
+        ) as m_setup_msg:
+            m.target.should_retry_new_session.return_value = False
+            m.target.should_run_setup.return_value = True
+
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            # the setup gate received the unchanged logs and errored...
+            m.target.should_run_setup.assert_called_once_with("Please run setup")
+            assert rc == 1
+            m_setup_msg.assert_called_once()
+            # ...but the raw pane was NOT echoed at the human's tty.
+            assert "Please run setup" not in capsys.readouterr().err
+
+    def test_foreground_non_tty_prints_raw_logs_unchanged(self, start_mocks, capsys):
+        """FF-10 (b) control: with NO tty (piped output / ``podman logs`` / CI) the raw
+        captured pane is still echoed byte-for-byte — downstream tooling depends on it."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._interactive_host", return_value=False,
+        ), patch(
+            "kanibako.commands.start._container_logs",
+            return_value="raw pane dump line",
+        ):
+            m.target.should_retry_new_session.return_value = False
+            m.target.should_run_setup.return_value = False
+
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            assert "raw pane dump line" in capsys.readouterr().err
+
     def test_detach_implies_persistent_from_nonpersistent_arg(self, start_mocks):
         """detach=True forces the persistent/detached launch even if a caller
         passes persistent=False (defensive guard)."""
@@ -3276,6 +3405,69 @@ class TestDetachKeepAlive:
             assert rc == 0
             assert m.runtime.run.call_args.kwargs.get("detach") is True
             m.runtime.exec.assert_not_called()
+
+
+class TestHostTerminalHygiene:
+    """FF-10 (a): the host-tty restore + interactive-detection helpers."""
+
+    def test_restore_emits_sequence_on_tty(self):
+        from kanibako.commands.start import _restore_host_terminal
+        stream = MagicMock()
+        stream.isatty.return_value = True
+        with patch("kanibako.commands.start.sys.stderr", stream):
+            _restore_host_terminal()
+        stream.write.assert_called_once_with("\033[?1049l\033[0m\033[?25h")
+        stream.flush.assert_called_once()
+
+    def test_restore_noop_on_non_tty(self):
+        from kanibako.commands.start import _restore_host_terminal
+        err = MagicMock()
+        err.isatty.return_value = False
+        out = MagicMock()
+        out.isatty.return_value = False
+        with patch("kanibako.commands.start.sys.stderr", err), \
+             patch("kanibako.commands.start.sys.stdout", out):
+            _restore_host_terminal()
+        err.write.assert_not_called()
+        out.write.assert_not_called()
+
+    def test_restore_tolerates_write_error(self):
+        from kanibako.commands.start import _restore_host_terminal
+        err = MagicMock()
+        err.isatty.return_value = True
+        err.write.side_effect = ValueError("closed")
+        out = MagicMock()
+        out.isatty.return_value = False
+        with patch("kanibako.commands.start.sys.stderr", err), \
+             patch("kanibako.commands.start.sys.stdout", out):
+            _restore_host_terminal()  # must not raise
+
+    def test_interactive_host_true_when_stderr_tty(self):
+        from kanibako.commands.start import _interactive_host
+        err = MagicMock()
+        err.isatty.return_value = True
+        with patch("kanibako.commands.start.sys.stderr", err):
+            assert _interactive_host() is True
+
+    def test_interactive_host_false_when_no_tty(self):
+        from kanibako.commands.start import _interactive_host
+        err = MagicMock()
+        err.isatty.return_value = False
+        out = MagicMock()
+        out.isatty.return_value = False
+        with patch("kanibako.commands.start.sys.stderr", err), \
+             patch("kanibako.commands.start.sys.stdout", out):
+            assert _interactive_host() is False
+
+    def test_interactive_host_tolerates_isatty_raise(self):
+        from kanibako.commands.start import _interactive_host
+        err = MagicMock()
+        err.isatty.side_effect = ValueError("detached")
+        out = MagicMock()
+        out.isatty.return_value = False
+        with patch("kanibako.commands.start.sys.stderr", err), \
+             patch("kanibako.commands.start.sys.stdout", out):
+            assert _interactive_host() is False
 
 
 class TestStartDetachedHelper:

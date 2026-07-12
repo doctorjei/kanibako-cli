@@ -3155,9 +3155,24 @@ def _run_container(
                 # a non-zero kanibako rc; `or rc` is non-zero-ONLY, so a clean exit
                 # keeps its rc and we never fabricate a failure.
                 rc = _container_exit_code(runtime, container_name) or rc
+                # (a) Terminal hygiene: the foreground attach just returned with the
+                # box STOPPED.  A full-screen agent TUI (e.g. claude) that DIED without
+                # restoring the screen leaves the host tty in the alternate screen with
+                # dirty SGR state and a hidden cursor — the ``reset``-needed garble a
+                # human hits on a foreground box exit.  Reset it now, but ONLY on a real
+                # TTY (a human is attached); a non-tty consumer must stay byte-clean.
+                _restore_host_terminal()
                 logs = _container_logs(runtime, container_name)
                 if logs:
-                    print(logs, file=sys.stderr)
+                    # (b) The captured dead-agent pane (echoed by the supervisor so
+                    # ``podman logs`` shows WHY the agent died) is escape-laden noise
+                    # for a human who was just attached, so do NOT echo it at an
+                    # interactive tty.  Tooling / ``podman logs`` / CI (non-tty) still
+                    # get it byte-for-byte.  ``logs`` is still COMPUTED above and read
+                    # by BOTH the retry and setup checks below on BOTH paths, so the
+                    # auto-retry ("Restarting with a new session.") is unaffected.
+                    if not _interactive_host():
+                        print(logs, file=sys.stderr)
                     # Auto-retry as new session if the target says so
                     # (once only — _is_retry prevents loops).
                     if (
@@ -5220,6 +5235,48 @@ def _container_exit_code(runtime: ContainerRuntime, name: str) -> int:
         return int(result.stdout.strip())
     except ValueError:
         return 0
+
+
+def _interactive_host() -> bool:
+    """True iff the log-echo target (``sys.stderr``) is a real TTY (human attached).
+
+    Gates the interactive-only terminal hygiene on the foreground box-exit path:
+    a human attached at ``sys.stderr`` must NOT get the raw captured pane echoed
+    at them.  Keyed on ``sys.stderr`` SPECIFICALLY — the stream the raw ``logs``
+    are printed to — NOT stdout, so a consumer that redirected only stderr to
+    capture the logs (``kanibako start 2> logfile``, stdout still a tty) still
+    gets them.  Piped output / ``podman logs`` / CI (stderr not a TTY) keep the
+    byte-for-byte log-echo downstream tooling consumes.  Tolerant: if ``isatty``
+    raises, treat as not-a-tty (print the logs — never lose diagnostics).
+    """
+    try:
+        return bool(sys.stderr.isatty())
+    except Exception:
+        return False
+
+
+def _restore_host_terminal() -> None:
+    """Reset the host TTY after an interactive foreground attach returns.
+
+    A full-screen agent TUI (e.g. claude) that DIES without cleanup leaves the
+    host terminal in the alternate screen with dirty SGR state and a hidden
+    cursor — the ``reset``-needed garble a human hits on a foreground box exit.
+    Emit the minimal restore trio — leave alt-screen (``\\033[?1049l``), reset
+    SGR (``\\033[0m``), show cursor (``\\033[?25h``) — so a TUI that never ran
+    ``rmcup`` does not leave the tty wedged.  Idempotent on an already-clean
+    terminal.  No-op on a non-TTY (piped output / CI): those consumers stay
+    byte-clean.  Tolerant: any stream error is swallowed (hygiene must never
+    raise on a teardown path).
+    """
+    for stream in (sys.stderr, sys.stdout):
+        try:
+            if not stream.isatty():
+                continue
+            stream.write("\033[?1049l\033[0m\033[?25h")
+            stream.flush()
+            return
+        except Exception:
+            continue
 
 
 def _validate_mounts(mounts: list, logger) -> None:
