@@ -2418,6 +2418,41 @@ class TestForegroundSupervisor:
             cont_val = argv[argv.index("--continue-cmd") + 1]
             assert "--continue" in shlex.split(cont_val)
 
+    def test_session_takeover_flag_dormant_by_default(self, start_mocks, monkeypatch):
+        """4b: KANIBAKO_SESSION_TAKEOVER unset ⇒ NO --session-takeover (dormant)."""
+        monkeypatch.delenv("KANIBAKO_SESSION_TAKEOVER", raising=False)
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            argv = self._supervisor_argv(self._script(m))
+            assert "--session-takeover" not in argv
+
+    def test_session_takeover_env_threads_flag(self, start_mocks, monkeypatch):
+        """4b: KANIBAKO_SESSION_TAKEOVER=1 ⇒ supervisor argv carries --session-takeover."""
+        monkeypatch.setenv("KANIBAKO_SESSION_TAKEOVER", "1")
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            argv = self._supervisor_argv(self._script(m))
+            assert "--session-takeover" in argv
+
+    def test_env_flag_enabled_recognises_truthy_strings(self):
+        """The gate accepts 1/true/yes/on (any case), rejects everything else."""
+        from kanibako.commands.start import _env_flag_enabled
+
+        for on in ("1", "true", "TRUE", "Yes", " on ", "On"):
+            assert _env_flag_enabled(on) is True
+        for off in (None, "", "0", "false", "no", "off", "maybe"):
+            assert _env_flag_enabled(off) is False
+
     def test_foreground_no_agent_keeps_bare_shell_wrap(self, start_mocks):
         """Foreground NO-AGENT (box_shell_mode) → unchanged tmux wrap, NO supervisor."""
         with start_mocks() as m:

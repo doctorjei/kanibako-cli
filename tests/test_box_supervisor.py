@@ -1357,6 +1357,317 @@ def test_4a_detection_takes_no_destructive_or_signal_action(monkeypatch):
     assert all(sig == 0 for _pid, sig in signalled)
 
 
+# -- increment 4b: single-writer ENFORCEMENT (takeover; grace + pause + evict) -
+
+def _takeover_events_sup(monkeypatch, *, own_out="100\n", grace=7.0):
+    """A run_forever-mode supervisor instrumented to record the takeover SEQUENCE.
+
+    Every relevant seam appends a tagged event to a shared list, so a single ordered
+    log captures the SIGSTOP / send-keys / grace / process-group-kill / SIGCONT order:
+    the tmux ``run`` records its subcommand, ``_sleep`` records the grace, and the
+    ``os.kill`` / ``os.killpg`` / ``os.getpgid`` module functions are spied.  ``run``
+    returns *own_out* for ``list-panes`` so :meth:`kill_agent_session` reaps that pane.
+    """
+    events: list[tuple] = []
+
+    def run(args, **_kw):
+        assert args[0] == "tmux"
+        sub = args[1]
+        events.append(("tmux", sub))
+        out = own_out if sub == "list-panes" else ""
+        return subprocess.CompletedProcess(args, returncode=0, stdout=out, stderr="")
+
+    sup = BoxSupervisor(
+        _config(
+            agent_markers_dir="/run/kanibako/agents",
+            session_takeover=True,
+            takeover_grace=grace,
+            send_keys_retries=1,
+        ),
+        run=run,
+        proc_cmdlines=[],
+    )
+    sup._sleep = lambda s: events.append(("sleep", s))  # type: ignore[method-assign]
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: events.append(("kill", pid, sig)))
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: events.append(("killpg", pgid, sig)))
+    monkeypatch.setattr(bs.os, "getpgid", lambda pid: pid)
+    return sup, events
+
+
+def test_takeover_sequence_order_pause_headsup_grace_pgkill_resume(monkeypatch):
+    # THE core 4b assertion: with the flag ON, a newcomer (200) over a live pane
+    # incumbent (100) runs the takeover in the EXACT order
+    #   SIGSTOP(200) → send-keys(100, heads-up) → grace → process-group-kill(100) →
+    #   SIGCONT(200)
+    # and the kill is a process GROUP of the PANE incumbent, never the bare marker.
+    sup, events = _takeover_events_sup(monkeypatch, grace=7.0)
+    assert sup._takeover({100}, {200}) is True
+
+    def idx(pred) -> int:
+        return next(i for i, e in enumerate(events) if pred(e))
+
+    i_stop = idx(lambda e: e == ("kill", 200, signal.SIGSTOP))
+    i_send = idx(lambda e: e == ("tmux", "send-keys"))
+    i_grace = idx(lambda e: e[0] == "sleep")
+    i_killpg = idx(lambda e: e == ("killpg", 100, signal.SIGTERM))
+    i_killsession = idx(lambda e: e == ("tmux", "kill-session"))
+    i_cont = idx(lambda e: e == ("kill", 200, signal.SIGCONT))
+    # Full ordering: pause → heads-up → grace → evict(pgkill then session) → resume.
+    assert i_stop < i_send < i_grace < i_killpg < i_killsession < i_cont
+    # The grace used the configured window.
+    assert ("sleep", 7.0) in events
+    # The evict is a process-GROUP kill of the PANE incumbent (100), never the marker.
+    assert ("killpg", 100, signal.SIGTERM) in events
+    assert all(not (e[0] == "killpg" and e[1] == 200) for e in events)
+    # The newcomer (200) is ONLY ever SIGSTOP/SIGCONT'd — never killed / group-killed.
+    assert all(
+        e[2] in (signal.SIGSTOP, signal.SIGCONT)
+        for e in events
+        if e[0] == "kill" and e[1] == 200
+    )
+
+
+def test_takeover_returns_true_and_run_forever_hands_off_to_panel_watch(monkeypatch):
+    # Flag ON at the LOOP level: a live CLI incumbent (pane 100) + a panel newcomer
+    # (marker 200) → run_forever performs the takeover then hands off to the agentless
+    # panel-watch keep-alive (self-heal-to-CLI on the newcomer's death).
+    fake = FakeRun(
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    sup = BoxSupervisor(
+        _config(
+            agent_markers_dir="/run/kanibako/agents",
+            session_takeover=True,
+            takeover_grace=0.0,
+        ),
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [100, 200],  # own pane 100 + newcomer 200
+        pid_alive=lambda pid: True,
+    )
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: None)
+    monkeypatch.setattr(bs.os, "getpgid", lambda pid: pid)
+    handoff: list[int] = []
+    sup._run_panel_watch = lambda: (handoff.append(1) or 0)  # type: ignore[method-assign]
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 5)  # safety bound if the takeover somehow does not fire
+    assert sup.run_forever() == 0
+    assert handoff == [1]  # handed off to the agentless keep-alive exactly once
+
+
+def test_takeover_does_not_fire_without_a_pane_incumbent(monkeypatch):
+    # SAFETY: never evict on a bare marker.  A newcomer marker with NO own pane
+    # (list-panes empty → own == {}) must NOT trigger a takeover (nothing legitimate
+    # to hand off), and NO signals fire — it falls through to the loop unchanged.
+    fake = FakeRun(rc={"has-session": 1}, stdout={"list-panes": "", "display-message": ""})
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents", session_takeover=True),
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [200],  # a marker but NO own pane
+        pid_alive=lambda pid: True,
+    )
+    fired: list[int] = []
+    sup._takeover = lambda *a: (fired.append(1) or True)  # type: ignore[method-assign]
+    signals: list = []
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: signals.append(("pg", pgid, sig)))
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 2)
+    # No pane incumbent → self-heal path fires instead (agent dead), but crucially the
+    # takeover never runs.  Stub _self_heal so the loop terminates deterministically.
+    sup._self_heal = lambda: True  # type: ignore[method-assign]
+    assert sup.run_forever() == 0
+    assert fired == []       # takeover never invoked without a pane incumbent
+    assert signals == []     # and no stray signal was sent
+
+
+def test_flag_off_is_4a_log_only_no_signals(monkeypatch):
+    # FLAG-OFF == 4a proof: the SAME newcomer scenario (live pane 100 + newcomer 200)
+    # with the flag OFF (default) LOGS the newcomer (4a detection) and takes ZERO
+    # signal/kill ops — no os.kill, no os.killpg, no send-keys, no kill-session.
+    fake = FakeRun(
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents"),  # session_takeover default False
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [100, 200],
+        pid_alive=lambda pid: True,
+    )
+    signals: list = []
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: signals.append(("kill", pid, sig)))
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: signals.append(("killpg", pgid, sig)))
+    warnings = _capture_warnings(monkeypatch)
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    # Detection still logged the newcomer exactly once (byte-identical to 4a).
+    assert len([m for m in warnings if "newcomer agent PID 200" in m]) == 1
+    # ...but NOTHING destructive/signalling fired.
+    assert signals == []
+    assert fake.sub_calls("send-keys") == []
+    assert fake.sub_calls("kill-session") == []
+
+
+def test_takeover_error_before_evict_resumes_newcomer_and_does_not_kill(monkeypatch):
+    # ERROR-PATH SAFETY: a failure BETWEEN the SIGSTOP and the evict (here the heads-up
+    # raises) ⇒ the paused newcomer is SIGCONT'd (never left frozen) and the incumbent
+    # is NOT killed — the takeover returns False.
+    fake = FakeRun(stdout={"list-panes": "100\n"})
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents", session_takeover=True),
+        run=fake,
+        proc_cmdlines=[],
+    )
+    signals: list = []
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    killpg_calls: list = []
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)))
+    monkeypatch.setattr(bs.os, "getpgid", lambda pid: pid)
+
+    def boom() -> bool:
+        raise RuntimeError("heads-up send-keys blew up")
+
+    sup._send_takeover_heads_up = boom  # type: ignore[method-assign]
+    grace: list[float] = []
+    sup._sleep = lambda s: grace.append(s)  # type: ignore[method-assign]
+
+    assert sup._takeover({100}, {200}) is False  # NO takeover
+    # The newcomer was paused THEN resumed (never left frozen).
+    assert (200, signal.SIGSTOP) in signals
+    assert (200, signal.SIGCONT) in signals
+    # The incumbent was NOT evicted (no process-group kill, no kill-session).
+    assert killpg_calls == []
+    assert fake.sub_calls("kill-session") == []
+    # The grace never elapsed (we failed before it).
+    assert grace == []
+
+
+def test_takeover_aborts_when_newcomer_gone_before_pause(monkeypatch):
+    # If every newcomer vanished before it could be paused (SIGSTOP → ProcessLookupError)
+    # there is nothing to hand the session to → NO eviction of the legitimate incumbent.
+    fake = FakeRun(stdout={"list-panes": "100\n"})
+    sup = BoxSupervisor(
+        _config(agent_markers_dir="/run/kanibako/agents", session_takeover=True),
+        run=fake,
+        proc_cmdlines=[],
+    )
+
+    def gone(_pid, _sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(bs.os, "kill", gone)
+    killpg_calls: list = []
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: killpg_calls.append(1))
+    monkeypatch.setattr(bs.os, "getpgid", lambda pid: pid)
+    assert sup._takeover({100}, {200}) is False
+    assert killpg_calls == []                    # incumbent NOT evicted
+    assert fake.sub_calls("kill-session") == []
+
+
+def test_panel_watch_reverse_direction_is_log_only_even_with_flag_on(monkeypatch):
+    # DIRECTIONAL: in panel-watch (a live-panel incumbent) a newcomer has NO panel
+    # injection vector → it stays LOG-ONLY (deferred) even with the takeover flag ON.
+    # No SIGSTOP/SIGCONT, no process-group kill, no send-keys / kill-session.
+    fake = FakeRun(rc={"has-session": 1})  # agentless warm (no tmux agent)
+    sup = BoxSupervisor(
+        _config(
+            panel_watch=True,
+            agent_markers_dir="/run/kanibako/agents",
+            session_takeover=True,
+        ),
+        run=fake,
+        proc_cmdlines=[],
+        list_marker_pids=lambda _p: [900, 901],  # 900 latches incumbent, 901 newcomer
+        pid_alive=lambda pid: True,
+    )
+    signals: list = []
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: signals.append(("pg", pgid, sig)))
+    warnings = _capture_warnings(monkeypatch)
+    _script_snapshots(sup, [_VS])
+    _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    # The newcomer is LOGGED (deferred), never signalled or evicted.
+    assert [m for m in warnings if "newcomer agent PID 901" in m] != []
+    assert signals == []
+    assert fake.sub_calls("send-keys") == []
+    assert fake.sub_calls("kill-session") == []
+
+
+def test_kill_agent_session_reaps_the_pane_process_group(monkeypatch):
+    # The evict primitive reaps the pane agent's PROCESS GROUP (child-kill-with-parent)
+    # BEFORE killing the tmux session — so no orphaned subagent survives.
+    fake = FakeRun(stdout={"list-panes": "100 101\n"})
+    sup = BoxSupervisor(_config(), run=fake)
+    killed_groups: list[tuple[int, int]] = []
+    monkeypatch.setattr(bs.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: killed_groups.append((pgid, sig)))
+    sup.kill_agent_session()
+    # Both pane process groups reaped with SIGTERM...
+    assert killed_groups == [(100, signal.SIGTERM), (101, signal.SIGTERM)]
+    # ...then the tmux session killed.
+    assert fake.sub_calls("kill-session") == [["tmux", "kill-session", "-t", "kanibako"]]
+
+
+def test_kill_agent_session_tolerates_a_dead_pane_group(monkeypatch):
+    # A pane whose process already exited (killpg → ProcessLookupError) is a tolerant
+    # no-op; the tmux kill-session still runs.  PID-1 must never die on a kill hiccup.
+    fake = FakeRun(stdout={"list-panes": "100\n"})
+    sup = BoxSupervisor(_config(), run=fake)
+    monkeypatch.setattr(bs.os, "getpgid", lambda pid: pid)
+
+    def dead(_pgid, _sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(bs.os, "killpg", dead)
+    sup.kill_agent_session()  # must not raise
+    assert fake.sub_calls("kill-session") == [["tmux", "kill-session", "-t", "kanibako"]]
+
+
+def test_kill_process_group_refuses_pid_zero_never_kills_supervisor_group(monkeypatch):
+    # SAFETY GUARD: a stray pid 0/1 must NEVER reach os.killpg — os.getpgid(0) aliases
+    # the SUPERVISOR's own group, so killpg on it would SIGTERM PID-1 → box death.
+    sup = BoxSupervisor(_config(), run=FakeRun())
+    killpg_calls: list = []
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)))
+    assert sup._kill_process_group(0, signal.SIGTERM) is False
+    assert sup._kill_process_group(1, signal.SIGTERM) is False
+    assert killpg_calls == []  # os.killpg was NEVER reached
+
+
+def test_kill_process_group_refuses_supervisor_own_group(monkeypatch):
+    # SAFETY GUARD: even a >1 pid whose pgid resolves to the supervisor's OWN group
+    # (a mis-resolution) is refused — never escalate a group-kill to PID-1's group.
+    sup = BoxSupervisor(_config(), run=FakeRun())
+    killpg_calls: list = []
+    monkeypatch.setattr(bs.os, "getpgrp", lambda: 4242)
+    monkeypatch.setattr(bs.os, "getpgid", lambda _pid: 4242)  # pane pgid == our group
+    monkeypatch.setattr(bs.os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)))
+    assert sup._kill_process_group(100, signal.SIGTERM) is False
+    assert killpg_calls == []
+
+
+def test_config_from_argv_defaults_session_takeover_off():
+    cfg = config_from_argv(["--session", "s", "--marker", "m", "--", "claude"])
+    assert cfg.session_takeover is False
+    assert cfg.takeover_grace == 5.0
+
+
+def test_config_from_argv_parses_session_takeover_and_grace():
+    cfg = config_from_argv(
+        ["--session", "s", "--marker", "m", "--session-takeover",
+         "--takeover-grace", "12.5", "--", "claude"]
+    )
+    assert cfg.session_takeover is True
+    assert cfg.takeover_grace == 12.5
+
+
 # -- config_from_argv (panel-watch flags) ------------------------------------
 
 def test_config_from_argv_panel_watch_allows_no_trailing_agent_argv():

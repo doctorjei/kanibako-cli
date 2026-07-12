@@ -9,15 +9,30 @@ B: only genuine exit-of-everything, or an explicit ``kanibako stop``, tears the 
 down).
 
 This module grew from INCREMENT 2 (E2a) — the supervisor MODULE — through E2b-E2h
-(the launch-model wiring in ``start.py``) and increment 4a (single-state DETECTION).
-Increment 4a adds LOG-ONLY newcomer detection: both loops enumerate the per-agent
-markers dir (:func:`scan_marker_pids`) and log any live marker PID that is NOT the
-supervisor's own agent (:func:`newcomer_pids`) — a second agent has bound the
-session (the split-brain hazard).  4a takes NO action on a newcomer: it does NOT
-implement eviction / SIGSTOP / grace / process-group killing (design increment 4b,
-deferred) — there is no agent eviction or signalling of a newcomer here.
-:meth:`kill_agent_session` is the total-teardown kill on box shutdown ONLY, never a
-newcomer eviction.
+(the launch-model wiring in ``start.py``), increment 4a (single-state DETECTION), and
+increment 4b (single-writer ENFORCEMENT).  4a enumerates the per-agent markers dir
+(:func:`scan_marker_pids`) and flags any live marker PID that is NOT the supervisor's
+own agent (:func:`newcomer_pids`) — a second agent has bound the session (the
+split-brain hazard).  4b adds the TAKEOVER (:meth:`BoxSupervisor._takeover`) for the
+CRITICAL direction (a VS Code panel newcomer taking over a live CLI incumbent in
+``run_forever``): PAUSE the newcomer (``SIGSTOP``), a best-effort GRACE + heads-up to
+the incumbent, then EVICT the incumbent as a PROCESS GROUP (:meth:`kill_agent_session`,
+child-kill-with-parent so no orphaned subagent survives), then RESUME the newcomer
+(``SIGCONT``) as the sole writer + hand off to the agentless panel-watch keep-alive.
+
+⚑ HARD SAFETY GATE: the DESTRUCTIVE evict is gated behind ``config.session_takeover``
+(threaded from the experimental env ``KANIBAKO_SESSION_TAKEOVER``), DEFAULT-OFF so 4b's
+NEWCOMER TAKEOVER lands DORMANT — when OFF, both loops handle a newcomer exactly as 4a
+(LOG-ONLY: no SIGSTOP, no send-keys, no eviction of a newcomer).  ⚑ NOTE: the
+process-GROUP kill in :meth:`kill_agent_session` runs on the normal TEARDOWN and
+self-heal-restart paths REGARDLESS of the flag (a strict improvement — it reaps orphaned
+subagents that a bare ``tmux kill-session`` would leave); it is guarded against a
+pathological ``pgid`` (never signals pgid ``<=1`` or the supervisor's own group).  The
+evict TARGET is always the pane incumbent (:meth:`_own_agent_pids`, CLI-side
+validated), never a bare marker PID.  The REVERSE direction (a CLI newcomer over a
+live-panel incumbent, in panel-watch) has no panel injection vector → it stays
+LOG-ONLY (deferred).  :meth:`kill_agent_session` is BOTH the total-teardown kill and
+the 4b eviction primitive (the process-group handling its docstring reserved).
 
 Design for testability — the PURE decision logic (:func:`decide`) is split from the
 impure tmux actions, and EVERY subprocess call funnels through an injectable runner
@@ -59,6 +74,19 @@ log = get_logger("box_supervisor")
 #: the host-side launch wiring (``commands/start.py`` → ``--marker``) and the
 #: in-box supervisor share a single source of truth — never a duplicated literal.
 CONTINUE_MARKER = "[Agent handoff - Continue prior task(s)]"
+
+#: The heads-up string 4b ENFORCEMENT delivers (via ``tmux send-keys``) to a CLI
+#: INCUMBENT that is about to be evicted by a panel newcomer taking over the session
+#: (design ``split-brain-persistence-DESIGN.md`` §346, "GRACE + heads-up to the
+#: incumbent").  It lands as a real acting turn if the incumbent is idle, or queues
+#: mid-loop — a best-effort nudge to wind down/checkpoint before the bounded grace
+#: window elapses and the incumbent's process group is evicted.  Injection is feasible
+#: ONLY toward the tmux (CLI) agent; a panel incumbent has no injection vector (the
+#: DIRECTIONAL limit), so this is used only in the CRITICAL direction.
+TAKEOVER_HEADS_UP = (
+    "[Session takeover - another surface is taking over this session; "
+    "wind down and checkpoint now if you have work in progress]"
+)
 
 #: In-box read-only bind-mount ROOT of the HOST kanibako package.  ``_kanibako_mounts``
 #: (``commands/start.py``) lands the host package dir at ``f"{KANIBAKO_PKG_MOUNT_ROOT}/
@@ -243,6 +271,21 @@ class SupervisorConfig:
       a human is the driver) treats an agent EXIT as a NORMAL termination and lets
       PID-1 return so the box closes — no self-heal loop while a CLI is the surface.
       Any value other than ``"teardown"`` is treated as ``"self-heal"`` (safe default).
+    * *session_takeover* — 4b ENFORCEMENT master switch (design §338-359), DEFAULT-OFF
+      so 4b lands DORMANT: ``False`` (unset) ⇒ the run_forever loop's newcomer handling
+      is 4a LOG-ONLY (no SIGSTOP / send-keys / newcomer eviction — the newcomer path is
+      4a-identical; note the teardown/self-heal process-group kill is flag-independent);
+      ``True`` ⇒
+      full single-writer TAKEOVER (pause the panel newcomer, grace + evict the CLI
+      incumbent, resume the newcomer).  Gated behind an internal/experimental env
+      (``KANIBAKO_SESSION_TAKEOVER``, threaded by ``commands/start.py``), NOT a spec
+      settings key — flipping the default to ``True`` is a follow-up gated on desktop
+      validation of the ``$PPID`` == agent-PID / panel invariant, and promoting it to a
+      proper ``agent.default.*`` key is a later spec-delta.
+    * *takeover_grace* — seconds the takeover waits (after pausing the newcomer + a
+      best-effort heads-up) for the CLI incumbent to wind down before the process-group
+      evict.  Kept SHORT by default (the paused panel's stdio blocks while stopped, so a
+      long pause risks the extension's watchdog respawning it — a desktop-gated unknown).
     * *panel_watch* — PANEL-WATCH mode (E2f, design cases 3a/3b): when ``True`` the
       supervisor starts NO CLI agent (the VS Code panel is the agent), enumerates the
       *agent_markers_dir* liveness MARKERS + the vscode_server surface, and self-heals
@@ -275,6 +318,8 @@ class SupervisorConfig:
     send_keys_retries: int = 3
     send_keys_delay: float = 0.1
     on_agent_exit: str = "self-heal"
+    session_takeover: bool = False
+    takeover_grace: float = 5.0
     panel_watch: bool = False
     agent_markers_dir: str | None = None
     creds_flag: str | None = None
@@ -623,23 +668,40 @@ class BoxSupervisor:
             log.warning("restart_agent_session: continue-marker send-keys did not land")
         return True
 
-    def _send_marker(self) -> bool:
-        """Send the continue-marker to the session via ``tmux send-keys`` (bounded retry).
+    def _send_keys_text(self, text: str) -> bool:
+        """Send *text* to the session as a real user turn via ``tmux send-keys`` (bounded retry).
 
         A freshly created pane may not be ready the instant ``new-session`` returns, so
         retry up to ``send_keys_retries`` times with a small ``send_keys_delay`` between
-        attempts.  Emits ``send-keys -t <session> '<marker>' Enter`` — the trailing
+        attempts.  Emits ``send-keys -t <session> '<text>' Enter`` — the trailing
         ``Enter`` submits it as a real user turn.  Returns ``True`` once a send lands.
+        Shared by the self-heal continue-marker (:meth:`_send_marker`) and the 4b
+        takeover heads-up (:meth:`_send_takeover_heads_up`) — one send-keys path.
         """
         for attempt in range(1, self.config.send_keys_retries + 1):
             rc = self._run_tmux(
-                ["send-keys", "-t", self.config.session, self.config.marker, "Enter"]
+                ["send-keys", "-t", self.config.session, text, "Enter"]
             )
             if rc == 0:
                 return True
             if attempt < self.config.send_keys_retries:
                 self._sleep(self.config.send_keys_delay)
         return False
+
+    def _send_marker(self) -> bool:
+        """Send the continue-marker to the session (self-heal restart); see :meth:`_send_keys_text`."""
+        return self._send_keys_text(self.config.marker)
+
+    def _send_takeover_heads_up(self) -> bool:
+        """Send the 4b takeover heads-up (:data:`TAKEOVER_HEADS_UP`) to the CLI incumbent.
+
+        Best-effort GRACE nudge (design §346): lands as a real acting turn if the
+        incumbent is idle, or queues mid-loop — either way the incumbent is warned it is
+        about to be handed off before the bounded grace elapses.  Feasible ONLY toward
+        the tmux (CLI) agent (the DIRECTIONAL limit).  Delegates to the shared
+        :meth:`_send_keys_text`.
+        """
+        return self._send_keys_text(TAKEOVER_HEADS_UP)
 
     def agent_pane_dead_status(self) -> int | None:
         """Return the agent pane's DEAD exit status, or ``None`` when it is not dead.
@@ -732,14 +794,69 @@ class BoxSupervisor:
             return False
         return self.agent_pane_dead_status() is None
 
-    def kill_agent_session(self) -> None:
-        """Kill the agent session: ``tmux kill-session -t <session>`` (teardown only).
+    def _kill_process_group(self, pid: int, sig: int) -> bool:
+        """Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant.
 
-        Used on explicit teardown (SIGTERM / :meth:`teardown`).  Tolerant of an
-        already-absent session / missing tmux — logs, never raises.  This is NOT
-        eviction / process-group handling (increment 4): it is the total-teardown
-        kill of the supervised session on box shutdown.
+        The agent is launched as ``tmux new-session -- <agent>`` (no shell wrap), so
+        tmux starts it as a session/process-group LEADER — its PID is the group id — and
+        every subagent / worker it spawns inherits that group.  Signalling the GROUP
+        (``os.killpg``) therefore reaps the agent AND all its descendants, so no orphaned
+        worker survives a takeover/teardown (the child-kill-with-parent ruling, design
+        §267 / §348).  Resolves the real pgid via ``os.getpgid`` (falling back to the pid
+        itself when it cannot — a group leader's pgid == its pid), then signals it.
+        Tolerant like every PID-1 op: a process that already exited
+        (``ProcessLookupError``) or any ``OSError`` resolves to ``False`` and is logged
+        at debug — PID-1 never dies on a kill hiccup.
+
+        ⚑ SAFETY GUARD (a wrong pgid here could kill the whole box): a real pane agent
+        is its OWN ``setsid`` session/group leader, so its pgid is never 0/1 nor the
+        SUPERVISOR's (PID-1) own group.  Refuse those pathological targets — most
+        importantly ``pid <= 0``, because ``os.getpgid(0)`` returns the CALLER's group,
+        so a stray ``0`` would make ``os.killpg`` signal PID-1's own group → box death.
+        The guard can never block a legitimate eviction (a pane group is none of these).
         """
+        if pid <= 1:
+            log.warning("kill process group: refusing unsafe pid %d (would risk PID-1)", pid)
+            return False
+        try:
+            pgid = os.getpgid(pid)
+        except OSError:
+            pgid = pid
+        try:
+            own_pgrp = os.getpgrp()
+        except OSError:
+            own_pgrp = -1
+        if pgid <= 1 or pgid == own_pgrp:
+            log.warning(
+                "kill process group: refusing unsafe target pgid %d for pid %d "
+                "(0/1/supervisor group → would risk PID-1 / the box)",
+                pgid, pid,
+            )
+            return False
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return False
+        except OSError as exc:
+            log.debug("kill process group %d (pid %d) failed: %s", pgid, pid, exc)
+            return False
+        return True
+
+    def kill_agent_session(self) -> None:
+        """Evict the supervised agent: process-group kill each pane agent, then the session.
+
+        The eviction primitive — used on explicit teardown (SIGTERM / :meth:`teardown`),
+        on a self-heal restart (to free the dead-pane name), AND as the 4b single-writer
+        EVICT (the process-group handling this method's docstring RESERVED for increment
+        4).  First reaps each of the supervisor's OWN pane agents (:meth:`_own_agent_pids`)
+        as a PROCESS GROUP (:meth:`_kill_process_group`), so no orphaned subagent / worker
+        survives (the child-kill-with-parent ruling); then ``tmux kill-session`` removes
+        the (now-dead) session so its name is reusable.  Tolerant throughout — an
+        already-absent session / dead pane / missing tmux all resolve to a logged no-op,
+        never an exception (PID-1 must not die on a kill).
+        """
+        for pid in sorted(self._own_agent_pids()):
+            self._kill_process_group(pid, signal.SIGTERM)
         rc = self._run_tmux(["kill-session", "-t", self.config.session])
         if rc not in (0, None):
             log.debug("kill_agent_session: tmux kill-session rc=%s", rc)
@@ -840,6 +957,103 @@ class BoxSupervisor:
                 pid,
             )
         self._reported_newcomers = newcomers
+
+    # -- 4b ENFORCEMENT: single-writer takeover (grace + pause + evict) -------
+
+    def _signal_pid(self, pid: int, sig: int) -> bool:
+        """``os.kill(pid, sig)`` — a tolerant SINGLE-process signal (SIGSTOP/SIGCONT).
+
+        Distinct from :meth:`_kill_process_group` (which signals a whole group): the
+        newcomer PAUSE/RESUME target ONE process (the panel agent), never its group.
+        Tolerant like every PID-1 op: a vanished process (``ProcessLookupError``) or any
+        ``OSError`` resolves to ``False`` (logged at debug), never an exception.
+        """
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            log.debug("session takeover: pid %d gone before signal %s", pid, sig)
+            return False
+        except OSError as exc:
+            log.debug("session takeover: signal %s to pid %d failed: %s", sig, pid, exc)
+            return False
+        return True
+
+    def _resume(self, pids: list[int]) -> None:
+        """``SIGCONT`` every PID in *pids* — the reversible undo of the newcomer PAUSE.
+
+        Called on ANY takeover error before the evict (never leave a newcomer frozen)
+        AND after a successful evict (single-writer is now guaranteed).  Best-effort per
+        PID (a newcomer that died while paused is simply skipped).
+        """
+        for pid in pids:
+            self._signal_pid(pid, signal.SIGCONT)
+
+    def _takeover(self, own_pids: set[int], newcomers: set[int]) -> bool:
+        """4b ENFORCEMENT: pause the newcomer, grace the incumbent, evict it, resume (NEW-wins).
+
+        The single-writer TAKEOVER for the CRITICAL direction (a VS Code panel newcomer
+        over a live CLI incumbent).  Steps, IN ORDER — reversible ops (1-3) kept clearly
+        separate from the ONE destructive op (4):
+
+        1. PAUSE (reversible) — ``SIGSTOP`` every newcomer PID so it cannot take a
+           divergent WRITE turn while the session is handed over.
+        2. HEADS-UP (reversible, best-effort) — ``tmux send-keys`` a heads-up to the
+           incumbent (feasible only because it is the tmux agent).
+        3. GRACE (reversible) — wait ``config.takeover_grace`` seconds for the incumbent
+           to wind down / checkpoint.
+        4. EVICT (the ONE destructive op) — process-group kill the incumbent
+           (:meth:`kill_agent_session`, child-kill-with-parent) so no orphaned subagent
+           survives.  The TARGET is the pane incumbent (``own_pids`` / re-read
+           :meth:`_own_agent_pids`), NEVER a bare marker PID.
+        5. RESUME — ``SIGCONT`` the paused newcomer(s); single-writer is now guaranteed.
+
+        SAFETY: on ANY error BEFORE the evict, the newcomer is ``SIGCONT``'d (never left
+        frozen) and the incumbent is NOT killed → returns ``False`` (no takeover).  Also
+        returns ``False`` (no eviction) when NO newcomer could be paused (every one
+        vanished first) — there is then nothing to hand the session to.  Returns ``True``
+        ONLY once the incumbent has been evicted, so the caller hands off to the
+        agentless keep-alive.  The caller pre-checks ``own_pids`` is non-empty (there IS
+        a pane incumbent to evict), so this never fires on a bare marker.
+        """
+        log.warning(
+            "session takeover (4b): panel newcomer(s) %s over live CLI incumbent(s) %s "
+            "— pausing newcomer, gracing + evicting incumbent (NEW-wins)",
+            sorted(newcomers), sorted(own_pids),
+        )
+        paused: list[int] = []
+        try:
+            # 1. PAUSE the newcomer(s) BEFORE they can write (reversible).
+            for pid in sorted(newcomers):
+                if self._signal_pid(pid, signal.SIGSTOP):
+                    paused.append(pid)
+            if not paused:
+                # Every newcomer vanished before it could be paused → nothing to hand
+                # the session to; do NOT evict the legitimate incumbent.
+                log.warning(
+                    "session takeover: no newcomer could be paused; aborting (no eviction)"
+                )
+                return False
+            # 2. HEADS-UP to the incumbent (best-effort) + 3. GRACE (reversible).
+            self._send_takeover_heads_up()
+            self._sleep(self.config.takeover_grace)
+        except Exception:
+            log.exception(
+                "session takeover: a pre-evict step failed; "
+                "resuming newcomer(s), NOT evicting the incumbent"
+            )
+            self._resume(paused)
+            return False
+        # 4. EVICT (the single DESTRUCTIVE op): process-group kill the pane incumbent.
+        log.warning(
+            "session takeover: grace elapsed; evicting incumbent process group(s) %s",
+            sorted(own_pids),
+        )
+        try:
+            self.kill_agent_session()
+        finally:
+            # 5. RESUME the newcomer — single-writer is now guaranteed (incumbent gone).
+            self._resume(paused)
+        return True
 
     def panel_agent_state(self) -> PanelAgentState:
         """Liveness of the PANEL-launched agent from the per-PID markers dir (E2f).
@@ -1039,14 +1253,28 @@ class BoxSupervisor:
             try:
                 cur = self._snapshot()
                 alive = self.agent_session_alive()
-                # 4a LOG-ONLY newcomer detection: a live marker PID that is NOT this
-                # supervisor's own tmux agent = a second agent bound the session (the
-                # split-brain hazard — e.g. the VS Code panel auto-`--resume` over a
-                # live CLI agent).  Gated on a configured markers dir so an old launcher
-                # (or a test) that threads none is byte-unchanged.  NO action (4b acts).
+                # Newcomer detection: a live marker PID that is NOT this supervisor's
+                # own tmux agent = a second agent bound the session (the split-brain
+                # hazard — e.g. the VS Code panel auto-`--resume` over a live CLI agent).
+                # Gated on a configured markers dir so an old launcher (or a test) that
+                # threads none is byte-unchanged.
                 if self.config.agent_markers_dir:
                     live_markers, _stale = self._scan_markers()
-                    self._log_newcomers(live_markers, self._own_agent_pids())
+                    own = self._own_agent_pids()
+                    if self.config.session_takeover:
+                        # 4b ENFORCEMENT (single-writer takeover, NEW-wins).  The
+                        # CRITICAL direction: a panel newcomer over a LIVE CLI incumbent.
+                        # Act ONLY when there IS a pane incumbent to evict (own non-empty)
+                        # — never evict on a bare marker PID.  On success the incumbent is
+                        # gone and the newcomer is the sole writer, so hand off to the
+                        # agentless panel-watch keep-alive (E2f self-heal-to-CLI on the
+                        # newcomer's death).
+                        newcomers = newcomer_pids(live_markers, own)
+                        if newcomers and own and self._takeover(own, newcomers):
+                            return self._run_panel_watch()
+                    else:
+                        # Flag OFF (default): 4a LOG-ONLY — no signals, no kills.
+                        self._log_newcomers(live_markers, own)
                 action = decide(prev, cur, alive)
                 if action.fire_detach_hook:
                     self._safe_on_detach()
@@ -1237,6 +1465,22 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--session-takeover",
+        action="store_true",
+        help=(
+            "4b ENFORCEMENT (default OFF): enable single-writer TAKEOVER — a panel "
+            "newcomer over a live CLI incumbent is paused, the incumbent graced + "
+            "process-group evicted, then the newcomer resumed.  Omit for 4a LOG-ONLY "
+            "(no signals/kills).  Threaded from the experimental KANIBAKO_SESSION_TAKEOVER"
+        ),
+    )
+    parser.add_argument(
+        "--takeover-grace",
+        type=float,
+        default=5.0,
+        help="seconds to grace the CLI incumbent before the 4b process-group evict",
+    )
+    parser.add_argument(
         "--panel-watch",
         action="store_true",
         help=(
@@ -1295,6 +1539,8 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
         poll_interval=ns.poll,
         max_restart_retries=ns.max_retries,
         on_agent_exit=ns.on_agent_exit,
+        session_takeover=ns.session_takeover,
+        takeover_grace=ns.takeover_grace,
         panel_watch=ns.panel_watch,
         agent_markers_dir=ns.agent_markers_dir,
         creds_flag=ns.creds_flag,
@@ -1306,8 +1552,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ``python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
     [--max-retries N] [--continue-cmd 'ARGV'] [--on-agent-exit self-heal|teardown]
-    [--panel-watch] [--agent-markers-dir DIR] [--creds-flag PATH]
-    -- <agent entrypoint + argv...>``
+    [--session-takeover] [--takeover-grace SEC] [--panel-watch]
+    [--agent-markers-dir DIR] [--creds-flag PATH] -- <agent entrypoint + argv...>``
 
     In ``--panel-watch`` mode (E2f) the trailing ``-- <agent argv>`` is OMITTED (no
     agent starts at launch); ``--continue-cmd`` carries the self-heal grammar.
