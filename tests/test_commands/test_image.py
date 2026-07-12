@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.commands.image import _extract_ghcr_owner, _list_remote_packages
 from kanibako.config import load_config
 from kanibako.paths import load_std_paths
 
@@ -1028,18 +1027,6 @@ class TestRigRmUnadd:
         assert "Removed user template 'mytools'." in capsys.readouterr().out
 
 
-class TestExtractGhcrOwner:
-    def test_valid_ghcr_url(self):
-        from kanibako.commands.image import _extract_ghcr_owner
-
-        assert _extract_ghcr_owner("ghcr.io/doctorjei/kanibako-oci:latest") == "doctorjei"
-
-    def test_non_ghcr_url(self):
-        from kanibako.commands.image import _extract_ghcr_owner
-
-        assert _extract_ghcr_owner("docker.io/library/ubuntu:latest") is None
-
-
 class TestResolveImageName:
     def test_suffix_expansion(self):
         from kanibako.commands.image import resolve_image_name
@@ -1209,78 +1196,6 @@ class TestExtractRegistryPrefix:
         from kanibako.commands.image import _extract_registry_prefix
 
         assert _extract_registry_prefix("ubuntu:latest") is None
-
-
-class TestListRemotePackages:
-    def test_successful_api_response(self, capsys):
-        response_data = [
-            {"name": "kanibako-oci"},
-            {"name": "kanibako-lxc"},
-            {"name": "unrelated-pkg"},
-        ]
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(response_data).encode()
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-
-        with patch("kanibako.commands.image.urllib.request.urlopen", return_value=mock_resp):
-            _list_remote_packages("myowner")
-
-        out = capsys.readouterr().out
-        assert "ghcr.io/myowner/kanibako-oci" in out
-        assert "ghcr.io/myowner/kanibako-lxc" in out
-        assert "unrelated-pkg" not in out
-
-    def test_api_timeout(self, capsys):
-        import urllib.error
-        with patch(
-            "kanibako.commands.image.urllib.request.urlopen",
-            side_effect=urllib.error.URLError("timeout"),
-        ):
-            _list_remote_packages("owner")
-
-        out = capsys.readouterr().out
-        assert "could not reach" in out.lower()
-
-    def test_empty_package_list(self, capsys):
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps([]).encode()
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-
-        with patch("kanibako.commands.image.urllib.request.urlopen", return_value=mock_resp):
-            _list_remote_packages("owner")
-
-        out = capsys.readouterr().out
-        assert "no kanibako packages" in out.lower()
-
-    def test_invalid_json_response(self, capsys):
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = b"not json"
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-
-        with patch("kanibako.commands.image.urllib.request.urlopen", return_value=mock_resp):
-            _list_remote_packages("owner")
-
-        out = capsys.readouterr().out
-        assert "could not reach" in out.lower()
-
-
-# ---------------------------------------------------------------------------
-# _extract_ghcr_owner edge cases
-# ---------------------------------------------------------------------------
-
-class TestExtractGhcrOwnerExtended:
-    def test_non_ghcr_image_returns_none(self):
-        assert _extract_ghcr_owner("docker.io/library/ubuntu:latest") is None
-
-    def test_ghcr_no_slash_after_owner(self):
-        """ghcr.io/owner without a slash after owner returns None."""
-        assert _extract_ghcr_owner("ghcr.io/justowner") is None
-
-    def test_ghcr_with_nested_path(self):
-        assert _extract_ghcr_owner("ghcr.io/org/repo/image:tag") == "org"
 
 
 # ---------------------------------------------------------------------------

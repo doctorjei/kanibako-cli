@@ -94,20 +94,6 @@ def escape_path(path: str) -> str:
     return path
 
 
-def unescape_path(encoded: str) -> str:
-    """Decode a container-name-encoded path back to a filesystem path.
-
-    Reverses ``escape_path``: ``-.`` → ``-``, lone ``-`` → ``/``,
-    prepends ``/``.
-    """
-    # Use a sentinel to avoid double-replacement.
-    sentinel = "\x00"
-    result = encoded.replace(_DASH_ESCAPE, sentinel)
-    result = result.replace("-", "/")
-    result = result.replace(sentinel, "-")
-    return "/" + result
-
-
 # ---------------------------------------------------------------------------
 # Project .gitignore helper
 # ---------------------------------------------------------------------------

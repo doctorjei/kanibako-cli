@@ -374,11 +374,6 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
     return "", flat_key
 
 
-def config_keys() -> list[str]:
-    """Return all valid flat config key names."""
-    return [fld.name for fld in fields(KanibakoConfig)]
-
-
 def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
     """Write or update a single key in a settings.yaml.
 
@@ -782,30 +777,6 @@ def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> No
         agent[agent_name] = agent_sec
     agent_sec[key] = value
     dump_doc(path, existing)
-
-
-def remove_agent_setting(path: Path, key: str, agent_name: str) -> bool:
-    """Remove a single agent-state override from ``agent.<agent_name>``.
-
-    Returns True if the setting was found and removed, False otherwise. Prunes a
-    now-empty agent subsection and a now-empty ``agent`` table.
-    """
-    if not path.exists():
-        return False
-    existing = load_doc(path)
-    agent = existing.get("agent")
-    if not isinstance(agent, dict):
-        return False
-    agent_sec = agent.get(agent_name)
-    if not isinstance(agent_sec, dict) or key not in agent_sec:
-        return False
-    del agent_sec[key]
-    if not agent_sec:
-        del agent[agent_name]
-    if not agent:
-        existing.pop("agent", None)
-    dump_doc(path, existing)
-    return True
 
 
 # ---------------------------------------------------------------------------

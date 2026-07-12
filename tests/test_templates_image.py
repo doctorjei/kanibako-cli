@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from kanibako.templates_image import (
     BundledTemplate,
     _bundled_containers_dir,
-    delete_template,
     list_bundled_templates,
-    list_templates,
     read_template_checks,
     rig_image_name,
     template_image_name,
@@ -85,35 +81,6 @@ class TestRigImageName:
 
     def test_distinct_from_template_prefix(self):
         assert rig_image_name("x") != template_image_name("x")
-
-
-class TestListTemplates:
-    def test_empty_when_no_images(self):
-        runtime = MagicMock()
-        runtime.list_local_images.return_value = []
-        assert list_templates(runtime) == []
-
-    def test_filters_template_images(self):
-        runtime = MagicMock()
-        runtime.list_local_images.return_value = [
-            ("kanibako-template-jvm", "1.2 GB"),
-            ("kanibako-oci", "900 MB"),
-            ("kanibako-template-systems", "2.1 GB"),
-            ("ubuntu:latest", "80 MB"),
-        ]
-        result = list_templates(runtime)
-        assert result == [
-            ("jvm", "kanibako-template-jvm", "1.2 GB"),
-            ("systems", "kanibako-template-systems", "2.1 GB"),
-        ]
-
-    def test_handles_tagged_images(self):
-        runtime = MagicMock()
-        runtime.list_local_images.return_value = [
-            ("kanibako-template-jvm:latest", "1.2 GB"),
-        ]
-        result = list_templates(runtime)
-        assert result == [("jvm", "kanibako-template-jvm", "1.2 GB")]
 
 
 class TestListBundledTemplates:
@@ -342,16 +309,3 @@ class TestBundledTemplatesDeclareChecks:
             f"bundled template {template.name!r} declares no "
             "# kanibako-template-check: header"
         )
-
-
-class TestDeleteTemplate:
-    def test_removes_image(self):
-        runtime = MagicMock()
-        delete_template(runtime, "jvm")
-        runtime.remove_image.assert_called_once_with("kanibako-template-jvm")
-
-    def test_raises_on_unknown(self):
-        runtime = MagicMock()
-        runtime.remove_image.side_effect = Exception("no such image")
-        with pytest.raises(Exception, match="no such image"):
-            delete_template(runtime, "jvm")

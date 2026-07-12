@@ -10,9 +10,8 @@ from __future__ import annotations
 import os
 
 import pytest
-import yaml
 
-from kanibako._atomic import atomic_write_text, atomic_write_yaml
+from kanibako._atomic import atomic_write_text
 
 
 def _temp_residue(directory):
@@ -96,13 +95,4 @@ def test_fsync_failure_leaves_original_intact(tmp_path, monkeypatch):
         atomic_write_text(target, "REPLACEMENT")
 
     assert target.read_text() == "ORIGINAL"
-    assert _temp_residue(tmp_path) == []
-
-
-def test_yaml_roundtrip(tmp_path):
-    target = tmp_path / "doc.yaml"
-    obj = {"name": "foo", "projects": ["a", "b"], "nested": {"k": 1}}
-    atomic_write_yaml(target, obj, sort_keys=False)
-    loaded = yaml.safe_load(target.read_text())
-    assert loaded == obj
     assert _temp_residue(tmp_path) == []

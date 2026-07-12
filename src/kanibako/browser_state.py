@@ -28,13 +28,6 @@ class BrowserState:
     origins: list[dict] = field(default_factory=list)  # localStorage per origin
     updated_at: float = 0.0
 
-    def is_fresh(self, max_age_days: float = 30.0) -> bool:
-        """Check if the stored state is recent enough to be useful."""
-        if not self.cookies:
-            return False
-        age = time.time() - self.updated_at
-        return age < max_age_days * 86400
-
 
 def state_path(data_path: Path) -> Path:
     """Return the browser state file path."""
@@ -76,14 +69,6 @@ def save_state(data_path: Path, state: BrowserState) -> None:
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     logger.debug("Saved browser state: %d cookies", len(state.cookies))
-
-
-def clear_state(data_path: Path) -> None:
-    """Remove stored browser state (e.g. on logout or credential invalidation)."""
-    path = state_path(data_path)
-    if path.is_file():
-        path.unlink()
-        logger.debug("Cleared browser state")
 
 
 def to_playwright_context(state: BrowserState) -> dict:

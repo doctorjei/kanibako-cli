@@ -189,3 +189,5 @@ def format_overdue(records: Iterable[DeprecationRecord]) -> str:
             f"remove at {r.remove_at}){repl}"
         )
     return "\n".join(lines)
+
+

@@ -14,7 +14,6 @@ from kanibako.commands.box._parser import run_list, run_ps
 def mock_runtime():
     rt = MagicMock()
     rt.list_running.return_value = []
-    rt.list_all.return_value = []
     return rt
 
 

@@ -12,7 +12,6 @@ from kanibako.tweakcc import (
     _deep_merge,
     build_merged_config,
     load_external_config,
-    load_tweakcc_section,
     resolve_tweakcc_config,
     write_merged_config,
 )
@@ -21,18 +20,6 @@ from kanibako.tweakcc_cache import (
     TweakccCacheError,
     config_hash,
 )
-
-
-class TestLoadTweakccSection:
-    def test_present(self):
-        data = {"tweakcc": {"enabled": True, "config": "~/.tweakcc/config.json"}}
-        assert load_tweakcc_section(data) == {"enabled": True, "config": "~/.tweakcc/config.json"}
-
-    def test_missing(self):
-        assert load_tweakcc_section({}) == {}
-
-    def test_empty(self):
-        assert load_tweakcc_section({"tweakcc": {}}) == {}
 
 
 class TestResolveTweakccConfig:

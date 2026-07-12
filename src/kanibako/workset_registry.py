@@ -94,11 +94,6 @@ def load_workset_boxes(registry_path: Path) -> dict[str, str]:
     return boxes
 
 
-def workset_box_names(registry_path: Path) -> set[str]:
-    """Return the set of box names registered in this workset's registry."""
-    return set(load_workset_boxes(registry_path))
-
-
 def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None:
     """Register (add or replace) *box_name* → *path* in the ``boxes:`` section.
 

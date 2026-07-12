@@ -787,11 +787,6 @@ _NEXT_LAUNCH_REMINDER = (
 )
 
 
-def _share_key(mode: str, name: str) -> str:
-    """Build the dotted config key for a workset-scoped share (binding)."""
-    return f"workset.bindings.{mode}.{name}"
-
-
 def _bind_display(value: object) -> str:
     """Render a STORED structured bind value as the user-facing input grammar.
 

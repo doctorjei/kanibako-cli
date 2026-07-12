@@ -129,30 +129,6 @@ def register_name_if_absent(
     register_name(registry, name, path, section=section)
 
 
-def update_name_path(
-    registry: Path,
-    name: str,
-    new_path: str,
-    section: str = "worksets",
-) -> bool:
-    """Update the path for an existing registered name.
-
-    Returns True if the name was found and updated, False otherwise.
-    Raises ``ProjectError`` if *new_path* resolves to ``$HOME``.
-    """
-    if Path(new_path).resolve() == Path.home().resolve():
-        raise ProjectError(
-            "Refusing to register $HOME as a project path — this would "
-            "mount your entire home directory as the workspace."
-        )
-    names = _load(registry)
-    if name not in names.get(section, {}):
-        return False
-    names[section][name] = new_path
-    _save(registry, names)
-    return True
-
-
 def unregister_name(
     registry: Path,
     name: str,

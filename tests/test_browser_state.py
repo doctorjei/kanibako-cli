@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import time
 
 from kanibako.browser_state import (
     BrowserState,
-    clear_state,
     from_playwright_context,
     load_state,
     save_state,
@@ -22,25 +20,6 @@ class TestBrowserState:
         assert s.cookies == []
         assert s.origins == []
         assert s.updated_at == 0.0
-
-    def test_is_fresh_empty(self):
-        s = BrowserState()
-        assert s.is_fresh() is False
-
-    def test_is_fresh_recent(self):
-        s = BrowserState(cookies=[{"name": "a"}], updated_at=time.time())
-        assert s.is_fresh() is True
-
-    def test_is_fresh_stale(self):
-        old = time.time() - 31 * 86400  # 31 days ago
-        s = BrowserState(cookies=[{"name": "a"}], updated_at=old)
-        assert s.is_fresh() is False
-
-    def test_is_fresh_custom_max_age(self):
-        old = time.time() - 3 * 86400  # 3 days ago
-        s = BrowserState(cookies=[{"name": "a"}], updated_at=old)
-        assert s.is_fresh(max_age_days=2.0) is False
-        assert s.is_fresh(max_age_days=5.0) is True
 
 
 class TestStatePath:
@@ -109,19 +88,6 @@ class TestSaveState:
         assert state.updated_at == 0.0
         save_state(tmp_path, state)
         assert state.updated_at > 0
-
-
-class TestClearState:
-    def test_clears_existing(self, tmp_path):
-        save_state(tmp_path, BrowserState(cookies=[{"a": 1}]))
-        assert state_path(tmp_path).is_file()
-
-        clear_state(tmp_path)
-        assert not state_path(tmp_path).is_file()
-
-    def test_clears_missing(self, tmp_path):
-        # Should not raise
-        clear_state(tmp_path)
 
 
 class TestPlaywrightConversion:

@@ -16,8 +16,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import yaml
-
 
 def atomic_write_text(path: Path, data: str) -> None:
     """Write *data* to *path* atomically.
@@ -52,11 +50,3 @@ def atomic_write_text(path: Path, data: str) -> None:
         raise
 
 
-def atomic_write_yaml(path: Path, data: object, **dump_kwargs: object) -> None:
-    """Serialize *data* to YAML and write it to *path* atomically.
-
-    A thin convenience over :func:`atomic_write_text` for the common case of a
-    YAML document.  Extra keyword arguments are forwarded to ``yaml.safe_dump``.
-    """
-    text = yaml.safe_dump(data, **dump_kwargs)
-    atomic_write_text(path, text)

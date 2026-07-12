@@ -30,14 +30,6 @@ class TweakccConfig:
     overrides: dict = field(default_factory=dict)  # inline [tweakcc] overrides
 
 
-def load_tweakcc_section(data: dict) -> dict:
-    """Extract the ``[tweakcc]`` section from parsed TOML data.
-
-    Returns a plain dict.  Missing section → empty dict.
-    """
-    return dict(data.get("tweakcc", {}))
-
-
 def resolve_tweakcc_config(
     agent_tweakcc: dict,
     project_tweakcc: dict | None = None,

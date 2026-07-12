@@ -17,7 +17,6 @@ from kanibako.commands.diagnose import (
     _diagnose_baseline,
     _format_check,
     probe_missing_executables,
-    run_agent_diagnose,
     run_box_diagnose,
     run_rig_diagnose,
     run_system_diagnose,
@@ -481,42 +480,6 @@ class TestRunSystemDiagnose:
         captured = capsys.readouterr()
         assert "Kanibako System Diagnostics" in captured.out
         assert "[" in captured.out
-
-
-class TestRunAgentDiagnose:
-    def test_run_agent_diagnose(self, capsys) -> None:
-        """Agent diagnose runs and returns 0."""
-        with patch(
-            "kanibako.targets.discover_targets", return_value={}
-        ):
-            args = argparse.Namespace()
-            rc = run_agent_diagnose(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Agent Diagnostics" in captured.out
-        assert "no agent plugins" in captured.out
-
-    def test_agent_diagnose_no_shell_not_found(self, capsys) -> None:
-        """The Shell fallback prints as [ok] with the resolved box.shell, not [!!]."""
-        from kanibako.targets.no_agent import NoAgentTarget
-
-        with (
-            patch(
-                "kanibako.targets.discover_targets",
-                return_value={"no_agent": NoAgentTarget},
-            ),
-            patch(
-                "kanibako.shells.resolve_box_shell",
-                return_value=("/bin/bash", "image"),
-            ),
-        ):
-            args = argparse.Namespace()
-            rc = run_agent_diagnose(args)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "[!!] Agent: Shell: not found" not in out
-        assert "[ok] Agent: Shell" in out
-        assert "/bin/bash (image default)" in out
 
 
 class TestRunRigDiagnose:

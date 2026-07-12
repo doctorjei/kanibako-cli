@@ -5,10 +5,7 @@ from __future__ import annotations
 import importlib.resources
 import re
 from pathlib import Path
-from typing import NamedTuple, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from kanibako.container import ContainerRuntime
+from typing import NamedTuple
 
 _TEMPLATE_PREFIX = "kanibako-template-"
 _RIG_PREFIX = "kanibako-rig-"
@@ -207,19 +204,3 @@ def list_bundled_templates(
     return sorted(merged.values(), key=lambda t: t.name)
 
 
-def list_templates(runtime: ContainerRuntime) -> list[tuple[str, str, str]]:
-    """Return (short_name, full_image, size) for all local template images."""
-    images = runtime.list_local_images()
-    result = []
-    for repo, size in images:
-        # Strip tag if present for matching
-        bare = repo.split(":")[0] if ":" in repo else repo
-        if bare.startswith(_TEMPLATE_PREFIX):
-            short = bare[len(_TEMPLATE_PREFIX):]
-            result.append((short, bare, size))
-    return result
-
-
-def delete_template(runtime: ContainerRuntime, name: str) -> None:
-    """Delete a template image by short name."""
-    runtime.remove_image(template_image_name(name))
