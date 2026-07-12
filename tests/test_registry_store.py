@@ -32,6 +32,7 @@ def test_fresh_tree_empty_sections(reg: Path) -> None:
     assert loaded == {
         "worksets": {},
         "standalone": {},
+        "deregistered": {},
         "rigs": {},
         "image_shells": {},
     }
@@ -42,6 +43,9 @@ def test_sections_round_trip(reg: Path) -> None:
     sections = {
         "worksets": {"ws": "/home/user/ws"},
         "standalone": {"abc_box": "/abs/proj"},
+        "deregistered": {
+            "gone": {"kind": "primary", "workspace": "/w", "metadata": "/m"}
+        },
         "rigs": {"corp/base:1.0": {"kind": "prefab"}},
         "image_shells": {"sha256:abc": "/bin/bash"},
     }
@@ -292,3 +296,90 @@ def test_repointed_config_registry_is_honored(tmp_path: Path) -> None:
     # ignored with a reconstructed default).
     default_loc = resolved["config.data"] / "global" / "registry.yaml"
     assert not default_loc.exists()
+
+
+# ---------------------------------------------------------------------------
+# deregistered section (I1: rm-without-purge parks a recovery blob by name)
+# ---------------------------------------------------------------------------
+
+class TestDeregistered:
+    def test_register_and_lookup_round_trip(self, reg: Path, tmp_path: Path) -> None:
+        meta = tmp_path / "boxes" / "tempwow"
+        meta.mkdir(parents=True)
+        registry_store.register_deregistered(
+            reg,
+            "tempwow",
+            kind="primary",
+            workspace="/home/user/tempwow",
+            metadata=str(meta),
+            image="ghcr.io/x:1",
+            deregistered_at="2026-07-12T00:00:00+00:00",
+        )
+        entry = registry_store.lookup_deregistered(reg, "tempwow")
+        assert entry == {
+            "kind": "primary",
+            "workspace": "/home/user/tempwow",
+            "metadata": str(meta),
+            "image": "ghcr.io/x:1",
+            "deregistered_at": "2026-07-12T00:00:00+00:00",
+        }
+        # Round-trips through the on-disk file (not just in-memory).
+        assert registry_store.load_deregistered(reg)["tempwow"] == entry
+
+    def test_lookup_missing_returns_none(self, reg: Path) -> None:
+        assert registry_store.lookup_deregistered(reg, "nope") is None
+
+    def test_lookup_is_a_pure_read(self, reg: Path) -> None:
+        """lookup never mutates — even for an entry whose dir is gone."""
+        registry_store.register_deregistered(
+            reg, "ghost", kind="primary", workspace="/w",
+            metadata="/does/not/exist",
+        )
+        assert registry_store.lookup_deregistered(reg, "ghost") is not None
+        # Still present after lookup (self-heal is a list/purge concern only).
+        assert "ghost" in registry_store.load_deregistered(reg)
+
+    def test_unregister_drops_and_reports(self, reg: Path, tmp_path: Path) -> None:
+        registry_store.register_deregistered(
+            reg, "b", kind="primary", workspace="/w", metadata=str(tmp_path),
+        )
+        assert registry_store.unregister_deregistered(reg, "b") is True
+        assert registry_store.lookup_deregistered(reg, "b") is None
+        # Idempotent: dropping an absent entry is a no-op returning False.
+        assert registry_store.unregister_deregistered(reg, "b") is False
+
+    def test_optional_fields_omitted_when_none(self, reg: Path, tmp_path: Path) -> None:
+        registry_store.register_deregistered(
+            reg, "bare", kind="standalone", workspace=None, metadata=str(tmp_path),
+        )
+        entry = registry_store.lookup_deregistered(reg, "bare")
+        assert entry == {
+            "kind": "standalone",
+            "workspace": None,
+            "metadata": str(tmp_path),
+        }
+        assert "image" not in entry
+        assert "deregistered_at" not in entry
+
+    def test_list_self_heals_stale_entries(self, reg: Path, tmp_path: Path) -> None:
+        live_dir = tmp_path / "live"
+        live_dir.mkdir()
+        registry_store.register_deregistered(
+            reg, "live", kind="primary", workspace="/w", metadata=str(live_dir),
+        )
+        registry_store.register_deregistered(
+            reg, "stale", kind="primary", workspace="/w",
+            metadata=str(tmp_path / "gone"),
+        )
+        listed = registry_store.list_deregistered(reg)
+        assert set(listed) == {"live"}
+        # The self-heal is PERSISTED, not just filtered in memory.
+        assert set(registry_store.load_deregistered(reg)) == {"live"}
+
+    def test_section_survives_other_section_writes(self, reg: Path, tmp_path: Path) -> None:
+        registry_store.register_deregistered(
+            reg, "keep", kind="primary", workspace="/w", metadata=str(tmp_path),
+        )
+        registry_store.register_standalone(reg, "sa", tmp_path)
+        # Writing a sibling section preserves deregistered.
+        assert registry_store.lookup_deregistered(reg, "keep") is not None

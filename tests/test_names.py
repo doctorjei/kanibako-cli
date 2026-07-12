@@ -672,7 +672,7 @@ class TestBoxRm:
         assert "Removed 'project' from the registry" in out
 
     def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
-        """Without --purge, rm shows a hint about metadata still present."""
+        """Without --purge, rm deregisters and points at BOTH recovery paths."""
         from kanibako.commands.box._parser import run_rm
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths, resolve_project
@@ -687,9 +687,11 @@ class TestBoxRm:
         assert rc == 0
 
         out = capsys.readouterr().out
-        assert "Metadata still present" in out
-        assert "box rm" in out
-        assert "--purge" in out
+        assert "Deregistered 'project'" in out
+        assert "metadata retained" in out
+        # Points at BOTH recovery paths: register (restore) and rm --purge (delete).
+        assert "box register project" in out
+        assert "box rm project --purge" in out
 
     def test_rm_by_path(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
@@ -791,3 +793,234 @@ class TestBoxRm:
         rc = run_rm(args)
         assert rc == 0
         assert "myws" not in read_names(std.registry)["worksets"]
+
+
+# ---------------------------------------------------------------------------
+# box lifecycle I1: deregistered section + purge-by-name (the reported bug)
+# ---------------------------------------------------------------------------
+
+class TestBoxDeregisterPurge:
+    """`rm` (no --purge) parks a deregistered entry; `rm <name> --purge` then
+    resolves it BY NAME — closing the orphaned-metadata dead-end.
+    """
+
+    def _make_primary(self, config_file, tmp_home):
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        return std, proj
+
+    def test_rm_parks_deregistered_entry(self, config_file, tmp_home, credentials_dir):
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_rm
+
+        std, proj = self._make_primary(config_file, tmp_home)
+        metadata_dir = proj.metadata_path
+
+        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+
+        entry = registry_store.lookup_deregistered(std.registry, "project")
+        assert entry is not None
+        assert entry["kind"] == "primary"
+        assert entry["metadata"] == str(metadata_dir)
+        assert entry["workspace"] == str(tmp_home / "project")
+        # Metadata is RETAINED (not deleted).
+        assert metadata_dir.is_dir()
+
+    def test_purge_by_name_after_deregister(self, config_file, tmp_home, credentials_dir, capsys):
+        """THE REPORTED BUG: rm then `rm <name> --purge` succeeds by name."""
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_rm
+
+        std, proj = self._make_primary(config_file, tmp_home)
+        metadata_dir = proj.metadata_path
+
+        # Deregister (the active membership is now gone).
+        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+        capsys.readouterr()
+
+        # Purge BY NAME — before I1 this errored "not a registered project".
+        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+        assert rc == 0
+        assert not metadata_dir.is_dir()
+        # The deregistered entry is dropped once its metadata is gone.
+        assert registry_store.lookup_deregistered(std.registry, "project") is None
+
+    def test_purge_by_name_idempotent_on_missing_dir(self, config_file, tmp_home, credentials_dir, capsys):
+        """Entry present but dir already gone → drop entry, no error."""
+        import shutil
+
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_rm
+
+        std, proj = self._make_primary(config_file, tmp_home)
+        metadata_dir = proj.metadata_path
+
+        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+        # Delete the metadata out-of-band, leaving a stale deregistered entry.
+        shutil.rmtree(metadata_dir)
+        assert registry_store.lookup_deregistered(std.registry, "project") is not None
+        capsys.readouterr()
+
+        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+        assert rc == 0
+        assert registry_store.lookup_deregistered(std.registry, "project") is None
+        out = capsys.readouterr().out
+        assert "stale entry" in out.lower() or "No metadata" in out
+
+    def test_re_rm_without_purge_shows_guidance(self, config_file, tmp_home, credentials_dir, capsys):
+        """A second `rm` (no --purge) on a deregistered box guides, never errors."""
+        from kanibako.commands.box._parser import run_rm
+
+        self._make_primary(config_file, tmp_home)
+        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+        capsys.readouterr()
+
+        rc = run_rm(argparse.Namespace(target="project", purge=False, force=False))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "already deregistered" in out
+        assert "box register project" in out
+        assert "box rm project --purge" in out
+
+    def test_purge_by_name_deletes_only_its_own_metadata(self, config_file, tmp_home, credentials_dir):
+        """Mutation proof: purge deletes the box dir and NOTHING else beside it."""
+        from kanibako.commands.box._parser import run_rm
+
+        std, proj = self._make_primary(config_file, tmp_home)
+        # A sibling box dir under std.boxes/ that must survive.
+        sibling = std.boxes / "other_box"
+        sibling.mkdir(parents=True, exist_ok=True)
+        (sibling / "keep.txt").write_text("keep me")
+        # The user's workspace files must survive too.
+        (tmp_home / "project" / "important.txt").write_text("workspace")
+
+        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+        run_rm(argparse.Namespace(target="project", purge=True, force=True))
+
+        assert not proj.metadata_path.is_dir()
+        assert sibling.is_dir()
+        assert (sibling / "keep.txt").read_text() == "keep me"
+        assert (tmp_home / "project" / "important.txt").read_text() == "workspace"
+
+    def test_purge_refuses_uncontained_metadata_path(self, config_file, tmp_home, credentials_dir, capsys):
+        """CONTAINMENT: a crafted deregistered entry escaping std.boxes is REFUSED."""
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # A sentinel directory OUTSIDE std.boxes/ that must never be deleted.
+        victim = tmp_home / "victim"
+        victim.mkdir()
+        (victim / "precious.txt").write_text("do not delete")
+
+        registry_store.register_deregistered(
+            std.registry, "evil", kind="primary",
+            workspace=str(tmp_home / "project"), metadata=str(victim),
+        )
+
+        rc = run_rm(argparse.Namespace(target="evil", purge=True, force=True))
+        assert rc == 1
+        # Nothing deleted; the entry is NOT dropped (a refusal, not a success).
+        assert victim.is_dir()
+        assert (victim / "precious.txt").read_text() == "do not delete"
+        assert registry_store.lookup_deregistered(std.registry, "evil") is not None
+        assert "refusing" in capsys.readouterr().err.lower()
+
+    def test_purge_refuses_dotdot_escape(self, config_file, tmp_home, credentials_dir, capsys):
+        """CONTAINMENT: a `..` escape resolves outside std.boxes → REFUSED."""
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        outside = std.boxes.parent / "outside"
+        outside.mkdir(parents=True, exist_ok=True)
+        (outside / "keep").write_text("x")
+        crafted = str(std.boxes / ".." / "outside")
+
+        registry_store.register_deregistered(
+            std.registry, "sneaky", kind="primary",
+            workspace=None, metadata=crafted,
+        )
+        rc = run_rm(argparse.Namespace(target="sneaky", purge=True, force=True))
+        assert rc == 1
+        assert outside.is_dir()
+        assert (outside / "keep").exists()
+        assert "refusing" in capsys.readouterr().err.lower()
+
+    def test_active_purge_still_deletes_via_shared_helper(self, config_file, tmp_home, credentials_dir, capsys):
+        """Non-regression: a direct `rm --purge` on an ACTIVE box still purges."""
+        from kanibako.commands.box._parser import run_rm
+
+        std, proj = self._make_primary(config_file, tmp_home)
+        metadata_dir = proj.metadata_path
+        std.primary_logs.mkdir(parents=True, exist_ok=True)
+        log_file = std.primary_logs / "project.jsonl"
+        log_file.write_text("x")
+        # Sibling that must survive.
+        sibling = std.boxes / "sib"
+        sibling.mkdir(parents=True, exist_ok=True)
+
+        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+        assert rc == 0
+        assert not metadata_dir.is_dir()
+        assert not log_file.exists()
+        assert sibling.is_dir()
+        assert "Removed metadata" in capsys.readouterr().out
+
+
+class TestStandaloneDeregisterPurge:
+    def _make_standalone(self, config_file, tmp_home):
+        from kanibako import registry_store
+        from kanibako.config import BOX_META_FILE, load_config
+        from kanibako.paths import _STANDALONE_META_DIR, load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa_root"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / BOX_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
+        (root / "vault").mkdir()
+        (root / "keep.txt").write_text("workspace file")
+        registry_store.register_standalone(std.registry, "k_box", root)
+        return std, root
+
+    def test_standalone_deregister_then_purge_by_name(self, config_file, tmp_home, credentials_dir):
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.config import BOX_META_FILE
+        from kanibako.paths import _STANDALONE_META_DIR
+
+        std, root = self._make_standalone(config_file, tmp_home)
+
+        # Deregister: registry.standalone entry dropped, in-tree metadata retained,
+        # deregistered blob parked.
+        rc = run_rm(argparse.Namespace(target="k_box", purge=False, force=False))
+        assert rc == 0
+        assert "k_box" not in registry_store.load_standalone(std.registry)
+        entry = registry_store.lookup_deregistered(std.registry, "k_box")
+        assert entry is not None and entry["kind"] == "standalone"
+        assert entry["metadata"] == str(root)
+        assert (root / _STANDALONE_META_DIR).is_dir()
+
+        # Purge BY NAME: deletes only the in-tree artifacts, never the root/workspace.
+        rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
+        assert rc == 0
+        assert not (root / _STANDALONE_META_DIR).is_dir()
+        assert not (root / BOX_META_FILE).exists()
+        assert not (root / "vault").exists()
+        assert root.is_dir()
+        assert (root / "keep.txt").read_text() == "workspace file"
+        assert registry_store.lookup_deregistered(std.registry, "k_box") is None

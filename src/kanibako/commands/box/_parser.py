@@ -1007,6 +1007,190 @@ def _purge_dir(target: Path) -> bool:
     return not target.exists()
 
 
+def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
+    """Validate *path* is safe to ``rm -rf`` and return its resolved form.
+
+    ⚑ DESTRUCTIVE-SAFETY gate for purge.  A ``deregistered`` entry stores a
+    metadata path that a later ``--purge`` deletes; that stored path is untrusted
+    (a corrupt/crafted registry must never let purge delete outside a box's own
+    metadata).  Refuses — rather than silently no-op-deleting — when the resolved
+    path is empty, ``/``, ``$HOME``, or (when *must_be_under* is given) not a
+    strict descendant of that root.  ``resolve()`` collapses ``..`` and follows
+    symlinks, so a ``..``/symlink escape resolves OUTSIDE *must_be_under* and is
+    rejected.  Raises :class:`ProjectError` on any violation.
+    """
+    raw = str(path).strip()
+    if not raw:
+        raise ProjectError("refusing to delete: empty metadata path")
+    resolved = Path(raw).resolve()
+    forbidden = {Path("/").resolve(), Path.home().resolve()}
+    if resolved in forbidden:
+        raise ProjectError(f"refusing to delete a protected path: {resolved}")
+    if must_be_under is not None:
+        root = must_be_under.resolve()
+        # Strict containment: a direct-or-deeper descendant, never the root
+        # itself (deleting std.boxes/ would take every box with it).
+        if resolved == root or root not in resolved.parents:
+            raise ProjectError(
+                f"refusing to delete {resolved}: not contained under {root}"
+            )
+    return resolved
+
+
+def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
+    """Delete a PRIMARY box's metadata: box dir + vault ro/rw + helper log.
+
+    The single deletion routine shared by the active ``--purge`` path and the
+    deregistered ``--purge`` path — same paths, same order, same guards as the
+    former inline block.  Returns True if the box dir was removed.  The caller is
+    responsible for containment-validating *metadata_dir* first when it comes
+    from an untrusted ``deregistered`` entry (see :func:`_assert_deletable`).
+    """
+    removed = _purge_dir(metadata_dir)
+    if removed:
+        print(f"Removed metadata: {metadata_dir}")
+        # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
+        # {ro,rw}/<name> (not under metadata_dir) — remove it too.
+        for vdir in (std.primary_vault_ro / name, std.primary_vault_rw / name):
+            if vdir.is_dir():
+                _purge_dir(vdir)
+    else:
+        print(
+            f"Warning: could not fully remove {metadata_dir} "
+            "(it may contain files created inside a container). "
+            f"Try: podman unshare rm -rf {metadata_dir}",
+            file=sys.stderr,
+        )
+    # Remove the per-box helper log if present.  PRIMARY logs live at
+    # @config.primary_workset/logs/<box>.jsonl (box == registry name).
+    log_file = std.primary_logs / f"{name}.jsonl"
+    if log_file.is_file():
+        log_file.unlink()
+        print(f"Removed log: {log_file}")
+    return removed
+
+
+def _teardown_standalone_box(root: Path) -> bool:
+    """Delete a STANDALONE box's in-tree metadata, never the workspace root.
+
+    Removes the in-tree ``box_data/`` marker + root ``settings.yaml`` + ``vault/``
+    — the same set the active standalone purge and ``purge`` command delete.  The
+    user's workspace files (and *root* itself) are never touched.  Returns True if
+    the ``box_data/`` marker was removed.
+    """
+    from kanibako.paths import _STANDALONE_META_DIR
+
+    metadata_dir = root / _STANDALONE_META_DIR
+    if _purge_dir(metadata_dir):
+        print(f"Removed metadata: {metadata_dir}")
+        # Drift I: the box settings.yaml lives at the ROOT, not in box_data/ —
+        # drop it too so the box is not re-detected.
+        settings_file = root / BOX_META_FILE
+        if settings_file.is_file():
+            settings_file.unlink()
+            print(f"Removed metadata: {settings_file}")
+        vault_dir = root / "vault"
+        if vault_dir.is_dir():
+            _purge_dir(vault_dir)
+            print(f"Removed vault: {vault_dir}")
+        return True
+    print(
+        f"Warning: could not fully remove {metadata_dir} "
+        "(it may contain files created inside a container). "
+        f"Try: podman unshare rm -rf {metadata_dir}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def _read_box_image(settings_file: Path) -> str | None:
+    """Best-effort read of a box's ``box.image`` from its settings.yaml.
+
+    Captured into the deregistered blob for a later readopt (I2); purge does not
+    need it, so any read failure degrades to ``None`` rather than erroring.
+    """
+    try:
+        from kanibako.config_io import load_doc
+
+        data = load_doc(settings_file)
+        image = dict(data.get("box", {})).get("image")
+        return str(image) if image else None
+    except Exception:  # noqa: BLE001 - image capture is best-effort
+        return None
+
+
+def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int:
+    """Handle ``rm <name>`` when *name* resolves only to a deregistered entry.
+
+    Without ``--purge`` the box is already deregistered — print the recovery
+    guidance and return 0 (no re-error, no re-deregister).  With ``--purge``,
+    validate the stored metadata path for containment, delete it via the shared
+    per-kind teardown, then drop the deregistered entry.  IDEMPOTENT: an entry
+    whose dir is already gone just gets dropped, no error.
+    """
+    from kanibako import registry_store
+    from kanibako.errors import UserCancelled
+    from kanibako.paths import _STANDALONE_META_DIR
+    from kanibako.utils import confirm_prompt
+
+    kind = entry.get("kind")
+    metadata = entry.get("metadata")
+
+    if not args.purge:
+        print(f"'{name}' is already deregistered (metadata retained at {metadata}).")
+        print(
+            f"Restore it with 'kanibako box register {name}', "
+            f"or delete it with 'kanibako box rm {name} --purge'."
+        )
+        return 0
+
+    # --purge on a deregistered box: validate + delete its retained metadata.
+    try:
+        if kind == "standalone":
+            # metadata is the in-tree ROOT; only fixed children are deleted, but
+            # still refuse a bare/protected root.
+            root = _assert_deletable(metadata)
+        else:
+            # PRIMARY: metadata must be strictly under std.boxes/.
+            metadata_dir = _assert_deletable(metadata, must_be_under=std.boxes)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if kind == "standalone":
+        exists = (root / _STANDALONE_META_DIR).is_dir()
+    else:
+        exists = metadata_dir.is_dir()
+
+    if not exists:
+        # Idempotent: dir already gone (deleted out-of-band) → drop the stale
+        # entry, no error, no prompt (nothing to delete).
+        registry_store.unregister_deregistered(std.registry, name)
+        print(f"No metadata directory found for '{name}' (dropped stale entry).")
+        return 0
+
+    if not args.force:
+        target_desc = root if kind == "standalone" else metadata_dir
+        print(f"Removing deregistered box: {name}")
+        print()
+        try:
+            confirm_prompt(
+                f"Delete metadata at {target_desc}? This cannot be undone.\n"
+                "Type 'yes' to confirm: "
+            )
+        except UserCancelled:
+            print("Aborted (box remains deregistered).")
+            return 2
+
+    if kind == "standalone":
+        _teardown_standalone_box(root)
+    else:
+        _teardown_primary_box(std, name, metadata_dir)
+
+    registry_store.unregister_deregistered(std.registry, name)
+    return 0
+
+
 def _resolve_standalone_target(
     std, config, target: str,
 ) -> tuple[str | None, Path | None]:
@@ -1050,6 +1234,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     on confirmation, the ``vault/`` tree).  The user's workspace files are never
     touched.
     """
+    from datetime import datetime, timezone
+
     from kanibako import registry_store
     from kanibako.errors import UserCancelled
     from kanibako.paths import _STANDALONE_META_DIR
@@ -1059,9 +1245,10 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     registry_store.unregister_standalone(std.registry, box_name)
     print(f"Removed '{box_name}' from the registry")
 
-    metadata_dir = Path(root) / _STANDALONE_META_DIR if root is not None else None
+    root_path = Path(root) if root is not None else None
+    metadata_dir = root_path / _STANDALONE_META_DIR if root_path is not None else None
     if args.purge:
-        if metadata_dir is not None and metadata_dir.is_dir():
+        if root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
             if not args.force:
                 print()
                 try:
@@ -1072,37 +1259,35 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                 except UserCancelled:
                     print("Aborted (box was already unregistered).")
                     return 2
-            if _purge_dir(metadata_dir):
-                print(f"Removed metadata: {metadata_dir}")
-                # Drift I: the box settings.yaml lives at the ROOT, not in
-                # box_data/ — drop it too so the box is not re-detected.
-                settings_file = Path(root) / BOX_META_FILE
-                if settings_file.is_file():
-                    settings_file.unlink()
-                    print(f"Removed metadata: {settings_file}")
-                vault_dir = Path(root) / "vault"
-                if vault_dir.is_dir():
-                    _purge_dir(vault_dir)
-                    print(f"Removed vault: {vault_dir}")
-            else:
-                print(
-                    f"Warning: could not fully remove {metadata_dir} "
-                    "(it may contain files created inside a container). "
-                    f"Try: podman unshare rm -rf {metadata_dir}",
-                    file=sys.stderr,
-                )
+            _teardown_standalone_box(root_path)
         else:
             print(f"No metadata directory found at {metadata_dir}")
-    elif metadata_dir is not None and metadata_dir.is_dir():
+    elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
+        # Park a deregistered entry so a later `rm <name> --purge` can find the
+        # retained in-tree metadata BY NAME (the registry.standalone index is
+        # already dropped above).
+        registry_store.register_deregistered(
+            std.registry,
+            box_name,
+            kind="standalone",
+            workspace=str(root_path),
+            metadata=str(root_path),
+            image=_read_box_image(root_path / BOX_META_FILE),
+            deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
+        )
         print(
-            f"Metadata still present at {metadata_dir}. "
-            f"Run 'kanibako box rm {box_name} --purge' to delete."
+            f"Deregistered '{box_name}' (metadata retained). "
+            f"Restore it with 'kanibako box register {box_name}', "
+            f"or delete it with 'kanibako box rm {box_name} --purge'."
         )
     return 0
 
 
 def run_rm(args: argparse.Namespace) -> int:
     """Unregister a project/workset from the registry, optionally purging metadata."""
+    from datetime import datetime, timezone
+
+    from kanibako import registry_store
     from kanibako.names import lookup_by_path
     from kanibako.utils import confirm_prompt
 
@@ -1154,6 +1339,15 @@ def run_rm(args: argparse.Namespace) -> int:
         if sa_name is not None:
             return _rm_standalone(std, sa_name, sa_root, args)
 
+    if name is None:
+        # Not active anywhere — check the global ``deregistered`` section by
+        # name.  THE REPORTED-BUG FIX: after `rm` (no --purge) the active
+        # membership is gone, so `rm <name> --purge` (and a re-`rm`) must resolve
+        # the retained metadata here instead of erroring "not registered".
+        dereg = registry_store.lookup_deregistered(std.registry, target)
+        if dereg is not None:
+            return _purge_deregistered(std, target, dereg, args)
+
     if name is None or section is None:
         print(f"Error: '{target}' is not a registered project or workset.", file=sys.stderr)
         return 1
@@ -1186,39 +1380,31 @@ def run_rm(args: argparse.Namespace) -> int:
                     print("Aborted (name was already unregistered).")
                     return 2
 
-            if _purge_dir(metadata_dir):
-                print(f"Removed metadata: {metadata_dir}")
-                # Phase 5: PRIMARY vault lives under @config.primary_workset/
-                # vault/{ro,rw}/<name> (not under metadata_dir) — remove it too.
-                for vdir in (
-                    std.primary_vault_ro / name,
-                    std.primary_vault_rw / name,
-                ):
-                    if vdir.is_dir():
-                        _purge_dir(vdir)
-            else:
-                print(
-                    f"Warning: could not fully remove {metadata_dir} "
-                    "(it may contain files created inside a container). "
-                    f"Try: podman unshare rm -rf {metadata_dir}",
-                    file=sys.stderr,
-                )
-
-            # Remove the per-box helper log if present.  PRIMARY logs live at
-            # @config.primary_workset/logs/<box>.jsonl (box == registry name).
-            log_file = std.primary_logs / f"{name}.jsonl"
-            if log_file.is_file():
-                log_file.unlink()
-                print(f"Removed log: {log_file}")
+            # Shared teardown — same paths/order/guards as the deregistered-purge
+            # path (box dir + PRIMARY vault ro/rw + helper log).
+            _teardown_primary_box(std, name, metadata_dir)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     else:
-        # Hint about --purge when metadata still exists.
+        # No --purge: retain the metadata and park a ``deregistered`` entry so a
+        # later `rm <name> --purge` (or, in I2, `register <name>`) can find it BY
+        # NAME — the active membership was just dropped above.  Worksets are NOT
+        # boxes (they keep their own lifecycle), so they are never parked here.
         metadata_dir = std.boxes / name
-        if metadata_dir.is_dir():
+        if section != "worksets" and metadata_dir.is_dir():
+            registry_store.register_deregistered(
+                std.registry,
+                name,
+                kind="primary",
+                workspace=path,
+                metadata=str(metadata_dir),
+                image=_read_box_image(metadata_dir / BOX_META_FILE),
+                deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
+            )
             print(
-                f"Metadata still present at {metadata_dir}. "
-                f"Run 'kanibako box rm {name} --purge' to delete."
+                f"Deregistered '{name}' (metadata retained). "
+                f"Restore it with 'kanibako box register {name}', "
+                f"or delete it with 'kanibako box rm {name} --purge'."
             )
 
     return 0
