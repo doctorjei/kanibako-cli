@@ -36,18 +36,21 @@ THE TWO DELIVERY LAYERS
    ``kanibako.commands.start._apply_init_seeds``.
 
 2. BIND-delivered (SOURCE+DEST resolvable host-side; physical bind needs podman):
-   * the RO built-in directive bundle → ``~/playbook/kanibako`` (carries the
-     ``KANIBAKO.md`` guide at ``directives/KANIBAKO.md``), reconciled from
-     ``core_defaults.kani_default_categories`` through ``reconcile_categories``; and
+   * the RO built-in rom tree → each shipped file bound ro at its mirrored ``~``
+     path (carries the ``KANIBAKO.md`` guide at
+     ``~/playbook/kanibako/directives/KANIBAKO.md``), enumerated PER FILE by
+     ``core_defaults.rom_default_categories`` and reconciled through
+     ``reconcile_categories``; and
    * the per-harness KICKOFF-loader SEED → ``~/.config/kanibako/kickoff.md``, a
      descriptor ``managed_pointer`` delivery bind resolved through
      ``descriptor_mounts``.
 
    NOTE on the KANIBAKO.md guide: the former per-agent ``@system.instructions`` →
-   native-slot bind is RETIRED (see ``test_instructions_bind.py``). The guide now
-   reaches the box ONLY as a file WITHIN the RO bundle (``directives/KANIBAKO.md``
-   under ``~/playbook/kanibako``), so this manifest asserts the guide there — NOT
-   as a separate per-agent bind.
+   native-slot bind is RETIRED (see ``test_instructions_bind.py``), AND the former
+   single whole-dir ``playbook_kanibako`` RO bind is GENERALIZED to a per-file rom
+   enumerator. The guide now reaches the box ONLY as a per-file rom RO bind at
+   ``~/playbook/kanibako/directives/KANIBAKO.md``, so this manifest asserts the
+   guide there — NOT as a separate per-agent bind and NOT as a whole-dir bind.
 """
 
 from __future__ import annotations
@@ -129,10 +132,10 @@ def _seed_source_root(layer: str) -> Path | None:
 _BIND_AGENTS = ("claude", "codex", "goose")
 _KICKOFF_BOX_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
 
-# The RO directive bundle bind + the guide it carries.
-_BUNDLE_MOUNT_NAME = "playbook_kanibako"
-_BUNDLE_BOX_DEST = f"{GUEST_HOME}/playbook/kanibako"
-_GUIDE_REL_IN_BUNDLE = "directives/KANIBAKO.md"  # the KANIBAKO.md guide, inside the bundle
+# The RO rom tree is enumerated PER FILE (``core_defaults.rom_default_categories``);
+# the KANIBAKO.md guide is one such file, bound ro at its mirror path.
+_GUIDE_REL_IN_ROM = "playbook/kanibako/directives/KANIBAKO.md"  # rom-root-relative
+_GUIDE_BOX_DEST = f"{GUEST_HOME}/{_GUIDE_REL_IN_ROM}"
 
 
 def _ctx() -> ResolveCtx:
@@ -224,17 +227,17 @@ class TestSeededManifest:
 # ===========================================================================
 
 
-class TestBundleBindManifest:
-    """The RO directive bundle (+ the KANIBAKO.md guide it carries) reconciles to
-    a read-only Mount at ``~/playbook/kanibako``.
+class TestRomBindManifest:
+    """The RO rom tree is enumerated per FILE; the KANIBAKO.md guide reconciles to
+    a read-only Mount at its mirror ``~/playbook/kanibako/directives/KANIBAKO.md``.
 
-    Modeled on ``test_playbook_delivery.py::test_bundle_reconciles_to_ro_mount_at_slot``:
-    the bind rides the keystore as ``box.bindings.ro.playbook_kanibako`` and
-    resolves through the launch cascade → ``reconcile_categories``.
+    Modeled on ``test_playbook_delivery.py::TestRomBinds``: the binds ride the
+    keystore as ``box.bindings.ro.rom_*`` and resolve through the launch cascade →
+    ``reconcile_categories``.
     """
 
-    def _reconcile_bundle(self):
-        cats = dict(core_defaults.kani_default_categories())
+    def _reconcile_rom(self):
+        cats = dict(core_defaults.rom_default_categories())
         snap = build_launch_snapshot(
             agent_name="claude",
             ctx=_ctx(),
@@ -247,42 +250,55 @@ class TestBundleBindManifest:
         entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
         return cats, reconcile_categories(entries)
 
-    def test_bundle_source_exists_and_reconciles_to_ro_slot(self):
-        """(a) host SOURCE exists, (b) box_dest is the ``~/playbook/kanibako`` slot."""
-        cats, rec = self._reconcile_bundle()
+    def _guide_bind(self, cats):
+        """Locate the single guide bind by its mirror dest (hash-key robust)."""
+        matches = [
+            (k, v) for k, v in cats.items()
+            if v[1] == f"~/{_GUIDE_REL_IN_ROM}"
+        ]
+        assert len(matches) == 1, "exactly one guide bind expected"
+        return matches[0]
 
-        # (a) The declared host source is the packaged bundle dir and it EXISTS.
-        host_src = Path(cats["box.bindings.ro.playbook_kanibako"][0])
-        assert host_src.is_dir(), f"bundle source missing: {host_src}"
-        assert host_src == _packaged_shared_bundle()
+    def test_guide_source_exists_and_reconciles_to_ro_slot(self):
+        """(a) host SOURCE (the packaged guide FILE) exists, (b) box_dest is the
+        guide's mirror slot, ro."""
+        cats, rec = self._reconcile_rom()
+
+        # (a) The declared host source is the packaged guide file and it EXISTS.
+        _key, (host_src, _dest, _opts) = self._guide_bind(cats)
+        host_path = Path(host_src)
+        assert host_path.is_file(), f"guide source missing: {host_path}"
+        bundle = _packaged_shared_bundle()
+        assert bundle is not None
+        assert host_path == bundle / "directives" / "KANIBAKO.md"
 
         # (b) It reconciles to a RO Mount at the correct box-side slot.
-        by_name = {m.name: m for m in rec.mounts}
-        assert _BUNDLE_MOUNT_NAME in by_name, "directive bundle bind not reconciled"
-        m = by_name[_BUNDLE_MOUNT_NAME]
+        by_dest = {m.box_dest: m for m in rec.mounts}
+        assert _GUIDE_BOX_DEST in by_dest, "guide bind not reconciled"
+        m = by_dest[_GUIDE_BOX_DEST]
         assert m.category == "bindings.ro"
-        assert m.box_dest == _BUNDLE_BOX_DEST
+        assert m.box_dest == _GUIDE_BOX_DEST
         assert m.options == "ro"
 
-    def test_kanibako_guide_rides_the_bundle(self):
-        """The KANIBAKO.md guide is delivered as a file WITHIN the RO bundle.
+    def test_kanibako_guide_delivered_at_mirror(self):
+        """The KANIBAKO.md guide is delivered ro at exactly its mirror path.
 
         The former per-agent ``@system.instructions`` → native-slot bind is
         retired; the guide now reaches the box only at
-        ``~/playbook/kanibako/directives/KANIBAKO.md``. Assert its SOURCE exists
-        and its resolved box path is under the bundle's reconciled slot.
+        ``~/playbook/kanibako/directives/KANIBAKO.md`` (a per-file rom RO bind).
         """
-        cats, rec = self._reconcile_bundle()
-        host_src = Path(cats["box.bindings.ro.playbook_kanibako"][0])
+        cats, rec = self._reconcile_rom()
+        _key, (host_src, dest, options) = self._guide_bind(cats)
 
-        guide_src = host_src / _GUIDE_REL_IN_BUNDLE
-        assert guide_src.is_file(), f"KANIBAKO.md guide missing from bundle: {guide_src}"
+        assert Path(host_src).is_file(), f"KANIBAKO.md guide source missing: {host_src}"
+        assert dest == f"~/{_GUIDE_REL_IN_ROM}"
+        assert options == "ro"
 
-        m = {mm.name: mm for mm in rec.mounts}[_BUNDLE_MOUNT_NAME]
-        # The guide's in-box path is the bundle slot + its relative path.
-        assert m.box_dest == _BUNDLE_BOX_DEST
-        guide_box_path = f"{m.box_dest}/{_GUIDE_REL_IN_BUNDLE}"
-        assert guide_box_path == f"{GUEST_HOME}/playbook/kanibako/directives/KANIBAKO.md"
+        by_dest = {m.box_dest: m for m in rec.mounts}
+        assert _GUIDE_BOX_DEST in by_dest
+        assert _GUIDE_BOX_DEST == (
+            f"{GUEST_HOME}/playbook/kanibako/directives/KANIBAKO.md"
+        )
 
 
 class TestKickoffLoaderManifest:

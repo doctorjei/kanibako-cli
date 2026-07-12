@@ -221,12 +221,12 @@ def _packaged_shared_bundle() -> Path | None:
     """Locate the packaged read-only built-in directive bundle.
 
     ``kanibako.data/global/rom/playbook/kanibako`` — the KANIBAKO.md +
-    flattener scripts that the launch path bind-mounts LIVE (ro) at
-    ``~/playbook/kanibako`` (see ``core_defaults.kani_default_categories`` /
-    ``core-defaults.yaml`` ``playbook_kanibako``).  It is NOT copied/seeded to a
-    host runtime dir, so it has no ``install``/``plan_template_refresh`` target;
-    it is enumerated only for the staleness DIGEST so the setup gate still trips
-    when the shipped bundle content drifts.
+    flattener scripts that the launch path bind-mounts LIVE (ro) at their mirrored
+    ``~`` paths (see ``core_defaults.rom_default_categories``, the per-file rom RO
+    enumerator).  It is NOT copied/seeded to a host runtime dir, so it has no
+    ``install``/``plan_template_refresh`` target; it is enumerated here only for the
+    staleness DIGEST (this bundle root is the whole rom subtree today) so the setup
+    gate still trips when the shipped bundle content drifts.
     """
     try:
         ref = packaged_data_dir("global", "rom", "playbook", "kanibako")
@@ -311,6 +311,26 @@ def _is_shipped_content(entry: Path) -> bool:
     return True
 
 
+def walk_shipped_files(root: Path) -> list[tuple[str, Path]]:
+    """Return the SORTED ``(posix-relpath, file-path)`` shipped-file list under *root*.
+
+    The ONE traversal shared by the two consumers of a packaged content tree — the
+    staleness DIGEST (:func:`_packaged_manifest_entries`) and the rom RO-bind
+    enumerator (:func:`kanibako.core_defaults.rom_default_categories`).  Walks
+    *root* recursively, keeps only real SHIPPED files (:func:`_is_shipped_content`
+    drops ``__pycache__``/``.pyc``/``.DS_Store`` build-and-editor junk), and returns
+    each survivor as ``(<root-relative posix path>, <absolute path>)`` SORTED by the
+    relative path so the enumeration is deterministic across machines and Python
+    filesystem-walk order.
+    """
+    files: list[tuple[str, Path]] = []
+    for entry in root.rglob("*"):
+        if _is_shipped_content(entry):
+            files.append((entry.relative_to(root).as_posix(), entry))
+    files.sort(key=lambda item: item[0])
+    return files
+
+
 def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]]:
     """Return the SORTED ``(namespaced-path, file-bytes)`` content manifest.
 
@@ -329,31 +349,28 @@ def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]
 
     base_src = _packaged_base_template()
     if base_src is not None:
-        for entry in base_src.rglob("*"):
-            if _is_shipped_content(entry):
-                rel = entry.relative_to(base_src).as_posix()
-                entries.append((f"base/{rel}", entry.read_bytes()))
+        for rel, entry in walk_shipped_files(base_src):
+            entries.append((f"base/{rel}", entry.read_bytes()))
 
     # The RO built-in bundle (bound live at ~/playbook/kanibako, never installed)
     # is enumerated here ONLY so the setup gate still trips when the shipped
     # KANIBAKO.md/flattener-script content drifts — it has no install target.  It
     # is the SOLE source of the KANIBAKO.md guide in this manifest (the retired
     # ``@system.instructions`` flat-copy no longer contributes a second entry).
+    # NOTE: the digest walks the shared BUNDLE root (rom/playbook/kanibako) so the
+    # namespaced keys stay ``shared/directives/...`` — the rom RO-bind enumerator
+    # walks the rom ROOT (rom/) via the SAME helper for its ~-mirrored dests.
     bundle_src = _packaged_shared_bundle()
     if bundle_src is not None:
-        for entry in bundle_src.rglob("*"):
-            if _is_shipped_content(entry):
-                rel = entry.relative_to(bundle_src).as_posix()
-                entries.append((f"shared/{rel}", entry.read_bytes()))
+        for rel, entry in walk_shipped_files(bundle_src):
+            entries.append((f"shared/{rel}", entry.read_bytes()))
 
     for agent_name in sorted(agent_names):
         agent_src = _packaged_agent_template(agent_name)
         if agent_src is None:
             continue
-        for entry in agent_src.rglob("*"):
-            if _is_shipped_content(entry):
-                rel = entry.relative_to(agent_src).as_posix()
-                entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
+        for rel, entry in walk_shipped_files(agent_src):
+            entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
 
     entries.sort(key=lambda item: item[0])
     return entries

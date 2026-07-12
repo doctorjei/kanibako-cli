@@ -24,7 +24,9 @@ Split (documented in the YAML header too):
 
 from __future__ import annotations
 
+import hashlib
 import importlib.resources
+import re
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -280,17 +282,10 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
         "kanibako-entry"
     )
     entry_path = Path(str(entry_ref))
-    # Built-in directive bundle (instruction-delivery redesign): the read-only
-    # kanibako-provided directive tree bind-mounted LIVE at ~/playbook/kanibako.
-    # Import-resolved from the installed package (kanibako.data →
-    # global/rom/playbook/kanibako) exactly as the kani_pkg source above.
-    bundle_ref = packaged_data_dir("global", "rom", "playbook", "kanibako")
-    bundle_path = Path(str(bundle_ref))
 
     sources: dict[str, str] = {
         "kani_pkg": str(pkg_dir),
         "kani_bin": str(entry_path),
-        "playbook_kanibako": str(bundle_path),
     }
 
     binds: dict[str, tuple[str, str, str]] = {}
@@ -301,6 +296,106 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
             str(entry["box_dest"]),
             str(entry["options"]),
         )
+    return binds
+
+
+# The packaged rom root — the READ-ONLY built-in tree whose every shipped file is
+# bind-mounted live (ro) at its mirrored ``~`` path.  A module constant (symmetric
+# with :func:`templates._packaged_base_template`'s hardcoded ``("global","template")``
+# writable-seed root): rom is the RO-bind DUAL of that writable template seed.
+ROM_ROOT_PARTS = ("global", "rom")
+
+# The load-bearing box guide, as its rom-ROOT-relative posix path.  The enumeration
+# MUST include this file whenever the rom root is populated (fail-closed guard) —
+# a box launched without the guide is a silent degradation of EVERY box.
+ROM_GUIDE_REL = "playbook/kanibako/directives/KANIBAKO.md"
+
+
+def rom_default_categories() -> dict[str, tuple[str, str, str]]:
+    """Build the per-FILE read-only rom binds as ``default_categories``.
+
+    Enumerates every shipped file under the packaged rom root
+    (:data:`ROM_ROOT_PARTS`) and emits ONE ``box.bindings.ro.<key>`` bind per file
+    that mounts it READ-ONLY at its mirrored guest ``~`` path.  This GENERALIZES the
+    retired single-special-case ``playbook_kanibako`` whole-dir RO bind: instead of a
+    hand-maintained ``core-defaults.yaml`` entry per rom subtree, ANY file dropped
+    anywhere under ``rom/`` is bound at ``~/<rom-relative path>`` by this loader —
+    the RO-bind dual of the per-file ``template/`` writable seed (both co-populate
+    ``~`` with zero directory collision because only the exact mirror FILES are
+    bound, leaving containing dirs — ``~/playbook``, ``~/playbook/kanibako`` — as
+    ordinary WRITABLE mountpoints).
+
+    Granularity is per LEAF FILE, never per directory: a ``rom/playbook ->
+    ~/playbook`` RO bind would make the template-seeded writable ``~/playbook``
+    read-only (a fatal shadow), so every emitted dest is a FILE.
+
+    Key = a deterministic ``rom_<slug>_<hash>`` where ``<slug>`` slugifies the
+    rom-relative posix path (every non-alphanumeric char → ``_``) and ``<hash>`` is
+    the first 6 hex of the sha256 of that rel path (slug-collision safety, e.g.
+    ``a/b.md`` vs ``a/b_md``).  The enumeration is SORTED so the key set is identical
+    across machines.
+
+    FAIL-CLOSED guide guard: if the rom root exists and is non-empty but the
+    enumeration does NOT include the load-bearing guide (:data:`ROM_GUIDE_REL`), this
+    RAISES rather than launch a box missing the guide (guards the empty-glob /
+    wrong-root / over-broad-filter failure class).  An empty/absent rom root yields
+    an empty dict (a no-rom install) — that is fine.
+
+    DISJOINTNESS guard: the set of rom ``~``-relative file paths must NOT intersect
+    the ``template/`` writable-seed ``~``-relative file paths (computed via the SAME
+    walk).  An overlap is a content-design bug where an RO bind would silently shadow
+    a writable seed → RAISE.
+    """
+    from kanibako import templates
+
+    rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
+    if not rom_root.is_dir():
+        return {}
+
+    rom_files = templates.walk_shipped_files(rom_root)
+    rom_rels = {rel for rel, _ in rom_files}
+
+    # FAIL-CLOSED: the guide SHIPS under the rom root, so if that file is
+    # physically present on disk it MUST appear in the enumeration.  Anchoring the
+    # guard to the guide's on-disk presence (NOT to a non-empty filtered list)
+    # catches the over-broad-filter / empty-glob / broken-walk class where the walk
+    # silently returns nothing while the guide still ships — that must RAISE, never
+    # short-circuit to a guide-less launch (MEMORY: "check the file COUNT, never
+    # just rc").
+    guide_shipped = (rom_root / ROM_GUIDE_REL).is_file()
+    if guide_shipped and ROM_GUIDE_REL not in rom_rels:
+        raise RuntimeError(
+            "rom RO-bind enumeration is missing the load-bearing box guide "
+            f"{ROM_GUIDE_REL!r} (the guide file ships under rom root {rom_root} but "
+            f"the enumeration produced {sorted(rom_rels)}); refusing to launch a "
+            "box without the guide."
+        )
+
+    # A genuinely empty rom root (the guide is not shipped here) is a no-rom
+    # install — emit nothing.  Reached only when the guide is NOT on disk (the
+    # fail-closed guard above already raised if it was).
+    if not rom_files:
+        return {}
+
+    # DISJOINTNESS: no rom RO file may collide with a template writable-seed file
+    # (same ~-relative path) — that would silently shadow the writable seed.
+    template_root = templates._packaged_base_template()
+    if template_root is not None:
+        template_rels = {rel for rel, _ in templates.walk_shipped_files(template_root)}
+        overlap = rom_rels & template_rels
+        if overlap:
+            raise RuntimeError(
+                "rom RO binds collide with template writable seeds at "
+                f"{sorted(overlap)} (an RO bind would shadow the writable seed); "
+                "a rom file and a template file must never map to the same ~ path."
+            )
+
+    binds: dict[str, tuple[str, str, str]] = {}
+    for rel, path in rom_files:
+        slug = re.sub(r"[^A-Za-z0-9]", "_", rel)
+        digest = hashlib.sha256(rel.encode("utf-8")).hexdigest()[:6]
+        key = f"rom_{slug}_{digest}"
+        binds[f"box.bindings.ro.{key}"] = (str(path), f"~/{rel}", "ro")
     return binds
 
 
