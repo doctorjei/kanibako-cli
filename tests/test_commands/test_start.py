@@ -2779,6 +2779,33 @@ class TestApplyInitSeeds:
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
+    def test_workspace_dest_lands_under_project_not_shell(self, tmp_path):
+        """Unification (P3): a ~/workspace/... SEED dest maps under project_path.
+
+        The former nested ``_host_dest`` shared the same latent ``/workspace`` gap
+        as the synced translator (it mapped everything under home to shell_path).
+        Routing seeds through ``_guest_dest_to_host`` applies the canonical
+        workspace split uniformly. No shipped seed targets ~/workspace (default
+        seeds = {}, the template trio -> ~), so this is a latent-only correctness
+        gain — but the seed path now agrees with the mount/synced paths.
+        """
+        shell = self._shell(tmp_path)
+        project = tmp_path / "project"
+        project.mkdir()
+        proj = self._proj(shell)
+        proj.project_path = project  # distinct from shell_path
+        src = tmp_path / "wssrc"
+        src.mkdir()
+        (src / "f.txt").write_text("seed-ws")
+        agent_cfg = tmp_path / "claude.yaml"
+        agent_cfg.write_text(
+            f'agent:\n  default:\n    seeded:\n'
+            f'      ws: ["{src}", "~/workspace/sub"]\n'
+        )
+        self._call(tmp_path, proj=proj, agent_config_path=agent_cfg)
+        assert (project / "sub" / "f.txt").read_text() == "seed-ws"
+        assert not (shell / "workspace" / "sub").exists()
+
 
 class TestApplySyncedCopies:
     """Unit tests for _apply_synced_copies (the `<scope>.synced.<name>` cat)."""
@@ -2905,6 +2932,32 @@ class TestApplySyncedCopies:
         ptoml.write_text(f'box:\n  synced:\n    gone: ["{missing}", "~/gone"]\n')
         self._call(tmp_path, proj=self._proj(shell))
         assert list(shell.iterdir()) == []
+
+    def test_workspace_dest_lands_under_project_not_shell(self, tmp_path):
+        """P3 bug-fix: a ~/workspace/... synced dest maps under proj.project_path
+        (the workspace bind), NOT the shadowed shell_path/workspace stub.
+
+        Regression guard: the FORMER inline synced translator lacked the
+        ``/workspace`` split, so this entry computed shell_path/workspace/sub/f.txt
+        (invisible in the box behind the workspace bind). Routing through the
+        shared ``_guest_dest_to_host`` fixes it. This test FAILS on the old code.
+        """
+        shell = self._shell(tmp_path)
+        project = tmp_path / "project"
+        project.mkdir()
+        proj = self._proj(shell)
+        proj.project_path = project  # distinct from shell_path
+        src = tmp_path / "ws.txt"
+        src.write_text("in-workspace")
+        ptoml = tmp_path / "settings.yaml"
+        ptoml.write_text(
+            f'box:\n  synced:\n    ws: ["{src}", "~/workspace/sub/f.txt"]\n'
+        )
+        self._call(tmp_path, proj=proj)
+        # Correct: lands under project_path.
+        assert (project / "sub" / "f.txt").read_text() == "in-workspace"
+        # The old (buggy) shadowed path was NOT written.
+        assert not (shell / "workspace" / "sub" / "f.txt").exists()
 
 
 class TestBoxShellLaunch:
