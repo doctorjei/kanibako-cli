@@ -24,14 +24,13 @@ include = ["kanibako.plugins.claude*"]
     "py.typed",
     # Declarative agent defaults (P6c) — read at import time via importlib.resources.
     "claude-defaults.yaml",
-    # Static claude-specific data delivered by descriptor binds (e.g. the
-    # kickoff-loader SEED under data/kickoff-loader/.claude/) — read via
-    # importlib.resources at load.  The SEED lives in a nested dot-dir, so the same
-    # recursive dot-dir patterns as template/ are needed (data/* would miss it).
+    # Static claude-specific data delivered by descriptor binds — the KICKOFF.md
+    # SEED (data/KICKOFF.md), the future-use rom/ placeholder, and the per-agent
+    # seeded template (data/template/, incl. nested dot-dirs .claude/ + the
+    # .claude.json dot-file) — read via importlib.resources at load.  Nested
+    # dot-dir content needs the recursive dot-dir patterns (a plain data/* /
+    # data/**/* would miss it).
     "data/*", "data/**/*", "data/**/.*",
     "data/.*/**/*", "data/.*/*",
     "data/**/.*/**/*", "data/**/.*/*",
-    "template/**/*", "template/**/.*",
-    "template/.*/**/*", "template/.*/*",
-    "template/**/.*/**/*", "template/**/.*/*",
 ]

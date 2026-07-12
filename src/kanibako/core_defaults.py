@@ -269,9 +269,9 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
     # Built-in directive bundle (instruction-delivery redesign): the read-only
     # kanibako-provided directive tree bind-mounted LIVE at ~/playbook/kanibako.
     # Import-resolved from the installed package (kanibako.data →
-    # global/base/shared/playbook/kanibako) exactly as the kani_pkg source above.
+    # global/rom/playbook/kanibako) exactly as the kani_pkg source above.
     bundle_ref = importlib.resources.files("kanibako.data").joinpath(
-        "global", "base", "shared", "playbook", "kanibako"
+        "global", "rom", "playbook", "kanibako"
     )
     bundle_path = Path(str(bundle_ref))
 

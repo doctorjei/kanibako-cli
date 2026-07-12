@@ -2,11 +2,11 @@
 
 Two delivery mechanisms land the redesigned playbook tree into a box:
 
-* the RO built-in bundle (``data/global/base/shared/playbook/kanibako``) is
+* the RO built-in bundle (``data/global/rom/playbook/kanibako``) is
   BIND-MOUNTED read-only, live from the installed package, at ``~/playbook/kanibako``
   (routed through the keystore as ``box.bindings.ro.playbook_kanibako`` — the new
   kani-category bind mirroring ``kani_pkg``); and
-* the writable user tree (``data/global/base/template/playbook``) is SEEDED
+* the writable user tree (``data/global/template/playbook``) is SEEDED
   create-if-absent through the existing base-template layer, so
   ``~/playbook/CONTENTS.md`` (+ the scoped directive skeleton) lands at box create.
 
@@ -50,7 +50,7 @@ class TestPlaybookBundleBind:
         assert box_dest == "~/playbook/kanibako"
         assert options == "ro"
         # Host source is the import-resolved packaged bundle dir (never a copy).
-        assert host_src.endswith("global/base/shared/playbook/kanibako")
+        assert host_src.endswith("global/rom/playbook/kanibako")
 
     def test_bundle_reconciles_to_ro_mount_at_slot(self):
         """The bind resolves through the launch cascade to a Mount whose box-side
@@ -79,7 +79,7 @@ class TestPlaybookBundleBind:
 
 
 class TestBaseTemplateSeedsPlaybook:
-    """(B) The base-template seed source moved to ``data/global/base/template``,
+    """(B) The base-template seed source moved to ``data/global/template``,
     which carries ``playbook/CONTENTS.md`` — so install → seed lands
     ``~/playbook/CONTENTS.md`` (create-if-absent), NO ``INSTRUCTIONS.md``."""
 

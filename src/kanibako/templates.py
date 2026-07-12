@@ -150,7 +150,7 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 # ``kanibako.data``):
 #
 #   base   -> ``kanibako.data`` resource ``templates/base/``
-#   agent  -> ``kanibako.plugins.<agent>`` resource ``template/``
+#   agent  -> ``kanibako.plugins.<agent>`` resource ``data/template/``
 #
 # On first-run init (``cli._ensure_initialized`` / ``install.run``) these are
 # COPIED into the runtime template dirs (``@system.base_template`` and
@@ -200,7 +200,7 @@ def _packaged_base_template() -> Path | None:
 
     Repointed (instruction-delivery redesign) from the retired
     ``kanibako.data/templates/base`` (which shipped only ``INSTRUCTIONS.md``) to
-    ``kanibako.data/global/base/template`` — the SEEDED, writable user tree
+    ``kanibako.data/global/template`` — the SEEDED, writable user tree
     (``playbook/CONTENTS.md`` + the scoped directive skeleton).  Because that dir
     contains ``playbook/...``, installing it into ``@system.base_template`` and
     seeding that layer at box home ``~`` deposits ``~/playbook/...`` (create-if-
@@ -209,7 +209,7 @@ def _packaged_base_template() -> Path | None:
     """
     try:
         ref = importlib.resources.files("kanibako.data").joinpath(
-            "global", "base", "template"
+            "global", "template"
         )
     except (ModuleNotFoundError, FileNotFoundError):
         return None
@@ -220,7 +220,7 @@ def _packaged_base_template() -> Path | None:
 def _packaged_shared_bundle() -> Path | None:
     """Locate the packaged read-only built-in directive bundle.
 
-    ``kanibako.data/global/base/shared/playbook/kanibako`` — the KANIBAKO.md +
+    ``kanibako.data/global/rom/playbook/kanibako`` — the KANIBAKO.md +
     flattener scripts that the launch path bind-mounts LIVE (ro) at
     ``~/playbook/kanibako`` (see ``core_defaults.kani_default_categories`` /
     ``core-defaults.yaml`` ``playbook_kanibako``).  It is NOT copied/seeded to a
@@ -230,7 +230,7 @@ def _packaged_shared_bundle() -> Path | None:
     """
     try:
         ref = importlib.resources.files("kanibako.data").joinpath(
-            "global", "base", "shared", "playbook", "kanibako"
+            "global", "rom", "playbook", "kanibako"
         )
     except (ModuleNotFoundError, FileNotFoundError):
         return None
@@ -239,15 +239,15 @@ def _packaged_shared_bundle() -> Path | None:
 
 
 def _packaged_agent_template(agent_name: str) -> Path | None:
-    """Locate a plugin's packaged template content (``kanibako.plugins.<agent>/template``).
+    """Locate a plugin's packaged template content (``kanibako.plugins.<agent>/data/template``).
 
-    Returns ``None`` if the plugin is not installed or ships no ``template/``
+    Returns ``None`` if the plugin is not installed or ships no ``data/template/``
     (e.g. ``no_agent`` / a third-party target without curated content).
     """
     try:
         ref = importlib.resources.files(
             f"kanibako.plugins.{agent_name}"
-        ).joinpath("template")
+        ).joinpath("data", "template")
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))
@@ -259,7 +259,7 @@ def _packaged_instructions() -> Path | None:
 
     Repointed (instruction-delivery redesign) from the retired
     ``kanibako.data/global/KANIBAKO.md`` to the KANIBAKO.md inside the built-in
-    directive bundle (``.../global/base/shared/playbook/kanibako/directives``).
+    directive bundle (``.../global/rom/playbook/kanibako/directives``).
     This keeps the EXISTING ``@system.instructions`` delivery (the per-agent
     ``bindings.ro.instructions`` @-ref binds, not yet retired) sourcing a real
     installed file while the redesign's live ``~/playbook/kanibako`` bind lands.

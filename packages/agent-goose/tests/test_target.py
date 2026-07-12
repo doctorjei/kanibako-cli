@@ -222,7 +222,7 @@ class TestDescriptorDeliveryMounts:
         assert binary_mount.options == "ro"
         kickoff = by_dest["/home/agent/.config/kanibako/kickoff.md"]
         assert str(kickoff.source).endswith(
-            "data/kickoff-loader/.config/goose/AGENTS.md"
+            "data/KICKOFF.md"
         )
         assert kickoff.options == "ro"
 

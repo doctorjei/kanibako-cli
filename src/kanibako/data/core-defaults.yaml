@@ -222,7 +222,7 @@ kani:
   # delivery redesign bind-mounts LIVE into the box home (never seeded/copied — it
   # rides the installed package, refreshing automatically on upgrade).  Its host
   # source is import-resolved at the seam (kanibako.data →
-  # global/base/shared/playbook/kanibako), mirroring the kani_pkg RO bind.
+  # global/rom/playbook/kanibako), mirroring the kani_pkg RO bind.
   - key: playbook_kanibako
     category: bindings.ro
     source: playbook_kanibako
