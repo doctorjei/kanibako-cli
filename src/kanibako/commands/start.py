@@ -4128,11 +4128,6 @@ def _launch_snapshot_inputs(
     resolved_sys = {
         "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
-        # Agent-agnostic box-guidance source (spec: system.instructions =
-        # @config.data/global/KANIBAKO.md).  Folded in so the PLUGIN-declared
-        # instructions bind (agent.<agent>.bindings.ro.instructions =
-        # (@system.instructions, <slot>), spec §2d L608) resolves from the snapshot.
-        "system.instructions": str(std.instructions),
         # B2b: the resolved system channel type-roots (spec §2g) — folded in so the
         # @system.channels.* ALL-PROJECTS channel binds (global_commons/chat/share/
         # mailboxes, §2c L471-474) resolve from the snapshot.  Each equals the
@@ -4371,12 +4366,13 @@ def _resolve_launch_snapshot(
         if target is not None:
             default_categories.update(target.default_shares())
             default_categories.update(target.default_seeds())
-            # PLUGIN-declared @-ref-sourced agent binds (spec §2d L608): the
-            # instructions bind ``agent.bindings.ro.instructions =
-            # (@system.instructions, <harness slot>)``.  Unioned like a share; the
+            # PLUGIN-declared @-ref-sourced agent binds (spec §2d L608): a generic
+            # AGENT-scope category-bind extension point.  Unioned like a share; each
             # bare ``agent.bindings.*`` key is re-rooted to the active slot and its
-            # ``@system.instructions`` source is resolved by ``expand`` from the
-            # ``resolved_sys`` floor.
+            # ``@``-ref source is resolved by ``expand`` from the ``resolved_sys``
+            # floor.  Currently empty for all first-party plugins (the former
+            # ``@system.instructions`` instructions bind was retired — the guide now
+            # ships via the RO bundle + launch-flatten).
             default_categories.update(target.default_category_binds())
     # A NARROW caller (``include_base_families=False``) may inject ONLY its own
     # declared default-category table — e.g. ``_apply_init_seeds`` passing just

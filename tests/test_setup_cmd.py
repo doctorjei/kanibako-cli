@@ -285,7 +285,7 @@ def test_template_step_forced_flag_applies_and_stamps(tmp_home, config_file):
     """--refresh-templates: apply refresh + stamp non-interactively (no prompt)."""
     setup_cmd._run_template_refresh(_ns(refresh_templates=True))
     std = _resolve_std()
-    assert std.instructions.is_file()  # applied
+    assert (std.base_template / "playbook" / "CONTENTS.md").is_file()  # applied
     assert (std.agents / "claude" / "template" / ".claude.json").is_file()
     assert _read_stamp(tmp_home) == _current_digest()  # gate clears
 
@@ -306,7 +306,7 @@ def test_template_step_tty_accept_applies_and_stamps(tmp_home, config_file, monk
     monkeypatch.setattr("builtins.input", lambda *a: "y")
     setup_cmd._run_template_refresh(_ns())
     std = _resolve_std()
-    assert std.instructions.is_file()  # applied
+    assert (std.base_template / "playbook" / "CONTENTS.md").is_file()  # applied
     assert _read_stamp(tmp_home) == _current_digest()
 
 
@@ -319,7 +319,7 @@ def test_template_step_tty_decline_stamps_without_applying(
     setup_cmd._run_template_refresh(_ns())
     std = _resolve_std()
     # Not applied — the shipped files were NOT written.
-    assert not std.instructions.exists()
+    assert not (std.base_template / "playbook" / "CONTENTS.md").exists()
     # Stamp written anyway (informed consent → gate clears).
     assert _read_stamp(tmp_home) == _current_digest()
     assert "unblessed state" in capsys.readouterr().out
@@ -337,7 +337,7 @@ def test_template_step_non_tty_no_flag_skips_without_stamping(
     monkeypatch.setattr("builtins.input", _boom)
     setup_cmd._run_template_refresh(_ns())
     std = _resolve_std()
-    assert not std.instructions.exists()  # not applied
+    assert not (std.base_template / "playbook" / "CONTENTS.md").exists()  # not applied
     assert _read_stamp(tmp_home) is None  # NOT stamped → gate still errors
     assert "cannot be updated non-interactively" in capsys.readouterr().out
 

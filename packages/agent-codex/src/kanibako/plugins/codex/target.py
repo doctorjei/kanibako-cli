@@ -236,12 +236,12 @@ class CodexTarget(Target):
         return _CODEX_DESCRIPTOR
 
     def default_category_binds(self) -> dict[str, BindDefault]:
-        """Declare codex's instructions bind (spec §2d L608).
+        """Declare codex's AGENT-scope ``@``-ref-sourced category binds.
 
-        ``agent.codex.bindings.ro.instructions = (@system.instructions,
-        ~/.codex/AGENTS.md)`` — the shared box-guidance doc delivered READ-ONLY into
-        codex's global-agents slot (codex reads ``AGENTS.md`` natively).  Declared in
-        ``codex-defaults.yaml`` (read via the loader).
+        Read from ``codex-defaults.yaml`` (via the loader).  Currently EMPTY: the
+        former ``@system.instructions`` → ``~/.codex/AGENTS.md`` instructions bind
+        was retired — the box guide now ships via the RO ``~/playbook/kanibako``
+        bundle + the flattened per-agent FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 

@@ -254,23 +254,6 @@ def _packaged_agent_template(agent_name: str) -> Path | None:
     return path if path.is_dir() else None
 
 
-def _packaged_instructions() -> Path | None:
-    """Locate the packaged default box-guidance file (``KANIBAKO.md``).
-
-    Repointed (instruction-delivery redesign) from the retired
-    ``kanibako.data/global/KANIBAKO.md`` to the KANIBAKO.md inside the built-in
-    directive bundle (``.../global/rom/playbook/kanibako/directives``).
-    This keeps the EXISTING ``@system.instructions`` delivery (the per-agent
-    ``bindings.ro.instructions`` @-ref binds, not yet retired) sourcing a real
-    installed file while the redesign's live ``~/playbook/kanibako`` bind lands.
-    """
-    bundle = _packaged_shared_bundle()
-    if bundle is None:
-        return None
-    path = bundle / "directives" / "KANIBAKO.md"
-    return path if path.is_file() else None
-
-
 def install_packaged_templates(
     std: StandardPaths, agent_names: list[str], refresh: bool = False,
 ) -> None:
@@ -278,30 +261,23 @@ def install_packaged_templates(
 
     Populates ``@system.base_template`` from the packaged base content and each
     ``@config.agents/<agent>/template`` from the agent plugin's packaged
-    ``template/``.  Also installs the shipped default box-guidance file to
-    ``@system.instructions`` (the built-in bundle's
-    ``directives/KANIBAKO.md``, via ``_packaged_instructions``).  Called from
-    first-run init; safe to re-run (idempotent for unchanged trees).
+    ``template/``.  Called from first-run init; safe to re-run (idempotent for
+    unchanged trees).
+
+    The agent-agnostic box guide (``KANIBAKO.md``) is NOT installed here — it is
+    delivered LIVE from the read-only built-in bundle (bound at
+    ``~/playbook/kanibako`` + flattened into each agent's native instruction slot
+    at launch), so it has no host runtime-install target.
 
     Default (``refresh=False``) is CREATE-IF-ABSENT (never clobbers user edits) —
     the first-run behaviour.  ``refresh=True`` is the TRUE-REFRESH path (``kanibako
-    setup``): shipped files (base tree, each agent tree, and KANIBAKO.md) are
-    OVERWRITTEN to their current packaged versions.  User-only files are never in
-    the packaged src loop, so they stay untouched either way.
+    setup``): shipped files (base tree, each agent tree) are OVERWRITTEN to their
+    current packaged versions.  User-only files are never in the packaged src
+    loop, so they stay untouched either way.
     """
     base_src = _packaged_base_template()
     if base_src is not None:
         _copy_resource_tree_if_absent(base_src, std.base_template, overwrite=refresh)
-
-    # Agent-agnostic box-guidance source (@system.instructions): a single
-    # shipped default installed create-if-absent (or overwritten on refresh),
-    # resolved via the keyspace so a user who repoints/edits the key or the file
-    # keeps their copy on first-run.  Plugins bind this host source read-only
-    # into each harness slot (delivery = plugin layer).
-    instr_src = _packaged_instructions()
-    if instr_src is not None and (refresh or not std.instructions.exists()):
-        std.instructions.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(instr_src), str(std.instructions))
 
     for agent_name in agent_names:
         agent_src = _packaged_agent_template(agent_name)
@@ -337,23 +313,19 @@ def _is_shipped_content(entry: Path) -> bool:
     return True
 
 
-def packaged_templates_digest(agent_names: list[str]) -> str:
-    """Return a content-manifest sha256 over the packaged template src trees.
+def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]]:
+    """Return the SORTED ``(namespaced-path, file-bytes)`` content manifest.
 
-    Hashes the packaged content the setup gate must watch — the base seed tree
-    (``_packaged_base_template``), the shipped KANIBAKO.md
-    (``_packaged_instructions``), each installed agent's ``template/``
+    Enumerates every packaged file the setup gate must watch — the base seed tree
+    (``_packaged_base_template``), each installed agent's ``template/``
     (``_packaged_agent_template``), AND the RO built-in bundle
     (``_packaged_shared_bundle``, which is bind-mounted rather than installed but
-    still needs drift detection).  Each file contributes a
-    ``(namespaced-relative-path, file-bytes)`` pair; the pairs are SORTED before
-    hashing so the digest is deterministic across runs and machines regardless
-    of filesystem walk order.
-
-    This is a CONTENT hash, not a version marker: it trips ONLY when packaged
-    template content actually changes (so the staleness gate never hard-errors
-    on a version bump that doesn't touch templates), and it is immune to the
-    ``setup_completed`` silent forward-bump that would mask template drift.
+    still needs drift detection; it carries the KANIBAKO.md guide at
+    ``directives/KANIBAKO.md``).  Each file contributes exactly ONE
+    ``(namespaced-relative-path, file-bytes)`` pair under a source-distinct
+    prefix (``base/`` / ``shared/`` / ``agent/<name>/``), so no file is
+    double-counted; the pairs are SORTED so the manifest is deterministic across
+    runs and machines regardless of filesystem walk order.
     """
     entries: list[tuple[str, bytes]] = []
 
@@ -364,13 +336,11 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
                 rel = entry.relative_to(base_src).as_posix()
                 entries.append((f"base/{rel}", entry.read_bytes()))
 
-    instr_src = _packaged_instructions()
-    if instr_src is not None:
-        entries.append(("instructions/KANIBAKO.md", instr_src.read_bytes()))
-
     # The RO built-in bundle (bound live at ~/playbook/kanibako, never installed)
     # is enumerated here ONLY so the setup gate still trips when the shipped
-    # KANIBAKO.md/flattener-script content drifts — it has no install target.
+    # KANIBAKO.md/flattener-script content drifts — it has no install target.  It
+    # is the SOLE source of the KANIBAKO.md guide in this manifest (the retired
+    # ``@system.instructions`` flat-copy no longer contributes a second entry).
     bundle_src = _packaged_shared_bundle()
     if bundle_src is not None:
         for entry in bundle_src.rglob("*"):
@@ -388,8 +358,20 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
                 entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
 
     entries.sort(key=lambda item: item[0])
+    return entries
+
+
+def packaged_templates_digest(agent_names: list[str]) -> str:
+    """Return a content-manifest sha256 over the packaged template src trees.
+
+    A CONTENT hash over :func:`_packaged_manifest_entries`, not a version marker:
+    it trips ONLY when packaged template content actually changes (so the
+    staleness gate never hard-errors on a version bump that doesn't touch
+    templates), and it is immune to the ``setup_completed`` silent forward-bump
+    that would mask template drift.
+    """
     digest = hashlib.sha256()
-    for key, data in entries:
+    for key, data in _packaged_manifest_entries(agent_names):
         digest.update(key.encode("utf-8"))
         digest.update(b"\0")
         digest.update(hashlib.sha256(data).digest())
@@ -426,10 +408,6 @@ def plan_template_refresh(
         for entry in base_src.rglob("*"):
             if entry.is_file():
                 _classify(entry, std.base_template / entry.relative_to(base_src))
-
-    instr_src = _packaged_instructions()
-    if instr_src is not None:
-        _classify(instr_src, std.instructions)
 
     for agent_name in agent_names:
         agent_src = _packaged_agent_template(agent_name)

@@ -2550,9 +2550,6 @@ class TestApplyInitSeeds:
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",
-            # The @system.instructions source folded into resolved_sys (the
-            # keyspace floor; the retired plugin instructions bind no longer reads it).
-            instructions=tmp_path / "data" / "global" / "KANIBAKO.md",
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
             settings=tmp_path / "settings.yaml",
@@ -2795,9 +2792,6 @@ class TestApplySyncedCopies:
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",
-            # The @system.instructions source folded into resolved_sys (the
-            # keyspace floor; the retired plugin instructions bind no longer reads it).
-            instructions=tmp_path / "data" / "global" / "KANIBAKO.md",
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
             settings=tmp_path / "settings.yaml",
