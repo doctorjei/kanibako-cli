@@ -4656,10 +4656,12 @@ class TestPreflightPersonaLoad:
         tok = tmp_path / "tok"
         tok.write_text("sk-key\n")
         cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
         assert (endpoint, err, adopted) == ("https://key.example", None, False)
+        # A claude (ENV-delivery) persona carries NO config-file provider.
+        assert provider is None
         # A recognised persona is NOT re-adopted: state untouched.
         assert "endpoint" not in cfg.state
 
@@ -4670,7 +4672,7 @@ class TestPreflightPersonaLoad:
 
         self._host(tmp_path, monkeypatch, base_url="https://b3.example")
         cfg = self._cfg()
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, None, self._logger(),
         )
         assert err is None
@@ -4690,7 +4692,7 @@ class TestPreflightPersonaLoad:
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg = self._cfg()
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, None, self._logger(),
         )
         assert endpoint is None
@@ -4704,7 +4706,7 @@ class TestPreflightPersonaLoad:
         # Host dir has settings.json (BASE_URL) but NO token file.
         self._host(tmp_path, monkeypatch, base_url="https://b3.example", token=None)
         cfg = self._cfg()
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, None, self._logger(),
         )
         assert endpoint is None
@@ -4719,7 +4721,7 @@ class TestPreflightPersonaLoad:
 
         self._host(tmp_path, monkeypatch, base_url="https://ignored", token="sk-host\n")
         cfg = self._cfg()  # empty secret_path → the fallback must supply the token.
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
         assert err is None
@@ -4738,7 +4740,7 @@ class TestPreflightPersonaLoad:
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir/token.
         cfg = self._cfg()
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
         assert endpoint is None
@@ -4756,7 +4758,7 @@ class TestPreflightPersonaLoad:
         other.write_text("value\n")
         cfg = self._cfg()
         cfg.secret_path = {"SOME_OTHER_VAR": str(other)}
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, "https://key.example", self._logger(),
         )
         assert endpoint is None
@@ -4775,13 +4777,218 @@ class TestPreflightPersonaLoad:
         import json
         (pdir / "settings.json").write_text(json.dumps({"env": {"FOO": "bar"}}))
         cfg = self._cfg()
-        endpoint, err, adopted = _preflight_persona_load(
+        endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘claude", cfg, None, self._logger(),
         )
         assert endpoint is None
         assert err is not None and "cannot be loaded" in err
         assert "not usable" in err
         assert "no host config was found" not in err
+
+
+class TestPersonaWiring:
+    """``_persona_wiring`` — the harness-declared persona endpoint/token delivery."""
+
+    def test_no_target_is_claude_default(self):
+        # No target (pre-seam / legacy caller) → ENV delivery + ANTHROPIC_AUTH_TOKEN.
+        from kanibako.commands.start import _PERSONA_TOKEN_VAR, _persona_wiring
+        w = _persona_wiring(None)
+        assert w.endpoint_delivery == "env"
+        assert w.token_var == _PERSONA_TOKEN_VAR == "ANTHROPIC_AUTH_TOKEN"
+
+    def test_claude_target_declares_no_persona_block_env_default(self):
+        # The real claude descriptor declares NO persona block → env/ANTHROPIC.
+        from kanibako.commands.start import _PERSONA_TOKEN_VAR, _persona_wiring
+        from kanibako.plugins.claude.target import ClaudeTarget
+        assert ClaudeTarget().descriptor.persona is None
+        w = _persona_wiring(ClaudeTarget())
+        assert w.endpoint_delivery == "env"
+        assert w.token_var == _PERSONA_TOKEN_VAR
+
+    def test_codex_target_declares_config_file_dynamic_var(self):
+        from kanibako.commands.start import _persona_wiring
+        from kanibako.plugins.codex.target import CodexTarget
+        spec = CodexTarget().descriptor.persona
+        assert spec is not None
+        assert spec.endpoint_delivery == "config_file"
+        assert spec.wire_api == "chat"
+        w = _persona_wiring(CodexTarget())
+        assert w.endpoint_delivery == "config_file"
+        assert w.token_var == ""  # dynamic: the configured secret_path key
+
+
+class TestPreflightClaudeByteIdentical:
+    """CHARACTERIZATION: a claude persona resolves IDENTICALLY with the new
+    harness-aware seam — passing the real claude Target must not change the
+    resolved endpoint, token var, secret_path, or (absent) provider vs target=None.
+    """
+
+    def _cfg(self, tok_path):
+        from kanibako.agent_config import AgentConfig
+        cfg = AgentConfig()
+        cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok_path)}
+        return cfg
+
+    def test_claude_target_matches_no_target(self, tmp_path):
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        tok = tmp_path / "tok"
+        tok.write_text("sk-key\n")
+
+        res_none = _preflight_persona_load(
+            "navigator℘claude", self._cfg(tok), "https://key.example", MagicMock(),
+        )
+        res_claude = _preflight_persona_load(
+            "navigator℘claude", self._cfg(tok), "https://key.example", MagicMock(),
+            target=ClaudeTarget(),
+        )
+        # Endpoint / error / adopted / provider all identical, provider None.
+        assert res_none == res_claude
+        assert res_claude == ("https://key.example", None, False, None)
+
+    def test_claude_host_token_fallback_preserved_with_target(
+        self, tmp_path, monkeypatch,
+    ):
+        # F4 fallback + the ANTHROPIC_AUTH_TOKEN var + secret_path mutation are
+        # unchanged when a real claude Target is threaded through.
+        from kanibako.agent_config import AgentConfig
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        (pdir / "token").write_text("sk-host\n")
+
+        cfg = AgentConfig()  # empty secret_path → host-token fallback supplies it.
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘claude", cfg, "https://key.example", MagicMock(),
+            target=ClaudeTarget(),
+        )
+        assert (endpoint, err, adopted, provider) == (
+            "https://key.example", None, True, None,
+        )
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"].endswith(
+            "/claude/navigator/token"
+        )
+
+
+class TestPreflightCodexPersona:
+    """Codex (config-file harness) persona resolution — keyspace-config only (no B3)."""
+
+    def _codex(self):
+        from kanibako.plugins.codex.target import CodexTarget
+        return CodexTarget()
+
+    def _cfg(self, *, secret=None, model=None):
+        from kanibako.agent_config import AgentConfig
+        cfg = AgentConfig()
+        if secret:
+            cfg.secret_path = dict(secret)
+        if model is not None:
+            cfg.state["model"] = model
+        return cfg
+
+    def test_keyspace_endpoint_and_key_resolves_provider(self, tmp_path):
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.vscode_config import CodexModelProvider
+
+        key = tmp_path / "navkey"
+        key.write_text("nv-secret\n")
+        cfg = self._cfg(
+            secret={"NAVIGATOR_API_KEY": str(key)}, model="gemma-4-31b-it",
+        )
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            target=self._codex(),
+        )
+        assert err is None
+        assert endpoint == "https://api.ai.example/v1"
+        assert adopted is False  # keyspace-only: nothing mutated/persisted.
+        assert provider == CodexModelProvider(
+            provider_id="navigator",
+            name="navigator",
+            base_url="https://api.ai.example/v1",
+            wire_api="chat",
+            env_key="NAVIGATOR_API_KEY",   # the configured secret_path key.
+            model="gemma-4-31b-it",
+        )
+
+    def test_no_endpoint_config_file_error_no_hostdir(self, tmp_path, monkeypatch):
+        # No keyspace endpoint → hard error worded for config-file (no host-dir /
+        # settings.json reference), and NO B3 host-dir adoption is attempted.
+        import kanibako.commands.start as start_mod
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        called = {"b3": False}
+
+        def _boom(_persona):
+            called["b3"] = True
+            return None
+
+        monkeypatch.setattr(start_mod, "_adopt_persona_from_host_dir", _boom)
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘codex", self._cfg(), None, MagicMock(),
+            target=self._codex(),
+        )
+        assert endpoint is None
+        assert provider is None
+        assert err is not None and "cannot be loaded" in err
+        assert "config set" in err  # points at the keyspace route.
+        assert "settings.json" not in err  # NOT the claude host-dir wording.
+        assert called["b3"] is False  # B3 is NEVER attempted for codex.
+
+    def test_endpoint_but_no_token_errors(self):
+        from kanibako.commands.start import _preflight_persona_load
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘codex", self._cfg(), "https://api.example/v1", MagicMock(),
+            target=self._codex(),
+        )
+        assert endpoint is None and provider is None
+        assert err is not None and "no usable auth token" in err
+        assert "env_key" in err
+
+    def test_ambiguous_multiple_secret_keys_errors(self, tmp_path):
+        # >1 configured secret_path key → cannot pick the provider env_key → error.
+        from kanibako.commands.start import _preflight_persona_load
+        a = tmp_path / "a"
+        a.write_text("x\n")
+        b = tmp_path / "b"
+        b.write_text("y\n")
+        cfg = self._cfg(secret={"KEY_A": str(a), "KEY_B": str(b)})
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
+            target=self._codex(),
+        )
+        assert endpoint is None and provider is None
+        assert err is not None and "no usable auth token" in err
+
+    def test_unusable_token_pointer_errors(self, tmp_path):
+        # The configured key points at a MISSING file → not usable → error.
+        from kanibako.commands.start import _preflight_persona_load
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(tmp_path / "absent")})
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
+            target=self._codex(),
+        )
+        assert endpoint is None and provider is None
+        assert err is not None and "no usable auth token" in err
+
+    def test_resolved_endpoint_is_suppress_signal(self, tmp_path):
+        # suppress_oauth = active_endpoint is not None; a loadable codex persona
+        # returns a non-None endpoint → the caller suppresses the auth.json sync.
+        from kanibako.commands.start import _preflight_persona_load
+        key = tmp_path / "k"
+        key.write_text("z\n")
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)}, model="m")
+        endpoint, err, _adopted, _provider = _preflight_persona_load(
+            "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
+            target=self._codex(),
+        )
+        assert err is None
+        assert endpoint is not None  # → suppress_oauth fires (auth.json dropped).
 
 
 class TestPersonaCreateVerdict:

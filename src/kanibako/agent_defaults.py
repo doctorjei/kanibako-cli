@@ -50,6 +50,7 @@ from kanibako.targets.base import (
     CredFileSpec,
     HostSrcOrigin,
     Operation,
+    PersonaSpec,
     PluginDescriptor,
     SafeBypass,
     SettingArg,
@@ -137,6 +138,21 @@ def _build_setting_arg(entry: dict[str, Any]) -> SettingArg:
     )
 
 
+def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
+    """Build the harness-specific :class:`PersonaSpec` from its block (or None).
+
+    Absent ``persona:`` → ``None`` → the preflight falls back to claude-style ENV
+    endpoint delivery + the ``ANTHROPIC_AUTH_TOKEN`` token var (byte-identical).
+    """
+    if not raw:
+        return None
+    return PersonaSpec(
+        token_var=raw.get("token_var", ""),
+        endpoint_delivery=raw.get("endpoint_delivery", "env"),
+        wire_api=raw.get("wire_api", "chat"),
+    )
+
+
 def _build_cred_file(entry: dict[str, Any]) -> CredFileSpec:
     return CredFileSpec(
         home_rel=entry["home_rel"],
@@ -170,6 +186,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         },
         safe_bypass=_build_safe_bypass(desc.get("safe_bypass")),
         settings=tuple(_build_setting_arg(s) for s in desc.get("settings", [])),
+        persona=_build_persona(desc.get("persona")),
         container_env={
             k: _expand(v) for k, v in desc.get("container_env", {}).items()
         },

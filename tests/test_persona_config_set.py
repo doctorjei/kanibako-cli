@@ -372,7 +372,7 @@ class TestPersonaLoadableEndToEnd:
         assert agent_cfg.state["model"] == "gemma-4-31b-it"
         assert agent_cfg.secret_path[_TOKEN_VAR] == str(token)
 
-        endpoint, error, _adopted = _preflight_persona_load(
+        endpoint, error, _adopted, _provider = _preflight_persona_load(
             "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
         )
         assert error is None
@@ -393,7 +393,7 @@ class TestPersonaLoadableEndToEnd:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         agent_cfg = load_agent_config(_node_file(agents_root))
-        _ep, error, _adopted = _preflight_persona_load(
+        _ep, error, _adopted, _provider = _preflight_persona_load(
             "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
         )
         assert error is not None

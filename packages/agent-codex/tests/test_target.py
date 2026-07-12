@@ -386,15 +386,29 @@ class TestGenerateAgentConfig:
 
 
 class TestSettingDescriptors:
-    def test_only_model(self):
+    def test_model_and_endpoint(self):
         settings = CodexTarget().setting_descriptors()
         keys = [s.key for s in settings]
-        assert keys == ["model"]
+        # model + endpoint (persona: the alternate model-provider base-URL, a
+        # first-class settable/cascade-resolved key; delivered via config.toml, not
+        # an env — see the descriptor persona.endpoint_delivery: config_file).
+        assert keys == ["model", "endpoint"]
+        endpoint = next(s for s in settings if s.key == "endpoint")
+        assert endpoint.default == ""
         # auto_approve is NOT a declared TargetSetting — it is the agent-scope bool
         # key routed verbatim (safe_bypass.setting_key), redeemed at launch.
         assert "auto_approve" not in keys
         # 'access' is fully retired (folded into auto_approve).
         assert "access" not in keys
+
+    def test_persona_wiring_declared(self):
+        # INC 2: codex declares config-file endpoint delivery + a dynamic token var
+        # (empty → the configured secret_path key doubles as the provider env_key).
+        spec = CodexTarget().descriptor.persona
+        assert spec is not None
+        assert spec.endpoint_delivery == "config_file"
+        assert spec.token_var == ""
+        assert spec.wire_api == "chat"
 
 
 class TestDefaultShares:

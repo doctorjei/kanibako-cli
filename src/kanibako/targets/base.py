@@ -151,6 +151,40 @@ class SafeBypass:
 
 
 @dataclass(frozen=True)
+class PersonaSpec:
+    """How a PERSONA's alternate endpoint + bearer token are DELIVERED for this harness.
+
+    A persona (``agent.<persona>℘<harness>``) points the harness at a third-party
+    model endpoint with a bearer token.  HOW those two values reach the box is
+    HARNESS-specific, so the plugin declares it here (consulted by the persona
+    preflight in ``start.py`` instead of the old claude-hardcoded constants):
+
+    * *token_var* — the ``secret_path`` key (== the in-box env var) that carries the
+      bearer token.  Claude uses the FIXED ``ANTHROPIC_AUTH_TOKEN``.  A config-file
+      harness (codex) leaves this EMPTY → DYNAMIC: the single configured
+      ``secret_path`` key IS the token var, and it doubles as the model-provider
+      ``env_key`` (so the config-generated provider reads the same env).
+    * *endpoint_delivery* — ``"env"`` (claude: the endpoint rides the descriptor's
+      ``endpoint``→``ANTHROPIC_BASE_URL`` ENV :class:`SettingArg`) or ``"config_file"``
+      (codex: the endpoint is written into ``~/.codex/config.toml``'s
+      ``[model_providers.<id>]`` block by the launch config generator — NOT an env
+      var).  ``"config_file"`` ALSO disables the claude-shaped B3 host-dir auto-adopt
+      (MVP keyspace-config only).
+    * *wire_api* — the config-file harness's model-provider wire protocol (codex
+      ``[model_providers.<id>].wire_api``); default ``"chat"`` (settled with a real
+      key at INC 3/4).  Ignored for ``"env"`` delivery.
+
+    A target with NO :class:`PersonaSpec` (``descriptor.persona is None``) resolves
+    exactly as claude did before this seam existed: ENV endpoint delivery +
+    ``ANTHROPIC_AUTH_TOKEN`` token var (byte-identical fallback).
+    """
+
+    token_var: str = ""
+    endpoint_delivery: str = "env"   # "env" | "config_file"
+    wire_api: str = "chat"
+
+
+@dataclass(frozen=True)
 class Operation:
     """A STANDALONE op invocation fragment (no session mode); e.g. exec/headless. Spliced after `command`."""
 
@@ -197,6 +231,9 @@ class PluginDescriptor:
     operations: dict[str, Operation] = field(default_factory=dict)  # pass-1: {"exec": ...}; standalone, no mode
     safe_bypass: SafeBypass | None = None
     settings: tuple[SettingArg, ...] = ()
+    persona: "PersonaSpec | None" = None   # harness-specific persona endpoint/token
+                                           # delivery (None = claude-style env +
+                                           # ANTHROPIC_AUTH_TOKEN fallback).
     container_env: dict[str, str] = field(default_factory=dict)
     cred_files: tuple[CredFileSpec, ...] = ()
     host_prep: bool = False           # True -> core calls Target.prepare_host before mounts
